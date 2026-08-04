@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -616,6 +616,7 @@ namespace TypoZen
 
             BindClick("mToggleSource", (s, e) => ToggleSourceMode());
             BindClick("mToggleSidebar", (s, e) => SendMsg("cmd:toggle_sidebar"));
+            BindClick("mSearchSidebar", (s, e) => SendMsg("cmd:toggle_search_sidebar"));
             BindClick("mToggleReveal", (s, e) => SendMsg("cmd:toggle_reveal"));
             BindClick("mToggleFocus", (s, e) => SendMsg("cmd:toggle_focus"));
             BindClick("mToggleTypewriter", (s, e) => SendMsg("cmd:toggle_typewriter"));
@@ -1301,6 +1302,15 @@ namespace TypoZen
                 else if (e.Key == Key.D0 || e.Key == Key.NumPad0) { SetZoom(1.0); e.Handled = true; }
                 else if (e.Key == Key.Oem2 || e.Key == Key.Divide) { ToggleSourceMode(); e.Handled = true; } // Ctrl+/
                 else if (e.Key == Key.Oem5 || e.Key == Key.OemBackslash) { SendMsg("cmd:toggle_sidebar"); e.Handled = true; } // Ctrl+\
+            }
+            // Alt+S opens the search sidebar. The page claims this itself while the WebView
+            // has focus; this covers the case where WPF chrome holds focus instead. Alt
+            // arrives as a SystemKey, so e.Key is Key.System and the letter is in SystemKey.
+            else if (e.SystemKey == Key.S && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt
+                     && (Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
+            {
+                SendMsg("cmd:toggle_search_sidebar");
+                e.Handled = true;
             }
             else if (e.Key == Key.F1) { SendMsg("cmd:help_syntax"); e.Handled = true; }
             else if (e.Key == Key.F7) { SendMsg("cmd:toggle_reveal"); e.Handled = true; }
@@ -2944,7 +2954,6 @@ namespace TypoZen
                                     _tabs[_activeTabIndex].IsDirty = false;
                                 }
                                 RebuildTabStrip();
-                                ScanCurrentDirectory();
                                 restoredSession = true;
                             }
                         }
@@ -2971,7 +2980,6 @@ namespace TypoZen
                     else if (!restoredSession)
                     {
                         RebuildTabStrip();
-                        ScanCurrentDirectory();
                     }
 
                     _editorReady = true;
@@ -3200,10 +3208,6 @@ namespace TypoZen
                 string path = msg.Substring(15);
                 Dispatcher.BeginInvoke(new Action(() => LoadFileFromPath(path)),
                     DispatcherPriority.Normal);
-            }
-            else if (msg == "request_dir")
-            {
-                ScanCurrentDirectory();
             }
             else if (msg.StartsWith("mode_changed:"))
             {
@@ -4084,7 +4088,6 @@ namespace TypoZen
         // folder and show a broken image. Map the current document's folder to a second
         // virtual host and rewrite relative image sources onto it at render time.
         private string _mappedDocFolder;
-        private string _lastScannedDir;   // sidebar list is per-folder; skip repeat walks
 
         private void MapDocumentFolder(string filePath)
         {
@@ -5884,7 +5887,6 @@ namespace TypoZen
                     string realDoc = @"C:\Users\chan_\OneDrive\Apps\0-Development\TypoZen\tests\gfdgfdhb.md";
                     if (File.Exists(realDoc))
                     {
-                        _lastScannedDir = null;   // force a cold open, as a user would get
                         var swOpen = System.Diagnostics.Stopwatch.StartNew();
                         LoadFileFromPath(realDoc);
                         swOpen.Stop();
@@ -6705,7 +6707,6 @@ namespace TypoZen
                 }), DispatcherPriority.Background);
             }
             if (!string.IsNullOrEmpty(tab.FilePath))
-                ScanCurrentDirectory();
             RebuildTabStrip();
         }
 
@@ -7227,7 +7228,6 @@ namespace TypoZen
                                     MapDocumentFolder(path);
                                     LoadContentToEditor(content, false, path);
                                     UpdateStatusDisplay();
-                                    ScanCurrentDirectory();
                                     RebuildTabStrip();
                                 }
                             }
@@ -7343,7 +7343,6 @@ namespace TypoZen
             if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return;
             if (SaveTabNow(_tabs[_activeTabIndex], saveAs))
             {
-                ScanCurrentDirectory();
             }
         }
 
@@ -7617,51 +7616,6 @@ namespace TypoZen
             }
         }
 
-        private void ScanCurrentDirectory()
-        {
-            try
-            {
-                string dir = _currentFilePath != null ? Path.GetDirectoryName(_currentFilePath) : _appDir;
-                if (!Directory.Exists(dir)) return;
-
-                // Same folder as last time? The sidebar list cannot have changed because of
-                // us, and re-enumerating is the expensive part of opening a file — a
-                // OneDrive folder full of cloud placeholders can take seconds to walk.
-                if (string.Equals(dir, _lastScannedDir, StringComparison.OrdinalIgnoreCase)) return;
-                _lastScannedDir = dir;
-
-                // Ask the filesystem only for the extensions we show, and stop at a sane
-                // cap, instead of pulling back every file in the folder and filtering.
-                var files = new List<string>();
-                foreach (string pattern in new[] { "*.md", "*.txt", "*.markdown" })
-                {
-                    foreach (string f in Directory.EnumerateFiles(dir, pattern))
-                    {
-                        files.Add(f);
-                        if (files.Count >= 500) break;
-                    }
-                    if (files.Count >= 500) break;
-                }
-                files.Sort(StringComparer.OrdinalIgnoreCase);
-                var sb = new StringBuilder();
-                sb.Append("dir_list:[");
-                bool first = true;
-                foreach (var f in files)
-                {
-                    {
-                        if (!first) sb.Append(",");
-                        string name = Path.GetFileName(f);
-                        string escName = name.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        string escPath = f.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                        sb.Append("{\"name\":\"").Append(escName).Append("\",\"path\":\"").Append(escPath).Append("\"}");
-                        first = false;
-                    }
-                }
-                sb.Append("]");
-                SendMsg(sb.ToString());
-            }
-            catch {}
-        }
     }
 
     /// <summary>Theme model shared by the app and the basic theme editor.</summary>

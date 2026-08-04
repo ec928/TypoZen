@@ -45,7 +45,7 @@ Implement these cascading rules so the UI never traps the user in a disabled but
   - If `Pagination` is clicked: No forced changes. Ensure the Column selector is unlocked.
 Initial State: Unless changes by the user, default to `Preview`, `1-Column`, and `Scroll` for all newly opened documents except Reader. For Reader mode, initial defaults are `1-Column`, `Pagination`.
 
-4/ Phase 4 is to enable 2-Column and Pagination modes. For Pagination, advice is to pre-compute a page map: they lay out all the content, determine where each page break falls, and store a mapping of page number → content position. This should allow seamless switching between 1 and 2 column modes in Pagination modes. Challenge: column size between modes can be different. Success criteria: as long as content on the first page of the current mode is generally visible as content on the first page of the target mode, that's fine. Stretch objective: If you change modes a second time, you return the the original layout.
+4/ Phase 4 is to enable 2-Column and Pagination modes. For Pagination, advice is to pre-compute a page map: they lay out all the content, determine where each page break falls, and store a mapping of page number → content position. This should allow seamless switching between 1 and 2 column modes in Pagination modes. Challenge: column size between modes can be different. Success criteria: as long as content on the first page of the current mode is generally visible as content on the first page of the target mode so the user is not completely lost, that's fine. And If you change modes a second time, you return the original layout.
 
 5/ Phase 5 is to implement epub functionality
 

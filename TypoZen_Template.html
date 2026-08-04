@@ -98,9 +98,8 @@
     <!-- Sidebar -->
     <div id="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-tab active" onclick="switchTab('outline')">Outline</div>
-            <div class="sidebar-tab" onclick="switchTab('files')">Files</div>
-            <div class="sidebar-tab" onclick="switchTab('search')">Search</div>
+            <div class="sidebar-tab active" data-tab="outline" onclick="switchTab('outline')">Outline</div>
+            <div class="sidebar-tab" data-tab="search" onclick="switchTab('search')">Search</div>
         </div>
         <div class="sidebar-content">
             <div id="tab-outline" class="tab-pane active">
@@ -108,13 +107,10 @@
                     <div class="outline-item" style="opacity:0.5;">No headings found...</div>
                 </div>
             </div>
-            <div id="tab-files" class="tab-pane">
-                <div id="file-list">
-                    <div class="file-item" style="opacity:0.5;">Scanning folder...</div>
-                </div>
-            </div>
+            <!-- tabindex makes the result list itself focusable, so , . < > can drive
+                 next/prev once focus is in here (see the keydown handler on this list). -->
             <div id="tab-search" class="tab-pane">
-                <div id="search-results-list">
+                <div id="search-results-list" tabindex="0" role="listbox" aria-label="Search results">
                     <div class="search-item" style="opacity:0.5;">No results...</div>
                 </div>
             </div>

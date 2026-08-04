@@ -353,7 +353,8 @@
                     </MenuItem>
                     <MenuItem Header="_View">
                         <MenuItem x:Name="mToggleSource" Header="Toggle _Source Mode" InputGestureText="Ctrl+/"/>
-                        <MenuItem x:Name="mToggleSidebar" Header="Toggle _Sidebar (Outline/Files)" InputGestureText="Ctrl+\"/>
+                        <MenuItem x:Name="mToggleSidebar" Header="Toggle _Sidebar (Outline/Search)" InputGestureText="Ctrl+\"/>
+                        <MenuItem x:Name="mSearchSidebar" Header="Search Side_bar" InputGestureText="Alt+S"/>
                         <Separator/>
                         <MenuItem x:Name="mToggleReveal" Header="_Reveal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
                         <MenuItem x:Name="mToggleFocus" Header="_Focus Mode" InputGestureText="F8" IsCheckable="True"/>

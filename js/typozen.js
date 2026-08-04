@@ -54,7 +54,6 @@
         const mainContainer = document.getElementById('main-container');
         const sidebar = document.getElementById('sidebar');
         const outlineList = document.getElementById('outline-list');
-        const fileList = document.getElementById('file-list');
 
         let isRestoring = false;
 
@@ -432,6 +431,8 @@
         function updateSearchSidebar() {
             const list = document.getElementById('search-results-list');
             if (!list) return;
+            // Listener lives on the container, so it survives the innerHTML rewrites below.
+            wireSearchResultKeys();
             if (!findState.query || findState.matches.length === 0) {
                 list.innerHTML = '<div class="search-item" style="opacity:0.5;">No results...</div>';
                 return;
@@ -464,6 +465,48 @@
             if (activeEl) {
                 activeEl.scrollIntoView({ block: 'nearest' });
             }
+        }
+
+        /**
+         * Keyboard navigation for the search results list.
+         *
+         * With focus anywhere inside the results, , and . step prev/next through matches,
+         * as do < and > (the same physical keys with Shift, so it works whether or not the
+         * user is holding it). Arrow keys and Enter are supported too, since a focused
+         * listbox is expected to answer them.
+         *
+         * findStep() already moves findState.index, highlights, scrolls the match into
+         * view and re-renders this list with the new .active item, so this only routes.
+         */
+        function wireSearchResultKeys() {
+            const list = document.getElementById('search-results-list');
+            if (!list || list.__tzKeysWired) return;
+            list.__tzKeysWired = true;
+            list.addEventListener('keydown', (e) => {
+                if (e.ctrlKey || e.metaKey || e.altKey) return;
+                let dir = 0;
+                if (e.key === ',' || e.key === '<' || e.key === 'ArrowUp') dir = -1;
+                else if (e.key === '.' || e.key === '>' || e.key === 'ArrowDown') dir = 1;
+                else if (e.key === 'Enter') {
+                    // Re-reveal the current match without moving, so Enter confirms.
+                    if (findState.matches.length) window.findJumpTo(findState.index);
+                    e.preventDefault();
+                    return;
+                }
+                else if (e.key === 'Escape') {
+                    focusFindInput();
+                    e.preventDefault();
+                    return;
+                }
+                if (!dir) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (!findState.matches.length) return;
+                findStep(dir);
+                // findStep moves focus to the match in the document; keep it here so a
+                // run of , or . keeps stepping instead of typing into the editor.
+                try { list.focus({ preventScroll: true }); } catch (err) { list.focus(); }
+            });
         }
 
         /** Collect text nodes under #editor only (skips sidebar, find bar, etc.). */
@@ -1475,12 +1518,6 @@
                     const html = generateExportHtml();
                     postMsg("export_html_content:" + html);
                 }
-                else if (msg.startsWith("dir_list:")) {
-                    try {
-                        const files = JSON.parse(msg.substring(9));
-                        renderFileList(files);
-                    } catch(e) {}
-                }
                 else if (msg.startsWith("table:")) {
                     // Table edits act on the table holding the caret. WPF has focus while
                     // the menu is open, so the frozen selection is what we go on.
@@ -1738,6 +1775,26 @@
             }
             else if (cmd === "toggle_sidebar") {
                 sidebar.classList.toggle('collapsed');
+            }
+            else if (cmd === "toggle_search_sidebar") {
+                // Alt+S, the ZenSeek gesture. Closed, or open on another tab, means the
+                // user wants search: reveal it. Only a sidebar already showing Search
+                // collapses, so the key is a true toggle rather than an open-only.
+                const searchPane = document.getElementById('tab-search');
+                const showingSearch = searchPane && searchPane.classList.contains('active');
+                if (sidebar.classList.contains('collapsed') || !showingSearch) {
+                    sidebar.classList.remove('collapsed');
+                    switchTab('search');
+                    // The results pane has no input of its own -- the find bar is the one
+                    // query field, so open it or Alt+S would show a results list with
+                    // nowhere to type. openFindBar also seeds from the selection and runs
+                    // the search, so an existing query repopulates the sidebar.
+                    openFindBar();
+                    focusFindInput(true);
+                } else {
+                    sidebar.classList.add('collapsed');
+                }
+                scheduleSavePreferences();
             }
             else if (cmd === "persist_content_on" || cmd === "persist_content_off") {
                 state.persistContent = (cmd === "persist_content_on");
@@ -7441,6 +7498,14 @@
             // but never sees the key while the editor has focus, so forward it. AltGr
             // sets ctrlKey too and is excluded, or accented input would trigger menus.
             if (e.altKey && !e.ctrlKey && !e.metaKey && e.key && e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
+                // Alt+S is the search sidebar, handled here. It must be claimed before the
+                // menu_access forward below, or the host would hunt for a top-level menu
+                // with S as its access key. No menu uses S (they are F/E/V/T/H).
+                if (e.key.toLowerCase() === 's') {
+                    handleCommand('toggle_search_sidebar');
+                    e.preventDefault();
+                    return;
+                }
                 postMsg('menu_access:' + e.key.toLowerCase());
                 e.preventDefault();
             }
@@ -9494,39 +9559,19 @@
             }
         }
 
-        function renderFileList(files) {
-            fileList.innerHTML = '';
-            if (!files || files.length === 0) {
-                fileList.innerHTML = '<div class="file-item" style="opacity:0.5;">No markdown files found</div>';
-                return;
-            }
-
-            files.forEach(f => {
-                const item = document.createElement('div');
-                item.className = 'file-item';
-                item.innerHTML = `<span class="file-icon">📄</span><span class="file-name">${f.name}</span>`;
-                item.onclick = () => {
-                    postMsg("open_file_path:" + f.path);
-                };
-                fileList.appendChild(item);
-            });
-        }
-
+        /**
+         * Show one sidebar pane. Matches on data-tab rather than :nth-child so that
+         * adding or removing a tab cannot silently mis-target the header (removing the
+         * Files tab shifted every nth-child index by one).
+         */
         window.switchTab = function(tab) {
-            document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-            
-            if (tab === 'outline') {
-                document.querySelector('.sidebar-tab:nth-child(1)').classList.add('active');
-                document.getElementById('tab-outline').classList.add('active');
-            } else if (tab === 'search') {
-                document.querySelector('.sidebar-tab:nth-child(3)').classList.add('active');
-                document.getElementById('tab-search').classList.add('active');
-            } else {
-                document.querySelector('.sidebar-tab:nth-child(2)').classList.add('active');
-                document.getElementById('tab-files').classList.add('active');
-                postMsg("request_dir");
-            }
+            if (tab !== 'outline' && tab !== 'search') tab = 'outline';
+            document.querySelectorAll('.sidebar-tab').forEach(t => {
+                t.classList.toggle('active', t.getAttribute('data-tab') === tab);
+            });
+            document.querySelectorAll('.tab-pane').forEach(p => {
+                p.classList.toggle('active', p.id === 'tab-' + tab);
+            });
         };
 
         function generateExportHtml() {
