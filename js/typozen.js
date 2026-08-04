@@ -431,8 +431,10 @@
         function updateSearchSidebar() {
             const list = document.getElementById('search-results-list');
             if (!list) return;
-            // Listener lives on the container, so it survives the innerHTML rewrites below.
+            // Listeners live on the containers, so they survive the innerHTML rewrites below.
             wireSearchResultKeys();
+            wireSidebarSearch();
+            updateSidebarSearchCount();
             if (!findState.query || findState.matches.length === 0) {
                 list.innerHTML = '<div class="search-item" style="opacity:0.5;">No results...</div>';
                 return;
@@ -467,6 +469,106 @@
             }
         }
 
+        // How long the sidebar search box waits after the last keystroke before handing
+        // focus to the results. Typing must not be interrupted, but a user who stops
+        // should get the navigation keys without reaching for Enter or the mouse.
+        const SIDEBAR_SEARCH_IDLE_MS = 3000;
+        const SIDEBAR_SEARCH_DEBOUNCE_MS = 200;
+        let _sidebarSearchDebounce = null;
+        let _sidebarSearchIdle = null;
+
+        function focusSearchResults() {
+            const list = document.getElementById('search-results-list');
+            if (!list) return;
+            if (!findState.matches.length) return; // nothing to step through; stay in the box
+            try { list.focus({ preventScroll: true }); } catch (e) { list.focus(); }
+        }
+
+        function focusSidebarSearchInput(selectAll) {
+            const input = document.getElementById('sidebarSearchInput');
+            if (!input) return;
+            try {
+                input.focus({ preventScroll: true });
+                if (selectAll) input.select();
+            } catch (e) { try { input.focus(); } catch (e2) {} }
+        }
+
+        function cancelSidebarSearchIdle() {
+            if (_sidebarSearchIdle) { clearTimeout(_sidebarSearchIdle); _sidebarSearchIdle = null; }
+        }
+
+        function armSidebarSearchIdle() {
+            cancelSidebarSearchIdle();
+            _sidebarSearchIdle = setTimeout(() => {
+                _sidebarSearchIdle = null;
+                const input = document.getElementById('sidebarSearchInput');
+                // Only steal focus if the user is still sitting in the search box.
+                if (!input || document.activeElement !== input) return;
+                focusSearchResults();
+            }, SIDEBAR_SEARCH_IDLE_MS);
+        }
+
+        /** Update the "3/17" counter beside the sidebar search box. */
+        function updateSidebarSearchCount() {
+            const el = document.getElementById('sidebarSearchCount');
+            if (!el) return;
+            const n = findState.matches.length;
+            el.textContent = (n === 0 ? 0 : findState.index + 1) + '/' + n;
+        }
+
+        /**
+         * The Search pane's own query box.
+         *
+         * Kept separate from the Ctrl+F find bar on purpose. The navigation keys , . < >
+         * are ordinary printable characters, so while a text field holds focus they can
+         * only ever be typed. Focus therefore has to move off the input and onto the
+         * results list before they can mean prev/next -- Enter does that immediately, and
+         * so does SIDEBAR_SEARCH_IDLE_MS of no typing.
+         */
+        function wireSidebarSearch() {
+            const input = document.getElementById('sidebarSearchInput');
+            if (!input || input.__tzWired) return;
+            input.__tzWired = true;
+
+            input.addEventListener('input', () => {
+                if (_sidebarSearchDebounce) clearTimeout(_sidebarSearchDebounce);
+                _sidebarSearchDebounce = setTimeout(() => {
+                    _sidebarSearchDebounce = null;
+                    runFind(input.value, false, { navigate: false });
+                    updateSidebarSearchCount();
+                }, SIDEBAR_SEARCH_DEBOUNCE_MS);
+                armSidebarSearchIdle();
+            });
+
+            input.addEventListener('keydown', (e) => {
+                // The editor's global shortcut handlers must not see ordinary typing here.
+                e.stopPropagation();
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    cancelSidebarSearchIdle();
+                    if (_sidebarSearchDebounce) { clearTimeout(_sidebarSearchDebounce); _sidebarSearchDebounce = null; }
+                    // Run synchronously so Enter acts on what is on screen, then jump to
+                    // the first match and hand the navigation keys to the results.
+                    runFind(input.value, false, { navigate: true });
+                    updateSidebarSearchCount();
+                    focusSearchResults();
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    cancelSidebarSearchIdle();
+                    focusSearchResults();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelSidebarSearchIdle();
+                    input.value = '';
+                    runFind('', false, { navigate: false });
+                    updateSidebarSearchCount();
+                }
+            });
+
+            // Typing again after focus moved away should not fight the idle timer.
+            input.addEventListener('blur', cancelSidebarSearchIdle);
+        }
+
         /**
          * Keyboard navigation for the search results list.
          *
@@ -491,11 +593,29 @@
                     // Re-reveal the current match without moving, so Enter confirms.
                     if (findState.matches.length) window.findJumpTo(findState.index);
                     e.preventDefault();
+                    e.stopPropagation();
                     return;
                 }
                 else if (e.key === 'Escape') {
-                    focusFindInput();
+                    // Back to the query box to refine the search.
+                    focusSidebarSearchInput(true);
                     e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+                else if (e.key.length === 1) {
+                    // Any other printable key means the user wants to type a new query;
+                    // send it to the search box rather than dropping it on the floor.
+                    const input = document.getElementById('sidebarSearchInput');
+                    if (input) {
+                        focusSidebarSearchInput(false);
+                        input.value = e.key;
+                        runFind(input.value, false, { navigate: false });
+                        updateSidebarSearchCount();
+                        armSidebarSearchIdle();
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
                     return;
                 }
                 if (!dir) return;
@@ -503,6 +623,7 @@
                 e.stopPropagation();
                 if (!findState.matches.length) return;
                 findStep(dir);
+                updateSidebarSearchCount();
                 // findStep moves focus to the match in the document; keep it here so a
                 // run of , or . keeps stepping instead of typing into the editor.
                 try { list.focus({ preventScroll: true }); } catch (err) { list.focus(); }
@@ -1785,14 +1906,26 @@
                 if (sidebar.classList.contains('collapsed') || !showingSearch) {
                     sidebar.classList.remove('collapsed');
                     switchTab('search');
-                    // The results pane has no input of its own -- the find bar is the one
-                    // query field, so open it or Alt+S would show a results list with
-                    // nowhere to type. openFindBar also seeds from the selection and runs
-                    // the search, so an existing query repopulates the sidebar.
-                    openFindBar();
-                    focusFindInput(true);
+                    wireSidebarSearch();
+                    // Seed from the selection, the way a search box is expected to.
+                    const input = document.getElementById('sidebarSearchInput');
+                    if (input) {
+                        try {
+                            const sel = window.getSelection();
+                            if (sel && !sel.isCollapsed && sel.toString().trim()) {
+                                input.value = sel.toString().trim().slice(0, 200);
+                            } else if (state.mode === 'source' && sourceEditor) {
+                                const a = sourceEditor.selectionStart, b = sourceEditor.selectionEnd;
+                                if (b > a) input.value = sourceEditor.value.substring(a, b).slice(0, 200);
+                            }
+                        } catch (e) {}
+                        if (input.value) runFind(input.value, true, { navigate: false });
+                        updateSidebarSearchCount();
+                    }
+                    focusSidebarSearchInput(true);
                 } else {
                     sidebar.classList.add('collapsed');
+                    cancelSidebarSearchIdle();
                 }
                 scheduleSavePreferences();
             }

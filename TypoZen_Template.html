@@ -107,9 +107,17 @@
                     <div class="outline-item" style="opacity:0.5;">No headings found...</div>
                 </div>
             </div>
-            <!-- tabindex makes the result list itself focusable, so , . < > can drive
-                 next/prev once focus is in here (see the keydown handler on this list). -->
+            <!-- The Search pane owns its own query box, deliberately separate from the
+                 Ctrl+F find bar. Focus has to leave the text field for , . < > to mean
+                 next/prev instead of being typed, so Alt+S focuses this input and Enter
+                 (or 3s idle) hands focus to the results list below. -->
             <div id="tab-search" class="tab-pane">
+                <div class="sidebar-search-row">
+                    <input id="sidebarSearchInput" type="text" placeholder="Search…"
+                           autocomplete="off" spellcheck="false" aria-label="Search document"
+                           aria-controls="search-results-list" />
+                    <span id="sidebarSearchCount">0/0</span>
+                </div>
                 <div id="search-results-list" tabindex="0" role="listbox" aria-label="Search results">
                     <div class="search-item" style="opacity:0.5;">No results...</div>
                 </div>

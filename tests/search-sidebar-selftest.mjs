@@ -59,6 +59,42 @@ console.log('--- markup: Files tab is gone ---');
     assert(list !== null, 'the results list exists');
     eq(list.getAttribute('tabindex'), '0', 'the results list is focusable so , . < > can reach it');
     eq(list.getAttribute('role'), 'listbox', 'the results list announces itself as a listbox');
+
+    // The Search pane owns its query box. , . < > are printable characters, so they can
+    // only ever be typed while a text field has focus -- the pane needs its own input
+    // that focus can leave, which the shared Ctrl+F find bar could never provide.
+    const input = d.getElementById('sidebarSearchInput');
+    assert(input !== null, 'the Search pane has its own query input');
+    assert(d.getElementById('sidebarSearchCount') !== null, 'the Search pane shows a match counter');
+    assert(d.querySelector('#tab-search #sidebarSearchInput') !== null,
+        'the query input lives inside the Search pane, not the find bar');
+    assert(d.querySelector('#findBar #sidebarSearchInput') === null,
+        'the query input is not part of the Ctrl+F find bar');
+    // Markup order: query box above the results it drives.
+    const pane = d.getElementById('tab-search');
+    const kids = [...pane.children];
+    assert(kids.findIndex(k => k.querySelector('#sidebarSearchInput')) <
+           kids.findIndex(k => k.id === 'search-results-list'),
+        'the query box sits above the results list');
+}
+
+console.log('\n--- focus handoff is wired in the page script ---');
+{
+    assert(/SIDEBAR_SEARCH_IDLE_MS\s*=\s*3000/.test(mainScript),
+        'idle handoff is 3000ms as specified');
+    assert(mainScript.indexOf('function focusSearchResults') !== -1,
+        'there is a helper that moves focus to the results');
+    assert(mainScript.indexOf('function wireSidebarSearch') !== -1,
+        'the sidebar query box has its own wiring');
+    // Enter must hand off immediately rather than only running the search.
+    const wireSrc = mainScript.slice(mainScript.indexOf('function wireSidebarSearch'));
+    const enterIdx = wireSrc.indexOf("e.key === 'Enter'");
+    assert(enterIdx !== -1, 'Enter is handled in the query box');
+    assert(wireSrc.slice(enterIdx, enterIdx + 600).indexOf('focusSearchResults()') !== -1,
+        'Enter hands focus to the results list');
+    // Alt+S must target the sidebar box, not the find bar.
+    assert(mainScript.indexOf('focusSidebarSearchInput') !== -1,
+        'Alt+S focuses the sidebar query box');
 }
 
 console.log('\n--- switchTab targets by data-tab ---');

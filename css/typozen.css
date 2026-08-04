@@ -86,7 +86,7 @@
         }
 
         /* Outline List */
-        .outline-item, .file-item, .search-item {
+        .outline-item, .search-item {
             padding: 6px 10px;
             margin-bottom: 2px;
             border-radius: 6px;
@@ -98,7 +98,7 @@
             text-overflow: ellipsis;
             transition: all 0.15s;
         }
-        .outline-item:hover, .file-item:hover, .search-item:hover {
+        .outline-item:hover, .search-item:hover {
             background-color: var(--accent-bg, rgba(59,130,246,0.15));
             color: var(--tx, #F4F4F5);
             transform: translateX(3px);
@@ -112,39 +112,44 @@
         .outline-h4 { padding-left: 42px; font-size: 12px; opacity: 0.85; }
         .outline-h5 { padding-left: 54px; font-size: 11px; opacity: 0.75; }
 
-        /* File List */
-        .file-item {
-            display: flex;
-            align-items: center;
-            padding: 8px 10px;
-            margin-bottom: 4px;
-            border-radius: 6px;
-            font-size: 13px;
-            color: var(--tx-muted, #A1A1AA);
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-        .file-item:hover {
-            background-color: var(--accent-bg, rgba(59,130,246,0.15));
-            color: var(--tx, #F4F4F5);
-        }
-        .file-item.active {
-            background-color: var(--accent, #3B82F6);
-            color: var(--accent-tx, #FFFFFF);
-            font-weight: 600;
-        }
         .search-item.active {
             background-color: var(--accent-bg, rgba(59,130,246,0.25));
             border-left: 2px solid var(--accent, #3B82F6);
         }
-        .file-active {
-            background-color: var(--accent, #3B82F6);
-            color: var(--accent-tx, #FFFFFF);
-            font-weight: 600;
+
+        /* Search pane query box — the Search tab's own input, not the Ctrl+F find bar. */
+        .sidebar-search-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 8px;
         }
-        .file-icon {
-            margin-right: 8px;
-            font-size: 15px;
+        #sidebarSearchInput {
+            flex: 1;
+            min-width: 0;
+            padding: 6px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border, #3F3F46);
+            background: var(--surface, rgba(255,255,255,0.05));
+            color: var(--tx, #F4F4F5);
+            font-family: inherit;
+            font-size: 13px;
+            outline: none;
+        }
+        #sidebarSearchInput:focus {
+            border-color: var(--accent, #3B82F6);
+        }
+        #sidebarSearchCount {
+            font-size: 11px;
+            color: var(--tx-muted, #A1A1AA);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        /* Focus lives on the list while , . < > drive next/prev, so make that visible. */
+        #search-results-list:focus {
+            outline: none;
+            box-shadow: inset 0 0 0 1px var(--accent, #3B82F6);
+            border-radius: 6px;
         }
 
         /* Main Area */
