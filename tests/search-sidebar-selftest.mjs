@@ -95,6 +95,23 @@ console.log('\n--- focus handoff is wired in the page script ---');
     // Alt+S must target the sidebar box, not the find bar.
     assert(mainScript.indexOf('focusSidebarSearchInput') !== -1,
         'Alt+S focuses the sidebar query box');
+
+    // Alt chords put WPF into menu mode on the Alt key up, after this handler has run,
+    // which moved focus to the menu bar and sent the user's typing there. The page must
+    // ask for focus back and re-assert, or Alt+S then typing is silently lost.
+    const focusSrc = mainScript.slice(mainScript.indexOf('function focusSidebarSearchInput'));
+    const focusFn = focusSrc.slice(0, focusSrc.indexOf('\n        function '));
+    assert(focusFn.indexOf("postMsg('focus_webview')") !== -1,
+        'the page asks the host to return focus to the WebView');
+    assert(/setTimeout\(\s*reassert/.test(focusFn), 're-assertion is retried, not attempted once');
+    assert(focusFn.indexOf('stolenToDocument') !== -1,
+        'focus is only reclaimed from the document, not from a control the user chose');
+
+    const appCs = fs.readFileSync(path.join(appDir, 'TypoZen_App.cs'), 'utf8');
+    assert(appCs.indexOf('"focus_webview"') !== -1, 'the host handles focus_webview');
+    const hostIdx = appCs.indexOf('msg == "focus_webview"');
+    assert(appCs.slice(hostIdx, hostIdx + 900).indexOf('_webView.Focus()') !== -1,
+        'the host actually focuses the WebView on that message');
 }
 
 console.log('\n--- switchTab targets by data-tab ---');

@@ -487,10 +487,48 @@
         function focusSidebarSearchInput(selectAll) {
             const input = document.getElementById('sidebarSearchInput');
             if (!input) return;
-            try {
-                input.focus({ preventScroll: true });
-                if (selectAll) input.select();
-            } catch (e) { try { input.focus(); } catch (e2) {} }
+            const grab = () => {
+                try {
+                    input.focus({ preventScroll: true });
+                    if (selectAll) input.select();
+                } catch (e) { try { input.focus(); } catch (e2) {} }
+            };
+            grab();
+
+            // Alt+S arrives as an Alt chord, and WPF activates menu mode on the Alt key
+            // *up* -- after this handler has already run. That pulls keyboard focus out of
+            // the WebView and onto the menu bar, so everything typed next went to the menu
+            // instead of the search box. preventDefault() in the page cannot stop it: the
+            // WebView's HWND belongs to the browser process and the host window handles
+            // Alt itself.
+            //
+            // So ask the host to hand focus back to the WebView, then re-assert the input
+            // over the next few frames. Each retry bails the moment the box already has
+            // focus, and stops outright if the user has moved to another field, so this
+            // never fights a deliberate click.
+            postMsg('focus_webview');
+            let tries = 0;
+            const reassert = () => {
+                if (++tries > 6) return;
+                const active = document.activeElement;
+                if (active === input) return; // won
+
+                // Only reclaim from the places a steal actually lands: nothing focused, the
+                // body, or the document surfaces. Anything else -- the results list, the
+                // find bar, another sidebar control -- means the user went there on
+                // purpose, so leave it alone rather than yanking focus back.
+                const stolenToDocument = !active
+                    || active === document.body
+                    || active === document.documentElement
+                    || active === editor
+                    || active === sourceEditor
+                    || (editor && editor.contains(active));
+                if (!stolenToDocument) return;
+
+                grab();
+                setTimeout(reassert, 40);
+            };
+            requestAnimationFrame(() => setTimeout(reassert, 0));
         }
 
         function cancelSidebarSearchIdle() {

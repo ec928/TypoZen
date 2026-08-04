@@ -3150,6 +3150,16 @@ namespace TypoZen
                 // correct if a header is renamed.
                 OpenMenuByAccessKey(msg.Length > 12 ? msg[12] : '\0');
             }
+            else if (msg == "focus_webview")
+            {
+                // The page asks for keyboard focus back. Alt chords (Alt+S) put WPF into
+                // menu mode on the Alt key up, which moves focus to the menu bar after the
+                // page has already focused its own control -- typing then went to the menu.
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try { if (_webView != null) _webView.Focus(); } catch { }
+                }), DispatcherPriority.Input);
+            }
             else if (msg == "reveal_chrome")
             {
                 // Alt, forwarded from the page. Neither Window.KeyDown nor the message
