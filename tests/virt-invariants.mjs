@@ -96,11 +96,16 @@ try {
     // shouldVirtualize() reads the `editor` global to bail out in 2-column layout.
     // These methods run outside the app here, so the global has to be supplied or the
     // bare reference throws ReferenceError rather than short-circuiting.
+    // shouldVirtualize() also asks isPaginatedLayout(): virtualisation is refused while
+    // the document is laid out as pages, because the browser can only break content it
+    // has actually laid out. Outside the app that helper does not exist, so stub it as
+    // "not paginated" -- these invariants are about the scrolling path.
     const editorStub = { classList: { contains: () => false } };
+    const isPaginatedLayout = () => false;
     DocumentModel = new Function(
-        'VIRT_MIN_CHARS', 'VIRT_MIN_BLOCKS', 'editor',
+        'VIRT_MIN_CHARS', 'VIRT_MIN_BLOCKS', 'editor', 'isPaginatedLayout',
         modelSrc
-    )(VIRT_MIN_CHARS, VIRT_MIN_BLOCKS, editorStub);
+    )(VIRT_MIN_CHARS, VIRT_MIN_BLOCKS, editorStub, isPaginatedLayout);
 } catch (e) {
     console.error('Failed to build DocumentModel from template:', e);
     process.exit(1);

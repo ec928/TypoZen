@@ -272,17 +272,52 @@
             cursor: default;
         }
         
-        /* Two columns are valid in Preview as well as Reader, so this must not require
-           .reader-mode. It used to, which meant selecting 2-Column in Preview applied the
-           class and changed nothing on screen: column-count stayed 'auto'.
-           The mode/column/scroll resolver is what decides when 2 columns are legal (and it
-           guarantees 2 columns implies Pagination); the CSS just renders what it decided. */
-        #editor.two-col-layout {
-            column-count: 2;
+        /* Pagination, both layouts, one mechanism.
+           .page-mode puts the document into CSS multi-column, so the browser performs the
+           real page breaking and a page turn is a horizontal scroll. 1-column pagination is
+           column-count 1, not a scrolling view with page offsets computed over it: that is
+           what it used to be, and it meant pages were never real -- offsets came from
+           estimated block heights, nothing was aligned to a boundary, and every operation
+           needed a correction pass afterwards.
+           .two-col-layout only changes how many columns fit on a page.
+           Neither requires .reader-mode: Preview may paginate too, and the resolver is what
+           decides when a combination is legal. */
+        #editor.page-mode {
+            column-count: 1;
             column-gap: 60px;
+            column-fill: auto;
             overflow-y: hidden;
             width: auto;
         }
+        #editor.page-mode.two-col-layout {
+            column-count: 2;
+        }
+
+        /* Page numbers, bottom-right of each page. Pinned to the viewport rather than
+           flowed into the columns: content inside the flow would occupy a column and shift
+           the very breaks it is reporting on. */
+        #page-indicator {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 6px;
+            display: none;
+            justify-content: flex-end;
+            pointer-events: none;
+            z-index: 5;
+            font-family: var(--ui-font);
+            font-size: 12px;
+            color: var(--tx-muted, #A1A1AA);
+            opacity: 0.75;
+        }
+        #page-indicator .page-num {
+            padding: 0 16px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        /* One number per column, each sitting under its own column. */
+        #page-indicator.two-up { justify-content: space-between; }
+        #page-indicator.two-up .page-num { width: 50%; }
 
         /* Source Editor — viewport-tall; scrolls inside itself so the browser never allows
            scrolling past the true end of the text (estimated full-document heights could). */

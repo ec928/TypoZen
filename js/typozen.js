@@ -208,6 +208,11 @@
                     state.pageAdvance = wantAdvance;
                     postMsg('sync_page_advance:' + (wantAdvance ? '1' : '0'));
                 }
+                // Pagination is a layout, so the class has to follow the state however the
+                // state was reached. Setting the flag alone left 2-Column in Preview with
+                // no page-mode class, and therefore no columns at all.
+                syncPaginationClass();
+                applyEditorChromeForMode();
             } finally {
                 _applyingViewState = false;
             }
@@ -264,7 +269,7 @@
             wrapper.style.boxSizing = 'border-box';
             const p = getPageMarginPads();
             
-            let isTwoCol = editor && editor.classList.contains('two-col-layout');
+            let isTwoCol = isPaginatedLayout();
             
             if (state.mode === 'source') {
                 // Right pad 0 → scrollbar of #source-editor sits on the pane edge (like Preview).
@@ -887,6 +892,80 @@
          * (DocumentModel.shouldVirtualize returns false for .two-col-layout), so every
          * block is mounted and has a real position in the column flow.
          */
+        /**
+         * Is the document laid out as pages right now?
+         *
+         * This, not .two-col-layout, is what the paging machinery keys off. Both 1- and
+         * 2-column pagination are the same CSS multi-column layout scrolled horizontally;
+         * the column count only decides how much fits on a page.
+         */
+        function isPaginatedLayout() {
+            return !!(editor && editor.classList.contains('page-mode'));
+        }
+
+        /**
+         * Page numbers in the bottom-right of each page, as a book has.
+         *
+         * Read straight from the page map, so they are a check on it rather than
+         * decoration: if the numbering skips, repeats, or disagrees with what a page turn
+         * does, the map is wrong and it shows immediately.
+         *
+         * A 2-column page is a spread, so it carries two numbers, one under each column.
+         */
+        function updatePageIndicator() {
+            const host = document.getElementById('page-indicator');
+            if (!host) return;
+            if (!isPaginatedLayout() || state.mode !== 'reader' || !PageMap.ensure()) {
+                host.style.display = 'none';
+                return;
+            }
+            const spread = PageMap.current();
+            const spreads = PageMap.pages.length;
+            const twoCol = editor.classList.contains('two-col-layout');
+            const total = twoCol ? spreads * 2 : spreads;
+            host.style.display = 'flex';
+            host.classList.toggle('two-up', twoCol);
+            if (twoCol) {
+                const left = spread * 2 + 1;
+                host.innerHTML =
+                    '<span class="page-num">' + left + '</span>' +
+                    '<span class="page-num">' + Math.min(left + 1, total) + '</span>';
+            } else {
+                host.innerHTML = '<span class="page-num">' + (spread + 1) + ' / ' + total + '</span>';
+            }
+        }
+
+        /** Put the editor into or out of page layout to match the current view state. */
+        function syncPaginationClass() {
+            if (!editor) return;
+            const on = !!state.pageAdvance && state.mode !== 'source';
+            const was = editor.classList.contains('page-mode');
+            if (on === was) return;
+            editor.classList.toggle('page-mode', on);
+            PageMap.invalidate();
+            if (!on) { editor.scrollLeft = 0; currentTwoColPage = 0; }
+
+            // Pagination and virtualisation are incompatible: the browser can only break
+            // content into pages it has actually laid out, so a mounted window of blocks
+            // yields a handful of pages for a whole book. shouldVirtualize() already
+            // refuses in page mode, but that is only consulted on a (re)mount -- without
+            // forcing one here the document stays virtualised and 4582 lines reported 3
+            // pages. This is the cost the page model buys: full layout while paginated.
+            try {
+                if (typeof DocumentModel === 'undefined') return;
+                const shouldVirt = DocumentModel.shouldVirtualize();
+                if (DocumentModel.virtEnabled === shouldVirt) return;
+                const wasRestoring = (typeof HistoryManager !== 'undefined') ? HistoryManager.isRestoring : false;
+                if (typeof HistoryManager !== 'undefined') HistoryManager.isRestoring = true;
+                const line = (typeof _stickyLineCache !== 'undefined' && _stickyLineCache) ? _stickyLineCache : 1;
+                const md = DocumentModel.toMarkdown();
+                loadMarkdownContent(md, { deferPaint: true, stickyLine: line });
+                if (typeof HistoryManager !== 'undefined') HistoryManager.isRestoring = wasRestoring;
+            } catch (e) {
+                window.showDebugTelemetry('syncPaginationClass: remount failed ' + e.message);
+            }
+        }
+
         function twoColGap() {
             try {
                 const g = parseFloat(getComputedStyle(editor).columnGap);
@@ -965,6 +1044,144 @@
          * or two early. Re-measuring across a few frames catches that; each pass is a no-op
          * once the answer stops moving.
          */
+        /**
+         * === PAGE MAP ===
+         *
+         * Pagination needs a model of where pages begin. Without one there is nothing to
+         * navigate to, and every operation degrades into nudging the scroll offset and
+         * hoping: 1-column "page down" was scrollBy(window.innerHeight * 0.9) with smooth
+         * behaviour, so pages were never aligned to anything, the offset drifted a little
+         * further on every press, and going back stuttered because there was no boundary to
+         * return to. 2-column paging inferred its page from scrollLeft, which is a
+         * reasonable guess but still not a model.
+         *
+         * So: lay the content out once, find every break, and store page -> position.
+         * Navigation then sets a known offset instead of accumulating deltas, and switching
+         * columns is "which page holds this block in the other layout", answered by lookup
+         * rather than by re-measuring on a timer.
+         *
+         * Two layouts, two ways to find the breaks:
+         *
+         *   1-column  walk DocumentModel's height map and break when the next block would
+         *             cross the bottom of the viewport. Blocks are never split across a
+         *             page. Uses the same heights virtualisation scrolls by, so the map and
+         *             the scrollbar always agree.
+         *   2-column  Chromium already broke the content into columns; read back where each
+         *             block landed and group columns into pages, two per page.
+         *
+         * Built on demand and thrown away whenever anything that affects layout changes.
+         */
+        const PageMap = {
+            valid: false,
+            layout: null,      // '1col' | '2col'
+            pages: [],         // [{ block, offset }] -- offset is scrollTop or scrollLeft
+            viewportKey: '',
+
+            /** Identity of the current layout; if this changes the map is stale. */
+            _key: function () {
+                const paged = isPaginatedLayout();
+                const cols = (editor && editor.classList.contains('two-col-layout')) ? 2 : 1;
+                const w = paged ? (editor.clientWidth || 0) : (mainContainer ? mainContainer.clientWidth : 0);
+                const h = paged ? (editor.clientHeight || 0) : (mainContainer ? mainContainer.clientHeight : 0);
+                const n = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
+                    ? DocumentModel.blocks.length : 0;
+                return (paged ? 'p' : 's') + cols + ':' + w + 'x' + h + ':' + n;
+            },
+
+            invalidate: function () { this.valid = false; this.pages = []; },
+
+            ensure: function () {
+                if (!isPaginatedLayout()) { this.valid = false; this.pages = []; this.layout = 'scroll'; return false; }
+                const key = this._key();
+                if (this.valid && this.viewportKey === key) return this.pages.length > 0;
+                this.viewportKey = key;
+                this.layout = (editor.classList.contains('two-col-layout')) ? '2col' : '1col';
+                this.pages = this._buildPaginated();
+                this.valid = this.pages.length > 0;
+                window.showDebugTelemetry('PageMap: built ' + this.layout + ' with ' + this.pages.length + ' pages');
+                return this.valid;
+            },
+
+            /**
+             * Read back where the browser actually broke the content.
+             *
+             * One implementation for both layouts, because both are the same multi-column
+             * flow. There is deliberately no height-estimate path any more: the previous
+             * 1-column map was computed from DocumentModel's estimated heights, so its
+             * offsets agreed with the scrollbar but not with where blocks really rendered,
+             * and driving a mode switch from it put the reader ~130 blocks out.
+             */
+            _buildPaginated: function () {
+                if (!editor || typeof DocumentModel === 'undefined') return [];
+                const pw = twoColPageWidth();
+                const blocks = editor.querySelectorAll('.block');
+                if (!blocks.length) return [];
+                const edRect = editor.getBoundingClientRect();
+                const scrollLeft = editor.scrollLeft || 0;
+                const firstOfPage = {};
+                for (let i = 0; i < blocks.length; i++) {
+                    const r = blocks[i].getBoundingClientRect();
+                    if (r.width === 0 && r.height === 0) continue;
+                    const absX = (r.left - edRect.left) + scrollLeft;
+                    const p = Math.max(0, Math.floor((absX + 1) / pw));
+                    const mi = DocumentModel.modelIndexOfEl(blocks[i]);
+                    if (mi < 0) continue;
+                    if (firstOfPage[p] === undefined || mi < firstOfPage[p]) firstOfPage[p] = mi;
+                }
+                const nums = Object.keys(firstOfPage).map(Number).sort((a, b) => a - b);
+                if (!nums.length) return [];
+                const pages = [];
+                for (let i = 0; i < nums.length; i++) {
+                    pages.push({ block: firstOfPage[nums[i]], offset: nums[i] * pw });
+                }
+                return pages;
+            },
+
+            count: function () { return this.ensure() ? this.pages.length : 0; },
+
+            /** Page currently on screen. Always a horizontal offset now. */
+            current: function () {
+                if (!this.ensure()) return 0;
+                const pos = editor.scrollLeft || 0;
+                let best = 0;
+                for (let i = 0; i < this.pages.length; i++) {
+                    if (this.pages[i].offset <= pos + 2) best = i; else break;
+                }
+                return best;
+            },
+
+            /** Page holding a given model block. */
+            pageOfBlock: function (bi) {
+                if (!this.ensure()) return 0;
+                let best = 0;
+                for (let i = 0; i < this.pages.length; i++) {
+                    if (this.pages[i].block <= bi) best = i; else break;
+                }
+                return best;
+            },
+
+            blockOfPage: function (n) {
+                if (!this.ensure()) return 0;
+                n = Math.max(0, Math.min(this.pages.length - 1, n | 0));
+                return this.pages[n].block;
+            },
+
+            /** Jump to a page. Absolute offset, so repeated turns cannot drift. */
+            goto: function (n) {
+                if (!this.ensure()) return false;
+                n = Math.max(0, Math.min(this.pages.length - 1, n | 0));
+                const p = this.pages[n];
+                markProgrammaticScroll(400);
+                editor.scrollTop = 0;             // columns never scroll vertically
+                editor.scrollLeft = p.offset;
+                currentTwoColPage = n;
+                updatePageIndicator();
+                return true;
+            },
+
+            step: function (dir) { return this.goto(this.current() + (dir < 0 ? -1 : 1)); }
+        };
+
         // --- Column position memory -------------------------------------------------
         //
         // "Going back to the original column mode without making any changes returns you
@@ -1911,6 +2128,8 @@
             });
             window.addEventListener('resize', () => {
                 if (state.mode === 'source') resizeSourceEditor();
+                // Page breaks depend on the viewport, so a resize retires the map.
+                PageMap.invalidate();
             });
 
             // Any movement or edit by the reader invalidates the remembered column
@@ -1920,7 +2139,10 @@
             if (mainContainer) mainContainer.addEventListener('scroll', noteUserMovement, { passive: true });
             if (editor) {
                 editor.addEventListener('scroll', noteUserMovement, { passive: true });
-                editor.addEventListener('input', noteUserMovement);
+                editor.addEventListener('input', function () {
+                    noteUserMovement();
+                    PageMap.invalidate();   // editing moves every break after the caret
+                });
             }
             initFindBar();
 
@@ -2213,6 +2435,11 @@
             }
             if (cmd.startsWith("set_page_advance:")) {
                 state.pageAdvance = (cmd.substring(17) === '1');
+                // Pagination is a different layout, not just a different scroll gesture:
+                // put the document into (or out of) CSS multi-column to match.
+                syncPaginationClass();
+                applyEditorChromeForMode();
+                scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
                 // Report it: the selectors must follow the view however it was changed,
                 // not only when the change came from a selector click.
                 postViewState(currentViewState());
@@ -2240,9 +2467,10 @@
                     editor.classList.add('two-col-layout');
                 } else {
                     editor.classList.remove('two-col-layout');
-                    if (editor) editor.scrollLeft = 0;
+                    if (editor && !isPaginatedLayout()) editor.scrollLeft = 0;
                     currentTwoColPage = 0;
                 }
+                syncPaginationClass();
                 applyEditorChromeForMode();
 
                 if (typeof DocumentModel !== 'undefined') {
@@ -2265,18 +2493,26 @@
                         });
                     }
                 }
+                // The layout changed, so any page map built for the old one is meaningless.
+                PageMap.invalidate();
+
                 if (_restoreExact) {
                     // Returning to a layout the reader has not moved away from: put it back
-                    // exactly rather than re-deriving a nearby position from the anchor.
+                    // exactly. Even a correct page map cannot do this on its own -- the two
+                    // layouts break content differently, so a block that started a page in
+                    // one may sit mid-page in the other, and re-deriving can only land on
+                    // the page that contains it, not the position it was left at.
                     window.showDebugTelemetry('set_column_mode: restoring remembered position');
                     restoreColumnPosition(twoCol, _memForTarget);
-                } else if (twoCol) {
-                    // Entering 2 columns remounts the document, so the anchor computed above
-                    // was measured mid-relayout. Re-check once the columns have settled.
-                    settleTwoColToLine(stickyLine);
+                } else {
+                    // Otherwise anchor to what the reader was looking at. Paginated layouts
+                    // resolve this against the real column geometry; an unpaginated 1-column
+                    // view is left to the ordinary sticky-line restore that already ran.
+                    if (isPaginatedLayout()) settleTwoColToLine(stickyLine);
                 }
                 // The switch itself is not the reader moving.
                 _colMemoryDirty = false;
+                scheduleColumnSettle(function () { updatePageIndicator(); });
 
                 // Report it: the selectors must follow the view however it was changed.
                 // The host restores 2-column on startup through this command, and without
@@ -2424,6 +2660,10 @@
                 } else {
                     clearFindHighlights();
                 }
+                // Reader/Preview/Source changes whether pages apply at all.
+                syncPaginationClass();
+                applyEditorChromeForMode();
+                scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
                 // Mode can change from Ctrl+/ or the View menu, not just a selector click.
                 postViewState(currentViewState());
             }
@@ -6306,7 +6546,7 @@
 
             function seedFromHeightMap() {
                 try {
-                    const isTwoCol = editor && editor.classList.contains('two-col-layout');
+                    const isTwoCol = isPaginatedLayout();
                     if (isTwoCol) {
                         const el = elementForModelIndex(bi);
                         const pageForBlock = twoColPageOfElement(el);
@@ -6340,7 +6580,7 @@
                     }
                 } catch (eH) {}
                 try {
-                    const isTwoCol = editor && editor.classList.contains('two-col-layout');
+                    const isTwoCol = isPaginatedLayout();
                     if (isTwoCol) {
                         const pg = twoColPageOfElement(el);
                         if (pg === null) return 0;
@@ -6391,7 +6631,7 @@
             // 3) Last resort: if still fully off-screen, start-align then re-snap
             //    Skip for 2-col — getBoundingClientRect and scrollIntoView are
             //    broken for CSS overflow columns; the seed+snap above already handled it.
-            if (el && !(editor && editor.classList.contains('two-col-layout'))) {
+            if (el && !(isPaginatedLayout())) {
                 try {
                     const r = el.getBoundingClientRect();
                     const c = mainContainer.getBoundingClientRect();
@@ -6492,7 +6732,7 @@
                 return 0;
             }
             try {
-                let isTwoCol = editor && editor.classList.contains('two-col-layout');
+                let isTwoCol = isPaginatedLayout();
                 
                 // --- 2-col: read the block positions the browser produced, rather than
                 //     simulating the column breaker. The simulation this replaces walked
@@ -7092,7 +7332,7 @@
             },
 
             shouldVirtualize: function () {
-                if (editor && editor.classList.contains('two-col-layout')) return false;
+                if (isPaginatedLayout()) return false;
                 const nBlocks = this.blocks.length;
                 const nChars = this.toMarkdown().length;
                 const minB = typeof VIRT_MIN_BLOCKS === 'number' ? VIRT_MIN_BLOCKS : 2000;
@@ -8242,26 +8482,10 @@
                 if (now - lastPageScrollTime < 150) return; // debounce quick spins
                 lastPageScrollTime = now;
                 
-                let mainContainer = document.getElementById('main-container') || document.documentElement;
-                let isTwoCol = editor && editor.classList.contains('two-col-layout');
-                let scrollEl = isTwoCol ? editor : mainContainer;
-                if (isTwoCol && scrollEl.scrollTop !== 0) scrollEl.scrollTop = 0; // Fix diagonal offset
-                
-                if (isTwoCol) {
-                    let pw = scrollEl.clientWidth + 60;
-                    let currentIndex = Math.round(scrollEl.scrollLeft / pw);
-                    let nextIndex = (e.deltaY < 0 || e.deltaX < 0) ? (currentIndex - 1) : (currentIndex + 1);
-                    nextIndex = Math.max(0, nextIndex);
-                    scrollEl.scrollTo({ left: nextIndex * pw, behavior: 'smooth' });
-                    currentTwoColPage = nextIndex;
-                } else {
-                    let jumpY = window.innerHeight * 0.9;
-                    if (e.deltaY < 0 || e.deltaX < 0) {
-                        scrollEl.scrollBy({ top: -jumpY, behavior: 'smooth' });
-                    } else if (e.deltaY > 0 || e.deltaX > 0) {
-                        scrollEl.scrollBy({ top: jumpY, behavior: 'smooth' });
-                    }
-                }
+                // One page per gesture, to an absolute offset from the page map. The old
+                // path scrolled by a fraction of the window height, so pages never lined up
+                // and the error compounded with every turn.
+                PageMap.step((e.deltaY < 0 || e.deltaX < 0) ? -1 : 1);
             }
         }, { passive: false, capture: true });
 
@@ -8276,30 +8500,15 @@
                     if (now - lastPageScrollTime < 150) return;
                     lastPageScrollTime = now;
                     
-                    let mainContainer = document.getElementById('main-container') || document.documentElement;
-                    let isTwoCol = editor && editor.classList.contains('two-col-layout');
-                    let scrollEl = isTwoCol ? editor : mainContainer;
-                    if (isTwoCol && scrollEl.scrollTop !== 0) scrollEl.scrollTop = 0; // Fix diagonal offset
-                    
-                    if (isTwoCol) {
-                        let pw = scrollEl.clientWidth + 60;
-                        let currentIndex = Math.round(scrollEl.scrollLeft / pw);
-                        let nextIndex = (e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)) ? (currentIndex - 1) : (currentIndex + 1);
-                        nextIndex = Math.max(0, nextIndex);
-                        scrollEl.scrollTo({ left: nextIndex * pw, behavior: 'smooth' });
-                        currentTwoColPage = nextIndex;
-                    } else {
-                        let jumpY = window.innerHeight * 0.9;
-                        if (e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)) {
-                            scrollEl.scrollBy({ top: -jumpY, behavior: 'smooth' });
-                        } else {
-                            scrollEl.scrollBy({ top: jumpY, behavior: 'smooth' });
-                        }
-                    }
+                    // PageUp/PageDown/Space turn exactly one page, in both layouts. In
+                    // 1-column these did nothing but nudge the scroll offset, which is why
+                    // Page Down appeared to only move the caret.
+                    const back = (e.key === 'PageUp' || (e.key === ' ' && e.shiftKey));
+                    PageMap.step(back ? -1 : 1);
                 } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
                     e.preventDefault();
                     let mainContainer = document.getElementById('main-container') || document.documentElement;
-                    let isTwoCol = editor && editor.classList.contains('two-col-layout');
+                    let isTwoCol = isPaginatedLayout();
                     let scrollEl = isTwoCol ? editor : mainContainer;
                     let jumpY = 0;
                     let jumpX = 0;
