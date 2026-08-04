@@ -283,6 +283,9 @@ namespace TypoZen
         private Button _btnToggleMode;
         private Button _btnToggleScrollMode;
         private Button _btnToggleColumnMode;
+        // Phase 3A segmented controls
+        private Border _grpMode, _grpColumns, _grpScroll;
+        private readonly Dictionary<string, Button> _segments = new Dictionary<string, Button>();
         private string _editorMode = "wysiwyg"; // "wysiwyg", "reader", "source"
         private bool _isPageAdvanceMode;
         private bool _isTwoColumnMode = false;
@@ -703,18 +706,22 @@ namespace TypoZen
                 ApplyModeToggleChrome("wysiwyg");
             }
 
-            _btnToggleScrollMode = (Button)FindElement("btnToggleScrollMode");
-            if (_btnToggleScrollMode != null)
-            {
-                _btnToggleScrollMode.Click += (s, e) => ToggleScrollMode();
-                ApplyScrollModeToggleChrome(false);
-            }
+            // Phase 3A segmented controls. Every segment just reports the click; the page's
+            // resolver decides the resulting state and sends it back via view_state:, which
+            // RenderViewSelectors paints. No selection state is tracked here, so the shell
+            // and the page cannot disagree about which segment is on.
+            BindSegment("btnModeSource", "mode", "source");
+            BindSegment("btnModePreview", "mode", "preview");
+            BindSegment("btnModeReader", "mode", "reader");
+            BindSegment("btnCol1", "columns", "1");
+            BindSegment("btnCol2", "columns", "2");
+            BindSegment("btnScrollContinuous", "scroll", "scroll");
+            BindSegment("btnScrollPaginated", "scroll", "pagination");
 
-            _btnToggleColumnMode = (Button)FindElement("btnToggleColumnMode");
-            if (_btnToggleColumnMode != null)
-            {
-                _btnToggleColumnMode.Click += (s, e) => ToggleColumnMode();
-            }
+            _grpMode = FindElement("grpMode") as Border;
+            _grpColumns = FindElement("grpColumns") as Border;
+            _grpScroll = FindElement("grpScroll") as Border;
+            RenderViewSelectors("preview", 1, "scroll", false, false);
 
             _cmbThemes = (ComboBox)FindElement("cmbThemes");
             if (_cmbThemes != null)
@@ -2670,6 +2677,70 @@ namespace TypoZen
             try { SaveWindowState(); } catch { }
         }
 
+        /// <summary>
+        /// Wire one segment of a segmented control. The click only reports what was
+        /// pressed; the page's resolveViewState decides what the new state is and echoes
+        /// it back on view_state:, so the rules live in exactly one place.
+        /// </summary>
+        private void BindSegment(string name, string selector, string value)
+        {
+            var b = FindElement(name) as Button;
+            if (b == null) return;
+            _segments[name] = b;
+            b.Click += (s, e) =>
+            {
+                SendMsg("cmd:view_set:" + selector + ":" + value);
+                try { if (_webView != null) _webView.Focus(); } catch { }
+            };
+        }
+
+        /// <summary>
+        /// Paint the three segmented controls from the state the page resolved.
+        /// A locked group is disabled and dimmed, which is what stops the user pressing a
+        /// segment that cannot apply -- the resolver guarantees an unlocked route always
+        /// exists, so this never becomes a dead end.
+        /// </summary>
+        private void RenderViewSelectors(string mode, int columns, string scroll,
+                                         bool columnsLocked, bool scrollLocked)
+        {
+            SelectSegment("btnModeSource", mode == "source");
+            SelectSegment("btnModePreview", mode == "preview");
+            SelectSegment("btnModeReader", mode == "reader");
+            SelectSegment("btnCol1", columns == 1);
+            SelectSegment("btnCol2", columns == 2);
+            SelectSegment("btnScrollContinuous", scroll == "scroll");
+            SelectSegment("btnScrollPaginated", scroll == "pagination");
+
+            SetGroupLocked(_grpColumns, columnsLocked);
+            SetGroupLocked(_grpScroll, scrollLocked);
+            if (_grpMode != null) { _grpMode.IsEnabled = true; _grpMode.Opacity = 1.0; }
+        }
+
+        private void SelectSegment(string name, bool on)
+        {
+            Button b;
+            if (!_segments.TryGetValue(name, out b) || b == null) return;
+            if (on)
+            {
+                b.Background = _modeSourceBg ?? SystemColors.HighlightBrush;
+                b.BorderBrush = _modeSourceBorder ?? Brushes.Gray;
+                b.FontWeight = FontWeights.SemiBold;
+            }
+            else
+            {
+                b.Background = Brushes.Transparent;
+                b.BorderBrush = Brushes.Transparent;
+                b.FontWeight = FontWeights.Normal;
+            }
+        }
+
+        private void SetGroupLocked(Border group, bool locked)
+        {
+            if (group == null) return;
+            group.IsEnabled = !locked;
+            group.Opacity = locked ? 0.45 : 1.0;   // spec: locked selectors reduce opacity
+        }
+
         private void ApplyZoomToWebView()
         {
             try
@@ -2677,6 +2748,11 @@ namespace TypoZen
                 if (_webView != null)
                     _webView.ZoomFactor = _zoomFactor;
             }
+            catch { }
+            // ZoomFactor scales the whole page, chrome included, while the WPF menus never
+            // scale. Tell the page the factor so the sidebar can divide it back out and
+            // keep sitting at menu size at any zoom.
+            try { SendMsg("cmd:host_zoom:" + _zoomFactor.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)); }
             catch { }
         }
 
@@ -3149,6 +3225,22 @@ namespace TypoZen
                 // access key matches — derived from the "_File" style headers, so it stays
                 // correct if a header is renamed.
                 OpenMenuByAccessKey(msg.Length > 12 ? msg[12] : '\0');
+            }
+            else if (msg.StartsWith("view_state:"))
+            {
+                // "view_state:<mode>,<columns>,<scroll>,<columnsLocked>,<scrollLocked>"
+                string[] p = msg.Substring(11).Split(',');
+                if (p.Length >= 5)
+                {
+                    string vMode = p[0];
+                    int vCols = p[1] == "2" ? 2 : 1;
+                    string vScroll = p[2];
+                    bool cLock = p[3] == "1";
+                    bool sLock = p[4] == "1";
+                    Dispatcher.BeginInvoke(new Action(() =>
+                        RenderViewSelectors(vMode, vCols, vScroll, cLock, sLock)),
+                        DispatcherPriority.Normal);
+                }
             }
             else if (msg == "focus_webview")
             {

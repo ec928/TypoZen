@@ -153,6 +153,66 @@
             </Setter>
         </Style>
         <!-- Quiet format tools. REVERT pack: GhostToolbarButton + ToolMenuHeaderTemplate + ToolbarMenuItem. -->
+        <!-- Segmented controls (Phase 3A).
+             A SegmentGroup is one rounded outline containing SegmentButtons separated by
+             hairline SegmentDividers, so a group reads as a single control rather than
+             three loose buttons. Selection and the locked (dimmed) state are painted from
+             C# in RenderViewSelectors, driven by the page's resolver, not by triggers
+             here: which segment is "on" is app state, not a visual state. -->
+        <Style x:Key="SegmentGroup" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
+
+        <Style x:Key="SegmentDivider" TargetType="Border">
+            <Setter Property="Width" Value="1"/>
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="Opacity" Value="0.5"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="Margin" Value="0,3"/>
+        </Style>
+
+        <Style x:Key="SegmentButton" TargetType="Button">
+            <Setter Property="Padding" Value="10,3"/>
+            <Setter Property="MinHeight" Value="26"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="segBorder" Background="{TemplateBinding Background}"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}"
+                                Margin="1" MinHeight="{TemplateBinding MinHeight}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <!-- Hover only reads on segments the user can actually act on.
+                                 A locked group is IsEnabled=false so this never fires. -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsEnabled" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="segBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="segBorder" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="GhostToolbarButton" TargetType="Button">
             <Setter Property="Padding" Value="6,4"/>
             <Setter Property="MinHeight" Value="28"/>
@@ -468,20 +528,38 @@
                             FontFamily="Segoe MDL2 Assets" Content="&#xE8A0;" FontSize="14"
                             MinWidth="32" Padding="6,2" Margin="0,0,6,0"
                             ToolTip="Toggle File Tree &amp; Outline (Ctrl+\)"/>
-                    <Button x:Name="btnToggleColumnMode" Style="{StaticResource GhostToolbarButton}" Content="1 Col"
-                            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                            BorderThickness="1" FontWeight="Normal" MinWidth="50" Padding="10,4" Margin="0,0,6,0"
-                            Visibility="Collapsed"
-                            ToolTip="Toggle between Single and Double column reader layout"/>
-                    <Button x:Name="btnToggleScrollMode" Style="{StaticResource GhostToolbarButton}" Content="Scroll"
-                            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                            BorderThickness="1" FontWeight="Normal" MinWidth="60" Padding="10,4" Margin="0,0,6,0"
-                            ToolTip="Toggle between continuous Scroll and Page Advance"/>
-                    <!-- Ghost mode: stronger idle outline so it reads on light themes (C# also themes border). -->
-                    <Button x:Name="btnToggleMode" Style="{StaticResource GhostToolbarButton}" Content="Preview"
-                            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                            BorderThickness="1" FontWeight="Normal" MinWidth="76" Padding="10,4"
-                            ToolTip="Editing mode — click to switch Preview / Source (Ctrl+/)"/>
+                    <!-- Phase 3A: three segmented controls, Mode then Column then Scroll.
+                         Each group is a bordered strip of SegmentButtons; C# paints the
+                         selected segment and drops the whole group's opacity when the
+                         resolver reports it locked. -->
+                    <Border x:Name="grpMode" Style="{StaticResource SegmentGroup}" Margin="0,0,8,0"
+                            ToolTip="Editing mode — Source, Preview or Reader">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="btnModeSource"  Style="{StaticResource SegmentButton}" Content="Source"/>
+                            <Border   Style="{StaticResource SegmentDivider}"/>
+                            <Button x:Name="btnModePreview" Style="{StaticResource SegmentButton}" Content="Preview"/>
+                            <Border   Style="{StaticResource SegmentDivider}"/>
+                            <Button x:Name="btnModeReader"  Style="{StaticResource SegmentButton}" Content="Reader"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="grpColumns" Style="{StaticResource SegmentGroup}" Margin="0,0,8,0"
+                            ToolTip="Column layout — 2 columns require Pagination">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="btnCol1" Style="{StaticResource SegmentButton}" Content="1-Column"/>
+                            <Border  Style="{StaticResource SegmentDivider}"/>
+                            <Button x:Name="btnCol2" Style="{StaticResource SegmentButton}" Content="2-Column"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="grpScroll" Style="{StaticResource SegmentGroup}"
+                            ToolTip="Continuous scrolling or discrete pages">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="btnScrollContinuous" Style="{StaticResource SegmentButton}" Content="Scroll"/>
+                            <Border  Style="{StaticResource SegmentDivider}"/>
+                            <Button x:Name="btnScrollPaginated"  Style="{StaticResource SegmentButton}" Content="Pagination"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Grid>
         </Border>

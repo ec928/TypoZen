@@ -58,6 +58,11 @@
             font-family: var(--ui-font);
             font-size: var(--ui-fs);
             line-height: 1.4;
+            /* WebView2's ZoomFactor scales the entire page, but the WPF menus alongside
+               never scale -- so at 125% zoom the sidebar was visibly larger than the menu
+               it is meant to match. Divide the host zoom back out. --host-zoom is pushed
+               from ApplyZoomToWebView() and defaults to 1 when the page runs standalone. */
+            zoom: calc(1 / var(--host-zoom, 1));
         }
         #sidebar.collapsed {
             margin-left: -260px;

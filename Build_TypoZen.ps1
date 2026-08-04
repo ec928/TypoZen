@@ -91,6 +91,26 @@ else {
     }
 }
 
+# TypoZen.xaml is parsed at runtime by XamlReader, so markup errors are invisible to the
+# compiler and surface as a crash on launch instead. Parse it here and fail the build.
+Write-Host "[0b/4] Parsing TypoZen.xaml..." -ForegroundColor Yellow
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+$xamlPath = Join-Path $appDir "TypoZen.xaml"
+try {
+    $xamlStream = [System.IO.File]::OpenRead($xamlPath)
+    try { $parsedWindow = [System.Windows.Markup.XamlReader]::Load($xamlStream) }
+    finally { $xamlStream.Close() }
+    Write-Host "  XAML parsed cleanly." -ForegroundColor Green
+}
+catch {
+    Write-Host "[ERROR] TypoZen.xaml failed to parse - the app would crash on launch:" -ForegroundColor Red
+    Write-Host ("        " + $_.Exception.Message) -ForegroundColor Red
+    if ($_.Exception.InnerException) {
+        Write-Host ("        " + $_.Exception.InnerException.Message) -ForegroundColor Red
+    }
+    exit 1
+}
+
 Write-Host "[1/4] Checking dependencies..." -ForegroundColor Yellow
 $dlls = @("Microsoft.Web.WebView2.Core.dll", "Microsoft.Web.WebView2.Wpf.dll", "Microsoft.Web.WebView2.WinForms.dll", "WebView2Loader.dll")
 

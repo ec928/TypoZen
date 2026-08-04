@@ -160,6 +160,59 @@
             };
         }
 
+        /** state.mode uses 'wysiwyg' for what the UI calls Preview. */
+        function viewModeFromInternal(m) { return m === 'wysiwyg' ? 'preview' : (m || 'preview'); }
+        function internalModeFromView(v) { return v === 'preview' ? 'wysiwyg' : v; }
+
+        /** Current selector state, read back from the live editor rather than assumed. */
+        function currentViewState() {
+            const twoCol = !!(editor && editor.classList.contains('two-col-layout'));
+            return viewStateOf(
+                viewModeFromInternal(state.mode),
+                twoCol ? 2 : 1,
+                state.pageAdvance ? 'pagination' : 'scroll'
+            );
+        }
+
+        /**
+         * Apply a resolved view state to the editor and report it to the host.
+         *
+         * Mode changes go through toggle_mode rather than setting state.mode directly:
+         * that path already captures and restores the sticky document line, flushes blocks
+         * to data-raw before serialising to Source, and keeps the undo stack aligned.
+         * Duplicating any of that here is how the two would drift apart. The cycle is
+         * wysiwyg -> reader -> source, so at most two steps are ever needed.
+         */
+        function applyViewState(next) {
+            const targetInternal = internalModeFromView(next.mode);
+            for (let i = 0; i < 3 && state.mode !== targetInternal; i++) {
+                handleCommand('toggle_mode');
+            }
+
+            const twoColNow = !!(editor && editor.classList.contains('two-col-layout'));
+            if ((next.columns === 2) !== twoColNow) {
+                handleCommand('set_column_mode:' + next.columns);
+            }
+
+            const wantAdvance = next.scroll === 'pagination';
+            if (!!state.pageAdvance !== wantAdvance) {
+                state.pageAdvance = wantAdvance;
+                postMsg('sync_page_advance:' + (wantAdvance ? '1' : '0'));
+            }
+
+            state.viewMode = next.mode;
+            state.viewColumns = next.columns;
+            state.viewScroll = next.scroll;
+            postViewState(next);
+            scheduleSavePreferences();
+        }
+
+        /** Push the resolved state so the shell can render the three segmented controls. */
+        function postViewState(s) {
+            postMsg('view_state:' + s.mode + ',' + s.columns + ',' + s.scroll + ',' +
+                (s.columnsLocked ? '1' : '0') + ',' + (s.scrollLocked ? '1' : '0'));
+        }
+
         /** Defaults for a freshly opened document in each mode (spec: Initial State). */
         function defaultViewStateFor(mode) {
             if (mode === 'source') return viewStateOf('source', 1, 'scroll');
@@ -1849,6 +1902,29 @@
         function handleCommand(cmd) {
             if (cmd === "wordwrap_on") { document.body.classList.remove("nowrap"); return; }
             if (cmd === "wordwrap_off") { document.body.classList.add("nowrap"); return; }
+            if (cmd.startsWith("view_set:")) {
+                // "view_set:<selector>:<value>" from one of the segmented controls.
+                const bits = cmd.substring(9).split(':');
+                const which = bits[0], value = bits[1];
+                const change = {};
+                if (which === 'mode') change.mode = value;
+                else if (which === 'columns') change.columns = parseInt(value, 10) === 2 ? 2 : 1;
+                else if (which === 'scroll') change.scroll = value;
+                else return;
+                applyViewState(resolveViewState(currentViewState(), change));
+                return;
+            }
+            if (cmd === "view_sync") { postViewState(currentViewState()); return; }
+            if (cmd.startsWith("host_zoom:")) {
+                // WebView2's ZoomFactor scales the whole page. The sidebar is chrome and
+                // has to stay at menu size, so it divides the factor back out (see the
+                // zoom rule on #sidebar in typozen.css).
+                const z = parseFloat(cmd.substring(10));
+                if (isFinite(z) && z > 0) {
+                    document.documentElement.style.setProperty('--host-zoom', String(z));
+                }
+                return;
+            }
             if (cmd.startsWith("set_page_advance:")) { state.pageAdvance = (cmd.substring(17) === '1'); return; }
             if (cmd.startsWith("set_column_mode:")) {
                 window.showDebugTelemetry("set_column_mode called with: " + cmd);
