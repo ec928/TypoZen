@@ -26,9 +26,19 @@ $errFile = [System.IO.Path]::GetTempFileName()
 # but they are the only ones that can see layout, and excluding them is exactly how
 # 2-column mode shipped broken behind a green suite.
 $allSuites = @(Get-ChildItem ".\tests\*.mjs" | Sort-Object Name)
+# app-harness.mjs is a helper, not a suite.
+$allSuites = @($allSuites | Where-Object { $_.Name -ne "app-harness.mjs" })
+
+# *-app.mjs launch TypoZen.exe and drive it over the DevTools port --debug opens. They
+# need a desktop session and take ~40s, so they are opt-in via RUN_APP_E2E=1 -- but they
+# are the only suites that can see the real shell, and they must be run before claiming
+# any column or pagination behaviour is fixed. The browser suites passed for a fortnight
+# while the application was broken.
+$appSuites = @($allSuites | Where-Object { $_.Name -like "*-app.mjs" })
 $pendingSuites = @($allSuites | Where-Object { $_.Name -like "*-pending.mjs" })
-$suites = @($allSuites | Where-Object { $_.Name -notlike "*-pending.mjs" })
-if ($env:RUN_PENDING_E2E -eq "1") { $suites = $allSuites }
+$suites = @($allSuites | Where-Object { $_.Name -notlike "*-pending.mjs" -and $_.Name -notlike "*-app.mjs" })
+if ($env:RUN_PENDING_E2E -eq "1") { $suites += $pendingSuites }
+if ($env:RUN_APP_E2E -eq "1") { $suites += $appSuites }
 
 foreach ($suite in $suites) {
     # Redirect inside cmd, not PowerShell: PS 5.1 turns a native command's stderr into
@@ -51,6 +61,11 @@ Remove-Item $errFile -Force -ErrorAction SilentlyContinue
 if ($env:RUN_PENDING_E2E -ne "1" -and $pendingSuites.Count -gt 0) {
     Write-Host ""
     Write-Host ("  SKIPPED, not built yet (set RUN_PENDING_E2E=1): " + (($pendingSuites | ForEach-Object { $_.Name }) -join ", ")) -ForegroundColor Yellow
+}
+if ($env:RUN_APP_E2E -ne "1" -and $appSuites.Count -gt 0) {
+    Write-Host ""
+    Write-Host ("  SKIPPED, drives the real .exe (set RUN_APP_E2E=1): " + (($appSuites | ForEach-Object { $_.Name }) -join ", ")) -ForegroundColor Yellow
+    Write-Host "  Run these before claiming any column or pagination fix works." -ForegroundColor Yellow
 }
 
 if ($failedSuites.Count -gt 0) {

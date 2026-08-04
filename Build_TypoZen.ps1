@@ -68,8 +68,12 @@ else {
     # and the resolver logic was right, but the CSS gated columns on .reader-mode so the
     # computed column-count stayed 'auto'. jsdom has no layout engine and cannot tell those
     # apart. Excluding the one suite that could see it is what let the bug through.
+    # *-app.mjs launch TypoZen.exe itself and need a desktop session, so they are not part
+    # of the build gate; run them with RUN_APP_E2E=1 .\tests\run-tests.ps1. app-harness.mjs
+    # is their helper, not a suite.
     $suites = @(Get-ChildItem (Join-Path $appDir "tests\*.mjs") -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -notlike "*-pending.mjs" } | Sort-Object Name)
+                Where-Object { $_.Name -notlike "*-pending.mjs" -and $_.Name -notlike "*-app.mjs" `
+                               -and $_.Name -ne "app-harness.mjs" } | Sort-Object Name)
     if ($suites.Count -eq 0) {
         Write-Host "  [WARN] no tests\*.mjs found - skip" -ForegroundColor Yellow
     }

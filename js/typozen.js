@@ -1015,9 +1015,16 @@
                 // Position within the scrollable column flow, independent of where it is
                 // scrolled to right now.
                 const absX = (r.left - edRect.left) + (editor.scrollLeft || 0);
-                // +1 absorbs sub-pixel rounding on a block that starts exactly on a page
-                // boundary, which would otherwise floor to the previous page.
-                return Math.max(0, Math.floor((absX + 1) / twoColPageWidth()));
+                // A block that begins a page can measure a few pixels short of the
+                // boundary -- the column break lands on its margin edge, and sub-pixel
+                // layout adds to that. Measured in the real app: a block starting page 4
+                // at x=3452 reported absX 3450, so a 1px epsilon floored it onto page 3.
+                // Everything downstream followed: the switch landed a page early, and the
+                // anchor filter then rejected every block on screen.
+                // PAGE_EDGE_SLOP is far below a page width, so it cannot pull a block onto
+                // the wrong page, only onto the one it visually starts.
+                const PAGE_EDGE_SLOP = 12;
+                return Math.max(0, Math.floor((absX + PAGE_EDGE_SLOP) / twoColPageWidth()));
             } catch (e) {
                 return null;
             }

@@ -34,6 +34,9 @@ namespace TypoZen
         // launches with the flag for column/pagination work.
         internal static bool DebugLogEnabled;
 
+        /// <summary>DevTools port opened only under --debug, for tests/app-harness.mjs.</summary>
+        internal const int RemoteDebugPort = 9333;
+
         // --- Startup instrumentation --------------------------------------------------
         //
         // OFF unless the environment variable TYPOZEN_PERF is set and non-empty. When off,
@@ -2940,14 +2943,28 @@ namespace TypoZen
                 // document content is involved. Stopping it entirely needs something outside
                 // the app - a firewall rule on msedgewebview2.exe (which would also block
                 // remote images in documents), or machine-level Edge policy.
-                var opts = new CoreWebView2EnvironmentOptions(
+                // With --debug, open the DevTools protocol on a fixed port so a test can
+                // drive THIS process rather than a copy of the page in a separate browser.
+                //
+                // Every attempt to fix column switching until now was verified against
+                // TypoZen_Template.html loaded in plain Chrome, where the fault does not
+                // occur -- so the tests passed and the app stayed broken, repeatedly. The
+                // harness needs to attach to the real WebView2, with the real WPF host,
+                // real window size and real focus behaviour. Off unless --debug, so an
+                // ordinary run never opens a port.
+                string extraArgs =
                     "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1\""
                     + " --disable-background-networking"
                     + " --disable-component-update"
                     + " --disable-sync"
                     + " --no-first-run"
-                    + " --no-default-browser-check",
-                    null, null, false);
+                    + " --no-default-browser-check";
+                if (Program.DebugLogEnabled)
+                {
+                    extraArgs += " --remote-debugging-port=" + Program.RemoteDebugPort.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                               + " --remote-allow-origins=*";
+                }
+                var opts = new CoreWebView2EnvironmentOptions(extraArgs, null, null, false);
                 var env = await CoreWebView2Environment.CreateAsync(null, userDataDir, opts);
                 Program.PerfMark("WebView2 environment ready");
                 await _webView.EnsureCoreWebView2Async(env);
