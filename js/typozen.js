@@ -66,9 +66,16 @@
 
         let isRestoring = false;
 
+        // Off unless the host says --debug was passed. The in-page ring buffer is always
+        // kept (the test harnesses read it and it costs nothing), but nothing is sent to
+        // the host or printed, so a normal run neither writes debug.log nor pays for the
+        // IPC on every scroll and column probe.
+        window.__tzDebugLog = false;
         window.showDebugTelemetry = function(msg) {
             window.__tzTelemetry = window.__tzTelemetry || [];
             window.__tzTelemetry.push(msg);
+            if (window.__tzTelemetry.length > 500) window.__tzTelemetry.shift();
+            if (!window.__tzDebugLog) return;
             console.log("TELEMETRY: " + msg);
             if (window.chrome && window.chrome.webview) {
                 window.chrome.webview.postMessage("telemetry:" + msg);
@@ -856,6 +863,192 @@
                 // findStep moves focus to the match in the document; keep it here so a
                 // run of , or . keeps stepping instead of typing into the editor.
                 try { list.focus({ preventScroll: true }); } catch (err) { list.focus(); }
+            });
+        }
+
+        /**
+         * --- Two-column paging geometry ---
+         *
+         * A "page" is one screenful: both visible columns plus the gap after them, which is
+         * exactly how far scrollLeft moves to turn a page.
+         *
+         * These read the layout Chromium produced rather than trying to predict it. The
+         * previous version walked the blocks accumulating offsetHeight and incremented a
+         * column counter whenever the running total passed the column height, then derived
+         * the page from that. It is a reimplementation of the browser's column breaker, and
+         * it disagreed with the real thing as soon as margin collapsing, blockquote spacing
+         * or a heading's break behaviour came into play. The error accumulated over the
+         * document, so paging away and back landed pages earlier than it started -- exactly
+         * what "go to pages 5 and 6, switch to 1-Col, switch back, arrive at 3 and 4" is.
+         *
+         * The single-column path never had this problem because it always used real rects.
+         *
+         * Safe to measure because virtualisation is off in 2-column mode
+         * (DocumentModel.shouldVirtualize returns false for .two-col-layout), so every
+         * block is mounted and has a real position in the column flow.
+         */
+        function twoColGap() {
+            try {
+                const g = parseFloat(getComputedStyle(editor).columnGap);
+                if (isFinite(g)) return g;
+            } catch (e) {}
+            return 60; // matches column-gap in css/typozen.css
+        }
+
+        function twoColPageWidth() {
+            return Math.max(1, (editor ? editor.clientWidth : 0) + twoColGap());
+        }
+
+        /** The mounted .block element for a model index, or null. */
+        function elementForModelIndex(bi) {
+            if (!editor) return null;
+            const blocks = editor.querySelectorAll('.block');
+            for (let i = 0; i < blocks.length; i++) {
+                if (DocumentModel.modelIndexOfEl(blocks[i]) === bi) return blocks[i];
+            }
+            return null;
+        }
+
+        /**
+         * Which page an element sits on, from its measured x in the column flow.
+         * Returns null when the element is not laid out.
+         */
+        function twoColPageOfElement(el) {
+            if (!el || !editor) return null;
+            try {
+                const r = el.getBoundingClientRect();
+                if (!r || (r.width === 0 && r.height === 0)) return null;
+                const edRect = editor.getBoundingClientRect();
+                // Position within the scrollable column flow, independent of where it is
+                // scrolled to right now.
+                const absX = (r.left - edRect.left) + (editor.scrollLeft || 0);
+                // +1 absorbs sub-pixel rounding on a block that starts exactly on a page
+                // boundary, which would otherwise floor to the previous page.
+                return Math.max(0, Math.floor((absX + 1) / twoColPageWidth()));
+            } catch (e) {
+                return null;
+            }
+        }
+
+        /**
+         * Model index of the block a reader would start on: topmost block of the leftmost
+         * visible column. Blocks scrolled onto another page are excluded horizontally, so
+         * this answers for the page actually on screen.
+         */
+        function topLeftModelIndexTwoCol() {
+            if (!editor) return -1;
+            const host = editor.getBoundingClientRect();
+            const blocks = editor.querySelectorAll('.block');
+            let best = null;
+            for (let i = 0; i < blocks.length; i++) {
+                const r = blocks[i].getBoundingClientRect();
+                if (r.width === 0 && r.height === 0) continue;
+                if (r.bottom <= host.top + 1 || r.top >= host.bottom - 1) continue;   // above/below
+                if (r.right <= host.left + 1 || r.left >= host.right - 1) continue;   // another page
+                const mi = DocumentModel.modelIndexOfEl(blocks[i]);
+                if (mi < 0) continue;
+                if (best === null || r.left < best.left - 1 ||
+                    (Math.abs(r.left - best.left) <= 1 && r.top < best.top)) {
+                    best = { mi: mi, left: r.left, top: r.top };
+                }
+            }
+            return best ? best.mi : -1;
+        }
+
+        /**
+         * Re-check the page after the column layout has settled, and correct it.
+         *
+         * Entering 2-column on a long document turns virtualisation off, which remounts
+         * every block through loadMarkdownContent. The synchronous seed/snap inside
+         * ensureModelBlockVisible therefore measures a layout that is still changing: it
+         * converges on a self-consistent answer, but against stale geometry, landing a page
+         * or two early. Re-measuring across a few frames catches that; each pass is a no-op
+         * once the answer stops moving.
+         */
+        // --- Column position memory -------------------------------------------------
+        //
+        // "Going back to the original column mode without making any changes returns you
+        // to the original layout and position." Each column count remembers where it was
+        // left; returning restores it exactly, provided the reader did not move or edit in
+        // between. Anything else and the saved spot is stale, so the normal anchoring runs.
+        //
+        // This is not a shortcut around anchoring: the two layouts break content
+        // differently, so re-deriving a position from an anchor can only ever land close.
+        // Only a remembered position can return exactly.
+        let _colMemory = { c1: null, c2: null };
+        let _colMemoryDirty = false;
+        let _progScrollUntil = 0;
+
+        /** Scrolls we cause ourselves must not count as the reader moving. */
+        function markProgrammaticScroll(ms) { _progScrollUntil = Date.now() + (ms || 600); }
+        function noteUserMovement() { if (Date.now() > _progScrollUntil) _colMemoryDirty = true; }
+
+        function captureColumnPosition() {
+            if (!editor) return;
+            if (editor.classList.contains('two-col-layout')) {
+                _colMemory.c2 = { scrollLeft: editor.scrollLeft || 0, page: currentTwoColPage || 0 };
+            } else if (mainContainer) {
+                _colMemory.c1 = { scrollTop: mainContainer.scrollTop || 0 };
+            }
+        }
+
+        /**
+         * Run a correction repeatedly over the second or so after a column switch.
+         *
+         * Switching columns remounts the whole document, and the column flow keeps moving
+         * while thousands of block heights resolve. A chain of animation frames is not
+         * enough: it finishes within ~150ms, long before the layout is final, and a value
+         * that is merely stale looks perfectly stable while it does. These delays keep
+         * checking well past that, at a cost of a handful of measurements.
+         */
+        const COLUMN_SETTLE_DELAYS_MS = [0, 16, 50, 100, 200, 350, 550, 800, 1100, 1500];
+        function scheduleColumnSettle(fn) {
+            COLUMN_SETTLE_DELAYS_MS.forEach(function (d) {
+                setTimeout(function () { try { fn(); } catch (e) {} }, d);
+            });
+        }
+
+        /** Re-apply a remembered position until the relayout stops undoing it. */
+        function restoreColumnPosition(twoCol, mem) {
+            if (!mem) return;
+            scheduleColumnSettle(function () {
+                markProgrammaticScroll(400);
+                if (twoCol) {
+                    if (!editor || !editor.classList.contains('two-col-layout')) return;
+                    if (Math.abs((editor.scrollLeft || 0) - mem.scrollLeft) > 2) {
+                        editor.scrollLeft = mem.scrollLeft;
+                    }
+                    currentTwoColPage = mem.page;
+                } else {
+                    if (!mainContainer || (editor && editor.classList.contains('two-col-layout'))) return;
+                    if (Math.abs((mainContainer.scrollTop || 0) - mem.scrollTop) > 2) {
+                        mainContainer.scrollTop = mem.scrollTop;
+                    }
+                }
+            });
+        }
+
+        /**
+         * Keep the anchor line's page correct while the column layout settles.
+         *
+         * Never exits early on "the value did not change": right after the switch the page
+         * is wrong AND unchanging, because the layout it was measured against has not
+         * finished. That looked stable and stopped several pages short of the target.
+         */
+        function settleTwoColToLine(line) {
+            scheduleColumnSettle(function () {
+                if (!editor || !editor.classList.contains('two-col-layout')) return;
+                const loc = modelLocationFromDocumentLine(Math.max(1, line | 0));
+                const el = elementForModelIndex(loc.blockIndex);
+                const pg = twoColPageOfElement(el);
+                if (pg === null) return;
+                const target = pg * twoColPageWidth();
+                if (Math.abs((editor.scrollLeft || 0) - target) > 2) {
+                    markProgrammaticScroll(400);
+                    editor.scrollLeft = target;
+                    window.showDebugTelemetry('settleTwoCol: corrected to page=' + pg);
+                }
+                currentTwoColPage = pg;
             });
         }
 
@@ -1719,6 +1912,16 @@
             window.addEventListener('resize', () => {
                 if (state.mode === 'source') resizeSourceEditor();
             });
+
+            // Any movement or edit by the reader invalidates the remembered column
+            // positions, so switching back anchors afresh instead of restoring a spot they
+            // have since left. Scrolls we perform ourselves are excluded by the
+            // markProgrammaticScroll window.
+            if (mainContainer) mainContainer.addEventListener('scroll', noteUserMovement, { passive: true });
+            if (editor) {
+                editor.addEventListener('scroll', noteUserMovement, { passive: true });
+                editor.addEventListener('input', noteUserMovement);
+            }
             initFindBar();
 
             mainContainer.addEventListener('click', (e) => {
@@ -1994,6 +2197,10 @@
                 return;
             }
             if (cmd === "view_sync") { postViewState(currentViewState()); return; }
+            if (cmd.startsWith("debug_log:")) {
+                window.__tzDebugLog = (cmd.substring(10) === '1');
+                return;
+            }
             if (cmd.startsWith("host_zoom:")) {
                 // WebView2's ZoomFactor scales the whole page. The sidebar is chrome and
                 // has to stay at menu size, so it divides the factor back out (see the
@@ -2021,7 +2228,14 @@
                     stickyLine = modelBlockStartLine(idx);
                     window.showDebugTelemetry('set_column_mode: computed idx=' + idx + ' stickyLine=' + stickyLine);
                 }
-                
+
+                // Remember where the layout being left was sitting, and decide whether the
+                // one being entered can simply be put back exactly as it was.
+                captureColumnPosition();
+                const _memForTarget = twoCol ? _colMemory.c2 : _colMemory.c1;
+                const _restoreExact = !!_memForTarget && !_colMemoryDirty;
+                markProgrammaticScroll(1200);
+
                 if (twoCol) {
                     editor.classList.add('two-col-layout');
                 } else {
@@ -2051,6 +2265,19 @@
                         });
                     }
                 }
+                if (_restoreExact) {
+                    // Returning to a layout the reader has not moved away from: put it back
+                    // exactly rather than re-deriving a nearby position from the anchor.
+                    window.showDebugTelemetry('set_column_mode: restoring remembered position');
+                    restoreColumnPosition(twoCol, _memForTarget);
+                } else if (twoCol) {
+                    // Entering 2 columns remounts the document, so the anchor computed above
+                    // was measured mid-relayout. Re-check once the columns have settled.
+                    settleTwoColToLine(stickyLine);
+                }
+                // The switch itself is not the reader moving.
+                _colMemoryDirty = false;
+
                 // Report it: the selectors must follow the view however it was changed.
                 // The host restores 2-column on startup through this command, and without
                 // this the toolbar kept saying 1-Col over a two-column document.
@@ -6081,30 +6308,13 @@
                 try {
                     const isTwoCol = editor && editor.classList.contains('two-col-layout');
                     if (isTwoCol) {
-                        // ALL DOM position APIs are unreliable in Chromium CSS multi-column.
-                        // Walk blocks to find which column the target block is in,
-                        // then compute scrollLeft from the page index.
-                        let colHeight = editor.clientHeight;
-                        let pw = editor.clientWidth + 60;
-                        let blocks = editor.querySelectorAll('.block');
-                        let accHeight = 0;
-                        let col = 0;
-                        for (let i = 0; i < blocks.length; i++) {
-                            let h = blocks[i].offsetHeight;
-                            if (!h || h < 1) h = 28;
-                            if (accHeight > 0 && accHeight + h > colHeight) {
-                                col++;
-                                accHeight = 0;
-                            }
-                            let mi = DocumentModel.modelIndexOfEl(blocks[i]);
-                            if (mi === bi) {
-                                let pageForBlock = Math.floor(col / 2);
-                                editor.scrollLeft = pageForBlock * pw;
-                                currentTwoColPage = pageForBlock;
-                                window.showDebugTelemetry('ensureVisible: 2col seed col=' + col + ' page=' + pageForBlock + ' scrollLeft=' + editor.scrollLeft);
-                                break;
-                            }
-                            accHeight += h;
+                        const el = elementForModelIndex(bi);
+                        const pageForBlock = twoColPageOfElement(el);
+                        if (pageForBlock !== null) {
+                            editor.scrollLeft = pageForBlock * twoColPageWidth();
+                            currentTwoColPage = pageForBlock;
+                            window.showDebugTelemetry('ensureVisible: 2col seed page=' + pageForBlock +
+                                ' scrollLeft=' + editor.scrollLeft);
                         }
                         return;
                     }
@@ -6132,30 +6342,13 @@
                 try {
                     const isTwoCol = editor && editor.classList.contains('two-col-layout');
                     if (isTwoCol) {
-                        // Column-walk to find the target block's column, then scroll to its page.
-                        let colHeight = editor.clientHeight;
-                        let pw = editor.clientWidth + 60;
-                        let allBlocks = editor.querySelectorAll('.block');
-                        let accH = 0;
-                        let colN = 0;
-                        for (let j = 0; j < allBlocks.length; j++) {
-                            let bh = allBlocks[j].offsetHeight;
-                            if (!bh || bh < 1) bh = 28;
-                            if (accH > 0 && accH + bh > colHeight) {
-                                colN++;
-                                accH = 0;
-                            }
-                            if (allBlocks[j] === el) {
-                                let pg = Math.floor(colN / 2);
-                                let target = pg * pw;
-                                let delta = target - (editor.scrollLeft || 0);
-                                editor.scrollLeft = target;
-                                currentTwoColPage = pg;
-                                return delta;
-                            }
-                            accH += bh;
-                        }
-                        return 0;
+                        const pg = twoColPageOfElement(el);
+                        if (pg === null) return 0;
+                        const target = pg * twoColPageWidth();
+                        const delta = target - (editor.scrollLeft || 0);
+                        editor.scrollLeft = target;
+                        currentTwoColPage = pg;
+                        return delta;
                     } else {
                         const rect = el.getBoundingClientRect();
                         const cRect = mainContainer.getBoundingClientRect();
@@ -6301,50 +6494,34 @@
             try {
                 let isTwoCol = editor && editor.classList.contains('two-col-layout');
                 
-                // --- 2-col: ALL DOM position APIs (getBoundingClientRect, offsetLeft,
-                //     elementFromPoint) are unreliable in Chromium's CSS multi-column
-                //     overflow layout.  Instead, simulate the column layout by walking
-                //     blocks and accumulating heights to find which block starts the
-                //     visible left column. ---
+                // --- 2-col: read the block positions the browser produced, rather than
+                //     simulating the column breaker. The simulation this replaces walked
+                //     offsetHeight to guess which block began the visible left column; it
+                //     drifted from the real layout over a long document, which is what made
+                //     leaving and re-entering 2-column land pages earlier than it started.
+                //     Rects are dependable here: virtualisation is off in 2-column mode, so
+                //     every block is mounted and positioned. ---
                 if (isTwoCol) {
-                    let colHeight = editor.clientHeight;
-                    let pageIndex = currentTwoColPage || 0;
-                    let targetCol = pageIndex * 2; // left column of current page (0-indexed)
-                    
-                    let blocks = editor ? editor.querySelectorAll('.block') : [];
-                    let accHeight = 0;
-                    let col = 0;
-                    
-                    for (let i = 0; i < blocks.length; i++) {
-                        let h = blocks[i].offsetHeight;
-                        if (!h || h < 1) h = 28;
-                        
-                        // Would this block overflow the current column?
-                        if (accHeight > 0 && accHeight + h > colHeight) {
-                            col++;
-                            accHeight = 0;
-                        }
-                        
-                        // Is this the first block in the target column?
-                        if (col === targetCol && accHeight === 0) {
-                            let mi = DocumentModel.modelIndexOfEl(blocks[i]);
-                            if (mi >= 0) {
-                                window.showDebugTelemetry('modelIndex: 2col colWalk mi=' + mi +
-                                    ' col=' + col + ' page=' + pageIndex);
-                                return mi;
-                            }
-                        }
-                        
-                        if (col > targetCol) break;
-                        accHeight += h;
+                    const mi = topLeftModelIndexTwoCol();
+                    if (mi >= 0) {
+                        window.showDebugTelemetry('modelIndex: 2col topLeft rect mi=' + mi +
+                            ' page=' + (currentTwoColPage || 0));
+                        return mi;
                     }
-                    window.showDebugTelemetry('modelIndex: 2col colWalk found nothing, reached col=' + col + ' target=' + targetCol);
+                    window.showDebugTelemetry('modelIndex: 2col topLeft rect found nothing');
                 }
                 
                 // --- 1-col: fast probe near the TOP of the viewport (not the center)
                 //     so the anchor = first visible line the user sees. ---
-                let cy = 60; // just below the toolbar
-                let cx = window.innerWidth / 2;
+                // Measured from the scroll container, not the window. A hardcoded y=60 in
+                // window coordinates lands on the toolbar/tab strip rather than inside the
+                // document, so elementFromPoint found no block and the fallback below
+                // measured distance from a point outside the viewport -- which selected a
+                // block already scrolled off the top. Leaving 2-column then returning
+                // therefore anchored several blocks early, enough to land a page back.
+                const _cRect = mainContainer.getBoundingClientRect();
+                let cy = _cRect.top + 8;
+                let cx = _cRect.left + (_cRect.width / 2);
                 let pts = [];
                 for (let ox of [0, 20, 60, -20]) {
                     for (let oy of [0, 20, 40]) {

@@ -29,6 +29,11 @@ namespace TypoZen
         private const string SingleInstanceMutexName = @"Local\TypoZen_SingleInstance_v1";
         internal const string OpenPipeName = "TypoZen_Open_v1";
 
+        // Telemetry log. Off unless --debug is passed (or TYPOZEN_DEBUG is set), so an
+        // ordinary run never writes debug.log next to the executable. TypoZen_Debug.bat
+        // launches with the flag for column/pagination work.
+        internal static bool DebugLogEnabled;
+
         // --- Startup instrumentation --------------------------------------------------
         //
         // OFF unless the environment variable TYPOZEN_PERF is set and non-empty. When off,
@@ -100,12 +105,33 @@ namespace TypoZen
         public static void Main(string[] args)
         {
             PerfMark("--- Main entered (process start + .NET/WPF load precede this)");
+            // --debug turns on the telemetry log. Off by default: normal use should not
+            // drop a debug.log beside the executable. TypoZen_Debug.bat passes the flag.
             string initialFile = null;
-            if (args != null && args.Length > 0 && !string.IsNullOrWhiteSpace(args[0]))
+            if (args != null)
             {
-                string path = args[0].Trim('\"', '\'');
-                try { initialFile = Path.GetFullPath(path); }
-                catch { initialFile = path; }
+                foreach (string raw in args)
+                {
+                    if (string.IsNullOrWhiteSpace(raw)) continue;
+                    string a = raw.Trim('\"', '\'');
+                    if (a.Equals("--debug", StringComparison.OrdinalIgnoreCase)
+                        || a.Equals("-debug", StringComparison.OrdinalIgnoreCase)
+                        || a.Equals("/debug", StringComparison.OrdinalIgnoreCase))
+                    {
+                        DebugLogEnabled = true;
+                        continue;
+                    }
+                    if (initialFile == null)
+                    {
+                        try { initialFile = Path.GetFullPath(a); }
+                        catch { initialFile = a; }
+                    }
+                }
+            }
+            if (!DebugLogEnabled
+                && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TYPOZEN_DEBUG")))
+            {
+                DebugLogEnabled = true;
             }
 
             // Automated tests may run multiple processes against throwaway profiles.
@@ -2998,6 +3024,8 @@ namespace TypoZen
             }
             else if (msg.StartsWith("telemetry:"))
             {
+                // Only with --debug. Normal runs must not write a log beside the exe.
+                if (!Program.DebugLogEnabled) return;
                 try
                 {
                     string logPath = System.IO.Path.Combine(_appDir, "debug.log");
@@ -4698,6 +4726,8 @@ namespace TypoZen
                     // once it exists, or an opted-in user would silently lose the feature.
                     SendMsg(_sessionRestoreContent ? "cmd:persist_content_on" : "cmd:persist_content_off");
                     
+                    SendMsg("cmd:debug_log:" + (Program.DebugLogEnabled ? "1" : "0"));
+
                     // Restore through the resolver, not set_column_mode. The raw command
                     // applies columns and nothing else, which produced 2 columns still
                     // marked as Scroll -- a combination the rules forbid, because two
