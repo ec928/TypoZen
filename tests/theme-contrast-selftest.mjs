@@ -1,19 +1,22 @@
 /**
- * Self-test: every theme produces a selection you can actually see.
+ * Self-test: every theme's accent works, both as a colour and as a selection fill.
  *
- * The toolbar paints a selected control by laying the theme's Hi colour over the theme's
- * Bg at some opacity. That opacity used to be a flat 0x28, which silently assumed every
- * theme's accent contrasts with its background. Measured across the set it did not:
+ * Two separate properties, fixed in two different places, and this holds both.
  *
- *     Night Reading  1.076      Kindle Oat  1.095      best of any theme  1.576
+ * 1. The accent must contrast with the background as a COLOUR. It is used as one:
+ *    links, the active tab underline, the outline bar, focus rings. Kindle Oat sat at
+ *    1.85 against its background, Night Reading 1.92, Nocturnal Library 2.21 -- below
+ *    the 3.0 usually taken as the floor for UI text. That is a palette defect and was
+ *    fixed in TypoZen_Themes.json, not worked around in code.
  *
- * (1.0 means the fill is indistinguishable from the surface.) On Kindle Oat the selected
- * button was effectively invisible.
+ * 2. A selected control is that accent laid over the background at SelectionFillAlpha,
+ *    and the result must still be distinguishable from the surface. The old 0x28 was
+ *    too faint for every theme, not only the awkward ones: Obsidian Pure contrasts at
+ *    19.5 as a colour and still produced a fill of just 1.400. Diluting anything to 16%
+ *    gives a weak result, so that half is a rendering constant and belongs in code.
  *
- * This checks the theme data, not the C# -- it asks whether each theme *can* produce a
- * visible selection within the opacity range the app is willing to use, so adding a new
- * low-contrast theme fails here rather than shipping an invisible selection. The
- * constants are read back out of TypoZen_App.cs so the two cannot drift apart.
+ * Keeping both here is what stops either being "fixed" in the wrong layer later: a new
+ * low-contrast theme fails on (1) rather than being papered over by raising (2).
  *
  * node tests/theme-contrast-selftest.mjs
  */
@@ -33,15 +36,18 @@ function assert(cond, msg) {
     else { failed++; console.error('  FAIL ' + msg); }
 }
 
-/** Read the constants the app actually uses, so this test cannot drift from it. */
-function constFromApp(re, label, fallback) {
-    const m = appCs.match(re);
-    if (!m) { failed++; console.error('  FAIL could not read ' + label + ' from TypoZen_App.cs'); return fallback; }
-    return m[1].startsWith('0x') ? parseInt(m[1], 16) : parseFloat(m[1]);
+/** Read the constant the app actually uses, so this test cannot drift from it. */
+const alphaMatch = appCs.match(/const byte SelectionFillAlpha = (0x[0-9A-Fa-f]+);/);
+if (!alphaMatch) {
+    console.error('  FAIL SelectionFillAlpha not found in TypoZen_App.cs');
+    process.exit(1);
 }
-const TARGET = constFromApp(/const double target = ([\d.]+);/, 'target ratio', 1.25);
-const MAX_ALPHA = constFromApp(/const byte min = 0x28, max = (0x[0-9A-Fa-f]+);/, 'max alpha', 0x70);
-const MIN_ALPHA = 0x28;
+const ALPHA = parseInt(alphaMatch[1], 16);
+
+// Floors. FG_MIN is the usual bar for UI text; FILL_MIN is what makes a tinted fill
+// distinguishable from the surface behind it.
+const FG_MIN = 3.0;
+const FILL_MIN = 1.25;
 
 const hex = (h) => {
     h = String(h).replace('#', '');
@@ -55,49 +61,56 @@ const ratio = (a, b) => {
 };
 const blend = (fg, bg, a) => fg.map((c, i) => Math.round(a * c + (1 - a) * bg[i]));
 
-/** Mirrors SelectionAlphaFor: raise opacity until the fill is visible, then stop. */
-function alphaFor(hi, bg) {
-    for (let a = MIN_ALPHA; a < MAX_ALPHA; a += 2) {
-        if (ratio(blend(hi, bg, a / 255), bg) >= TARGET) return a;
+console.log('--- 1. the accent works as a colour (links, tab underline, focus rings) ---');
+{
+    const bad = themes
+        .map(t => ({ n: t.Name, r: ratio(hex(t.Hi), hex(t.Bg)) }))
+        .filter(x => x.r < FG_MIN)
+        .map(x => x.n + ' (' + x.r.toFixed(2) + ')');
+    assert(bad.length === 0,
+        'every theme accent clears ' + FG_MIN + ' against its background' +
+        (bad.length ? ' -- short: ' + bad.join(', ') : ' (' + themes.length + ' themes)'));
+
+    // The three that were fixed at source, named so a revert is caught here rather than
+    // silently re-hidden by raising the alpha.
+    for (const n of ['Kindle Oat', 'Night Reading', 'Nocturnal Library']) {
+        const t = themes.find(x => x.Name === n);
+        const r = t ? ratio(hex(t.Hi), hex(t.Bg)) : 0;
+        assert(r >= FG_MIN, n + ' accent is still readable (' + r.toFixed(2) + ')');
     }
-    return MAX_ALPHA;
 }
 
-console.log('--- constants come from the app ---');
-assert(TARGET > 1 && TARGET < 2, 'target contrast ratio read from TypoZen_App.cs (' + TARGET + ')');
-assert(MAX_ALPHA > MIN_ALPHA && MAX_ALPHA <= 0xC0,
-    'alpha cap read from TypoZen_App.cs (0x' + MAX_ALPHA.toString(16) + ') keeps a selection a tint, not a slab');
+console.log('');
+console.log('--- 2. the selection fill is visible at the shipped alpha ---');
+{
+    const results = themes.map(t => ({
+        n: t.Name,
+        r: ratio(blend(hex(t.Hi), hex(t.Bg), ALPHA / 255), hex(t.Bg))
+    }));
+    const bad = results.filter(x => x.r < FILL_MIN).map(x => x.n + ' (' + x.r.toFixed(3) + ')');
+    const worst = results.reduce((p, q) => (q.r < p.r ? q : p));
+    assert(bad.length === 0,
+        'all ' + themes.length + ' themes clear ' + FILL_MIN + ' at alpha 0x' +
+        ALPHA.toString(16) + ' (worst: ' + worst.n + ' ' + worst.r.toFixed(3) + ')' +
+        (bad.length ? ' -- short: ' + bad.join(', ') : ''));
 
-console.log('\n--- every theme reaches a visible selection ---');
-const bad = [];
-const unchanged = [];
-for (const t of themes) {
-    const bg = hex(t.Bg), hi = hex(t.Hi);
-    const a = alphaFor(hi, bg);
-    const got = ratio(blend(hi, bg, a / 255), bg);
-    if (got < TARGET - 0.02) bad.push(t.Name + ' (' + got.toFixed(3) + ' at cap)');
-    if (a === MIN_ALPHA) unchanged.push(t.Name);
+    // Why one constant is enough, and why it has to be this big: the old 0x28 failed
+    // widely, and failed even for themes whose accent is excellent.
+    const at28 = themes.map(t => ratio(blend(hex(t.Hi), hex(t.Bg), 0x28 / 255), hex(t.Bg)));
+    const shortAt28 = at28.filter(r => r < FILL_MIN).length;
+    assert(shortAt28 > 0,
+        'the previous 0x28 really was too faint (' + shortAt28 + ' themes under ' +
+        FILL_MIN + '), so the higher constant is doing work');
+    assert(ALPHA > 0x28, 'the app no longer ships the old 0x28 fill alpha');
 }
-assert(bad.length === 0,
-    'all ' + themes.length + ' themes reach the target within the alpha cap' +
-    (bad.length ? ' -- short: ' + bad.join(', ') : ''));
-assert(unchanged.length > 0,
-    'themes that already contrasted keep the original light tint (' + unchanged.length + ' of ' + themes.length + ')');
 
-console.log('\n--- the fixed-alpha regression cannot come back ---');
-// The specific failure: a flat 0x28 for every theme.
-const flatWorst = themes
-    .map(t => ratio(blend(hex(t.Hi), hex(t.Bg), MIN_ALPHA / 255), hex(t.Bg)))
-    .reduce((a, b) => Math.min(a, b), Infinity);
-assert(flatWorst < TARGET,
-    'a flat ' + MIN_ALPHA + ' alpha really would be invisible somewhere (worst ' +
-    flatWorst.toFixed(3) + '), so the adaptive path is doing work');
-assert(!/c\.A = 0x28;/.test(appCs), 'the app no longer hardcodes the selection alpha');
-
-console.log('\npassed=' + passed + ' failed=' + failed);
+console.log('');
+console.log('passed=' + passed + ' failed=' + failed);
 if (failed) {
-    console.error('\nTHEME CONTRAST SELFTEST FAILED');
+    console.error('');
+    console.error('THEME CONTRAST SELFTEST FAILED');
     process.exit(1);
 }
-console.log('\nTHEME CONTRAST SELFTEST PASSED');
+console.log('');
+console.log('THEME CONTRAST SELFTEST PASSED');
 process.exit(0);

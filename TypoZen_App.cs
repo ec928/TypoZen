@@ -323,6 +323,11 @@ namespace TypoZen
         private string _viewMode = "preview";
         private bool _viewColumnsLocked, _viewScrollLocked;
         private bool _sidebarOpen = true;
+        /// <summary>Opacity of a selected control's fill, over the theme accent.
+        /// Smallest value at which all 27 themes stay visible; see the comment in
+        /// ApplyTheme and tests/theme-contrast-selftest.mjs.</summary>
+        private const byte SelectionFillAlpha = 0x48;
+
         private string _editorMode = "wysiwyg"; // "wysiwyg", "reader", "source"
         private bool _isPageAdvanceMode;
         private bool _isTwoColumnMode = false;
@@ -2829,54 +2834,6 @@ if (_btnColumnToggle != null)
             if (_isTwoColumnMode) _col2Rect = r; else _col1Rect = r;
         }
 
-        /// <summary>
-        /// Paint a toolbar button as on or off, using the same brushes the Mode pillbox
-        /// uses for its selected segment. Selection had only ever been shown inside that
-        /// pillbox, so the sidebar and the two layout toggles gave no indication of their
-        /// own state -- inconsistent with the rest of the toolbar.
-        /// </summary>
-        /// <summary>
-        /// Relative luminance, WCAG definition. Used to judge whether a selection fill is
-        /// actually distinguishable from the surface behind it.
-        /// </summary>
-        private static double RelativeLuminance(Color c)
-        {
-            Func<double, double> ch = v =>
-            {
-                v /= 255.0;
-                return v <= 0.03928 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
-            };
-            return 0.2126 * ch(c.R) + 0.7152 * ch(c.G) + 0.0722 * ch(c.B);
-        }
-
-        /// <summary>
-        /// Alpha at which <paramref name="hi"/> over <paramref name="bg"/> becomes visible.
-        ///
-        /// Raises opacity until the blended fill reaches a modest contrast ratio against
-        /// the surface, then stops. Themes whose accent already contrasts keep a light
-        /// tint; ones like Kindle Oat and Night Reading, whose Hi sits almost on top of
-        /// their Bg in luminance, get enough opacity to be seen at all. Capped so a
-        /// selection stays a tint rather than becoming a solid slab.
-        /// </summary>
-        private static byte SelectionAlphaFor(Color hi, Color bg)
-        {
-            const double target = 1.25;
-            const byte min = 0x28, max = 0x70;
-            double bgL = RelativeLuminance(bg);
-            for (byte a = min; a < max; a += 2)
-            {
-                double f = a / 255.0;
-                var mixed = Color.FromRgb(
-                    (byte)Math.Round(f * hi.R + (1 - f) * bg.R),
-                    (byte)Math.Round(f * hi.G + (1 - f) * bg.G),
-                    (byte)Math.Round(f * hi.B + (1 - f) * bg.B));
-                double mL = RelativeLuminance(mixed);
-                double ratio = (Math.Max(mL, bgL) + 0.05) / (Math.Min(mL, bgL) + 0.05);
-                if (ratio >= target) return a;
-            }
-            return max;
-        }
-
         private void SetToolbarActive(Button b, bool active)
         {
             if (b == null) return;
@@ -4183,13 +4140,18 @@ if (_btnColumnToggle != null)
                 try
                 {
                     var c = (Color)ColorConverter.ConvertFromString(t.Hi);
-                    var bgFor = (Color)ColorConverter.ConvertFromString(t.Bg);
-                    // Opacity chosen per theme rather than fixed. A flat 0x28 assumed every
-                    // theme's Hi contrasts with its Bg, which is not true: measured across
-                    // the set, the selected fill sat at a 1.076 contrast ratio on Night
-                    // Reading and 1.095 on Kindle Oat (1.0 being invisible), and even the
-                    // best theme only reached 1.576. Those selections could not be seen.
-                    c.A = SelectionAlphaFor(c, bgFor);
+                    // 0x28 was too faint for every theme, not just the awkward ones: even
+                    // Obsidian Pure, whose accent contrasts with its background at 19.5,
+                    // produced a selection fill of only 1.400 against it (1.0 being
+                    // invisible). Diluting any colour to 16% gives a weak result.
+                    //
+                    // 0x48 is the smallest opacity at which all 27 themes clear a 1.25
+                    // contrast ratio, worst case 1.288. It is a single constant because a
+                    // single constant is now sufficient: the three themes that needed more
+                    // did so because their accent was too close to their background, and
+                    // that is fixed in TypoZen_Themes.json where it belongs.
+                    // tests/theme-contrast-selftest.mjs holds both halves of that.
+                    c.A = SelectionFillAlpha;
                     _modeSourceBg = new SolidColorBrush(c);
                     _modeSourceBg.Freeze();
                 }
