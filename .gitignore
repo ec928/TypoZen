@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Build intermediates
+obj/
+bin/
+*.pdb
+
+# WebView2 runtime user-data directory
+typozen_load/
+
+# Runtime logs
+debug.log

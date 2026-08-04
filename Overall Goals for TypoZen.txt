@@ -1,0 +1,78 @@
+In case of I have to restart this project to to destructive AI hallucinations, here is a record of the overall goals
+
+Currently: ZenSeek is a polygot tool that combines both a seach and reader capability.  TypoZen is a dedicated editing tool, but with a stable and performant C# + WPF + WebView2 architecture.  We believe that this is the right technology stack for a reader app.
+
+Objective: the objective is to transition all key ZenSeek reader features into TypoZen, with the end-goal being that ZenSeek focus on being a dedicated text search tool, that calls on TypoZen for use as a reader.
+
+**A. Approach**
+1. Phase 1 is to clean up any annoying concerns.
+2. Phase 2 include the ZenSeek search functionality - useful with or without a reader
+3. Phase 3 is to setup the UI and enable 2-column and pagination modes
+   - Phase 3A is to improve the UI with an enhanced Mode Selector, Column Selector and Scroll Type Selector
+   - Phase 3B is to add UI rules
+4. Phase 4 is to enable 2-Column and Pagination modes
+5. Phase 5 is to implement Epub functionality
+6. Phase 6 is to integrate ZenSeek and TypoZen
+7. Phase 7 is to clean up, removing all reader functionality from ZenSeek.
+
+Phase 4 is the heaviest and most critical.  The AI is expected to do the vast amount of tests without human intervention, hence it ensure existing test harnesses are used and new ones created accordingly and follow a prototyping and Test Driven Development approach (within reason).
+
+**B. Implementation:**
+
+1/ Phase 1: Tidy up. Unless the user changes it, default for margins is "Narrow Margins", opening mode for .txt or .md is "Preview", and later, when this mode is created, default opening mode for epub will be "Reader").  Get rid of over-engineering such as needless code to pick the opening mode.  Get rid of vertical padding (especially the top). And get copying tables and formatting like headings working (e.g. copying tables and headings from Chome or similar works for Typora, fails here)
+
+2/ Phase 2: Update TypoZen to replace the useless Files sidebar to become a Search tab similar to ZenSeek. Implement "Match highlight + next/prev". I expect the side bar to contain the search results, and this can be opened or closed via the mouse or Alt-S shortcut just like ZenSeek. The user can click on the entry in the side bar and jump right to it. When focus is moved to this area, I expect the , . or < > keys to move you to the next/prev item
+
+3/ Phase 3 - UI and rules
+Phase 3A: Update TypoZen with a new 2-column and Paginated modes, and an updated UI.
+Update TypoZen's WPF shell (`TypoZen.xaml` and `TypoZen_App.cs`) to introduce new layout toggles with auto-resolving Master/Slave states. UI Additions (Command Row, Right-Aligned):
+
+- Mode Selector: A segmented control `[ Source | Preview | Reader ]`. Replaces the current mode toggle. *Note: The 'Reader' functionality is currently stubbed out; only the UI and state logic should be implemented.*  
+- Column Selector: A segmented control `[ 1-Column | 2-Column ]`, placed immediately to the right of the Mode Selector.
+- Scroll Type Selector: A segmented control `[ Scroll | Pagination ]`, placed immediately to the right of the Column Selector.
+
+Phase 3B: State Logic & Auto-Resolution Rules:
+Implement these cascading rules so the UI never traps the user in a disabled button deadlock. If a user clicks an available option, the app must automatically resolve conflicting sub-toggles.
+- Rule A (Mode Master):
+  - If `Source` is clicked: Force Column to `1-Column` and Scroll to `Scroll`. Lock both sub-selectors (reduce opacity) so they cannot be changed.
+  - If `Preview` is clicked: Unlock all sub-selectors (restore opacity).
+  - If `Reader` is clicked: Force Scroll to `Pagination`. Lock the Scroll selector (reduce opacity). The Column selector remains unlocked.
+- Rule B (Column Master):
+  - If `1-Column` is clicked: No forced changes. (Ensure Scroll selector is unlocked if currently in Preview mode).
+  - If `2-Column` is clicked: Force Scroll to `Pagination`. Lock the Scroll selector (reduce opacity).
+- Rule C (Scroll Master):
+  - If `Scroll` is clicked: Force Column to `1-Column`. (Do not lock the Column selector; if the user subsequently clicks 2-Column, Rule B will auto-resolve the Scroll back to Pagination).
+  - If `Pagination` is clicked: No forced changes. Ensure the Column selector is unlocked.
+Initial State: Unless changes by the user, default to `Preview`, `1-Column`, and `Scroll` for all newly opened documents except Reader. For Reader mode, initial defaults are `1-Column`, `Pagination`.
+
+4/ Phase 4 is to enable 2-Column and Pagination modes. For Pagination, advice is to pre-compute a page map: they lay out all the content, determine where each page break falls, and store a mapping of page number → content position. This should allow seamless switching between 1 and 2 column modes in Pagination modes. Challenge: column size between modes can be different. Success criteria: as long as content on the first page of the current mode is generally visible as content on the first page of the target mode, that's fine. Stretch objective: If you change modes a second time, you return the the original layout.
+
+5/ Phase 5 is to implement epub functionality
+
+6/ Phase 6: Ensure you can call TypoZen from ZenSeek, passing on the search result and location. TypoZen must open in Reader mode, and if a search result and location are given, immediately jump to that location and highlight the searched item
+
+7/ Phase 7: Get rid of the ZenSeek reader and permanently use TypoZen as the reader.
+
+
+**C. Supplementary Information re: TypoZen Layout Combinations**
+| **Mode** | **Scroll (1-Column)** | **Scroll (2-Column)** | **Paginated (1-Column)** | **Paginated (2-Column)** |
+| --- | --- | --- | --- | --- |
+| **Source** | 🟢 **Valid** *(Notepad path)* | ❌ **Invalid** *(Text areas don't flow)* | ❌ **Invalid** *(Fragments raw code)* | ❌ **Invalid** *(Fragments raw code)* |
+| **Preview** | 🟢 **Valid** *(Infinite vertical canvas)* | ❌ **Invalid** *(No bottom boundary causes layout thrashing)* | 🟢 **Valid** *(Live edit on discrete pages)* | 🟢 **Valid** *(Live edit on a book spread)* |
+| **Reader** | ❌ **Invalid** *(Reader = Pages only)* | ❌ **Invalid** *(Reader = Pages only)* | 🟢 **Valid** *(Narrow window reading)* | 🟢 **Valid** *(Wide window reading)* |
+
+
+| **Mode**    | **Flow**   | **Columns** | **Status** | **Technical / UX Reasoning**                                 |
+| ----------- | ---------- | ----------- | ---------- | ------------------------------------------------------------ |
+| **Source**  | Scroll     | 1           | **Valid**  | The baseline Notepad-class path; raw text in a single growing textarea with one scrollbar. |
+| **Source**  | Scroll     | 2           | Invalid    | A raw HTML `<textarea>` does not support dynamic CSS column text flow. |
+| **Source**  | Pagination | 1 or 2      | Invalid    | Pagination fragments the raw code view, defeating the purpose of a unified raw text inspector. |
+| **Preview** | Scroll     | 1           | **Valid**  | The baseline WYSIWYG editor behavior; infinite vertical canvas. |
+| **Preview** | Scroll     | 2           | Invalid    | Continuous vertical scroll lacks a fixed bottom boundary, which breaks column math and causes layout thrashing during live edits. |
+| **Preview** | Pagination | 1           | **Valid**  | Live editing on discrete, fixed-height virtual pages.        |
+| **Preview** | Pagination | 2           | **Valid**  | Live editing with text flowing across two columns (mechanically identical to a word processor's "Print Layout"). |
+| **Reader**  | Pagination | 1           | **Valid**  | Read-only book-like navigation for narrow windows.           |
+| **Reader**  | Pagination | 2           | **Valid**  | Read-only open-book spread for wide desktop windows.         |
+| **Reader**  | Scroll     | 1 or 2      | Invalid    | By strict definition, Reader is a read-only mode that *only* allows pagination. |
+
+
