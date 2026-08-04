@@ -88,10 +88,9 @@ async function main() {
 
         console.log('=== 1-col -> 2-col ===');
         // Read a way into the document, so this is not the trivial "everything at page 0".
-        await page.evaluate(() => {
-            const main = document.getElementById('main-container');
-            main.scrollTop = Math.round(main.scrollHeight * 0.12);
-        });
+        // Turn pages: Reader is paginated in both layouts now, so setting scrollTop does
+        // nothing at all and the test never left page 0.
+        await page.evaluate(() => { for (let i = 0; i < 6; i++) PageMap.step(1); });
         await sleep(700);
         const oneColBefore = await page.evaluate(visibleState);
         info('1-col showing blocks ' + oneColBefore.visible[0] + '..' +
@@ -110,11 +109,7 @@ async function main() {
 
         console.log('\n=== 2-col -> 1-col ===');
         // Turn some pages so the return trip is not from page 0 either.
-        await page.evaluate(() => {
-            const ed = document.getElementById('editor');
-            ed.scrollLeft += (ed.clientWidth + 60) * 2;
-            currentTwoColPage = (currentTwoColPage || 0) + 2;
-        });
+        await page.evaluate(() => { for (let i = 0; i < 2; i++) PageMap.step(1); });
         await sleep(800);
         const twoColBefore = await page.evaluate(visibleState);
         info('2-col page ' + twoColBefore.page + ', first column holds blocks ' +

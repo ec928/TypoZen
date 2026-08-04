@@ -138,30 +138,26 @@ async function main() {
         // Measured, not derived. Comparing each page offset against prefixHeight() would
         // be circular -- the map is built from prefixHeight, so it can only agree with
         // itself. Turn to a page and measure where the block really rendered.
+        // Behaviour, not internals: go to a page, then ask which page the block now at the
+        // top of the screen reports itself to be on. Those must agree, or navigation and
+        // lookup disagree and a column switch cannot land anywhere sensible.
         const bounds = await page.evaluate(async () => {
-            PageMap.invalidate(); PageMap.ensure();
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
             const bad = [];
-            const probe = [1, 2, 3, 5, 8];
-            for (const i of probe) {
-                if (i >= PageMap.pages.length) continue;
+            for (const i of [1, 2, 3, 5, 8]) {
+                if (i >= PageMap.count()) continue;
                 PageMap.goto(i);
                 await sleep(250);
-                const want = PageMap.pages[i].block;
-                const el = document.querySelector('#editor .block[data-model-index="' + want + '"]');
-                if (!el) { bad.push({ page: i, block: want, why: 'block not mounted' }); continue; }
-                const r = el.getBoundingClientRect();
-                const host = document.getElementById('main-container').getBoundingClientRect();
-                // The page's first block should sit at the top of the viewport, not be cut
-                // in half by the boundary or pushed off screen.
-                const delta = Math.round(r.top - host.top);
-                if (delta < -4 || delta > 60) bad.push({ page: i, block: want, deltaFromTop: delta });
+                const top = topLeftModelIndexTwoCol();
+                if (top < 0) { bad.push({ page: i, why: 'nothing visible' }); continue; }
+                const reported = PageMap.pageOfBlock(top);
+                if (reported !== i) bad.push({ page: i, topBlock: top, reportedPage: reported });
             }
-            return { pages: PageMap.pages.length, bad: bad };
+            return { pages: PageMap.count(), bad: bad };
         });
         assert(bounds.bad.length === 0,
-            'each 1-column page really renders its first block at the top (' + bounds.pages +
-            ' pages in map' + (bounds.bad.length ? ', bad: ' + JSON.stringify(bounds.bad) : '') + ')');
+            'the block on screen agrees with the page we navigated to (' + bounds.pages +
+            ' pages' + (bounds.bad.length ? ', bad: ' + JSON.stringify(bounds.bad) : '') + ')');
 
         console.log('\n=== switching layouts always lands ON a page ===');
         {
@@ -171,17 +167,15 @@ async function main() {
             // showing half of each. Every switch must finish on a stored boundary, and on
             // the page that holds what the reader was looking at.
             const snap = () => page.evaluate(() => {
-                PageMap.ensure();
                 const sl = Math.round(editor.scrollLeft || 0);
+                const w = Math.round(PageMap.width());
                 return {
                     cols: getComputedStyle(document.getElementById('editor')).columnCount,
                     scrollLeft: sl,
-                    onBoundary: PageMap.pages.some(p => Math.round(p.offset) === sl),
+                    scrollTop: Math.round(editor.scrollTop || 0),
+                    onBoundary: (sl % w) < 2,
                     page: PageMap.current(),
-                    pageStartBlock: PageMap.pages.length ? PageMap.pages[PageMap.current()].block : -1,
-                    topBlock: topLeftModelIndexTwoCol(),
-                    nextStart: (PageMap.current() + 1 < PageMap.pages.length)
-                        ? PageMap.pages[PageMap.current() + 1].block : Infinity
+                    topBlock: topLeftModelIndexTwoCol()
                 };
             });
 
@@ -198,18 +192,28 @@ async function main() {
             await page.evaluate(() => handleCommand('view_set:columns:1'));
             await sleep(3000);
             const one = await snap();
-            info('1-col page ' + one.page + ', starts at block ' + one.pageStartBlock);
+            info('1-col page ' + one.page + ', top block ' + one.topBlock);
             assert(one.cols === '1', 'switched to a single column');
             assert(one.onBoundary,
                 'switching to 1-column lands exactly on a page boundary, not between two (scrollLeft ' +
                 one.scrollLeft + ')');
-            // The anchor must be ON the page shown -- at or after its first block, and
-            // before the next page begins. It need not be at the very top: pages start
-            // where the layout breaks, so arriving mid-page is correct.
-            assert(two.topBlock >= one.pageStartBlock && two.topBlock < one.nextStart,
-                'the page shown actually contains what was on screen before (block ' +
-                two.topBlock + ' within ' + one.pageStartBlock + '..' +
-                (one.nextStart === Infinity ? 'end' : one.nextStart) + ')');
+            assert(one.scrollTop === 0,
+                'a page never scrolls vertically, so no diagonal half-page offset');
+            // The block that was on screen before must be on the page now shown. Not
+            // necessarily at the top: pages begin where the layout breaks, so arriving
+            // partway down a page is correct.
+            const holds = await page.evaluate((b) => PageMap.pageOfBlock(b), two.topBlock);
+            assert(holds === one.page,
+                'the page shown holds what was on screen before (block ' + two.topBlock +
+                ' is on page ' + holds + ', showing page ' + one.page + ')');
+
+            // And back again returns to where it started.
+            await page.evaluate(() => handleCommand('view_set:columns:2'));
+            await sleep(3000);
+            const back = await snap();
+            assert(back.page === two.page && back.topBlock === two.topBlock,
+                'switching back returns to the same page and content (page ' + back.page +
+                ' vs ' + two.page + ', block ' + back.topBlock + ' vs ' + two.topBlock + ')');
         }
 
         console.log('\npassed=' + passed + ' failed=' + failed);

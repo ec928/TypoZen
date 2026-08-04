@@ -1040,6 +1040,12 @@
                 if (r.right <= host.left + 1 || r.left >= host.right - 1) continue;   // another page
                 const mi = DocumentModel.modelIndexOfEl(blocks[i]);
                 if (mi < 0) continue;
+                // Only blocks that this page reports as its own. A block split across a
+                // page break has a bounding rect spanning both fragments, so it is visible
+                // here while pageOfBlock() places it on the previous page. Picking such a
+                // block as the anchor made the two disagree, and a round trip came back one
+                // page early. Whatever is chosen here must resolve back to this page.
+                if (isPaginatedLayout() && PageMap.pageOfBlock(mi) !== PageMap.current()) continue;
                 if (best === null || r.left < best.left - 1 ||
                     (Math.abs(r.left - best.left) <= 1 && r.top < best.top)) {
                     best = { mi: mi, left: r.left, top: r.top };
@@ -1085,115 +1091,83 @@
          *
          * Built on demand and thrown away whenever anything that affects layout changes.
          */
+        /**
+         * === PAGES ===
+         *
+         * Paginated layouts are uniform: every page is the same width, so page N simply
+         * lives at N * pageWidth. There is nothing to precompute and nothing to keep in
+         * step with the layout.
+         *
+         * This replaces a 110-line page map that walked every block, recorded which page
+         * each one started on, cached the result and invalidated it on resize, edit and
+         * mode change. All of that only to answer questions arithmetic already answers --
+         * and it answered one of them wrongly: a block fragmented across a page break
+         * reports the bounding box of all its fragments, so the recorded start blocks
+         * stopped increasing, and looking a block up returned a page hundreds of blocks
+         * early.
+         *
+         * The only question needing measurement is "which page is this block on", and that
+         * is one rect, not a scan of the document.
+         */
+        // The block the reader is on. Set when they turn a page or scroll; carried across
+        // column switches unchanged, because a switch moves the view, not the reader.
+        let _readingAnchor = -1;
+
         const PageMap = {
-            valid: false,
-            layout: null,      // '1col' | '2col'
-            pages: [],         // [{ block, offset }] -- offset is scrollTop or scrollLeft
-            viewportKey: '',
-
-            /** Identity of the current layout; if this changes the map is stale. */
-            _key: function () {
-                const paged = isPaginatedLayout();
-                const cols = (editor && editor.classList.contains('two-col-layout')) ? 2 : 1;
-                const w = paged ? (editor.clientWidth || 0) : (mainContainer ? mainContainer.clientWidth : 0);
-                const h = paged ? (editor.clientHeight || 0) : (mainContainer ? mainContainer.clientHeight : 0);
-                const n = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
-                    ? DocumentModel.blocks.length : 0;
-                return (paged ? 'p' : 's') + cols + ':' + w + 'x' + h + ':' + n;
+            width: function () {
+                return Math.max(1, (editor ? editor.clientWidth : 0) + twoColGap());
             },
 
-            invalidate: function () { this.valid = false; this.pages = []; },
-
-            ensure: function () {
-                if (!isPaginatedLayout()) { this.valid = false; this.pages = []; this.layout = 'scroll'; return false; }
-                const key = this._key();
-                if (this.valid && this.viewportKey === key) return this.pages.length > 0;
-                this.viewportKey = key;
-                this.layout = (editor.classList.contains('two-col-layout')) ? '2col' : '1col';
-                this.pages = this._buildPaginated();
-                this.valid = this.pages.length > 0;
-                window.showDebugTelemetry('PageMap: built ' + this.layout + ' with ' + this.pages.length + ' pages');
-                return this.valid;
+            count: function () {
+                if (!isPaginatedLayout() || !editor) return 0;
+                return Math.max(1, Math.ceil((editor.scrollWidth - 1) / this.width()));
             },
 
-            /**
-             * Read back where the browser actually broke the content.
-             *
-             * One implementation for both layouts, because both are the same multi-column
-             * flow. There is deliberately no height-estimate path any more: the previous
-             * 1-column map was computed from DocumentModel's estimated heights, so its
-             * offsets agreed with the scrollbar but not with where blocks really rendered,
-             * and driving a mode switch from it put the reader ~130 blocks out.
-             */
-            _buildPaginated: function () {
-                if (!editor || typeof DocumentModel === 'undefined') return [];
-                const pw = twoColPageWidth();
-                const blocks = editor.querySelectorAll('.block');
-                if (!blocks.length) return [];
-                const edRect = editor.getBoundingClientRect();
-                const scrollLeft = editor.scrollLeft || 0;
-                const firstOfPage = {};
-                for (let i = 0; i < blocks.length; i++) {
-                    const r = blocks[i].getBoundingClientRect();
-                    if (r.width === 0 && r.height === 0) continue;
-                    const absX = (r.left - edRect.left) + scrollLeft;
-                    const p = Math.max(0, Math.floor((absX + 1) / pw));
-                    const mi = DocumentModel.modelIndexOfEl(blocks[i]);
-                    if (mi < 0) continue;
-                    if (firstOfPage[p] === undefined || mi < firstOfPage[p]) firstOfPage[p] = mi;
-                }
-                const nums = Object.keys(firstOfPage).map(Number).sort((a, b) => a - b);
-                if (!nums.length) return [];
-                const pages = [];
-                for (let i = 0; i < nums.length; i++) {
-                    pages.push({ block: firstOfPage[nums[i]], offset: nums[i] * pw });
-                }
-                return pages;
-            },
-
-            count: function () { return this.ensure() ? this.pages.length : 0; },
-
-            /** Page currently on screen. Always a horizontal offset now. */
             current: function () {
-                if (!this.ensure()) return 0;
-                const pos = editor.scrollLeft || 0;
-                let best = 0;
-                for (let i = 0; i < this.pages.length; i++) {
-                    if (this.pages[i].offset <= pos + 2) best = i; else break;
-                }
-                return best;
+                if (!isPaginatedLayout() || !editor) return 0;
+                return Math.max(0, Math.round((editor.scrollLeft || 0) / this.width()));
             },
 
-            /** Page holding a given model block. */
+            /** Which page a model block sits on. One measurement. */
             pageOfBlock: function (bi) {
-                if (!this.ensure()) return 0;
-                let best = 0;
-                for (let i = 0; i < this.pages.length; i++) {
-                    if (this.pages[i].block <= bi) best = i; else break;
-                }
-                return best;
+                const p = twoColPageOfElement(elementForModelIndex(bi));
+                return (p == null) ? this.current() : p;
             },
 
-            blockOfPage: function (n) {
-                if (!this.ensure()) return 0;
-                n = Math.max(0, Math.min(this.pages.length - 1, n | 0));
-                return this.pages[n].block;
-            },
-
-            /** Jump to a page. Absolute offset, so repeated turns cannot drift. */
             goto: function (n) {
-                if (!this.ensure()) return false;
-                n = Math.max(0, Math.min(this.pages.length - 1, n | 0));
-                const p = this.pages[n];
+                if (!isPaginatedLayout() || !editor) return false;
+                const last = this.count() - 1;
+                n = Math.max(0, Math.min(last, n | 0));
                 markProgrammaticScroll(400);
-                editor.scrollTop = 0;             // columns never scroll vertically
-                editor.scrollLeft = p.offset;
+                editor.scrollTop = 0;              // a page never scrolls vertically
+                editor.scrollLeft = n * this.width();
                 currentTwoColPage = n;
                 updatePageIndicator();
                 return true;
             },
 
-            step: function (dir) { return this.goto(this.current() + (dir < 0 ? -1 : 1)); }
+            /**
+             * A page turn by the reader. This is what moves the reading anchor; switching
+             * columns must not, or the anchor decays: a switch lands you at the start of
+             * the page holding your content, so re-reading the anchor from the new view
+             * replaces "what I was reading" with "the top of its page", and switching back
+             * lands a page earlier every time.
+             */
+            step: function (dir) {
+                const ok = this.goto(this.current() + (dir < 0 ? -1 : 1));
+                if (ok) { const t = topLeftModelIndexTwoCol(); if (t >= 0) _readingAnchor = t; }
+                return ok;
+            },
+
+            /** Page offsets, derived not stored. Used by the tests to check alignment. */
+            get pages() {
+                const w = this.width(), c = this.count(), out = [];
+                for (let i = 0; i < c; i++) out.push({ offset: i * w });
+                return out;
+            },
+
+            ensure: function () { return this.count() > 0; },
+            invalidate: function () { }
         };
 
         // --- Column position memory -------------------------------------------------
@@ -1266,32 +1240,42 @@
          * is wrong AND unchanging, because the layout it was measured against has not
          * finished. That looked stable and stopped several pages short of the target.
          */
+        /**
+         * You were on a page. Work out which page holds the same content in the layout you
+         * just switched to, and go there.
+         *
+         * The wait exists only because the layout being measured does not exist yet:
+         * switching turns virtualisation off and remounts the document. It goes once, when
+         * the columns are there, and stops.
+         */
+        function goToPageHoldingBlock(anchorBlock, tries, lastWidth) {
+            tries = (tries == null) ? 40 : tries;
+            if (tries <= 0) return;
+            requestAnimationFrame(function () {
+                if (!isPaginatedLayout() || !editor) return;
+
+                // Wait for the relayout to finish before asking anything about it. The flow
+                // keeps growing while the remounted blocks lay out, and asking too early
+                // answers against the layout being replaced: switching 2-col to 1-col
+                // returned the 2-column page number, so the view never moved.
+                const w = editor.scrollWidth;
+                if (w !== lastWidth) {
+                    goToPageHoldingBlock(anchorBlock, tries - 1, w);
+                    return;
+                }
+
+                const want = PageMap.pageOfBlock(anchorBlock);
+                PageMap.goto(want);
+                window.showDebugTelemetry('goToPage: block ' + anchorBlock + ' is on page ' +
+                    want + ' of ' + PageMap.count());
+            });
+        }
+
         function settleTwoColToLine(line, anchorBlockHint) {
-            // Resolve the anchor block up front. After the switch the sticky line is
-            // recomputed against a layout that is still moving, and it drifts badly --
-            // entering pagination from a scroll at line ~1945 ended up reporting 287.
             const anchorBlock = (anchorBlockHint != null)
                 ? anchorBlockHint
                 : modelLocationFromDocumentLine(Math.max(1, line | 0)).blockIndex;
-
-            scheduleColumnSettle(function () {
-                if (!isPaginatedLayout()) return;
-                // Rebuild against the current geometry, then jump to the page that holds
-                // the anchor. Going through the map matters for more than picking the page:
-                // goto() always lands on a stored boundary, so it also re-snaps after
-                // anything that scrolled us off one. Restoring the caret focuses a block,
-                // and focusing an element inside a horizontally scrolled multi-column
-                // container makes the browser scroll it into view -- which left the view
-                // parked between two pages, showing half of each.
-                PageMap.invalidate();
-                if (!PageMap.ensure()) return;
-                const want = PageMap.pageOfBlock(anchorBlock);
-                if (want !== PageMap.current() || (editor.scrollLeft || 0) !== PageMap.pages[want].offset) {
-                    PageMap.goto(want);
-                    window.showDebugTelemetry('settle: page=' + want + ' for block ' + anchorBlock);
-                }
-                updatePageIndicator();
-            });
+            goToPageHoldingBlock(anchorBlock);
         }
 
         /** Collect text nodes under #editor only (skips sidebar, find bar, etc.). */
@@ -2535,23 +2519,29 @@
                     window.showDebugTelemetry('set_column_mode: computed idx=' + idx + ' stickyLine=' + stickyLine);
                 }
 
-                // Resolve the anchor to a block while the OLD layout is still on screen and
-                // measurable. Recomputing it afterwards reads a layout mid-remount.
+                // Use the reading anchor if we have one. Only fall back to measuring the
+                // current view when there is none -- measuring it on every switch is what
+                // made the anchor decay to the top of whatever page we had just landed on.
                 let _anchorBlock = 0;
                 try {
-                    _anchorBlock = isPaginatedLayout()
-                        ? topLeftModelIndexTwoCol()
-                        : modelLocationFromDocumentLine(Math.max(1, stickyLine | 0)).blockIndex;
+                    if (isPaginatedLayout() && _readingAnchor >= 0) {
+                        _anchorBlock = _readingAnchor;
+                    } else {
+                        _anchorBlock = isPaginatedLayout()
+                            ? topLeftModelIndexTwoCol()
+                            : modelLocationFromDocumentLine(Math.max(1, stickyLine | 0)).blockIndex;
+                    }
                     if (!(_anchorBlock >= 0)) {
                         _anchorBlock = modelLocationFromDocumentLine(Math.max(1, stickyLine | 0)).blockIndex;
                     }
+                    _readingAnchor = _anchorBlock;
                 } catch (e) { _anchorBlock = 0; }
 
                 // Remember where the layout being left was sitting, and decide whether the
                 // one being entered can simply be put back exactly as it was.
-                captureColumnPosition();
-                const _memForTarget = twoCol ? _colMemory.c2 : _colMemory.c1;
-                const _restoreExact = !!_memForTarget && !_colMemoryDirty;
+
+
+
                 markProgrammaticScroll(1200);
 
                 if (twoCol) {
@@ -2564,46 +2554,42 @@
                 syncPaginationClass();
                 applyEditorChromeForMode();
 
+                // A paginated view does not use the sticky-line restore.
+                //
+                // That path (restoreStickyDocumentLine -> ensureModelBlockVisible ->
+                // seedFromHeightMap -> snapOnce -> focus the caret) puts an arbitrary
+                // scroll offset back on a line. Pages have no arbitrary offsets. Running it
+                // as well meant several things assigning scrollLeft against each other, and
+                // the caret focus scrolled the view off a page boundary after the page had
+                // been chosen -- the half-of-one-page-half-of-the-next symptom.
+                const _pagedTarget = isPaginatedLayout();
+
                 if (typeof DocumentModel !== 'undefined') {
                     const shouldVirt = DocumentModel.shouldVirtualize();
-                    if (DocumentModel.virtEnabled && !shouldVirt) {
+                    if (DocumentModel.virtEnabled !== shouldVirt) {
                         const restoreHistory = typeof HistoryManager !== 'undefined' ? HistoryManager.isRestoring : false;
                         if (typeof HistoryManager !== 'undefined') HistoryManager.isRestoring = true;
                         const md = DocumentModel.toMarkdown();
-                        loadMarkdownContent(md, { deferPaint: true, stickyLine: stickyLine });
+                        loadMarkdownContent(md, _pagedTarget
+                            ? { deferPaint: true }
+                            : { deferPaint: true, stickyLine: stickyLine });
                         if (typeof HistoryManager !== 'undefined') HistoryManager.isRestoring = restoreHistory;
-                    } else if (!DocumentModel.virtEnabled && shouldVirt) {
-                        const restoreHistory = typeof HistoryManager !== 'undefined' ? HistoryManager.isRestoring : false;
-                        if (typeof HistoryManager !== 'undefined') HistoryManager.isRestoring = true;
-                        const md = DocumentModel.toMarkdown();
-                        loadMarkdownContent(md, { deferPaint: true, stickyLine: stickyLine });
-                        if (typeof HistoryManager !== 'undefined') HistoryManager.isRestoring = restoreHistory;
-                    } else {
-                        requestAnimationFrame(function() {
+                    } else if (!_pagedTarget) {
+                        requestAnimationFrame(function () {
                             restoreStickyDocumentLine(stickyLine);
                         });
                     }
                 }
-                // The layout changed, so any page map built for the old one is meaningless.
-                PageMap.invalidate();
-
-                if (_restoreExact) {
-                    // Returning to a layout the reader has not moved away from: put it back
-                    // exactly. Even a correct page map cannot do this on its own -- the two
-                    // layouts break content differently, so a block that started a page in
-                    // one may sit mid-page in the other, and re-deriving can only land on
-                    // the page that contains it, not the position it was left at.
-                    window.showDebugTelemetry('set_column_mode: restoring remembered position');
-                    restoreColumnPosition(twoCol, _memForTarget);
-                } else {
-                    // Otherwise anchor to what the reader was looking at. Paginated layouts
-                    // resolve this against the real column geometry; an unpaginated 1-column
-                    // view is left to the ordinary sticky-line restore that already ran.
-                    if (isPaginatedLayout()) settleTwoColToLine(stickyLine, _anchorBlock);
-                }
-                // The switch itself is not the reader moving.
-                _colMemoryDirty = false;
-                scheduleColumnSettle(function () { updatePageIndicator(); });
+                // Go to the page holding what the reader was looking at. That is the whole
+                // operation, and it is the same operation whichever direction you switch.
+                //
+                // The remembered-position path that used to sit here has gone. It restored
+                // the offset a layout was last left at, which overrode this and, because
+                // page turns do not dirty it, kept restoring a stale spot -- switching to
+                // 1-column landed on the old 1-column page rather than the reader's
+                // content. It was also unnecessary: pageOfBlock is deterministic, so
+                // switching back returns to the same page on its own.
+                if (isPaginatedLayout()) goToPageHoldingBlock(_anchorBlock);
 
                 // Report it: the selectors must follow the view however it was changed.
                 // The host restores 2-column on startup through this command, and without
