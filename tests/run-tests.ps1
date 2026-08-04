@@ -9,6 +9,14 @@ $ErrorActionPreference = "Continue"
 Set-Location $PSScriptRoot\..
 Write-Host "Running TypoZen self-tests..." -ForegroundColor Cyan
 
+# The jsdom suites boot from TypoZen_Template_Test.html. Regenerate it from the shipping
+# TypoZen_Template.html + css/typozen.css + js/typozen.js first, or they test a snapshot.
+& node ".\tests\build-test-template.mjs"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Could not regenerate TypoZen_Template_Test.html - aborting." -ForegroundColor Red
+    exit 1
+}
+
 $failedSuites = @()
 $errFile = [System.IO.Path]::GetTempFileName()
 

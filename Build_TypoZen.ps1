@@ -50,6 +50,14 @@ if (-not $nodeCmd) {
 else {
     # Gate on every suite, not just regression-selftest.mjs -- the others (undo,
     # backspace, multiselect, inline markdown, tabs) were never actually running.
+    # Keep the jsdom fixture equal to the shipping code before anything runs, otherwise
+    # the suites pin themselves to whatever TypoZen_Template_Test.html last contained.
+    & node (Join-Path $appDir "tests\build-test-template.mjs")
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] Could not regenerate TypoZen_Template_Test.html" -ForegroundColor Red
+        exit 1
+    }
+
     # *-browser.mjs are puppeteer suites: slow, and they assert against Phase 4 column
     # behaviour that is still in progress. Run them with .\tests\run-tests.ps1 after
     # setting RUN_BROWSER_E2E=1; they are not part of the build gate.

@@ -307,6 +307,23 @@ async function putSourceOnLine(t, w, md, line) {
     t.updateStatsNow();
 }
 
+/**
+ * Drive the editor to a specific mode with toggle_mode.
+ *
+ * toggle_mode is no longer a two-way Preview<->Source switch: since Reader landed it
+ * cycles wysiwyg -> reader -> source -> wysiwyg, so a single toggle out of Preview now
+ * stops in Reader. Asserting on mode after a fixed number of toggles is brittle -- and
+ * Phase 3A replaces this toggle with a [Source | Preview | Reader] segmented control
+ * anyway. Cycle until the requested mode is reached instead.
+ */
+async function toMode(t, target, sleepMs) {
+    for (let i = 0; i < 4 && t.state.mode !== target; i++) {
+        t.handleCommand('toggle_mode');
+        await sleep(sleepMs || 80);
+    }
+    return t.state.mode;
+}
+
 function simulateWpfFocusSteal(t, w) {
     // Host chrome button steals focus; many WebViews zero selectionStart
     w.document.activeElement = w.document.body;
@@ -360,8 +377,7 @@ async function main() {
     // Stay on preview, re-assert sticky, switch back
     t.setSticky(TARGET);
     simulateWpfFocusSteal(t, w); // steal from editor
-    t.handleCommand('toggle_mode');
-    await sleep(80);
+    await toMode(t, 'source');
 
     assert(t.state.mode === 'source', 'mode is source after toggle back');
     st = lastStatusCaret();
@@ -400,8 +416,7 @@ async function main() {
     assert(vis.ok, 'large VISIBLE preview L' + TARGET + ' (' + vis.reason + ')');
     // and back
     simulateWpfFocusSteal(t, w);
-    t.handleCommand('toggle_mode');
-    await sleep(100);
+    await toMode(t, 'source', 100);
     st = lastStatusCaret();
     assert(t.state.mode === 'source', 'large: back to source');
     assert(st && st.caret === TARGET, 'large STATUS source Ln ' + TARGET + ' (got ' + (st && st.caret) + ')');

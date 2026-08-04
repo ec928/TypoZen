@@ -1158,7 +1158,7 @@
                 state.focusMode = !!savedPrefs.focusMode;
                 if (editor) editor.classList.toggle('focus-mode', state.focusMode);
                 state.typewriterMode = !!savedPrefs.typewriterMode;
-                setMargin(savedPrefs.margin || 'regular');
+                setMargin(savedPrefs.margin || 'narrow');
 
                 if (savedPrefs.mode === 'source') {
                     const currentWysiwyg = getMarkdownContent();
@@ -7085,7 +7085,12 @@
                     let cells = rows[ri].querySelectorAll('th, td');
                     let row = [];
                     for (let ci = 0; ci < cells.length; ci++) {
-                        row.push(walkNode(cells[ci]).trim().replace(/\|/g, '\\|').replace(/\n/g, ' '));
+                        // Walk the cell's children, not the cell. walkNode() returns '' for
+                        // th/td (it defers to this function), so passing the cell itself made
+                        // every cell empty -- a table pasted from any source arrived as a
+                        // correctly shaped grid of blanks.
+                        let cellMd = Array.from(cells[ci].childNodes).map(walkNode).join('');
+                        row.push(cellMd.trim().replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' '));
                     }
                     matrix.push(row);
                 }

@@ -164,7 +164,12 @@
             width: 100%;
             box-sizing: border-box;
             margin: 0;
-            padding: 40px 64px 200px 64px; /* regular margins */
+            /* Narrow margins, and no top padding. This is the pre-JS default, so it must
+               match what getPageMarginPads() returns for 'narrow' -- otherwise the first
+               paint shows a 40px top gap and regular side margins that visibly snap on
+               once applyEditorChromeForMode() runs. Bottom keeps room to scroll past the
+               end of the document. */
+            padding: 0 16px 200px 16px;
             min-height: 100%;
             transition: padding 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }

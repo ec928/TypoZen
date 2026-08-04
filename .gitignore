@@ -11,3 +11,7 @@ typozen_load/
 
 # Runtime logs
 debug.log
+
+# Generated jsdom fixture -- rebuilt from TypoZen_Template.html + css + js by
+# tests/build-test-template.mjs on every test run and every build.
+TypoZen_Template_Test.html

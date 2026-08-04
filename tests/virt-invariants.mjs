@@ -93,10 +93,14 @@ return DocumentModel;
 
 let DocumentModel;
 try {
+    // shouldVirtualize() reads the `editor` global to bail out in 2-column layout.
+    // These methods run outside the app here, so the global has to be supplied or the
+    // bare reference throws ReferenceError rather than short-circuiting.
+    const editorStub = { classList: { contains: () => false } };
     DocumentModel = new Function(
-        'VIRT_MIN_CHARS', 'VIRT_MIN_BLOCKS',
+        'VIRT_MIN_CHARS', 'VIRT_MIN_BLOCKS', 'editor',
         modelSrc
-    )(VIRT_MIN_CHARS, VIRT_MIN_BLOCKS);
+    )(VIRT_MIN_CHARS, VIRT_MIN_BLOCKS, editorStub);
 } catch (e) {
     console.error('Failed to build DocumentModel from template:', e);
     process.exit(1);

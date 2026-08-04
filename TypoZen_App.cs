@@ -3246,7 +3246,7 @@ namespace TypoZen
             public bool RevealOnFocus;
             public bool FocusMode;
             public bool TypewriterMode;
-            public string Margin = "regular";
+            public string Margin = "narrow";
             public string LastFilePath = "";
             public string LastContent = ""; // always written empty
         }
@@ -3341,7 +3341,7 @@ namespace TypoZen
                 + "\"revealOnFocus\":" + (p.RevealOnFocus ? "true" : "false") + ","
                 + "\"focusMode\":" + (p.FocusMode ? "true" : "false") + ","
                 + "\"typewriterMode\":" + (p.TypewriterMode ? "true" : "false") + ","
-                + "\"margin\":\"" + JsonEscape(string.IsNullOrEmpty(p.Margin) ? "regular" : p.Margin) + "\","
+                + "\"margin\":\"" + JsonEscape(string.IsNullOrEmpty(p.Margin) ? "narrow" : p.Margin) + "\","
                 + "\"lastFilePath\":\"" + JsonEscape(p.LastFilePath ?? "") + "\","
                 + "\"lastContent\":\"\""
                 + "}";
