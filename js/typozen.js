@@ -1252,20 +1252,31 @@
          * is wrong AND unchanging, because the layout it was measured against has not
          * finished. That looked stable and stopped several pages short of the target.
          */
-        function settleTwoColToLine(line) {
+        function settleTwoColToLine(line, anchorBlockHint) {
+            // Resolve the anchor block up front. After the switch the sticky line is
+            // recomputed against a layout that is still moving, and it drifts badly --
+            // entering pagination from a scroll at line ~1945 ended up reporting 287.
+            const anchorBlock = (anchorBlockHint != null)
+                ? anchorBlockHint
+                : modelLocationFromDocumentLine(Math.max(1, line | 0)).blockIndex;
+
             scheduleColumnSettle(function () {
-                if (!editor || !editor.classList.contains('two-col-layout')) return;
-                const loc = modelLocationFromDocumentLine(Math.max(1, line | 0));
-                const el = elementForModelIndex(loc.blockIndex);
-                const pg = twoColPageOfElement(el);
-                if (pg === null) return;
-                const target = pg * twoColPageWidth();
-                if (Math.abs((editor.scrollLeft || 0) - target) > 2) {
-                    markProgrammaticScroll(400);
-                    editor.scrollLeft = target;
-                    window.showDebugTelemetry('settleTwoCol: corrected to page=' + pg);
+                if (!isPaginatedLayout()) return;
+                // Rebuild against the current geometry, then jump to the page that holds
+                // the anchor. Going through the map matters for more than picking the page:
+                // goto() always lands on a stored boundary, so it also re-snaps after
+                // anything that scrolled us off one. Restoring the caret focuses a block,
+                // and focusing an element inside a horizontally scrolled multi-column
+                // container makes the browser scroll it into view -- which left the view
+                // parked between two pages, showing half of each.
+                PageMap.invalidate();
+                if (!PageMap.ensure()) return;
+                const want = PageMap.pageOfBlock(anchorBlock);
+                if (want !== PageMap.current() || (editor.scrollLeft || 0) !== PageMap.pages[want].offset) {
+                    PageMap.goto(want);
+                    window.showDebugTelemetry('settle: page=' + want + ' for block ' + anchorBlock);
                 }
-                currentTwoColPage = pg;
+                updatePageIndicator();
             });
         }
 
@@ -2434,12 +2445,28 @@
                 return;
             }
             if (cmd.startsWith("set_page_advance:")) {
+                // Resolve the anchor before the layout changes under us.
+                let _pgAnchor = 0;
+                try {
+                    const _l = (typeof _stickyLineCache !== 'undefined' && _stickyLineCache) ? _stickyLineCache : 1;
+                    _pgAnchor = isPaginatedLayout()
+                        ? topLeftModelIndexTwoCol()
+                        : modelIndexAtViewportCenter();
+                    if (!(_pgAnchor >= 0)) _pgAnchor = modelLocationFromDocumentLine(_l).blockIndex;
+                } catch (e) { _pgAnchor = 0; }
+
                 state.pageAdvance = (cmd.substring(17) === '1');
                 // Pagination is a different layout, not just a different scroll gesture:
                 // put the document into (or out of) CSS multi-column to match.
                 syncPaginationClass();
                 applyEditorChromeForMode();
-                scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
+                if (state.pageAdvance) {
+                    // Land on the true page holding what the reader was looking at, aligned
+                    // to its real start -- not on a page synthesised from the scroll offset.
+                    settleTwoColToLine(1, _pgAnchor);
+                } else {
+                    scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
+                }
                 // Report it: the selectors must follow the view however it was changed,
                 // not only when the change came from a selector click.
                 postViewState(currentViewState());
@@ -2455,6 +2482,18 @@
                     stickyLine = modelBlockStartLine(idx);
                     window.showDebugTelemetry('set_column_mode: computed idx=' + idx + ' stickyLine=' + stickyLine);
                 }
+
+                // Resolve the anchor to a block while the OLD layout is still on screen and
+                // measurable. Recomputing it afterwards reads a layout mid-remount.
+                let _anchorBlock = 0;
+                try {
+                    _anchorBlock = isPaginatedLayout()
+                        ? topLeftModelIndexTwoCol()
+                        : modelLocationFromDocumentLine(Math.max(1, stickyLine | 0)).blockIndex;
+                    if (!(_anchorBlock >= 0)) {
+                        _anchorBlock = modelLocationFromDocumentLine(Math.max(1, stickyLine | 0)).blockIndex;
+                    }
+                } catch (e) { _anchorBlock = 0; }
 
                 // Remember where the layout being left was sitting, and decide whether the
                 // one being entered can simply be put back exactly as it was.
@@ -2508,7 +2547,7 @@
                     // Otherwise anchor to what the reader was looking at. Paginated layouts
                     // resolve this against the real column geometry; an unpaginated 1-column
                     // view is left to the ordinary sticky-line restore that already ran.
-                    if (isPaginatedLayout()) settleTwoColToLine(stickyLine);
+                    if (isPaginatedLayout()) settleTwoColToLine(stickyLine, _anchorBlock);
                 }
                 // The switch itself is not the reader moving.
                 _colMemoryDirty = false;

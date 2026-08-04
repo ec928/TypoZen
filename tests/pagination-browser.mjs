@@ -163,6 +163,55 @@ async function main() {
             'each 1-column page really renders its first block at the top (' + bounds.pages +
             ' pages in map' + (bounds.bad.length ? ', bad: ' + JSON.stringify(bounds.bad) : '') + ')');
 
+        console.log('\n=== switching layouts always lands ON a page ===');
+        {
+            // Both reported symptoms in one check. Restoring the caret focuses a block, and
+            // focusing inside a horizontally scrolled multi-column container makes the
+            // browser scroll it into view -- which parked the view between two pages,
+            // showing half of each. Every switch must finish on a stored boundary, and on
+            // the page that holds what the reader was looking at.
+            const snap = () => page.evaluate(() => {
+                PageMap.ensure();
+                const sl = Math.round(editor.scrollLeft || 0);
+                return {
+                    cols: getComputedStyle(document.getElementById('editor')).columnCount,
+                    scrollLeft: sl,
+                    onBoundary: PageMap.pages.some(p => Math.round(p.offset) === sl),
+                    page: PageMap.current(),
+                    pageStartBlock: PageMap.pages.length ? PageMap.pages[PageMap.current()].block : -1,
+                    topBlock: topLeftModelIndexTwoCol(),
+                    nextStart: (PageMap.current() + 1 < PageMap.pages.length)
+                        ? PageMap.pages[PageMap.current() + 1].block : Infinity
+                };
+            });
+
+            await page.evaluate(() => handleCommand('view_set:columns:2'));
+            await sleep(2500);
+            await page.evaluate(() => { PageMap.step(1); });
+            await sleep(300);
+            await page.evaluate(() => { PageMap.step(1); });
+            await sleep(600);
+            const two = await snap();
+            info('2-col page ' + two.page + ', top block ' + two.topBlock);
+            assert(two.onBoundary, '2-column sits exactly on a page boundary after turning pages');
+
+            await page.evaluate(() => handleCommand('view_set:columns:1'));
+            await sleep(3000);
+            const one = await snap();
+            info('1-col page ' + one.page + ', starts at block ' + one.pageStartBlock);
+            assert(one.cols === '1', 'switched to a single column');
+            assert(one.onBoundary,
+                'switching to 1-column lands exactly on a page boundary, not between two (scrollLeft ' +
+                one.scrollLeft + ')');
+            // The anchor must be ON the page shown -- at or after its first block, and
+            // before the next page begins. It need not be at the very top: pages start
+            // where the layout breaks, so arriving mid-page is correct.
+            assert(two.topBlock >= one.pageStartBlock && two.topBlock < one.nextStart,
+                'the page shown actually contains what was on screen before (block ' +
+                two.topBlock + ' within ' + one.pageStartBlock + '..' +
+                (one.nextStart === Infinity ? 'end' : one.nextStart) + ')');
+        }
+
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) {
             console.error('\nPAGINATION FAILED');
