@@ -2835,6 +2835,48 @@ if (_btnColumnToggle != null)
         /// pillbox, so the sidebar and the two layout toggles gave no indication of their
         /// own state -- inconsistent with the rest of the toolbar.
         /// </summary>
+        /// <summary>
+        /// Relative luminance, WCAG definition. Used to judge whether a selection fill is
+        /// actually distinguishable from the surface behind it.
+        /// </summary>
+        private static double RelativeLuminance(Color c)
+        {
+            Func<double, double> ch = v =>
+            {
+                v /= 255.0;
+                return v <= 0.03928 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+            };
+            return 0.2126 * ch(c.R) + 0.7152 * ch(c.G) + 0.0722 * ch(c.B);
+        }
+
+        /// <summary>
+        /// Alpha at which <paramref name="hi"/> over <paramref name="bg"/> becomes visible.
+        ///
+        /// Raises opacity until the blended fill reaches a modest contrast ratio against
+        /// the surface, then stops. Themes whose accent already contrasts keep a light
+        /// tint; ones like Kindle Oat and Night Reading, whose Hi sits almost on top of
+        /// their Bg in luminance, get enough opacity to be seen at all. Capped so a
+        /// selection stays a tint rather than becoming a solid slab.
+        /// </summary>
+        private static byte SelectionAlphaFor(Color hi, Color bg)
+        {
+            const double target = 1.25;
+            const byte min = 0x28, max = 0x70;
+            double bgL = RelativeLuminance(bg);
+            for (byte a = min; a < max; a += 2)
+            {
+                double f = a / 255.0;
+                var mixed = Color.FromRgb(
+                    (byte)Math.Round(f * hi.R + (1 - f) * bg.R),
+                    (byte)Math.Round(f * hi.G + (1 - f) * bg.G),
+                    (byte)Math.Round(f * hi.B + (1 - f) * bg.B));
+                double mL = RelativeLuminance(mixed);
+                double ratio = (Math.Max(mL, bgL) + 0.05) / (Math.Min(mL, bgL) + 0.05);
+                if (ratio >= target) return a;
+            }
+            return max;
+        }
+
         private void SetToolbarActive(Button b, bool active)
         {
             if (b == null) return;
@@ -4141,7 +4183,13 @@ if (_btnColumnToggle != null)
                 try
                 {
                     var c = (Color)ColorConverter.ConvertFromString(t.Hi);
-                    c.A = 0x28;
+                    var bgFor = (Color)ColorConverter.ConvertFromString(t.Bg);
+                    // Opacity chosen per theme rather than fixed. A flat 0x28 assumed every
+                    // theme's Hi contrasts with its Bg, which is not true: measured across
+                    // the set, the selected fill sat at a 1.076 contrast ratio on Night
+                    // Reading and 1.095 on Kindle Oat (1.0 being invisible), and even the
+                    // best theme only reached 1.576. Those selections could not be seen.
+                    c.A = SelectionAlphaFor(c, bgFor);
                     _modeSourceBg = new SolidColorBrush(c);
                     _modeSourceBg.Freeze();
                 }
