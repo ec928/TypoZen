@@ -408,116 +408,105 @@
 
         <Border x:Name="topToolbar" DockPanel.Dock="Top" BorderThickness="0,0,0,1" Padding="4,2,8,2">
             <Grid>
-               <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1*"/>
+                <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-<StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
-                    <Button x:Name="btnToggleSidebar" Style="{StaticResource GhostToolbarButton}"
-                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE8A0;" FontSize="14"
-                            MinWidth="32" Padding="6,2" Margin="0,0,4,0"
-                            ToolTip="Toggle File Tree &amp; Outline (Ctrl+\)"/>
-                    <Menu x:Name="topMenu" Background="Transparent" Padding="2,0" VerticalAlignment="Center">
-                        <MenuItem Header="_File">
-                            <MenuItem x:Name="mNew" Header="_New" InputGestureText="Ctrl+N"/>
-                            <MenuItem x:Name="mOpen" Header="_Open..." InputGestureText="Ctrl+O"/>
-                            <MenuItem x:Name="mRecentMenu" Header="Open _Recent">
-                                <MenuItem Header="(none)" IsEnabled="False"/>
-                            </MenuItem>
-                            <Separator/>
-                            <MenuItem x:Name="mSave" Header="_Save" InputGestureText="Ctrl+S"/>
-                            <MenuItem x:Name="mSaveAs" Header="Save _As..." InputGestureText="Ctrl+Shift+S"/>
-                            <Separator/>
-                            <MenuItem x:Name="mExportHtml" Header="Export as _HTML..."/>
-                            <MenuItem x:Name="mExportPdf" Header="_Print / Export PDF..." InputGestureText="Ctrl+P"/>
-                            <Separator/>
-                            <MenuItem Header="Pri_vacy">
-                                <MenuItem x:Name="mSessionRestoreContent" Header="Remember _unsaved documents between sessions" IsCheckable="True" IsChecked="False"/>
-                                <MenuItem x:Name="mRecentEnabled" Header="Keep _recent files list" IsCheckable="True" IsChecked="True"/>
-                                <Separator/>
-                                <MenuItem x:Name="mClearData" Header="_Clear Stored Data..."/>
-                            </MenuItem>
-                            <Separator/>
-                            <MenuItem x:Name="mExit" Header="E_xit" InputGestureText="Alt+F4"/>
+                <Menu x:Name="topMenu" Grid.Column="0" Background="Transparent" Padding="2,0" VerticalAlignment="Center">
+                    <MenuItem Header="_File">
+                        <MenuItem x:Name="mNew" Header="_New" InputGestureText="Ctrl+N"/>
+                        <MenuItem x:Name="mOpen" Header="_Open..." InputGestureText="Ctrl+O"/>
+                        <MenuItem x:Name="mRecentMenu" Header="Open _Recent">
+                            <MenuItem Header="(none)" IsEnabled="False"/>
                         </MenuItem>
-                        <MenuItem Header="_Edit">
-                            <MenuItem x:Name="mUndo" Header="_Undo" InputGestureText="Ctrl+Z"/>
-                            <MenuItem x:Name="mRedo" Header="_Redo" InputGestureText="Ctrl+Y"/>
+                        <Separator/>
+                        <MenuItem x:Name="mSave" Header="_Save" InputGestureText="Ctrl+S"/>
+                        <MenuItem x:Name="mSaveAs" Header="Save _As..." InputGestureText="Ctrl+Shift+S"/>
+                        <Separator/>
+                        <MenuItem x:Name="mExportHtml" Header="Export as _HTML..."/>
+                        <MenuItem x:Name="mExportPdf" Header="_Print / Export PDF..." InputGestureText="Ctrl+P"/>
+                        <Separator/>
+                        <MenuItem Header="Pri_vacy">
+                            <MenuItem x:Name="mSessionRestoreContent" Header="Remember _unsaved documents between sessions" IsCheckable="True" IsChecked="False"/>
+                            <MenuItem x:Name="mRecentEnabled" Header="Keep _recent files list" IsCheckable="True" IsChecked="True"/>
                             <Separator/>
-                            <MenuItem x:Name="mCut" Header="Cu_t" InputGestureText="Ctrl+X"/>
-                            <MenuItem x:Name="mCopy" Header="_Copy" InputGestureText="Ctrl+C"/>
-                            <MenuItem x:Name="mPaste" Header="_Paste" InputGestureText="Ctrl+V"/>
-                            <Separator/>
-                            <MenuItem x:Name="mFind" Header="_Find &amp; Replace..." InputGestureText="Ctrl+F"/>
-                            <Separator/>
-                            <MenuItem x:Name="mInsertLink" Header="Insert _Link" InputGestureText="Ctrl+K"/>
-                            <MenuItem x:Name="mInsertTable" Header="Insert _Table" InputGestureText="Ctrl+T"/>
-                            <MenuItem x:Name="mStrike" Header="Strike_through" InputGestureText="Ctrl+Shift+X"/>
+                            <MenuItem x:Name="mClearData" Header="_Clear Stored Data..."/>
                         </MenuItem>
-                        <MenuItem Header="_View">
-                            <MenuItem x:Name="mToggleSource" Header="Toggle _Source Mode" InputGestureText="Ctrl+/"/>
-                            <MenuItem x:Name="mToggleSidebar" Header="Toggle _Sidebar (Outline/Search)" InputGestureText="Ctrl+\"/>
-                            <MenuItem x:Name="mSearchSidebar" Header="Search Side_bar" InputGestureText="Alt+S"/>
-                            <Separator/>
-                            <MenuItem x:Name="mToggleReveal" Header="_Reveal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
-                            <MenuItem x:Name="mToggleFocus" Header="_Focus Mode" InputGestureText="F8" IsCheckable="True"/>
-                            <MenuItem x:Name="mToggleTypewriter" Header="_Typewriter Scrolling" InputGestureText="F9" IsCheckable="True"/>
-                            <Separator/>
-                            <MenuItem Header="_Editor Margins">
-                                <MenuItem x:Name="mMarginNarrow" Header="_Narrow Margins" IsCheckable="True"/>
-                                <MenuItem x:Name="mMarginRegular" Header="_Regular Margins" IsCheckable="True" IsChecked="True"/>
-                                <MenuItem x:Name="mMarginWide" Header="_Wide Margins" IsCheckable="True"/>
-                            </MenuItem>
-                            <Separator/>
-                            <!-- Hides command bar + tab chips while writing; slim caption (drag/─□×) stays. Pointer to top or Alt restores. -->
-                            <MenuItem x:Name="mChromeAutoHide" Header="_Auto-hide menu" IsCheckable="True"/>
-                            <MenuItem x:Name="mWordWrap" Header="_Word Wrap" IsCheckable="True" IsChecked="True"/>
-                            <MenuItem x:Name="mStatusBarToggle" Header="Status _Bar" IsCheckable="True" IsChecked="True"/>
-                            <Separator/>
-                            <MenuItem x:Name="mZoomIn" Header="Zoom _In" InputGestureText="Ctrl++"/>
-                            <MenuItem x:Name="mZoomOut" Header="Zoom _Out" InputGestureText="Ctrl+-"/>
-                            <MenuItem x:Name="mZoomReset" Header="_Reset Zoom" InputGestureText="Ctrl+0"/>
-                            <Separator/>
-                            <MenuItem x:Name="mFullscreen" Header="Toggle _Fullscreen" InputGestureText="F11"/>
+                        <Separator/>
+                        <MenuItem x:Name="mExit" Header="E_xit" InputGestureText="Alt+F4"/>
+                    </MenuItem>
+                    <MenuItem Header="_Edit">
+                        <MenuItem x:Name="mUndo" Header="_Undo" InputGestureText="Ctrl+Z"/>
+                        <MenuItem x:Name="mRedo" Header="_Redo" InputGestureText="Ctrl+Y"/>
+                        <Separator/>
+                        <MenuItem x:Name="mCut" Header="Cu_t" InputGestureText="Ctrl+X"/>
+                        <MenuItem x:Name="mCopy" Header="_Copy" InputGestureText="Ctrl+C"/>
+                        <MenuItem x:Name="mPaste" Header="_Paste" InputGestureText="Ctrl+V"/>
+                        <Separator/>
+                        <MenuItem x:Name="mFind" Header="_Find &amp; Replace..." InputGestureText="Ctrl+F"/>
+                        <Separator/>
+                        <MenuItem x:Name="mInsertLink" Header="Insert _Link" InputGestureText="Ctrl+K"/>
+                        <MenuItem x:Name="mInsertTable" Header="Insert _Table" InputGestureText="Ctrl+T"/>
+                        <MenuItem x:Name="mStrike" Header="Strike_through" InputGestureText="Ctrl+Shift+X"/>
+                    </MenuItem>
+                    <MenuItem Header="_View">
+                        <MenuItem x:Name="mToggleSource" Header="Toggle _Source Mode" InputGestureText="Ctrl+/"/>
+                        <MenuItem x:Name="mToggleSidebar" Header="Toggle _Sidebar (Outline/Search)" InputGestureText="Ctrl+\"/>
+                        <MenuItem x:Name="mSearchSidebar" Header="Search Side_bar" InputGestureText="Alt+S"/>
+                        <Separator/>
+                        <MenuItem x:Name="mToggleReveal" Header="_Reveal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
+                        <MenuItem x:Name="mToggleFocus" Header="_Focus Mode" InputGestureText="F8" IsCheckable="True"/>
+                        <MenuItem x:Name="mToggleTypewriter" Header="_Typewriter Scrolling" InputGestureText="F9" IsCheckable="True"/>
+                        <Separator/>
+                        <MenuItem Header="_Editor Margins">
+                            <MenuItem x:Name="mMarginNarrow" Header="_Narrow Margins" IsCheckable="True"/>
+                            <MenuItem x:Name="mMarginRegular" Header="_Regular Margins" IsCheckable="True" IsChecked="True"/>
+                            <MenuItem x:Name="mMarginWide" Header="_Wide Margins" IsCheckable="True"/>
                         </MenuItem>
-                        <MenuItem x:Name="mThemesMenu" Header="_Themes">
-                            <!-- Dynamically populated from Themes JSON -->
-                        </MenuItem>
-                        <MenuItem Header="_Help">
-                            <MenuItem x:Name="mHelpSyntax" Header="Markdown _Syntax Guide" InputGestureText="F1"/>
-                            <Separator/>
-                            <MenuItem x:Name="mAbout" Header="_About TypoZen"/>
-                        </MenuItem>
-                    </Menu>
-                </StackPanel>
+                        <Separator/>
+                        <!-- Hides command bar + tab chips while writing; slim caption (drag/─□×) stays. Pointer to top or Alt restores. -->
+                        <MenuItem x:Name="mChromeAutoHide" Header="_Auto-hide menu" IsCheckable="True"/>
+                        <MenuItem x:Name="mWordWrap" Header="_Word Wrap" IsCheckable="True" IsChecked="True"/>
+                        <MenuItem x:Name="mStatusBarToggle" Header="Status _Bar" IsCheckable="True" IsChecked="True"/>
+                        <Separator/>
+                        <MenuItem x:Name="mZoomIn" Header="Zoom _In" InputGestureText="Ctrl++"/>
+                        <MenuItem x:Name="mZoomOut" Header="Zoom _Out" InputGestureText="Ctrl+-"/>
+                        <MenuItem x:Name="mZoomReset" Header="_Reset Zoom" InputGestureText="Ctrl+0"/>
+                        <Separator/>
+                        <MenuItem x:Name="mFullscreen" Header="Toggle _Fullscreen" InputGestureText="F11"/>
+                    </MenuItem>
+                    <MenuItem x:Name="mThemesMenu" Header="_Themes">
+                        <!-- Dynamically populated from Themes JSON -->
+                    </MenuItem>
+                    <MenuItem Header="_Help">
+                        <MenuItem x:Name="mHelpSyntax" Header="Markdown _Syntax Guide" InputGestureText="F1"/>
+                        <Separator/>
+                        <MenuItem x:Name="mAbout" Header="_About TypoZen"/>
+                    </MenuItem>
+                </Menu>
 
                 <!-- Format tools: even MinHeight 28 hit targets; REVERT pack tags above. -->
-               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                     <!-- Inline -->
-                    <Button x:Name="btnBold" Style="{StaticResource GhostToolbarButton}" Content="&#xE8DD;" 
-                            FontFamily="Segoe MDL2 Assets" FontSize="14"
+                    <Button x:Name="btnBold" Style="{StaticResource GhostToolbarButton}" Content="B" FontWeight="Bold" FontFamily="Segoe UI"
                             Margin="0,0,2,0" ToolTip="Bold (Ctrl+B)"/>
-                    <Button x:Name="btnItalic" Style="{StaticResource GhostToolbarButton}" Content="&#xE8DB;" 
-                            FontFamily="Segoe MDL2 Assets" FontSize="14"
+                    <Button x:Name="btnItalic" Style="{StaticResource GhostToolbarButton}" Content="I" FontStyle="Italic" FontFamily="Segoe UI"
                             Margin="0,0,2,0" ToolTip="Italic (Ctrl+I)"/>
-                    <Button x:Name="btnStrike" Style="{StaticResource GhostToolbarButton}" Content="&#xEDE0;" 
-                            FontFamily="Segoe MDL2 Assets" FontSize="14"
-                            Margin="0,0,2,0" ToolTip="Strikethrough (Ctrl+Shift+X)"/>
+                    <Button x:Name="btnStrike" Style="{StaticResource GhostToolbarButton}" Margin="0,0,2,0" ToolTip="Strikethrough (Ctrl+Shift+X)">
+                        <TextBlock Text="S" FontFamily="Segoe UI" FontSize="13" FontWeight="SemiBold" TextDecorations="Strikethrough"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                    </Button>
                     <Button x:Name="btnCode" Style="{StaticResource GhostToolbarButton}" Content="&lt;/&gt;"
                             FontFamily="Consolas, Cascadia Mono, Segoe UI" FontSize="12"
                             MinWidth="32" Margin="0,0,12,0" ToolTip="Inline Code"/>
 
                     <!-- Block — same hit box + accent hover as B/I -->
                     <Menu x:Name="headingMenu" Background="Transparent" Padding="0" Margin="0,0,2,0" VerticalAlignment="Center">
-                        <MenuItem x:Name="miHeadings" Style="{StaticResource ToolbarMenuItem}" ToolTip="Headings (H1-H6)">
-                            <MenuItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="H" FontFamily="Segoe UI" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
-                                    <TextBlock Text=" &#x25BE;" FontFamily="Segoe UI" FontSize="10" VerticalAlignment="Center" Opacity="0.7"/>
-                                </StackPanel>
-                            </MenuItem.Header>
+                        <MenuItem x:Name="miHeadings" Style="{StaticResource ToolbarMenuItem}"
+                                  Header="H  &#x25BE;" FontFamily="Segoe UI" FontWeight="SemiBold" ToolTip="Headings (H1-H6)">
                             <MenuItem x:Name="btnH1" Header="Heading _1"/>
                             <MenuItem x:Name="btnH2" Header="Heading _2"/>
                             <MenuItem x:Name="btnH3" Header="Heading _3"/>
@@ -575,7 +564,11 @@
                     </Menu>
                 </StackPanel>
 
-                   <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="btnToggleSidebar" Style="{StaticResource GhostToolbarButton}"
+                            FontFamily="Segoe MDL2 Assets" Content="&#xE8A0;" FontSize="14"
+                            MinWidth="32" Padding="6,2" Margin="0,0,6,0"
+                            ToolTip="Toggle File Tree &amp; Outline (Ctrl+\)"/>
                     <!-- Phase 3A: three segmented controls, Mode then Column then Scroll.
                          Each group is a bordered strip of SegmentButtons; C# paints the
                          selected segment and drops the whole group's opacity when the
@@ -583,11 +576,11 @@
                     <Border x:Name="grpMode" Style="{StaticResource SegmentGroup}" Margin="0,0,8,0"
                             ToolTip="Editing mode — Source, Preview or Reader">
                         <StackPanel Orientation="Horizontal">
-                            <Button x:Name="btnModeSource"  Style="{StaticResource SegmentButton}" Content="&#xE943;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Source"/>
+                            <Button x:Name="btnModeSource"  Style="{StaticResource SegmentButton}" Content="Source"/>
                             <Border   Style="{StaticResource SegmentDivider}"/>
-                            <Button x:Name="btnModePreview" Style="{StaticResource SegmentButton}" Content="&#xE890;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Preview"/>
+                            <Button x:Name="btnModePreview" Style="{StaticResource SegmentButton}" Content="Preview"/>
                             <Border   Style="{StaticResource SegmentDivider}"/>
-                            <Button x:Name="btnModeReader"  Style="{StaticResource SegmentButton}" Content="&#xE736;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Reader"/>
+                            <Button x:Name="btnModeReader"  Style="{StaticResource SegmentButton}" Content="Reader"/>
                         </StackPanel>
                     </Border>
 
@@ -596,11 +589,11 @@
                          than a segmented pair. Mode stays segmented: it has three states,
                          and cycling through them by clicking would be worse. -->
                     <Button x:Name="btnColumnToggle" Style="{StaticResource ToolbarStateButton}"
-                            Content="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="14" MinWidth="42" Margin="0,0,8,0"
+                            Content="1-Col" MinWidth="58" Margin="0,0,8,0"
                             ToolTip="Column layout — click to switch. 2 columns require Pagination"/>
 
                     <Button x:Name="btnScrollToggle" Style="{StaticResource ToolbarStateButton}"
-                            Content="&#xE8A4;" FontFamily="Segoe MDL2 Assets" FontSize="14" MinWidth="42"
+                            Content="Scroll" MinWidth="76"
                             ToolTip="Continuous scrolling or discrete pages — click to switch"/>
                 </StackPanel>
             </Grid>

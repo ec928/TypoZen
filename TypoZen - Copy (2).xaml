@@ -408,10 +408,11 @@
 
         <Border x:Name="topToolbar" DockPanel.Dock="Top" BorderThickness="0,0,0,1" Padding="4,2,8,2">
             <Grid>
-               <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1*"/>
+                <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
@@ -494,7 +495,7 @@
                 </StackPanel>
 
                 <!-- Format tools: even MinHeight 28 hit targets; REVERT pack tags above. -->
-               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                     <!-- Inline -->
                     <Button x:Name="btnBold" Style="{StaticResource GhostToolbarButton}" Content="&#xE8DD;" 
                             FontFamily="Segoe MDL2 Assets" FontSize="14"
@@ -575,7 +576,7 @@
                     </Menu>
                 </StackPanel>
 
-                   <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                     <!-- Phase 3A: three segmented controls, Mode then Column then Scroll.
                          Each group is a bordered strip of SegmentButtons; C# paints the
                          selected segment and drops the whole group's opacity when the
@@ -583,11 +584,11 @@
                     <Border x:Name="grpMode" Style="{StaticResource SegmentGroup}" Margin="0,0,8,0"
                             ToolTip="Editing mode — Source, Preview or Reader">
                         <StackPanel Orientation="Horizontal">
-                            <Button x:Name="btnModeSource"  Style="{StaticResource SegmentButton}" Content="&#xE943;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Source"/>
+                            <Button x:Name="btnModeSource"  Style="{StaticResource SegmentButton}" Content="Source"/>
                             <Border   Style="{StaticResource SegmentDivider}"/>
-                            <Button x:Name="btnModePreview" Style="{StaticResource SegmentButton}" Content="&#xE890;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Preview"/>
+                            <Button x:Name="btnModePreview" Style="{StaticResource SegmentButton}" Content="Preview"/>
                             <Border   Style="{StaticResource SegmentDivider}"/>
-                            <Button x:Name="btnModeReader"  Style="{StaticResource SegmentButton}" Content="&#xE736;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Reader"/>
+                            <Button x:Name="btnModeReader"  Style="{StaticResource SegmentButton}" Content="Reader"/>
                         </StackPanel>
                     </Border>
 
@@ -596,11 +597,11 @@
                          than a segmented pair. Mode stays segmented: it has three states,
                          and cycling through them by clicking would be worse. -->
                     <Button x:Name="btnColumnToggle" Style="{StaticResource ToolbarStateButton}"
-                            Content="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="14" MinWidth="42" Margin="0,0,8,0"
+                            Content="1-Col" MinWidth="58" Margin="0,0,8,0"
                             ToolTip="Column layout — click to switch. 2 columns require Pagination"/>
 
                     <Button x:Name="btnScrollToggle" Style="{StaticResource ToolbarStateButton}"
-                            Content="&#xE8A4;" FontFamily="Segoe MDL2 Assets" FontSize="14" MinWidth="42"
+                            Content="Scroll" MinWidth="76"
                             ToolTip="Continuous scrolling or discrete pages — click to switch"/>
                 </StackPanel>
             </Grid>

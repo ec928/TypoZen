@@ -131,9 +131,21 @@ console.log('\n--- focus handoff is wired in the page script ---');
 
 console.log('\n--- switchTab targets by data-tab ---');
 {
-    // switchTab is a window.* assignment, so evaluate it against a real document
+// switchTab is a window.* assignment, so evaluate it against a real document
     // rather than extracting it as a named function.
     const dom = new JSDOM(templateHtml, { runScripts: 'outside-only' });
+    
+    // switchTab attaches the Search pane's listeners when that tab is shown, so that
+    // reaching Search with the mouse wires it up and not only Alt+S. Those helpers live
+    // in the page script and do not exist when switchTab is evaluated on its own, so
+    // stub them. This test only asserts which pane and tab switchTab activates; the
+    // listeners themselves are covered by the browser suites.
+    //
+    // If switchTab gains another dependency, it needs a stub here too. That is what broke
+    // this suite last time: the call was added and this file was not re-run.
+    dom.window.wireSidebarSearch = function () {};
+    dom.window.wireSearchResultKeys = function () {};
+
     const src = mainScript.slice(mainScript.indexOf('window.switchTab = function(tab)'));
     const end = src.indexOf('\n        };');
     dom.window.eval(src.slice(0, end + '\n        };'.length));

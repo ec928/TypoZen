@@ -2771,14 +2771,14 @@ namespace TypoZen
             _viewColumnsLocked = columnsLocked;
             _viewScrollLocked = scrollLocked;
 
-            if (_btnColumnToggle != null)
+if (_btnColumnToggle != null)
             {
-                _btnColumnToggle.Content = columns == 2 ? "2-Col" : "1-Col";
+                _btnColumnToggle.Content = columns == 2 ? "\uE89F" : "\uE8A5";
                 SetControlLocked(_btnColumnToggle, columnsLocked);
             }
             if (_btnScrollToggle != null)
             {
-                _btnScrollToggle.Content = scroll == "pagination" ? "Pagination" : "Scroll";
+                _btnScrollToggle.Content = scroll == "pagination" ? "\uE7C3" : "\uE8A4";
                 SetControlLocked(_btnScrollToggle, scrollLocked);
             }
             if (_grpMode != null) { _grpMode.IsEnabled = true; _grpMode.Opacity = 1.0; }

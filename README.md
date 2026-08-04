@@ -229,25 +229,71 @@ From the project folder:
 **Runtime assets** (edit without recompiling C#):
 
 - `TypoZen.xaml` — shell and menus
-- `TypoZen_Template.html` — editor engine
+- `TypoZen_Template.html` — page shell; loads the two below by reference
+- `js/typozen.js` — editor engine
+- `css/typozen.css` — editor styling
 - `TypoZen_Themes.json` — themes
 
-Rebuild after changing `TypoZen_App.cs`.
+Rebuild after changing `TypoZen_App.cs`. The build also parses `TypoZen.xaml` before compiling: it is loaded at runtime by `XamlReader`, so markup errors are invisible to the compiler and would otherwise surface as a crash on launch.
 
 Also: `.\Create_Shortcut.ps1` · `.\Generate_Icon.ps1`
 
 ### Tests
 
 ```powershell
-# Full self-test suite (Node; no GUI required)
-.\tests\run-tests.ps1
+.\tests\run-tests.ps1                          # default gate (~35 suites)
+$env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + drives the real TypoZen.exe
 ```
 
-**27 suites** covering the document model and dual-source invariants, virtualization thresholds and format indices, scroll stability, find under virtualization, sticky mode-switch, lists, undo, tabs and tables — plus a whole-file parse check, since the other suites extract individual functions and would not catch a syntax error elsewhere.
+There are **four tiers**, and which tier a thing belongs in is decided by what it needs to observe, not by preference. Getting this wrong is how TypoZen shipped visibly broken behaviour behind a green suite for a fortnight.
 
-Fixtures include a uniform 4,000-line document and a mixed-height one (images, long code fences, tables, headings, wrapping paragraphs) — the second exists because uniform rows cannot exercise the height mapping that virtualized scrolling depends on.
+| Tier | Naming | Runs by default | Sees |
+|---|---|---|---|
+| jsdom | `*-selftest.mjs`, `*-e2e.mjs` | yes | model, string and DOM-structure logic |
+| browser | `*-browser.mjs` | yes | real layout, via headless Chrome |
+| application | `*-app.mjs` | `RUN_APP_E2E=1` | the shipped `.exe` — WPF shell, real window |
+| pending | `*-pending.mjs` | `RUN_PENDING_E2E=1` | behaviour not built yet |
 
-An optional GUI smoke test (`RUN_TAB_E2E=1`, pywinauto) drives the real window through the WPF shell. It cannot see inside WebView2, so it verifies launch, tabs and window chrome only.
+**jsdom** is fast and covers the document model, dual-source invariants, virtualization thresholds and format indices, scroll stability, find under virtualization, sticky mode-switch, lists, undo, tabs, tables and clipboard conversion — plus a whole-file parse check, since the other suites extract individual functions and would not catch a syntax error elsewhere.
+
+**jsdom has no layout engine.** `column-count` never applies, `scrollLeft` is inert and every `getBoundingClientRect()` returns zeros. It cannot distinguish "two columns" from "no columns". Any assertion about what is on screen must be a browser or application suite — writing it in jsdom produces a test that passes forever and proves nothing.
+
+**Browser** suites (`smoke-browser`, `pagination-browser`, `twocol-anchoring-browser`) load `TypoZen_Template.html` in headless Chrome. `smoke-browser` is deliberately shallow — "does each feature visibly do anything" — because that is the class of check that was missing when 2-column mode shipped applying its CSS class while `column-count` stayed `auto`.
+
+**Application** suites are the only ones that see what users see. `tests/app-harness.mjs` launches `TypoZen.exe --debug`, which opens the DevTools protocol on port 9333, and attaches with `puppeteer-core`:
+
+```js
+import { launchApp, sleep } from './app-harness.mjs';
+const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
+await app.eval(() => handleCommand('view_set:columns:2'));
+await app.close();
+```
+
+This exists because column switching was "fixed" six times against headless Chrome, where the fault cannot occur. The differences that mattered were all outside the page: the WPF shell owns the window, per-layout window geometry resizes it on a column switch (1-column runs ~803px wide, not 1603), page width follows from that, and focus moves between WPF chrome and the WebView. The bug was ultimately a **2px** measurement slop that only produced a wrong answer at the real window size.
+
+> **Run `RUN_APP_E2E=1` before claiming any column or pagination behaviour is fixed.** The runner prints this next to the skipped suites.
+
+**Fixtures.** `tests/large-scroll-4000.md` is uniform; `tests/large-scroll-mixed.md` has images, long code fences, tables, headings and wrapping paragraphs. The second exists because uniform rows cannot exercise the height mapping that virtualized scrolling depends on.
+
+`TypoZen_Template_Test.html` is **generated**, not edited. `tests/build-test-template.mjs` inlines the shipping `js/typozen.js` and `css/typozen.css` into the page shell, and both runners regenerate it first. It is gitignored. Before this existed the jsdom suites had silently pinned themselves to an Aug-1 snapshot missing `htmlToMarkdown`, `walkTable` and `set_column_mode` entirely — 27 suites reporting green against code that no longer shipped.
+
+A GUI smoke test (`RUN_TAB_E2E=1`, pywinauto) drives the window through the WPF shell. It cannot see inside WebView2, so it verifies launch, tabs and window chrome only.
+
+### Debugging
+
+A normal run writes no log and opens no port.
+
+```powershell
+.\TypoZen_Debug.bat "tests\large-scroll-mixed.md"
+```
+
+`--debug` (or `TYPOZEN_DEBUG`) turns on the page's telemetry channel, appends it to `debug.log` beside the executable, and opens the DevTools port the application harness attaches to. The batch file clears the previous log first. Useful lines:
+
+- `goToPage: block N is on page P of C` — which page a column switch chose, and why
+- `settleTwoCol: corrected to page=N` — a post-layout correction fired
+- `PageMap: built <layout> with N pages`
+
+The page keeps a capped in-memory telemetry ring regardless, which the harnesses read; only the host round trip and console output are gated.
 
 ### Startup profiling
 
@@ -288,10 +334,33 @@ Together: a cold open went from ~8.9 s to ~1.0 s.
 
 ### Working on TypoZen
 
-- Tests assert **production logic** extracted from or hooked into `TypoZen_Template.html`. Don't reimplement an editor helper inside a test when the real function can be extracted — a test that passes against its own copy of the logic proves nothing.
+**Testing**
+
+- Tests assert **production logic** extracted from or hooked into the shipping files. Don't reimplement an editor helper inside a test when the real function can be extracted — a test that passes against its own copy proves nothing.
+- **Pick the tier by what must be observed.** Layout, scroll position, page boundaries and caret behaviour need a browser or application suite. Putting them in jsdom yields a permanently green test of nothing.
+- **Prove a new test can fail.** Reintroduce the bug and watch it go red. Several checks here looked like coverage and were tautologies — one compared page offsets against the same estimates the offsets were derived from, so it could only ever agree with itself.
+- **A test that cannot pass yet is `*-pending.mjs`, not a commented-out assertion.** An earlier suite detected a real failure, commented out its own `process.exit(1)`, and printed `PASSED`; every build afterwards reported success and failure in the same run.
+- If `switchTab` or another function evaluated in isolation gains a dependency, stub it in the suite that evaluates it — and re-run that suite. This has broken twice.
+
+**Anchoring**
+
+Use the anchor that already exists rather than deriving a new one:
+
+- an edit → the **caret** (undo restores the caret of the state being undone, i.e. the edit site, not the restored state's own caret)
+- a page turn → the **reading position**, carried across a column switch rather than re-measured, because a switch lands you at a page *start* and re-measuring decays one page per switch
+- a mode switch in a scrolling view → caret if visible, else the top-left line
+
+**Pagination**
+
+- Pagination is a real layout, not a scroll gesture: `.page-mode` puts the document into CSS multi-column and a page turn is a horizontal scroll. Don't reintroduce "scroll by ~90% of the viewport".
+- Pagination and virtualization are mutually exclusive — the browser can only break content it has laid out — so entering page mode remounts the document. That cost is deliberate.
+- Page geometry is uniform: page N is at `N × pageWidth`. Prefer arithmetic to a cached map.
+
+**General**
+
 - Prefer one concern per change: small diffs, easy to revert.
-- Add a test when logic is pure or can be exercised in jsdom. Where neither is possible — anything depending on real layout, scrolling or caret position — say so plainly rather than implying coverage that doesn't exist.
 - Don't re-couple progressive paint to a character threshold, and don't lower the virtualization floor without a product decision.
+- Where something genuinely isn't covered, say so plainly rather than implying coverage that doesn't exist.
 
 This README is the single source of truth for how TypoZen works. Completed design records are kept under `docs/archive/` for history; they are **not** maintained, and where they disagree with this file, this file wins.
 

@@ -10492,6 +10492,14 @@
          */
         window.switchTab = function(tab) {
             if (tab !== 'outline' && tab !== 'search') tab = 'outline';
+            // Reaching Search with the mouse must wire it up too. This used to happen only
+            // from the Alt+S handler and from updateSearchSidebar, so clicking the tab gave
+            // a query box with no listeners on it: typing did nothing, Enter did nothing,
+            // and the pane sat on "No results..." while looking perfectly focused.
+            if (tab === 'search') {
+                wireSidebarSearch();
+                wireSearchResultKeys();
+            }
             document.querySelectorAll('.sidebar-tab').forEach(t => {
                 t.classList.toggle('active', t.getAttribute('data-tab') === tab);
             });
