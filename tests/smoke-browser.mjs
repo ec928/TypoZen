@@ -1,0 +1,186 @@
+/**
+ * Basic smoke tests: does each feature visibly DO anything?
+ *
+ * Everything here is deliberately shallow. No edge cases, no anchoring maths, no state
+ * machine enumeration -- just "the user pressed the thing, did the thing happen". The
+ * kind of check that is embarrassing to need and worse to be missing.
+ *
+ * It exists because 2-column mode shipped broken while the suite was green. The resolver
+ * tests proved the *logic* was right (2 columns implies pagination, locks derive
+ * correctly, no dead ends) and the class really was applied -- but css/typozen.css gated
+ * the column rule on .reader-mode, so in Preview the computed column-count stayed 'auto'
+ * and the page looked identical. Every jsdom test in the suite would have passed that
+ * bug forever: jsdom has no layout engine, so it cannot tell "2 columns" from "no
+ * columns". Only a real browser can, which is why this runs in Chrome.
+ *
+ * One browser launch, all checks against one page, so it stays a few seconds rather than
+ * a few seconds per case.
+ *
+ *   node tests/smoke-browser.mjs
+ */
+import path from 'path';
+import { fileURLToPath } from 'url';
+import puppeteer from 'puppeteer';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const appDir = path.join(__dirname, '..');
+
+let passed = 0;
+let failed = 0;
+function assert(cond, msg) {
+    if (cond) { passed++; console.log('  OK   ' + msg); }
+    else { failed++; console.error('  FAIL ' + msg); }
+}
+function eq(got, want, msg) {
+    if (got === want) { passed++; console.log('  OK   ' + msg); }
+    else {
+        failed++;
+        console.error('  FAIL ' + msg);
+        console.error('        want: ' + JSON.stringify(want));
+        console.error('        got : ' + JSON.stringify(got));
+    }
+}
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+function buildDoc(n) {
+    let md = '';
+    for (let i = 1; i <= n; i++) md += 'line ' + i + ' of the document, with enough words on it to wrap\n\n';
+    return md;
+}
+
+/** Everything the smoke checks need to look at, in one round trip. */
+function probe() {
+    const ed = document.getElementById('editor');
+    const cs = getComputedStyle(ed);
+    return {
+        classes: ed.className,
+        columnCount: cs.columnCount,
+        mode: state.mode,
+        pageAdvance: !!state.pageAdvance,
+        blocks: ed.querySelectorAll('.block').length,
+        editorShown: getComputedStyle(ed).display !== 'none',
+        sourceShown: getComputedStyle(document.getElementById('source-editor')).display !== 'none',
+        scrollWidth: ed.scrollWidth,
+        clientWidth: ed.clientWidth
+    };
+}
+
+async function main() {
+    const browser = await puppeteer.launch({ headless: 'new' });
+    try {
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1400, height: 800 });
+        page.on('pageerror', e => { failed++; console.error('  FAIL page threw: ' + e.message); });
+
+        const url = 'file:///' + path.join(appDir, 'TypoZen_Template.html').replace(/\\/g, '/');
+        await page.goto(url, { waitUntil: 'load' });
+        await page.waitForFunction(
+            () => typeof handleCommand === 'function' && typeof loadMarkdownContent === 'function',
+            { timeout: 15000 });
+
+        console.log('--- it boots and renders ---');
+        await page.evaluate((md) => loadMarkdownContent(md), buildDoc(200));
+        await sleep(500);
+        let s = await page.evaluate(probe);
+        assert(s.blocks > 0, 'document renders blocks (' + s.blocks + ')');
+        assert(s.editorShown, 'the editor is visible');
+
+        console.log('\n--- 2-column actually produces two columns ---');
+        await page.evaluate(() => handleCommand('view_set:columns:2'));
+        await sleep(500);
+        s = await page.evaluate(probe);
+        assert(/two-col-layout/.test(s.classes), '2-Column applies the class');
+        // The check that matters. The class alone proved nothing: this was 'auto' for the
+        // entire time 2-column mode was shipped broken.
+        eq(s.columnCount, '2', '2-Column computes column-count 2 in Preview');
+        assert(s.scrollWidth > s.clientWidth,
+            'columns overflow sideways, so there is a second column to page to (' +
+            s.scrollWidth + ' > ' + s.clientWidth + ')');
+        assert(s.pageAdvance, '2-Column also turns Pagination on');
+
+        console.log('\n--- 1-column undoes it ---');
+        await page.evaluate(() => handleCommand('view_set:columns:1'));
+        await sleep(400);
+        s = await page.evaluate(probe);
+        assert(!/two-col-layout/.test(s.classes), '1-Column drops the class');
+        assert(s.columnCount === 'auto' || s.columnCount === '1', '1-Column computes a single column');
+
+        console.log('\n--- Reader mode ---');
+        await page.evaluate(() => handleCommand('view_set:mode:reader'));
+        await sleep(500);
+        s = await page.evaluate(probe);
+        eq(s.mode, 'reader', 'Reader mode engages');
+        assert(/reader-mode/.test(s.classes), 'Reader applies the reader-mode class');
+        assert(s.pageAdvance, 'Reader forces Pagination');
+
+        console.log('\n--- 2-column works in Reader too ---');
+        await page.evaluate(() => handleCommand('view_set:columns:2'));
+        await sleep(500);
+        s = await page.evaluate(probe);
+        eq(s.columnCount, '2', 'Reader + 2-Column computes column-count 2');
+
+        console.log('\n--- Source mode ---');
+        await page.evaluate(() => handleCommand('view_set:mode:source'));
+        await sleep(500);
+        s = await page.evaluate(probe);
+        eq(s.mode, 'source', 'Source mode engages');
+        assert(s.sourceShown, 'the raw textarea is visible in Source');
+        assert(!/two-col-layout/.test(s.classes), 'Source drops back to one column');
+        assert(!s.pageAdvance, 'Source drops back to scrolling');
+
+        console.log('\n--- back to Preview ---');
+        await page.evaluate(() => handleCommand('view_set:mode:preview'));
+        await sleep(500);
+        s = await page.evaluate(probe);
+        eq(s.mode, 'wysiwyg', 'Preview mode engages');
+        assert(s.editorShown && !s.sourceShown, 'the editor is showing and the textarea is not');
+        assert(s.blocks > 0, 'the document is still rendered after the mode round trip');
+
+        console.log('\n--- search finds and reports matches ---');
+        await page.evaluate(() => handleCommand('toggle_search_sidebar'));
+        await sleep(300);
+        await page.evaluate(() => {
+            const i = document.getElementById('sidebarSearchInput');
+            i.value = 'line 7';
+            runFind('line 7', false, { navigate: false });
+            updateSidebarSearchCount();
+        });
+        await sleep(500);
+        const search = await page.evaluate(() => ({
+            matches: findState.matches.length,
+            rows: document.querySelectorAll('#search-results-list .search-item').length,
+            firstLine: (document.querySelector('#search-results-list .search-line') || {}).textContent,
+            firstText: (document.querySelector('#search-results-list .search-text') || {}).textContent,
+            counter: (document.getElementById('sidebarSearchCount') || {}).textContent,
+            sidebarOpen: !document.getElementById('sidebar').classList.contains('collapsed')
+        }));
+        assert(search.sidebarOpen, 'Alt+S opens the sidebar');
+        assert(search.matches > 0, 'search finds matches (' + search.matches + ')');
+        assert(search.rows > 0, 'matches are rendered as rows (' + search.rows + ')');
+        assert(/^\d+$/.test(String(search.firstLine || '')),
+            'a row shows a line number (got ' + JSON.stringify(search.firstLine) + ')');
+        assert(/line 7/.test(String(search.firstText || '')),
+            'a row shows the matching text (got ' + JSON.stringify(search.firstText) + ')');
+        assert(/^\d+\/\d+$/.test(String(search.counter || '')),
+            'the counter reads n/total (got ' + JSON.stringify(search.counter) + ')');
+
+        console.log('\n--- pasted HTML converts ---');
+        const md = await page.evaluate(() => htmlToMarkdown(
+            '<h2>Title</h2><table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>'));
+        assert(/## Title/.test(md), 'a pasted heading converts');
+        assert(/\| A \| B \|/.test(md), 'a pasted table keeps its header cells');
+        assert(/\| 1 \| 2 \|/.test(md), 'a pasted table keeps its body cells');
+
+        console.log('\npassed=' + passed + ' failed=' + failed);
+        if (failed) {
+            console.error('\nSMOKE FAILED');
+            process.exitCode = 1;
+            return;
+        }
+        console.log('\nSMOKE PASSED');
+    } finally {
+        await browser.close();
+    }
+}
+
+main().catch(err => { console.error(err); process.exit(1); });

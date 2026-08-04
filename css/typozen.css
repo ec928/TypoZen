@@ -272,7 +272,12 @@
             cursor: default;
         }
         
-        #editor.reader-mode.two-col-layout {
+        /* Two columns are valid in Preview as well as Reader, so this must not require
+           .reader-mode. It used to, which meant selecting 2-Column in Preview applied the
+           class and changed nothing on screen: column-count stayed 'auto'.
+           The mode/column/scroll resolver is what decides when 2 columns are legal (and it
+           guarantees 2 columns implies Pagination); the CSS just renders what it decided. */
+        #editor.two-col-layout {
             column-count: 2;
             column-gap: 60px;
             overflow-y: hidden;

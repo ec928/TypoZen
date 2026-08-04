@@ -13,7 +13,7 @@
  * js/typozen.js load natively and columns really lay out. Assertions here are about
  * measured geometry, not model bookkeeping.
  *
- *   node tests/twocol-anchoring-browser.mjs
+ *   node tests/twocol-anchoring-pending.mjs
  */
 import fs from 'fs';
 import path from 'path';

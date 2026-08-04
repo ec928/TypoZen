@@ -20,13 +20,15 @@ if ($LASTEXITCODE -ne 0) {
 $failedSuites = @()
 $errFile = [System.IO.Path]::GetTempFileName()
 
-# *-browser.mjs drive headless Chrome via puppeteer. They are slow and they assert
-# against Phase 4 column behaviour that is still being built, so they are opt-in rather
-# than part of the default gate. They are announced below, never silently skipped.
+# *-pending.mjs assert behaviour that is genuinely not built yet, so they are opt-in via
+# RUN_PENDING_E2E=1 and announced as skipped rather than dropped silently. Everything
+# else runs, including the *-browser.mjs suites that drive headless Chrome: they are slow
+# but they are the only ones that can see layout, and excluding them is exactly how
+# 2-column mode shipped broken behind a green suite.
 $allSuites = @(Get-ChildItem ".\tests\*.mjs" | Sort-Object Name)
-$browserSuites = @($allSuites | Where-Object { $_.Name -like "*-browser.mjs" })
-$suites = @($allSuites | Where-Object { $_.Name -notlike "*-browser.mjs" })
-if ($env:RUN_BROWSER_E2E -eq "1") { $suites = $allSuites }
+$pendingSuites = @($allSuites | Where-Object { $_.Name -like "*-pending.mjs" })
+$suites = @($allSuites | Where-Object { $_.Name -notlike "*-pending.mjs" })
+if ($env:RUN_PENDING_E2E -eq "1") { $suites = $allSuites }
 
 foreach ($suite in $suites) {
     # Redirect inside cmd, not PowerShell: PS 5.1 turns a native command's stderr into
@@ -46,9 +48,9 @@ foreach ($suite in $suites) {
 
 Remove-Item $errFile -Force -ErrorAction SilentlyContinue
 
-if ($env:RUN_BROWSER_E2E -ne "1" -and $browserSuites.Count -gt 0) {
+if ($env:RUN_PENDING_E2E -ne "1" -and $pendingSuites.Count -gt 0) {
     Write-Host ""
-    Write-Host ("  SKIPPED (set RUN_BROWSER_E2E=1): " + (($browserSuites | ForEach-Object { $_.Name }) -join ", ")) -ForegroundColor Yellow
+    Write-Host ("  SKIPPED, not built yet (set RUN_PENDING_E2E=1): " + (($pendingSuites | ForEach-Object { $_.Name }) -join ", ")) -ForegroundColor Yellow
 }
 
 if ($failedSuites.Count -gt 0) {
