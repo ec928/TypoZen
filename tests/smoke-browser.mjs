@@ -18,6 +18,7 @@
  *
  *   node tests/smoke-browser.mjs
  */
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
@@ -264,6 +265,71 @@ async function main() {
             assert(Math.abs(afterUndo - atEdit) <= 2,
                 'undo leaves the cursor at the edit, not at the top (line ' + afterUndo +
                 ' vs ' + atEdit + ')');
+        }
+
+        console.log('\n--- clicking an outline heading goes there ---');
+        {
+            // The outline listed every heading and clicking one did nothing in Scroll mode:
+            // it seeded scrollTop and then called mountVirtWindow, whose remount collapsed
+            // the document height so the browser clamped the scroll straight back to 0. The
+            // caret and status line moved, the view did not, and a bare catch hid it.
+            const topBlock = () => page.evaluate(() => {
+                const paged = isPaginatedLayout();
+                const host = (paged ? editor : mainContainer).getBoundingClientRect();
+                let best = null;
+                editor.querySelectorAll('.block').forEach(b => {
+                    const r = b.getBoundingClientRect();
+                    if (r.bottom <= host.top + 1 || r.top >= host.bottom - 1) return;
+                    if (r.right <= host.left + 1 || r.left >= host.right - 1) return;
+                    const mi = DocumentModel.modelIndexOfEl(b);
+                    if (mi >= 0 && (best === null || r.top < best.top)) best = { mi: mi, top: r.top };
+                });
+                return best ? best.mi : -1;
+            });
+
+            // buildDoc() has no headings, so the outline would hold only its
+            // "No headings found..." placeholder -- which is itself an .outline-item, and
+            // clicking it is a no-op that looks like a pass. Use a fixture with headings.
+            const headed = fs.readFileSync(path.join(appDir, 'tests', 'large-scroll-mixed.md'), 'utf8');
+            await page.evaluate((m) => loadMarkdownContent(m), headed);
+            await sleep(1800);
+            await page.evaluate(() => {
+                document.querySelector('.sidebar-tab[data-tab="outline"]').click();
+                updateOutline();
+            });
+            await sleep(800);
+            const headings = await page.evaluate(
+                () => document.querySelectorAll('#outline-list .outline-item').length);
+            assert(headings > 20, 'the fixture really has headings to list (' + headings + ')');
+
+            for (const layout of ['scroll', 'pagination']) {
+                await page.evaluate(() => handleCommand('view_set:mode:preview'));
+                await sleep(400);
+                await page.evaluate((s) => handleCommand('view_set:scroll:' + s), layout);
+                await sleep(1500);
+                // Start at the top so a jump is unambiguous.
+                await page.evaluate(() => {
+                    document.querySelector('.sidebar-tab[data-tab="outline"]').click();
+                    const items = document.querySelectorAll('#outline-list .outline-item');
+                    if (items.length) items[0].click();
+                });
+                await sleep(1200);
+                const before = await topBlock();
+
+                const clicked = await page.evaluate(() => {
+                    const items = document.querySelectorAll('#outline-list .outline-item');
+                    const i = Math.floor(items.length * 0.8);
+                    if (!items[i]) return null;
+                    items[i].click();
+                    return items[i].innerText;
+                });
+                await sleep(1800);
+                const after = await topBlock();
+                assert(clicked !== null, layout + ': the outline lists headings to click');
+                assert(after > before + 50,
+                    layout + ': clicking a heading near the end scrolls there (block ' +
+                    before + ' -> ' + after + ')');
+            }
         }
 
         console.log('\n--- pasted HTML converts ---');

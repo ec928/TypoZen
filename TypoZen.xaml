@@ -595,12 +595,18 @@
                          current value and flipping on click is smaller and reads faster
                          than a segmented pair. Mode stays segmented: it has three states,
                          and cycling through them by clicking would be worse. -->
+                    <!-- Labelled rather than glyphed. The previous icons said nothing about
+                         which layout was active, and no MDL2 glyph reads as "two columns"
+                         without a caption. Both buttons show the state they are IN, and C#
+                         shades them whenever that state is not the default (1-Col, Scroll),
+                         so "something is switched on here" is visible at a glance, the
+                         same signal the Mode pillbox gives. -->
                     <Button x:Name="btnColumnToggle" Style="{StaticResource ToolbarStateButton}"
-                            Content="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="14" MinWidth="42" Margin="0,0,8,0"
+                            Content="1-Col" FontSize="12" MinWidth="52" Margin="0,0,6,0"
                             ToolTip="Column layout — click to switch. 2 columns require Pagination"/>
 
                     <Button x:Name="btnScrollToggle" Style="{StaticResource ToolbarStateButton}"
-                            Content="&#xE8A4;" FontFamily="Segoe MDL2 Assets" FontSize="14" MinWidth="42"
+                            Content="Scroll" FontSize="12" MinWidth="62"
                             ToolTip="Continuous scrolling or discrete pages — click to switch"/>
                 </StackPanel>
             </Grid>

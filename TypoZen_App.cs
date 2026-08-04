@@ -2773,12 +2773,17 @@ namespace TypoZen
 
 if (_btnColumnToggle != null)
             {
-                _btnColumnToggle.Content = columns == 2 ? "\uE89F" : "\uE8A5";
+                // Shade a two-state button whenever it is NOT on its default, so the
+                // toolbar reads like the Mode pillbox: shading means "switched on".
+                // 1-Col and Scroll are the defaults, so 2-Col and Pages are the lit states.
+                _btnColumnToggle.Content = columns == 2 ? "2-Col" : "1-Col";
+                SetToolbarActive(_btnColumnToggle, columns == 2);
                 SetControlLocked(_btnColumnToggle, columnsLocked);
             }
             if (_btnScrollToggle != null)
             {
-                _btnScrollToggle.Content = scroll == "pagination" ? "\uE7C3" : "\uE8A4";
+                _btnScrollToggle.Content = scroll == "pagination" ? "Pages" : "Scroll";
+                SetToolbarActive(_btnScrollToggle, scroll == "pagination");
                 SetControlLocked(_btnScrollToggle, scrollLocked);
             }
             if (_grpMode != null) { _grpMode.IsEnabled = true; _grpMode.Opacity = 1.0; }
@@ -2821,6 +2826,29 @@ if (_btnColumnToggle != null)
             if (this.WindowState != WindowState.Normal) return;
             var r = new Rect(this.Left, this.Top, this.Width, this.Height);
             if (_isTwoColumnMode) _col2Rect = r; else _col1Rect = r;
+        }
+
+        /// <summary>
+        /// Paint a toolbar button as on or off, using the same brushes the Mode pillbox
+        /// uses for its selected segment. Selection had only ever been shown inside that
+        /// pillbox, so the sidebar and the two layout toggles gave no indication of their
+        /// own state -- inconsistent with the rest of the toolbar.
+        /// </summary>
+        private void SetToolbarActive(Button b, bool active)
+        {
+            if (b == null) return;
+            if (active)
+            {
+                b.Background = _modeSourceBg ?? SystemColors.HighlightBrush;
+                b.BorderBrush = _modeSourceBorder ?? Brushes.Gray;
+                b.FontWeight = FontWeights.SemiBold;
+            }
+            else
+            {
+                b.Background = Brushes.Transparent;
+                b.BorderBrush = _modeGhostBorder ?? Brushes.Transparent;
+                b.FontWeight = FontWeights.Normal;
+            }
         }
 
         private void SetControlLocked(Control c, bool locked)
@@ -3364,6 +3392,13 @@ if (_btnColumnToggle != null)
                         RenderViewSelectors(vMode, vCols, vScroll, cLock, sLock)),
                         DispatcherPriority.Normal);
                 }
+            }
+            else if (msg.StartsWith("sidebar_state:"))
+            {
+                bool open = msg.Substring(14) == "1";
+                Dispatcher.BeginInvoke(new Action(() =>
+                    SetToolbarActive(FindElement("btnToggleSidebar") as Button, open)),
+                    DispatcherPriority.Normal);
             }
             else if (msg == "focus_webview")
             {

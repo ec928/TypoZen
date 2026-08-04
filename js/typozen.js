@@ -2089,6 +2089,7 @@
                     postMsg("mode_changed:wysiwyg");
                 }
                 postViewFlags();
+                postSidebarState();   // shade the toolbar button to match the restored state
                 updateStatsNow();
                 updateOutline();
             } finally {
@@ -2804,6 +2805,7 @@
             }
             else if (cmd === "toggle_sidebar") {
                 sidebar.classList.toggle('collapsed');
+                postSidebarState();
             }
             else if (cmd === "toggle_search_sidebar") {
                 // Alt+S, the ZenSeek gesture. Closed, or open on another tab, means the
@@ -2813,6 +2815,7 @@
                 const showingSearch = searchPane && searchPane.classList.contains('active');
                 if (sidebar.classList.contains('collapsed') || !showingSearch) {
                     sidebar.classList.remove('collapsed');
+                    postSidebarState();
                     switchTab('search');
                     wireSidebarSearch();
                     // Seed from the selection, the way a search box is expected to.
@@ -2833,6 +2836,7 @@
                     focusSidebarSearchInput(true);
                 } else {
                     sidebar.classList.add('collapsed');
+                    postSidebarState();
                     cancelSidebarSearchIdle();
                 }
                 scheduleSavePreferences();
@@ -10482,40 +10486,38 @@
                 item.className = 'outline-item outline-h' + level;
                 item.innerText = title;
                 item.onclick = function () {
+                    // Use whatever the current layout already uses to show a block, rather
+                    // than a third bespoke path.
+                    //
+                    // This used to seed mainContainer.scrollTop and then call
+                    // mountVirtWindow. Under virtualization the remount rebuilds the
+                    // spacers, the document height briefly collapses, and the browser
+                    // clamps the scroll back to 0 -- so clicking an outline entry moved the
+                    // caret and the status line but left the view exactly where it was.
+                    // The whole handler was wrapped in a bare catch, so nothing said so.
                     try {
-                        if (typeof ensureModelBlockVisible === 'function') {
-                            const el = ensureModelBlockVisible(idx, { topPad: 48 });
-                            if (el) {
-                                el.classList.add('focused');
-                                currentActiveBlock = el;
-                                try { focusBlock(el, 0); } catch (eF) {}
-                                setTimeout(function () {
-                                    try { el.classList.remove('focused'); } catch (e) {}
-                                }, 1500);
-                                try { updateStatsNow({ forceCaretLine: modelBlockStartLine(idx) }); } catch (eU) {}
-                                return;
-                            }
+                        const line = modelBlockStartLine(idx);
+                        if (isPaginatedLayout()) {
+                            goToPageHoldingBlock(idx);
+                        } else {
+                            // Handles the virtualized remount, and re-restores across frames.
+                            restoreStickyDocumentLine(line);
                         }
-                        if (DocumentModel.virtEnabled && mainContainer) {
-                            DocumentModel.syncMountedToModel();
-                            try {
-                                DocumentModel.ensureHeights();
-                                mainContainer.scrollTop = Math.max(0, DocumentModel.prefixHeight(idx) - 40);
-                            } catch (eScr) {
-                                mainContainer.scrollTop = Math.max(0, idx * (DocumentModel.rowHeight || 28) - 40);
-                            }
-                            mountVirtWindow(true);
-                        }
-                        const el = editor
-                            ? editor.querySelector('.block[data-model-index="' + idx + '"]')
-                            : null;
-                        if (el) {
-                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            el.classList.add('focused');
+                        try { updateStatsNow({ forceCaretLine: line }); } catch (eU) {}
+
+                        // Flash the target once it is on screen, whichever path got it there.
+                        setTimeout(function () {
+                            const el = elementForModelIndex(idx);
+                            if (!el) return;
                             currentActiveBlock = el;
-                            setTimeout(function () { try { el.classList.remove('focused'); } catch (e) {} }, 1500);
-                        }
-                    } catch (e2) {}
+                            el.classList.add('focused');
+                            setTimeout(function () {
+                                try { el.classList.remove('focused'); } catch (e) {}
+                            }, 1200);
+                        }, 120);
+                    } catch (e2) {
+                        window.showDebugTelemetry('outline click failed: ' + e2.message);
+                    }
                 };
                 outlineList.appendChild(item);
             }
@@ -10541,6 +10543,16 @@
          * adding or removing a tab cannot silently mis-target the header (removing the
          * Files tab shifted every nth-child index by one).
          */
+        /**
+         * Tell the host whether the sidebar is showing, so its toolbar button can be shaded
+         * like every other active control. Selection state had only ever been painted
+         * inside the Mode pillbox.
+         */
+        function postSidebarState() {
+            if (!sidebar) return;
+            postMsg('sidebar_state:' + (sidebar.classList.contains('collapsed') ? '0' : '1'));
+        }
+
         window.switchTab = function(tab) {
             if (tab !== 'outline' && tab !== 'search') tab = 'outline';
             // Reaching Search with the mouse must wire it up too. This used to happen only
