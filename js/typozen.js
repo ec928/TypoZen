@@ -5354,7 +5354,16 @@
                             this.undoStack.pop();
                             continue;
                         }
-                        this.restore(prevStr);
+                        // Put the cursor where the change was, not where it happened to be
+                        // when the older state was captured. The restored state's own caret
+                        // is, for the base state, wherever the file opened -- so undoing an
+                        // edit on line 128 sent the cursor, and the view with it, to line 11.
+                        // The caret stored with the state being undone is the edit site,
+                        // which is the natural anchor for an undo.
+                        let _editCaret = null;
+                        try { _editCaret = this._caretOf(current); } catch (eC) {}
+                        this.restore(prevStr, _editCaret);
+
                         // Resync top to live serialize so the next Ctrl+Z is not a no-op
                         try {
                             const actual = getMarkdownContent();
@@ -5399,7 +5408,7 @@
                 }
             },
 
-            restore(stateStr) {
+            restore(stateStr, caretOverride) {
                 if (!stateStr) return;
                 try {
                     let data;
@@ -5408,7 +5417,12 @@
                     } catch (e) {
                         data = null;
                     }
-                    const caret = data && data.caret ? data.caret : this._caretOf(stateStr);
+                    // caretOverride lets undo place the cursor at the edit site instead of
+                    // wherever the restored state's own caret happened to be. It has to go
+                    // through here: restore() schedules its caret work in a rAF, so a
+                    // correction applied afterwards was overwritten a frame later.
+                    const caret = caretOverride
+                        || (data && data.caret ? data.caret : this._caretOf(stateStr));
                     // Legacy: bare array of block strings
                     if (Array.isArray(data)) {
                         editor.innerHTML = '';
@@ -5438,6 +5452,9 @@
                     updateStatsNow();
                     updateOutline();
                     scheduleSavePreferences();
+                    // Keep the page numbers honest: a restore can leave them showing a
+                    // stale count in a view that is no longer paginated.
+                    try { updatePageIndicator(); } catch (ePI) {}
                     // Restore caret/block — never force first block (that was the jump-to-top bug)
                     if (caret) {
                         const self = this;

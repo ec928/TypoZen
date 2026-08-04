@@ -234,6 +234,38 @@ async function main() {
                 'and reports Reader with Pagination already applied (got ' + vs[0] + ')');
         }
 
+        console.log('\n--- undo leaves the cursor at the edit ---');
+        {
+            // The cursor is the natural anchor for an undo, and it was being thrown away:
+            // undo() restored the previous state and used *that* state's caret, which for
+            // the base state is wherever the file opened. Undoing an edit on line 128 sent
+            // the cursor, and the view with it, to line 11.
+            await page.evaluate(() => { handleCommand('view_set:mode:preview'); });
+            await sleep(400);
+            await page.evaluate(() => { rememberStickyLine(60); restoreStickyDocumentLine(60); });
+            await sleep(700);
+            await page.evaluate(() => {
+                const blocks = [...editor.querySelectorAll('.block')];
+                const loc = modelLocationFromDocumentLine(60);
+                const el = blocks.find(b => DocumentModel.modelIndexOfEl(b) === loc.blockIndex) || blocks[0];
+                el.focus();
+                const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+                const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+                currentActiveBlock = el;
+            });
+            await sleep(300);
+            const atEdit = await page.evaluate(() => getCaretLineNumber());
+            await page.keyboard.type('UNDOANCHOR');
+            await sleep(700);
+            await page.evaluate(() => HistoryManager.undo());
+            await sleep(900);
+            const afterUndo = await page.evaluate(() => getCaretLineNumber());
+            assert(atEdit > 1, 'the edit happened away from the top of the document (line ' + atEdit + ')');
+            assert(Math.abs(afterUndo - atEdit) <= 2,
+                'undo leaves the cursor at the edit, not at the top (line ' + afterUndo +
+                ' vs ' + atEdit + ')');
+        }
+
         console.log('\n--- pasted HTML converts ---');
         const md = await page.evaluate(() => htmlToMarkdown(
             '<h2>Title</h2><table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>'));
