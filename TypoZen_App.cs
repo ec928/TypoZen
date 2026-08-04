@@ -291,6 +291,8 @@ namespace TypoZen
         // value to ask for next and so a column change can swap the window geometry.
         private int _viewColumns = 1;
         private string _viewScroll = "scroll";
+        private string _viewMode = "preview";
+        private bool _viewColumnsLocked, _viewScrollLocked;
         private string _editorMode = "wysiwyg"; // "wysiwyg", "reader", "source"
         private bool _isPageAdvanceMode;
         private bool _isTwoColumnMode = false;
@@ -2736,6 +2738,9 @@ namespace TypoZen
 
             _viewColumns = columns;
             _viewScroll = scroll;
+            _viewMode = mode;
+            _viewColumnsLocked = columnsLocked;
+            _viewScrollLocked = scrollLocked;
 
             if (_btnColumnToggle != null)
             {
@@ -4062,6 +4067,13 @@ namespace TypoZen
                     _modeSourceBg = Brushes.Transparent;
                 }
 
+                // The selected segment is painted with _modeSourceBg at the moment it is
+                // rendered, so a theme change has to repaint it. Without this it kept
+                // whatever brush it was first drawn with -- on startup that is the #33A855F7
+                // purple default, which then sat there clashing with every warm theme.
+                RenderViewSelectors(_viewMode, _viewColumns, _viewScroll,
+                                    _viewColumnsLocked, _viewScrollLocked);
+
                 this.Background = bgBrush;
                 this.Foreground = txBrush;
 
@@ -4686,17 +4698,18 @@ namespace TypoZen
                     // once it exists, or an opted-in user would silently lose the feature.
                     SendMsg(_sessionRestoreContent ? "cmd:persist_content_on" : "cmd:persist_content_off");
                     
-                    if (_isTwoColumnMode)
-                    {
-                        SendMsg("cmd:set_column_mode:2");
-                        if (_btnToggleColumnMode != null)
-                        {
-                            _btnToggleColumnMode.Content = "2 Col";
-                            _btnToggleColumnMode.Background = _modeSourceBg ?? Brushes.Transparent;
-                            _btnToggleColumnMode.BorderBrush = _modeSourceBorder ?? Brushes.Gray;
-                            _btnToggleColumnMode.FontWeight = FontWeights.SemiBold;
-                        }
-                    }
+                    // Restore through the resolver, not set_column_mode. The raw command
+                    // applies columns and nothing else, which produced 2 columns still
+                    // marked as Scroll -- a combination the rules forbid, because two
+                    // columns need a bottom boundary to flow into. view_set makes the
+                    // resolver turn Pagination on as it would for a click.
+                    if (_isTwoColumnMode) SendMsg("cmd:view_set:columns:2");
+
+                    // Then ask the page what its state actually is and paint the selectors
+                    // from the answer. Without this the toolbar kept the hardcoded defaults
+                    // it was built with (1-Col / Scroll) while the restored document was
+                    // already showing two paginated columns.
+                    SendMsg("cmd:view_sync");
                 }
             }
             finally { _applyingRestoredSettings = false; }

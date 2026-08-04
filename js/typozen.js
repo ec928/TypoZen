@@ -184,20 +184,25 @@
          * wysiwyg -> reader -> source, so at most two steps are ever needed.
          */
         function applyViewState(next) {
-            const targetInternal = internalModeFromView(next.mode);
-            for (let i = 0; i < 3 && state.mode !== targetInternal; i++) {
-                handleCommand('toggle_mode');
-            }
+            _applyingViewState = true;
+            try {
+                const targetInternal = internalModeFromView(next.mode);
+                for (let i = 0; i < 3 && state.mode !== targetInternal; i++) {
+                    handleCommand('toggle_mode');
+                }
 
-            const twoColNow = !!(editor && editor.classList.contains('two-col-layout'));
-            if ((next.columns === 2) !== twoColNow) {
-                handleCommand('set_column_mode:' + next.columns);
-            }
+                const twoColNow = !!(editor && editor.classList.contains('two-col-layout'));
+                if ((next.columns === 2) !== twoColNow) {
+                    handleCommand('set_column_mode:' + next.columns);
+                }
 
-            const wantAdvance = next.scroll === 'pagination';
-            if (!!state.pageAdvance !== wantAdvance) {
-                state.pageAdvance = wantAdvance;
-                postMsg('sync_page_advance:' + (wantAdvance ? '1' : '0'));
+                const wantAdvance = next.scroll === 'pagination';
+                if (!!state.pageAdvance !== wantAdvance) {
+                    state.pageAdvance = wantAdvance;
+                    postMsg('sync_page_advance:' + (wantAdvance ? '1' : '0'));
+                }
+            } finally {
+                _applyingViewState = false;
             }
 
             state.viewMode = next.mode;
@@ -207,8 +212,17 @@
             scheduleSavePreferences();
         }
 
-        /** Push the resolved state so the shell can render the three segmented controls. */
+        /**
+         * Push the resolved state so the shell can render the selectors.
+         *
+         * Suppressed while applyViewState is mid-flight: it drives the change through
+         * toggle_mode / set_column_mode, each of which reports on its own, so the shell
+         * would otherwise see half-applied states (columns already 2, pagination not yet
+         * on) and paint them. applyViewState posts once at the end, when it is coherent.
+         */
+        let _applyingViewState = false;
         function postViewState(s) {
+            if (_applyingViewState) return;
             postMsg('view_state:' + s.mode + ',' + s.columns + ',' + s.scroll + ',' +
                 (s.columnsLocked ? '1' : '0') + ',' + (s.scrollLocked ? '1' : '0'));
         }
@@ -1990,7 +2004,13 @@
                 }
                 return;
             }
-            if (cmd.startsWith("set_page_advance:")) { state.pageAdvance = (cmd.substring(17) === '1'); return; }
+            if (cmd.startsWith("set_page_advance:")) {
+                state.pageAdvance = (cmd.substring(17) === '1');
+                // Report it: the selectors must follow the view however it was changed,
+                // not only when the change came from a selector click.
+                postViewState(currentViewState());
+                return;
+            }
             if (cmd.startsWith("set_column_mode:")) {
                 window.showDebugTelemetry("set_column_mode called with: " + cmd);
                 const twoCol = cmd.substring(16) === "2";
@@ -2031,6 +2051,10 @@
                         });
                     }
                 }
+                // Report it: the selectors must follow the view however it was changed.
+                // The host restores 2-column on startup through this command, and without
+                // this the toolbar kept saying 1-Col over a two-column document.
+                postViewState(currentViewState());
                 return;
             }
             if (cmd === "toggle_mode") {
@@ -2173,6 +2197,8 @@
                 } else {
                     clearFindHighlights();
                 }
+                // Mode can change from Ctrl+/ or the View menu, not just a selector click.
+                postViewState(currentViewState());
             }
             else if (cmd === "toggle_sidebar") {
                 sidebar.classList.toggle('collapsed');

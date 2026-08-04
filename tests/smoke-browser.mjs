@@ -164,6 +164,76 @@ async function main() {
         assert(/^\d+\/\d+$/.test(String(search.counter || '')),
             'the counter reads n/total (got ' + JSON.stringify(search.counter) + ')');
 
+        console.log('\n--- the toolbar is told about changes it did not cause ---');
+        {
+            // The shell paints the selectors purely from view_state:. Any path that
+            // changes the view has to report, or the toolbar drifts out of step with the
+            // document. That is how a restored 2-column session came up reading "1-Col"
+            // and "Scroll" over a two-column page: the host restores columns by sending
+            // set_column_mode directly, which used to report nothing at all.
+            await page.evaluate(() => {
+                window.__vs = [];
+                const orig = postMsg;
+                window.postMsg = postMsg = function (m) {
+                    const s = String(m);
+                    if (s.indexOf('view_state:') === 0) window.__vs.push(s);
+                    return orig.apply(null, arguments);
+                };
+            });
+
+            await page.evaluate(() => handleCommand('view_set:mode:preview'));
+            await sleep(400);
+            await page.evaluate(() => { window.__vs = []; });
+
+            // What the host sends when restoring a 2-column session.
+            await page.evaluate(() => handleCommand('view_set:columns:2'));
+            await sleep(500);
+            let vs = await page.evaluate(() => window.__vs.slice());
+            assert(vs.length > 0, 'a host-driven column change reports view_state');
+            assert(vs.some(v => v.split(':')[1].split(',')[1] === '2'),
+                'the reported state says 2 columns (got ' + JSON.stringify(vs) + ')');
+            // Restoring columns must not leave a combination the rules forbid.
+            assert(vs.every(v => {
+                const p = v.split(':')[1].split(',');
+                return !(p[1] === '2' && p[2] === 'scroll');
+            }), 'restoring 2 columns also turns Pagination on (got ' + JSON.stringify(vs) + ')');
+
+            // The raw low-level command still reports, as a safety net for any other path.
+            await page.evaluate(() => { window.__vs = []; });
+            await page.evaluate(() => handleCommand('set_column_mode:1'));
+            await sleep(400);
+            assert((await page.evaluate(() => window.__vs.slice())).length > 0,
+                'the raw set_column_mode command reports too');
+            await page.evaluate(() => handleCommand('view_set:columns:2'));
+            await sleep(400);
+            await page.evaluate(() => { window.__vs = []; });
+
+            // And the page really is in two columns, so toolbar and screen agree.
+            s = await page.evaluate(probe);
+            eq(s.columnCount, '2', 'the document really is two columns at that point');
+
+            await page.evaluate(() => { window.__vs = []; });
+            await page.evaluate(() => handleCommand('toggle_mode'));
+            await sleep(500);
+            vs = await page.evaluate(() => window.__vs.slice());
+            assert(vs.length > 0, 'a mode change from Ctrl+/ or the menu reports view_state');
+
+            await page.evaluate(() => { window.__vs = []; });
+            await page.evaluate(() => handleCommand('view_sync'));
+            await sleep(200);
+            vs = await page.evaluate(() => window.__vs.slice());
+            assert(vs.length === 1, 'view_sync reports the current state on demand');
+
+            // Mid-transition states must not reach the shell.
+            await page.evaluate(() => { window.__vs = []; });
+            await page.evaluate(() => handleCommand('view_set:mode:reader'));
+            await sleep(500);
+            vs = await page.evaluate(() => window.__vs.slice());
+            eq(vs.length, 1, 'a selector click reports once, when the state is coherent');
+            assert(/^view_state:reader,\d,pagination,/.test(vs[0]),
+                'and reports Reader with Pagination already applied (got ' + vs[0] + ')');
+        }
+
         console.log('\n--- pasted HTML converts ---');
         const md = await page.evaluate(() => htmlToMarkdown(
             '<h2>Title</h2><table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>'));

@@ -236,6 +236,26 @@ console.log('\n--- result rows: line numbers and line-bounded snippets ---');
     assert(/\.search-line/.test(css), 'there is a line-number gutter style');
 }
 
+console.log('\n--- the selected view segment follows the theme accent ---');
+{
+    const appCs = fs.readFileSync(path.join(appDir, 'TypoZen_App.cs'), 'utf8');
+
+    // SelectSegment paints with _modeSourceBg at render time, so a theme change has to
+    // repaint. Without that the segment kept the brush it was first drawn with, which on
+    // startup is the hardcoded #33A855F7 purple -- it then sat there under every warm
+    // theme, the one thing on screen not using the theme accent.
+    const themeIdx = appCs.indexOf('_modeSourceBg = new SolidColorBrush(c)');
+    assert(themeIdx !== -1, 'the theme computes a selected-segment brush');
+    assert(appCs.slice(themeIdx, themeIdx + 1200).indexOf('RenderViewSelectors(') !== -1,
+        'applying a theme repaints the view selectors');
+
+    // Repainting must not be mistaken for a layout change and resize the window.
+    const renderIdx = appCs.indexOf('private void RenderViewSelectors');
+    const renderBody = appCs.slice(renderIdx, renderIdx + 1500);
+    assert(/if \(columns != _viewColumns\) ApplyColumnWindowGeometry/.test(renderBody),
+        'window geometry only moves when the column count actually changed');
+}
+
 console.log('\n--- host no longer walks the folder for a list nobody renders ---');
 {
     const appCs = fs.readFileSync(path.join(appDir, 'TypoZen_App.cs'), 'utf8');
