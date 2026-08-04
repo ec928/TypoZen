@@ -177,6 +177,15 @@
         .outline-h4 { padding-left: 42px; font-size: 12px; opacity: 0.85; }
         .outline-h5 { padding-left: 54px; font-size: 11px; opacity: 0.75; }
 
+        /* "+N more" — a control, so it reads as one rather than as a dimmed result. */
+        .search-more {
+            justify-content: center;
+            opacity: 0.7;
+            font-style: italic;
+            padding: 5px 4px;
+        }
+        .search-more:hover { opacity: 1; }
+
         .search-item.active {
             background-color: var(--accent-bg, rgba(59,130,246,0.25));
             border-left: 2px solid var(--accent, #3B82F6);

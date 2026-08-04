@@ -619,6 +619,19 @@
             focusFindInput(false);
         };
 
+        // How many result rows to add at a time. Rows are cheap, but a query matching
+        // several thousand times should not build every row before showing the first.
+        const SEARCH_RENDER_CHUNK = 150;
+        let _searchRenderLimit = SEARCH_RENDER_CHUNK;
+        let _searchRenderedQuery = null;
+
+        /** Extend the rendered window. Bound to the "+N more" row and to scrolling. */
+        window.searchShowMore = function () {
+            if (!findState.matches || _searchRenderLimit >= findState.matches.length) return;
+            _searchRenderLimit += SEARCH_RENDER_CHUNK;
+            updateSearchSidebar();
+        };
+
         function updateSearchSidebar() {
             const list = document.getElementById('search-results-list');
             if (!list) return;
@@ -633,7 +646,21 @@
             let html = '';
             const haystack = getFindHaystack().haystack;
             const qLen = findState.query.length;
-            const limit = Math.min(findState.matches.length, 150);
+            // Render a window of results and extend it as the reader scrolls, rather than
+            // capping the list. The cap was a flat 150: a search with 2135 hits showed the
+            // first 150 and "+1985 more", and those 1985 were unreachable from the list
+            // even though , and . still stepped through every one of them.
+            if (_searchRenderedQuery !== findState.query) {
+                _searchRenderedQuery = findState.query;
+                _searchRenderLimit = SEARCH_RENDER_CHUNK;
+            }
+            // Stepping past the rendered window with , or . must bring it into view rather
+            // than leave the active row unrendered.
+            if (findState.index >= _searchRenderLimit) {
+                _searchRenderLimit = (Math.floor(findState.index / SEARCH_RENDER_CHUNK) + 1)
+                    * SEARCH_RENDER_CHUNK;
+            }
+            const limit = Math.min(findState.matches.length, _searchRenderLimit);
 
             const offsets = [];
             for (let i = 0; i < limit; i++) {
@@ -672,9 +699,19 @@
                     '<span class="search-text">' + snippet + '</span></div>';
             }
             if (findState.matches.length > limit) {
-                html += `<div class="search-item" style="opacity:0.5; text-align:center;">+${findState.matches.length - limit} more...</div>`;
+                const rest = findState.matches.length - limit;
+                html += `<div class="search-item search-more" onclick="window.searchShowMore()" ` +
+                    `title="Show more results">+${rest} more — click or scroll to show ` +
+                    `${Math.min(rest, SEARCH_RENDER_CHUNK)}</div>`;
             }
+            // innerHTML resets scrollTop, which would fight scrolling to the end of the
+            // list to load the next chunk. Put the reader back where they were.
+            const scroller = list.closest('.sidebar-content');
+            const keepScroll = scroller ? scroller.scrollTop : 0;
             list.innerHTML = html;
+            if (scroller && keepScroll && scroller.scrollTop !== keepScroll) {
+                scroller.scrollTop = keepScroll;
+            }
             
             // Scroll active item into view
             const activeEl = list.querySelector('.active');
@@ -836,6 +873,20 @@
             const list = document.getElementById('search-results-list');
             if (!list || list.__tzKeysWired) return;
             list.__tzKeysWired = true;
+
+            // Reaching the end of the list pulls in the next chunk. The sidebar content is
+            // the scroller, not the list itself.
+            const scroller = list.closest('.sidebar-content');
+            if (scroller && !scroller.__tzMoreWired) {
+                scroller.__tzMoreWired = true;
+                scroller.addEventListener('scroll', function () {
+                    if (!findState.matches || !findState.matches.length) return;
+                    if (_searchRenderLimit >= findState.matches.length) return;
+                    const nearEnd = scroller.scrollTop + scroller.clientHeight
+                        >= scroller.scrollHeight - 60;
+                    if (nearEnd) window.searchShowMore();
+                }, { passive: true });
+            }
             list.addEventListener('keydown', (e) => {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
                 let dir = 0;
