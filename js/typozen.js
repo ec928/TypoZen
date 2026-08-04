@@ -593,6 +593,24 @@
             updateSearchSidebar();
         }
 
+        /**
+         * Bring a find range on screen using whichever navigation the layout uses.
+         *
+         * Paginated views take the visual find path, not the model one: virtualization is
+         * off in page mode, so getFindHaystack falls through to the wysiwyg index. That
+         * path scrolled mainContainer, which is overflow-hidden while paginated, so
+         * clicking a search result did nothing at all.
+         */
+        function revealVisualRange(r) {
+            if (!r) return;
+            if (!isPaginatedLayout()) { scrollRangeIntoMain(r); return; }
+            let el = r.startContainer;
+            if (el && el.nodeType === 3) el = el.parentElement;
+            while (el && !(el.classList && el.classList.contains('block'))) el = el.parentElement;
+            const mi = el ? DocumentModel.modelIndexOfEl(el) : -1;
+            if (mi >= 0) goToPageHoldingBlock(mi);
+        }
+
         window.findJumpTo = function(index) {
             if (!findState.matches.length || index < 0 || index >= findState.matches.length) return;
             findState.index = index;
@@ -607,7 +625,7 @@
                 applyWysiwygHighlights();
                 const r = findState.ranges[findState.index];
                 if (r) {
-                    scrollRangeIntoMain(r);
+                    revealVisualRange(r);
                     try {
                         const sel = window.getSelection();
                         sel.removeAllRanges();
@@ -667,7 +685,29 @@
                 const m = findState.matches[i];
                 offsets.push(typeof m === 'number' ? m : m.start);
             }
-            const lines = lineNumbersForOffsets(haystack, offsets);
+            // Document line numbers, not haystack line numbers.
+            //
+            // Counting newlines in the haystack only works when the haystack IS the file,
+            // which is true for Source and nothing else. The model haystack is
+            // DocumentModel.toMarkdown(), which joins blocks with a single newline and so
+            // loses the blank lines between them: a match on file line 3 was reported as 2.
+            // The visual haystack is block text with our own separators, which is further
+            // adrift still. modelBlockStartLine is the app's own authority for this and is
+            // what the status bar reports.
+            const kind = getFindHaystack().kind;
+            let lines;
+            if (kind === 'source' || typeof DocumentModel === 'undefined') {
+                lines = lineNumbersForOffsets(haystack, offsets);
+            } else {
+                lines = offsets.map(function (off) {
+                    try {
+                        const loc = (kind === 'model')
+                            ? markdownOffsetToBlock(off)
+                            : { blockIndex: blockIndexForVisualOffset(off) };
+                        return modelBlockStartLine(loc.blockIndex);
+                    } catch (e) { return 1; }
+                });
+            }
 
             for (let i = 0; i < limit; i++) {
                 const idx = offsets[i];
@@ -1324,6 +1364,10 @@
 
                 const want = PageMap.pageOfBlock(anchorBlock);
                 PageMap.goto(want);
+                // This block is what the reader asked to see, so it is the reading
+                // position. Recording it here means a later width change re-derives from
+                // it rather than from whatever happens to be on screen afterwards.
+                _readingAnchor = anchorBlock;
                 window.showDebugTelemetry('goToPage: block ' + anchorBlock + ' is on page ' +
                     want + ' of ' + PageMap.count());
             });
@@ -1401,6 +1445,21 @@
                 out[i] = line;
             }
             return out;
+        }
+
+        /**
+         * Model block holding an offset in the visual (non-virtualized) haystack.
+         * That haystack is built from the mounted blocks in order, separated by newlines,
+         * so the block is found by walking the same map the index was built from.
+         */
+        function blockIndexForVisualOffset(off) {
+            const idx = buildWysiwygSearchIndex();
+            const entry = idx.map[Math.max(0, Math.min(idx.map.length - 1, off | 0))];
+            if (!entry || !entry.node) return 0;
+            let el = entry.node.parentElement;
+            while (el && !(el.classList && el.classList.contains('block'))) el = el.parentElement;
+            const mi = el ? DocumentModel.modelIndexOfEl(el) : -1;
+            return mi >= 0 ? mi : 0;
         }
 
         /** Bounds of the line containing an offset. */
@@ -1658,6 +1717,22 @@
             if (!match || typeof DocumentModel === 'undefined') return;
             const loc = markdownOffsetToBlock(match.start);
             const blockIdx = loc.blockIndex;
+
+            // Paginated views do not scroll mainContainer at all -- it is overflow-hidden
+            // and the editor scrolls sideways -- so setting scrollTop here did nothing and
+            // clicking a search result left the view wherever it was. Same defect the
+            // outline had, same fix: use the navigation the current layout actually uses.
+            if (isPaginatedLayout()) {
+                goToPageHoldingBlock(blockIdx);
+                const el = elementForModelIndex(blockIdx);
+                if (el) {
+                    currentActiveBlock = el;
+                    try { el.classList.add('focused'); } catch (eF) {}
+                    setTimeout(function () { try { el.classList.remove('focused'); } catch (e) {} }, 1200);
+                }
+                return;
+            }
+
             try {
                 DocumentModel.ensureHeights();
                 if (mainContainer) {
@@ -1859,7 +1934,7 @@
                 applyWysiwygHighlights();
                 const r = findState.ranges[findState.index];
                 if (r) {
-                    scrollRangeIntoMain(r);
+                    revealVisualRange(r);
                     try {
                         const sel = window.getSelection();
                         sel.removeAllRanges();
@@ -2199,6 +2274,30 @@
                 // Page breaks depend on the viewport, so a resize retires the map.
                 PageMap.invalidate();
             });
+
+            // Anything that changes the editor's width changes the page width, and every
+            // stored page offset with it. Opening or closing the sidebar does exactly that
+            // without firing a window resize -- it is a margin change on a flex sibling --
+            // so the view kept the old page's scrollLeft and landed between two pages:
+            // closing the sidebar on page 5 showed half of page 3 and half of page 4.
+            // A ResizeObserver catches every cause, including the window and zoom.
+            if (typeof ResizeObserver !== 'undefined' && editor) {
+                let _lastPageW = 0;
+                const ro = new ResizeObserver(function () {
+                    if (!isPaginatedLayout()) { _lastPageW = 0; return; }
+                    const w = Math.round(PageMap.width());
+                    if (w === _lastPageW) return;
+                    const first = !_lastPageW;
+                    _lastPageW = w;
+                    if (first) return;
+                    // Re-derive from the reading position, not from what is on screen now:
+                    // this fires after the relayout, so measuring here would read the
+                    // already-shifted view and drift the reader backwards.
+                    const anchor = (_readingAnchor >= 0) ? _readingAnchor : topLeftModelIndexTwoCol();
+                    if (anchor >= 0) goToPageHoldingBlock(anchor);
+                });
+                ro.observe(editor);
+            }
 
             // Any movement or edit by the reader invalidates the remembered column
             // positions, so switching back anchors afresh instead of restoring a spot they

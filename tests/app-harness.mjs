@@ -36,10 +36,27 @@ const EXE = path.join(appDir, 'TypoZen.exe');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-/** TypoZen is single-instance; a stale copy would swallow our launch. */
-function killExisting() {
-    try { execSync('taskkill /IM TypoZen.exe /F', { stdio: 'ignore' }); } catch (e) { }
-    try { execSync('taskkill /IM msedgewebview2.exe /F', { stdio: 'ignore' }); } catch (e) { }
+/**
+ * Is a TypoZen already running that we did not start?
+ *
+ * This matters because TypoZen is single-instance: a second launch hands its file to the
+ * first process and exits, so the harness cannot attach to anything. The original
+ * response was to taskkill TypoZen.exe before every launch -- which force-killed a real
+ * session, mid-edit, with no warning, whenever a test ran. That is not the harness's
+ * call to make.
+ */
+function isAppRunning() {
+    try {
+        const out = execSync('tasklist /FI "IMAGENAME eq TypoZen.exe" /NH', { encoding: 'utf8' });
+        return /TypoZen\.exe/i.test(out);
+    } catch (e) { return false; }
+}
+
+/** Kill only what this harness started. */
+function killOwn(child) {
+    if (child && child.pid) {
+        try { execSync('taskkill /PID ' + child.pid + ' /T /F', { stdio: 'ignore' }); } catch (e) { }
+    }
 }
 
 async function waitForDevTools(timeoutMs) {
@@ -65,8 +82,20 @@ export async function launchApp(options) {
     options = options || {};
     if (!fs.existsSync(EXE)) throw new Error('TypoZen.exe not found - run Build_TypoZen.ps1 first');
 
-    killExisting();
-    await sleep(400);
+    // Never kill a session we did not start. Single-instance means we genuinely cannot
+    // attach while one is open, so say so and stop rather than take the window away.
+    if (isAppRunning()) {
+        if (process.env.TYPOZEN_E2E_KILL === '1') {
+            try { execSync('taskkill /IM TypoZen.exe /F', { stdio: 'ignore' }); } catch (e) { }
+            await sleep(600);
+        } else {
+            throw new Error(
+                'TypoZen.exe is already running.\n' +
+                '  These tests drive the application directly and TypoZen is single-instance,\n' +
+                '  so they cannot attach while a window is open. Close it and run again.\n' +
+                '  If that instance is disposable, set TYPOZEN_E2E_KILL=1 to end it first.');
+        }
+    }
 
     const args = ['--debug'];
     if (options.file) args.push(path.join(appDir, options.file));
@@ -111,7 +140,8 @@ export async function launchApp(options) {
         close: async () => {
             try { await browser.disconnect(); } catch (e) { }
             try { child.kill(); } catch (e) { }
-            killExisting();
+            // Only our own process tree, so a session opened alongside is left alone.
+            killOwn(child);
         }
     };
 }
