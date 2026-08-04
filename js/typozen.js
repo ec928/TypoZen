@@ -289,7 +289,18 @@
                 wrapper.style.padding = '0 ' + p.right + 'px 0 ' + p.left + 'px';
                 
                 if (isTwoCol) {
-                    editor.style.height = `100vh`;
+                    // A column IS a page, so its height must be the height the reader can
+                    // actually see. This was 100vh -- the whole window, including the
+                    // toolbar, tab strip and status bar, roughly 130px the editor does not
+                    // own. Every column was therefore taller than the viewport, so the
+                    // editor could scroll vertically as well as horizontally, and a page
+                    // ended up offset in both directions at once: the tail of one page down
+                    // the left, the head of the next across the rest. The old code reset
+                    // scrollTop on every page turn, which hid this; removing those resets
+                    // when page turns moved to the page map exposed it again.
+                    const visible = mainContainer ? mainContainer.clientHeight : 0;
+                    editor.style.height = (visible > 40 ? visible : 0) + 'px';
+                    editor.scrollTop = 0;   // nothing to scroll to now; keep it honest
                 } else {
                     editor.style.height = '';
                 }
