@@ -4,6 +4,18 @@
             padding: 0;
         }
 
+        :root {
+            /* Chrome font, deliberately NOT the theme's reading font.
+               The WPF shell sets Window.FontFamily="Segoe UI" and only forwards a theme's
+               FN to the page, so the menus are Segoe UI 13px under every theme while the
+               document takes the theme face. The sidebar is chrome -- a menu surface, not
+               a viewing surface -- so it follows the menus and stays put when the reading
+               font changes to Literata, Merriweather or Cascadia Mono. */
+            --ui-font: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --ui-fs: 13px;
+            --ui-icon-font: 'Segoe MDL2 Assets';
+        }
+
         html, body {
             background-color: var(--bg, #18181B);
             color: var(--tx, #F4F4F5);
@@ -42,6 +54,10 @@
             flex-direction: column;
             transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 10;
+            /* Chrome, so it tracks the menus rather than the document. Children inherit. */
+            font-family: var(--ui-font);
+            font-size: var(--ui-fs);
+            line-height: 1.4;
         }
         #sidebar.collapsed {
             margin-left: -260px;
@@ -54,9 +70,10 @@
         }
         .sidebar-tab {
             flex: 1;
-            padding: 10px 0;
+            padding: 8px 0;
             text-align: center;
-            font-size: 13px;
+            font-family: var(--ui-font);
+            font-size: var(--ui-fs);
             font-weight: 600;
             color: var(--tx-muted, #A1A1AA);
             cursor: pointer;
@@ -85,23 +102,26 @@
             display: block;
         }
 
-        /* Outline List */
+        /* Outline / Search rows.
+           Metrics copied from the WPF SubmenuItemTemplate (Padding="10,6" Margin="4,1"
+           CornerRadius="4", FontSize 13) so a sidebar row and a menu row are the same
+           object at the same size. The old translateX(3px) hover slide went with it --
+           menu rows highlight in place, they do not move. */
         .outline-item, .search-item {
             padding: 6px 10px;
-            margin-bottom: 2px;
-            border-radius: 6px;
-            font-size: 13px;
+            margin: 1px 4px;
+            border-radius: 4px;
+            font-size: var(--ui-fs);
             color: var(--tx-muted, #A1A1AA);
             cursor: pointer;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            transition: all 0.15s;
+            transition: background-color 0.12s ease, color 0.12s ease;
         }
         .outline-item:hover, .search-item:hover {
             background-color: var(--accent-bg, rgba(59,130,246,0.15));
             color: var(--tx, #F4F4F5);
-            transform: translateX(3px);
         }
         .outline-h1 { font-weight: 700; color: var(--tx, #F4F4F5); }
         .outline-h2 { padding-left: 14px; font-weight: 600; }
@@ -117,29 +137,45 @@
             border-left: 2px solid var(--accent, #3B82F6);
         }
 
-        /* Search pane query box — the Search tab's own input, not the Ctrl+F find bar. */
+        /* Search pane query box — the Search tab's own input, not the Ctrl+F find bar.
+           Chrome metrics throughout: Segoe UI at 13px and a 4px radius, matching the
+           menu rows rather than the document. */
         .sidebar-search-row {
             display: flex;
             align-items: center;
             gap: 6px;
-            margin-bottom: 8px;
+            margin: 1px 4px 8px 4px;   /* line up with the row margins below */
+        }
+        /* Segoe MDL2 Assets, the same icon font the toolbar and menus use, so the search
+           glyph is drawn by the shell's icon set rather than an emoji. */
+        .sidebar-search-icon {
+            font-family: var(--ui-icon-font);
+            font-size: 12px;
+            color: var(--tx-muted, #A1A1AA);
+            flex: 0 0 auto;
+            line-height: 1;
         }
         #sidebarSearchInput {
             flex: 1;
             min-width: 0;
-            padding: 6px 8px;
-            border-radius: 6px;
+            padding: 5px 8px;
+            border-radius: 4px;
             border: 1px solid var(--border, #3F3F46);
             background: var(--surface, rgba(255,255,255,0.05));
             color: var(--tx, #F4F4F5);
-            font-family: inherit;
-            font-size: 13px;
+            font-family: var(--ui-font);
+            font-size: var(--ui-fs);
             outline: none;
+        }
+        #sidebarSearchInput::placeholder {
+            color: var(--tx-muted, #A1A1AA);
+            opacity: 0.7;
         }
         #sidebarSearchInput:focus {
             border-color: var(--accent, #3B82F6);
         }
         #sidebarSearchCount {
+            font-family: var(--ui-font);
             font-size: 11px;
             color: var(--tx-muted, #A1A1AA);
             font-variant-numeric: tabular-nums;

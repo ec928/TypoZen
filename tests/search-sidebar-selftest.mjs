@@ -137,6 +137,38 @@ console.log('\n--- Alt+S toggle semantics ---');
     eq(wants(false, true), 'collapse', 'open sidebar already on Search collapses');
 }
 
+console.log('\n--- sidebar is chrome, so it uses the menu font not the reading font ---');
+{
+    const css = fs.readFileSync(path.join(appDir, 'css', 'typozen.css'), 'utf8');
+
+    // The shell sets Window.FontFamily="Segoe UI" and forwards only a theme's FN to the
+    // page, so menus are Segoe UI under every theme. The sidebar has to match that and
+    // must not inherit var(--font), which swings to Literata, Merriweather, Cascadia
+    // Mono and so on as the reading theme changes.
+    assert(/--ui-font:\s*[^;]*Segoe UI/.test(css), 'a chrome font variable is defined and is Segoe UI');
+    assert(/--ui-icon-font:\s*'Segoe MDL2 Assets'/.test(css), 'the chrome icon font is Segoe MDL2 Assets');
+
+    const sidebarRule = css.slice(css.indexOf('#sidebar {'), css.indexOf('#sidebar.collapsed'));
+    assert(/font-family:\s*var\(--ui-font\)/.test(sidebarRule),
+        '#sidebar sets the chrome font so its children inherit it');
+    assert(!/font-family:\s*var\(--font/.test(sidebarRule),
+        '#sidebar does not take the reading font');
+
+    for (const sel of ['.sidebar-tab', '#sidebarSearchInput', '#sidebarSearchCount']) {
+        const start = css.indexOf(sel + ' {');
+        assert(start !== -1, sel + ' has a rule');
+        const rule = css.slice(start, css.indexOf('}', start));
+        assert(/var\(--ui-font\)/.test(rule), sel + ' uses the chrome font');
+    }
+
+    // Menu rows highlight in place; the old sidebar slid sideways on hover.
+    assert(!/transform:\s*translateX/.test(css), 'no translateX hover slide remains');
+
+    const xaml = fs.readFileSync(path.join(appDir, 'TypoZen.xaml'), 'utf8');
+    assert(/FontFamily="Segoe UI"/.test(xaml),
+        'the WPF window is still Segoe UI, which is what the sidebar is matching');
+}
+
 console.log('\n--- host no longer walks the folder for a list nobody renders ---');
 {
     const appCs = fs.readFileSync(path.join(appDir, 'TypoZen_App.cs'), 'utf8');
