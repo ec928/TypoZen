@@ -32,7 +32,7 @@
             revealOnFocus: false,
             focusMode: false,
             typewriterMode: false,
-            margin: 'regular',
+            margin: 'narrow',
             themeIndex: 0,
             lastSavedContent: '',
             currentFilePath: '',
@@ -40,7 +40,16 @@
             // the document to settings.json and localStorage during the startup window,
             // before the setting arrives.
             persistContent: false,
-            blocks: []
+            blocks: [],
+
+            // --- View selectors (Phase 3) ---
+            // Canonical names, deliberately independent of the older internals:
+            // state.mode still uses 'wysiwyg' for Preview, columns live on an editor CSS
+            // class, and pagination lives in state.pageAdvance. viewMode/viewColumns/
+            // viewScroll are the single truth the three segmented controls render from.
+            viewMode: 'preview',        // 'source' | 'preview' | 'reader'
+            viewColumns: 1,             // 1 | 2
+            viewScroll: 'scroll'        // 'scroll' | 'pagination'
         };
 
         // Counts any listener still bound to an individual .block. Editing is routed
@@ -65,6 +74,98 @@
                 window.chrome.webview.postMessage("telemetry:" + msg);
             }
         };
+
+        /**
+         * Phase 3B: resolve the Mode / Column / Scroll selectors after a click.
+         *
+         * Pure function of (current state, one requested change) -> new state plus the
+         * lock flags the shell greys out. No DOM, no side effects, so the whole rule set
+         * is exhaustively testable -- see tests/view-state-selftest.mjs.
+         *
+         * The point is that no click can strand the user on a disabled control. Rather
+         * than forbidding a combination and leaving a dead button, a click always
+         * succeeds and drags the conflicting sub-selectors somewhere legal.
+         *
+         * Legal combinations (from the spec's matrix):
+         *   Source   1-col scroll only
+         *   Preview  1-col scroll | 1-col pagination | 2-col pagination
+         *   Reader   1-col pagination | 2-col pagination
+         *
+         * Two of those fall out of a single invariant -- 2 columns needs a bottom
+         * boundary to flow into, so 2-col implies pagination -- and Reader is pages only
+         * by definition. Locks are therefore derived from the resulting state rather than
+         * tracked separately, which is what stops them drifting out of step:
+         *
+         *   Source   both locked (nothing else is valid)
+         *   Reader   scroll locked (pages only), columns free
+         *   Preview  columns free; scroll locked exactly when 2 columns are showing
+         *
+         * @param {{mode:string,columns:number,scroll:string}} current
+         * @param {{mode?:string,columns?:number,scroll?:string}} change  exactly one key
+         */
+        function resolveViewState(current, change) {
+            let mode = (current && current.mode) || 'preview';
+            let columns = (current && current.columns) === 2 ? 2 : 1;
+            let scroll = (current && current.scroll) === 'pagination' ? 'pagination' : 'scroll';
+            change = change || {};
+
+            // What is locked right now decides whether a click is even allowed through.
+            const wasLocked = viewLocksFor(mode, columns);
+            if (change.columns !== undefined && wasLocked.columnsLocked) return viewStateOf(mode, columns, scroll);
+            if (change.scroll !== undefined && wasLocked.scrollLocked) return viewStateOf(mode, columns, scroll);
+
+            if (change.mode !== undefined) {
+                mode = change.mode;
+                // Rule A (Mode Master)
+                if (mode === 'source') {
+                    columns = 1;            // a textarea cannot flow into columns
+                    scroll = 'scroll';      // paginating raw source fragments it
+                } else if (mode === 'reader') {
+                    scroll = 'pagination';  // Reader is pages only
+                }
+                // 'preview' forces nothing; it just unlocks, which the derivation handles.
+            } else if (change.columns !== undefined) {
+                columns = change.columns === 2 ? 2 : 1;
+                // Rule B (Column Master): 2 columns need a fixed bottom to flow into.
+                if (columns === 2) scroll = 'pagination';
+            } else if (change.scroll !== undefined) {
+                scroll = change.scroll === 'pagination' ? 'pagination' : 'scroll';
+                // Rule C (Scroll Master): continuous scroll cannot carry 2 columns.
+                if (scroll === 'scroll') columns = 1;
+            }
+
+            // Mode invariants win over whatever a sub-selector asked for. Reachable when
+            // a column or scroll click happens while a mode still constrains it.
+            if (mode === 'source') { columns = 1; scroll = 'scroll'; }
+            else if (mode === 'reader') { scroll = 'pagination'; }
+
+            return viewStateOf(mode, columns, scroll);
+        }
+
+        /** Locks implied by a (mode, columns) pair. Derived, never stored. */
+        function viewLocksFor(mode, columns) {
+            if (mode === 'source') return { columnsLocked: true, scrollLocked: true };
+            if (mode === 'reader') return { columnsLocked: false, scrollLocked: true };
+            return { columnsLocked: false, scrollLocked: columns === 2 };
+        }
+
+        function viewStateOf(mode, columns, scroll) {
+            const locks = viewLocksFor(mode, columns);
+            return {
+                mode: mode,
+                columns: columns,
+                scroll: scroll,
+                columnsLocked: locks.columnsLocked,
+                scrollLocked: locks.scrollLocked
+            };
+        }
+
+        /** Defaults for a freshly opened document in each mode (spec: Initial State). */
+        function defaultViewStateFor(mode) {
+            if (mode === 'source') return viewStateOf('source', 1, 'scroll');
+            if (mode === 'reader') return viewStateOf('reader', 1, 'pagination');
+            return viewStateOf('preview', 1, 'scroll');
+        }
 
         function getPageMarginPads() {
             // Real page margins (side padding), not max-width / line-length tricks.
