@@ -322,6 +322,7 @@ namespace TypoZen
         private string _viewScroll = "scroll";
         private string _viewMode = "preview";
         private bool _viewColumnsLocked, _viewScrollLocked;
+        private bool _sidebarOpen = true;
         private string _editorMode = "wysiwyg"; // "wysiwyg", "reader", "source"
         private bool _isPageAdvanceMode;
         private bool _isTwoColumnMode = false;
@@ -2837,18 +2838,16 @@ if (_btnColumnToggle != null)
         private void SetToolbarActive(Button b, bool active)
         {
             if (b == null) return;
-            if (active)
-            {
-                b.Background = _modeSourceBg ?? SystemColors.HighlightBrush;
-                b.BorderBrush = _modeSourceBorder ?? Brushes.Gray;
-                b.FontWeight = FontWeights.SemiBold;
-            }
-            else
-            {
-                b.Background = Brushes.Transparent;
-                b.BorderBrush = _modeGhostBorder ?? Brushes.Transparent;
-                b.FontWeight = FontWeights.Normal;
-            }
+            // Fill and weight only, deliberately leaving the outline alone.
+            //
+            // A selected pillbox segment is a fill and nothing else: SegmentButton draws
+            // with BorderThickness 0, so the brush SelectSegment assigns to BorderBrush
+            // never appears. ToolbarStateButton does draw a 1px border, so recolouring it
+            // to the accent gave these buttons an outline the pillbox never gets -- which
+            // is why 2-Col read as a stronger selection than Preview. The resting outline
+            // now stays put and only the fill changes, so both say "selected" the same way.
+            b.Background = active ? (_modeSourceBg ?? SystemColors.HighlightBrush) : Brushes.Transparent;
+            b.FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal;
         }
 
         private void SetControlLocked(Control c, bool locked)
@@ -3395,9 +3394,13 @@ if (_btnColumnToggle != null)
             }
             else if (msg.StartsWith("sidebar_state:"))
             {
-                bool open = msg.Substring(14) == "1";
+                // Remembered, not just painted: a theme change recomputes the brushes and
+                // has to repaint every stateful control. Without the field the sidebar
+                // button kept whatever colour it was first given and drifted out of step
+                // with the theme, since nothing else knew whether it was on.
+                _sidebarOpen = msg.Substring(14) == "1";
                 Dispatcher.BeginInvoke(new Action(() =>
-                    SetToolbarActive(FindElement("btnToggleSidebar") as Button, open)),
+                    SetToolbarActive(FindElement("btnToggleSidebar") as Button, _sidebarOpen)),
                     DispatcherPriority.Normal);
             }
             else if (msg == "focus_webview")
@@ -4153,6 +4156,9 @@ if (_btnColumnToggle != null)
                 // purple default, which then sat there clashing with every warm theme.
                 RenderViewSelectors(_viewMode, _viewColumns, _viewScroll,
                                     _viewColumnsLocked, _viewScrollLocked);
+                // Painted from a message rather than from the view state, so it needs
+                // repainting here too or it keeps the previous theme's accent.
+                SetToolbarActive(FindElement("btnToggleSidebar") as Button, _sidebarOpen);
 
                 this.Background = bgBrush;
                 this.Foreground = txBrush;
