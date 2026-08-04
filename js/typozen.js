@@ -597,19 +597,42 @@
             const haystack = getFindHaystack().haystack;
             const qLen = findState.query.length;
             const limit = Math.min(findState.matches.length, 150);
+
+            const offsets = [];
             for (let i = 0; i < limit; i++) {
                 const m = findState.matches[i];
-                const idx = typeof m === 'number' ? m : m.start; // Handle both return formats
-                let start = Math.max(0, idx - 20);
-                let end = Math.min(haystack.length, idx + qLen + 20);
-                let snippet = haystack.substring(start, end).replace(/\n/g, ' ');
-                const matchStart = idx - start;
-                snippet = escapeHtml(snippet.substring(0, matchStart)) +
-                          '<strong>' + escapeHtml(snippet.substring(matchStart, matchStart + qLen)) + '</strong>' +
-                          escapeHtml(snippet.substring(matchStart + qLen));
-                
+                offsets.push(typeof m === 'number' ? m : m.start);
+            }
+            const lines = lineNumbersForOffsets(haystack, offsets);
+
+            for (let i = 0; i < limit; i++) {
+                const idx = offsets[i];
+
+                // Show the line the match sits on, starting at the line, the way ZenSeek
+                // does. The old window of +/-20 chars around the match started mid-word
+                // behind a leading ellipsis, which threw away most of the context the row
+                // had space for and made every result look alike.
+                const b = lineBoundsAt(haystack, idx);
+                let start = b.start;
+                let leading = '';
+                // Long line with the match far along it: keep the match visible.
+                if (idx - b.start > 48) { start = idx - 24; leading = '…'; }
+                const end = Math.min(b.end, start + 160);
+
+                const before = haystack.substring(start, idx);
+                const hit = haystack.substring(idx, Math.min(idx + qLen, b.end));
+                const after = haystack.substring(idx + qLen, end);
+                const trailing = end < b.end ? '…' : '';
+
+                const snippet = escapeHtml(leading + before) +
+                    '<strong>' + escapeHtml(hit) + '</strong>' +
+                    escapeHtml(after + trailing);
+
                 const active = (i === findState.index) ? ' active' : '';
-                html += `<div class="search-item${active}" onclick="window.findJumpTo(${i})" title="Match ${i + 1}">...${snippet}...</div>`;
+                html += '<div class="search-item' + active + '" onclick="window.findJumpTo(' + i + ')"' +
+                    ' title="Line ' + lines[i] + ' — match ' + (i + 1) + ' of ' + findState.matches.length + '">' +
+                    '<span class="search-line">' + lines[i] + '</span>' +
+                    '<span class="search-text">' + snippet + '</span></div>';
             }
             if (findState.matches.length > limit) {
                 html += `<div class="search-item" style="opacity:0.5; text-align:center;">+${findState.matches.length - limit} more...</div>`;
@@ -843,17 +866,59 @@
          */
         function buildWysiwygSearchIndex() {
             const nodes = collectEditorTextNodes();
-            let haystack = '';
+            const parts = [];
             const map = []; // map[charIndex] = { node, offset }
+            let lastBlock = null;
             for (let i = 0; i < nodes.length; i++) {
                 const node = nodes[i];
                 const text = node.nodeValue;
+
+                // Separate blocks with a newline. Without it the haystack ran every block
+                // together, so a query could match across a block boundary and the sidebar
+                // snippets read as "...marker row 14- bullet item o...". The newline also
+                // gives this surface line numbers, which the model path already had.
+                let block = null;
+                try { block = getAncestorBlock(node); } catch (e) {}
+                if (lastBlock !== null && block !== lastBlock) {
+                    map.push({ node: node, offset: 0, boundary: true });
+                    parts.push('\n');
+                }
+                lastBlock = block;
+
                 for (let j = 0; j < text.length; j++) {
                     map.push({ node: node, offset: j });
-                    haystack += text.charAt(j);
+                    parts.push(text.charAt(j));
                 }
             }
-            return { haystack: haystack, map: map };
+            return { haystack: parts.join(''), map: map };
+        }
+
+        /**
+         * 1-based line numbers for a set of ascending match offsets.
+         * One pass over the haystack rather than a scan per match: a 4500-line document
+         * with several hundred hits made the per-match version visibly stutter.
+         */
+        function lineNumbersForOffsets(haystack, offsets) {
+            const out = new Array(offsets.length);
+            let line = 1, pos = 0;
+            for (let i = 0; i < offsets.length; i++) {
+                const target = offsets[i];
+                while (pos < target && pos < haystack.length) {
+                    if (haystack.charCodeAt(pos) === 10) line++;
+                    pos++;
+                }
+                out[i] = line;
+            }
+            return out;
+        }
+
+        /** Bounds of the line containing an offset. */
+        function lineBoundsAt(haystack, offset) {
+            let s = haystack.lastIndexOf('\n', Math.max(0, offset - 1));
+            s = (s < 0) ? 0 : s + 1;
+            let e = haystack.indexOf('\n', offset);
+            if (e < 0) e = haystack.length;
+            return { start: s, end: e };
         }
 
         function getFindOptions() {

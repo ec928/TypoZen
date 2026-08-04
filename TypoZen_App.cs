@@ -283,9 +283,14 @@ namespace TypoZen
         private Button _btnToggleMode;
         private Button _btnToggleScrollMode;
         private Button _btnToggleColumnMode;
-        // Phase 3A segmented controls
-        private Border _grpMode, _grpColumns, _grpScroll;
+        // Phase 3A view selectors
+        private Border _grpMode;
+        private Button _btnColumnToggle, _btnScrollToggle;
         private readonly Dictionary<string, Button> _segments = new Dictionary<string, Button>();
+        // Last state the page resolved. Cached only so a two-state button knows which
+        // value to ask for next and so a column change can swap the window geometry.
+        private int _viewColumns = 1;
+        private string _viewScroll = "scroll";
         private string _editorMode = "wysiwyg"; // "wysiwyg", "reader", "source"
         private bool _isPageAdvanceMode;
         private bool _isTwoColumnMode = false;
@@ -713,14 +718,28 @@ namespace TypoZen
             BindSegment("btnModeSource", "mode", "source");
             BindSegment("btnModePreview", "mode", "preview");
             BindSegment("btnModeReader", "mode", "reader");
-            BindSegment("btnCol1", "columns", "1");
-            BindSegment("btnCol2", "columns", "2");
-            BindSegment("btnScrollContinuous", "scroll", "scroll");
-            BindSegment("btnScrollPaginated", "scroll", "pagination");
+            // Column and Scroll are single two-state buttons. They still hold no authority:
+            // the click just asks for the other value and the page's resolver decides.
+            _btnColumnToggle = FindElement("btnColumnToggle") as Button;
+            if (_btnColumnToggle != null)
+            {
+                _btnColumnToggle.Click += (s, e) =>
+                {
+                    SendMsg("cmd:view_set:columns:" + (_viewColumns == 2 ? "1" : "2"));
+                    try { if (_webView != null) _webView.Focus(); } catch { }
+                };
+            }
+            _btnScrollToggle = FindElement("btnScrollToggle") as Button;
+            if (_btnScrollToggle != null)
+            {
+                _btnScrollToggle.Click += (s, e) =>
+                {
+                    SendMsg("cmd:view_set:scroll:" + (_viewScroll == "pagination" ? "scroll" : "pagination"));
+                    try { if (_webView != null) _webView.Focus(); } catch { }
+                };
+            }
 
             _grpMode = FindElement("grpMode") as Border;
-            _grpColumns = FindElement("grpColumns") as Border;
-            _grpScroll = FindElement("grpScroll") as Border;
             RenderViewSelectors("preview", 1, "scroll", false, false);
 
             _cmbThemes = (ComboBox)FindElement("cmbThemes");
@@ -2488,6 +2507,10 @@ namespace TypoZen
             {
                 if (this.WindowStyle == WindowStyle.None) return; // Do not overwrite state with fullscreen dimensions
 
+                // Fold the live size into the slot for the column count currently showing,
+                // so quitting saves it as well as switching layouts does.
+                CaptureColumnRect();
+
                 string cacheDir = CacheDir();
                 if (!Directory.Exists(cacheDir)) Directory.CreateDirectory(cacheDir);
                 string path = Path.Combine(cacheDir, "window_state.json");
@@ -2706,14 +2729,71 @@ namespace TypoZen
             SelectSegment("btnModeSource", mode == "source");
             SelectSegment("btnModePreview", mode == "preview");
             SelectSegment("btnModeReader", mode == "reader");
-            SelectSegment("btnCol1", columns == 1);
-            SelectSegment("btnCol2", columns == 2);
-            SelectSegment("btnScrollContinuous", scroll == "scroll");
-            SelectSegment("btnScrollPaginated", scroll == "pagination");
+            // Window geometry is remembered per column count, so switching columns also
+            // restores the size the user last chose for that layout. Do this before the
+            // cached value moves on -- the outgoing rect belongs to the old column count.
+            if (columns != _viewColumns) ApplyColumnWindowGeometry(columns);
 
-            SetGroupLocked(_grpColumns, columnsLocked);
-            SetGroupLocked(_grpScroll, scrollLocked);
+            _viewColumns = columns;
+            _viewScroll = scroll;
+
+            if (_btnColumnToggle != null)
+            {
+                _btnColumnToggle.Content = columns == 2 ? "2-Col" : "1-Col";
+                SetControlLocked(_btnColumnToggle, columnsLocked);
+            }
+            if (_btnScrollToggle != null)
+            {
+                _btnScrollToggle.Content = scroll == "pagination" ? "Pagination" : "Scroll";
+                SetControlLocked(_btnScrollToggle, scrollLocked);
+            }
             if (_grpMode != null) { _grpMode.IsEnabled = true; _grpMode.Opacity = 1.0; }
+        }
+
+        /// <summary>
+        /// Remember the window rect for the column count being left, then restore whatever
+        /// the user last used for the one being entered.
+        ///
+        /// 1-column and 2-column want genuinely different window shapes, and deriving one
+        /// from the other (say, twice the width at the same height) breaks down as soon as
+        /// the monitor, the margins or the font size differ. Each is simply stored.
+        /// </summary>
+        private void ApplyColumnWindowGeometry(int toColumns)
+        {
+            if (this.WindowState != WindowState.Normal) return; // maximized/fullscreen: leave alone
+
+            CaptureColumnRect();
+            _isTwoColumnMode = (toColumns == 2);
+
+            Rect? next = _isTwoColumnMode ? _col2Rect : _col1Rect;
+            if (!next.HasValue || next.Value.Width <= 0) return;   // nothing saved yet: keep the current size
+
+            this.Width = next.Value.Width;
+            this.Height = next.Value.Height;
+            // Only move the window if the saved position still lands on a connected screen.
+            if (next.Value.Left >= SystemParameters.VirtualScreenLeft - 100 &&
+                next.Value.Top >= SystemParameters.VirtualScreenTop - 100 &&
+                next.Value.Left < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100 &&
+                next.Value.Top < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 100)
+            {
+                this.Left = next.Value.Left;
+                this.Top = next.Value.Top;
+            }
+        }
+
+        /// <summary>Store the current window rect against the column count in force.</summary>
+        private void CaptureColumnRect()
+        {
+            if (this.WindowState != WindowState.Normal) return;
+            var r = new Rect(this.Left, this.Top, this.Width, this.Height);
+            if (_isTwoColumnMode) _col2Rect = r; else _col1Rect = r;
+        }
+
+        private void SetControlLocked(Control c, bool locked)
+        {
+            if (c == null) return;
+            c.IsEnabled = !locked;
+            c.Opacity = locked ? 0.45 : 1.0;   // spec: locked selectors reduce opacity
         }
 
         private void SelectSegment(string name, bool on)
@@ -2732,13 +2812,6 @@ namespace TypoZen
                 b.BorderBrush = Brushes.Transparent;
                 b.FontWeight = FontWeights.Normal;
             }
-        }
-
-        private void SetGroupLocked(Border group, bool locked)
-        {
-            if (group == null) return;
-            group.IsEnabled = !locked;
-            group.Opacity = locked ? 0.45 : 1.0;   // spec: locked selectors reduce opacity
         }
 
         private void ApplyZoomToWebView()
@@ -7540,64 +7613,6 @@ namespace TypoZen
                     _btnToggleScrollMode.Opacity = 1.0;
                 }
             }
-        }
-
-        private void ToggleColumnMode()
-        {
-            if (this.WindowState == WindowState.Normal)
-            {
-                if (_isTwoColumnMode)
-                    _col2Rect = new Rect(this.Left, this.Top, this.Width, this.Height);
-                else
-                    _col1Rect = new Rect(this.Left, this.Top, this.Width, this.Height);
-            }
-
-            _isTwoColumnMode = !_isTwoColumnMode;
-            
-            if (this.WindowState == WindowState.Normal)
-            {
-                Rect? next = _isTwoColumnMode ? _col2Rect : _col1Rect;
-                if (next.HasValue && next.Value.Width > 0)
-                {
-                    this.Width = next.Value.Width;
-                    this.Height = next.Value.Height;
-                    // Check bounds for multi-monitor safely
-                    if (next.Value.Left >= SystemParameters.VirtualScreenLeft - 100 &&
-                        next.Value.Top >= SystemParameters.VirtualScreenTop - 100 &&
-                        next.Value.Left < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100 &&
-                        next.Value.Top < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 100)
-                    {
-                        this.Left = next.Value.Left;
-                        this.Top = next.Value.Top;
-                    }
-                }
-            }
-
-            if (_btnToggleColumnMode != null)
-            {
-                _btnToggleColumnMode.Content = _isTwoColumnMode ? "2 Col" : "1 Col";
-                if (_isTwoColumnMode)
-                {
-                    _btnToggleColumnMode.Background = _modeSourceBg ?? Brushes.Transparent;
-                    _btnToggleColumnMode.BorderBrush = _modeSourceBorder ?? Brushes.Gray;
-                    _btnToggleColumnMode.FontWeight = FontWeights.SemiBold;
-                }
-                else
-                {
-                    _btnToggleColumnMode.Background = Brushes.Transparent;
-                    _btnToggleColumnMode.BorderBrush = _modeGhostBorder ?? Brushes.Gray;
-                    _btnToggleColumnMode.FontWeight = FontWeights.Normal;
-                }
-            }
-            SendMsg("cmd:set_column_mode:" + (_isTwoColumnMode ? "2" : "1"));
-            try { if (_webView != null) _webView.Focus(); } catch { }
-        }
-
-        private void ToggleScrollMode()
-        {
-            ApplyScrollModeToggleChrome(!_isPageAdvanceMode);
-            SendMsg("cmd:set_page_advance:" + (_isPageAdvanceMode ? "1" : "0"));
-            try { if (_webView != null) _webView.Focus(); } catch { }
         }
 
         private void ApplyScrollModeToggleChrome(bool pageAdvance)

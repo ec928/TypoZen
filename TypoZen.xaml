@@ -167,6 +167,47 @@
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
 
+        <!-- A single two-state toolbar button: shows the current value, flips on click.
+             Same outline and metrics as a SegmentGroup so it sits with the Mode control. -->
+        <Style x:Key="ToolbarStateButton" TargetType="Button">
+            <Setter Property="Padding" Value="10,3"/>
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="stateBorder" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}"
+                                MinHeight="{TemplateBinding MinHeight}" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsEnabled" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="stateBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="stateBorder" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SegmentDivider" TargetType="Border">
             <Setter Property="Width" Value="1"/>
             <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
@@ -543,23 +584,17 @@
                         </StackPanel>
                     </Border>
 
-                    <Border x:Name="grpColumns" Style="{StaticResource SegmentGroup}" Margin="0,0,8,0"
-                            ToolTip="Column layout — 2 columns require Pagination">
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="btnCol1" Style="{StaticResource SegmentButton}" Content="1-Column"/>
-                            <Border  Style="{StaticResource SegmentDivider}"/>
-                            <Button x:Name="btnCol2" Style="{StaticResource SegmentButton}" Content="2-Column"/>
-                        </StackPanel>
-                    </Border>
+                    <!-- Column and Scroll are two-state, so a single button showing the
+                         current value and flipping on click is smaller and reads faster
+                         than a segmented pair. Mode stays segmented: it has three states,
+                         and cycling through them by clicking would be worse. -->
+                    <Button x:Name="btnColumnToggle" Style="{StaticResource ToolbarStateButton}"
+                            Content="1-Col" MinWidth="58" Margin="0,0,8,0"
+                            ToolTip="Column layout — click to switch. 2 columns require Pagination"/>
 
-                    <Border x:Name="grpScroll" Style="{StaticResource SegmentGroup}"
-                            ToolTip="Continuous scrolling or discrete pages">
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="btnScrollContinuous" Style="{StaticResource SegmentButton}" Content="Scroll"/>
-                            <Border  Style="{StaticResource SegmentDivider}"/>
-                            <Button x:Name="btnScrollPaginated"  Style="{StaticResource SegmentButton}" Content="Pagination"/>
-                        </StackPanel>
-                    </Border>
+                    <Button x:Name="btnScrollToggle" Style="{StaticResource ToolbarStateButton}"
+                            Content="Scroll" MinWidth="76"
+                            ToolTip="Continuous scrolling or discrete pages — click to switch"/>
                 </StackPanel>
             </Grid>
         </Border>

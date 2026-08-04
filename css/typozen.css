@@ -13,6 +13,9 @@
                font changes to Literata, Merriweather or Cascadia Mono. */
             --ui-font: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
             --ui-fs: 13px;
+            /* Dense list rows (search hits). Menu size is right for commands you read one
+               at a time; a results list is scanned in bulk and wants to fit more. */
+            --ui-fs-dense: 12px;
             --ui-icon-font: 'Segoe MDL2 Assets';
         }
 
@@ -124,6 +127,39 @@
             text-overflow: ellipsis;
             transition: background-color 0.12s ease, color 0.12s ease;
         }
+
+        /* Search rows are a dense list, not menu commands: one line each, tight enough
+           that a screenful of hits is actually a screenful. The generous menu padding
+           above cost roughly a third of the visible results. */
+        .search-item {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            padding: 2px 6px;
+            margin: 0 4px;
+            font-size: var(--ui-fs-dense);
+            line-height: 1.45;
+        }
+        .search-line {
+            flex: 0 0 auto;
+            min-width: 3.2em;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            opacity: 0.55;
+        }
+        .search-text {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .search-item strong {
+            color: var(--accent, #3B82F6);
+            font-weight: 600;
+        }
+        .search-item.active .search-text,
+        .search-item.active .search-line { color: var(--tx, #F4F4F5); }
         .outline-item:hover, .search-item:hover {
             background-color: var(--accent-bg, rgba(59,130,246,0.15));
             color: var(--tx, #F4F4F5);

@@ -24,6 +24,21 @@ const testHtml = fs.readFileSync(path.join(appDir, 'TypoZen_Template_Test.html')
 const scripts = [...testHtml.matchAll(/<script>([\s\S]*?)<\/script>/gi)].map(m => m[1]);
 const mainScript = scripts.sort((a, b) => b.length - a.length)[0];
 
+/** Pull one named function out of the page script so it can be run in isolation. */
+function extractFn(name) {
+    const startRe = new RegExp(`function\\s+${name}\\s*\\(`);
+    const idx = mainScript.search(startRe);
+    if (idx < 0) throw new Error('missing function ' + name);
+    let i = mainScript.indexOf('{', idx);
+    let depth = 0;
+    for (; i < mainScript.length; i++) {
+        const c = mainScript[i];
+        if (c === '{') depth++;
+        else if (c === '}' && --depth === 0) return mainScript.slice(idx, i + 1);
+    }
+    throw new Error('unclosed function ' + name);
+}
+
 let passed = 0;
 let failed = 0;
 function assert(cond, msg) {
@@ -184,6 +199,41 @@ console.log('\n--- sidebar is chrome, so it uses the menu font not the reading f
     const xaml = fs.readFileSync(path.join(appDir, 'TypoZen.xaml'), 'utf8');
     assert(/FontFamily="Segoe UI"/.test(xaml),
         'the WPF window is still Segoe UI, which is what the sidebar is matching');
+}
+
+console.log('\n--- result rows: line numbers and line-bounded snippets ---');
+{
+    const api = new Function(
+        extractFn('lineNumbersForOffsets') + '\n' +
+        extractFn('lineBoundsAt') + '\n' +
+        'return { lineNumbersForOffsets, lineBoundsAt };')();
+
+    const hay = 'alpha one\nbeta two\nalpha three\ngamma four\nalpha five';
+    const offs = [0, hay.indexOf('alpha three'), hay.indexOf('alpha five')];
+    eq(JSON.stringify(api.lineNumbersForOffsets(hay, offs)), JSON.stringify([1, 3, 5]),
+        'offsets map to 1-based line numbers');
+
+    const b = api.lineBoundsAt(hay, hay.indexOf('alpha three') + 2);
+    eq(hay.substring(b.start, b.end), 'alpha three', 'lineBoundsAt returns the whole line');
+    const first = api.lineBoundsAt(hay, 0);
+    eq(hay.substring(first.start, first.end), 'alpha one', 'the first line has no leading newline to trip on');
+    const last = api.lineBoundsAt(hay, hay.length - 1);
+    eq(hay.substring(last.start, last.end), 'alpha five', 'the last line runs to the end of the haystack');
+
+    // Blocks must be delimited, or matches run together across block boundaries and the
+    // rows read as "...marker row 14- bullet item o..." with no usable line numbers.
+    const idxSrc = mainScript.slice(mainScript.indexOf('function buildWysiwygSearchIndex'));
+    assert(/parts\.push\('\\n'\)/.test(idxSrc.slice(0, 1400)),
+        'the wysiwyg search index separates blocks with a newline');
+    assert(/boundary:\s*true/.test(idxSrc.slice(0, 1400)),
+        'the boundary newline also gets a map entry, so map stays aligned with haystack');
+
+    // Rows are a dense list, not menu commands.
+    const css = fs.readFileSync(path.join(appDir, 'css', 'typozen.css'), 'utf8');
+    assert(/--ui-fs-dense:/.test(css), 'a denser size is defined for list rows');
+    const rowRule = css.slice(css.indexOf('.search-item {'), css.indexOf('.search-line'));
+    assert(/font-size:\s*var\(--ui-fs-dense\)/.test(rowRule), 'search rows use the dense size');
+    assert(/\.search-line/.test(css), 'there is a line-number gutter style');
 }
 
 console.log('\n--- host no longer walks the folder for a list nobody renders ---');
