@@ -915,7 +915,10 @@
         function updatePageIndicator() {
             const host = document.getElementById('page-indicator');
             if (!host) return;
-            if (!isPaginatedLayout() || state.mode !== 'reader' || !PageMap.ensure()) {
+            // Shown wherever the document is actually paginated, not only in Reader.
+            // Preview + Pagination is a real paginated view, and hiding the numbers there
+            // meant the one mode being tested was the one with no way to see the page state.
+            if (!isPaginatedLayout() || !PageMap.ensure()) {
                 host.style.display = 'none';
                 return;
             }
@@ -2150,6 +2153,44 @@
             if (mainContainer) mainContainer.addEventListener('scroll', noteUserMovement, { passive: true });
             if (editor) {
                 editor.addEventListener('scroll', noteUserMovement, { passive: true });
+
+                // Invariant: while the document is paginated, the scroll offset is always a
+                // page boundary. There is no free scrolling in page mode -- you are either
+                // on a page or the view is broken -- so anything that moves us off one gets
+                // snapped back to the nearest.
+                //
+                // This exists because a real run parks between two pages, showing the tail
+                // of one and the head of the next, and I could not reproduce it in a bare
+                // browser: headless Preview lands correctly on a boundary. The likely cause
+                // is the caret restore (placing a selection in a contenteditable makes the
+                // browser scroll the caret into view, after the snap has run), but rather
+                // than guess at every source, this holds the invariant whatever moved us:
+                // caret, focus, trackpad momentum, or the browser's own scroll anchoring.
+                let _snapTimer = null;
+                editor.addEventListener('scroll', function () {
+                    if (!isPaginatedLayout()) return;
+                    if (Date.now() <= _progScrollUntil) return;   // our own scrolling
+                    if (_snapTimer) clearTimeout(_snapTimer);
+                    _snapTimer = setTimeout(function () {
+                        _snapTimer = null;
+                        if (!isPaginatedLayout() || !PageMap.ensure()) return;
+                        const sl = editor.scrollLeft || 0;
+                        let nearest = PageMap.pages[0], best = Infinity;
+                        for (let i = 0; i < PageMap.pages.length; i++) {
+                            const d = Math.abs(PageMap.pages[i].offset - sl);
+                            if (d < best) { best = d; nearest = PageMap.pages[i]; }
+                        }
+                        if (best > 2) {
+                            markProgrammaticScroll(300);
+                            editor.scrollTop = 0;
+                            editor.scrollLeft = nearest.offset;
+                            currentTwoColPage = PageMap.pages.indexOf(nearest);
+                            updatePageIndicator();
+                            window.showDebugTelemetry('snap: was ' + Math.round(sl) +
+                                ', off boundary by ' + Math.round(best) + ', snapped to ' + nearest.offset);
+                        }
+                    }, 120);
+                }, { passive: true });
                 editor.addEventListener('input', function () {
                     noteUserMovement();
                     PageMap.invalidate();   // editing moves every break after the caret
