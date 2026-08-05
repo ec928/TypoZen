@@ -142,6 +142,9 @@ In Live Preview each line also carries a rendered form, so the two must never di
 - **Flush before leaving.** The active block is written back before any save, tab switch, mode toggle or host pull.
 - **No length heuristics.** Truth is never decided by "whichever copy is longer" — that rule silently reverted deletions on save, and it is gone.
 - **Model indices, not DOM ordinals.** Under virtualization the first mounted block is not block 0, so formatting, undo, find and caret restore all resolve through model indices.
+- **A model splice renumbers the mounted DOM.** `data-model-index` is not decoration: `syncMountedToModel()` writes each mounted element's `data-raw` back into the slot its attribute names. Inserting or removing a block shifts every row after it, so the attributes on already-mounted elements must move too — `insertBlockAfterIndex` / `removeBlockAt` / `removeBlockRange` call `shiftMountedModelIndices` for exactly that. Leave them stale and the next remount copies the DOM's content into the *wrong* rows: a mid-document paste destroyed the line after the caret this way, and a cross-block delete lost an untouched line.
+- **A structural edit splices the height map, it does not discard it.** `invalidateHeights()` throws away every measurement taken so far, so the next `prefixHeight()` for a distant row is rebuilt from estimates and the viewport pin moves with the error — 1562px per pasted block on a 3769-block document. `spliceHeights` keeps every untouched row's real height.
+- **An element returned by `createBlock` may already be detached.** Under virtualization it remounts, which replaces every mounted element. Chain off the model index and re-resolve, never off the returned node.
 - **Ordinary notes are never virtualized.** Virtualization is for large documents only; normal writing gets the full WYSIWYG DOM.
 - **Progressive paint is M-band only**, gated on block count — never on a character count.
 
@@ -241,7 +244,7 @@ Also: `.\Create_Shortcut.ps1` · `.\Generate_Icon.ps1`
 ### Tests
 
 ```powershell
-.\tests\run-tests.ps1                          # default gate (~35 suites)
+.\tests\run-tests.ps1                          # default gate (~37 suites)
 $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + drives the real TypoZen.exe
 ```
 
@@ -258,7 +261,7 @@ There are **four tiers**, and which tier a thing belongs in is decided by what i
 
 **jsdom has no layout engine.** `column-count` never applies, `scrollLeft` is inert and every `getBoundingClientRect()` returns zeros. It cannot distinguish "two columns" from "no columns". Any assertion about what is on screen must be a browser or application suite — writing it in jsdom produces a test that passes forever and proves nothing.
 
-**Browser** suites (`smoke-browser`, `pagination-browser`, `twocol-anchoring-browser`) load `TypoZen_Template.html` in headless Chrome. `smoke-browser` is deliberately shallow — "does each feature visibly do anything" — because that is the class of check that was missing when 2-column mode shipped applying its CSS class while `column-count` stayed `auto`.
+**Browser** suites (`smoke-browser`, `pagination-browser`, `twocol-anchoring-browser`, `edit-integrity-browser`) load `TypoZen_Template.html` in headless Chrome. `smoke-browser` is deliberately shallow — "does each feature visibly do anything" — because that is the class of check that was missing when 2-column mode shipped applying its CSS class while `column-count` stayed `auto`.
 
 **Application** suites are the only ones that see what users see. `tests/app-harness.mjs` launches `TypoZen.exe --debug`, which opens the DevTools protocol on port 9333, and attaches with `puppeteer-core`:
 
@@ -349,6 +352,11 @@ Use the anchor that already exists rather than deriving a new one:
 - an edit → the **caret** (undo restores the caret of the state being undone, i.e. the edit site, not the restored state's own caret)
 - a page turn → the **reading position**, carried across a column switch rather than re-measured, because a switch lands you at a page *start* and re-measuring decays one page per switch
 - a mode switch in a scrolling view → caret if visible, else the top-left line
+
+**Never move the view by hand**
+
+- **Never call `editor.focus()`.** `#editor` is the whole contenteditable document, so focusing it scrolls its top edge into view — i.e. to line 1 — before the caller has placed the caret. Use `focusEditorNoScroll()`. This is what sent undo to the top of the document.
+- **Never assign `mainContainer.scrollTop` to show a block.** Under virtualization the remount rebuilds the spacers, the document height collapses for a frame and the browser clamps the scroll back to 0 — the caret moves and the view does not. Use `restoreStickyDocumentLine(line)` when scrolling or `goToPageHoldingBlock(block)` when paginated. This pattern has been found and removed three times (outline, search, column switch); if a fourth appears, `grep "scrollTop ="` before adding another.
 
 **Pagination**
 

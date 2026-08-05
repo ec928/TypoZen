@@ -3814,7 +3814,7 @@
                             sel.removeAllRanges();
                             sel.addRange(r);
                         }
-                        editor.focus();
+                        focusEditorNoScroll();
                     }
                 } catch (e) {
                     try { focusBlock(currentActiveBlock, null); } catch (e2) {}
@@ -4386,7 +4386,7 @@
                         currentActiveBlock = mountedBlockAtFormatIndex(idxs[idxs.length - 1]);
                     } catch (eVis) {}
                 }
-                try { editor.focus(); } catch (e4) {}
+                focusEditorNoScroll();
             } catch (e5) {}
             updateStats();
             updateOutline();
@@ -4903,7 +4903,7 @@
                             sel.removeAllRanges();
                             sel.addRange(r);
                         }
-                        editor.focus();
+                        focusEditorNoScroll();
                     } catch (e) {
                         try { focusBlock(currentActiveBlock, null); } catch (e2) {}
                     }
@@ -4962,7 +4962,7 @@
                     sel.addRange(r);
                 }
                 // Re-focus editor without collapsing multi-select via focusBlock
-                editor.focus();
+                focusEditorNoScroll();
             } catch (e) {
                 try { focusBlock(currentActiveBlock, null); } catch (e2) {}
             }
@@ -5343,7 +5343,7 @@
                     if (!block) return;
                     currentActiveBlock = block;
                     try { focusBlock(block, off); } catch (e3) {
-                        try { editor.focus(); } catch (e4) {}
+                        focusEditorNoScroll();
                     }
                     try {
                         // Prefer main-container geometry under virt; scrollIntoView as backup
@@ -6208,7 +6208,7 @@
             // Source in sync.
             if (type === 'bold' || type === 'italic' || type === 'strike') {
                 const prevRaw = block.getAttribute('data-raw') || getBlockRaw(block) || '';
-                try { if (editor && editor.focus) editor.focus(); } catch (eF) {}
+                focusEditorNoScroll();
                 selectPlainRangeInBlock(block, offsets.start, offsets.end);
                 const cmd = type === 'bold' ? 'bold'
                     : type === 'italic' ? 'italic'
@@ -7196,9 +7196,27 @@
             }
         }
 
+        /**
+         * Focus the editor without letting the browser scroll it into view.
+         *
+         * #editor is the whole contenteditable document, so its top edge is above the
+         * viewport whenever you are not at the start. The default focus() behaviour is to
+         * scroll the focused element into view -- which scrolls that top edge into view,
+         * i.e. jumps to line 1. Every caller here positions the caret itself immediately
+         * afterwards, so the browser's idea of where to scroll is always the wrong one.
+         *
+         * This is what sent undo to the top of the document: _restoreCaret found the right
+         * block, then focusBlock scrolled away from it before setting the caret.
+         */
+        function focusEditorNoScroll() {
+            if (!editor || !editor.focus) return;
+            try { editor.focus({ preventScroll: true }); }
+            catch (e) { try { editor.focus(); } catch (e2) {} }
+        }
+
         function focusBlock(block, offset = null) {
             if (!block) return;
-            editor.focus();
+            focusEditorNoScroll();
             if (offset !== null) {
                 try { setCaretAtOffset(block, offset); } catch(e) {}
             }
@@ -7687,6 +7705,25 @@
                 this.blockHeights = null;
             },
 
+            /**
+             * Keep the height map aligned with a model splice instead of discarding it.
+             *
+             * invalidateHeights() throws away every measurement taken so far, so the very
+             * next prefixHeight() for a row a thousand blocks down is rebuilt from
+             * estimates. mountVirtWindow pins the viewport with that number, so a single
+             * inserted block moved the view by whatever the estimate error had accumulated
+             * to -- 1562px on the test document, and once per pasted block. Splicing keeps
+             * every other row's measured height, so the pin does not move.
+             */
+            spliceHeights: function (start, removeCount, insertRaws) {
+                if (!this.blockHeights) return;   // nothing measured yet; ensureHeights builds it
+                const add = [];
+                for (let i = 0; i < (insertRaws ? insertRaws.length : 0); i++) {
+                    add.push(this.estimateBlockHeight(insertRaws[i]));
+                }
+                this.blockHeights.splice.apply(this.blockHeights, [start, removeCount].concat(add));
+            },
+
             setMeasuredHeight: function (index, px) {
                 this.ensureHeights();
                 if (index < 0 || index >= this.blockHeights.length) return;
@@ -7729,6 +7766,36 @@
              * (not index+1 when the call was out-of-range and we appended).
              * Callers stamp data-model-index with this return value.
              */
+            /**
+             * Splicing the model renumbers every row after the splice point, so the
+             * data-model-index attributes on already-mounted elements must move with it.
+             *
+             * They are not decoration: syncMountedToModel() writes each mounted element's
+             * data-raw back into the model slot its attribute names. Leave them stale and
+             * the next remount copies the DOM's content into the *wrong* rows -- silently
+             * overwriting real text. Pasting mid-document destroyed the line after the
+             * caret exactly this way, and the two cross-block delete paths shared it.
+             *
+             * Elements not yet stamped (a freshly created block, stamped by the caller
+             * after the model call) have no attribute and are skipped, which is correct.
+             */
+            shiftMountedModelIndices: function (fromIndex, delta) {
+                if (!delta) return;
+                try {
+                    const nodes = editor.querySelectorAll('.block[data-model-index]');
+                    for (let i = 0; i < nodes.length; i++) {
+                        const v = parseInt(nodes[i].getAttribute('data-model-index'), 10);
+                        if (isNaN(v) || v < fromIndex) continue;
+                        nodes[i].setAttribute('data-model-index', String(v + delta));
+                    }
+                } catch (e) {}
+                // The mounted window names the same rows, so it moves too -- and it moves
+                // whether or not the walk above succeeded, or mountVirtWindow would decide
+                // it is already showing the right range and skip the repaint.
+                if (this.virtStart >= fromIndex) this.virtStart += delta;
+                if (this.virtEnd >= fromIndex) this.virtEnd += delta;
+            },
+
             insertBlockAfterIndex: function (index, raw) {
                 const item = {
                     id: this._nextId++,
@@ -7741,8 +7808,9 @@
                 } else {
                     this.blocks.splice(index + 1, 0, item);
                     newIdx = index + 1;
+                    this.shiftMountedModelIndices(newIdx, 1);
                 }
-                this.invalidateHeights();
+                this.spliceHeights(newIdx, 0, [item.raw]);
                 return newIdx;
             },
 
@@ -7754,7 +7822,8 @@
                     return;
                 }
                 this.blocks.splice(index, 1);
-                this.invalidateHeights();
+                this.shiftMountedModelIndices(index + 1, -1);
+                this.spliceHeights(index, 1, null);
             },
 
             /** Remove a range of block indices [from, to] inclusive. */
@@ -7768,10 +7837,12 @@
                     return;
                 }
                 this.blocks.splice(from, to - from + 1);
+                this.shiftMountedModelIndices(to + 1, -(to - from + 1));
+                this.spliceHeights(from, to - from + 1, null);
                 if (!this.blocks.length) {
                     this.blocks.push({ id: this._nextId++, raw: '' });
+                    this.invalidateHeights();
                 }
-                this.invalidateHeights();
             }
         };
 
@@ -8445,12 +8516,26 @@
                     }
                 }
 
+                // Under virtualisation createBlock remounts the window, which replaces
+                // every mounted element -- including the one it just handed back. Chaining
+                // off that detached node left the caret nowhere, so _captureCaret fell back
+                // to "first block in the mounted window" and undo stored *that* as the edit
+                // site, jumping hundreds of rows away. The model index survives a remount;
+                // the element does not, so re-find it each time.
                 let currentBlock = active;
+                let lastIdx = -1;
                 for (let i = 1; i < blockTexts.length; i++) {
                     const newBlock = createBlock(blockTexts[i], currentBlock);
-                    currentBlock = newBlock;
+                    lastIdx = DocumentModel.modelIndexOfEl(newBlock);
+                    currentBlock = editor.contains(newBlock)
+                        ? newBlock
+                        : (elementForModelIndex(lastIdx) || newBlock);
                 }
-                focusBlock(currentBlock, 0);
+                if (lastIdx >= 0 && (!currentBlock || !editor.contains(currentBlock))) {
+                    currentBlock = ensureModelBlockVisible(lastIdx, { topPad: 48 })
+                        || elementForModelIndex(lastIdx);
+                }
+                if (currentBlock && editor.contains(currentBlock)) focusBlock(currentBlock, 0);
             } else {
                 for (let i = 0; i < blockTexts.length; i++) {
                     createBlock(blockTexts[i]);

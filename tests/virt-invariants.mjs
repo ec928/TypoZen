@@ -84,6 +84,8 @@ const DocumentModel = {
   ${extractMethod('totalHeight')},
   ${extractMethod('indexAtScrollTop')},
   ${extractMethod('shouldVirtualize')},
+  ${extractMethod('shiftMountedModelIndices')},
+  ${extractMethod('spliceHeights')},
   ${extractMethod('insertBlockAfterIndex')},
   ${extractMethod('removeBlockAt')},
   ${extractMethod('removeBlockRange')}
@@ -100,7 +102,7 @@ try {
     // the document is laid out as pages, because the browser can only break content it
     // has actually laid out. Outside the app that helper does not exist, so stub it as
     // "not paginated" -- these invariants are about the scrolling path.
-    const editorStub = { classList: { contains: () => false } };
+    const editorStub = { classList: { contains: () => false }, querySelectorAll: () => [] };
     const isPaginatedLayout = () => false;
     DocumentModel = new Function(
         'VIRT_MIN_CHARS', 'VIRT_MIN_BLOCKS', 'editor', 'isPaginatedLayout',
@@ -314,6 +316,48 @@ console.log('=== Section 8: delete integrity + remap ===');
     DocumentModel.removeBlockRange(0, 1);
     assert(DocumentModel.blocks.map(b => b.raw).join(',') === 'd,e',
         'remove range (got ' + DocumentModel.blocks.map(b => b.raw).join(',') + ')');
+}
+
+console.log('=== Section 9: a structural edit keeps measured heights ===');
+{
+    // These used to call invalidateHeights(), which discards every measurement taken so
+    // far. mountVirtWindow then pins the viewport with prefixHeight() rebuilt from
+    // estimates, so inserting one block moved the view by the accumulated estimate error
+    // -- 1562px per pasted block on a 3769-block document. Splicing the height array
+    // keeps every untouched row's real height, so the pin does not move.
+    DocumentModel.fromMarkdown('a\nb\nc\nd\ne');
+    DocumentModel.ensureHeights();
+    for (let i = 0; i < 5; i++) DocumentModel.setMeasuredHeight(i, 100 + i * 10);
+    const measured = DocumentModel.blockHeights.slice();
+
+    DocumentModel.insertBlockAfterIndex(1, 'new');
+    assert(DocumentModel.blockHeights.length === 6, 'height map grew with the model');
+    assert(DocumentModel.blockHeights[0] === measured[0]
+        && DocumentModel.blockHeights[1] === measured[1],
+        'rows before the insert keep their measured heights');
+    assert(DocumentModel.blockHeights[3] === measured[2]
+        && DocumentModel.blockHeights[5] === measured[4],
+        'rows after the insert keep their measured heights, shifted with them');
+    assert(DocumentModel.prefixHeight(1) === measured[0],
+        'prefixHeight above the edit is unchanged, so the viewport pin does not move');
+
+    DocumentModel.removeBlockAt(2);
+    assert(DocumentModel.blockHeights.length === 5, 'height map shrank with the model');
+    assert(DocumentModel.blockHeights[2] === measured[2]
+        && DocumentModel.blockHeights[4] === measured[4],
+        'rows after a delete keep their measured heights, shifted with them');
+
+    // And the mounted window travels with the rows it names.
+    DocumentModel.virtStart = 2;
+    DocumentModel.virtEnd = 4;
+    DocumentModel.insertBlockAfterIndex(0, 'x');
+    assert(DocumentModel.virtStart === 3 && DocumentModel.virtEnd === 5,
+        'the mounted window shifts when rows are inserted above it (' +
+        DocumentModel.virtStart + '..' + DocumentModel.virtEnd + ')');
+    DocumentModel.removeBlockAt(0);
+    assert(DocumentModel.virtStart === 2 && DocumentModel.virtEnd === 4,
+        'and shifts back when they are removed (' +
+        DocumentModel.virtStart + '..' + DocumentModel.virtEnd + ')');
 }
 
 console.log('\npassed=' + passed + ' failed=' + failed);
