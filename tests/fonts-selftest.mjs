@@ -124,25 +124,30 @@ console.log('\n--- 4. static families declare a bold face ---');
 
 console.log('\n--- 5. the theme editor never substitutes a font ---');
 {
-    // ThemeCustomizeWindow matched a theme FN against its preset stacks by exact string and
-    // fell back to index 0 when nothing matched. The dialog previews AND saves from that
-    // selection, so opening Customize Theme on a theme whose stack was not in the list
-    // silently rewrote its font to Inter. Solarized Light hit it the moment its fallback
-    // changed from Georgia to Literata: the font was installed and offered, the stack just
-    // was not one of the ten literals.
+    // The editor offers families, not hand-written CSS stacks, and matches a theme on the
+    // family it leads with. Whole-string matching against ten literals fell back to index 0
+    // for anything it did not recognise -- and the dialog previews AND saves from that
+    // selection, so opening Customize Theme on Solarized Light and saving rewrote its font
+    // to Inter. The font was installed and offered; only the stack text differed.
     const appCs = fs.readFileSync(path.join(appDir, "TypoZen_App.cs"), "utf8");
     assert(/int selectedFont = -1;/.test(appCs),
         "the editor does not default the font selection to preset 0");
-    assert(/\(this theme\)/.test(appCs),
-        "an unrecognised stack is carried through as itself, never replaced");
+    assert(/LeadingFamily\(_fontPresets\[i\]\[1\]\)/.test(appCs),
+        "the editor matches on the leading family, not the whole stack string");
+    assert(/\? _resetFn/.test(appCs),
+        "saving without changing the family keeps the theme stack verbatim");
+    // The picker lists typefaces, not one row per hand-written stack. Asserted on the
+    // declaration itself -- an earlier version of this grepped the whole file for "(Serif)"
+    // and failed on the comment explaining the change.
+    assert(/FontFamilies = new string\[\]\[\]/.test(appCs),
+        "font choices are declared as families with a generic fallback");
 
     // Every family a theme leads with must be one the editor can actually offer.
     const fams = new Set();
-    const pre = /new string\[\]\s*\{\s*"[^"]*",\s*"([^"]+)"\s*\}/g;
+    const pre = /new string\[\]\s*\{\s*"([^"]+)",\s*"(?:sans-serif|serif|monospace)"\s*\}/g;
     let mm;
-    while ((mm = pre.exec(appCs))) {
-        mm[1].split(",").forEach(f => fams.add(f.trim().replace(/^['"]|['"]$/g, "").toLowerCase()));
-    }
+    while ((mm = pre.exec(appCs))) fams.add(mm[1].trim().toLowerCase());
+    assert(fams.size > 4, "the family list was parsed (" + fams.size + " families)");
     const orphans = themes
         .map(t => ({ n: t.Name, f: String(t.FN || "").split(",")[0].trim().replace(/^['"]|['"]$/g, "") }))
         .filter(x => x.f && !fams.has(x.f.toLowerCase()))

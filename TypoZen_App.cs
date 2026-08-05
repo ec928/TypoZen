@@ -353,20 +353,52 @@ namespace TypoZen
         private bool _editorReady;
         private readonly List<string> _pendingHandoffPaths = new List<string>();
 
-        // Curated font stacks for the basic theme editor (display label, CSS FN)
-        private static readonly string[][] FontPresets = new string[][]
+        // The theme editor offers FAMILIES, not hand-written CSS stacks.
+        //
+        // It used to be ten literal stacks matched against a theme's FN by exact string,
+        // which drifts from the palette the moment any theme is edited: Solarized Light's
+        // "'Bookerly', 'Literata', serif" matched none of them, so the picker fell back to
+        // entry 0 and Save rewrote the font to Inter. Patching that by appending the
+        // unmatched stack as its own entry stopped the data loss but left a duplicate
+        // "Bookerly (this theme)" sitting under "Bookerly / Georgia (Serif)" -- two rows
+        // for one typeface, which is just the same modelling error made visible.
+        //
+        // A reader picks a typeface. The fallback chain is plumbing, so it does not belong
+        // in the menu. Matching is then on the family a theme leads with, which cannot fail
+        // for any stack that starts with a font we know about, however it is written.
+        // Format: display name, generic fallback.
+        private static readonly string[][] FontFamilies = new string[][]
         {
-            new string[] { "Inter (Sans)", "'Inter', 'Segoe UI', sans-serif" },
-            new string[] { "Source Sans 3 (Sans)", "'Source Sans 3', 'Source Sans Pro', 'Segoe UI', sans-serif" },
-            new string[] { "Merriweather (Serif)", "'Merriweather', 'Georgia', serif" },
-            new string[] { "Literata (Serif)", "'Literata', 'Georgia', serif" },
-            new string[] { "Bookerly / Georgia (Serif)", "'Bookerly', 'Georgia', serif" },
-            new string[] { "Georgia (Serif)", "'Georgia', serif" },
-            new string[] { "Palatino (Serif)", "'Palatino Linotype', 'Georgia', serif" },
-            new string[] { "Sitka Text (Serif)", "'Sitka Text', 'Georgia', serif" },
-            new string[] { "Cascadia Mono", "'Cascadia Mono', 'Consolas', monospace" },
-            new string[] { "Consolas (Mono)", "'Consolas', monospace" },
+            new string[] { "Inter", "sans-serif" },
+            new string[] { "Source Sans 3", "sans-serif" },
+            new string[] { "Segoe UI", "sans-serif" },
+            new string[] { "Merriweather", "serif" },
+            new string[] { "Literata", "serif" },
+            new string[] { "Bookerly", "serif" },
+            new string[] { "Georgia", "serif" },
+            new string[] { "Palatino Linotype", "serif" },
+            new string[] { "Sitka Text", "serif" },
+            new string[] { "Cascadia Mono", "monospace" },
+            new string[] { "Consolas", "monospace" },
         };
+
+        /// <summary>Family list as (label, CSS stack) pairs for the editor.</summary>
+        private static string[][] FontPresets
+        {
+            get
+            {
+                var list = new string[FontFamilies.Length][];
+                for (int i = 0; i < FontFamilies.Length; i++)
+                {
+                    list[i] = new string[]
+                    {
+                        FontFamilies[i][0],
+                        "'" + FontFamilies[i][0] + "', " + FontFamilies[i][1]
+                    };
+                }
+                return list;
+            }
+        }
 
         // Automated-test mode (TYPOZEN_TAB_E2E=<output dir>) runs against a throwaway
         // profile. It used to share the real one, so a previous session's localStorage
@@ -7930,20 +7962,26 @@ if (_btnColumnToggle != null)
             // Nothing is substituted now. An unrecognised stack is added to the list as
             // itself and selected, so the dialog always shows the font the theme actually
             // uses and saving cannot change a font the user did not touch.
+            // Match on the family the theme leads with. Whole-string matching could only
+            // fail for any stack we did not write ourselves, and its failure was silent.
             int selectedFont = -1;
+            string seedFamily = LeadingFamily(fn);
             for (int i = 0; i < _fontPresets.Length; i++)
             {
-                if (fn != null && string.Equals(fn.Trim(), _fontPresets[i][1].Trim(), StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(seedFamily, LeadingFamily(_fontPresets[i][1]),
+                        StringComparison.OrdinalIgnoreCase))
                 {
                     selectedFont = i;
                     break;
                 }
             }
+            // A family we do not list at all still gets shown as itself rather than being
+            // replaced by whatever happens to be first.
             if (selectedFont < 0 && !string.IsNullOrWhiteSpace(fn))
             {
                 var extended = new string[_fontPresets.Length + 1][];
                 Array.Copy(_fontPresets, extended, _fontPresets.Length);
-                extended[_fontPresets.Length] = new string[] { LeadingFamily(fn) + " (this theme)", fn };
+                extended[_fontPresets.Length] = new string[] { seedFamily, fn };
                 _fontPresets = extended;
                 selectedFont = _fontPresets.Length - 1;
             }
@@ -8217,10 +8255,20 @@ if (_btnColumnToggle != null)
 
         private ThemeInfo BuildTheme()
         {
-            string fn = "'Inter', 'Segoe UI', sans-serif";
+            string fn = _resetFn;
             int fi = _cmbFont.SelectedIndex;
             if (fi >= 0 && fi < _fontPresets.Length)
-                fn = _fontPresets[fi][1];
+            {
+                // Picking the family the theme already had is not a change, so keep its
+                // original stack verbatim -- fallbacks included. Recomposing it would
+                // quietly turn "'Bookerly', 'Literata', serif" into "'Bookerly', serif"
+                // just because the dialog was opened and saved.
+                fn = string.Equals(LeadingFamily(_fontPresets[fi][1]), LeadingFamily(_resetFn),
+                        StringComparison.OrdinalIgnoreCase)
+                    ? _resetFn
+                    : _fontPresets[fi][1];
+            }
+            if (string.IsNullOrWhiteSpace(fn)) fn = "'Inter', sans-serif";
 
             // Clamp to the same range SaveThemeAsNew enforces, so preview and save agree.
             int fs = _resetFs > 0 ? _resetFs : 14;
