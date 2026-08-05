@@ -1980,17 +1980,23 @@
         }
 
         /** After virt remount (user scroll), re-highlight current match if its block is mounted. */
-        function refreshFindAfterVirtMount() {
+        /**
+         * Repaint the find highlights against whatever is mounted right now.
+         *
+         * One entry point for every layout. The highlights are ranges over live DOM nodes,
+         * so anything that replaces those nodes -- a virt remount, a page turn, a column
+         * switch, entering or leaving pagination -- invalidates all of them. There is no
+         * layout in which that is not true, so there is no layout this may skip.
+         *
+         * Every previous version of this guarded itself into irrelevance: first on the
+         * Ctrl+F bar being open (the sidebar is a different surface driving the same
+         * findState), then on virtualisation being enabled (pagination turns it off). Each
+         * guard silently disabled highlighting for exactly the case being reported.
+         */
+        function repaintFindHighlights() {
             if (findState._revealing) return;
-            // Gated on findState.query, NOT on the find bar being open. The search sidebar
-            // is a separate surface that drives the same findState, so this returned early
-            // for every sidebar search -- and a remount detaches every node the ranges
-            // point at. The highlights left on screen were the ones built before the jump,
-            // which is why the active mark sat on line 3 while the sidebar was on line 12,
-            // and why findState.ranges[0] resolved to no block at all.
             if (!findState.query) return;
             if (state.mode === 'source') return;
-            if (typeof DocumentModel === 'undefined' || !DocumentModel.virtEnabled) return;
             if (findState.kind !== 'model') return;
             if (findState.index < 0 || findState.index >= findState.matches.length) return;
             try {
@@ -2883,7 +2889,14 @@
                     // to its real start -- not on a page synthesised from the scroll offset.
                     settleTwoColToLine(1, _pgAnchor);
                 } else {
-                    scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
+                    scheduleColumnSettle(function () {
+                        PageMap.invalidate();
+                        updatePageIndicator();
+                        // Entering or leaving pagination remounts the document, which
+                        // detaches every range the highlighter holds. Repaint once the
+                        // new layout has settled.
+                        repaintFindHighlights();
+                    });
                 }
                 // Report it: the selectors must follow the view however it was changed,
                 // not only when the change came from a selector click.
@@ -3122,7 +3135,14 @@
                 // Reader/Preview/Source changes whether pages apply at all.
                 syncPaginationClass();
                 applyEditorChromeForMode();
-                scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
+                scheduleColumnSettle(function () {
+                        PageMap.invalidate();
+                        updatePageIndicator();
+                        // Entering or leaving pagination remounts the document, which
+                        // detaches every range the highlighter holds. Repaint once the
+                        // new layout has settled.
+                        repaintFindHighlights();
+                    });
                 // Mode can change from Ctrl+/ or the View menu, not just a selector click.
                 postViewState(currentViewState());
             }
@@ -8269,7 +8289,7 @@
                     pinScrollToAnchor();
                 }
 
-                try { refreshFindAfterVirtMount(); } catch (eF) {}
+                try { repaintFindHighlights(); } catch (eF) {}
                 try { clampMainScroll(); } catch (eCl) {}
             } finally {
                 DocumentModel._virtMounting = false;
