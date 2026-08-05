@@ -692,19 +692,25 @@
                 ? DocumentModel.blocks : null;
             if (!blocks || !blocks.length) { out.fill(1); return out; }
 
+            // Same surface as the offsets themselves: a book's are into its text.
+            const book = DocumentModel.kind === 'epub';
+            const rawOf = function (i) {
+                return book ? DocumentModel.blockText(i)
+                            : String(blocks[i].raw == null ? '' : blocks[i].raw);
+            };
             let bi = 0;              // block under the pointer
-            let pos = 0;             // char offset of that block's start in the markdown
+            let pos = 0;             // char offset of that block's start
             let line = 1;            // document line of that block's start
-            let rawLen = String(blocks[0].raw == null ? '' : blocks[0].raw).length;
+            let rawLen = rawOf(0).length;
 
             for (let i = 0; i < offsets.length; i++) {
                 const off = Math.max(0, offsets[i] | 0);
                 // Offsets ascend, so the pointer only ever moves forward.
                 while (bi < blocks.length - 1 && off > pos + rawLen) {
-                    line += linesInBlockRaw(blocks[bi].raw);
+                    line += linesInBlockRaw(rawOf(bi));
                     pos += rawLen + 1;          // +1 for the joining newline
                     bi++;
-                    rawLen = String(blocks[bi].raw == null ? '' : blocks[bi].raw).length;
+                    rawLen = rawOf(bi).length;
                 }
                 out[i] = line;
             }
@@ -1114,7 +1120,11 @@
                 return;
             }
             const spread = PageMap.current();
-            const spreads = PageMap.pages.length;
+            // count(), not pages.length. Under page windowing pages.length is the MOUNTED
+            // range's page count while current() is the page within the whole document, so
+            // mixing them printed "145" on the left of a spread whose total was "80" -- two
+            // different coordinate systems side by side on the same screen.
+            const spreads = PageMap.count();
             const twoCol = editor.classList.contains('two-col-layout');
             const total = twoCol ? spreads * 2 : spreads;
             host.style.display = 'flex';
@@ -1123,7 +1133,7 @@
                 const left = spread * 2 + 1;
                 host.innerHTML =
                     '<span class="page-num">' + left + '</span>' +
-                    '<span class="page-num">' + Math.min(left + 1, total) + '</span>';
+                    '<span class="page-num">' + Math.min(left + 1, Math.max(left, total)) + '</span>';
             } else {
                 host.innerHTML = '<span class="page-num">' + (spread + 1) + ' / ' + total + '</span>';
             }
@@ -1550,6 +1560,7 @@
                 const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
                 const el = createPreviewBlockEl(raw, false);
                 el.setAttribute('data-model-index', String(i));
+                if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                 frag.appendChild(el);
             }
             editor.innerHTML = '';
@@ -2200,8 +2211,14 @@
             const n = blocks.length;
             if (!n) return { blockIndex: 0, offsetInBlock: 0, blockStart: 0 };
             const off = Math.max(0, offset | 0);
+            // For a book the search offsets come from toPlainText(), so the walk has to be
+            // over the same strings. Walking the HTML instead made every offset land in a
+            // block far from the match -- searching found the right words and then showed
+            // somewhere else entirely.
+            const book = DocumentModel.kind === 'epub';
             for (let i = 0; i < n; i++) {
-                const raw = String(blocks[i].raw == null ? '' : blocks[i].raw);
+                const raw = book ? DocumentModel.blockText(i)
+                                 : String(blocks[i].raw == null ? '' : blocks[i].raw);
                 const end = pos + raw.length;
                 // Match at the joining newline belongs to the next block start
                 if (off < end || (off === end && i === n - 1)) {
@@ -7328,8 +7345,13 @@
             if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return 1;
             let line = 1;
             const n = Math.min(blockIndex | 0, DocumentModel.blocks.length);
+            // A book's raw is HTML, so counting newlines in it measures the markup rather
+            // than the reading position -- and everything that navigates by line then lands
+            // somewhere unrelated. Its text is what a line means here.
+            const book = DocumentModel.kind === 'epub';
             for (let i = 0; i < n; i++) {
-                line += linesInBlockRaw(DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '');
+                line += book ? linesInBlockRaw(DocumentModel.blockText(i))
+                             : linesInBlockRaw(DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '');
             }
             return line;
         }
@@ -7439,16 +7461,23 @@
             const blocks = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
                 ? DocumentModel.blocks : [];
             if (!blocks.length) return { blockIndex: 0, within: 0 };
+            // The inverse of modelBlockStartLine, and it has to measure the same thing: a
+            // book's lines are its text. Counting newlines in the markup instead sent every
+            // line-based restore to an unrelated block.
+            const book = DocumentModel.kind === 'epub';
+            const linesOf = function (bi) {
+                return linesInBlockRaw(book ? DocumentModel.blockText(bi) : blocks[bi].raw);
+            };
             let remaining = Math.max(1, line1Based | 0);
             for (let bi = 0; bi < blocks.length; bi++) {
-                const bl = linesInBlockRaw(blocks[bi].raw);
+                const bl = linesOf(bi);
                 if (remaining <= bl) {
                     return { blockIndex: bi, within: remaining - 1 };
                 }
                 remaining -= bl;
             }
             const last = blocks.length - 1;
-            return { blockIndex: last, within: Math.max(0, linesInBlockRaw(blocks[last].raw) - 1) };
+            return { blockIndex: last, within: Math.max(0, linesOf(last) - 1) };
         }
 
         /**
@@ -8036,6 +8065,26 @@
                 if (sel && sel.isCollapsed) refreshLastGoodDocRaws();
             } catch (err) {}
         }, true);
+        // A link inside a book jumps within the document. The whole book is already open,
+        // so following the href would replace the application with one chapter of it -- and
+        // an external link should not silently become the reader's window either.
+        editor.addEventListener('click', function (e) {
+            if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') return;
+            const a = e.target && e.target.closest ? e.target.closest('a') : null;
+            if (!a) return;
+            const target = a.getAttribute('data-book-href') || a.getAttribute('href');
+            if (!target) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (/^(https?:|mailto:)/i.test(target)) {
+                postMsg('open_external:' + encodeURIComponent(target));
+                return;
+            }
+            if (!bookGoToHref(target)) {
+                window.showDebugTelemetry('book link went nowhere: ' + target);
+            }
+        }, true);
+
         editor.addEventListener('mouseup', function () {
             snapshotFormatSelectionFromEditor();
             cacheInlineSelection();
@@ -8905,6 +8954,9 @@
                         const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
                         const el = createPreviewBlockEl(raw, false);
                         el.setAttribute('data-model-index', String(i));
+                if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
+                    if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
+                        if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                         frag.appendChild(el);
                     }
 
@@ -8940,6 +8992,9 @@
                 DocumentModel._virtMounting = false;
             }
         }
+
+        /** Block indices that begin a spine document, i.e. a chapter. */
+        let _bookDocStarts = {};
 
         function createPreviewBlockEl(raw, progressive) {
             const block = document.createElement('div');
@@ -9098,6 +9153,8 @@
                 for (let i = 0; i < blockRaws.length; i++) {
                     const el = createPreviewBlockEl(blockRaws[i], progressive);
                     el.setAttribute('data-model-index', String(i));
+                if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
+                    if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                     frag.appendChild(el);
                 }
                 editor.appendChild(frag);
@@ -10842,6 +10899,11 @@
 
             const split = bookBlocksFromDocs(data.docs);
             const toc = bookTocToBlockIndices(data.toc, split.docStart);
+            _bookDocStarts = {};
+            for (let i = 0; i < split.docStarts.length; i++) _bookDocStarts[split.docStarts[i]] = 1;
+            _bookAssetsBase = String(data.assetsBase || '');
+            _bookDocIndex = split.docStart;
+            _bookAnchorIndex = null;   // belongs to the book that is open, not to the session
 
             // Styles before blocks: the first paint should already be the book's own
             // typography rather than a flash of unstyled text a reader would notice.
@@ -10855,6 +10917,12 @@
             state.mode = 'reader';
             setEditorEditable(false);
             try { applyEditorChromeForMode(); } catch (eC) {}
+            // Tell the shell, or the toolbar keeps showing Preview while the document is
+            // in Reader -- the selectors are driven by what the page reports, not by what
+            // it happens to be doing.
+            state.lastSavedContent = DocumentModel.toPlainText();
+            try { postMsg('mode_changed:reader'); } catch (eM) {}
+            try { postViewState(currentViewState()); } catch (eV) {}
 
             editor.innerHTML = '';
             DocumentModel.virtEnabled = DocumentModel.shouldVirtualize();
@@ -10874,6 +10942,8 @@
                 for (let i = 0; i < DocumentModel.blocks.length; i++) {
                     const el = createPreviewBlockEl(DocumentModel.blocks[i].raw, false);
                     el.setAttribute('data-model-index', String(i));
+                if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
+                    if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                     frag.appendChild(el);
                 }
                 editor.appendChild(frag);
@@ -10895,6 +10965,164 @@
                 blocks: split.blocks.length, toc: toc.length
             })));
             return true;
+        }
+
+
+        /**
+         * Where a book's extracted assets live, and where each of its documents begins.
+         *
+         * Both are set when a book loads and are what turn a relative href into something
+         * that resolves: an <img src="../images/plate.jpg"> means nothing until it is
+         * anchored to the directory the book was unpacked into, and an
+         * <a href="chapter7.xhtml"> means nothing until it is turned into a block index.
+         */
+        let _bookAssetsBase = '';
+        let _bookDocIndex = {};
+
+        /** Resolve a book-relative path against the extracted assets, keeping ../ honest. */
+        function bookResolveUrl(href) {
+            const h = String(href == null ? '' : href).trim();
+            if (!h || /^(data:|https?:|mailto:|blob:)/i.test(h)) return h;
+            if (!_bookAssetsBase) return h;
+            try {
+                return new URL(h.replace(/^\.\//, ''), _bookAssetsBase).href;
+            } catch (e) {
+                return _bookAssetsBase + h.replace(/^(\.\/|\/)/, '');
+            }
+        }
+
+        /**
+         * Rewrite a book fragment's URLs so images load and links can be followed.
+         *
+         * Done at render rather than at load: the raw stays exactly as the publisher wrote
+         * it, which keeps the model a faithful copy of the book and means a change of
+         * asset location does not require re-parsing every block.
+         *
+         * Internal links keep their original target in data-book-href. Following them is a
+         * jump within the document, not a navigation -- the whole book is already open, and
+         * letting the browser follow the link would replace the application with a chapter.
+         */
+        function rewriteBookUrls(root) {
+            if (!root) return;
+            try {
+                const imgs = root.querySelectorAll('img[src], image[*|href], img[data-src]');
+                for (let i = 0; i < imgs.length; i++) {
+                    const el = imgs[i];
+                    const raw = el.getAttribute('src') || el.getAttribute('xlink:href')
+                        || el.getAttribute('href');
+                    if (!raw) continue;
+                    const abs = bookResolveUrl(raw);
+                    if (abs !== raw) el.setAttribute('src', abs);
+                    if (!el.getAttribute('loading')) el.setAttribute('loading', 'lazy');
+                }
+                const links = root.querySelectorAll('a[href]');
+                for (let i = 0; i < links.length; i++) {
+                    const a = links[i];
+                    const href = a.getAttribute('href');
+                    if (!href || /^(https?:|mailto:)/i.test(href)) continue;
+                    a.setAttribute('data-book-href', href);
+                    a.removeAttribute('href');   // nothing navigates away from the book
+                    a.style.cursor = 'pointer';
+                }
+            } catch (e) {}
+        }
+
+        /**
+         * Jump to a place in the book named by an href, e.g. "chapter7.xhtml#s3".
+         *
+         * Resolves to the block the document begins at, then refines to the element bearing
+         * the fragment id if that block is on screen -- an anchor part way into a long
+         * chapter should land there, not at the chapter's first paragraph.
+         */
+        function bookGoToHref(href) {
+            const raw = String(href == null ? '' : href);
+            const file = bookNormalizeHref(raw);
+            const hash = raw.indexOf('#') >= 0 ? raw.slice(raw.indexOf('#') + 1) : '';
+
+            let idx = -1;
+            if (file && Object.prototype.hasOwnProperty.call(_bookDocIndex, file)) {
+                idx = _bookDocIndex[file];
+            } else if (file) {
+                const bare = file.slice(file.lastIndexOf('/') + 1);
+                const keys = Object.keys(_bookDocIndex);
+                for (let i = 0; i < keys.length; i++) {
+                    if (keys[i] === bare || keys[i].endsWith('/' + bare)) {
+                        idx = _bookDocIndex[keys[i]];
+                        break;
+                    }
+                }
+            }
+            // A bare "#id" means somewhere in the document already open.
+            if (idx < 0 && hash) idx = findBookBlockWithId(hash);
+            if (idx < 0) return false;
+
+            if (hash) {
+                const better = findBookBlockWithId(hash);
+                if (better >= 0) idx = better;
+            }
+            goToModelBlock(idx);
+            return true;
+        }
+
+        /**
+         * Every anchor in the book, mapped to the block that carries it.
+         *
+         * Built once and kept, because a link click would otherwise scan 40,000 blocks of
+         * markup. Matches `name` as well as `id`: books converted from older formats
+         * anchor with <a name="filepos3742">, and Matter's internal links are all of that
+         * shape -- looking only for id= found none of them and every link went nowhere.
+         */
+        let _bookAnchorIndex = null;
+
+        function buildBookAnchorIndex() {
+            const map = {};
+            if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') return map;
+            const re = /\b(?:id|name)\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
+            const blocks = DocumentModel.blocks;
+            for (let i = 0; i < blocks.length; i++) {
+                const r = blocks[i].raw;
+                if (!r || r.indexOf('=') < 0) continue;
+                let m;
+                re.lastIndex = 0;
+                while ((m = re.exec(r))) {
+                    const id = m[1] || m[2] || m[3];
+                    // First wins: an anchor repeated later in the book is still first
+                    // encountered where the reader would expect to land.
+                    if (id && !Object.prototype.hasOwnProperty.call(map, id)) map[id] = i;
+                }
+            }
+            return map;
+        }
+
+        /** The block carrying a given anchor, or -1. */
+        function findBookBlockWithId(id) {
+            if (!id || typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') return -1;
+            if (!_bookAnchorIndex) _bookAnchorIndex = buildBookAnchorIndex();
+            return Object.prototype.hasOwnProperty.call(_bookAnchorIndex, id)
+                ? _bookAnchorIndex[id] : -1;
+        }
+
+        /**
+         * Show a model block, using whatever navigation the current layout actually uses.
+         *
+         * One place, because there were three -- the outline, search and the TOC each had
+         * their own, and each had to learn separately that seeding scrollTop under
+         * virtualisation does nothing.
+         */
+        function goToModelBlock(idx) {
+            if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks.length) return;
+            const bi = Math.max(0, Math.min(idx | 0, DocumentModel.blocks.length - 1));
+            try {
+                if (isPaginatedLayout()) {
+                    goToPageHoldingBlock(bi);
+                } else {
+                    restoreStickyDocumentLine(modelBlockStartLine(bi));
+                }
+                _readingAnchor = bi;
+                rememberStickyLine(modelBlockStartLine(bi));
+            } catch (e) {
+                window.showDebugTelemetry('goToModelBlock: ' + e.message);
+            }
         }
 
 
@@ -10951,12 +11179,17 @@
         function bookBlocksFromDocs(docs) {
             const blocks = [];
             const docStart = {};
+            const starts = [];
             for (let i = 0; i < (docs ? docs.length : 0); i++) {
                 docStart[bookNormalizeHref(docs[i].href)] = blocks.length;
                 const bs = bookBlocksFromHtml(docs[i].html);
+                // A spine document is a chapter, and a chapter starts a page. Without this
+                // a book runs continuously and a chapter heading turns up halfway down a
+                // column, which no printed book does and no reader expects.
+                if (bs.length) starts.push(blocks.length);
                 for (let j = 0; j < bs.length; j++) blocks.push(bs[j]);
             }
-            return { blocks: blocks, docStart: docStart };
+            return { blocks: blocks, docStart: docStart, docStarts: starts };
         }
 
         /**
@@ -11106,6 +11339,8 @@
             // to detect, no inline syntax to parse. The book already said what it meant.
             if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') {
                 block.innerHTML = sanitizeBookHtml(raw);
+                // At render, not at load: the raw stays exactly as the publisher wrote it.
+                rewriteBookUrls(block);
                 return;
             }
 
@@ -11844,7 +12079,11 @@
                 }
             } catch (eSt) {}
             const readTime = words === 0 ? 0 : Math.max(1, Math.ceil(words / 200));
-            const isDirty = content !== state.lastSavedContent;
+            // A book is read-only, so it is never dirty. Without this every book opened
+            // showing "Unsaved *", inviting a save of something that cannot be edited.
+            const isDirty = (DocumentModel.kind === 'epub')
+                ? false
+                : (content !== state.lastSavedContent);
 
             // Selection counts (status bar shows "N / total" when non-empty)
             const selText = getSelectionPlainForStats();
@@ -11987,6 +12226,10 @@
                     // The whole handler was wrapped in a bare catch, so nothing said so.
                     try {
                         const line = modelBlockStartLine(idx);
+                        if (DocumentModel && DocumentModel.kind === 'epub') {
+                            goToModelBlock(idx);
+                            return;
+                        }
                         if (isPaginatedLayout()) {
                             goToPageHoldingBlock(idx);
                         } else {

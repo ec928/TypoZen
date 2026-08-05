@@ -57,6 +57,38 @@ try {
     assert(false, 'vm.Script: ' + (e && e.message));
 }
 
+
+console.log('--- no stray control characters in the sources ---');
+{
+    // Three separate bugs in this project came from writing a regex through a tool that
+    // interpreted the backslashes: \b became 0x08 and \1 became 0x01, leaving a pattern
+    // that matches nothing and looks completely normal in an editor. Each time it presented
+    // as a feature silently doing nothing -- "No headings found" on every book, every
+    // internal link going nowhere -- rather than as an error.
+    //
+    // They are invisible by nature, so the only defence is to look for them.
+    const files = ['js/typozen.js', 'css/typozen.css', 'TypoZen_Template.html',
+                   'TypoZen_App.cs', 'EpubReader.cs'];
+    for (const rel of files) {
+        const full = path.join(__dirname, '..', rel);
+        if (!fs.existsSync(full)) continue;
+        const text = fs.readFileSync(full, 'utf8');
+        const found = [];
+        for (let i = 0; i < text.length; i++) {
+            const c = text.charCodeAt(i);
+            // Tab (9), LF (10), CR (13) are legitimate; nothing else below 32 is.
+            if (c < 9 || (c > 13 && c < 32) || c === 11 || c === 12) {
+                found.push('line ' + (text.slice(0, i).split('\n').length) +
+                           ' code ' + c);
+                if (found.length >= 3) break;
+            }
+        }
+        assert(found.length === 0,
+            rel + ' has no control characters' +
+            (found.length ? ' -- ' + found.join(', ') : ''));
+    }
+}
+
 console.log('\npassed=' + passed + ' failed=' + failed);
 if (failed) {
     console.error('\nPARSE CHECK FAILED');

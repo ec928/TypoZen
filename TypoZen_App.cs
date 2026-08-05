@@ -7044,6 +7044,21 @@ if (_btnColumnToggle != null)
         private void ApplyTabToEditor(DocTab tab)
         {
             if (tab == null) return;
+
+            // A book has no text to apply, so applying it would show an empty document.
+            // This is the path a restored session and every tab switch goes through, which
+            // is how a restored book tab came back blank: the tab remembered the file and
+            // the file is not something Content can hold.
+            if (!string.IsNullOrEmpty(tab.FilePath)
+                && tab.FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+            {
+                _currentFilePath = tab.FilePath;
+                _isDirty = false;
+                Dispatcher.BeginInvoke(new Action(() => OpenBook(tab.FilePath)),
+                    DispatcherPriority.Normal);
+                return;
+            }
+
             _currentFilePath = tab.FilePath;
             MapDocumentFolder(_currentFilePath);   // images resolve per document
             _isDirty = tab.IsDirty;
@@ -7683,15 +7698,21 @@ if (_btnColumnToggle != null)
         {
             path = Path.GetFullPath(path);
 
-            // Already open? Show it. Re-reading a 5 MB book to land on the same tab is work
-            // nobody asked for.
+            // Reuse the tab if the book is already open, but always load it.
+            //
+            // Switching and returning was wrong in the one case that matters: a session
+            // restores its tabs, and a book's tab carries no text, so a restored book tab
+            // is an empty document. Opening the book then found "already open", switched to
+            // the empty tab and stopped -- the book appeared to open and showed nothing.
+            // Extraction is cached, so loading again costs a re-read rather than a re-unzip.
+            int existing = -1;
             for (int i = 0; i < _tabs.Count; i++)
             {
                 if (!string.IsNullOrEmpty(_tabs[i].FilePath) &&
                     string.Equals(Path.GetFullPath(_tabs[i].FilePath), path, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (i != _activeTabIndex) SwitchToTab(i);
-                    return;
+                    existing = i;
+                    break;
                 }
             }
 
@@ -7710,7 +7731,12 @@ if (_btnColumnToggle != null)
             try
             {
                 DocTab tab;
-                if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                if (existing >= 0)
+                {
+                    tab = _tabs[existing];
+                    _activeTabIndex = existing;
+                }
+                else if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
                     && IsReusableEmptyUntitled(_tabs[_activeTabIndex]))
                 {
                     tab = _tabs[_activeTabIndex];

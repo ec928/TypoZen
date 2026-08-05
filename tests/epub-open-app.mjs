@@ -133,6 +133,157 @@ async function openAndCheck(app, book, deep) {
         assert(paged.windowed && paged.mounted < st.blocks,
             'with windowing engaged, so a novel is not laid out whole (' +
             paged.mounted + ' of ' + st.blocks + ')');
+
+        console.log('\n--- images, links and navigation ---');
+        {
+            // Every one of these was reported from real use after the loader landed.
+            const nav = await app.eval(async () => {
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                handleCommand('view_set:columns:1');
+                await sleep(1200);
+                handleCommand('view_set:scroll:scroll');
+                await sleep(1800);
+
+                // Images: a src must resolve to the extracted assets, not to a relative
+                // path that means nothing from the application's own URL.
+                const imgRaws = DocumentModel.blocks.filter(b => /<img/i.test(b.raw)).slice(0, 3);
+                const probe = document.createElement('div');
+                probe.className = 'block';
+                document.getElementById('editor').appendChild(probe);
+                let absolute = 0, relative = 0;
+                for (const b of imgRaws) {
+                    renderBlockPreview(probe, b.raw);
+                    probe.querySelectorAll('img').forEach(im => {
+                        const s = im.getAttribute('src') || '';
+                        if (/^https?:/i.test(s)) absolute++; else relative++;
+                    });
+                }
+                probe.remove();
+
+                // Outline: clicking an entry has to move the reader.
+                const before = topLeftModelIndexTwoCol() >= 0
+                    ? topLeftModelIndexTwoCol() : firstVisibleIdx();
+                const items = document.querySelectorAll('#outline-list .outline-item');
+                let outlineMoved = false, outlineTarget = -1;
+                if (items.length > 6) {
+                    items[6].click();
+                    await sleep(1500);
+                    outlineTarget = _readingAnchor;
+                    outlineMoved = firstVisibleIdx() !== before;
+                }
+
+                // Internal links, but only ones whose target actually exists.
+                //
+                // Matter's in-text links all point at #filepos anchors from the original
+                // MOBI, while the anchors Calibre wrote are calibre_pb_*. Those links are
+                // dangling in the file itself and no reader could follow them, so asserting
+                // on the first link found would be testing the book rather than the reader.
+                const anchors = buildBookAnchorIndex();
+                let linkBlock = -1, linkHref = null;
+                for (let i = 0; i < DocumentModel.blocks.length && linkBlock < 0; i++) {
+                    const hs = (DocumentModel.blocks[i].raw || '').match(/href\s*=\s*"([^"]+)"/g);
+                    if (!hs) continue;
+                    for (const h of hs) {
+                        const href = h.slice(6, -1);
+                        if (/^https?:/i.test(href)) continue;
+                        const frag = href.indexOf('#') >= 0 ? href.slice(href.indexOf('#') + 1) : '';
+                        const file = bookNormalizeHref(href);
+                        if ((frag && anchors[frag] !== undefined)
+                            || (file && _bookDocIndex[file] !== undefined)) {
+                            linkBlock = i; linkHref = href; break;
+                        }
+                    }
+                }
+                let linkTarget = -1, linkMoved = false;
+                if (linkBlock >= 0) {
+                    goToModelBlock(linkBlock);
+                    await sleep(1200);
+                    const was = firstVisibleIdx();
+                    bookGoToHref(linkHref);
+                    await sleep(1500);
+                    linkTarget = firstVisibleIdx();
+                    linkMoved = linkTarget !== was;
+                }
+
+                function firstVisibleIdx() {
+                    const host = mainContainer.getBoundingClientRect();
+                    let idx = -1;
+                    document.getElementById('editor').querySelectorAll('.block').forEach(b => {
+                        if (idx >= 0) return;
+                        const r = b.getBoundingClientRect();
+                        if (r.bottom > host.top + 2 && r.top < host.bottom) {
+                            idx = DocumentModel.modelIndexOfEl(b);
+                        }
+                    });
+                    return idx;
+                }
+
+                return {
+                    absolute, relative,
+                    outlineMoved, outlineTarget,
+                    hasLinks: linkBlock >= 0, linkHref: linkHref,
+                    linkMoved, linkTarget,
+                    dirty: (function () { updateStatsNow(); return null; })()
+                };
+            });
+
+            info('image srcs: ' + nav.absolute + ' resolved, ' + nav.relative + ' left relative');
+            assert(nav.relative === 0 && nav.absolute > 0,
+                'every image src resolves to the extracted assets (' + nav.absolute + ')');
+
+            info('outline click -> block ' + nav.outlineTarget);
+            assert(nav.outlineMoved, 'clicking an outline entry moves the reader');
+
+            if (nav.hasLinks) {
+                info('internal link ' + JSON.stringify(nav.linkHref) + ' -> block ' + nav.linkTarget);
+                assert(nav.linkMoved, 'following a link inside the book jumps within it');
+            } else {
+                info('this book has no resolvable internal links -- its own anchors are ' +
+                     'dangling in the file, so there is nothing a reader could follow');
+            }
+        }
+
+        console.log('\n--- a book is never dirty, and opens in Reader ---');
+        {
+            const s2 = await app.eval(() => ({
+                mode: state.mode,
+                editable: editor.getAttribute('contenteditable'),
+                readerClass: editor.classList.contains('reader-mode')
+            }));
+            info('mode ' + s2.mode + ', editable ' + s2.editable);
+            assert(s2.mode === 'reader', 'a book opens in Reader, not Preview');
+            assert(s2.editable === 'false' && s2.readerClass, 'and stays read-only');
+        }
+
+        console.log('\n--- chapters start pages, and page numbers agree ---');
+        {
+            const pg = await app.eval(async () => {
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                handleCommand('view_set:columns:2');
+                await sleep(2500);
+                handleCommand('view_set:scroll:pagination');
+                await sleep(3000);
+                updatePageIndicator();
+                const nums = Array.prototype.map.call(
+                    document.querySelectorAll('#page-indicator .page-num'), x => x.innerText);
+                return {
+                    chapterStarts: document.querySelectorAll('#editor .block[data-chapter-start]').length,
+                    nums: nums,
+                    total: PageMap.count(),
+                    current: PageMap.current()
+                };
+            });
+            info('page numbers on screen: ' + JSON.stringify(pg.nums) +
+                ', page ' + pg.current + ' of ' + pg.total);
+            assert(pg.chapterStarts > 0,
+                'chapter starts are marked so they can begin a page (' + pg.chapterStarts + ')');
+            const asInts = pg.nums.map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+            assert(asInts.length === 2 && asInts[1] === asInts[0] + 1,
+                'the two page numbers of a spread are consecutive (' + JSON.stringify(pg.nums) + ')');
+            assert(asInts[0] <= pg.total * 2,
+                'and within the document, not a page number from another coordinate system');
+        }
+
     }
 }
 
