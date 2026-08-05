@@ -374,6 +374,68 @@ async function main() {
                 'exactly one row is marked active, never two (' + perf.activeRows + ')');
         }
 
+        console.log('\n--- search behaves the same in Scroll and Pages ---');
+        {
+            // getFindHaystack used to pick its surface from virtEnabled, and page mode turns
+            // virtualization off -- so the same document searched the markdown while
+            // scrolling and the mounted DOM while paginated. In the DOM a wrapped paragraph
+            // is one long run, so several matches inside it all reported the same line and
+            // their snippets came out as mid-word fragments. Two search engines, one app.
+            const firstRows = () => page.evaluate(() =>
+                [...document.querySelectorAll('#search-results-list .search-item')]
+                    .slice(0, 5)
+                    .map(r => {
+                        const l = r.querySelector('.search-line'), t = r.querySelector('.search-text');
+                        return (l ? l.textContent.trim() : '?') + '|' + (t ? t.textContent.slice(0, 30) : '');
+                    }));
+            const visible = () => page.evaluate(() => {
+                const paged = isPaginatedLayout();
+                const host = (paged ? editor : mainContainer).getBoundingClientRect();
+                const vis = [];
+                editor.querySelectorAll('.block').forEach(b => {
+                    const r = b.getBoundingClientRect();
+                    if (r.bottom <= host.top + 1 || r.top >= host.bottom - 1) return;
+                    if (r.right <= host.left + 1 || r.left >= host.right - 1) return;
+                    const mi = DocumentModel.modelIndexOfEl(b);
+                    if (mi >= 0) vis.push(mi);
+                });
+                vis.sort((a, b) => a - b);
+                return { first: vis[0], last: vis[vis.length - 1], kind: getFindHaystack().kind };
+            });
+
+            const seen = {};
+            for (const layout of ['scroll', 'pagination']) {
+                await page.evaluate(() => handleCommand('view_set:mode:preview'));
+                await sleep(400);
+                await page.evaluate((s) => handleCommand('view_set:scroll:' + s), layout);
+                await sleep(2000);
+                await page.evaluate(() => {
+                    document.querySelector('.sidebar-tab[data-tab="search"]').click();
+                    const i = document.getElementById('sidebarSearchInput');
+                    i.value = 'scroll';
+                    runFind('scroll', false, { navigate: false });
+                    updateSidebarSearchCount();
+                });
+                await sleep(1500);
+                seen[layout] = await firstRows();
+
+                // Reset to the top so a jump is unambiguous, then click a result well in.
+                await page.evaluate(() => { const r = document.querySelectorAll('#search-results-list .search-item'); r[0].click(); });
+                await sleep(1200);
+                await page.evaluate(() => { const r = document.querySelectorAll('#search-results-list .search-item'); r[90].click(); });
+                await sleep(2500);
+                const v = await visible();
+                const target = await page.evaluate(() =>
+                    markdownOffsetToBlock(findState.matches[findState.index].start).blockIndex);
+                assert(v.kind === 'model', layout + ': searches the document model, not the mounted DOM');
+                assert(target >= v.first && target <= v.last,
+                    layout + ': the match is on screen after clicking it (block ' + target +
+                    ' within ' + v.first + '..' + v.last + ')');
+            }
+            assert(JSON.stringify(seen.scroll) === JSON.stringify(seen.pagination),
+                'the results list is identical in Scroll and Pages');
+        }
+
         console.log('\n--- pasted HTML converts ---');
         const md = await page.evaluate(() => htmlToMarkdown(
             '<h2>Title</h2><table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>'));

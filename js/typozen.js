@@ -1620,8 +1620,19 @@
             if (state.mode === 'source') {
                 return { haystack: sourceEditor ? sourceEditor.value : '', map: null, kind: 'source' };
             }
-            // Virt: only a window of blocks is mounted — search the model, not the viewport DOM.
-            if (typeof DocumentModel !== 'undefined' && DocumentModel.virtEnabled) {
+            // Search the model whenever there is one, not the mounted DOM.
+            //
+            // This used to switch on virtEnabled, which meant the surface changed with the
+            // layout: page mode turns virtualization off, so the same document searched the
+            // markdown while scrolling and the viewport text while paginated. The two give
+            // different results. In the DOM a wrapped paragraph is one long run, so eight
+            // matches inside it all reported the same line and their snippets came out as
+            // mid-word fragments, while the same search in Scroll mode listed them cleanly
+            // one markdown line at a time.
+            //
+            // The model is also the only surface that covers the whole document rather than
+            // whatever happens to be mounted.
+            if (typeof DocumentModel !== 'undefined' && DocumentModel.blocks && DocumentModel.blocks.length) {
                 try { DocumentModel.syncMountedToModel(); } catch (eS) {}
                 let md = '';
                 try { md = DocumentModel.toMarkdown(); } catch (eT) {
@@ -1764,11 +1775,20 @@
                 return;
             }
 
+            // Scrolling view: hand it to the sticky-line restore rather than seeding
+            // scrollTop and remounting. The remount rebuilds the virtual spacers, the
+            // document height collapses for a frame and the browser clamps the scroll back
+            // to 0 -- so clicking a result moved the caret and left the view where it was.
+            // Exactly the defect the outline had; this is the same path.
             try {
-                DocumentModel.ensureHeights();
-                if (mainContainer) {
-                    mainContainer.scrollTop = Math.max(0, DocumentModel.prefixHeight(blockIdx) - 80);
+                restoreStickyDocumentLine(modelBlockStartLine(blockIdx));
+                const el0 = elementForModelIndex(blockIdx);
+                if (el0) {
+                    currentActiveBlock = el0;
+                    try { el0.classList.add('focused'); } catch (eF0) {}
+                    setTimeout(function () { try { el0.classList.remove('focused'); } catch (e) {} }, 1200);
                 }
+                return;
             } catch (eScr) {}
             // Suppress refreshFindAfterVirtMount re-entry while we intentionally remount
             findState._revealing = true;
