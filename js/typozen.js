@@ -9102,13 +9102,26 @@
 
             const stickyWanted = (opts && opts.stickyLine >= 1) ? (opts.stickyLine | 0) : 0;
 
+            // Whether this load seeds a fresh history is decided now, when the load is
+            // requested -- not later, when its deferred tail happens to finish.
+            //
+            // The progressive path builds blocks across requestAnimationFrame batches and
+            // seeds at the end. undo() calls in here with isRestoring set and clears it as
+            // soon as it returns, so by the time those batches finished the flag read false
+            // and the seed wiped the stack undo was halfway through using: type, press
+            // Enter, Ctrl+Z, and the typing could no longer be undone at all. Only in a
+            // paginated layout, because a scrolling one virtualises and seeds synchronously.
+            const restoringAtStart =
+                (typeof HistoryManager !== 'undefined') && HistoryManager.isRestoring;
+
             function seedHistoryAndCache() {
                 // Do NOT reset _stickyLineCache / _lastCaretLine when loading for a mode
                 // switch — that wiped line 16 → 1 before restore could run.
                 if (!stickyWanted) {
                     _lastCaretLine = 1;
                 }
-                if (typeof HistoryManager !== 'undefined' && !HistoryManager.isRestoring) {
+                if (typeof HistoryManager !== 'undefined' && !restoringAtStart
+                    && !HistoryManager.isRestoring) {
                     try {
                         HistoryManager.undoStack = [];
                         HistoryManager.redoStack = [];

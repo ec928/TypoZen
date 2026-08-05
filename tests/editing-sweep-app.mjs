@@ -8,10 +8,20 @@
  *
  * It asserts only properties that must hold for the editor to be usable at all:
  *   - typing inserts what was typed, where the caret was, and nothing else changes
- *   - Enter splits, Backspace at column 0 joins, and the document text follows
- *   - undo/redo return the document exactly, and leave the reader where the edit was
+ *   - typing over a selection replaces it rather than appending to it
+ *   - Enter splits, Backspace at the start of a block joins, Tab indents a list item
+ *   - Enter at the end of a bullet continues the list
+ *   - undo returns the document exactly, and redo puts the edit back
  *   - none of it throws
  *   - none of it takes long enough to feel broken
+ *
+ * Every operation is undone back to the starting document before the next one runs, and
+ * that return is itself asserted. A sweep whose steps accumulate would report the first
+ * failure and then a cascade of consequences, which is not a survey of anything.
+ *
+ * Keys are dispatched as real KeyboardEvents rather than driven through execCommand: Enter,
+ * Backspace and Tab are all handled by the editor's own listeners, and calling the command
+ * underneath them tests a path no keyboard reaches.
  *
  * The timings printed here include the settle sleeps and are NOT per-keystroke latency;
  * they are only a "did this hang" check. Real latency is 7ms in Scroll and 66ms in Pages,
@@ -54,13 +64,34 @@ try {
 
         const r = await app.eval(async () => {
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-            const out = {};
+            const out = { notes: [] };
+            const norm = (x) => String(x).replace(/\r\n/g, '\n').replace(/\s+$/gm, '').trim();
             const before = getMarkdownContent(false);
+            const beforeNorm = norm(before);
             out.beforeLen = before.length;
 
+            const key = (k, opts) => {
+                const ev = new KeyboardEvent('keydown', Object.assign(
+                    { key: k, bubbles: true, cancelable: true }, opts || {}));
+                editor.dispatchEvent(ev);
+                return ev;
+            };
+            // Undo until the document is back, rather than a fixed number of times: one
+            // gesture is not reliably one history entry, and a sweep that assumed it would
+            // start each operation from a document it had not checked.
+            const rewind = async (steps) => {
+                for (let i = 0; i < (steps || 8); i++) {
+                    if (norm(getMarkdownContent(false)) === beforeNorm) return true;
+                    HistoryManager.undo();
+                    await sleep(450);
+                }
+                return norm(getMarkdownContent(false)) === beforeNorm;
+            };
+            const blockEls = () => editor.querySelectorAll('.block');
+            const pick = (i) => blockEls()[Math.min(i, blockEls().length - 1)];
+
             // Park on a real block a way into the mounted set.
-            const blocks = editor.querySelectorAll('.block');
-            const el = blocks[Math.min(25, blocks.length - 1)];
+            const el = pick(25);
             const raw0 = el.getAttribute('data-raw') || '';
             focusBlock(el, (el.innerText || '').length);
             await sleep(250);
@@ -75,33 +106,172 @@ try {
             out.grewByFive = (after.length - before.length) === 5;
 
             // --- Enter splits ---
+            const blocksBeforeEnter = DocumentModel.blocks.length;
             t = performance.now();
-            document.execCommand('insertParagraph');
+            key('Enter');
             await sleep(500);
             out.enterMs = Math.round(performance.now() - t);
+            out.stackAfterEdits = 'undo=' + HistoryManager.undoStack.length;
             out.blocksAfterEnter = DocumentModel.blocks.length;
+            out.enterSplit = DocumentModel.blocks.length === blocksBeforeEnter + 1;
 
-            // --- undo x2 returns the document exactly ---
-            HistoryManager.undo(); await sleep(700);
-            HistoryManager.undo(); await sleep(700);
-            const undone = getMarkdownContent(false);
-            const norm = (x) => String(x).replace(/\r\n/g, '\n').replace(/\s+$/gm, '').trim();
-            out.undoExact = norm(undone) === norm(before);
-            out.undoLen = undone.length;
+            // --- undo returns the document exactly ---
+            out.undoExact = await rewind(10);
+            out.undoLen = getMarkdownContent(false).length;
+            if (!out.undoExact) {
+                out.stacks = 'undo=' + HistoryManager.undoStack.length +
+                    ' redo=' + HistoryManager.redoStack.length;
+                const now = norm(getMarkdownContent(false));
+                let i = 0;
+                while (i < now.length && i < beforeNorm.length && now[i] === beforeNorm[i]) i++;
+                out.diffAt = i;
+                out.diffGot = JSON.stringify(now.slice(Math.max(0, i - 40), i + 60));
+                out.diffWant = JSON.stringify(beforeNorm.slice(Math.max(0, i - 40), i + 60));
+                out.diffLen = now.length + ' vs ' + beforeNorm.length;
+            }
 
+            // --- redo puts the edit back ---
+            HistoryManager.redo();
+            await sleep(600);
+            out.redoChanged = norm(getMarkdownContent(false)) !== beforeNorm;
+            out.redoBackOut = await rewind(10);
+
+            // --- typing over a selection replaces it ---
+            {
+                const b = pick(25);
+                const tn = b.firstChild && b.firstChild.nodeType === 3
+                    ? b.firstChild
+                    : (b.querySelector('*') || b).firstChild;
+                if (tn && tn.nodeType === 3 && tn.textContent.length > 6) {
+                    const rg = document.createRange();
+                    rg.setStart(tn, 0);
+                    rg.setEnd(tn, 5);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(rg);
+                    await sleep(250);
+                    const lenBefore = getMarkdownContent(false).length;
+                    document.execCommand('insertText', false, 'Q');
+                    await sleep(450);
+                    // Five characters out, one in.
+                    out.selReplaceDelta = getMarkdownContent(false).length - lenBefore;
+                    out.selReplaced = out.selReplaceDelta === -4;
+                    out.selRestored = await rewind(8);
+                } else {
+                    out.notes.push('no text node to select in block 25');
+                    out.selReplaced = true; out.selRestored = true;
+                }
+            }
+
+            // --- Backspace at the start of a block joins it to the one above ---
+            {
+                const b = pick(26);
+                focusBlock(b, 0);
+                await sleep(250);
+                const n0 = DocumentModel.blocks.length;
+                key('Backspace');
+                await sleep(600);
+                out.backspaceJoined = DocumentModel.blocks.length === n0 - 1;
+                out.backspaceBlocks = DocumentModel.blocks.length + ' from ' + n0;
+                out.backspaceRestored = await rewind(8);
+            }
+
+            // --- Enter at the end of a bullet continues the list ---
+            {
+                let bullet = null;
+                for (const b of blockEls()) {
+                    const raw = b.getAttribute('data-raw') || '';
+                    if (/^\s*[-*+]\s+\S/.test(raw)) { bullet = b; break; }
+                }
+                if (bullet) {
+                    focusBlock(bullet, (bullet.innerText || '').length);
+                    await sleep(250);
+                    const idx = DocumentModel.modelIndexOfEl(bullet);
+                    key('Enter');
+                    await sleep(600);
+                    const next = DocumentModel.blocks[idx + 1];
+                    const nextRaw = next ? String(next.raw) : '';
+                    out.listContinued = /^\s*[-*+]\s*/.test(nextRaw);
+                    out.listNextRaw = nextRaw.slice(0, 20);
+                    out.listRestored = await rewind(8);
+                } else {
+                    out.notes.push('no bullet in the mounted set');
+                    out.listContinued = true; out.listRestored = true;
+                }
+            }
+
+            // --- Tab indents a list item ---
+            {
+                let bullet = null;
+                for (const b of blockEls()) {
+                    const raw = b.getAttribute('data-raw') || '';
+                    if (/^[-*+]\s+\S/.test(raw)) { bullet = b; break; }
+                }
+                if (bullet) {
+                    const idx = DocumentModel.modelIndexOfEl(bullet);
+                    const rawWas = String(DocumentModel.blocks[idx].raw);
+                    focusBlock(bullet, 1);
+                    await sleep(250);
+                    key('Tab');
+                    await sleep(600);
+                    const rawNow = String(DocumentModel.blocks[idx].raw);
+                    out.tabIndented = rawNow.length > rawWas.length && /^\s+[-*+]/.test(rawNow);
+                    out.tabRaw = rawNow.slice(0, 20);
+                    out.tabRestored = await rewind(8);
+                } else {
+                    out.notes.push('no top-level bullet in the mounted set');
+                    out.tabIndented = true; out.tabRestored = true;
+                }
+            }
+
+            out.finalExact = norm(getMarkdownContent(false)) === beforeNorm;
             out.errors = (window.__sweepErrors || []).slice();
             return out;
         });
 
         info('typing ' + r.typeMs + 'ms for 5 chars, Enter ' + r.enterMs + 'ms');
+        if (r.notes.length) info('skipped: ' + r.notes.join('; '));
+
         assert(r.typedLanded, L.name + ': typed text lands at the caret, in order');
-        assert(r.grewByFive,
-            L.name + ': typing 5 characters changes the document by exactly 5 (' +
-            (r.undoLen !== undefined ? '' : '') + ')');
+        assert(r.grewByFive, L.name + ': typing 5 characters changes the document by exactly 5');
         assert(r.typeMs < 1500,
             L.name + ': typing 5 characters stays responsive (' + r.typeMs + 'ms)');
+
+        assert(r.enterSplit,
+            L.name + ': Enter splits the block in two (' + r.blocksAfterEnter + ' blocks)');
         assert(r.enterMs < 1500, L.name + ': Enter stays responsive (' + r.enterMs + 'ms)');
+
+        if (!r.undoExact) {
+            info('history: ' + r.stackAfterEdits + ' after edits, ' + r.stacks + ' after rewind');
+            info('diverges at ' + r.diffAt + ', lengths ' + r.diffLen);
+            info('  got  ' + r.diffGot);
+            info('  want ' + r.diffWant);
+        }
         assert(r.undoExact, L.name + ': undo returns the document exactly');
+        assert(r.redoChanged, L.name + ': redo puts the undone edit back');
+        assert(r.redoBackOut, L.name + ': and undoing again returns the document');
+
+        assert(r.selReplaced,
+            L.name + ': typing over a 5-character selection replaces it (' +
+            r.selReplaceDelta + ' characters, wanted -4)');
+        assert(r.selRestored, L.name + ': and undo returns the document');
+
+        assert(r.backspaceJoined,
+            L.name + ': Backspace at the start of a block joins it to the one above (' +
+            r.backspaceBlocks + ')');
+        assert(r.backspaceRestored, L.name + ': and undo returns the document');
+
+        assert(r.listContinued,
+            L.name + ': Enter at the end of a bullet continues the list (' +
+            JSON.stringify(r.listNextRaw) + ')');
+        assert(r.listRestored, L.name + ': and undo returns the document');
+
+        assert(r.tabIndented,
+            L.name + ': Tab indents a list item (' + JSON.stringify(r.tabRaw) + ')');
+        assert(r.tabRestored, L.name + ': and undo returns the document');
+
+        assert(r.finalExact,
+            L.name + ': the layout ends on the document it started with');
         assert(r.errors.length === 0,
             L.name + ': nothing threw (' + JSON.stringify(r.errors.slice(0, 2)) + ')');
         errors.push(...r.errors);
