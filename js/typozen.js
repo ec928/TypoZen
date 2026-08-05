@@ -1408,8 +1408,26 @@
          * refined; block indices do not, and the column round trip already depends on that.
          */
         const PageChunks = {
-            /** Blocks per range. Large enough that turning pages rarely crosses one. */
-            size: 400,
+            /**
+             * Blocks per range. 400 was tuned on a Markdown fixture; measured on two real
+             * novels, the cost that matters is the page turn that crosses a boundary and
+             * has to lay out the next range:
+             *
+             *   size    turn (ms)    cross (ms)         pages per range
+             *            in-range    Xeelee / Matter    Xeelee / Matter
+             *    200        1          18 /  20            7 /  16
+             *    400        1          58 /  46           14 /  31
+             *    800        2          74 /  84           28 /  62
+             *   1600        3         201 / 172           55 / 124
+             *
+             * Amortised over the pages between crossings it is flat -- about 1.5-4 ms a
+             * turn at every size -- so the choice is the worst case a reader feels against
+             * how much of the book is laid out at once. 800 keeps that hitch under 100ms
+             * while halving how often it happens, and doubles how far the scrollbar reaches,
+             * since the scroll extent is the mounted range and nothing more. That last part
+             * is a symptom, not a reason: a book-wide position control is the real answer.
+             */
+            size: 800,
             /** Pages per range: measured where known, estimated elsewhere. */
             counts: null,
             /** Which entries in counts came from a real layout. */

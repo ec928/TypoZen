@@ -99,8 +99,10 @@ console.log('\n--- 3. measuring one range does not move the ranges before it ---
     PageChunks.invalidate();
     PageChunks.ensure(N);
     for (let i = 0; i < PageChunks.counts.length; i++) PageChunks.setMeasured(i, 5);
-    const beforePrefix = PageChunks.prefixPages(4);
-    const target = 4;
+    // Derived, not named: 4 was a middle range only while the range size was 400. At 800
+    // it is the last one, and "the range after it" stopped existing.
+    const target = Math.floor(PageChunks.counts.length / 2);
+    const beforePrefix = PageChunks.prefixPages(target);
     PageChunks.setMeasured(target, 12);
     assert(PageChunks.prefixPages(target) === beforePrefix,
         'pages before the measured range are unchanged (' +
@@ -131,8 +133,11 @@ console.log('\n--- 5. a structural edit splices the map, it does not discard it 
     PageChunks.invalidate();
     PageChunks.ensure(N);
     for (let i = 0; i < PageChunks.counts.length; i++) PageChunks.setMeasured(i, 6);
-    const editedBlock = PageChunks.size * 5 + 10;
-    const editedChunk = PageChunks.chunkOfBlock(editedBlock);
+    // A range in the middle, derived rather than named: this used to say range 5, which
+    // existed only while the range size was 400 and fell off the end of the document the
+    // moment it changed.
+    const editedChunk = Math.floor(PageChunks.counts.length / 2);
+    const editedBlock = PageChunks.size * editedChunk + 10;
     const prefixBefore = PageChunks.prefixPages(editedChunk);
 
     PageChunks.spliceBlocks(editedBlock, 1, N + 1);
