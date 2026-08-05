@@ -288,6 +288,23 @@
             } else {
                 wrapper.style.padding = '0 ' + p.right + 'px 0 ' + p.left + 'px';
                 
+                // Configure the container BEFORE measuring it. This used to run the other
+                // way round, so clientHeight was read while main-container still carried
+                // the outgoing layout's overflow settings -- and a scrollbar that was about
+                // to be removed (or added) is 20px of height. The first entry into
+                // 2-column measured 774 and every later one measured 794, which made the
+                // column 766px on the first visit and 786px afterwards.
+                //
+                // Nothing downstream could survive that: a 20px taller column fits more per
+                // page, so the same document was 106 pages on the first visit and 103 on
+                // the second. Switching 2-col -> 1-col -> 2-col returned to the page the
+                // reading anchor named, faithfully -- but the pages had moved underneath
+                // it, so it landed one page early. The anchoring was never the bug.
+                if (mainContainer) {
+                    mainContainer.style.overflowY = isTwoCol ? 'hidden' : 'auto';
+                    mainContainer.style.overflowX = '';
+                }
+
                 if (isTwoCol) {
                     // A column IS a page, so its height must be the height the reader can
                     // actually see. This was 100vh -- the whole window, including the
@@ -298,16 +315,17 @@
                     // the left, the head of the next across the rest. The old code reset
                     // scrollTop on every page turn, which hid this; removing those resets
                     // when page turns moved to the page map exposed it again.
-                    const visible = mainContainer ? mainContainer.clientHeight : 0;
-                    editor.style.height = (visible > 40 ? visible : 0) + 'px';
+                    //
+                    // Measured from #editor-wrapper, not #main-container: the wrapper is the
+                    // box the editor actually sits in, and it is unaffected by whether the
+                    // container is currently showing a scrollbar. Same number every time.
+                    // CSS owns the page height (#editor.page-mode { height: 100% }).
+                    // Any inline value here would win over it and reintroduce the sampled
+                    // number this replaced, so it is cleared, not set.
+                    editor.style.height = '';
                     editor.scrollTop = 0;   // nothing to scroll to now; keep it honest
                 } else {
                     editor.style.height = '';
-                }
-                
-                if (mainContainer) {
-                    mainContainer.style.overflowY = isTwoCol ? 'hidden' : 'auto';
-                    mainContainer.style.overflowX = '';
                 }
                 
                 if (sourceEditor) {
@@ -8370,7 +8388,45 @@
                 const tag = node.tagName.toLowerCase();
                 // Skip style/script
                 if (tag === 'style' || tag === 'script') return '';
-                const kids = Array.from(node.childNodes).map(walkNode).join('');
+                let kids = Array.from(node.childNodes).map(walkNode).join('');
+
+                // Emphasis carried by CSS rather than by <em>/<strong>.
+                //
+                // Most rich sources emit styled elements, not semantic ones: a chat
+                // transcript italicises with a class on a <div>, Word and Google Docs use
+                // <span style="font-weight:700">. Recognising only <em> and <b> threw all
+                // of that away silently -- a whole italic paragraph pasted in as plain text
+                // with nothing to show it had ever been emphasised.
+                //
+                // Applied here, before the tag switch, so it composes with whatever the tag
+                // itself contributes. Skipped for tags that already carry the meaning, or
+                // that would put marks around a heading's own text.
+                if (kids.trim() && !/^(em|i|strong|b|code|pre|h[1-6]|a|del|s)$/.test(tag)) {
+                    // ...and not INSIDE one either. A heading is already bold, a <strong>
+                    // is already strong: marking a styled span within them yields
+                    // "## **Quarterly** Results" from a heading whose own weight is simply
+                    // being restated by the source's CSS.
+                    let inherited = '';
+                    for (let a = node.parentElement; a; a = a.parentElement) {
+                        inherited += a.tagName.toLowerCase() + ' ';
+                    }
+                    const inHeading = /\b(h[1-6]|th)\b/.test(inherited);
+                    const st = inHeading ? null : node.style;
+                    if (st) {
+                        const w = String(st.fontWeight || '').toLowerCase();
+                        let bold = w === 'bold' || w === 'bolder' || (parseInt(w, 10) >= 600);
+                        let italic = /italic|oblique/.test(String(st.fontStyle || ''));
+                        if (/\b(strong|b)\b/.test(inherited)) bold = false;
+                        if (/\b(em|i)\b/.test(inherited)) italic = false;
+                        // Wrap the text, not the surrounding whitespace: "** bold **" is
+                        // not emphasis in Markdown, it is literal asterisks.
+                        const wrap = (mark) => kids.replace(/^(\s*)([\s\S]*?)(\s*)$/,
+                            (m, a, core, z) => core ? a + mark + core + mark + z : m);
+                        if (bold) kids = wrap('**');
+                        if (italic) kids = wrap('*');
+                    }
+                }
+
                 switch (tag) {
                     case 'h1': return '\n# ' + kids.trim() + '\n\n';
                     case 'h2': return '\n## ' + kids.trim() + '\n\n';
@@ -8413,6 +8469,16 @@
                     case 'del': case 's': return '~~' + kids + '~~';
                     case 'sup': return '<sup>' + kids + '</sup>';
                     case 'sub': return '<sub>' + kids + '</sub>';
+                    // Block containers. Without these a <div> returned its children with no
+                    // separator at all, so two adjacent blocks ran together mid-sentence --
+                    // "…the same underlying habit.Four distinct defects…" -- and a code
+                    // block built from one div per line collapsed onto a single line.
+                    // Over-separating is harmless: the caller collapses 3+ newlines to 2.
+                    case 'div': case 'section': case 'article': case 'main':
+                    case 'header': case 'footer': case 'aside': case 'nav':
+                    case 'figure': case 'figcaption': case 'dl': case 'dd': case 'dt':
+                    case 'address': case 'form': case 'fieldset':
+                        return kids.trim() ? kids.trim() + '\n\n' : '\n';
                     default: return kids;
                 }
             }

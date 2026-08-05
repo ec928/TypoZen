@@ -63,6 +63,15 @@ function has(got, needle, msg) {
     }
 }
 
+function ok(cond, msg, show) {
+    if (cond) { passed++; console.log('  OK   ' + msg); }
+    else {
+        failed++;
+        console.error('  FAIL ' + msg);
+        if (show !== undefined) console.error('        got : ' + JSON.stringify(show));
+    }
+}
+
 console.log('--- tables ---');
 {
     // Shape Chrome puts on the clipboard: full document, fragment markers, thead/tbody.
@@ -119,6 +128,49 @@ console.log('\n--- mixed document ---');
     has(md, '| x | 1 |', 'table row survives in a mixed paste');
     has(md, '- first', 'list item survives in a mixed paste');
 }
+
+console.log('--- block containers separate ---');
+{
+    // A <div> used to fall through to `default: return kids`, contributing no separator at
+    // all, so two adjacent blocks ran together mid-sentence. From a real paste:
+    // "...the same underlying habit.Four distinct defects...".
+    const md = htmlToMarkdown('<div>the same underlying habit.</div><div>Four distinct defects.</div>');
+    ok(/habit\.\s*\n\s*\n\s*Four/.test(md), 'adjacent divs do not run together', md);
+
+    // Same cause: a code block built as one div per line collapsed onto a single line.
+    const lines = htmlToMarkdown('<div><div>line one</div><div>line two</div><div>line three</div></div>');
+    ok(/line one[\s\S]*\n[\s\S]*line two[\s\S]*\n[\s\S]*line three/.test(lines),
+        'one div per line keeps its lines', lines);
+    has(htmlToMarkdown('<pre><code>const a = 1;\nconst b = 2;</code></pre>'), '```',
+        'a real <pre> still fences');
+}
+
+console.log('--- emphasis carried by CSS ---');
+{
+    // Most rich sources style rather than mark up: a chat transcript italicises with a
+    // class on a <div>, Word and Docs emit <span style="font-weight:700">. Recognising
+    // only <em>/<b> threw all of that away silently -- a whole italic paragraph arrived as
+    // plain text with nothing to show it had ever been emphasised.
+    ok(/\*a thought\*/.test(htmlToMarkdown('<div style="font-style: italic">a thought</div>')),
+        'a div styled italic becomes emphasis');
+    ok(/a \*\*bold\*\* word/.test(htmlToMarkdown('<p>a <span style="font-weight:700">bold</span> word</p>')),
+        'a span styled bold becomes strong (Word / Docs shape)');
+    ok(!/\*\*/.test(htmlToMarkdown('<p>a <span style="font-weight:400">plain</span> word</p>')),
+        'font-weight under 600 is not bold');
+
+    // "** bold **" is not emphasis in Markdown, it is literal asterisks.
+    ok(/x \*spaced\* y/.test(htmlToMarkdown('<p>x<span style="font-style:italic"> spaced </span>y</p>')),
+        'marks hug the text, not the surrounding spaces');
+
+    // A heading already carries its meaning; marking it again yields "## **Guards**".
+    eq(htmlToMarkdown('<h2 style="font-weight:700">Guards</h2>').trim(), '## Guards',
+        'a styled heading is not double-marked');
+    ok(!/\*/.test(htmlToMarkdown('<div style="font-style:italic"></div><p>text</p>')),
+        'an empty styled wrapper adds no stray marks');
+    has(htmlToMarkdown('<p><em>i</em> and <strong>b</strong></p>'), '*i* and **b**',
+        'semantic em/strong are unaffected');
+}
+
 
 console.log('\npassed=' + passed + ' failed=' + failed);
 if (failed) {

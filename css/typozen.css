@@ -309,6 +309,23 @@
             column-fill: auto;
             overflow-y: hidden;
             width: auto;
+            /* A column IS a page, so the page height is whatever box the editor sits in.
+               This used to be sampled in JS -- editor.style.height = container.clientHeight
+               -- at whatever instant the column switch happened to run. The host restores a
+               saved window size per column mode, so that sample raced the resize: the first
+               entry into 2-column measured 774 and every later one 794, giving columns of
+               766px and then 786px for the same document and window.
+
+               Nothing downstream survives that. A 20px taller column fits more per page, so
+               the document was 106 pages on the first visit and 103 on the second, and
+               2-col -> 1-col -> 2-col returned to the page the reading anchor named while
+               the pages themselves had moved -- landing one page early, every time. The
+               anchoring was never the bug.
+
+               Expressed as height: 100% it is resolved by layout, at layout time, every
+               time -- including on a window resize, which a sampled pixel value could not
+               follow at all. */
+            height: 100%;
         }
         #editor.page-mode.two-col-layout {
             column-count: 2;
