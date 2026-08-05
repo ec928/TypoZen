@@ -749,7 +749,7 @@
             // themselves are identical, so rebuilding their HTML -- and recomputing every
             // line number to do it -- is pure waste, and it is the common case: one keypress
             // per step, thousands of rows each time. Move the class instead.
-            const sig = findState.query + ' ' + findState.matches.length + ' ' + limit;
+            const sig = findState.query + '|' + findState.matches.length + '|' + limit;
             if (_searchRenderedSig === sig && _searchRenderedList === list) {
                 const prev = list.querySelector('.search-item.active');
                 const next = list.children[findState.index];
@@ -2172,6 +2172,12 @@
             // The model is also the only surface that covers the whole document rather than
             // whatever happens to be mounted.
             if (typeof DocumentModel !== 'undefined' && DocumentModel.blocks && DocumentModel.blocks.length) {
+                // A book is searched by its text. Its raw is HTML, so searching that would
+                // match class names and hrefs -- and would do it invisibly, since a hit
+                // inside an attribute has no on-screen position to scroll to.
+                if (DocumentModel.kind === 'epub') {
+                    return { haystack: DocumentModel.toPlainText(), map: null, kind: 'model' };
+                }
                 try { DocumentModel.syncMountedToModel(); } catch (eS) {}
                 let md = '';
                 try { md = DocumentModel.toMarkdown(); } catch (eT) {
@@ -3548,8 +3554,7 @@
 
                 if (state.mode === 'wysiwyg') {
                     state.mode = 'reader';
-                    editor.setAttribute('contenteditable', 'false');
-                    editor.classList.add('reader-mode');
+                    setEditorEditable(false);
                     applyEditorChromeForMode();
                     postMsg("mode_changed:reader");
                     if (!state.pageAdvance) {
@@ -3557,8 +3562,13 @@
                         postMsg("sync_page_advance:1");
                     }
                 } else if (state.mode === 'reader') {
-                    editor.setAttribute('contenteditable', 'true');
-                    editor.classList.remove('reader-mode');
+                    // A book stays in Reader: there is nothing to edit and nothing to
+                    // serialise to Source, so leaving would only produce an empty editor.
+                    if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') {
+                        postMsg("mode_changed:reader");
+                        return;
+                    }
+                    setEditorEditable(true);
                     // Expand soft-breaks → real blocks BEFORE Source serialize
                     try { expandAllFragmentedBlocks(); } catch (e0) {}
                     // Phase 1: flush active DOM → data-raw, then serialize (I3).
@@ -3590,7 +3600,7 @@
                         try { restoreStickyDocumentLine(stickyLine); } catch (eS) {}
                     });
                 } else {
-                    editor.setAttribute('contenteditable', 'true');
+                    setEditorEditable(true);
                     editor.classList.remove('reader-mode', 'two-col-layout');
                     // Normalize source newlines so we do not create empty blocks from \r\n doubling
                     let src = sourceEditor ? sourceEditor.value : '';
@@ -8343,10 +8353,23 @@
              * Load a book: one block per top-level element of each spine document, in
              * reading order, already split by the host.
              */
-            fromBookBlocks: function (htmlBlocks) {
+            /**
+             * A book's own table of contents: [{ title, level, blockIndex }].
+             *
+             * Required, not a refinement. Dune contains zero <h1>..<h6> elements -- its
+             * chapter titles are styled paragraphs, which is what Calibre produces and
+             * therefore what a large share of real books look like. Detecting headings gives
+             * that book an empty outline no matter how good the detection is, because there
+             * is nothing there to detect. The publisher already wrote the chapter list; use
+             * it.
+             */
+            toc: [],
+
+            fromBookBlocks: function (htmlBlocks, toc) {
                 this.blocks = [];
                 this._nextId = 1;
                 this.kind = 'epub';
+                this.toc = Array.isArray(toc) ? toc : [];
                 for (let i = 0; i < htmlBlocks.length; i++) {
                     this.blocks.push({
                         id: this._nextId++,
@@ -8365,6 +8388,7 @@
                 // Opening a Markdown document after a book must go back to rendering
                 // Markdown; the kind belongs to the document, not to the session.
                 this.kind = 'markdown';
+                this.toc = [];
                 for (let i = 0; i < raws.length; i++) {
                     this.blocks.push({
                         id: this._nextId++,
@@ -11376,6 +11400,14 @@
             if (repairFragments !== false) {
                 try { expandAllFragmentedBlocks(); } catch (e) {}
             }
+            // A book is read-only and its blocks are HTML, so there is nothing to serialise
+            // back: the model is the document, full stop. Falling through would reach the
+            // full-mount branch below, which rebuilds the model from whatever is mounted --
+            // the same shape of mistake as windowing, with a whole novel at stake.
+            if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') {
+                return DocumentModel.toPlainText();
+            }
+
             try {
                 // Whenever the DOM holds only part of the document, the model is the
                 // document and the DOM is a projection of it. That is true under
@@ -11632,6 +11664,24 @@
             _hostDocCache = null;
         }
 
+        /**
+         * Turn editing on or off, and refuse to turn it on for a book.
+         *
+         * A book's blocks are the publisher's HTML. There is no Markdown behind them to
+         * edit, and a contenteditable would let the browser rewrite that markup on any
+         * keystroke -- so read-only is not a policy here, it is what the document is. Every
+         * route into editing goes through this rather than setting the attribute directly,
+         * because the three that existed were each reached by a different path and guarding
+         * them one at a time is how one gets missed.
+         */
+        function setEditorEditable(on) {
+            if (!editor) return;
+            const allowed = on && !(typeof DocumentModel !== 'undefined'
+                && DocumentModel.kind === 'epub');
+            editor.setAttribute('contenteditable', allowed ? 'true' : 'false');
+            editor.classList.toggle('reader-mode', !allowed);
+        }
+
         function updateOutline() {
             if (!outlineList) return;
             outlineList.innerHTML = '';
@@ -11642,11 +11692,38 @@
             const useModel = DocumentModel && DocumentModel.blocks && DocumentModel.blocks.length;
             const count = useModel ? DocumentModel.blocks.length : 0;
 
+            /**
+             * Is this block a heading, and if so at what level and with what title?
+             *
+             * Markdown says so with leading hashes; a book says so with an <h1>..<h6>.
+             * Detecting only the first is why converting a book to Markdown broke its
+             * outline: 16 of 17 headings in Blindsight came out as a hash on a line of its
+             * own, matching nothing.
+             */
+            function headingOf(raw) {
+                const r = raw == null ? '' : String(raw);
+                if (DocumentModel && DocumentModel.kind === 'epub') {
+                    const m = r.match(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/i);
+                    if (!m) return null;
+                    const title = htmlFragmentToText(m[2]);
+                    if (!title) return null;
+                    return { level: parseInt(m[1], 10), title: title };
+                }
+                if (!/^#{1,6}\s/.test(r)) return null;
+                return {
+                    level: r.match(/^#+/)[0].length,
+                    title: r.replace(/^#+\s*/, '').replace(/[*`_]/g, '')
+                };
+            }
+
             function addHeading(idx, raw) {
-                if (!/^#{1,6}\s/.test(raw)) return;
+                const h = headingOf(raw);
+                if (!h) return;
+                addOutlineEntry(idx, h.level, h.title);
+            }
+
+            function addOutlineEntry(idx, level, title) {
                 found++;
-                const level = raw.match(/^#+/)[0].length;
-                const title = raw.replace(/^#+\s*/, '').replace(/[*`_]/g, '');
                 const item = document.createElement('div');
                 item.className = 'outline-item outline-h' + level;
                 item.innerText = title;
@@ -11687,7 +11764,18 @@
                 outlineList.appendChild(item);
             }
 
-            if (useModel) {
+            // A book's own table of contents wins over anything inferred from its markup.
+            // Dune has no <h1>..<h6> at all, so inference gives it an empty outline however
+            // clever the inference is.
+            const bookToc = (DocumentModel && DocumentModel.kind === 'epub'
+                && DocumentModel.toc && DocumentModel.toc.length) ? DocumentModel.toc : null;
+            if (bookToc) {
+                for (let i = 0; i < bookToc.length; i++) {
+                    const e = bookToc[i];
+                    if (!e || !e.title) continue;
+                    addOutlineEntry(e.blockIndex | 0, Math.max(1, Math.min(6, e.level || 1)), e.title);
+                }
+            } else if (useModel) {
                 for (let idx = 0; idx < count; idx++) {
                     addHeading(idx, DocumentModel.blocks[idx].raw || '');
                 }
