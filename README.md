@@ -364,6 +364,28 @@ Use the anchor that already exists rather than deriving a new one:
 
 **Pagination**
 
+> **Next piece of work: page windowing.** Pagination mounts the whole document, because the
+> browser can only fragment content it has laid out. That is correct and it is why typing in
+> Pages costs ~66ms per keystroke against ~7ms in Scroll on the 4582-line fixture: every
+> character re-fragments one multi-column flow containing 3767 blocks. A 500-page epub is the
+> same architecture with an order of magnitude more content, and epub reading *is* pagination,
+> so this wants doing before Phase 5 rather than retrofitting into it.
+>
+> The shape that fits what is already here: split the document into fixed block ranges, lay
+> out one range at a time, and keep a per-range page count. Cumulative sums give the global
+> page number, exactly as `blockHeights` + `prefixHeight()` give the global scroll offset
+> today -- same structure, same invariants, and the same rule that a structural edit splices
+> the map rather than discarding it (see the Document model section). Unmeasured ranges are
+> estimated from pages-per-block and refined as they are laid out, which is `estimateBlockHeight`
+> again.
+>
+> Two things to get right, both already learned the hard way here. Anchor on **blocks**, not
+> page numbers: page numbers move as estimates are refined, block indices do not, and the
+> column round trip already depends on this. And measure the range currently on screen exactly
+> rather than trusting its estimate -- an estimated current page is the 2px-slop bug wearing a
+> different hat.
+
+
 - Pagination is a real layout, not a scroll gesture: `.page-mode` puts the document into CSS multi-column and a page turn is a horizontal scroll. Don't reintroduce "scroll by ~90% of the viewport".
 - Pagination and virtualization are mutually exclusive — the browser can only break content it has laid out — so entering page mode remounts the document. That cost is deliberate.
 - Page geometry is uniform: page N is at `N × pageWidth`. Prefer arithmetic to a cached map.
