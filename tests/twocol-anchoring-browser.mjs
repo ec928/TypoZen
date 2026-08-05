@@ -22,6 +22,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { settled } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -68,44 +69,6 @@ function visibleState() {
 
 const overlap = (a, b) => a.filter(x => b.indexOf(x) !== -1);
 
-/**
- * Wait until the layout has stopped moving, rather than guessing with a fixed sleep.
- *
- * This suite used to sleep 700-1800ms after each column switch. That is enough on an idle
- * machine and not enough when the build runs every browser suite back to back, so it
- * failed intermittently in full runs and passed every time standalone -- which is the
- * worst way for a gate to behave: it blocked four builds without ever indicating a real
- * defect, and would have hidden one just as easily.
- *
- * A column switch settles asynchronously by design: goToPageHoldingBlock retries until
- * editor.scrollWidth stops changing, so the only honest wait is for the same condition.
- * Three consecutive identical samples of the geometry that pagination is derived from.
- */
-async function settled(page, timeoutMs = 8000) {
-    const started = Date.now();
-    let last = null;
-    let stable = 0;
-    while (Date.now() - started < timeoutMs) {
-        const now = await page.evaluate(() => {
-            const ed = document.getElementById('editor');
-            const main = document.getElementById('main-container');
-            return [
-                Math.round(ed.scrollWidth), Math.round(ed.scrollLeft),
-                Math.round(ed.clientHeight), Math.round(ed.clientWidth),
-                Math.round(main.scrollTop),
-                (typeof PageMap !== 'undefined' && PageMap.count) ? PageMap.count() : -1
-            ].join(',');
-        });
-        if (now === last) {
-            if (++stable >= 3) return true;
-        } else {
-            stable = 0;
-            last = now;
-        }
-        await sleep(120);
-    }
-    return false;
-}
 
 async function main() {
     const browser = await puppeteer.launch({ headless: 'new' });

@@ -19,6 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { settled } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -68,7 +69,7 @@ async function checkLayout(page, label) {
     const seen = [];
     for (let i = 0; i < 3; i++) {
         await page.evaluate(() => PageMap.step(1));
-        await sleep(220);
+        await settled(page);
         s = await page.evaluate(pageState);
         seen.push({ page: s.current, offset: s.offset, first: s.visible[0] });
         assert(s.offsets.indexOf(s.offset) !== -1,
@@ -85,9 +86,9 @@ async function checkLayout(page, label) {
     // could not: a fractional nudge with smooth scrolling never retraces itself.
     const before = await page.evaluate(pageState);
     await page.evaluate(() => PageMap.step(1));
-    await sleep(220);
+    await settled(page);
     await page.evaluate(() => PageMap.step(-1));
-    await sleep(220);
+    await settled(page);
     const after = await page.evaluate(pageState);
     assert(after.offset === before.offset,
         label + ': forward then back returns to the same offset (' + after.offset + ' vs ' + before.offset + ')');
@@ -96,7 +97,7 @@ async function checkLayout(page, label) {
 
     // Ten turns, still exactly on boundaries: proves nothing accumulates.
     for (let i = 0; i < 10; i++) { await page.evaluate(() => PageMap.step(1)); }
-    await sleep(400);
+    await settled(page);
     s = await page.evaluate(pageState);
     assert(s.offsets.indexOf(s.offset) !== -1,
         label + ': still exactly on a boundary after ten turns (offset ' + s.offset + ')');
@@ -116,16 +117,16 @@ async function main() {
 
         const md = fs.readFileSync(path.join(appDir, 'tests', 'large-scroll-mixed.md'), 'utf8');
         await page.evaluate((m) => loadMarkdownContent(m), md);
-        await sleep(1800);
+        await settled(page);
 
         // Reader forces Pagination, which is what is being tested.
         await page.evaluate(() => handleCommand('view_set:mode:reader'));
-        await sleep(900);
+        await settled(page);
 
         await checkLayout(page, '1-column pagination');
 
         await page.evaluate(() => handleCommand('view_set:columns:2'));
-        await sleep(1800);
+        await settled(page);
         await checkLayout(page, '2-column pagination');
 
         console.log('\n=== page boundaries respect blocks ===');
@@ -134,7 +135,7 @@ async function main() {
             handleCommand('view_set:columns:1');
             return null;
         });
-        await sleep(1500);
+        await settled(page);
         // Measured, not derived. Comparing each page offset against prefixHeight() would
         // be circular -- the map is built from prefixHeight, so it can only agree with
         // itself. Turn to a page and measure where the block really rendered.
@@ -180,17 +181,17 @@ async function main() {
             });
 
             await page.evaluate(() => handleCommand('view_set:columns:2'));
-            await sleep(2500);
+            await settled(page);
             await page.evaluate(() => { PageMap.step(1); });
-            await sleep(300);
+            await settled(page);
             await page.evaluate(() => { PageMap.step(1); });
-            await sleep(600);
+            await settled(page);
             const two = await snap();
             info('2-col page ' + two.page + ', top block ' + two.topBlock);
             assert(two.onBoundary, '2-column sits exactly on a page boundary after turning pages');
 
             await page.evaluate(() => handleCommand('view_set:columns:1'));
-            await sleep(3000);
+            await settled(page);
             const one = await snap();
             info('1-col page ' + one.page + ', top block ' + one.topBlock);
             assert(one.cols === '1', 'switched to a single column');
@@ -209,7 +210,7 @@ async function main() {
 
             // And back again returns to where it started.
             await page.evaluate(() => handleCommand('view_set:columns:2'));
-            await sleep(3000);
+            await settled(page);
             const back = await snap();
             assert(back.page === two.page && back.topBlock === two.topBlock,
                 'switching back returns to the same page and content (page ' + back.page +
@@ -224,7 +225,7 @@ async function main() {
             // page empty behind it -- on the test document, 50 blocks were taller than the
             // 780px column, the worst by 11px. Paginated fences now wrap instead.
             await page.evaluate(() => handleCommand('view_set:columns:2'));
-            await sleep(2500);
+            await settled(page);
 
             const tall = await page.evaluate(() => {
                 const colH = editor.clientHeight;

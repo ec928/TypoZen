@@ -1152,8 +1152,33 @@
                 const wasRestoring = (typeof HistoryManager !== 'undefined') ? HistoryManager.isRestoring : false;
                 if (typeof HistoryManager !== 'undefined') HistoryManager.isRestoring = true;
                 const line = (typeof _stickyLineCache !== 'undefined' && _stickyLineCache) ? _stickyLineCache : 1;
-                const md = DocumentModel.toMarkdown();
-                loadMarkdownContent(md, { deferPaint: true, stickyLine: line });
+                // Entering pagination on a large document lays out ONE range instead of
+                // remounting the whole thing.
+                //
+                // Not "remount everything, then narrow it": loadMarkdownContent paints
+                // progressively, so a window mounted synchronously beforehand was buried by
+                // the deferred batches arriving after it -- 4167 elements for a 3767-block
+                // document. The full mount is skipped entirely, which is also where the
+                // saving is. Turning virtualisation off by hand is what the remount was for.
+                //
+                // This is the only chokepoint that catches every route into pagination:
+                // applyViewState sets state.pageAdvance directly and never goes through the
+                // set_page_advance command, so hooking there missed the selector entirely.
+                const windowing = PAGE_WINDOWING_ENABLED
+                    && on
+                    && DocumentModel.blocks
+                    && DocumentModel.blocks.length >= PAGE_WINDOW_MIN_BLOCKS;
+                if (windowing) {
+                    DocumentModel.virtEnabled = false;
+                    unbindVirtScroll();
+                    PageChunks.ensure(DocumentModel.blocks.length);
+                    const anchor = modelLocationFromDocumentLine(Math.max(1, line | 0)).blockIndex;
+                    mountPageChunk(PageChunks.chunkOfBlock(anchor));
+                } else {
+                    PageChunks.mounted = -1;
+                    const md = DocumentModel.toMarkdown();
+                    loadMarkdownContent(md, { deferPaint: true, stickyLine: line });
+                }
                 if (typeof HistoryManager !== 'undefined') HistoryManager.isRestoring = wasRestoring;
             } catch (e) {
                 window.showDebugTelemetry('syncPaginationClass: remount failed ' + e.message);
@@ -1406,7 +1431,19 @@
                     sumBlocks += this.size;
                 }
                 if (sumBlocks > 0) {
-                    this.perBlock = Math.max(0.005, Math.min(1, sumPages / sumBlocks));
+                    const next = Math.max(0.005, Math.min(1, sumPages / sumBlocks));
+                    const changed = Math.abs(next - this.perBlock) > 1e-6;
+                    this.perBlock = next;
+                    // Ranges that have never been laid out follow the refined figure. Without
+                    // this the total stayed at the seed estimate for every unmeasured range
+                    // -- 203 pages reported for a document that is really about 106 -- and
+                    // only converged as the reader happened to visit each range.
+                    if (changed && this.counts) {
+                        const n = this.counts.length * this.size;
+                        for (let i = 0; i < this.counts.length; i++) {
+                            if (!this.measured[i]) this.counts[i] = this.estimateChunkPages(i, n);
+                        }
+                    }
                 }
             },
 
@@ -1459,37 +1496,214 @@
             }
         };
 
+        /**
+         * Below this many blocks a paginated document is mounted whole, as before.
+         * Windowing buys nothing on a normal note and every extra path is somewhere for a
+         * bug to live, so it only engages where the cost is real.
+         */
+        const PAGE_WINDOW_MIN_BLOCKS = 800;
+
+        /**
+         * OFF while the column round trip is finished.
+         *
+         * What works, measured against the shipped binary: one range of 400 blocks laid out
+         * instead of 3767, typing at 7ms per keystroke against 66ms (identical to a
+         * scrolling view, which was the whole point), the document serialising byte for byte
+         * while windowed, page turns crossing ranges, and leaving pagination restoring
+         * everything. page-window-app covers all of it, 12/12.
+         *
+         * What does not: column-switch-app fails 4 of 13. Locating a block's page after a
+         * column switch comes out one page early -- block 73 measures onto page 3 while the
+         * view is on page 4 -- so the 2-col -> 1-col -> 2-col round trip returns to the
+         * wrong page. That is the criterion this project already settled once and it is not
+         * negotiable, so the feature stays behind this until it holds.
+         *
+         * Shipping it half-right would be the exact mistake this codebase has paid for
+         * repeatedly: a green suite over a broken behaviour. With the flag off every path
+         * below is dead code and the app behaves exactly as it did before.
+         */
+        const PAGE_WINDOWING_ENABLED = false;
+
+        function pageWindowingActive() {
+            return PAGE_WINDOWING_ENABLED
+                && isPaginatedLayout()
+                && typeof DocumentModel !== 'undefined'
+                && DocumentModel.blocks
+                && DocumentModel.blocks.length >= PAGE_WINDOW_MIN_BLOCKS;
+        }
+
+        /**
+         * Lay out one range of blocks and measure how many pages it really needs.
+         *
+         * The measurement is the point. An estimated page count for the range on screen is
+         * the 2px page-boundary bug in another form: everything downstream -- the page
+         * indicator, a page turn, the block a column switch anchors on -- is derived from
+         * it, so it has to come from the layout rather than from arithmetic about it.
+         */
+        function mountPageChunk(c) {
+            if (!editor || !pageWindowingActive()) return false;
+            const n = DocumentModel.blocks.length;
+            PageChunks.ensure(n);
+            c = Math.max(0, Math.min(c | 0, PageChunks.counts.length - 1));
+
+            const start = PageChunks.firstBlockOfChunk(c);
+            const end = Math.min(n, start + PageChunks.size);
+            const frag = document.createDocumentFragment();
+            for (let i = start; i < end; i++) {
+                const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
+                const el = createPreviewBlockEl(raw, false);
+                el.setAttribute('data-model-index', String(i));
+                frag.appendChild(el);
+            }
+            editor.innerHTML = '';
+            editor.appendChild(frag);
+            PageChunks.mounted = c;
+            try {
+                const who = (new Error().stack || '').split(String.fromCharCode(10))[2] || '';
+                window.showDebugTelemetry('mountPageChunk ' + c + ' blocks ' + start + '..' +
+                    (end - 1) + ' <- ' + who.trim().slice(0, 90));
+            } catch (eT) {}
+
+            const w = PageMap.width();
+            PageChunks.setMeasured(c, Math.max(1, Math.ceil((editor.scrollWidth - 1) / w)));
+
+            if (!currentActiveBlock || !editor.contains(currentActiveBlock)) {
+                currentActiveBlock = editor.querySelector('.block');
+            }
+            try { repaintFindHighlights(); } catch (eF) {}
+            return true;
+        }
+
+        /** Bring the range holding a block on screen, and return its element. */
+        function mountPageChunkForBlock(bi) {
+            if (!pageWindowingActive()) return elementForModelIndex(bi);
+            PageChunks.ensure(DocumentModel.blocks.length);
+            const c = PageChunks.chunkOfBlock(bi);
+            if (c !== PageChunks.mounted) mountPageChunk(c);
+            return elementForModelIndex(bi);
+        }
+
+        /**
+         * Make sure a large paginated document is windowed, whatever route got it here.
+         *
+         * syncPaginationClass only fires on a transition -- `if (on === was) return` -- so a
+         * session restored straight into Pages never passed through it and mounted the whole
+         * document every launch. Since that is the state a reader actually saves, the
+         * transition hook alone would have missed the common case entirely.
+         */
+        function ensurePageWindow() {
+            try {
+                if (!pageWindowingActive()) return false;
+                const mountedBlocks = editor ? editor.querySelectorAll('.block').length : 0;
+                if (PageChunks.mounted >= 0 && mountedBlocks <= PageChunks.size) return false;
+                DocumentModel.virtEnabled = false;
+                unbindVirtScroll();
+                PageChunks.ensure(DocumentModel.blocks.length);
+                const line = (typeof _stickyLineCache !== 'undefined' && _stickyLineCache)
+                    ? _stickyLineCache : 1;
+                const anchor = modelLocationFromDocumentLine(Math.max(1, line | 0)).blockIndex;
+                return mountPageChunk(PageChunks.chunkOfBlock(anchor));
+            } catch (e) {
+                window.showDebugTelemetry('ensurePageWindow: ' + e.message);
+                return false;
+            }
+        }
+
         const PageMap = {
             width: function () {
                 return Math.max(1, (editor ? editor.clientWidth : 0) + twoColGap());
             },
 
-            count: function () {
+            /**
+             * Pages in the mounted range only, measured from the layout every time.
+             *
+             * The measurement is also written back to the map. A single reading taken when
+             * the range was mounted went stale the moment anything reflowed -- a column
+             * change, a font change, a window resize -- and a stale count for the range on
+             * screen poisons every global page number after it: chunk 0 recorded as 1 page
+             * made the second range start at page 1, so turning past its end reported page 1
+             * of a document the reader was ten pages into.
+             */
+            localCount: function () {
                 if (!isPaginatedLayout() || !editor) return 0;
-                return Math.max(1, Math.ceil((editor.scrollWidth - 1) / this.width()));
+                const n = Math.max(1, Math.ceil((editor.scrollWidth - 1) / this.width()));
+                if (pageWindowingActive() && PageChunks.mounted >= 0) {
+                    if (PageChunks.counts && PageChunks.counts[PageChunks.mounted] !== n) {
+                        PageChunks.setMeasured(PageChunks.mounted, n);
+                    }
+                }
+                return n;
             },
 
-            current: function () {
+            /** Page within the mounted range only. */
+            localCurrent: function () {
                 if (!isPaginatedLayout() || !editor) return 0;
                 return Math.max(0, Math.round((editor.scrollLeft || 0) / this.width()));
             },
 
-            /** Which page a model block sits on. One measurement. */
+            count: function () {
+                if (!isPaginatedLayout() || !editor) return 0;
+                if (!pageWindowingActive()) return this.localCount();
+                PageChunks.ensure(DocumentModel.blocks.length);
+                // Never report a total below the page actually on screen. Ranges that have
+                // not been laid out are estimates, and an estimate that undershoots turned
+                // the total into a clamp: "10 pages, currently 7" then a page turn clamped
+                // to 9 and the way back landed somewhere else.
+                const floor = PageChunks.prefixPages(PageChunks.mounted) + this.localCount();
+                return Math.max(1, PageChunks.totalPages(), floor);
+            },
+
+            current: function () {
+                if (!isPaginatedLayout() || !editor) return 0;
+                if (!pageWindowingActive()) return this.localCurrent();
+                return PageChunks.prefixPages(PageChunks.mounted) + this.localCurrent();
+            },
+
+            /**
+             * Which page a model block sits on.
+             *
+             * Measured when its range is the one on screen, which is the case that matters:
+             * every anchoring decision is about content the reader is looking at. For a
+             * block in a range that has not been laid out the page can only be the range's
+             * start -- an honest lower bound rather than a fabricated offset within it.
+             */
             pageOfBlock: function (bi) {
+                if (!pageWindowingActive()) {
+                    const p0 = twoColPageOfElement(elementForModelIndex(bi));
+                    return (p0 == null) ? this.current() : p0;
+                }
+                PageChunks.ensure(DocumentModel.blocks.length);
+                const c = PageChunks.chunkOfBlock(bi);
+                const base = PageChunks.prefixPages(c);
+                if (c !== PageChunks.mounted) return base;
                 const p = twoColPageOfElement(elementForModelIndex(bi));
-                return (p == null) ? this.current() : p;
+                return (p == null) ? this.current() : base + p;
             },
 
             goto: function (n) {
                 if (!isPaginatedLayout() || !editor) return false;
                 const last = this.count() - 1;
                 n = Math.max(0, Math.min(last, n | 0));
-                markProgrammaticScroll(400);
-                editor.scrollTop = 0;              // a page never scrolls vertically
-                editor.scrollLeft = n * this.width();
-                currentTwoColPage = n;
-                updatePageIndicator();
-                return true;
+
+                if (!pageWindowingActive()) {
+                    markProgrammaticScroll(400);
+                    editor.scrollTop = 0;          // a page never scrolls vertically
+                    editor.scrollLeft = n * this.width();
+                    currentTwoColPage = n;
+                    updatePageIndicator();
+                    return true;
+                }
+
+                const loc = PageChunks.locatePage(n);
+                if (loc.chunk !== PageChunks.mounted) {
+                    // Mounting re-measures the range, so its page count -- and every global
+                    // number after it -- can change. Resolve the target again against the map
+                    // as it now stands rather than against the estimate that got us here.
+                    mountPageChunk(loc.chunk);
+                    const again = PageChunks.locatePage(n);
+                    return this.gotoLocal(again.chunk === PageChunks.mounted ? again.local : loc.local);
+                }
+                return this.gotoLocal(loc.local);
             },
 
             /**
@@ -1500,14 +1714,55 @@
              * lands a page earlier every time.
              */
             step: function (dir) {
-                const ok = this.goto(this.current() + (dir < 0 ? -1 : 1));
+                let ok;
+                if (!pageWindowingActive()) {
+                    ok = this.goto(this.current() + (dir < 0 ? -1 : 1));
+                } else {
+                    // A page turn is "the next page", not "global page N + 1".
+                    //
+                    // Global numbers are part estimate while ranges are unmeasured, so
+                    // routing a turn through them made the turn inherit the estimate error:
+                    // forward then back did not return, and in 1-column every turn landed on
+                    // offset 0. Within the mounted range this is exact arithmetic on a
+                    // measured page count, and crossing a boundary lands on the neighbouring
+                    // range's first or last page -- which is precisely where you came from.
+                    ok = this.stepLocal(dir < 0 ? -1 : 1);
+                }
                 if (ok) { const t = topLeftModelIndexTwoCol(); if (t >= 0) _readingAnchor = t; }
                 return ok;
             },
 
-            /** Page offsets, derived not stored. Used by the tests to check alignment. */
+            /** One page forward or back, crossing into the neighbouring range at the edge. */
+            stepLocal: function (dir) {
+                if (!isPaginatedLayout() || !editor) return false;
+                PageChunks.ensure(DocumentModel.blocks.length);
+                const target = this.localCurrent() + dir;
+                if (target >= 0 && target < this.localCount()) {
+                    return this.gotoLocal(target);
+                }
+                const c = PageChunks.mounted + dir;
+                if (c < 0 || c >= PageChunks.counts.length) return false;
+                mountPageChunk(c);
+                return this.gotoLocal(dir < 0 ? this.localCount() - 1 : 0);
+            },
+
+            /** Scroll to a page within the mounted range. */
+            gotoLocal: function (local) {
+                if (!isPaginatedLayout() || !editor) return false;
+                const l = Math.max(0, Math.min(local | 0, this.localCount() - 1));
+                markProgrammaticScroll(400);
+                editor.scrollTop = 0;              // a page never scrolls vertically
+                editor.scrollLeft = l * this.width();
+                currentTwoColPage = pageWindowingActive()
+                    ? PageChunks.prefixPages(PageChunks.mounted) + l
+                    : l;
+                updatePageIndicator();
+                return true;
+            },
+
+            /** Page offsets within the mounted range. Used by the tests to check alignment. */
             get pages() {
-                const w = this.width(), c = this.count(), out = [];
+                const w = this.width(), c = this.localCount(), out = [];
                 for (let i = 0; i < c; i++) out.push({ offset: i * w });
                 return out;
             },
@@ -1600,6 +1855,24 @@
             requestAnimationFrame(function () {
                 if (!isPaginatedLayout() || !editor) return;
 
+                // The block has to be laid out before its page can be measured. Under
+                // windowing only one range is, and asking for a page in a range that is not
+                // mounted can only return that range's first page -- so a column switch
+                // anchored on block 140 landed in the range holding block 800, wherever the
+                // window happened to be. Mount the anchor's range first; if that changes the
+                // layout the width check below will simply wait another frame.
+                try {
+                    if (pageWindowingActive()) {
+                        PageChunks.ensure(DocumentModel.blocks.length);
+                        const want = PageChunks.chunkOfBlock(anchorBlock);
+                        if (want !== PageChunks.mounted) {
+                            mountPageChunk(want);
+                            goToPageHoldingBlock(anchorBlock, tries - 1, editor.scrollWidth);
+                            return;
+                        }
+                    }
+                } catch (eW) {}
+
                 // Wait for the relayout to finish before asking anything about it. The flow
                 // keeps growing while the remounted blocks lay out, and asking too early
                 // answers against the layout being replaced: switching 2-col to 1-col
@@ -1610,14 +1883,29 @@
                     return;
                 }
 
-                const want = PageMap.pageOfBlock(anchorBlock);
-                PageMap.goto(want);
+                // Go by the page the block is measurably on, in the range that is mounted.
+                //
+                // Routing this through a global page number was wrong in a way that only
+                // showed up under windowing: pageOfBlock measures a LOCAL page and adds the
+                // prefix, goto() then resolves that number against the counts as they stand
+                // -- and the mounted range had just been re-measured for the new column
+                // count, so its page count shrank and the same number resolved into a
+                // different range. A switch anchored on block 140 landed on block 800.
+                // Locally there is nothing to disagree with.
+                if (pageWindowingActive()) {
+                    const el = elementForModelIndex(anchorBlock);
+                    const lp = twoColPageOfElement(el);
+                    PageMap.gotoLocal(lp == null ? 0 : lp);
+                } else {
+                    const want = PageMap.pageOfBlock(anchorBlock);
+                    PageMap.goto(want);
+                }
                 // This block is what the reader asked to see, so it is the reading
                 // position. Recording it here means a later width change re-derives from
                 // it rather than from whatever happens to be on screen afterwards.
                 _readingAnchor = anchorBlock;
                 window.showDebugTelemetry('goToPage: block ' + anchorBlock + ' is on page ' +
-                    want + ' of ' + PageMap.count());
+                    PageMap.current() + ' of ' + PageMap.count());
             });
         }
 
@@ -3107,7 +3395,7 @@
                     // to its real start -- not on a page synthesised from the scroll offset.
                     settleTwoColToLine(1, _pgAnchor);
                 } else {
-                    scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
+                    scheduleColumnSettle(function () { ensurePageWindow(); PageMap.invalidate(); updatePageIndicator(); });
                 }
                 // Report it: the selectors must follow the view however it was changed,
                 // not only when the change came from a selector click.
@@ -3346,7 +3634,7 @@
                 // Reader/Preview/Source changes whether pages apply at all.
                 syncPaginationClass();
                 applyEditorChromeForMode();
-                scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
+                scheduleColumnSettle(function () { ensurePageWindow(); PageMap.invalidate(); updatePageIndicator(); });
                 // Mode can change from Ctrl+/ or the View menu, not just a selector click.
                 postViewState(currentViewState());
             }
@@ -8587,6 +8875,7 @@
                 }
                 return;
             }
+            // (virt path returns above; the full-mount path continues below)
 
             DocumentModel.virtEnabled = false;
             unbindVirtScroll();
@@ -8625,6 +8914,11 @@
                 window.__tzPreviewPainting = false;
                 try { updateOutline(); } catch (eO) {}
                 try { tzRequestPendingImages(editor); tzScheduleImageRescan(); } catch (eI) {}
+                // A document opened straight into Pages -- a restored session, which is the
+                // usual way a reader arrives -- has just been mounted whole. Narrow it to a
+                // range now that the paint has finished; doing it earlier is what the
+                // deferred batches buried.
+                try { ensurePageWindow(); } catch (eW) {}
             }
 
             function startPaint() {
@@ -10901,7 +11195,16 @@
                 try { expandAllFragmentedBlocks(); } catch (e) {}
             }
             try {
-                if (DocumentModel.virtEnabled) {
+                // Whenever the DOM holds only part of the document, the model is the
+                // document and the DOM is a projection of it. That is true under
+                // virtualisation and equally true under page windowing.
+                //
+                // This matters more than anything else in the windowing work: the full-mount
+                // branch below rebuilds the model from the DOM when the counts differ, which
+                // is right when the DOM really is everything and catastrophic when it is one
+                // range of 400 blocks out of 3767. Saving would have written the window and
+                // discarded the rest of the file.
+                if (DocumentModel.virtEnabled || pageWindowingActive()) {
                     DocumentModel.syncMountedToModel();
                     return DocumentModel.toMarkdown();
                 }
