@@ -353,17 +353,6 @@
             return n;
         }
 
-        function getSourceLineHeight() {
-            try {
-                const cs = window.getComputedStyle(sourceEditor);
-                const fs = parseFloat(cs.fontSize) || 16;
-                const parsedLh = parseFloat(cs.lineHeight);
-                if (parsedLh && !isNaN(parsedLh) && parsedLh >= fs * 0.9) return parsedLh;
-                return fs * 1.6;
-            } catch (e) {
-                return 22;
-            }
-        }
 
         function clampMainScroll() {
             if (!mainContainer) return;
@@ -1714,14 +1703,6 @@
             return true;
         }
 
-        /** Bring the range holding a block on screen, and return its element. */
-        function mountPageChunkForBlock(bi) {
-            if (!pageWindowingActive()) return elementForModelIndex(bi);
-            PageChunks.ensure(DocumentModel.blocks.length);
-            const c = PageChunks.chunkOfBlock(bi);
-            if (c !== PageChunks.mounted) mountPageChunk(c);
-            return elementForModelIndex(bi);
-        }
 
         /**
          * Make sure a large paginated document is windowed, whatever route got it here.
@@ -1935,14 +1916,6 @@
         function markProgrammaticScroll(ms) { _progScrollUntil = Date.now() + (ms || 600); }
         function noteUserMovement() { if (Date.now() > _progScrollUntil) _colMemoryDirty = true; }
 
-        function captureColumnPosition() {
-            if (!editor) return;
-            if (editor.classList.contains('two-col-layout')) {
-                _colMemory.c2 = { scrollLeft: editor.scrollLeft || 0, page: currentTwoColPage || 0 };
-            } else if (mainContainer) {
-                _colMemory.c1 = { scrollTop: mainContainer.scrollTop || 0 };
-            }
-        }
 
         /**
          * Run a correction repeatedly over the second or so after a column switch.
@@ -1960,25 +1933,6 @@
             });
         }
 
-        /** Re-apply a remembered position until the relayout stops undoing it. */
-        function restoreColumnPosition(twoCol, mem) {
-            if (!mem) return;
-            scheduleColumnSettle(function () {
-                markProgrammaticScroll(400);
-                if (twoCol) {
-                    if (!editor || !editor.classList.contains('two-col-layout')) return;
-                    if (Math.abs((editor.scrollLeft || 0) - mem.scrollLeft) > 2) {
-                        editor.scrollLeft = mem.scrollLeft;
-                    }
-                    currentTwoColPage = mem.page;
-                } else {
-                    if (!mainContainer || (editor && editor.classList.contains('two-col-layout'))) return;
-                    if (Math.abs((mainContainer.scrollTop || 0) - mem.scrollTop) > 2) {
-                        mainContainer.scrollTop = mem.scrollTop;
-                    }
-                }
-            });
-        }
 
         /**
          * Keep the anchor line's page correct while the column layout settles.
@@ -3669,7 +3623,6 @@
 
                 // Remember where the layout being left was sitting, and decide whether the
                 // one being entered can simply be put back exactly as it was.
-
 
 
                 markProgrammaticScroll(1200);
@@ -7985,9 +7938,6 @@
             } catch (e) {}
         }
 
-        // Back-compat aliases used elsewhere
-        function getScrollAnchorLine() { return captureStickyDocumentLine(); }
-        function scrollToDocumentLine(line1Based) { restoreStickyDocumentLine(line1Based); }
         function modelIndexAtViewportCenter() {
             if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks || !DocumentModel.blocks.length) {
                 return 0;
@@ -8287,65 +8237,6 @@
             });
         }
 
-        function handleCrossBoundarySelection(e) {
-            const sel = window.getSelection();
-            if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
-            const range = sel.getRangeAt(0);
-            const startBlock = getAncestorBlock(range.startContainer);
-            const endBlock = getAncestorBlock(range.endContainer);
-
-            if (startBlock && endBlock && startBlock !== endBlock) {
-                if (e.key === 'Backspace' || e.key === 'Delete' || (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey)) {
-                    e.preventDefault();
-                    HistoryManager.beginEdit();
-
-                    const startRange = document.createRange();
-                    startRange.selectNodeContents(startBlock);
-                    startRange.setEnd(range.startContainer, range.startOffset);
-                    const prefix = startRange.toString();
-
-                    const endRange = document.createRange();
-                    endRange.selectNodeContents(endBlock);
-                    endRange.setStart(range.endContainer, range.endOffset);
-                    const suffix = endRange.toString();
-
-                    const combinedRaw = prefix + (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey ? e.key : '') + suffix;
-
-                    let fromIdx = DocumentModel.modelIndexOfEl(startBlock);
-                    let toIdx = DocumentModel.modelIndexOfEl(endBlock);
-                    let curr = startBlock.nextElementSibling;
-                    while (curr && curr !== endBlock) {
-                        const next = curr.nextElementSibling;
-                        if (curr.classList.contains('block')) curr.remove();
-                        curr = next;
-                    }
-                    if (endBlock && endBlock.classList.contains('block')) endBlock.remove();
-
-                    writeBlockRaw(startBlock, coerceBlockRaw(combinedRaw));
-                    try {
-                        if (fromIdx >= 0 && toIdx > fromIdx) {
-                            DocumentModel.removeBlockRange(fromIdx + 1, toIdx);
-                            if (DocumentModel.virtEnabled) mountVirtWindow(true);
-                            else reindexMountedBlocks();
-                        } else if (!DocumentModel.virtEnabled) {
-                            DocumentModel.rebuildFromFullDom();
-                        }
-                    } catch (eM) {}
-                    window.isProgrammaticFocus = true;
-                    focusBlock(startBlock, 0);
-
-                    setTimeout(() => {
-                        try { setCaretAtOffset(startBlock, prefix.length + (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey ? 1 : 0)); } catch(err) {}
-                    }, 0);
-
-                    HistoryManager.commitEdit();
-                    updateStats();
-                    updateOutline();
-                    return true;
-                }
-            }
-            return false;
-        }
 
         // --- WYSIWYG AST / BLOCK ENGINE ---
 
@@ -11627,7 +11518,6 @@
                 ' entries; matched ' + repaired + ' by title');
             return toc;
         }
-
 
 
         /**

@@ -6,7 +6,9 @@ obj/
 bin/
 *.pdb
 
-# WebView2 runtime user-data directory
+# Staging for content handed to the page: document bodies and book payloads are written
+# here and fetched over the local origin, because a 40,000-block book is not something to
+# push through the message channel. Swept by PruneLoadStageDir.
 typozen_load/
 
 # Runtime logs

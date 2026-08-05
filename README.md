@@ -26,6 +26,31 @@ TypoZen opens by document *type*, not size — Markdown of any size opens in Liv
 
 Virtualized Preview keeps a per-block height map, estimated from the raw Markdown and refined from real measurements as blocks mount, with **scroll anchoring** so correcting a height never moves the content under your cursor. `.txt` / `.log` / `.csv` open in Source, which is the Notepad-class path.
 
+### Reading epubs
+Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the
+book's own table of contents in the outline.
+
+- A book's blocks carry the **publisher's own HTML**, not a Markdown conversion. Converting
+  *Blindsight* to Markdown dropped 6/6 images, 162/162 links, 170/170 list items and 210/210
+  footnote references, and broke 16 of 17 headings. Carrying the HTML has no conversion step
+  and therefore nothing to lose.
+- The book's stylesheets are applied, scoped to the editor, with three corrections: `rem`
+  becomes `em` (a book sized in `rem` is rooted at the application and the reader's font-size
+  control cannot touch it), the book's own `page-break-before: always` becomes
+  `break-before: column` (a paged-media break is ignored by a multi-column layout), and
+  `preserveAspectRatio="none"` is stripped from cover wrappers.
+- **Body text renders at the size the theme asks for.** Publishers size against a device
+  default they cannot see — one test book asks for 0.88 of base on every paragraph — so the
+  book keeps its proportions and only its base is normalised.
+- Chapters start a new page, images and internal links work, and the reading position is
+  remembered per book across sessions.
+- A book is never dirty, never saved over, and Save As refuses any path ending `.epub`.
+
+### Position in a long document
+In a paginated layout the foot of the page carries page numbers and a **scrubber that spans
+the whole book**. It addresses pages rather than scroll offset, because the editor's own
+scrollbar can only span what is currently laid out — about 28 pages of a 1400-page novel.
+
 ### Themes & typography
 **27 handcrafted themes** in `TypoZen_Themes.json` — modern dark/light, reading and serif faces, Gruvbox and warm palettes, plus **4 mono themes** grouped at the end and labelled `(Mono)`.
 
@@ -152,6 +177,69 @@ In Live Preview each line also carries a rendered form, so the two must never di
 - **Ordinary notes are never virtualized.** Virtualization is for large documents only; normal writing gets the full WYSIWYG DOM.
 - **Progressive paint is M-band only**, gated on block count — never on a character count.
 
+### Books
+
+A book is a second **document kind**, not a second document model. `DocumentModel.kind` is
+`'markdown'` or `'epub'`, and everything downstream branches on it rather than on a separate
+code path: search, the outline, the word count, page windowing and the column round trip are
+the same code for both.
+
+| Piece | Where | Does |
+|---|---|---|
+| `EpubReader.cs` | shell | Unzips to a cache folder, reads `container.xml` → OPF → spine, returns one JSON payload: title, author, assets base, stylesheets, TOC, documents. **No HTML processing at all.** |
+| `loadBookPayload()` | page | Splits each spine document into blocks, builds the TOC, applies the book's CSS, mounts |
+| `bookBlocksFromDocs()` | page | One block per top-level element of each `<body>`; also returns each block's owning document directory |
+| `applyBookStyles()` | page | Scopes every rule to `#editor` and applies the three corrections listed under Highlights |
+| `rewriteBookUrls()` | page | Resolves `src` / `href` / `xlink:href` **against the document the block came from** |
+
+Two things about that last row, because both were wrong first:
+
+- **An image href is relative to its own spine document, not to the book root.** One test book
+  keeps documents in `OEBPS/Text/` and images in `OEBPS/Images/`, so its covers are
+  `../Images/…`; the other is flat at the archive root and resolved correctly under a shared
+  base by accident. A single assets base works for exactly one of them.
+- **A cover is usually not an `<img>`.** Both test books wrap it in
+  `<svg><image xlink:href="…"></svg>`, which no `img` rule and no `src` rewrite touches.
+
+A book's block `raw` is the publisher's markup, so `renderBlockPreview` sets it as HTML and
+returns before any of the Markdown renderer runs. The editor refuses to become editable while
+a book is open, `GetDirtyTabs()` skips `.epub` tabs, and `ReadTextFileDetect` returns empty
+for one — a book cannot be edited, marked dirty, or saved over.
+
+### Page windowing
+
+Pagination lays out the whole document, because the browser can only fragment content it has
+already laid out. That is correct and it is why an unwindowed 40,656-block omnibus put every
+block into one multi-column flow. `PageChunks` splits the document into fixed block ranges,
+lays out **one range at a time**, and keeps a per-range page count — cumulative sums give the
+global page number, exactly as `blockHeights` + `prefixHeight()` give the global scroll offset.
+
+- Unmeasured ranges are estimated from pages-per-block and refined as they are laid out.
+- **Blocks are the anchor, not page numbers.** Page numbers move as estimates are refined;
+  block indices do not, and the column round trip already depends on that.
+- The range on screen is measured exactly, never trusted from its estimate.
+- A structural edit **splices** the map rather than discarding it, the same rule as the height
+  map.
+
+`PageChunks.size` is 800 blocks. It was 400, tuned on a Markdown fixture; measured on two real
+novels, the cost that matters is the page turn that crosses a range boundary and has to lay
+out the next one:
+
+| Range size | In-range turn | Boundary crossing | Pages per range |
+|---|---|---|---|
+| 200 | 1 ms | 18 / 20 ms | 7 / 16 |
+| **800** | **2 ms** | **74 / 84 ms** | **28 / 62** |
+| 1600 | 3 ms | 201 / 172 ms | 55 / 124 |
+
+Amortised over the pages between crossings it is flat at every size, so the choice is the
+worst case a reader feels against how much of the book is laid out at once — which is also
+how far the editor's own scrollbar reaches.
+
+**The scrubber exists because that scrollbar cannot reach the ends.** It addresses pages;
+`PageMap.goto()` already mounts the range a page falls in, so seeking anywhere is the same
+operation as turning a page. It seeks on release rather than on every input event, because a
+drag would otherwise mount a range per pixel of travel.
+
 ### Thresholds
 
 Live constants in `TypoZen_Template.html`. Changing them changes which strategy a document gets, so they are listed here rather than left to be rediscovered:
@@ -164,6 +252,11 @@ Live constants in `TypoZen_Template.html`. Changing them changes which strategy 
 | `PROGRESSIVE_CREATE_BATCH_BLOCKS` | 1 500 | M-band: create blocks in `requestAnimationFrame` batches |
 | `overscan` | 40 | Blocks kept mounted above and below the viewport |
 | `LARGE_DOC_CHARS` | 16 000 | Stats/preferences throttling only — **not** an open-mode or paint threshold |
+| `PAGE_WINDOW_MIN_BLOCKS` | 800 | Page windowing engages at or above this block count |
+| `PageChunks.size` | 800 | Blocks per laid-out range while paginated (measured — see Page windowing) |
+| `PageChunks.perBlock` | 0.06 | Seed pages-per-block for ranges not yet measured |
+| `PAGE_FOOT_RESERVE` | 26 px | Strip at the foot of a page for the numbers and the scrubber |
+| `MaxRememberedBooks` | 64 | Reading positions kept in `book_positions.txt` |
 
 Which path a Preview load takes:
 
@@ -248,8 +341,8 @@ Also: `.\Create_Shortcut.ps1` · `.\Generate_Icon.ps1`
 ### Tests
 
 ```powershell
-.\tests\run-tests.ps1                          # default gate (~37 suites)
-$env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + drives the real TypoZen.exe
+.\tests\run-tests.ps1                          # default gate — 46 suites
+$env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + 9 suites driving the real TypoZen.exe
 ```
 
 There are **four tiers**, and which tier a thing belongs in is decided by what it needs to observe, not by preference. Getting this wrong is how TypoZen shipped visibly broken behaviour behind a green suite for a fortnight.
@@ -263,9 +356,17 @@ There are **four tiers**, and which tier a thing belongs in is decided by what i
 
 **jsdom** is fast and covers the document model, dual-source invariants, virtualization thresholds and format indices, scroll stability, find under virtualization, sticky mode-switch, lists, undo, tabs, tables and clipboard conversion — plus a whole-file parse check, since the other suites extract individual functions and would not catch a syntax error elsewhere.
 
+**`parse-check.mjs` guards against invisible characters.** Five bugs in this project came from
+writing a regex through a tool that interpreted the backslashes: `\b` became `0x08`, `\1`
+became `0x01`, and a NUL ended up as a separator. Each produced a pattern that matches nothing
+and looks entirely normal in an editor, and each presented as a feature silently doing nothing
+— "No headings found" on every book, every internal link going nowhere, zero images reported
+by a test that should have failed. The check covers the shipping sources **and** `tests/*.mjs`,
+because the fifth one landed in a test.
+
 **jsdom has no layout engine.** `column-count` never applies, `scrollLeft` is inert and every `getBoundingClientRect()` returns zeros. It cannot distinguish "two columns" from "no columns". Any assertion about what is on screen must be a browser or application suite — writing it in jsdom produces a test that passes forever and proves nothing.
 
-**Browser** suites (`smoke-browser`, `pagination-browser`, `twocol-anchoring-browser`, `edit-integrity-browser`) load `TypoZen_Template.html` in headless Chrome. `smoke-browser` is deliberately shallow — "does each feature visibly do anything" — because that is the class of check that was missing when 2-column mode shipped applying its CSS class while `column-count` stayed `auto`.
+**Browser** suites (`smoke-browser`, `pagination-browser`, `twocol-anchoring-browser`, `edit-integrity-browser`, `clipboard-roundtrip-browser`, `paste-code-browser`, `epub-reader-browser`, `search-perf-browser`) load `TypoZen_Template.html` in headless Chrome. `smoke-browser` is deliberately shallow — "does each feature visibly do anything" — because that is the class of check that was missing when 2-column mode shipped applying its CSS class while `column-count` stayed `auto`.
 
 **Application** suites are the only ones that see what users see. `tests/app-harness.mjs` launches `TypoZen.exe --debug`, which opens the DevTools protocol on port 9333, and attaches with `puppeteer-core`:
 
@@ -280,11 +381,61 @@ This exists because column switching was "fixed" six times against headless Chro
 
 > **Run `RUN_APP_E2E=1` before claiming any column or pagination behaviour is fixed.** The runner prints this next to the skipped suites.
 
+The nine application suites, and what each is the only place to check:
+
+| Suite | Covers |
+|---|---|
+| `column-switch-app` | 2-col → 1-col → 2-col returns to the same layout and position |
+| `page-window-app` | Only one range is laid out; page numbers stay in one coordinate system |
+| `page-scrubber-app` | Dragging the position control reaches both ends of a 40,656-block book |
+| `epub-open-app` | A real book end to end: opens in Reader and paginated, images load, covers keep their ratio, chapters start columns, TOC and outline jump, body text is the theme size, the file on disk is untouched |
+| `book-position-app` | A book reopens where reading stopped — across **two real launches**, because surviving the process is the whole claim |
+| `edit-integrity-app` | Paste and undo do not corrupt neighbouring blocks |
+| `editing-sweep-app` | A survey of ordinary editing in every layout: typing, selection replace, Enter, Backspace-join, list continuation, Tab indent, undo, redo |
+| `search-highlight-app` | Every match highlighted, the current one marked, and the shaded block is the one holding it |
+| `search-perf-app` | Typing in the search box stays responsive on a large document |
+
+**Assert on rendered geometry and loaded bytes, not on structure.** Every epub defect the
+user reported had a green structural assertion sitting over it: an attribute *was* set, a
+`src` *was* rewritten, a TOC entry *did* map to a block index — while the thing on screen was
+broken. The checks that hold now measure `naturalWidth`, bounding-rect ratios against a
+`viewBox`, column tops from per-fragment rects, and scroll position after a real `.click()`.
+
+**Run book suites against both books.** `Matter` is flat at the archive root and `Xeelee` is
+nested; they fail in opposite directions, and neither alone can catch both bugs. `epub-open-app`
+runs its full pass on each.
+
+**Drive real events.** `execCommand('insertParagraph')` is a path no keyboard reaches — Enter,
+Backspace and Tab are all handled by the editor's own listeners. Swapping the sweep to real
+`KeyboardEvent`s found, on its first run, that undo could not undo typing in a paginated
+layout.
+
 **Fixtures.** `tests/large-scroll-4000.md` is uniform; `tests/large-scroll-mixed.md` has images, long code fences, tables, headings and wrapping paragraphs. The second exists because uniform rows cannot exercise the height mapping that virtualized scrolling depends on.
+
+Four real `.epub` files sit in `tests/` and the book suites read them directly —
+`tests/epub-zip.mjs` is just enough ZIP to do that without a dependency. They are real books
+on purpose: the converter that shipped looked perfectly reasonable against a hand-written
+fixture, and it was only counting images and headings in a real one that showed it dropping
+every single one.
+
+| Book | Shape | Why it is here |
+|---|---|---|
+| `Matter` | 42 documents, flat at the archive root, NCX pointing every entry at one file | Asset paths that work under any base; a TOC that has to be repaired by title |
+| `Xeelee Sequence` | 460 documents, assets nested under `OEBPS/`, 40,656 blocks | Per-document asset resolution; scale for windowing and the scrubber |
+| `Dune`, `Nemesis Games` | untried | Spare shapes for when something book-specific is suspected |
 
 `TypoZen_Template_Test.html` is **generated**, not edited. `tests/build-test-template.mjs` inlines the shipping `js/typozen.js` and `css/typozen.css` into the page shell, and both runners regenerate it first. It is gitignored. Before this existed the jsdom suites had silently pinned themselves to an Aug-1 snapshot missing `htmlToMarkdown`, `walkTable` and `set_column_mode` entirely — 27 suites reporting green against code that no longer shipped.
 
 A GUI smoke test (`RUN_TAB_E2E=1`, pywinauto) drives the window through the WPF shell. It cannot see inside WebView2, so it verifies launch, tabs and window chrome only.
+
+**`package.json` and `node_modules/` live at the repo root, not in `tests/`**, even though only
+the tests use them. Node resolves `node_modules` by walking *up* from the importing file, so
+`tests/*.mjs` finds a root install without anything being configured; a manifest at the root is
+also where every tool looks for one. Three packages, all test-only: `jsdom` for the model tier,
+`puppeteer` (which brings its own Chrome) for the browser tier, and `puppeteer-core` for the
+application tier, which attaches to the DevTools port `TypoZen.exe --debug` opens rather than
+launching a browser of its own. Nothing in the shipped application depends on any of it — the
+editor is vanilla JS with no build step.
 
 ### Debugging
 
@@ -347,7 +498,10 @@ Together: a cold open went from ~8.9 s to ~1.0 s.
 - **Pick the tier by what must be observed.** Layout, scroll position, page boundaries and caret behaviour need a browser or application suite. Putting them in jsdom yields a permanently green test of nothing.
 - **Prove a new test can fail.** Reintroduce the bug and watch it go red. Several checks here looked like coverage and were tautologies — one compared page offsets against the same estimates the offsets were derived from, so it could only ever agree with itself.
 - **A test that cannot pass yet is `*-pending.mjs`, not a commented-out assertion.** An earlier suite detected a real failure, commented out its own `process.exit(1)`, and printed `PASSED`; every build afterwards reported success and failure in the same run.
-- If `switchTab` or another function evaluated in isolation gains a dependency, stub it in the suite that evaluates it — and re-run that suite. This has broken twice.
+- If `switchTab` or another function evaluated in isolation gains a dependency, stub it in the suite that evaluates it — and re-run that suite. This has broken twice. `paste-html-selftest` extracts `htmlToMarkdown` alone by brace matching, so a helper it calls has to live **inside** that function; moving one out sent every case to the empty string.
+- **Assert on what renders, not on what was set.** An attribute being present, a `src` being rewritten and a TOC entry mapping to a block index were all true while the screen was wrong. Prefer `naturalWidth`, rendered ratios, column tops and position-after-click.
+- **Drive the real entry point.** Dispatched `KeyboardEvent`s, a real `.click()`, a real `DataTransfer`, `postMsg('open_file_path:')`. Calling the handler underneath tests a path no user reaches, and three separate defects hid exactly there.
+- **Scope a grep to what it means.** A check that the sidebar does not slide on hover searched the whole stylesheet for `translateX` and failed the day a tooltip needed centring.
 
 **Anchoring**
 
@@ -360,35 +514,25 @@ Use the anchor that already exists rather than deriving a new one:
 **Never move the view by hand**
 
 - **Never call `editor.focus()`.** `#editor` is the whole contenteditable document, so focusing it scrolls its top edge into view — i.e. to line 1 — before the caller has placed the caret. Use `focusEditorNoScroll()`. This is what sent undo to the top of the document.
+- **A deferred load decides at request time, not at completion.** `loadMarkdownContent` seeds a fresh history at the end of the load; on the progressive path that end arrives across `requestAnimationFrame` batches, by which time `undo()` has already cleared `isRestoring` — so the seed wiped the stack undo was halfway through using and typing could no longer be undone. Capture the flag when the work is asked for.
+- **`setCaretAtOffset` must handle an empty element.** Its fallback was guarded by `childNodes.length > 0`, which excludes precisely the case with no text to walk: the caret stayed wherever it was and typing into a blank line went nowhere.
 - **Never assign `mainContainer.scrollTop` to show a block.** Under virtualization the remount rebuilds the spacers, the document height collapses for a frame and the browser clamps the scroll back to 0 — the caret moves and the view does not. Use `restoreStickyDocumentLine(line)` when scrolling or `goToPageHoldingBlock(block)` when paginated. This pattern has been found and removed three times (outline, search, column switch); if a fourth appears, `grep "scrollTop ="` before adding another.
 
 **Pagination**
 
-> **Next piece of work: page windowing.** Pagination mounts the whole document, because the
-> browser can only fragment content it has laid out. That is correct and it is why typing in
-> Pages costs ~66ms per keystroke against ~7ms in Scroll on the 4582-line fixture: every
-> character re-fragments one multi-column flow containing 3767 blocks. A 500-page epub is the
-> same architecture with an order of magnitude more content, and epub reading *is* pagination,
-> so this wants doing before Phase 5 rather than retrofitting into it.
->
-> The shape that fits what is already here: split the document into fixed block ranges, lay
-> out one range at a time, and keep a per-range page count. Cumulative sums give the global
-> page number, exactly as `blockHeights` + `prefixHeight()` give the global scroll offset
-> today -- same structure, same invariants, and the same rule that a structural edit splices
-> the map rather than discarding it (see the Document model section). Unmeasured ranges are
-> estimated from pages-per-block and refined as they are laid out, which is `estimateBlockHeight`
-> again.
->
-> Two things to get right, both already learned the hard way here. Anchor on **blocks**, not
-> page numbers: page numbers move as estimates are refined, block indices do not, and the
-> column round trip already depends on this. And measure the range currently on screen exactly
-> rather than trusting its estimate -- an estimated current page is the 2px-slop bug wearing a
-> different hat.
-
-
 - Pagination is a real layout, not a scroll gesture: `.page-mode` puts the document into CSS multi-column and a page turn is a horizontal scroll. Don't reintroduce "scroll by ~90% of the viewport".
-- Pagination and virtualization are mutually exclusive — the browser can only break content it has laid out — so entering page mode remounts the document. That cost is deliberate.
-- Page geometry is uniform: page N is at `N × pageWidth`. Prefer arithmetic to a cached map.
+- Pagination and virtualization are mutually exclusive — the browser can only break content it has laid out — so entering page mode remounts the document. That cost is deliberate. Page windowing is what makes it affordable on a novel; see the Architecture section.
+- Page geometry is uniform *within the laid-out range*: local page N is at `N × pageWidth`. Global page numbers come from `PageChunks`, and mixing the two prints a page number from one coordinate system beside a total from the other.
+- **`break-before: column`, never `page-break-before: always`.** The legacy spelling is an alias for `break-before: page`, a paged-media break that a multi-column layout ignores completely. Written second it wins, and every chapter runs on mid-column while the marker attribute a test counts is present on all of them.
+- **The last page is not always at `N × pageWidth`.** A document ending part way into its final page leaves a maximum `scrollLeft` short of that offset, so the map would name a position the browser will never hold. `PageMap.pages` clamps to what is reachable.
+- **A fragmented element's `getBoundingClientRect()` is the union of its fragments.** A paragraph running from one column into the next reports a box spanning both. Use `getClientRects()` when asking where something is on a page — a check built on the bounding box reads a correctly broken chapter as prose sitting above a heading.
+
+**Books**
+
+- **Resolve a book's URLs against the document the block came from**, never against one shared assets base. Half the test books work either way, which is what makes the bug survive.
+- **The reader's chosen size wins.** A book sized in `rem` is rooted at the application and the font-size control cannot reach it; a book asking for `0.88em` renders smaller than the theme. Both are corrected when the stylesheet is applied.
+- **A mode implies its layout.** Reader is pages only, and setting the mode without the pagination it implies produced reader + scroll — a state the resolver cannot produce and, because Reader locks the scroll selector, one the toolbar cannot leave. Go through `resolveViewState`, or apply what it would have.
+- Some books are broken in ways no reader can fix by following the file: one test book's in-text links point at `#filepos` anchors while its actual anchors are `calibre_pb_*`. Where the titles are recoverable, match by title — gated on the href having failed, so sound books keep their exact targets.
 
 **General**
 
@@ -397,6 +541,87 @@ Use the anchor that already exists rather than deriving a new one:
 - Where something genuinely isn't covered, say so plainly rather than implying coverage that doesn't exist.
 
 This README is the single source of truth for how TypoZen works. Completed design records are kept under `docs/archive/` for history; they are **not** maintained, and where they disagree with this file, this file wins.
+
+---
+
+## Outstanding work
+
+Kept here rather than in a tracker so it stays next to the code it concerns. Ordered by what
+a user would notice first.
+
+### Next
+
+- **ZenSeek integration (Phase 6).** Open TypoZen from ZenSeek at a search result — the reader
+  lands in the right document at the right position. Cross-repo; TypoZen's side is the
+  `open_file_path:` / reading-position machinery that already exists.
+- **Retire ZenSeek's own reader (Phase 7)**, once Phase 6 carries its weight.
+
+### Known gaps
+
+- **Links that are broken in the file itself.** `Matter`'s in-text links point at `#filepos`
+  anchors while its actual anchors are `calibre_pb_*`. The outline and the contents page are
+  recovered by title; a mid-chapter cross-reference has nothing to match on and does nothing.
+  No reader can resolve these by following the file.
+- **Two-column page numbering assumes a spread is two numbered pages.** True for the layouts
+  TypoZen offers, but the map counts spreads and the numbers count pages, and every place that
+  mixes them has had to be corrected once already.
+- **`LARGE_DOC_CHARS` is aliased from `SOURCE_FIRST_CHARS`.** The name is historical — size no
+  longer decides Source vs Preview, document type does. Worth renaming.
+- **Reading position is one number per book.** No per-tab positions, and nothing is remembered
+  for Markdown documents.
+- **The table modal is unreachable UI.** `TypoZen_Template.html` still carries `#tableModal`
+  with its close and confirm handlers wired, but nothing opens it — the toolbar uses the size
+  picker instead. Left in place because removing a dialog is a product decision, not a tidy-up.
+- **The scrubber is pages-only.** A scrolling layout keeps the native scrollbar, which is
+  correct there — virtualization gives it the full document extent — but it does mean the two
+  layouts offer different controls.
+
+### Test coverage that is thinner than it looks
+
+Said plainly, because implying coverage that does not exist is how this project shipped
+broken behaviour behind a green suite:
+
+- **The editing sweep is a survey, not a regression suite.** It covers typing, selection
+  replace, Enter, Backspace-join, list continuation, Tab indent, undo and redo. It does not
+  cover tables, multi-block selection, drag-and-drop, or find-and-replace as gestures.
+- **No suite drives the WPF chrome.** The application tier reaches into the page over the
+  DevTools protocol; menus, dialogs and the tab strip are only touched by the optional
+  pywinauto smoke test, which cannot see inside WebView2.
+- **Nothing tests theme rendering.** Contrast ratios and font loading are checked as data
+  (`fonts-selftest`, theme JSON validation), never as pixels.
+- **`Dune` and `Nemesis Games` have never been opened by a test.** They are there so a
+  book-specific suspicion has somewhere to go.
+- **The GUI smoke test is opt-in and rarely run.** `RUN_TAB_E2E=1`.
+
+### Housekeeping the application does
+
+Both caches are gitignored and rebuilt on demand; neither is safe to assume present.
+
+| Directory | Holds | Swept by |
+|---|---|---|
+| `typozen_load/` | Document bodies and book payloads staged for the page to fetch | `PruneLoadStageDir` — files older than 5 minutes, everything on exit |
+| `typozen_books/` | Extracted epub assets, one folder per book, keyed by a stable hash | `PruneOldBooks(keep: 8)` |
+
+`PruneLoadStageDir` swept only `body_*.md` until it was corrected: a book payload is the
+largest file the application writes, and 176 of them had reached **939 MB** before anyone
+looked in the folder.
+
+### Performance notes worth keeping
+
+Measured on the 4582-line mixed fixture unless stated:
+
+| Thing | Cost |
+|---|---|
+| Typing, Scroll | ~7 ms per keystroke |
+| Typing, Pages | ~66 ms per keystroke — one multi-column flow re-fragments |
+| Page turn within a laid-out range | 1–3 ms |
+| Page turn crossing a range boundary | 74–84 ms (800-block ranges, real novels) |
+| Search keypress, before the merge-walk fix | 986 ms |
+
+The Pages typing cost is the price of real pagination and is deliberate. It was briefly far
+worse: setting `height: 100%` on the multi-column contenteditable made every keystroke
+re-resolve the whole flow, at 207 ms each. The height is a pixel value applied from JS for
+that reason.
 
 ---
 

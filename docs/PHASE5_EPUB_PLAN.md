@@ -1,5 +1,26 @@
 # Phase 5 — epub
 
+> **Complete.** All seven steps shipped. This file is kept as the design record: what was
+> decided, why, and what the measurements were. How the reader works *now* is described in
+> the Architecture section of [`../README.md`](../README.md), which is the maintained
+> document; where the two disagree, the README wins.
+>
+> What shipped differs from the plan in three places, all of them things the plan could not
+> have known:
+>
+> - **Page windowing had to come first.** Pagination lays out the whole document, and a
+>   40,656-block omnibus in one multi-column flow is not a reader. `PageChunks` was built
+>   before step 4 rather than retrofitted after it.
+> - **Assets resolve per spine document**, not against one book-wide base. The plan says
+>   "`src` and `href` rewritten to the cache", which is true and insufficient: a document in
+>   `OEBPS/Text/` reaching `../Images/` needs its own directory as the base.
+> - **The book's CSS needs correcting, not just scoping.** `rem` units, legacy page breaks and
+>   `preserveAspectRatio="none"` all had to be rewritten as the stylesheet is applied. None of
+>   that was foreseen; all of it was found by opening a real book and looking.
+>
+> A fourth thing the plan got right and it is worth saying so: carrying the publisher's HTML
+> was the correct call, and nothing since has argued otherwise.
+
 ## The decision
 
 **A block's `raw` carries the book's own HTML. There is no HTML→Markdown conversion.**
@@ -98,24 +119,24 @@ still looks like TypoZen rather than like 2003.
    compared extracted text against extracted text, found nothing lost, and destroyed the
    book silently.
 
-2. **`DocumentModel.kind`, and an HTML render path.**
+2. **`DocumentModel.kind`, and an HTML render path.** *(done)*
    `renderBlockPreview` renders the fragment when the kind is `epub`; `blockText(i)` gives
    the visible text of a block regardless of kind. Pure model work, unit-testable.
 
-3. **The three places that assume Markdown.**
+3. **The three places that assume Markdown.** *(done — it was more than three: the outline, the search haystack, the word count, `getMarkdownContent`, line ↔ block mapping and every editing entry point)*
    - outline heading detection (`/^#{1,6}\s/` → `<h1>`..`<h6>` when kind is epub)
    - the search haystack (block *text*, never markup — searching a book must not match
      `class` or `href`)
    - editing entry points refuse on an epub document
 
-4. **`EpubReader.cs`** replacing `EpubExtractor.cs`: unzip to cache, spine in order, split
+4. **`EpubReader.cs`** replacing `EpubExtractor.cs` *(done)*: unzip to cache, spine in order, split
    each document into top-level blocks, collect CSS, TOC and metadata. The container/OPF
    parsing in the current file is correct and standard — that part is kept.
 
-5. **Images and internal links.** `src` and `href` rewritten to the cache; internal links
+5. **Images and internal links.** *(done)* `src` and `href` rewritten to the cache; internal links
    navigate within the book; external links are refused or handed to the shell.
 
-6. **TOC → outline**, so chapter navigation is the book's own structure rather than
+6. **TOC → outline** *(done)*, so chapter navigation is the book's own structure rather than
    whatever headings happen to be in the text.
 
 7. **Reading position per book**, remembered across sessions. *Done.* Where the reader is

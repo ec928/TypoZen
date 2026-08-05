@@ -433,13 +433,20 @@ namespace TypoZen
                 string dir = Path.Combine(_appDir, "typozen_load");
                 if (!Directory.Exists(dir)) return;
                 DateTime cutoff = DateTime.UtcNow.AddMinutes(-Math.Abs(maxAgeMinutes));
-                foreach (string f in Directory.GetFiles(dir, "body_*.md"))
+                // Both kinds staged here, not just document bodies. A book payload is the
+                // largest file this application ever writes -- the whole of an omnibus as
+                // JSON -- and this swept only body_*.md, so every book ever opened stayed on
+                // disk. 176 of them had accumulated to 939 MB before anyone looked.
+                foreach (string pattern in new[] { "body_*.md", "book_*.json" })
                 {
-                    try
+                    foreach (string f in Directory.GetFiles(dir, pattern))
                     {
-                        if (File.GetLastWriteTimeUtc(f) <= cutoff) File.Delete(f);
+                        try
+                        {
+                            if (File.GetLastWriteTimeUtc(f) <= cutoff) File.Delete(f);
+                        }
+                        catch { }   // locked or vanished — next sweep gets it
                     }
-                    catch { }   // locked or vanished — next sweep gets it
                 }
             }
             catch { }
