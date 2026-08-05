@@ -18,7 +18,5 @@
   {"Name":"Material Palenight","FN":"'Inter', 'Source Sans 3', sans-serif","FS":14,"Bg":"#292D3E","Tx":"#BFC7D5","Hi":"#C792EA"},
   {"Name":"VSCode Dark+","FN":"'Inter', 'Source Sans 3', sans-serif","FS":14,"Bg":"#1E1E1E","Tx":"#D4D4D4","Hi":"#569CD6"},
   {"Name":"VSCode Light+","FN":"'Inter', 'Source Sans 3', sans-serif","FS":14,"Bg":"#FFFFFF","Tx":"#333333","Hi":"#0066BF"},
-  {"Name":"Tomorrow Night","FN":"'Inter', 'Source Sans 3', sans-serif","FS":14,"Bg":"#1D1F21","Tx":"#C5C8C6","Hi":"#81A2BE"},
-  {"Name":"Solarized Light (Custom)","FN":"'Bookerly', 'Georgia', serif","FS":14,"Bg":"#FDF6E3","Tx":"#657B83","Hi":"#268BD2","Custom":true},
-  {"Name":"Solarized Light (Custom) (2)","FN":"'Bookerly', 'Georgia', serif","FS":14,"Bg":"#FDF6E3","Tx":"#657B83","Hi":"#268BD2","Custom":true}
+  {"Name":"Tomorrow Night","FN":"'Inter', 'Source Sans 3', sans-serif","FS":14,"Bg":"#1D1F21","Tx":"#C5C8C6","Hi":"#81A2BE"}
 ]

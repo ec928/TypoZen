@@ -7888,7 +7888,7 @@ if (_btnColumnToggle != null)
         private readonly Border _swatchHi;
         private readonly ComboBox _cmbFont;
         private readonly ComboBox _cmbSize;
-        private readonly string[][] _fontPresets;
+        private string[][] _fontPresets;
         private readonly string _resetName;
         private readonly string _resetFn;
         private readonly string _resetBg;
@@ -7896,6 +7896,13 @@ if (_btnColumnToggle != null)
         private readonly string _resetHi;
         private readonly int _resetFontIndex;
         private readonly int _resetFs;
+
+        /// <summary>First family in a CSS font stack, unquoted — the label a reader expects.</summary>
+        private static string LeadingFamily(string fn)
+        {
+            string s = (fn ?? "").Split(',')[0].Trim().Trim('\'', '"').Trim();
+            return s.Length > 0 ? s : "Custom";
+        }
 
         public ThemeCustomizeWindow(ThemeInfo seed, string[][] fontPresets)
         {
@@ -7911,7 +7918,19 @@ if (_btnColumnToggle != null)
             if (!name.EndsWith("(Custom)", StringComparison.OrdinalIgnoreCase) && !name.StartsWith("My ", StringComparison.OrdinalIgnoreCase))
                 name = name + " (Custom)";
 
-            int selectedFont = 0;
+            // The font list is a curated set of stacks, matched by exact string. A theme
+            // whose stack is not one of them -- any hand-edited palette, and Solarized
+            // Light once its fallback was changed from Georgia to Literata -- matched
+            // nothing and fell back to index 0. That was not merely a wrong label: the
+            // dialog previews from the selection and BuildTheme() saves from it, so opening
+            // Customize Theme on such a theme and pressing Save silently rewrote its font
+            // to Inter. A default that quietly discards the value it failed to read is
+            // worse than no default.
+            //
+            // Nothing is substituted now. An unrecognised stack is added to the list as
+            // itself and selected, so the dialog always shows the font the theme actually
+            // uses and saving cannot change a font the user did not touch.
+            int selectedFont = -1;
             for (int i = 0; i < _fontPresets.Length; i++)
             {
                 if (fn != null && string.Equals(fn.Trim(), _fontPresets[i][1].Trim(), StringComparison.OrdinalIgnoreCase))
@@ -7920,6 +7939,15 @@ if (_btnColumnToggle != null)
                     break;
                 }
             }
+            if (selectedFont < 0 && !string.IsNullOrWhiteSpace(fn))
+            {
+                var extended = new string[_fontPresets.Length + 1][];
+                Array.Copy(_fontPresets, extended, _fontPresets.Length);
+                extended[_fontPresets.Length] = new string[] { LeadingFamily(fn) + " (this theme)", fn };
+                _fontPresets = extended;
+                selectedFont = _fontPresets.Length - 1;
+            }
+            if (selectedFont < 0) selectedFont = 0;
 
             // Snapshot for Reset (values shown when the dialog opened)
             _resetName = name;

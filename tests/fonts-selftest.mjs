@@ -122,6 +122,36 @@ console.log('\n--- 4. static families declare a bold face ---');
         'every static family ships a real bold' + (bad.length ? ' -- missing for: ' + bad.join(', ') : ''));
 }
 
+console.log('\n--- 5. the theme editor never substitutes a font ---');
+{
+    // ThemeCustomizeWindow matched a theme FN against its preset stacks by exact string and
+    // fell back to index 0 when nothing matched. The dialog previews AND saves from that
+    // selection, so opening Customize Theme on a theme whose stack was not in the list
+    // silently rewrote its font to Inter. Solarized Light hit it the moment its fallback
+    // changed from Georgia to Literata: the font was installed and offered, the stack just
+    // was not one of the ten literals.
+    const appCs = fs.readFileSync(path.join(appDir, "TypoZen_App.cs"), "utf8");
+    assert(/int selectedFont = -1;/.test(appCs),
+        "the editor does not default the font selection to preset 0");
+    assert(/\(this theme\)/.test(appCs),
+        "an unrecognised stack is carried through as itself, never replaced");
+
+    // Every family a theme leads with must be one the editor can actually offer.
+    const fams = new Set();
+    const pre = /new string\[\]\s*\{\s*"[^"]*",\s*"([^"]+)"\s*\}/g;
+    let mm;
+    while ((mm = pre.exec(appCs))) {
+        mm[1].split(",").forEach(f => fams.add(f.trim().replace(/^['"]|['"]$/g, "").toLowerCase()));
+    }
+    const orphans = themes
+        .map(t => ({ n: t.Name, f: String(t.FN || "").split(",")[0].trim().replace(/^['"]|['"]$/g, "") }))
+        .filter(x => x.f && !fams.has(x.f.toLowerCase()))
+        .map(x => x.n + " -> " + x.f);
+    assert(orphans.length === 0,
+        "every theme leads with a font the editor offers" +
+        (orphans.length ? " -- missing: " + orphans.join("; ") : " (" + themes.length + " themes)"));
+}
+
 console.log('\npassed=' + passed + ' failed=' + failed);
 if (failed) {
     console.error('\nFONTS SELFTEST FAILED');
