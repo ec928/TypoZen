@@ -9798,9 +9798,19 @@
                     if (!text) return;
                     const sel = window.getSelection();
                     const holder = document.createElement('div');
+                    // Mark it as ours, and keep the marker on the element that is serialised.
+                    //
+                    // The paste handler has always looked for this so it would take the
+                    // plain text for TypoZen's own copies, and nothing ever wrote it: the
+                    // HTML went out as holder.innerHTML, which discards the holder. Harmless
+                    // while htmlToMarkdown ignored block containers, and not harmless once
+                    // they contributed a separator -- every .block became a paragraph, so
+                    // copying four consecutive lines and pasting them gave four lines with a
+                    // blank between each.
+                    holder.setAttribute('data-source', 'typozen');
                     holder.appendChild(sel.getRangeAt(0).cloneContents());
                     e.clipboardData.setData('text/plain', text);
-                    e.clipboardData.setData('text/html', holder.innerHTML); // keep rich paste working
+                    e.clipboardData.setData('text/html', holder.outerHTML); // keep rich paste working
                     e.preventDefault();
                 } catch (err) {}
             });
