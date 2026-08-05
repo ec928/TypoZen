@@ -501,13 +501,19 @@
             opacity: 0.4;
             cursor: default;
         }
+        /* Search highlighting follows the theme accent.
+           It was a hardcoded amber over a hardcoded translucent amber, which reads as
+           deliberate on a warm light theme and as an accident on the other twenty-five.
+           Every match gets the accent at low alpha and keeps its own text colour, so a
+           page of hits stays readable; the current match gets the accent solid with
+           --accent-tx, which the theme code already picks for contrast against it. */
         ::highlight(typozen-find) {
-            background-color: rgba(255, 180, 0, 0.45);
+            background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
             color: inherit;
         }
         ::highlight(typozen-find-current) {
-            background-color: #f59e0b;
-            color: #111;
+            background-color: var(--accent, #f59e0b);
+            color: var(--accent-tx, #111);
         }
 
         /* Block Elements in Live Preview */

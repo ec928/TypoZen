@@ -1887,7 +1887,16 @@
             const active = ranges[currentRange >= 0 ? currentRange : 0];
             if (active) {
                 scrollRangeIntoMain(active);
-                if (navigate) {
+                // Select the match only for the Ctrl+F bar, where Replace acts on the
+                // selection and the caret is expected to land in the text.
+                //
+                // The sidebar is a reading tool, not a caret move, and selecting there hid
+                // the thing it had just been asked to show: the browser paints the native
+                // selection above custom highlights, so the current-match colour appeared
+                // for one frame and was then covered by the OS selection blue. That flash
+                // was the whole of the reported "dark orange for a split second, then white
+                // on blue".
+                if (navigate && isFindBarOpen()) {
                     try {
                         const sel = window.getSelection();
                         sel.removeAllRanges();
@@ -2844,17 +2853,50 @@
             }
 
             let isAccentLight = false;
+            let ar = 0, ag = 0, ab = 0;
             if (accent.startsWith('#') && accent.length >= 7) {
                 const r = parseInt(accent.substr(1, 2), 16) || 0;
                 const g = parseInt(accent.substr(3, 2), 16) || 0;
                 const b = parseInt(accent.substr(5, 2), 16) || 0;
+                ar = r; ag = g; ab = b;
                 isAccentLight = (r * 0.299 + g * 0.587 + b * 0.114) > 130;
             }
 
             root.setProperty('--bg', bg);
             root.setProperty('--tx', tx);
             root.setProperty('--accent', accent);
-            root.setProperty('--accent-tx', isAccentLight ? '#000000' : '#FFFFFF');
+            // Black or white on the accent, chosen by measured contrast rather than by a
+            // brightness cutoff. The 0.299/0.587/0.114 rule got it backwards for mid-tone
+            // accents: Solarized Light's #268BD2 sits just under the threshold, so it took
+            // white at 3.68 when black scores 5.70. Same for Solarized Dark, Rose Pine Dawn
+            // and One Light. It matters most on the current search match, which paints text
+            // directly on solid accent.
+            root.setProperty('--accent-tx', (function () {
+                const ch = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+                const L = 0.2126 * ch(ar) + 0.7152 * ch(ag) + 0.0722 * ch(ab);
+                const onWhite = 1.05 / (L + 0.05);
+                const onBlack = (L + 0.05) / 0.05;
+                return onBlack >= onWhite ? '#000000' : '#FFFFFF';
+            })());
+            // Search highlighting is built from the theme accent, not from a fixed amber.
+            // It used to be hardcoded #f59e0b over rgba(255,180,0,.45), which happened to
+            // look deliberate on one or two light themes and arbitrary everywhere else --
+            // the same "fix it in the palette, not around it" point the theme contrast work
+            // settled. --find-soft is the accent at low alpha for every match; the current
+            // match uses the accent solid with --accent-tx, which is already chosen for
+            // contrast against it.
+            (function () {
+                let rr = 0, gg = 0, bb = 0;
+                if (/^#[0-9a-f]{6}$/i.test(accent)) {
+                    rr = parseInt(accent.substr(1, 2), 16);
+                    gg = parseInt(accent.substr(3, 2), 16);
+                    bb = parseInt(accent.substr(5, 2), 16);
+                }
+                // A touch stronger on dark themes: the same alpha reads fainter against a
+                // dark background than a light one.
+                const a = isLight ? 0.30 : 0.38;
+                root.setProperty('--find-soft', 'rgba(' + rr + ',' + gg + ',' + bb + ',' + a + ')');
+            })();
             root.setProperty('--font', font);
             // Theme font size (FS) — with sane clamp; CSS body uses var(--fs)
             let fs = parseInt(t.FS != null ? t.FS : (t.FontSize != null ? t.FontSize : 16), 10);

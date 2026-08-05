@@ -109,6 +109,51 @@ console.log('--- 2. the selection fill is visible at the shipped alpha ---');
     assert(ALPHA > 0x28, 'the app no longer ships the old 0x28 fill alpha');
 }
 
+
+console.log('');
+console.log('--- 3. search highlighting is theme-derived and visible in every theme ---');
+{
+    const css = fs.readFileSync(path.join(appDir, 'css', 'typozen.css'), 'utf8');
+    const js = fs.readFileSync(path.join(appDir, 'js', 'typozen.js'), 'utf8');
+
+    // It was #f59e0b over rgba(255,180,0,.45): deliberate-looking on a warm light theme,
+    // arbitrary on the other twenty-five. Same lesson as the accents themselves -- the
+    // colour belongs to the palette, not to a literal in a stylesheet.
+    const findRule = (css.match(/::highlight\(typozen-find\)\s*\{([^}]*)\}/) || [])[1] || '';
+    const curRule = (css.match(/::highlight\(typozen-find-current\)\s*\{([^}]*)\}/) || [])[1] || '';
+    assert(/var\(--find-soft/.test(findRule), 'every-match highlight uses the theme accent');
+    assert(/var\(--accent/.test(curRule) && /var\(--accent-tx/.test(curRule),
+        'current-match highlight uses the accent and its contrast-checked text colour');
+    assert(/--find-soft/.test(js), 'the theme code actually sets --find-soft');
+
+    // The soft tint has to be visible against every background, or a page of hits shows
+    // nothing. Alphas mirror the ones applied in applyTheme.
+    const SOFT_MIN = 1.12;
+    const results = themes.map(t => {
+        const bgc = hex(t.Bg);
+        const isLight = lum(bgc) > 0.5;
+        const a = isLight ? 0.30 : 0.38;
+        return { n: t.Name, r: ratio(blend(hex(t.Hi), bgc, a), bgc) };
+    });
+    const faint = results.filter(x => x.r < SOFT_MIN).map(x => x.n + ' (' + x.r.toFixed(3) + ')');
+    const worst = results.reduce((p, q) => (q.r < p.r ? q : p));
+    assert(faint.length === 0,
+        'the every-match tint is visible against every background (worst: ' +
+        worst.n + ' ' + worst.r.toFixed(3) + ')' +
+        (faint.length ? ' -- too faint: ' + faint.join(', ') : ''));
+
+    // And the current match must be readable, since it paints text on solid accent.
+    const bad = themes.map(t => {
+        const a = hex(t.Hi);
+        // Mirrors applyTheme: whichever of black/white measures higher against the accent.
+        const best = Math.max(ratio([0, 0, 0], a), ratio([255, 255, 255], a));
+        return { n: t.Name, r: best };
+    }).filter(x => x.r < 4.5).map(x => x.n + ' (' + x.r.toFixed(2) + ')');
+    assert(bad.length === 0,
+        'text on the solid current-match highlight clears 4.5' +
+        (bad.length ? ' -- short: ' + bad.join(', ') : ' (' + themes.length + ' themes)'));
+}
+
 console.log('');
 console.log('passed=' + passed + ' failed=' + failed);
 if (failed) {
