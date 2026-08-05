@@ -14,6 +14,7 @@
  *
  *   RUN_APP_E2E=1 node tests/column-switch-app.mjs
  */
+import { settledApp } from './settle.mjs';
 import { launchApp, sleep } from './app-harness.mjs';
 
 let passed = 0;
@@ -47,13 +48,13 @@ async function main() {
         info('viewport: ' + JSON.stringify(await app.viewport()));
 
         await app.eval(() => handleCommand('view_set:mode:reader'));
-        await sleep(4000);
+        await settledApp(app);
         await app.eval(() => handleCommand('view_set:columns:2'));
-        await sleep(4000);
+        await settledApp(app);
 
         console.log('--- 2-column, advance two pages ---');
         await app.eval(() => PageMap.step(1)); await sleep(600);
-        await app.eval(() => PageMap.step(1)); await sleep(1500);
+        await app.eval(() => PageMap.step(1)); await settledApp(app);
         const two = await st();
         info('2-col page ' + two.page + ' of ' + two.count + ', top block ' + two.top +
              ', showing "' + two.indicator + '"');
@@ -64,7 +65,7 @@ async function main() {
 
         console.log('\n--- switch to 1-column ---');
         await app.eval(() => handleCommand('view_set:columns:1'));
-        await sleep(5000);
+        await settledApp(app);
         const one = await st();
         info('1-col page ' + one.page + ' of ' + one.count + ', top block ' + one.top +
              ', showing "' + one.indicator + '"');
@@ -82,7 +83,7 @@ async function main() {
 
         console.log('\n--- switch back to 2-column ---');
         await app.eval(() => handleCommand('view_set:columns:2'));
-        await sleep(5000);
+        await settledApp(app);
         const back = await st();
         info('2-col page ' + back.page + ', top block ' + back.top +
              ', showing "' + back.indicator + '"');
@@ -93,7 +94,7 @@ async function main() {
 
         console.log('\n--- page turns stay aligned ---');
         for (let i = 0; i < 5; i++) await app.eval(() => PageMap.step(1));
-        await sleep(1500);
+        await settledApp(app);
         const turned = await st();
         assert(turned.aligned, 'still on a boundary after five more turns');
         assert(turned.page === two.page + 5, 'five turns advance exactly five pages');

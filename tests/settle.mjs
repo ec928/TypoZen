@@ -54,4 +54,32 @@ export async function settled(page, timeoutMs = 8000) {
     return false;
 }
 
+/**
+ * The same wait for the application harness, which exposes eval() rather than a page.
+ *
+ * The app suites need it more than the browser ones, not less: a column switch there also
+ * asks the WPF host to resize the window to that column mode's saved geometry, so the page
+ * relayouts twice -- once for the new column count and again when the window arrives. A
+ * fixed sleep lands between them and reads a page number that is about to be recomputed.
+ * That is the whole of the "off-by-one" in the windowed column round trip: the telemetry
+ * shows goToPage running twice, "block 73 is on page 4 of 230" and then "page 3 of 210",
+ * with the assertion taken in between.
+ */
+export async function settledApp(app, timeoutMs = 10000) {
+    const started = Date.now();
+    let last = null;
+    let stable = 0;
+    while (Date.now() - started < timeoutMs) {
+        const now = await app.eval(geometrySample);
+        if (now === last) {
+            if (++stable >= 3) return true;
+        } else {
+            stable = 0;
+            last = now;
+        }
+        await sleep(150);
+    }
+    return false;
+}
+
 export { sleep };

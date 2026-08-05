@@ -1504,25 +1504,22 @@
         const PAGE_WINDOW_MIN_BLOCKS = 800;
 
         /**
-         * OFF while the column round trip is finished.
+         * Page windowing is on.
          *
-         * What works, measured against the shipped binary: one range of 400 blocks laid out
-         * instead of 3767, typing at 7ms per keystroke against 66ms (identical to a
-         * scrolling view, which was the whole point), the document serialising byte for byte
-         * while windowed, page turns crossing ranges, and leaving pagination restoring
-         * everything. page-window-app covers all of it, 12/12.
+         * Held disabled for one commit while the column round trip was chased down. The
+         * suspicion was a real off-by-one in the windowed anchoring; it was not. The app's
+         * own telemetry showed goToPage running twice on a column switch -- "block 73 is on
+         * page 4 of 230" and then "page 3 of 210" -- because the layout settles twice: once
+         * for the new column count and again when the host finishes resizing the window to
+         * that mode's saved geometry. The assertion was landing between the two.
          *
-         * What does not: column-switch-app fails 4 of 13. Locating a block's page after a
-         * column switch comes out one page early -- block 73 measures onto page 3 while the
-         * view is on page 4 -- so the 2-col -> 1-col -> 2-col round trip returns to the
-         * wrong page. That is the criterion this project already settled once and it is not
-         * negotiable, so the feature stays behind this until it holds.
-         *
-         * Shipping it half-right would be the exact mistake this codebase has paid for
-         * repeatedly: a green suite over a broken behaviour. With the flag off every path
-         * below is dead code and the app behaves exactly as it did before.
+         * Both halves of that are now fixed. The test waits for the geometry to hold still
+         * rather than sleeping, and goToPageHoldingBlock re-anchors itself if the geometry
+         * moves under it, so the landing corrects instead of depending on some other caller
+         * happening to re-run. That second part is the product fix: without it the round
+         * trip was correct in one run and a page early in the next.
          */
-        const PAGE_WINDOWING_ENABLED = false;
+                const PAGE_WINDOWING_ENABLED = true;
 
         function pageWindowingActive() {
             return PAGE_WINDOWING_ENABLED
@@ -1867,7 +1864,7 @@
                         const want = PageChunks.chunkOfBlock(anchorBlock);
                         if (want !== PageChunks.mounted) {
                             mountPageChunk(want);
-                            goToPageHoldingBlock(anchorBlock, tries - 1, editor.scrollWidth);
+                            goToPageHoldingBlock(anchorBlock, tries - 1, null);
                             return;
                         }
                     }
@@ -1877,7 +1874,15 @@
                 // keeps growing while the remounted blocks lay out, and asking too early
                 // answers against the layout being replaced: switching 2-col to 1-col
                 // returned the 2-column page number, so the view never moved.
-                const w = editor.scrollWidth;
+                //
+                // scrollWidth alone is not the relayout. A page is clientWidth + gap wide,
+                // and a column switch asks the host to resize the window, so clientWidth
+                // changes after the switch and on its own schedule. scrollWidth could hold
+                // still across a frame while the viewport was still moving -- the block was
+                // then measured onto a page the layout was about to renumber, which is the
+                // off-by-one that had a 2-col -> 1-col -> 2-col round trip come back a page
+                // early. Wait on everything the page geometry is derived from.
+                const w = editor.scrollWidth + 'x' + editor.clientWidth + 'x' + editor.clientHeight;
                 if (w !== lastWidth) {
                     goToPageHoldingBlock(anchorBlock, tries - 1, w);
                     return;
@@ -1906,6 +1911,29 @@
                 _readingAnchor = anchorBlock;
                 window.showDebugTelemetry('goToPage: block ' + anchorBlock + ' is on page ' +
                     PageMap.current() + ' of ' + PageMap.count());
+
+                // Land again if the geometry moves after this.
+                //
+                // A column switch relayouts twice: once for the new column count, and again
+                // when the WPF host finishes resizing the window to that mode's saved size.
+                // The wait above only sees the first, so the block was placed against a page
+                // width that was about to change -- and whether anything re-ran afterwards
+                // was luck, which is why the round trip returned to the right page in one run
+                // and a page early in the next. Re-checking here makes the landing correct
+                // itself instead of depending on some other caller noticing.
+                const settledKey = editor.scrollWidth + 'x' + editor.clientWidth +
+                    'x' + editor.clientHeight;
+                setTimeout(function () {
+                    try {
+                        if (!isPaginatedLayout() || !editor) return;
+                        const nowKey = editor.scrollWidth + 'x' + editor.clientWidth +
+                            'x' + editor.clientHeight;
+                        if (nowKey === settledKey) return;
+                        window.showDebugTelemetry('goToPage: geometry moved (' + settledKey +
+                            ' -> ' + nowKey + '), re-anchoring on block ' + anchorBlock);
+                        goToPageHoldingBlock(anchorBlock, 20, null);
+                    } catch (eR) {}
+                }, 260);
             });
         }
 
