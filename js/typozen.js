@@ -1838,6 +1838,26 @@
                 list.push(i);
             }
 
+            // Locate the current match by the block that holds it and its ordinal within
+            // that block, rather than by scanning each block's global indices for equality.
+            // The scan silently found nothing whenever a block's rendered matches and its
+            // raw-markdown matches did not line up one for one, and a miss is indertinguishable
+            // from "not on this block" -- so the mark fell on whichever match happened to be
+            // built first. It sat on line 3 while the sidebar was on line 12.
+            let curBlock = -1;
+            let curOrdinal = 0;
+            const curMatch = (findState.index >= 0) ? findState.matches[findState.index] : null;
+            if (curMatch) {
+                let b = 0;
+                while (b < blocks.length - 1 && curMatch.start >= starts[b + 1]) b++;
+                curBlock = b;
+                const inBlock = byBlock.get(b);
+                if (inBlock) {
+                    const at = inBlock.indexOf(findState.index);
+                    curOrdinal = at >= 0 ? at : 0;
+                }
+            }
+
             const ranges = [];
             let currentRange = -1;
             const mounted = editor.querySelectorAll('.block[data-model-index]');
@@ -1850,10 +1870,10 @@
                 const localMatches = findAllIndices(local.haystack, q, opts);
                 if (!localMatches.length) continue;
                 const built = rangesFromWysiwygMatches(localMatches, local.map);
-                for (let k = 0; k < built.length; k++) {
-                    if (globals[k] === findState.index) currentRange = ranges.length;
-                    ranges.push(built[k]);
+                if (idx === curBlock && built.length) {
+                    currentRange = ranges.length + Math.min(curOrdinal, built.length - 1);
                 }
+                for (let k = 0; k < built.length; k++) ranges.push(built[k]);
             }
 
             if (!ranges.length) {
@@ -1951,7 +1971,13 @@
         /** After virt remount (user scroll), re-highlight current match if its block is mounted. */
         function refreshFindAfterVirtMount() {
             if (findState._revealing) return;
-            if (!isFindBarOpen() || !findState.query) return;
+            // Gated on findState.query, NOT on the find bar being open. The search sidebar
+            // is a separate surface that drives the same findState, so this returned early
+            // for every sidebar search -- and a remount detaches every node the ranges
+            // point at. The highlights left on screen were the ones built before the jump,
+            // which is why the active mark sat on line 3 while the sidebar was on line 12,
+            // and why findState.ranges[0] resolved to no block at all.
+            if (!findState.query) return;
             if (state.mode === 'source') return;
             if (typeof DocumentModel === 'undefined' || !DocumentModel.virtEnabled) return;
             if (findState.kind !== 'model') return;

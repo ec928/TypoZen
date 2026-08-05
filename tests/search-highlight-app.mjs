@@ -73,10 +73,18 @@ try {
             index: findState.index,
             currentRange: findState.currentRange,
             // The marked range must be the match the sidebar says is active.
+            // The text the current mark actually sits on. This is the assertion that
+            // matters: currentRange being "a number" proved nothing, and reading 0 while
+            // the sidebar was on match 7 is precisely what shipped.
             currentText: (function () {
-                if (!cur) return '';
-                for (const r of cur) return String(r).slice(0, 40) || r.toString();
-                return '';
+                const r = findState.ranges[findState.currentRange];
+                if (!r || !r.startContainer || !r.startContainer.parentElement) return '(none)';
+                const b = r.startContainer.parentElement.closest('.block');
+                return b ? (b.innerText || '').slice(0, 40) : '(detached)';
+            })(),
+            sidebarActiveText: (function () {
+                const el = document.querySelector('#search-results-list .search-item.active');
+                return el ? (el.innerText || '').replace(/\s+/g, ' ').slice(0, 40) : '(none)';
             })()
         };
     });
@@ -97,6 +105,16 @@ try {
     assert(state.currentRange >= 0 && state.currentRange < state.ranges,
         'the current mark is indexed within the mounted ranges, not by the global match ' +
         'number (' + state.currentRange + ' of ' + state.ranges + ')');
+
+    info('current mark is on : ' + JSON.stringify(state.currentText));
+    info('sidebar active row : ' + JSON.stringify(state.sidebarActiveText));
+    assert(state.currentText !== '(none)' && state.currentText !== '(detached)',
+        'the current mark points at a mounted block, not a node left behind by a remount');
+    // The one that would have caught this: the mark must be on the line the sidebar says.
+    const line = (state.sidebarActiveText.match(/Line (\d+) of/) || [])[1];
+    assert(line && state.currentText.indexOf('Line ' + line + ' of') === 0,
+        'the current mark is on the line the sidebar has selected (' +
+        JSON.stringify(state.currentText) + ' vs sidebar line ' + line + ')');
 
     console.log('\npassed=' + passed + ' failed=' + failed);
     if (failed) { console.error('\nSEARCH HIGHLIGHT FAILED'); process.exitCode = 1; }
