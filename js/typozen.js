@@ -3174,6 +3174,25 @@
                     const content = msg.substring(13);
                     finishLoadContent(content, false);
                 }
+                else if (msg.startsWith("fetch_and_load_book:")) {
+                    // A book arrives as a staged JSON payload rather than through the
+                    // message channel: an omnibus is tens of megabytes of markup.
+                    const url = msg.substring(20);
+                    fetch(url, { cache: 'no-store' })
+                        .then(function (r) {
+                            if (!r.ok) throw new Error('fetch ' + r.status);
+                            return r.text();
+                        })
+                        .then(function (json) {
+                            const ok = loadBookPayload(json);
+                            try { postMsg(ok ? 'load_done' : 'load_failed:book'); } catch (e0) {}
+                        })
+                        .catch(function (err) {
+                            try { console.error('TypoZen fetch_and_load_book failed', err); } catch (e) {}
+                            try { postMsg('load_failed:' + String(err && err.message ? err.message : err)); } catch (e2) {}
+                        });
+                    return;
+                }
                 else if (msg.startsWith("fetch_and_load:")) {
                     const url = msg.substring(15);
                     fetch(url, { cache: 'no-store' })
@@ -10795,6 +10814,235 @@
                 block.classList.remove('list-indent-' + i);
             }
         }
+
+        /**
+         * Open a book.
+         *
+         * The host has done the parts that need a filesystem -- unzip, container.xml, the
+         * OPF spine in reading order, the table of contents, and a URL the extracted assets
+         * can be fetched from. Everything that needs an HTML parser happens here, because
+         * the browser is the HTML authority and a second parser in C# would disagree with
+         * this one at the edges.
+         *
+         * Payload:
+         *   { title, author, assetsBase, css: [text...],
+         *     docs: [{ href, html }...], toc: [{ title, level, href }...] }
+         */
+        function loadBookPayload(payload) {
+            let data = payload;
+            if (typeof data === 'string') {
+                try { data = JSON.parse(data); } catch (e) { data = null; }
+            }
+            if (!data || !data.docs || !data.docs.length) {
+                window.showDebugTelemetry('loadBookPayload: empty payload');
+                return false;
+            }
+
+            const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
+
+            const split = bookBlocksFromDocs(data.docs);
+            const toc = bookTocToBlockIndices(data.toc, split.docStart);
+
+            // Styles before blocks: the first paint should already be the book's own
+            // typography rather than a flash of unstyled text a reader would notice.
+            try { applyBookStyles(data.css, data.assetsBase || ''); } catch (eS) {}
+
+            DocumentModel.fromBookBlocks(split.blocks, toc);
+            _contentCache = null;
+
+            // A book is read-only and paginated: that is what it is, not a preference.
+            // Going through the same commands a reader would use keeps one code path.
+            state.mode = 'reader';
+            setEditorEditable(false);
+            try { applyEditorChromeForMode(); } catch (eC) {}
+
+            editor.innerHTML = '';
+            DocumentModel.virtEnabled = DocumentModel.shouldVirtualize();
+            if (DocumentModel.virtEnabled) {
+                bindVirtScroll();
+                mountVirtWindow(true, { anchorIndex: 0, anchorOffset: 0 });
+            } else if (pageWindowingActive()) {
+                // Paginated, and pagination refuses virtualisation because the browser can
+                // only fragment what it has laid out. Without this the omnibus opened with
+                // all 40,656 of its blocks in one multi-column flow -- precisely the case
+                // page windowing exists to prevent, arrived at by a different door.
+                PageChunks.invalidate();
+                PageChunks.ensure(DocumentModel.blocks.length);
+                mountPageChunk(0);
+            } else {
+                const frag = document.createDocumentFragment();
+                for (let i = 0; i < DocumentModel.blocks.length; i++) {
+                    const el = createPreviewBlockEl(DocumentModel.blocks[i].raw, false);
+                    el.setAttribute('data-model-index', String(i));
+                    frag.appendChild(el);
+                }
+                editor.appendChild(frag);
+            }
+
+            currentActiveBlock = editor.querySelector('.block');
+            try { updateOutline(); } catch (eO) {}
+            try { updateStatsNow(); } catch (eSt) {}
+            try { HistoryManager.clear(); } catch (eH) {}
+
+            const ms = (typeof performance !== 'undefined')
+                ? Math.round(performance.now() - t0) : 0;
+            window.showDebugTelemetry('book: ' + (data.title || '(untitled)') + ' — ' +
+                data.docs.length + ' documents, ' + split.blocks.length + ' blocks, ' +
+                toc.length + ' TOC entries, ' + ms + 'ms');
+
+            postMsg('book_loaded:' + encodeURIComponent(JSON.stringify({
+                title: data.title || '', author: data.author || '',
+                blocks: split.blocks.length, toc: toc.length
+            })));
+            return true;
+        }
+
+
+        /**
+         * Split one spine document into blocks: the top-level children of <body>.
+         *
+         * The browser is the HTML authority, so the host sends each document as it was
+         * written and the splitting happens here. Doing it in C# would mean a second HTML
+         * parser, of the regex kind, disagreeing with this one at the edges -- which is the
+         * shape of most of the bugs already fixed in this project.
+         *
+         * One paragraph-ish unit per block, matching the granularity the Markdown model
+         * uses, so pagination breaks where a reader expects and PageChunks ranges stay
+         * meaningful. A chapter wrapped in a single container contributes its children
+         * rather than itself: one block per chapter would defeat pagination entirely.
+         */
+        function bookBlocksFromHtml(html) {
+            const out = [];
+            let doc;
+            try { doc = new DOMParser().parseFromString(String(html || ''), 'text/html'); }
+            catch (e) { return out; }
+            const body = doc.body;
+            if (!body) return out;
+
+            const push = function (el, depth) {
+                const kids = el.children;
+                // Descend through pure wrappers. Depth is capped because a book that nests
+                // containers deeply would otherwise be split down to individual spans.
+                if (depth < 3 && kids.length > 3
+                    && /^(DIV|SECTION|ARTICLE|MAIN|BODY)$/.test(el.tagName)) {
+                    for (let i = 0; i < kids.length; i++) push(kids[i], depth + 1);
+                    return;
+                }
+                const frag = el.outerHTML;
+                if (frag && frag.trim()) out.push(frag);
+            };
+            push(body, 0);
+            return out;
+        }
+
+        /** A TOC href reduced to something comparable: no fragment, no ./, decoded. */
+        function bookNormalizeHref(href) {
+            let h = String(href == null ? '' : href).split('#')[0].replace(/^\.\//, '');
+            try { h = decodeURIComponent(h); } catch (e) {}
+            return h;
+        }
+
+        /**
+         * Blocks for a whole book, and where each spine document starts.
+         *
+         * The start map is what turns a table of contents into something navigable: a TOC
+         * entry names a document, and the reader needs a block index to scroll to.
+         */
+        function bookBlocksFromDocs(docs) {
+            const blocks = [];
+            const docStart = {};
+            for (let i = 0; i < (docs ? docs.length : 0); i++) {
+                docStart[bookNormalizeHref(docs[i].href)] = blocks.length;
+                const bs = bookBlocksFromHtml(docs[i].html);
+                for (let j = 0; j < bs.length; j++) blocks.push(bs[j]);
+            }
+            return { blocks: blocks, docStart: docStart };
+        }
+
+        /**
+         * Resolve a table of contents onto block indices.
+         *
+         * Entries arrive as { title, level, href }. hrefs in a nav document are relative to
+         * that document, which is not always the OPF directory, so a plain lookup misses and
+         * the fallback compares filenames. A book whose TOC silently resolves to nothing
+         * looks exactly like a book with no TOC at all, which is why this is worth being
+         * careful about rather than clever.
+         */
+        function bookTocToBlockIndices(toc, docStart) {
+            const out = [];
+            if (!toc || !toc.length || !docStart) return out;
+            const keys = Object.keys(docStart);
+            for (let i = 0; i < toc.length; i++) {
+                const e = toc[i];
+                if (!e || !e.title) continue;
+                const want = bookNormalizeHref(e.href);
+                let idx = Object.prototype.hasOwnProperty.call(docStart, want)
+                    ? docStart[want] : -1;
+                if (idx < 0) {
+                    const bare = want.slice(want.lastIndexOf('/') + 1);
+                    for (let k = 0; k < keys.length; k++) {
+                        if (keys[k] === bare || keys[k].endsWith('/' + bare)) {
+                            idx = docStart[keys[k]];
+                            break;
+                        }
+                    }
+                }
+                if (idx < 0) continue;
+                out.push({
+                    title: String(e.title).replace(/\s+/g, ' ').trim(),
+                    level: Math.max(1, Math.min(6, (e.level | 0) || 1)),
+                    blockIndex: idx
+                });
+            }
+            return out;
+        }
+
+        /**
+         * The book's own stylesheets, scoped to the editor.
+         *
+         * This is what makes carrying HTML worth the trouble: small caps, drop caps, poetry
+         * indentation and epigraph alignment are the book's CSS doing its job, and the
+         * browser resolves them. Both regex converters spend real effort recovering a
+         * fraction of this by hand and still lose most of it.
+         *
+         * Scoped so a book cannot restyle the application around it, and replaced whole on
+         * each load so one book's rules never leak into the next.
+         */
+        function applyBookStyles(cssTexts, assetsBase) {
+            let el = document.getElementById('book-styles');
+            if (!el) {
+                el = document.createElement('style');
+                el.id = 'book-styles';
+                document.head.appendChild(el);
+            }
+            if (!cssTexts || !cssTexts.length) { el.textContent = ''; return; }
+
+            const base = String(assetsBase || '');
+            const joined = cssTexts.join('\n')
+                // @page and @import belong to the book's own pagination and packaging;
+                // TypoZen owns the page and has already fetched the stylesheets.
+                .replace(/@page[^{]*\{[^}]*\}/gi, '')
+                .replace(/@import[^;]*;/gi, '')
+                .replace(/\burl\(\s*(['"]?)([^'")]+)\1\s*\)/gi, function (m, q, u) {
+                    if (/^(data:|https?:|\/)/i.test(u)) return m;
+                    return 'url("' + base + u.replace(/^\.\//, '') + '")';
+                });
+
+            // Every rule is confined to the editor. Naive but sufficient: these are book
+            // stylesheets, not application ones, and shipping a CSS parser would gain
+            // nothing a reader would ever notice.
+            el.textContent = joined.replace(/(^|\})\s*([^@{}][^{}]*)\{/g,
+                function (m, brace, sel) {
+                    const parts = sel.split(',').map(function (one) {
+                        const t = one.trim();
+                        if (!t) return '';
+                        if (/^(html|body)\b/i.test(t)) return '#editor';
+                        return '#editor ' + t;
+                    }).filter(Boolean);
+                    return brace + ' ' + parts.join(', ') + '{';
+                });
+        }
+
 
         /**
          * A book's HTML fragment as the text a reader sees.

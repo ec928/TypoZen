@@ -169,7 +169,7 @@ if ($null -ne $msbuild) {
 if (-not $compiled) {
     Write-Host "Using .NET PowerShell Compiler..." -ForegroundColor Gray
     $csFile = Join-Path $appDir "TypoZen_App.cs"
-    $epubFile = Join-Path $appDir "EpubExtractor.cs"
+    $epubFile = Join-Path $appDir "EpubReader.cs"
     $exeFile = Join-Path $appDir "TypoZen.exe"
     if (Test-Path $exeFile) { 
         try { Remove-Item $exeFile -Force -ErrorAction SilentlyContinue } catch {} 

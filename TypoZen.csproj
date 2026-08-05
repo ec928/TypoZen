@@ -71,7 +71,7 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
-    <Compile Include="EpubExtractor.cs" />
+    <Compile Include="EpubReader.cs" />
     <Compile Include="TypoZen_App.cs">
       <SubType>Code</SubType>
     </Compile>

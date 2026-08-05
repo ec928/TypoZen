@@ -474,6 +474,15 @@ async function main() {
 
             const clickJump = await page.evaluate(async () => {
                 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                // Establish the layout rather than inheriting it. An earlier section leaves
+                // the app in 2-column Pages, where the scroller is #editor horizontally --
+                // so reading the topmost block of #main-container returns the same thing
+                // however far the view has moved, and this reported a working click as
+                // broken. Third time this class of mistake has cost real time.
+                handleCommand('view_set:columns:1');
+                await sleep(1200);
+                handleCommand('view_set:scroll:scroll');
+                await sleep(1800);
                 const top = () => {
                     const h = mainContainer.getBoundingClientRect();
                     let t = '';

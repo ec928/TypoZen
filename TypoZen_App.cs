@@ -7388,8 +7388,16 @@ if (_btnColumnToggle != null)
         {
             if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
             {
-                encodingName = "Epub Extractor";
-                return EpubExtractor.ExtractToMarkdown(path);
+                // A book is not text and is never read as text. It is opened through
+                // EpubReader, which hands the page the book's own HTML; this returns empty
+                // so nothing downstream mistakes a book for a document it could save.
+                //
+                // That mattered: ConfirmOverwriteLoss used to call this to fetch the "old"
+                // contents of the file it was about to overwrite, got extracted text back,
+                // compared it against extracted text, concluded nothing would be lost, and
+                // let a Ctrl+S write plain text over the book.
+                encodingName = "Epub";
+                return "";
             }
             
             byte[] bytes = File.ReadAllBytes(path);
@@ -7488,6 +7496,12 @@ if (_btnColumnToggle != null)
                 if (_tabOpInProgress)
                 {
                     EnqueuePendingOpen(path);
+                    return;
+                }
+
+                if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+                {
+                    OpenBook(path);
                     return;
                 }
 
@@ -7652,6 +7666,92 @@ if (_btnColumnToggle != null)
                 DrainPendingOpen();
             }
         }
+
+        /// <summary>
+        /// Open an .epub as a book: the page gets the book's own HTML, not text.
+        ///
+        /// The payload is staged to a file and fetched rather than pushed through the
+        /// message channel, because a single omnibus runs to tens of megabytes of markup and
+        /// the staging route already exists for large documents.
+        ///
+        /// tab.Content stays empty on purpose. A book has no Markdown behind it, and an
+        /// empty Content means every path that would save, diff or restore it as text finds
+        /// nothing to write -- which is the behaviour wanted, expressed as a fact about the
+        /// document rather than as a guard bolted onto each of those paths.
+        /// </summary>
+        private void OpenBook(string path)
+        {
+            path = Path.GetFullPath(path);
+
+            // Already open? Show it. Re-reading a 5 MB book to land on the same tab is work
+            // nobody asked for.
+            for (int i = 0; i < _tabs.Count; i++)
+            {
+                if (!string.IsNullOrEmpty(_tabs[i].FilePath) &&
+                    string.Equals(Path.GetFullPath(_tabs[i].FilePath), path, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i != _activeTabIndex) SwitchToTab(i);
+                    return;
+                }
+            }
+
+            string assetDir;
+            string payload = EpubReader.ReadToPayload(path, _appDir, out assetDir);
+            if (payload == null)
+            {
+                WinForms.MessageBox.Show(
+                    "That file could not be read as an epub." + Environment.NewLine +
+                    Environment.NewLine + Path.GetFileName(path),
+                    "Open Book", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                return;
+            }
+
+            _tabOpInProgress = true;
+            try
+            {
+                DocTab tab;
+                if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    && IsReusableEmptyUntitled(_tabs[_activeTabIndex]))
+                {
+                    tab = _tabs[_activeTabIndex];
+                }
+                else
+                {
+                    tab = new DocTab { Id = _nextTabId++ };
+                    _tabs.Add(tab);
+                    _activeTabIndex = _tabs.Count - 1;
+                }
+
+                tab.FilePath = path;
+                tab.Content = "";
+                tab.IsDirty = false;
+                tab.SourceEncoding = "Epub";
+                _currentFilePath = path;
+
+                RebuildTabStrip();
+
+                string dir = Path.Combine(_appDir, "typozen_load");
+                Directory.CreateDirectory(dir);
+                PruneLoadStageDir(maxAgeMinutes: 5);
+                string fileName = "book_" + Guid.NewGuid().ToString("N") + ".json";
+                File.WriteAllText(Path.Combine(dir, fileName), payload, new UTF8Encoding(false));
+                SendMsg("fetch_and_load_book:https://localapp/typozen_load/" + fileName);
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try { AddRecentFile(path); } catch { }
+                }), DispatcherPriority.Background);
+            }
+            catch (Exception ex)
+            {
+                WinForms.MessageBox.Show("Could not open the book: " + ex.Message,
+                    "Open Book", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+            }
+            finally { _tabOpInProgress = false; }
+
+            DrainPendingOpen();
+        }
+
 
         private void EnqueuePendingOpen(string path)
         {
