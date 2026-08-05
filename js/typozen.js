@@ -10898,7 +10898,7 @@
             const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
 
             const split = bookBlocksFromDocs(data.docs);
-            const toc = bookTocToBlockIndices(data.toc, split.docStart);
+            const toc = bookRepairTocByTitle(bookTocToBlockIndices(data.toc, split.docStart), split.blocks);
             _bookDocStarts = {};
             for (let i = 0; i < split.docStarts.length; i++) _bookDocStarts[split.docStarts[i]] = 1;
             _bookAssetsBase = String(data.assetsBase || '');
@@ -11005,15 +11005,30 @@
         function rewriteBookUrls(root) {
             if (!root) return;
             try {
-                const imgs = root.querySelectorAll('img[src], image[*|href], img[data-src]');
+                const imgs = root.querySelectorAll('img');
                 for (let i = 0; i < imgs.length; i++) {
                     const el = imgs[i];
-                    const raw = el.getAttribute('src') || el.getAttribute('xlink:href')
-                        || el.getAttribute('href');
+                    const raw = el.getAttribute('src');
                     if (!raw) continue;
                     const abs = bookResolveUrl(raw);
                     if (abs !== raw) el.setAttribute('src', abs);
                     if (!el.getAttribute('loading')) el.setAttribute('loading', 'lazy');
+                }
+
+                // Covers are almost always an SVG wrapper around <image xlink:href>, not an
+                // <img> at all -- both test books do it, and it is the first thing a reader
+                // sees. Nothing above touches those, so the cover never loaded.
+                const svgImgs = root.querySelectorAll('image');
+                const XLINK = 'http://www.w3.org/1999/xlink';
+                for (let i = 0; i < svgImgs.length; i++) {
+                    const el = svgImgs[i];
+                    const raw = el.getAttributeNS(XLINK, 'href') || el.getAttribute('href')
+                        || el.getAttribute('xlink:href');
+                    if (!raw) continue;
+                    const abs = bookResolveUrl(raw);
+                    if (abs === raw) continue;
+                    try { el.setAttributeNS(XLINK, 'xlink:href', abs); } catch (eNs) {}
+                    el.setAttribute('href', abs);
                 }
                 const links = root.querySelectorAll('a[href]');
                 for (let i = 0; i < links.length; i++) {
@@ -11191,6 +11206,52 @@
             }
             return { blocks: blocks, docStart: docStart, docStarts: starts };
         }
+        /**
+         * When a book's TOC hrefs are useless, match its chapter titles instead.
+         *
+         * Matter's ncx points all 36 entries at the same document with #filepos fragments
+         * that Calibre did not carry over, so every entry resolved to block 1 and the
+         * outline could only ever jump to the front of the book. Its chapters are perfectly
+         * good <h2>1. Factory</h2> headings; the titles in the ncx match them exactly.
+         *
+         * Only used when the href resolution has visibly collapsed, so books whose hrefs are
+         * sound -- Xeelee resolves 441 entries to 441 distinct blocks -- are untouched.
+         */
+        function bookHeadingIndex(blocks) {
+            const map = {};
+            for (let i = 0; i < blocks.length; i++) {
+                const m = String(blocks[i] || '').match(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i);
+                if (!m) continue;
+                const key = htmlFragmentToText(m[1]).toLowerCase();
+                if (key && !Object.prototype.hasOwnProperty.call(map, key)) map[key] = i;
+            }
+            return map;
+        }
+
+        function bookRepairTocByTitle(toc, blocks) {
+            if (!toc || toc.length < 3) return toc;
+            const distinct = {};
+            for (let i = 0; i < toc.length; i++) distinct[toc[i].blockIndex] = 1;
+            // Sound hrefs give roughly one target per entry. Anything under half is a
+            // collapse, not a book with a few duplicate destinations.
+            if (Object.keys(distinct).length * 2 >= toc.length) return toc;
+
+            const headings = bookHeadingIndex(blocks);
+            let repaired = 0;
+            for (let i = 0; i < toc.length; i++) {
+                const key = String(toc[i].title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                if (Object.prototype.hasOwnProperty.call(headings, key)) {
+                    toc[i].blockIndex = headings[key];
+                    repaired++;
+                }
+            }
+            window.showDebugTelemetry('book toc: hrefs collapsed to ' +
+                Object.keys(distinct).length + ' targets for ' + toc.length +
+                ' entries; matched ' + repaired + ' by title');
+            return toc;
+        }
+
+
 
         /**
          * Resolve a table of contents onto block indices.

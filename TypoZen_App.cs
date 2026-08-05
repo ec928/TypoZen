@@ -1557,7 +1557,13 @@ namespace TypoZen
             var list = new List<DocTab>();
             for (int i = 0; i < _tabs.Count; i++)
             {
-                if (_tabs[i] != null && _tabs[i].IsDirty) list.Add(_tabs[i]);
+                if (_tabs[i] == null || !_tabs[i].IsDirty) continue;
+                // A book cannot be dirty: it is read-only and has no text behind it. Closing
+                // one was offering to save it, and answering Yes would have led straight to
+                // the export dialog for a document nobody had edited.
+                if (!string.IsNullOrEmpty(_tabs[i].FilePath)
+                    && _tabs[i].FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)) continue;
+                list.Add(_tabs[i]);
             }
             return list;
         }
@@ -3488,9 +3494,15 @@ if (_btnColumnToggle != null)
             else if (msg == "typing")
             {
                 // Mark dirty immediately so leave/open cannot skip sync while stats lag.
-                _isDirty = true;
-                if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
-                    _tabs[_activeTabIndex].IsDirty = true;
+                bool activeIsBook = _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    && !string.IsNullOrEmpty(_tabs[_activeTabIndex].FilePath)
+                    && _tabs[_activeTabIndex].FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+                if (!activeIsBook)
+                {
+                    _isDirty = true;
+                    if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
+                        _tabs[_activeTabIndex].IsDirty = true;
+                }
                 OnUserTyping();
             }
             else if (msg == "load_done")

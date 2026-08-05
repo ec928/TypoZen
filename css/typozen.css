@@ -309,11 +309,39 @@
            renders as a single enormous blurred image filling the view. */
         #editor .block img {
             max-width: 100%;
+            /* Bounded by the window in EVERY layout, not only in page mode. A cover is
+               sized by the book for a 6-inch reader, so on a desktop column it renders as
+               one enormous upscaled blur -- and that is what a reader sees first. Scroll
+               and 2-column-scroll needed this as much as pagination did. */
+            /* vh is the window, and the editor is the window minus the toolbar, tab strip
+               and status bar -- roughly 70% of it. Bounding by 82vh still left a cover
+               907px tall in a 789px viewport. */
+            max-height: 68vh;
             height: auto;
-        }
-        #editor.page-mode .block img {
-            max-height: 88%;
+            width: auto;
             object-fit: contain;
+            display: block;
+            margin: 0 auto;
+        }
+        /* Not a percentage: the parent is auto-height, and a percentage max-height against
+           an auto-height parent resolves to none -- so the page-mode rule silently did
+           nothing and a cover still rendered 907px tall in a 789px viewport. */
+        #editor.page-mode .block img {
+            max-height: 66vh;
+        }
+
+        /* A cover is an SVG wrapper carrying width:100% height:100%, so without a bound it
+           takes the whole column and scales a small cover image into a full-width blur --
+           which is exactly what the first page of both test books looked like. */
+        #editor .block svg {
+            max-width: 100%;
+            max-height: 68vh;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        #editor.page-mode .block svg {
+            max-height: 66vh;
         }
         /* Pagination, both layouts, one mechanism.
            .page-mode puts the document into CSS multi-column, so the browser performs the
