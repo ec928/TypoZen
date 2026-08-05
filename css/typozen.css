@@ -164,8 +164,12 @@
         }
         .search-item.active .search-text,
         .search-item.active .search-line { color: var(--tx, #F4F4F5); }
+        /* Hover is a neutral wash, deliberately not the accent. Hover and the selected row
+           both used var(--accent-bg) -- the differing fallbacks never applied, because that
+           variable is always set -- so they rendered identically and a hovered row looked
+           exactly as selected as the real one. Two rows appeared chosen at once. */
         .outline-item:hover, .search-item:hover {
-            background-color: var(--accent-bg, rgba(59,130,246,0.15));
+            background-color: rgba(128, 128, 128, 0.16);
             color: var(--tx, #F4F4F5);
         }
         .outline-h1 { font-weight: 700; color: var(--tx, #F4F4F5); }
@@ -186,9 +190,13 @@
         }
         .search-more:hover { opacity: 1; }
 
-        .search-item.active {
+        /* The selected row owns the accent, and keeps it while hovered. */
+        .search-item.active,
+        .search-item.active:hover {
             background-color: var(--accent-bg, rgba(59,130,246,0.25));
             border-left: 2px solid var(--accent, #3B82F6);
+            color: var(--tx, #F4F4F5);
+            font-weight: 600;
         }
 
         /* Search pane query box — the Search tab's own input, not the Ctrl+F find bar.

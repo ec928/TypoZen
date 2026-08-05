@@ -662,7 +662,11 @@
                 return;
             }
             let html = '';
-            const haystack = getFindHaystack().haystack;
+            // One build per render. getFindHaystack() reconstructs the whole search
+            // surface -- for the visual path that is an object per character of the
+            // document -- so calling it twice here doubled the cost of every repaint.
+            const surface = getFindHaystack();
+            const haystack = surface.haystack;
             const qLen = findState.query.length;
             // Render a window of results and extend it as the reader scrolls, rather than
             // capping the list. The cap was a flat 150: a search with 2135 hits showed the
@@ -694,17 +698,22 @@
             // The visual haystack is block text with our own separators, which is further
             // adrift still. modelBlockStartLine is the app's own authority for this and is
             // what the status bar reports.
-            const kind = getFindHaystack().kind;
+            const kind = surface.kind;
             let lines;
             if (kind === 'source' || typeof DocumentModel === 'undefined') {
                 lines = lineNumbersForOffsets(haystack, offsets);
             } else {
+                // The visual path needs the char -> node map to find a block. Build it
+                // once for the whole render: blockIndexForVisualOffset used to rebuild it
+                // per row, so drawing 150 rows rebuilt a 200k-entry index 150 times and a
+                // single search jump cost ~1.6 seconds.
+                const visualMap = (kind === 'model') ? null : surface.map;
                 lines = offsets.map(function (off) {
                     try {
-                        const loc = (kind === 'model')
-                            ? markdownOffsetToBlock(off)
-                            : { blockIndex: blockIndexForVisualOffset(off) };
-                        return modelBlockStartLine(loc.blockIndex);
+                        const bi = (kind === 'model')
+                            ? markdownOffsetToBlock(off).blockIndex
+                            : blockIndexFromMap(visualMap, off);
+                        return modelBlockStartLine(bi);
                     } catch (e) { return 1; }
                 });
             }
@@ -1071,6 +1080,12 @@
             }
         }
 
+        // A block that begins a page can measure a few pixels short of the boundary: the
+        // column break falls on its margin edge, and sub-pixel layout adds to that.
+        // Measured in the running app, a block starting page 4 at x=3452 reported 3450, so
+        // a 1px epsilon floored it onto page 3 and every switch landed a page early.
+        const PAGE_EDGE_SLOP = 12;
+
         function twoColGap() {
             try {
                 const g = parseFloat(getComputedStyle(editor).columnGap);
@@ -1086,6 +1101,11 @@
         /** The mounted .block element for a model index, or null. */
         function elementForModelIndex(bi) {
             if (!editor) return null;
+            // Blocks carry their index as an attribute, so ask for it directly rather than
+            // walking every block. The linear scan showed up wherever this is called in a
+            // loop, and it is.
+            const direct = editor.querySelector('.block[data-model-index="' + (bi | 0) + '"]');
+            if (direct) return direct;
             const blocks = editor.querySelectorAll('.block');
             for (let i = 0; i < blocks.length; i++) {
                 if (DocumentModel.modelIndexOfEl(blocks[i]) === bi) return blocks[i];
@@ -1114,7 +1134,6 @@
                 // anchor filter then rejected every block on screen.
                 // PAGE_EDGE_SLOP is far below a page width, so it cannot pull a block onto
                 // the wrong page, only onto the one it visually starts.
-                const PAGE_EDGE_SLOP = 12;
                 return Math.max(0, Math.floor((absX + PAGE_EDGE_SLOP) / twoColPageWidth()));
             } catch (e) {
                 return null;
@@ -1130,20 +1149,32 @@
             if (!editor) return -1;
             const host = editor.getBoundingClientRect();
             const blocks = editor.querySelectorAll('.block');
+            // Hoisted: both of these are constant for the whole scan, and PageMap.width()
+            // reaches getComputedStyle, which is not something to do per block.
+            const paged = isPaginatedLayout();
+            const pageW = paged ? twoColPageWidth() : 0;
+            const scrollLeft = editor.scrollLeft || 0;
+            const curPage = paged ? Math.max(0, Math.round(scrollLeft / pageW)) : -1;
             let best = null;
             for (let i = 0; i < blocks.length; i++) {
                 const r = blocks[i].getBoundingClientRect();
                 if (r.width === 0 && r.height === 0) continue;
                 if (r.bottom <= host.top + 1 || r.top >= host.bottom - 1) continue;   // above/below
                 if (r.right <= host.left + 1 || r.left >= host.right - 1) continue;   // another page
-                const mi = DocumentModel.modelIndexOfEl(blocks[i]);
-                if (mi < 0) continue;
                 // Only blocks that this page reports as its own. A block split across a
                 // page break has a bounding rect spanning both fragments, so it is visible
-                // here while pageOfBlock() places it on the previous page. Picking such a
-                // block as the anchor made the two disagree, and a round trip came back one
-                // page early. Whatever is chosen here must resolve back to this page.
-                if (isPaginatedLayout() && PageMap.pageOfBlock(mi) !== PageMap.current()) continue;
+                // here while its page resolves to the previous one. Picking such a block as
+                // the anchor made the two disagree, and a round trip came back a page early.
+                //
+                // Computed from the rect already in hand. This used to call
+                // PageMap.pageOfBlock(mi), which looked the element up again by scanning
+                // every block -- a nested scan inside a scan, on a hot path.
+                if (paged) {
+                    const absX = (r.left - host.left) + scrollLeft;
+                    if (Math.floor((absX + PAGE_EDGE_SLOP) / pageW) !== curPage) continue;
+                }
+                const mi = DocumentModel.modelIndexOfEl(blocks[i]);
+                if (mi < 0) continue;
                 if (best === null || r.left < best.left - 1 ||
                     (Math.abs(r.left - best.left) <= 1 && r.top < best.top)) {
                     best = { mi: mi, left: r.left, top: r.top };
@@ -1452,9 +1483,9 @@
          * That haystack is built from the mounted blocks in order, separated by newlines,
          * so the block is found by walking the same map the index was built from.
          */
-        function blockIndexForVisualOffset(off) {
-            const idx = buildWysiwygSearchIndex();
-            const entry = idx.map[Math.max(0, Math.min(idx.map.length - 1, off | 0))];
+        function blockIndexFromMap(map, off) {
+            if (!map || !map.length) return 0;
+            const entry = map[Math.max(0, Math.min(map.length - 1, off | 0))];
             if (!entry || !entry.node) return 0;
             let el = entry.node.parentElement;
             while (el && !(el.classList && el.classList.contains('block'))) el = el.parentElement;

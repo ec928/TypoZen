@@ -332,6 +332,48 @@ async function main() {
             }
         }
 
+        console.log('\n--- jumping to a search result is not slow ---');
+        {
+            // A jump used to cost ~1.6s on this document. updateSearchSidebar resolved each
+            // row's line number through a helper that rebuilt the whole char -> node index,
+            // so rendering 150 rows rebuilt a 200k-entry structure 150 times, and
+            // getFindHaystack was called twice per render on top. Both are per-render now.
+            //
+            // The bound is deliberately loose: this guards against rebuilding an index per
+            // row, not against a few ms of drift on someone else's machine.
+            await page.evaluate(() => handleCommand('view_set:mode:preview'));
+            await sleep(400);
+            await page.evaluate(() => handleCommand('view_set:scroll:pagination'));
+            await sleep(1800);
+            await page.evaluate(() => {
+                document.querySelector('.sidebar-tab[data-tab="search"]').click();
+                const i = document.getElementById('sidebarSearchInput');
+                i.value = 'scroll';
+                runFind('scroll', false, { navigate: false });
+                updateSidebarSearchCount();
+            });
+            await sleep(1500);
+
+            const perf = await page.evaluate(() => {
+                const t0 = performance.now();
+                updateSearchSidebar();
+                const t1 = performance.now();
+                return {
+                    matches: findState.matches.length,
+                    rows: document.querySelectorAll('#search-results-list .search-item').length,
+                    renderMs: t1 - t0,
+                    activeRows: document.querySelectorAll('#search-results-list .search-item.active').length
+                };
+            });
+            console.log('  ..   matches ' + perf.matches + ', rows ' + perf.rows +
+                 ', render ' + perf.renderMs.toFixed(0) + 'ms');
+            assert(perf.matches > 500, 'the fixture gives enough matches to be a real test (' + perf.matches + ')');
+            assert(perf.renderMs < 400,
+                'rendering the results list stays well under a second (' + perf.renderMs.toFixed(0) + 'ms)');
+            assert(perf.activeRows <= 1,
+                'exactly one row is marked active, never two (' + perf.activeRows + ')');
+        }
+
         console.log('\n--- pasted HTML converts ---');
         const md = await page.evaluate(() => htmlToMarkdown(
             '<h2>Title</h2><table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>'));
