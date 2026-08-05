@@ -1918,11 +1918,22 @@
             if (isPaginatedLayout()) {
                 goToPageHoldingBlock(blockIdx);
                 const el = elementForModelIndex(blockIdx);
-                if (el) {
-                    currentActiveBlock = el;
-                    try { el.classList.add('focused'); } catch (eF) {}
-                    setTimeout(function () { try { el.classList.remove('focused'); } catch (e) {} }, 1200);
-                }
+                if (el) currentActiveBlock = el;
+                // Highlight the match, the same as the scrolling path does.
+                //
+                // This branch never did. It turned to the page and flashed a .focused class
+                // on the block for 1200ms, so the orange current-match mark stayed wherever
+                // it had last been set -- at the top of the document -- while the sidebar
+                // moved on. The block flash was the only feedback, and it expired.
+                //
+                // refreshFindAfterVirtMount cannot cover this: pagination turns
+                // virtualisation off, so it returns immediately. The paint has to be driven
+                // from here, after the page turn has settled the layout.
+                const paintPage = function () {
+                    try { highlightModelMatchInMountedDom(match, navigate); } catch (e) {}
+                };
+                paintPage();
+                requestAnimationFrame(function () { setTimeout(paintPage, 80); });
                 return;
             }
 
