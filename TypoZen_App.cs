@@ -448,6 +448,7 @@ namespace TypoZen
         private string PrefsPath() { return Path.Combine(CacheDir(), "settings.json"); }
         private string WindowStatePath() { return Path.Combine(CacheDir(), "window_state.json"); }
         private string TabSessionPath() { return Path.Combine(CacheDir(), "tabs_session.txt"); }
+        private string BookPositionsPath() { return Path.Combine(CacheDir(), "book_positions.txt"); }
         private string TabSessionBodiesDir() { return Path.Combine(CacheDir(), "session_bodies"); }
 
         public TypoZenWindow(string initialFile = null)
@@ -1876,6 +1877,86 @@ namespace TypoZen
         ///      then rename temp → path (what you described as the simple mental model)
         ///
         /// Also creates the parent directory when missing.
+        // ---- Reading position per book ------------------------------------------------
+        //
+        // A book is not a document you edit, it is one you are part way through. The tab
+        // session records paths and buffers; it has no notion of "page 340 of Matter", and
+        // a book's tab carries no text for a caret to sit in. So this is its own small
+        // store, keyed by the book's path.
+        //
+        // Newest first, capped, so a reader who opens a hundred books does not accumulate a
+        // hundred lines forever.
+        private const int MaxRememberedBooks = 64;
+        private Dictionary<string, int> _bookPositions;
+
+        private void LoadBookPositions()
+        {
+            if (_bookPositions != null) return;
+            _bookPositions = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                string path = BookPositionsPath();
+                if (!File.Exists(path)) return;
+                foreach (string line in File.ReadAllLines(path))
+                {
+                    // "<block>\t<path>"
+                    int tab = line.IndexOf('\t');
+                    if (tab <= 0) continue;
+                    int block;
+                    if (!int.TryParse(line.Substring(0, tab), out block)) continue;
+                    string bookPath = line.Substring(tab + 1);
+                    if (bookPath.Length == 0 || _bookPositions.ContainsKey(bookPath)) continue;
+                    _bookPositions[bookPath] = block;
+                    if (_bookPositions.Count >= MaxRememberedBooks) break;
+                }
+            }
+            catch { }
+        }
+
+        private void SaveBookPositions(string mostRecent)
+        {
+            try
+            {
+                LoadBookPositions();
+                var sb = new StringBuilder();
+                var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                // The book just read goes first, so the cap evicts what has been untouched
+                // longest rather than whatever happens to hash first.
+                if (!string.IsNullOrEmpty(mostRecent) && _bookPositions.ContainsKey(mostRecent))
+                {
+                    sb.AppendLine(_bookPositions[mostRecent] + "\t" + mostRecent);
+                    written.Add(mostRecent);
+                }
+                foreach (var kv in _bookPositions)
+                {
+                    if (written.Count >= MaxRememberedBooks) break;
+                    if (written.Contains(kv.Key)) continue;
+                    sb.AppendLine(kv.Value + "\t" + kv.Key);
+                    written.Add(kv.Key);
+                }
+                WriteStateFileAtomic(BookPositionsPath(), sb.ToString());
+            }
+            catch { }
+        }
+
+        private int RememberedBookPosition(string bookPath)
+        {
+            LoadBookPositions();
+            int at;
+            if (!string.IsNullOrEmpty(bookPath) && _bookPositions.TryGetValue(bookPath, out at)) return at;
+            return -1;
+        }
+
+        private void RememberBookPosition(string bookPath, int block)
+        {
+            if (string.IsNullOrEmpty(bookPath) || block < 0) return;
+            LoadBookPositions();
+            int had;
+            if (_bookPositions.TryGetValue(bookPath, out had) && had == block) return;
+            _bookPositions[bookPath] = block;
+            SaveBookPositions(bookPath);
+        }
+
         /// </summary>
         private static void WriteStateFileAtomic(string path, string contents)
         {
@@ -3442,6 +3523,19 @@ if (_btnColumnToggle != null)
                 // access key matches — derived from the "_File" style headers, so it stays
                 // correct if a header is renamed.
                 OpenMenuByAccessKey(msg.Length > 12 ? msg[12] : '\0');
+            }
+            else if (msg.StartsWith("book_position:"))
+            {
+                int block;
+                if (int.TryParse(msg.Substring(14), out block))
+                {
+                    string p = _currentFilePath;
+                    if (!string.IsNullOrEmpty(p) &&
+                        p.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try { RememberBookPosition(Path.GetFullPath(p), block); } catch { }
+                    }
+                }
             }
             else if (msg.StartsWith("view_state:"))
             {
@@ -7773,7 +7867,12 @@ if (_btnColumnToggle != null)
                 PruneLoadStageDir(maxAgeMinutes: 5);
                 string fileName = "book_" + Guid.NewGuid().ToString("N") + ".json";
                 File.WriteAllText(Path.Combine(dir, fileName), payload, new UTF8Encoding(false));
-                SendMsg("fetch_and_load_book:https://localapp/typozen_load/" + fileName);
+
+                // Reopen where they stopped reading. A book with no remembered position --
+                // or one remembered at the very start -- opens at the cover, as it should.
+                int resumeAt = RememberedBookPosition(path);
+                SendMsg("fetch_and_load_book:https://localapp/typozen_load/" + fileName
+                    + (resumeAt > 0 ? "|at=" + resumeAt : ""));
 
                 Dispatcher.BeginInvoke(new Action(() =>
                 {

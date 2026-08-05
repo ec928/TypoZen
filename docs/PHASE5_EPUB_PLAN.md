@@ -118,7 +118,13 @@ still looks like TypoZen rather than like 2003.
 6. **TOC → outline**, so chapter navigation is the book's own structure rather than
    whatever headings happen to be in the text.
 
-7. **Reading position per book**, remembered across sessions.
+7. **Reading position per book**, remembered across sessions. *Done.* Where the reader is
+   is reported from scrolling rather than from the jump anchor -- someone who simply reads
+   for an hour never sets an anchor -- debounced, and only when the block changes. The host
+   keeps it in `book_positions.txt` keyed by path, newest first, capped at 64, and appends
+   `|at=<block>` to the load message so the book opens where it was left.
+   `book-position-app.mjs` proves it across two real launches of the exe, because surviving
+   the process is the entire claim.
 
 ## Tests, per step
 

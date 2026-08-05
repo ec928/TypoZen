@@ -1260,6 +1260,33 @@
          * visible column. Blocks scrolled onto another page are excluded horizontally, so
          * this answers for the page actually on screen.
          */
+        /**
+         * Where the reader is in a book, reported to the host so it can be restored.
+         *
+         * Driven by scrolling rather than by _readingAnchor: the anchor records deliberate
+         * jumps -- an outline click, a page turn we performed -- and someone who simply
+         * reads for an hour never sets it. The position that matters is where they are, not
+         * where they were last sent.
+         *
+         * Debounced, and only sent when the block actually changes, so turning pages does
+         * not write a file per page.
+         */
+        let _bookPosLast = -1;
+        let _bookPosTimer = null;
+
+        function reportBookPosition() {
+            if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') return;
+            if (_bookPosTimer) clearTimeout(_bookPosTimer);
+            _bookPosTimer = setTimeout(function () {
+                _bookPosTimer = null;
+                if (DocumentModel.kind !== 'epub') return;
+                const bi = topLeftModelIndexTwoCol();
+                if (bi < 0 || bi === _bookPosLast) return;
+                _bookPosLast = bi;
+                try { postMsg('book_position:' + bi); } catch (e) {}
+            }, 1200);
+        }
+
         function topLeftModelIndexTwoCol() {
             if (!editor) return -1;
             const host = editor.getBoundingClientRect();
@@ -3058,8 +3085,10 @@
             // have since left. Scrolls we perform ourselves are excluded by the
             // markProgrammaticScroll window.
             if (mainContainer) mainContainer.addEventListener('scroll', noteUserMovement, { passive: true });
+            if (mainContainer) mainContainer.addEventListener('scroll', reportBookPosition, { passive: true });
             if (editor) {
                 editor.addEventListener('scroll', noteUserMovement, { passive: true });
+                editor.addEventListener('scroll', reportBookPosition, { passive: true });
 
                 // Invariant: while the document is paginated, the scroll offset is always a
                 // page boundary. There is no free scrolling in page mode -- you are either
@@ -3194,7 +3223,17 @@
                 else if (msg.startsWith("fetch_and_load_book:")) {
                     // A book arrives as a staged JSON payload rather than through the
                     // message channel: an omnibus is tens of megabytes of markup.
-                    const url = msg.substring(20);
+                    // "<url>" or "<url>|at=<block>", the latter being where this reader was
+                    // when the book was last closed.
+                    let spec = msg.substring(20);
+                    let resumeAt = -1;
+                    const atPos = spec.indexOf('|at=');
+                    if (atPos >= 0) {
+                        resumeAt = parseInt(spec.substring(atPos + 4), 10);
+                        spec = spec.substring(0, atPos);
+                        if (!isFinite(resumeAt)) resumeAt = -1;
+                    }
+                    const url = spec;
                     fetch(url, { cache: 'no-store' })
                         .then(function (r) {
                             if (!r.ok) throw new Error('fetch ' + r.status);
@@ -3202,6 +3241,15 @@
                         })
                         .then(function (json) {
                             const ok = loadBookPayload(json);
+                            if (ok && resumeAt > 0 && resumeAt < DocumentModel.blocks.length) {
+                                // After the layout, not with it: the book has to be
+                                // paginated before a block can be put on a page, and
+                                // windowing may still be mounting the chunk it lands in.
+                                _bookPosLast = resumeAt;
+                                setTimeout(function () {
+                                    try { goToModelBlock(resumeAt); } catch (e1) {}
+                                }, 400);
+                            }
                             try { postMsg(ok ? 'load_done' : 'load_failed:book'); } catch (e0) {}
                         })
                         .catch(function (err) {
@@ -10908,6 +10956,8 @@
             _bookBlockDirs = split.dirs || [];
             _bookAnchorIndex = null;   // belongs to the book that is open, not to the session
             _bookTitleIndex = null;
+            _bookPosLast = -1;
+            if (_bookPosTimer) { clearTimeout(_bookPosTimer); _bookPosTimer = null; }
 
             // Styles before blocks: the first paint should already be the book's own
             // typography rather than a flash of unstyled text a reader would notice.
