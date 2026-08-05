@@ -8954,8 +8954,6 @@
                         const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
                         const el = createPreviewBlockEl(raw, false, i);
                         el.setAttribute('data-model-index', String(i));
-                if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
-                    if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                         if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                         frag.appendChild(el);
                     }
@@ -9158,7 +9156,6 @@
                 for (let i = 0; i < blockRaws.length; i++) {
                     const el = createPreviewBlockEl(blockRaws[i], progressive, i);
                     el.setAttribute('data-model-index', String(i));
-                if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                     if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                     frag.appendChild(el);
                 }
@@ -10949,7 +10946,6 @@
                 for (let i = 0; i < DocumentModel.blocks.length; i++) {
                     const el = createPreviewBlockEl(DocumentModel.blocks[i].raw, false, i);
                     el.setAttribute('data-model-index', String(i));
-                if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                     if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                     frag.appendChild(el);
                 }

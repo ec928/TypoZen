@@ -98,9 +98,8 @@ from the container's top failed a title block whose first child's 75px margin co
 outward, so the block starts 75px into its column while reporting `margin-top: 0`. Grouping
 mounted blocks by column and comparing tops has no such hole.
 
-**Cleanup still open.** The four mount sites have the same `data-chapter-start` line
-duplicated at two or three indentation levels — harmless and idempotent, left over from a
-bad edit script. Collapse them.
+**Cleanup done.** The four mount sites had that line duplicated at two or three indentation
+levels — harmless and idempotent, left over from a bad edit script. Collapsed.
 
 ## 4. Matter's TOC links didn't jump
 
