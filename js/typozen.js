@@ -4132,8 +4132,17 @@
                     }
                 } catch (e) { continue; }
 
-                // Any newline inside one block is browser filler, never a real line
-                lines.push(String(inter.toString()).replace(/[\r\n]+/g, ' '));
+                // A whole block copies as its markdown, not as its rendered text, so
+                // **bold** and `code` survive the round trip instead of arriving as plain
+                // words. A partial selection has no markdown to give -- the marks are not in
+                // the rendered text it covers -- so it copies what is visibly selected.
+                const raw = b.getAttribute('data-raw');
+                if (raw != null && inter.toString() === blockRange.toString()) {
+                    lines.push(raw);
+                } else {
+                    // Any newline inside one block is browser filler, never a real line
+                    lines.push(String(inter.toString()).replace(/[\r\n]+/g, ' '));
+                }
             }
             if (!lines.length) return String(sel.toString());
             return lines.join('\n');
@@ -6373,6 +6382,15 @@
                             sourceEditor.value = data.content;
                             requestAnimationFrame(resizeSourceEditor);
                         }
+                        // The branches above swap which element is visible and set
+                        // state.mode, but that is only half a mode switch: the container's
+                        // overflow, padding and pagination class all belong to the mode too.
+                        // Undoing an edit made in Source, back to a state captured in
+                        // Preview, therefore showed the preview inside a container still
+                        // carrying Source's overflow-y: hidden -- the document was editable
+                        // and completely unscrollable until the mode was toggled by hand.
+                        try { syncPaginationClass(); } catch (eP) {}
+                        try { applyEditorChromeForMode(); } catch (eC) {}
                     }
                     updateStatsNow();
                     updateOutline();

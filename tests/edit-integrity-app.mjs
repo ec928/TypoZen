@@ -141,6 +141,91 @@ try {
     assert(Math.abs(undone.firstIdx - park.firstIdx) <= 8,
         'undo left the reader at the edit site (' + undone.firstIdx + ' vs ' + park.firstIdx + ')');
 
+
+    console.log('\n=== copy and paste round-trips through the app itself ===');
+    {
+        // The paste handler checks the clipboard HTML for a data-source="typozen" marker and
+        // the copy handler never wrote it, so TypoZen ran its own copy through
+        // htmlToMarkdown. Once block containers started contributing a separator, every
+        // .block became a paragraph: copying four consecutive lines and pasting them gave
+        // four lines with a blank between each.
+        const cp = await app.eval(async () => {
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            // The section above parked mid-document; under virtualisation blocks 10..15 are
+            // not mounted from there, and a missing element is not a copy/paste failure.
+            mainContainer.scrollTop = 0;
+            await sleep(500);
+            mainContainer.scrollTop = 0;
+            await sleep(500);
+            const a = editor.querySelector('.block[data-model-index="10"]');
+            const z = editor.querySelector('.block[data-model-index="15"]');
+            if (!a || !z) return { ok: false };
+            const rg = document.createRange();
+            rg.setStart(a, 0); rg.setEnd(z, z.childNodes.length);
+            const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rg);
+            const copied = selectionToPlainText();
+            const source = DocumentModel.blocks.slice(10, 16).map(x => x.raw).join('\n');
+            const target = editor.querySelector('.block[data-model-index="5"]');
+            focusBlock(target, (target.innerText || '').length);
+            await sleep(250);
+            const before = DocumentModel.blocks.length;
+            insertPastedPlainText(copied);
+            await sleep(700);
+            return {
+                ok: true, copied: copied, source: source,
+                added: DocumentModel.blocks.length - before,
+                region: DocumentModel.blocks.slice(6, 11).map(x => x.raw)
+            };
+        });
+        assert(cp.ok, 'the blocks needed for the round trip are mounted');
+        assert(cp.copied === cp.source,
+            'copying whole blocks yields their markdown, marks and all');
+        assert(cp.added === 5,
+            'pasting 6 lines adds exactly 5 blocks, with no blank invented between them (' +
+            cp.added + ')');
+        const blanks = (cp.region || []).filter(x => !String(x).trim()).length;
+        assert(blanks === 0,
+            'the pasted region contains no inserted blank lines (' + blanks + ')');
+        await app.eval(() => HistoryManager.undo());
+        await sleep(1200);
+    }
+
+    console.log('\n=== undo across a mode change leaves the view usable ===');
+    {
+        // restore() swaps which element is visible and sets state.mode, which is only half a
+        // mode switch -- the container's overflow belongs to the mode too. Undoing an edit
+        // made in Source, back to a state captured in Preview, left the preview inside a
+        // container still carrying Source's overflow-y: hidden: editable and completely
+        // unscrollable until the mode was toggled by hand.
+        const md = await app.eval(async () => {
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            handleCommand('view_set:mode:source');
+            await sleep(2000);
+            const se = document.getElementById('source-editor');
+            se.focus(); se.setSelectionRange(50, 50);
+            se.setRangeText('XYZ', 50, 50, 'end');
+            se.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(1200);
+            HistoryManager.undo();
+            await sleep(2000);
+            const mc = document.getElementById('main-container');
+            return {
+                mode: state.mode,
+                overflowY: getComputedStyle(mc).overflowY,
+                canScroll: mc.scrollHeight > mc.clientHeight + 4,
+                hasXYZ: getMarkdownContent(false).indexOf('XYZ') >= 0
+            };
+        });
+        info('after undo: mode ' + md.mode + ', overflow-y ' + md.overflowY +
+            ', scrollable ' + md.canScroll);
+        assert(!md.hasXYZ, 'the undo actually removed the edit');
+        assert(md.mode === 'source' || md.overflowY !== 'hidden',
+            'the container overflow matches the mode the undo landed in (' +
+            md.overflowY + ' in ' + md.mode + ')');
+        assert(md.mode === 'source' || md.canScroll,
+            'the document can be scrolled after undo, without toggling the mode by hand');
+    }
+
     console.log('\npassed=' + passed + ' failed=' + failed);
     if (failed) { console.error('\nEDIT INTEGRITY (APP) FAILED'); process.exitCode = 1; }
     else console.log('\nEDIT INTEGRITY (APP) PASSED');
