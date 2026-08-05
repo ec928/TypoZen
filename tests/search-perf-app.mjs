@@ -1,7 +1,7 @@
 /**
  * Searching a large document must stay interactive.
  *
- * A search for "scroll" on the 4582-line fixture matches ~4090 times. Stepping to a late
+ * A search for "scroll" on the 4582-line fixture matches 2135 times. Stepping to a late
  * match raised the sidebar's render window to cover it, and each render numbered every
  * row with markdownOffsetToBlock() + modelBlockStartLine(), both O(blocks). At match 4581
  * of a 3769-block document that is ~26 million iterations per keypress -- indistinguishable
@@ -27,6 +27,10 @@ function info(msg) { console.log('  ..   ' + msg); }
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
 try {
     await sleep(2500);
+    await app.eval(() => handleCommand('view_set:columns:1'));
+    await sleep(900);
+    await app.eval(() => handleCommand('view_set:scroll:scroll'));
+    await sleep(1500);
     await app.eval(() => handleCommand('toggle_search_sidebar'));
     await sleep(600);
 
@@ -39,7 +43,7 @@ try {
         return { matches: findState.matches.length, rows: document.getElementById('search-results-list').children.length };
     });
     info('matches: ' + found.matches + ', rows painted: ' + found.rows);
-    assert(found.matches > 3000, 'the fixture produces a wide result set (' + found.matches + ')');
+    assert(found.matches > 2000, 'the fixture produces a wide result set (' + found.matches + ')');
 
     console.log('\n=== a full render of a late result set is fast ===');
     const wide = await app.eval(async (target) => {

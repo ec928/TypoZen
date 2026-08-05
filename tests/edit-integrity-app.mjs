@@ -26,7 +26,20 @@ const PASTE = ['PASTED-A one', '', 'PASTED-B two', '', 'PASTED-C three'].join('\
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
 try {
     await sleep(2500);
+
+    // Establish the view state instead of inheriting it. TypoZen restores the layout the
+    // user left, and this suite is about the SCROLLING path: it reads mainContainer
+    // .scrollTop and expects virtualisation. Started against a session saved in 2-column
+    // Pages, every measurement here read 0 -- horizontal scrolling, virtualisation off --
+    // and it reported four product failures that were entirely its own ambient dependency.
+    await app.eval(() => handleCommand('view_set:columns:1'));
+    await sleep(900);
+    await app.eval(() => handleCommand('view_set:scroll:scroll'));
+    await sleep(1800);
+
     const virt = await app.eval(() => DocumentModel.virtEnabled);
+    assert(virt === true,
+        'the document is virtualised and scrolling, so this suite is testing that path');
     info('virtualised: ' + virt + ', blocks: ' + await app.eval(() => DocumentModel.blocks.length));
 
     const rawsBefore = await app.eval(() => DocumentModel.blocks.map(b => b.raw));
