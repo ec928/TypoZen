@@ -3698,6 +3698,14 @@ if (_btnColumnToggle != null)
         private void PopulateThemeDropdown(string json, int startIdx = 0, string preferredName = null)
         {
             _themesList.Clear();
+            // Must be cleared with the rest. ApplyTheme ticks _themeMenuItems[idx], so this
+            // list is only meaningful while it is index-parallel to _themesList. Saving a
+            // custom theme re-reads the JSON and rebuilds everything else, so leaving this
+            // one to grow left every tick landing on a stale MenuItem from the previous
+            // build -- the checkmark stayed on whatever was selected before, and clicking a
+            // custom theme appeared to do nothing because the item WPF had just ticked was
+            // cleared again by the mismatched loop.
+            _themeMenuItems.Clear();
             if (_cmbThemes != null) _cmbThemes.Items.Clear();
 
             var menu = (MenuItem)FindElement("mThemesMenu");

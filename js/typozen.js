@@ -642,6 +642,11 @@
         const SEARCH_RENDER_CHUNK = 150;
         let _searchRenderLimit = SEARCH_RENDER_CHUNK;
         let _searchRenderedQuery = null;
+        // Identifies the row set currently painted, so a step can move the .active class
+        // instead of rebuilding it. Query and match count are in the signature because a
+        // different search can land on the same render limit.
+        let _searchRenderedSig = null;
+        let _searchRenderedList = null;
 
         /** Extend the rendered window. Bound to the "+N more" row and to scrolling. */
         window.searchShowMore = function () {
@@ -649,6 +654,44 @@
             _searchRenderLimit += SEARCH_RENDER_CHUNK;
             updateSearchSidebar();
         };
+
+        /**
+         * Document line numbers for a list of ascending model-markdown offsets, in one
+         * walk of the blocks.
+         *
+         * The obvious spelling -- markdownOffsetToBlock(off) then modelBlockStartLine(bi)
+         * per row -- is O(blocks) twice per row. Stepping to match 4581 of a 3769-block
+         * document therefore raised the render window to ~4650 rows and cost roughly 26
+         * million iterations (each allocating a string, each calling linesInBlockRaw) on
+         * every single , or . keypress. It looked like a hang because it very nearly was.
+         *
+         * Matches arrive in document order, so one pointer over the blocks answers all of
+         * them: O(blocks + rows), ~8k iterations for the same search.
+         */
+        function documentLinesForModelOffsets(offsets) {
+            const out = new Array(offsets.length);
+            const blocks = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
+                ? DocumentModel.blocks : null;
+            if (!blocks || !blocks.length) { out.fill(1); return out; }
+
+            let bi = 0;              // block under the pointer
+            let pos = 0;             // char offset of that block's start in the markdown
+            let line = 1;            // document line of that block's start
+            let rawLen = String(blocks[0].raw == null ? '' : blocks[0].raw).length;
+
+            for (let i = 0; i < offsets.length; i++) {
+                const off = Math.max(0, offsets[i] | 0);
+                // Offsets ascend, so the pointer only ever moves forward.
+                while (bi < blocks.length - 1 && off > pos + rawLen) {
+                    line += linesInBlockRaw(blocks[bi].raw);
+                    pos += rawLen + 1;          // +1 for the joining newline
+                    bi++;
+                    rawLen = String(blocks[bi].raw == null ? '' : blocks[bi].raw).length;
+                }
+                out[i] = line;
+            }
+            return out;
+        }
 
         function updateSearchSidebar() {
             const list = document.getElementById('search-results-list');
@@ -684,6 +727,25 @@
             }
             const limit = Math.min(findState.matches.length, _searchRenderLimit);
 
+            // Stepping with , or . changes exactly one thing: which row is active. The rows
+            // themselves are identical, so rebuilding their HTML -- and recomputing every
+            // line number to do it -- is pure waste, and it is the common case: one keypress
+            // per step, thousands of rows each time. Move the class instead.
+            const sig = findState.query + ' ' + findState.matches.length + ' ' + limit;
+            if (_searchRenderedSig === sig && _searchRenderedList === list) {
+                const prev = list.querySelector('.search-item.active');
+                const next = list.children[findState.index];
+                if (next && next !== prev) {
+                    if (prev) prev.classList.remove('active');
+                    next.classList.add('active');
+                    next.scrollIntoView({ block: 'nearest' });
+                    return;
+                }
+                if (next && next === prev) return;
+            }
+            _searchRenderedSig = sig;
+            _searchRenderedList = list;
+
             const offsets = [];
             for (let i = 0; i < limit; i++) {
                 const m = findState.matches[i];
@@ -707,15 +769,15 @@
                 // once for the whole render: blockIndexForVisualOffset used to rebuild it
                 // per row, so drawing 150 rows rebuilt a 200k-entry index 150 times and a
                 // single search jump cost ~1.6 seconds.
-                const visualMap = (kind === 'model') ? null : surface.map;
-                lines = offsets.map(function (off) {
-                    try {
-                        const bi = (kind === 'model')
-                            ? markdownOffsetToBlock(off).blockIndex
-                            : blockIndexFromMap(visualMap, off);
-                        return modelBlockStartLine(bi);
-                    } catch (e) { return 1; }
-                });
+                if (kind === 'model') {
+                    lines = documentLinesForModelOffsets(offsets);
+                } else {
+                    const visualMap = surface.map;
+                    lines = offsets.map(function (off) {
+                        try { return modelBlockStartLine(blockIndexFromMap(visualMap, off)); }
+                        catch (e) { return 1; }
+                    });
+                }
             }
 
             for (let i = 0; i < limit; i++) {

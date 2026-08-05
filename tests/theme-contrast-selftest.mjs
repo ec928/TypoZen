@@ -73,9 +73,14 @@ console.log('--- 1. the accent works as a colour (links, tab underline, focus ri
 
     // The three that were fixed at source, named so a revert is caught here rather than
     // silently re-hidden by raising the alpha.
+    // Skipped rather than failed when a theme has been removed from the palette file:
+    // this guards against the source fix being reverted, and a theme that no longer
+    // exists cannot regress. Failing here told the user their build was broken when all
+    // they had done was edit their own themes.
     for (const n of ['Kindle Oat', 'Night Reading', 'Nocturnal Library']) {
         const t = themes.find(x => x.Name === n);
-        const r = t ? ratio(hex(t.Hi), hex(t.Bg)) : 0;
+        if (!t) { console.log('  --   ' + n + ' is no longer in the palette, nothing to regress'); continue; }
+        const r = ratio(hex(t.Hi), hex(t.Bg));
         assert(r >= FG_MIN, n + ' accent is still readable (' + r.toFixed(2) + ')');
     }
 }
