@@ -67,8 +67,15 @@ console.log('--- no stray control characters in the sources ---');
     // internal link going nowhere -- rather than as an error.
     //
     // They are invisible by nature, so the only defence is to look for them.
+    //
+    // A fourth one landed in a test rather than in the sources: the carrier regex in
+    // epub-open-app.mjs ended in a backspace byte, matched no block at all, and the
+    // suite reported zero images instead of failing. The tests are sources too.
     const files = ['js/typozen.js', 'css/typozen.css', 'TypoZen_Template.html',
-                   'TypoZen_App.cs', 'EpubReader.cs'];
+                   'TypoZen_App.cs', 'EpubReader.cs']
+        .concat(fs.readdirSync(path.join(__dirname))
+            .filter(f => f.endsWith('.mjs'))
+            .map(f => 'tests/' + f));
     for (const rel of files) {
         const full = path.join(__dirname, '..', rel);
         if (!fs.existsSync(full)) continue;

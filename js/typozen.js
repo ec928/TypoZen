@@ -8080,7 +8080,7 @@
                 postMsg('open_external:' + encodeURIComponent(target));
                 return;
             }
-            if (!bookGoToHref(target)) {
+            if (!bookGoToHref(target, a.innerText || a.textContent || '')) {
                 window.showDebugTelemetry('book link went nowhere: ' + target);
             }
         }, true);
@@ -10910,6 +10910,7 @@
             _bookDocIndex = split.docStart;
             _bookBlockDirs = split.dirs || [];
             _bookAnchorIndex = null;   // belongs to the book that is open, not to the session
+            _bookTitleIndex = null;
 
             // Styles before blocks: the first paint should already be the book's own
             // typography rather than a flash of unstyled text a reader would notice.
@@ -11080,7 +11081,43 @@
          * the fragment id if that block is on screen -- an anchor part way into a long
          * chapter should land there, not at the chapter's first paragraph.
          */
-        function bookGoToHref(href) {
+        /**
+         * Titles to blocks, for links whose hrefs are dangling in the book itself.
+         *
+         * Matter's contents page links to #filepos3742 and the book contains no filepos
+         * anchor at all -- 70 anchors, every one of them calibre_pb_*. No reader can follow
+         * that by href. The outline already recovers those chapters by title, so a link
+         * whose href resolves to nothing lands wherever clicking the outline would.
+         *
+         * The outline's own targets come first: they have been repaired where the hrefs
+         * collapsed, so the two routes agree by construction.
+         */
+        let _bookTitleIndex = null;
+
+        function bookTitleKey(s) {
+            return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase();
+        }
+
+        function buildBookTitleIndex() {
+            const map = {};
+            if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') return map;
+            const toc = DocumentModel.toc || [];
+            for (let i = 0; i < toc.length; i++) {
+                const key = bookTitleKey(toc[i].title);
+                if (key && toc[i].blockIndex >= 0 &&
+                    !Object.prototype.hasOwnProperty.call(map, key)) map[key] = toc[i].blockIndex;
+            }
+            const raws = [];
+            for (let i = 0; i < DocumentModel.blocks.length; i++) raws.push(DocumentModel.blocks[i].raw);
+            const headings = bookHeadingIndex(raws);
+            const keys = Object.keys(headings);
+            for (let i = 0; i < keys.length; i++) {
+                if (!Object.prototype.hasOwnProperty.call(map, keys[i])) map[keys[i]] = headings[keys[i]];
+            }
+            return map;
+        }
+
+        function bookGoToHref(href, linkText) {
             const raw = String(href == null ? '' : href);
             const file = bookNormalizeHref(raw);
             const hash = raw.indexOf('#') >= 0 ? raw.slice(raw.indexOf('#') + 1) : '';
@@ -11100,6 +11137,18 @@
             }
             // A bare "#id" means somewhere in the document already open.
             if (idx < 0 && hash) idx = findBookBlockWithId(hash);
+
+            // Only once the href has failed: books with sound anchors never reach this and
+            // keep their exact targets. Gated the same way the outline repair is.
+            if (idx < 0) {
+                const key = bookTitleKey(linkText);
+                if (key) {
+                    if (!_bookTitleIndex) _bookTitleIndex = buildBookTitleIndex();
+                    if (Object.prototype.hasOwnProperty.call(_bookTitleIndex, key)) {
+                        idx = _bookTitleIndex[key];
+                    }
+                }
+            }
             if (idx < 0) return false;
 
             if (hash) {

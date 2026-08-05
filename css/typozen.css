@@ -297,11 +297,15 @@
         /* --- Books ---------------------------------------------------------------
            A spine document is a chapter, and a chapter starts a page. Without this a book
            runs continuously and a chapter heading appears halfway down a column, which no
-           printed book does and no reader expects. break-before is what the multi-column
-           layout understands; page-break-before is the older spelling kept for safety. */
+           printed book does and no reader expects.
+
+           break-before: column, and nothing else. The older page-break-before: always was
+           here "for safety" and was the whole bug: it is an alias for break-before: page,
+           it came second so it won, and a page break is a paged-media break that a
+           multi-column layout ignores. Every chapter ran on mid-column while the marker
+           attribute the test counted was present on all of them. */
         #editor.page-mode .block[data-chapter-start] {
             break-before: column;
-            page-break-before: always;
         }
 
         /* A cover or plate is bounded by the page it sits on. Book CSS routinely sizes

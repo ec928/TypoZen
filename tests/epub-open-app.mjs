@@ -144,21 +144,53 @@ async function openAndCheck(app, book, deep) {
                 handleCommand('view_set:scroll:scroll');
                 await sleep(1800);
 
-                // Images: a src must resolve to the extracted assets, not to a relative
-                // path that means nothing from the application's own URL.
-                const imgRaws = DocumentModel.blocks.filter(b => /<img/i.test(b.raw)).slice(0, 3);
-                const probe = document.createElement('div');
-                probe.className = 'block';
-                document.getElementById('editor').appendChild(probe);
-                let absolute = 0, relative = 0;
-                for (const b of imgRaws) {
-                    renderBlockPreview(probe, b.raw);
-                    probe.querySelectorAll('img').forEach(im => {
-                        const s = im.getAttribute('src') || '';
-                        if (/^https?:/i.test(s)) absolute++; else relative++;
-                    });
+                // Images: not "the src was rewritten" -- that assertion passed for weeks
+                // while Xeelee showed a broken-image placeholder on every page. Go to the
+                // blocks that carry images, let them mount, and ask the browser whether the
+                // bytes arrived. A rewritten src that 404s is the bug, not the fix.
+                let absolute = 0, relative = 0, loaded = 0, broken = 0;
+                const brokenSrcs = [];
+                let coverRatio = null, coverBoxRatio = null;
+                const carriers = [], found = [], missed = [];
+                for (let i = 0; i < DocumentModel.blocks.length && carriers.length < 3; i++) {
+                    if (/<(img|image)[\s>]/i.test(DocumentModel.blocks[i].raw)) carriers.push(i);
                 }
-                probe.remove();
+                for (const bi of carriers) {
+                    goToModelBlock(bi);
+                    await sleep(1600);
+                    const el = document.querySelector('#editor .block[data-model-index="' + bi + '"]');
+                    if (!el) { missed.push(bi); continue; }
+                    found.push(bi);
+
+                    for (const im of el.querySelectorAll('img')) {
+                        const src = im.getAttribute('src') || '';
+                        if (/^https?:/i.test(src)) absolute++; else relative++;
+                        if (im.complete && im.naturalWidth > 0) loaded++;
+                        else { broken++; if (brokenSrcs.length < 3) brokenSrcs.push(src); }
+                    }
+
+                    // An SVG-wrapped cover is not an <img>: the browser reports nothing
+                    // about it, so fetch the href and check the ratio it actually renders at.
+                    for (const im of el.querySelectorAll('image')) {
+                        const XLINK = 'http://www.w3.org/1999/xlink';
+                        const href = im.getAttributeNS(XLINK, 'href') || im.getAttribute('href') || '';
+                        if (/^https?:/i.test(href)) absolute++; else relative++;
+                        let ok = false;
+                        try { const r = await fetch(href, { method: 'GET' }); ok = r.ok; } catch (e) { ok = false; }
+                        if (ok) loaded++; else { broken++; if (brokenSrcs.length < 3) brokenSrcs.push(href); }
+
+                        const svg = im.closest('svg');
+                        const vb = svg && svg.getAttribute('viewBox');
+                        if (vb && coverRatio === null) {
+                            const p4 = vb.trim().split(/[\s,]+/).map(Number);
+                            const r = svg.getBoundingClientRect();
+                            if (p4.length === 4 && p4[3] && r.height) {
+                                coverRatio = p4[2] / p4[3];
+                                coverBoxRatio = r.width / r.height;
+                            }
+                        }
+                    }
+                }
 
                 // Outline: clicking an entry has to move the reader.
                 const before = topLeftModelIndexTwoCol() >= 0
@@ -188,8 +220,12 @@ async function openAndCheck(app, book, deep) {
                         if (/^https?:/i.test(href)) continue;
                         const frag = href.indexOf('#') >= 0 ? href.slice(href.indexOf('#') + 1) : '';
                         const file = bookNormalizeHref(href);
-                        if ((frag && anchors[frag] !== undefined)
-                            || (file && _bookDocIndex[file] !== undefined)) {
+                        // And whose target is somewhere else: a contents page links to the
+                        // section it sits in, so "did the view move" is not a fair question
+                        // of a link that legitimately points at the block already on screen.
+                        const t = (frag && anchors[frag] !== undefined) ? anchors[frag]
+                            : ((file && _bookDocIndex[file] !== undefined) ? _bookDocIndex[file] : -1);
+                        if (t >= 0 && Math.abs(t - i) > 20) {
                             linkBlock = i; linkHref = href; break;
                         }
                     }
@@ -198,11 +234,49 @@ async function openAndCheck(app, book, deep) {
                 if (linkBlock >= 0) {
                     goToModelBlock(linkBlock);
                     await sleep(1200);
-                    const was = firstVisibleIdx();
+                    // _readingAnchor, not firstVisibleIdx(): windowing mounts a chunk at a
+                    // time, so two blocks a few hundred apart share one window and "the
+                    // first block on screen" is the same number before and after the jump.
+                    const was = _readingAnchor;
                     bookGoToHref(linkHref);
                     await sleep(1500);
-                    linkTarget = firstVisibleIdx();
+                    linkTarget = _readingAnchor;
                     linkMoved = linkTarget !== was;
+                }
+
+                // A real click on the book's own contents page, which is the route a reader
+                // takes. Matter's entries are the dangling #filepos ones, so this is where
+                // the title fallback earns its place; Xeelee's resolve by href and must not
+                // change behaviour.
+                let tocClickMoved = false, tocClickHref = null, tocClickTarget = -1, tocClickText = null;
+                {
+                    const titles = {};
+                    for (const t of (DocumentModel.toc || [])) {
+                        const k = String(t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                        if (k && titles[k] === undefined) titles[k] = t.blockIndex;
+                    }
+                    // Not firstVisibleIdx(): in a horizontally scrolling multi-column
+                    // layout every mounted block intersects the viewport vertically, so it
+                    // answers "the first block" no matter where the reader is.
+                    const whereAmI = () => (topLeftModelIndexTwoCol() >= 0
+                        ? topLeftModelIndexTwoCol() : firstVisibleIdx());
+                    goToModelBlock(0);
+                    await sleep(1500);
+                    const here = whereAmI();
+                    const as = document.querySelectorAll('#editor .block a[data-book-href]');
+                    let pick = null;
+                    for (const a of as) {
+                        const k = (a.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                        if (titles[k] !== undefined && Math.abs(titles[k] - here) > 20) { pick = a; break; }
+                    }
+                    if (pick) {
+                        tocClickHref = pick.getAttribute('data-book-href');
+                        tocClickText = (pick.innerText || '').trim();
+                        pick.click();
+                        await sleep(1800);
+                        tocClickTarget = whereAmI();
+                        tocClickMoved = tocClickTarget !== here;
+                    }
                 }
 
                 function firstVisibleIdx() {
@@ -219,17 +293,34 @@ async function openAndCheck(app, book, deep) {
                 }
 
                 return {
-                    absolute, relative,
+                    absolute, relative, loaded, broken, brokenSrcs, coverRatio, coverBoxRatio,
+                    carriers, found, missed,
                     outlineMoved, outlineTarget,
                     hasLinks: linkBlock >= 0, linkHref: linkHref,
                     linkMoved, linkTarget,
+                    tocClickMoved, tocClickHref, tocClickTarget, tocClickText,
                     dirty: (function () { updateStatsNow(); return null; })()
                 };
             });
 
+            info('image blocks ' + JSON.stringify(nav.carriers) + ', mounted ' +
+                 JSON.stringify(nav.found) + ', missed ' + JSON.stringify(nav.missed));
             info('image srcs: ' + nav.absolute + ' resolved, ' + nav.relative + ' left relative');
             assert(nav.relative === 0 && nav.absolute > 0,
                 'every image src resolves to the extracted assets (' + nav.absolute + ')');
+
+            info('images that actually loaded: ' + nav.loaded + ', broken ' + nav.broken +
+                 (nav.brokenSrcs.length ? ' ' + JSON.stringify(nav.brokenSrcs) : ''));
+            assert(nav.loaded > 0 && nav.broken === 0,
+                'the bytes arrive: a rewritten src that 404s is still a broken image');
+
+            if (nav.coverRatio !== null) {
+                const skew = Math.abs(nav.coverBoxRatio - nav.coverRatio) / nav.coverRatio;
+                info('cover renders at ' + nav.coverBoxRatio.toFixed(3) +
+                     ' against a viewBox ratio of ' + nav.coverRatio.toFixed(3));
+                assert(skew < 0.05,
+                    'the cover keeps its aspect ratio (' + (skew * 100).toFixed(1) + '% off)');
+            }
 
             info('outline click -> block ' + nav.outlineTarget);
             assert(nav.outlineMoved, 'clicking an outline entry moves the reader');
@@ -241,6 +332,11 @@ async function openAndCheck(app, book, deep) {
                 info('this book has no resolvable internal links -- its own anchors are ' +
                      'dangling in the file, so there is nothing a reader could follow');
             }
+
+            info('contents click ' + JSON.stringify(nav.tocClickText) + ' (' +
+                 JSON.stringify(nav.tocClickHref) + ') -> block ' + nav.tocClickTarget);
+            assert(nav.tocClickMoved,
+                'clicking an entry on the book’s own contents page jumps to that chapter');
         }
 
         console.log('\n--- a book is never dirty, and opens in Reader ---');
@@ -266,8 +362,42 @@ async function openAndCheck(app, book, deep) {
                 updatePageIndicator();
                 const nums = Array.prototype.map.call(
                     document.querySelectorAll('#page-indicator .page-num'), x => x.innerText);
+                // Geometry, not the attribute. Counting marked blocks passed for weeks
+                // while every chapter still ran on mid-column: in a multi-column layout
+                // every column starts at the container's content top, so a chapter that
+                // really broke sits within a line of it.
+                // "Nothing else in this column sits above it" -- the direct statement of
+                // what a page break means, and immune to margins. Comparing against the
+                // container's top was not: a block whose first child carries a 75px margin
+                // collapses that margin outward, so the block starts 75px into its column
+                // while reporting margin-top 0.
+                const ed = document.getElementById('editor');
+                const all = Array.prototype.slice.call(ed.querySelectorAll('.block'))
+                    .map(b => ({ el: b, r: b.getBoundingClientRect() }))
+                    .filter(x => x.r.height > 0);
+                const colTop = {};
+                for (const x of all) {
+                    const col = Math.round(x.r.left / 10) * 10;
+                    if (colTop[col] === undefined || x.r.top < colTop[col]) colTop[col] = x.r.top;
+                }
+                const marks = all.filter(x => x.el.hasAttribute('data-chapter-start'));
+                let laidOut = 0, atTop = 0;
+                const offenders = [];
+                for (const x of marks) {
+                    laidOut++;
+                    const col = Math.round(x.r.left / 10) * 10;
+                    const off = x.r.top - colTop[col];
+                    if (off <= 2) atTop++;
+                    else if (offenders.length < 4) {
+                        offenders.push(Math.round(off) + 'px below its column top: ' +
+                            x.el.innerText.replace(/\s+/g, ' ').slice(0, 30));
+                    }
+                }
                 return {
-                    chapterStarts: document.querySelectorAll('#editor .block[data-chapter-start]').length,
+                    chapterStarts: marks.length,
+                    laidOut: laidOut,
+                    atTop: atTop,
+                    offenders: offenders,
                     nums: nums,
                     total: PageMap.count(),
                     current: PageMap.current()
@@ -277,6 +407,10 @@ async function openAndCheck(app, book, deep) {
                 ', page ' + pg.current + ' of ' + pg.total);
             assert(pg.chapterStarts > 0,
                 'chapter starts are marked so they can begin a page (' + pg.chapterStarts + ')');
+            info('chapter starts laid out ' + pg.laidOut + ', at a column top ' + pg.atTop +
+                (pg.offenders.length ? ' | ' + JSON.stringify(pg.offenders) : ''));
+            assert(pg.laidOut === 0 || pg.atTop === pg.laidOut,
+                'every laid-out chapter start begins a column (' + pg.atTop + ' of ' + pg.laidOut + ')');
             const asInts = pg.nums.map(n => parseInt(n, 10)).filter(n => !isNaN(n));
             assert(asInts.length === 2 && asInts[1] === asInts[0] + 1,
                 'the two page numbers of a spread are consecutive (' + JSON.stringify(pg.nums) + ')');
@@ -291,7 +425,11 @@ const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
 try {
     await sleep(3000);
     await openAndCheck(app, primary, true);
-    if (biggest !== primary) await openAndCheck(app, biggest, false);
+    // The omnibus gets the full pass too, not a shallow one. Its assets live in
+    // OEBPS/Images/ and its documents in OEBPS/Text/, so it is the only book here whose
+    // images can catch a base-directory bug -- Matter is flat at the root and resolves
+    // correctly under a base that is wrong for everyone else.
+    if (biggest !== primary) await openAndCheck(app, biggest, true);
 
     console.log('\n=== the book on disk is untouched ===');
     const target = biggest !== primary ? biggest : primary;
