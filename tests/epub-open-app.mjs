@@ -351,6 +351,54 @@ async function openAndCheck(app, book, deep) {
             assert(s2.editable === 'false' && s2.readerClass, 'and stays read-only');
         }
 
+        console.log('\n--- the book’s own typography and page breaks ---');
+        {
+            const bs = await app.eval(async () => {
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                handleCommand('view_set:columns:1');
+                await sleep(1200);
+                handleCommand('view_set:scroll:scroll');
+                await sleep(1500);
+                goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.4));
+                await sleep(2500);
+
+                const sheet = (document.getElementById('book-styles') || {}).textContent || '';
+                const ed = document.getElementById('editor');
+                const prose = Array.prototype.slice.call(ed.querySelectorAll('.block'))
+                    .filter(b => (b.innerText || '').length > 300)
+                    .map(b => b.firstElementChild || b)[0];
+
+                // The reader's own size has to reach the book's text. A stylesheet in rem
+                // is rooted at the application, so the control moves and nothing happens.
+                const was = getComputedStyle(ed).fontSize;
+                const before = prose ? parseFloat(getComputedStyle(prose).fontSize) : 0;
+                ed.style.fontSize = '28px';
+                await sleep(300);
+                const after = prose ? parseFloat(getComputedStyle(prose).fontSize) : 0;
+                ed.style.fontSize = '';
+                await sleep(200);
+                return {
+                    remLeft: /\d\s*rem\b/i.test(sheet),
+                    pagedBreaks: (sheet.match(/page-break-(before|after)\s*:\s*(always|left|right)/gi) || []).length,
+                    columnBreaks: (sheet.match(/break-(before|after)\s*:\s*column/gi) || []).length,
+                    editorFont: was, before: before, after: after
+                };
+            });
+            info('book css: ' + bs.pagedBreaks + ' paged breaks left, ' + bs.columnBreaks +
+                 ' turned into column breaks, rem units left: ' + bs.remLeft);
+            assert(!bs.remLeft,
+                'no rem survives in the book’s css: it is rooted at the application, ' +
+                'not at the reader’s text');
+            assert(bs.pagedBreaks === 0,
+                'the book’s own page breaks are column breaks, which is the only kind ' +
+                'a multi-column layout performs');
+            info('prose at editor ' + bs.editorFont + ': ' + bs.before +
+                 'px, and at 28px: ' + bs.after + 'px');
+            assert(bs.before > 0 && bs.after > bs.before * 1.5,
+                'the reader’s font size reaches the book’s text (' +
+                bs.before + ' -> ' + bs.after + ')');
+        }
+
         console.log('\n--- chapters start pages, and page numbers agree ---');
         {
             const pg = await app.eval(async () => {
@@ -359,42 +407,69 @@ async function openAndCheck(app, book, deep) {
                 await sleep(2500);
                 handleCommand('view_set:scroll:pagination');
                 await sleep(3000);
+                // Measured at two places in the book, not one: doc starts are dense in the
+                // front matter and sparse in the middle, so a single position quietly turns
+                // a thirteen-chapter check into a two-chapter one depending on where the
+                // previous test left the reader.
+                async function measure(at) {
+                    goToModelBlock(at);
+                    await sleep(2000);
+
+                    // Per-fragment rects, not getBoundingClientRect(). A paragraph running
+                    // from one column into the next reports the *union* of its fragments --
+                    // a box spanning both columns -- which buckets by its left edge and
+                    // looks exactly like prose sitting above a chapter heading that had in
+                    // fact broken correctly. That cost a round of chasing a phantom bug.
+                    //
+                    // Text-bearing blocks only, too: a book marks its own breaks with an
+                    // empty div, and now that those are honoured the div is legitimately
+                    // the topmost thing in its column.
+                    const ed = document.getElementById('editor');
+                    const frags = [];
+                    for (const b of ed.querySelectorAll('.block')) {
+                        if (!(b.innerText || '').trim()) continue;
+                        for (const r of b.getClientRects()) {
+                            if (r.height > 0 && r.width > 0) frags.push({ el: b, r: r });
+                        }
+                    }
+                    const colTop = {};
+                    for (const f of frags) {
+                        const col = Math.round(f.r.left / 10) * 10;
+                        if (colTop[col] === undefined || f.r.top < colTop[col]) colTop[col] = f.r.top;
+                    }
+                    const seen = new Set();
+                    const out = { laidOut: 0, atTop: 0, offenders: [] };
+                    for (const x of frags) {
+                        if (!x.el.hasAttribute('data-chapter-start') || seen.has(x.el)) continue;
+                        seen.add(x.el);
+                        out.laidOut++;
+                        const col = Math.round(x.r.left / 10) * 10;
+                        const off = x.r.top - colTop[col];
+                        if (off <= 2) out.atTop++;
+                        else if (out.offenders.length < 4) {
+                            const above = frags.filter(y => Math.round(y.r.left / 10) * 10 === col
+                                && y.r.top < x.r.top - 1)
+                                .sort((a, b) => a.r.top - b.r.top).slice(0, 2)
+                                .map(y => y.el.innerText.replace(/\s+/g, ' ').slice(0, 24));
+                            out.offenders.push(Math.round(off) + 'px below its column top: "' +
+                                x.el.innerText.replace(/\s+/g, ' ').slice(0, 24) +
+                                '", under ' + JSON.stringify(above));
+                        }
+                    }
+                    return out;
+                }
+
+                const front = await measure(0);
+                const mid = await measure(Math.floor(DocumentModel.blocks.length * 0.4));
+                const laidOut = front.laidOut + mid.laidOut;
+                const atTop = front.atTop + mid.atTop;
+                const offenders = front.offenders.concat(mid.offenders).slice(0, 4);
+
                 updatePageIndicator();
                 const nums = Array.prototype.map.call(
                     document.querySelectorAll('#page-indicator .page-num'), x => x.innerText);
-                // Geometry, not the attribute. Counting marked blocks passed for weeks
-                // while every chapter still ran on mid-column: in a multi-column layout
-                // every column starts at the container's content top, so a chapter that
-                // really broke sits within a line of it.
-                // "Nothing else in this column sits above it" -- the direct statement of
-                // what a page break means, and immune to margins. Comparing against the
-                // container's top was not: a block whose first child carries a 75px margin
-                // collapses that margin outward, so the block starts 75px into its column
-                // while reporting margin-top 0.
-                const ed = document.getElementById('editor');
-                const all = Array.prototype.slice.call(ed.querySelectorAll('.block'))
-                    .map(b => ({ el: b, r: b.getBoundingClientRect() }))
-                    .filter(x => x.r.height > 0);
-                const colTop = {};
-                for (const x of all) {
-                    const col = Math.round(x.r.left / 10) * 10;
-                    if (colTop[col] === undefined || x.r.top < colTop[col]) colTop[col] = x.r.top;
-                }
-                const marks = all.filter(x => x.el.hasAttribute('data-chapter-start'));
-                let laidOut = 0, atTop = 0;
-                const offenders = [];
-                for (const x of marks) {
-                    laidOut++;
-                    const col = Math.round(x.r.left / 10) * 10;
-                    const off = x.r.top - colTop[col];
-                    if (off <= 2) atTop++;
-                    else if (offenders.length < 4) {
-                        offenders.push(Math.round(off) + 'px below its column top: ' +
-                            x.el.innerText.replace(/\s+/g, ' ').slice(0, 30));
-                    }
-                }
                 return {
-                    chapterStarts: marks.length,
+                    chapterStarts: laidOut,
                     laidOut: laidOut,
                     atTop: atTop,
                     offenders: offenders,

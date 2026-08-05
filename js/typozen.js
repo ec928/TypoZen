@@ -11402,6 +11402,20 @@
                 // TypoZen owns the page and has already fetched the stylesheets.
                 .replace(/@page[^{]*\{[^}]*\}/gi, '')
                 .replace(/@import[^;]*;/gi, '')
+                // A book marks its own page breaks -- .pb, .pagebreak, .mbppagebreak -- and
+                // says so with page-break-before, which is an alias for break-before: page.
+                // A multi-column layout ignores a paged-media break, so a part title that
+                // has its own page in every other reader ran on mid-column here. Same trap
+                // TypoZen's own rule fell into. left/right mean recto/verso, which a
+                // two-column spread has no notion of; a column break is the honest reading.
+                .replace(/\bpage-break-(before|after)\s*:\s*(always|left|right)\s*(;|})/gi,
+                    function (m, side, how, end) { return 'break-' + side + ': column' + end; })
+                .replace(/\bpage-break-inside\s*:\s*avoid\s*(;|})/gi, 'break-inside: avoid$1')
+                // rem is rooted at the application, not at the reader's text, so a book
+                // asking for 0.88rem renders at 0.88 of TypoZen's UI size and the reader's
+                // own font-size setting cannot touch it. Xeelee does exactly this and came
+                // out at 12.32px while Matter, which uses em, sat at the chosen 14px.
+                .replace(/(\d*\.?\d+)rem\b/gi, '$1em')
                 .replace(/\burl\(\s*(['"]?)([^'")]+)\1\s*\)/gi, function (m, q, u) {
                     if (/^(data:|https?:|\/)/i.test(u)) return m;
                     return 'url("' + base + u.replace(/^\.\//, '') + '")';
