@@ -1694,14 +1694,33 @@ namespace TypoZen
             if (tab == null) return false;
 
             string path = tab.FilePath;
+
+            // A book is a source document, never a save target.
+            //
+            // Opening an .epub extracted it to text and left tab.FilePath pointing at the
+            // book, so Ctrl+S wrote that text straight over it. The loss guard could not
+            // help: ConfirmOverwriteLoss re-reads the old file through ReadTextFileDetect,
+            // which for an .epub runs the extractor -- so it compared extracted text against
+            // extracted text, found nothing lost, and destroyed the book without a prompt.
+            //
+            // Saving an epub therefore always means Save As, defaulting to a .md beside it.
+            // In the reader architecture this is not a guard but the shape of the thing: an
+            // epub document is read-only and writing it out is an export.
+            bool isBook = !string.IsNullOrEmpty(path)
+                && path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+            if (isBook) forceSaveAs = true;
+
             if (forceSaveAs || string.IsNullOrEmpty(path))
             {
                 using (var dlg = new WinForms.SaveFileDialog())
                 {
                     dlg.Filter = "Markdown File (*.md)|*.md|Text File (*.txt)|*.txt|All Files|*.*";
                     dlg.DefaultExt = "md";
-                    dlg.Title = "Save Document";
-                    dlg.FileName = string.IsNullOrEmpty(tab.FilePath) ? "Untitled.md" : Path.GetFileName(tab.FilePath);
+                    dlg.Title = isBook ? "Export Book As" : "Save Document";
+                    dlg.FileName = string.IsNullOrEmpty(tab.FilePath) ? "Untitled.md"
+                        : (isBook
+                            ? Path.GetFileNameWithoutExtension(tab.FilePath) + ".md"
+                            : Path.GetFileName(tab.FilePath));
                     if (!string.IsNullOrEmpty(tab.FilePath))
                     {
                         try { dlg.InitialDirectory = Path.GetDirectoryName(tab.FilePath); } catch { }
@@ -1712,6 +1731,17 @@ namespace TypoZen
             }
 
             try { path = Path.GetFullPath(path); } catch { }
+
+            // Belt and braces: whatever the dialog returned, text never goes into a book.
+            if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+            {
+                WinForms.MessageBox.Show(
+                    "TypoZen will not write text over an .epub file." +
+                    Environment.NewLine + Environment.NewLine +
+                    "Choose a .md or .txt name instead.",
+                    "Export Book", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                return false;
+            }
 
             // Never leave two tabs on the same path (Save As collision → silent overwrite).
             int otherIdx = IndexOfTabPath(path);
