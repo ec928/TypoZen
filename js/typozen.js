@@ -1322,6 +1322,143 @@
         // column switches unchanged, because a switch moves the view, not the reader.
         let _readingAnchor = -1;
 
+        /**
+         * Pagination in ranges, so the browser is not asked to fragment the whole document.
+         *
+         * Pagination and virtualisation are mutually exclusive: the browser can only break
+         * content it has laid out, so entering page mode mounts everything. That is correct
+         * and it is what costs ~66ms per keystroke on a 3767-block document against ~7ms in
+         * a scrolling view -- one multi-column flow, re-fragmented per character. An epub is
+         * the same shape with an order of magnitude more content.
+         *
+         * The document is therefore laid out one fixed range of blocks at a time. Each range
+         * has a page count; the cumulative sum gives the global page number. This is exactly
+         * DocumentModel.blockHeights and prefixHeight() one level up -- per-range pages
+         * instead of per-block pixels -- and it carries the same rules, which were all
+         * learned the expensive way:
+         *
+         *   - estimate, then refine from measurement (estimateBlockHeight)
+         *   - a structural edit SPLICES the map, it does not discard it: throwing away every
+         *     measurement moved the viewport by the accumulated estimate error
+         *   - the range on screen is measured exactly, never trusted from its estimate
+         *
+         * Blocks are the anchor, not page numbers. Page numbers move as estimates are
+         * refined; block indices do not, and the column round trip already depends on that.
+         */
+        const PageChunks = {
+            /** Blocks per range. Large enough that turning pages rarely crosses one. */
+            size: 400,
+            /** Pages per range: measured where known, estimated elsewhere. */
+            counts: null,
+            /** Which entries in counts came from a real layout. */
+            measured: null,
+            /** Pages per block, refined as ranges are measured. Seeds the estimates. */
+            perBlock: 0.06,
+            /** The range currently laid out, or -1. */
+            mounted: -1,
+
+            chunkCount: function (nBlocks) {
+                return Math.max(1, Math.ceil(Math.max(0, nBlocks | 0) / this.size));
+            },
+
+            chunkOfBlock: function (bi) {
+                const c = Math.floor(Math.max(0, bi | 0) / this.size);
+                return this.counts ? Math.min(c, this.counts.length - 1) : c;
+            },
+
+            firstBlockOfChunk: function (c) { return Math.max(0, c | 0) * this.size; },
+
+            /** Build or resize the map. Existing measurements survive. */
+            ensure: function (nBlocks) {
+                const n = this.chunkCount(nBlocks);
+                if (!this.counts) { this.counts = []; this.measured = []; }
+                while (this.counts.length < n) {
+                    this.counts.push(this.estimateChunkPages(this.counts.length, nBlocks));
+                    this.measured.push(false);
+                }
+                if (this.counts.length > n) {
+                    this.counts.length = n;
+                    this.measured.length = n;
+                }
+                return n;
+            },
+
+            /** Pages a range is expected to need, from its block count. */
+            estimateChunkPages: function (c, nBlocks) {
+                const start = this.firstBlockOfChunk(c);
+                const blocks = Math.max(1, Math.min(this.size, (nBlocks | 0) - start));
+                return Math.max(1, Math.round(blocks * this.perBlock));
+            },
+
+            /**
+             * Record a real page count. Only this range's entry changes; every other
+             * measurement is left alone, so the pages before the edit do not move.
+             */
+            setMeasured: function (c, pages) {
+                if (!this.counts || c < 0 || c >= this.counts.length) return;
+                this.counts[c] = Math.max(1, pages | 0);
+                this.measured[c] = true;
+                // Refine the estimate for ranges not yet laid out.
+                let sumPages = 0, sumBlocks = 0;
+                for (let i = 0; i < this.counts.length; i++) {
+                    if (!this.measured[i]) continue;
+                    sumPages += this.counts[i];
+                    sumBlocks += this.size;
+                }
+                if (sumBlocks > 0) {
+                    this.perBlock = Math.max(0.005, Math.min(1, sumPages / sumBlocks));
+                }
+            },
+
+            /** Pages before range c. */
+            prefixPages: function (c) {
+                if (!this.counts) return 0;
+                let n = 0;
+                const end = Math.min(c | 0, this.counts.length);
+                for (let i = 0; i < end; i++) n += this.counts[i] || 1;
+                return n;
+            },
+
+            totalPages: function () {
+                return this.prefixPages(this.counts ? this.counts.length : 0);
+            },
+
+            /** Which range holds a global page, and the page's index within it. */
+            locatePage: function (p) {
+                if (!this.counts || !this.counts.length) return { chunk: 0, local: 0 };
+                let want = Math.max(0, p | 0);
+                for (let i = 0; i < this.counts.length; i++) {
+                    const n = this.counts[i] || 1;
+                    if (want < n) return { chunk: i, local: want };
+                    want -= n;
+                }
+                const last = this.counts.length - 1;
+                return { chunk: last, local: (this.counts[last] || 1) - 1 };
+            },
+
+            /**
+             * A structural edit. The range that changed loses its measurement -- its page
+             * count really is unknown now -- and ranges after it shift if the block count
+             * crossed a boundary. Everything else keeps what it measured, which is the rule
+             * that stopped the viewport moving on every insert in the scrolling path.
+             */
+            spliceBlocks: function (atBlock, delta, nBlocksAfter) {
+                if (!this.counts) return;
+                const c = this.chunkOfBlock(atBlock);
+                if (c >= 0 && c < this.measured.length) {
+                    this.measured[c] = false;
+                    this.counts[c] = this.estimateChunkPages(c, nBlocksAfter);
+                }
+                this.ensure(nBlocksAfter);
+            },
+
+            invalidate: function () {
+                this.counts = null;
+                this.measured = null;
+                this.mounted = -1;
+            }
+        };
+
         const PageMap = {
             width: function () {
                 return Math.max(1, (editor ? editor.clientWidth : 0) + twoColGap());
