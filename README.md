@@ -31,13 +31,17 @@ Virtualized Preview keeps a per-block height map, estimated from the raw Markdow
 
 Each theme is built around a deliberately chosen typeface, not just a colour palette — the reading themes use **Literata** and **Merriweather** because they were designed for long-form reading; the UI themes use **Inter** and **Source Sans 3** for clarity at small sizes.
 
-- **Fonts ship with the app.** The four families live in `fonts/` (~12 MB), so every theme looks the way it was designed on any machine — no manual installation, nothing to hunt down, and **no font is ever fetched from the network**. TypoZen works identically offline, on a locked-down network, or on a fresh PC. (The app requests nothing over the network at all — though the WebView2 runtime beneath it does; see [Network behaviour](#network-behaviour).)
+- **Fonts ship with the app.** The families live in `fonts/`, so every theme looks the way it was designed on any machine — no manual installation, nothing to hunt down, and **no font is ever fetched from the network**. TypoZen works identically offline, on a locked-down network, or on a fresh PC. (The app requests nothing over the network at all — though the WebView2 runtime beneath it does; see [Network behaviour](#network-behaviour).)
 - **Your installed copies win.** Each `@font-face` lists `local()` first, so if you already have Inter or Literata installed, that's what renders and the bundled file is never touched.
 - **Deep recursive theming** — selecting a theme walks the WPF logical and visual trees, so menus, dropdowns, toolbar, sidebar and status bar all inherit matching background, foreground, border and accent brushes.
 - **Themes → Customize Theme…** — name, colours and font preset with live preview, **Save as New** (built-ins are never overwritten), Reset, and Cancel that restores the theme you started with.
 - Mono themes prefer **Cascadia Mono** / **Consolas**, which ship with Windows.
 
-All four families are SIL Open Font Licence, which permits redistribution.
+The four bundled by default (Inter, Source Sans 3, Merriweather, Literata) are SIL Open Font Licence, which permits redistribution.
+
+> **Bookerly is not.** It is Amazon's, drawn by Dalton Maag, and its copyright forbids redistribution without written permission. Two themes name it, and before it was bundled they silently rendered Georgia instead: an "install for me only" copy registers under HKCU and the WebView2 renderer sandbox does not enumerate per-user fonts, so `local('Bookerly')` found nothing. It is fine in a private build; remove `fonts/Bookerly*.ttf` and its `@font-face` block before distributing to anyone else.
+
+> **Merriweather is 4.4 MB, and it is not the letterforms.** Its outlines are 144 KB, the smallest serif here. `GPOS` and `GDEF` account for 3.3 MB: it carries three variable axes (`wght`, `wdth`, `opsz`), so every kerning pair stores deltas for each axis combination. Inter has two axes and 150 KB of `GPOS`. Pinning `wdth` and `opsz` would recover most of it. `tests/fonts-selftest.mjs` checks that variable families declare their weight range, since a single declared weight pins the axis and makes the browser synthesise faux-bold.
 
 > Earlier versions pulled these from Google Fonts via a `<link>` in `<head>`. That was a render-blocking network round trip on every cold start of a local editor, and because Google's CSS omits `local()`, it shadowed already-installed copies and re-downloaded them. Bundling removed both problems.
 
