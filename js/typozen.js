@@ -585,6 +585,7 @@
             findState.query = '';
             findState.matches = [];
             findState.ranges = [];
+            findState.currentRange = -1;
             findState.index = -1;
             updateFindCount();
         }
@@ -640,6 +641,8 @@
             } else {
                 const surface = getFindHaystack();
                 findState.ranges = rangesFromWysiwygMatches(findState.matches, surface.map);
+                // Visual path: ranges covers every match, so findState.index indexes it directly.
+                findState.currentRange = -1;
                 applyWysiwygHighlights();
                 const r = findState.ranges[findState.index];
                 if (r) {
@@ -1642,8 +1645,14 @@
             try {
                 const all = new Highlight(...findState.ranges);
                 CSS.highlights.set('typozen-find', all);
-                if (findState.index >= 0 && findState.index < findState.ranges.length) {
-                    CSS.highlights.set('typozen-find-current', new Highlight(findState.ranges[findState.index]));
+                // findState.index counts matches in the whole document; ranges holds only
+                // what is mounted. findState.currentRange is the position of the active
+                // match within THIS list, and is the only one of the two that can index it.
+                const cur = (findState.currentRange != null && findState.currentRange >= 0)
+                    ? findState.currentRange
+                    : findState.index;
+                if (cur >= 0 && cur < findState.ranges.length) {
+                    CSS.highlights.set('typozen-find-current', new Highlight(findState.ranges[cur]));
                 }
             } catch (e) {
                 // Highlight API unavailable — still navigate via selection
@@ -1785,45 +1794,87 @@
          * Highlight a model match inside already-mounted DOM (no scroll/remount).
          * Returns true if a visual range was applied.
          */
+        /**
+         * Highlight EVERY match on screen, and mark the current one.
+         *
+         * This used to build a range for the current match alone. Once the search surface
+         * became the model for every document, that made it the only path there is -- so a
+         * page showing eight hits highlighted one, and every other editor's behaviour
+         * (highlight them all, distinguish the active one) was quietly lost.
+         *
+         * The active one disappeared with it: applyWysiwygHighlights marks
+         * ranges[findState.index], and findState.index is the index among ALL matches in
+         * the document. Against a one-element array, match 7 of 2135 asked for ranges[7]
+         * and got undefined, so nothing was marked current either.
+         *
+         * Model offsets are offsets into the raw markdown; the DOM has the markers removed,
+         * so they do not correspond. Matches are counted per block and paired with that
+         * block's own matches in order, which is what the single-match version did and is
+         * the only mapping that survives rendering.
+         */
         function highlightModelMatchInMountedDom(match, navigate) {
-            if (!match || !editor || typeof DocumentModel === 'undefined') return false;
-            const loc = markdownOffsetToBlock(match.start);
-            const blockIdx = loc.blockIndex;
-            const blockEl = editor.querySelector('.block[data-model-index="' + blockIdx + '"]');
-            if (!blockEl) {
+            if (!editor || typeof DocumentModel === 'undefined') return false;
+            const q = findState.query;
+            const opts = getFindOptions();
+
+            // Model start offset of every block, in one walk. Doing this per match via
+            // markdownOffsetToBlock is O(blocks) each -- 8M iterations for this document.
+            const blocks = DocumentModel.blocks || [];
+            const starts = new Array(blocks.length);
+            let pos = 0;
+            for (let i = 0; i < blocks.length; i++) {
+                starts[i] = pos;
+                pos += String(blocks[i].raw == null ? '' : blocks[i].raw).length + 1;
+            }
+
+            // Group matches by block. Matches ascend, so the block pointer only moves on.
+            const byBlock = new Map();
+            let bi = 0;
+            for (let i = 0; i < findState.matches.length; i++) {
+                const s = findState.matches[i].start;
+                while (bi < blocks.length - 1 && s >= starts[bi + 1]) bi++;
+                let list = byBlock.get(bi);
+                if (!list) { list = []; byBlock.set(bi, list); }
+                list.push(i);
+            }
+
+            const ranges = [];
+            let currentRange = -1;
+            const mounted = editor.querySelectorAll('.block[data-model-index]');
+            for (let n = 0; n < mounted.length; n++) {
+                const el = mounted[n];
+                const idx = parseInt(el.getAttribute('data-model-index'), 10);
+                const globals = byBlock.get(idx);
+                if (!globals || !globals.length) continue;
+                const local = buildSearchIndexInRoot(el);
+                const localMatches = findAllIndices(local.haystack, q, opts);
+                if (!localMatches.length) continue;
+                const built = rangesFromWysiwygMatches(localMatches, local.map);
+                for (let k = 0; k < built.length; k++) {
+                    if (globals[k] === findState.index) currentRange = ranges.length;
+                    ranges.push(built[k]);
+                }
+            }
+
+            if (!ranges.length) {
                 findState.ranges = [];
+            findState.currentRange = -1;
                 clearFindHighlights();
                 return false;
             }
-
-            const q = findState.query;
-            const opts = getFindOptions();
-            const local = buildSearchIndexInRoot(blockEl);
-            const localMatches = findAllIndices(local.haystack, q, opts);
-
-            // Which model match is this among matches that land in the same block?
-            let which = 0;
-            for (let i = 0; i < findState.matches.length; i++) {
-                const mm = findState.matches[i];
-                if (mm.start === match.start && mm.end === match.end) break;
-                const loc2 = markdownOffsetToBlock(mm.start);
-                if (loc2.blockIndex === blockIdx) which++;
-            }
-
-            let ranges = [];
-            if (localMatches.length) {
-                const pick = localMatches[Math.min(which, localMatches.length - 1)];
-                ranges = rangesFromWysiwygMatches([pick], local.map);
-            }
             findState.ranges = ranges;
+            findState.currentRange = currentRange;
             applyWysiwygHighlights();
-            if (ranges.length && ranges[0]) {
-                scrollRangeIntoMain(ranges[0]);
+            // Scroll to and select the CURRENT match, not the first one on screen. With
+            // only one range built these were the same thing; they are not any more.
+            const active = ranges[currentRange >= 0 ? currentRange : 0];
+            if (active) {
+                scrollRangeIntoMain(active);
                 if (navigate) {
                     try {
                         const sel = window.getSelection();
                         sel.removeAllRanges();
-                        sel.addRange(ranges[0].cloneRange());
+                        sel.addRange(active.cloneRange());
                     } catch (eSel) {}
                 }
                 return true;
@@ -1917,6 +1968,7 @@
             clearFindHighlights();
             findState.matches = [];
             findState.ranges = [];
+            findState.currentRange = -1;
             const opts = getFindOptions();
 
             if (!q) {
@@ -1949,6 +2001,8 @@
                 }
             } else {
                 findState.ranges = rangesFromWysiwygMatches(findState.matches, surface.map);
+                // Visual path: ranges covers every match, so findState.index indexes it directly.
+                findState.currentRange = -1;
                 applyWysiwygHighlights();
                 if (navigate && findState.index >= 0 && findState.ranges[findState.index]) {
                     scrollRangeIntoMain(findState.ranges[findState.index]);
@@ -2062,6 +2116,8 @@
                 // Rebuild ranges from current visual text (same list as matches)
                 const surface = getFindHaystack();
                 findState.ranges = rangesFromWysiwygMatches(findState.matches, surface.map);
+                // Visual path: ranges covers every match, so findState.index indexes it directly.
+                findState.currentRange = -1;
                 applyWysiwygHighlights();
                 const r = findState.ranges[findState.index];
                 if (r) {
