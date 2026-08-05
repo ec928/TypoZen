@@ -8297,10 +8297,74 @@
             /** Per-block pixel heights for virt scroll mapping (null = rebuild). */
             blockHeights: null,
 
+            /**
+             * What a block's `raw` holds: 'markdown' or 'epub'.
+             *
+             * The model has always been "one canonical raw string per block, rendered to a
+             * preview" -- nothing in that requires the raw to be Markdown. A book carries
+             * its own HTML instead, rendered under its own stylesheet, so there is no
+             * conversion step and therefore nothing for a conversion to lose. Measured on
+             * Blindsight, converting to Markdown dropped every image, every link, every list
+             * item and every footnote reference, and broke 16 of 17 headings.
+             *
+             * Everything downstream still works on blocks and does not care which this is:
+             * search, the outline, pagination, page windowing, themes, tabs.
+             */
+            kind: 'markdown',
+
+            isBook: function () { return this.kind === 'epub'; },
+
+            /**
+             * The visible text of a block, whatever its raw holds.
+             *
+             * Search, the outline and the status counts want what a reader can see, never
+             * markup: searching a book must not match `class` or `href`. For Markdown the
+             * raw is close enough to the text to use directly -- that is what every existing
+             * caller already assumes. For a book the text is parsed out once and kept, since
+             * a search haystack over a novel would otherwise reparse thousands of fragments
+             * on every keystroke.
+             */
+            blockText: function (i) {
+                const b = this.blocks[i];
+                if (!b) return '';
+                if (this.kind !== 'epub') return b.raw == null ? '' : String(b.raw);
+                if (b.text == null) b.text = htmlFragmentToText(b.raw);
+                return b.text;
+            },
+
+            /** The whole document as readable text. The search surface for a book. */
+            toPlainText: function () {
+                const out = [];
+                for (let i = 0; i < this.blocks.length; i++) out.push(this.blockText(i));
+                return out.join('\n');
+            },
+
+            /**
+             * Load a book: one block per top-level element of each spine document, in
+             * reading order, already split by the host.
+             */
+            fromBookBlocks: function (htmlBlocks) {
+                this.blocks = [];
+                this._nextId = 1;
+                this.kind = 'epub';
+                for (let i = 0; i < htmlBlocks.length; i++) {
+                    this.blocks.push({
+                        id: this._nextId++,
+                        raw: htmlBlocks[i] == null ? '' : String(htmlBlocks[i]),
+                        text: null
+                    });
+                }
+                this.invalidateHeights();
+                return this.blocks.length;
+            },
+
             fromMarkdown: function (text) {
                 const raws = splitMarkdownToBlockRaws(text);
                 this.blocks = [];
                 this._nextId = 1;
+                // Opening a Markdown document after a book must go back to rendering
+                // Markdown; the kind belongs to the document, not to the session.
+                this.kind = 'markdown';
                 for (let i = 0; i < raws.length; i++) {
                     this.blocks.push({
                         id: this._nextId++,
@@ -10708,9 +10772,71 @@
             }
         }
 
+        /**
+         * A book's HTML fragment as the text a reader sees.
+         *
+         * Never a regex over the markup: search, the outline and the word count all run on
+         * this, and matching inside `class` or `href` would be both wrong and invisible.
+         * DOMParser gives the browser's own answer.
+         */
+        function htmlFragmentToText(html) {
+            if (html == null) return '';
+            const s = String(html);
+            if (s.indexOf('<') < 0) return s;          // plain text already
+            try {
+                const doc = new DOMParser().parseFromString(s, 'text/html');
+                return (doc.body.textContent || '').replace(/[ \t\u00a0]+/g, ' ').trim();
+            } catch (e) {
+                return s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            }
+        }
+
+        /**
+         * Strip anything executable from a book's markup before it enters the page.
+         *
+         * The HTML comes from a file the user opened, which is not the same as trusting it.
+         * Scripts, event handlers and javascript: URLs are removed; everything structural is
+         * left exactly as the book wrote it, because that fidelity is the whole reason for
+         * carrying HTML rather than converting it.
+         */
+        function sanitizeBookHtml(html) {
+            if (html == null) return '';
+            try {
+                const doc = new DOMParser().parseFromString(String(html), 'text/html');
+                const kill = doc.body.querySelectorAll('script, iframe, object, embed, link, meta, base, form');
+                for (let i = 0; i < kill.length; i++) kill[i].remove();
+                const all = doc.body.querySelectorAll('*');
+                for (let i = 0; i < all.length; i++) {
+                    const el = all[i];
+                    const attrs = el.attributes;
+                    for (let a = attrs.length - 1; a >= 0; a--) {
+                        const name = attrs[a].name.toLowerCase();
+                        const val = String(attrs[a].value || '');
+                        if (name.indexOf('on') === 0) { el.removeAttribute(attrs[a].name); continue; }
+                        if ((name === 'href' || name === 'src' || name === 'xlink:href')
+                            && /^\s*javascript:/i.test(val)) {
+                            el.removeAttribute(attrs[a].name);
+                        }
+                    }
+                }
+                return doc.body.innerHTML;
+            } catch (e) {
+                return '';
+            }
+        }
+
         function renderBlockPreview(block, rawInput = null) {
             const raw = rawInput !== null ? rawInput : (block.getAttribute('data-raw') || '');
             clearListIndentClasses(block);
+
+            // A book's block renders its own markup. Everything below this is the Markdown
+            // renderer, and none of it applies: there is no list indent to derive, no fence
+            // to detect, no inline syntax to parse. The book already said what it meant.
+            if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') {
+                block.innerHTML = sanitizeBookHtml(raw);
+                return;
+            }
+
             setBlockListIndentAttr(block, raw);
 
             if (!raw.trim()) {
