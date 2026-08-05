@@ -1,18 +1,21 @@
 # Phase 5 — open EPUB defects (handover)
 
-State at `bf32da0`. 46 suites green, `epub-open-app` 29/29 — and the book still renders
+State at `bf32da0`, plus the two fixes below. 46 suites green, `epub-open-app` 29/29 — and the book still renders
 wrong in three ways. Every green assertion here is structural; none of them looks at a
 rendered pixel, which is why they pass. Fixing the tests is part of each fix below, not a
 separate task.
 
 Reported against the build of 2026-08-05, on `Xeelee Sequence` and `Matter`:
 
-| | Xeelee | Matter |
-|---|---|---|
-| cover / images | **broken-image placeholder** | renders, but **squashed** |
-| chapter page breaks | **none** | **none** |
-| TOC links | worked | **don't jump** |
-| outline | worked | worked |
+| | Xeelee | Matter | status |
+|---|---|---|---|
+| cover / images | **broken-image placeholder** | renders, but **squashed** | fixed below, unverified on screen |
+| chapter page breaks | **none** | **none** | open |
+| TOC links | worked | **don't jump** | open |
+| outline | worked | worked | — |
+
+Sections 1 and 2 were fixed after this was written; the fixes are described in place and the
+binary is rebuilt, but nobody has looked at a rendered cover yet. 3 and 4 are untouched.
 
 ---
 
@@ -31,10 +34,12 @@ root, so every href is already correct relative to the base and it works **by ac
 Xeelee's `../Images/…` resolved against the base escapes the document's directory and
 404s — hence the placeholder. 460 spine docs, 38 image files, all under `OEBPS/Images/`.
 
-**Fix.** Resolution needs a per-document base. `bookBlocksFromDocs` already walks the docs
-and returns `docStarts`; have it also record each block's owning doc href, and resolve
-`assetsBase + dirname(docHref) + href` (normalising `..` segments). A parallel
-`_bookDocBase[blockIndex]` mirrors the existing `_bookDocStarts` shape.
+**Fixed.** `bookBlocksFromDocs` now also returns `dirs` — the owning document's directory
+per block — which `loadBookPayload` keeps in `_bookBlockDirs`. `bookResolveUrl(href, docDir)`
+resolves against `assetsBase + docDir`, so `new URL` does the `../` walking.
+`createPreviewBlockEl` takes the model index and sets `data-model-index` **before** the
+render rather than after, since the rewrite runs inside the render and needs the index to
+find the directory.
 
 **Test.** The current image assertion checks the `src` was *rewritten*. It must instead
 assert the resource actually loaded — `img.naturalWidth > 0`, and for SVG covers, fetch the
@@ -55,11 +60,11 @@ Xeelee   <svg width="100%" height="100%" viewBox="0 0 500 739" preserveAspectRat
 bound from the last commit is met by distorting a 510×680 cover. Xeelee carries `meet` and
 would be fine, if its href resolved.
 
-**Fix.** Chromium does not honour `preserve-aspect-ratio` from CSS, so this has to be done
-in the markup: in `sanitizeBookHtml` (or alongside the href rewrite in `rewriteBookUrls`),
-drop `preserveAspectRatio="none"` so the default `xMidYMid meet` applies. With a `viewBox`
-present, `width:auto; height:auto; max-width:100%; max-height:68vh` then sizes it on its
-intrinsic ratio.
+**Fixed.** Chromium will not take `preserve-aspect-ratio` from CSS, so `rewriteBookUrls`
+strips `preserveAspectRatio="none"` from the markup and the `xMidYMid meet` default applies.
+The svg rule also had `height: auto` but no `width`, leaving the markup's `width="100%"` to
+hold the width while the height clamped — letterboxing at best. Both are `auto` now, so the
+viewBox ratio drives the size and `max-height` takes the width down with it.
 
 **Test.** Measure the rendered `getBoundingClientRect()` of the cover and assert
 `width/height` is within a few percent of the `viewBox` ratio. That is the assertion that
@@ -81,15 +86,12 @@ if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
 index from `split.docStarts`, and Xeelee has 460 spine docs, so there is no shortage of
 starts. So either the attribute isn't reaching the DOM or the break isn't being honoured.
 
-**Prime suspect: a scope mismatch.** `let _bookDocStarts = {}` is declared at
-`js/typozen.js:8997`, but the mount sites that *read* it sit at 8957, 9156 and 10945, and
-the assignment is at 10902. Check that all four are the same binding and not a local
-shadowing an outer one (or an assignment landing on an implicit global). Verify first by
-counting `[data-chapter-start]` elements in the mounted DOM against the expected doc count
-for the current page window — if the count is 0, it's the binding; if it's right, the
-problem is the multicol break itself.
+**Ruled out: a scope mismatch.** The declaration and all four read/write sites sit at the
+same indentation level in the same IIFE, so they are one binding. Start instead by counting
+`[data-chapter-start]` elements in the mounted DOM against the doc count for the current
+page window — that single number splits the remaining two causes.
 
-**Second suspect, if the attribute is present.** Page windowing lays out one `PageChunks`
+**Prime suspect: page windowing.** Page windowing lays out one `PageChunks`
 range at a time; a `break-before: column` on the first block of a chunk is a no-op, and a
 chunk boundary falling mid-chapter can swallow a break. Worth confirming against a
 non-windowed load of the same book.
@@ -135,7 +137,7 @@ well as Matter, since the two books fail in opposite directions.
 ## Reproduction
 
 ```bash
-node tests/run-all.mjs
+powershell -File tests/run-tests.ps1
 ```
 
 Books are in `tests/`: Xeelee (460 spine docs, nested assets), Matter (42 docs, flat),

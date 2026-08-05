@@ -1558,7 +1558,7 @@
             const frag = document.createDocumentFragment();
             for (let i = start; i < end; i++) {
                 const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
-                const el = createPreviewBlockEl(raw, false);
+                const el = createPreviewBlockEl(raw, false, i);
                 el.setAttribute('data-model-index', String(i));
                 if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                 frag.appendChild(el);
@@ -8952,7 +8952,7 @@
 
                     for (let i = s; i < e; i++) {
                         const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
-                        const el = createPreviewBlockEl(raw, false);
+                        const el = createPreviewBlockEl(raw, false, i);
                         el.setAttribute('data-model-index', String(i));
                 if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                     if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
@@ -8996,11 +8996,16 @@
         /** Block indices that begin a spine document, i.e. a chapter. */
         let _bookDocStarts = {};
 
-        function createPreviewBlockEl(raw, progressive) {
+        function createPreviewBlockEl(raw, progressive, modelIndex) {
             const block = document.createElement('div');
             block.className = 'block';
             const initialRaw = raw == null ? '' : String(raw);
             block.setAttribute('data-raw', initialRaw);
+            // Before the render, not after: a book's markup resolves its images against the
+            // document it came from, and it can only find that from its own model index.
+            if (modelIndex !== undefined && modelIndex !== null) {
+                block.setAttribute('data-model-index', String(modelIndex));
+            }
             if (progressive) {
                 block.setAttribute('data-tz-paint', '1');
                 block.textContent = initialRaw;
@@ -9151,7 +9156,7 @@
             if (!windowedCreate) {
                 const frag = document.createDocumentFragment();
                 for (let i = 0; i < blockRaws.length; i++) {
-                    const el = createPreviewBlockEl(blockRaws[i], progressive);
+                    const el = createPreviewBlockEl(blockRaws[i], progressive, i);
                     el.setAttribute('data-model-index', String(i));
                 if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                     if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
@@ -9175,7 +9180,7 @@
                 const frag = document.createDocumentFragment();
                 const end = Math.min(createIdx + CREATE_BATCH, blockRaws.length);
                 for (; createIdx < end; createIdx++) {
-                    const el = createPreviewBlockEl(blockRaws[createIdx], true);
+                    const el = createPreviewBlockEl(blockRaws[createIdx], true, createIdx);
                     el.setAttribute('data-model-index', String(createIdx));
                     frag.appendChild(el);
                 }
@@ -10903,6 +10908,7 @@
             for (let i = 0; i < split.docStarts.length; i++) _bookDocStarts[split.docStarts[i]] = 1;
             _bookAssetsBase = String(data.assetsBase || '');
             _bookDocIndex = split.docStart;
+            _bookBlockDirs = split.dirs || [];
             _bookAnchorIndex = null;   // belongs to the book that is open, not to the session
 
             // Styles before blocks: the first paint should already be the book's own
@@ -10940,7 +10946,7 @@
             } else {
                 const frag = document.createDocumentFragment();
                 for (let i = 0; i < DocumentModel.blocks.length; i++) {
-                    const el = createPreviewBlockEl(DocumentModel.blocks[i].raw, false);
+                    const el = createPreviewBlockEl(DocumentModel.blocks[i].raw, false, i);
                     el.setAttribute('data-model-index', String(i));
                 if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                     if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
@@ -10978,17 +10984,30 @@
          */
         let _bookAssetsBase = '';
         let _bookDocIndex = {};
+        let _bookBlockDirs = [];
 
         /** Resolve a book-relative path against the extracted assets, keeping ../ honest. */
-        function bookResolveUrl(href) {
+        function bookResolveUrl(href, docDir) {
             const h = String(href == null ? '' : href).trim();
             if (!h || /^(data:|https?:|mailto:|blob:)/i.test(h)) return h;
             if (!_bookAssetsBase) return h;
+            // The base is the book root plus the directory of the document this markup came
+            // from. new URL then does the ../ walking, so a chapter in Text/ reaching into
+            // Images/ resolves the way the publisher wrote it.
+            const base = _bookAssetsBase + String(docDir || '');
             try {
-                return new URL(h.replace(/^\.\//, ''), _bookAssetsBase).href;
+                return new URL(h.replace(/^\.\//, ''), base).href;
             } catch (e) {
-                return _bookAssetsBase + h.replace(/^(\.\/|\/)/, '');
+                return base + h.replace(/^(\.\/|\/)/, '');
             }
+        }
+
+        /** The directory of the spine document a mounted block came from. */
+        function bookDirOfBlockEl(el) {
+            if (!el || !_bookBlockDirs.length) return '';
+            const n = parseInt(el.getAttribute('data-model-index'), 10);
+            if (!isFinite(n) || n < 0) return '';
+            return _bookBlockDirs[n] || '';
         }
 
         /**
@@ -11004,13 +11023,14 @@
          */
         function rewriteBookUrls(root) {
             if (!root) return;
+            const dir = bookDirOfBlockEl(root);
             try {
                 const imgs = root.querySelectorAll('img');
                 for (let i = 0; i < imgs.length; i++) {
                     const el = imgs[i];
                     const raw = el.getAttribute('src');
                     if (!raw) continue;
-                    const abs = bookResolveUrl(raw);
+                    const abs = bookResolveUrl(raw, dir);
                     if (abs !== raw) el.setAttribute('src', abs);
                     if (!el.getAttribute('loading')) el.setAttribute('loading', 'lazy');
                 }
@@ -11018,6 +11038,17 @@
                 // Covers are almost always an SVG wrapper around <image xlink:href>, not an
                 // <img> at all -- both test books do it, and it is the first thing a reader
                 // sees. Nothing above touches those, so the cover never loaded.
+                // Calibre's title pages carry preserveAspectRatio="none" on that wrapper,
+                // which tells the renderer to stretch the cover to whatever box it is given
+                // -- so bounding its height squashes it instead of scaling it. Dropping the
+                // attribute restores the xMidYMid meet default. Chromium will not take this
+                // from CSS, so it has to be done in the markup.
+                const svgs = root.querySelectorAll('svg[preserveAspectRatio]');
+                for (let i = 0; i < svgs.length; i++) {
+                    const pav = svgs[i].getAttribute('preserveAspectRatio') || '';
+                    if (/\bnone\b/i.test(pav)) svgs[i].removeAttribute('preserveAspectRatio');
+                }
+
                 const svgImgs = root.querySelectorAll('image');
                 const XLINK = 'http://www.w3.org/1999/xlink';
                 for (let i = 0; i < svgImgs.length; i++) {
@@ -11025,7 +11056,7 @@
                     const raw = el.getAttributeNS(XLINK, 'href') || el.getAttribute('href')
                         || el.getAttribute('xlink:href');
                     if (!raw) continue;
-                    const abs = bookResolveUrl(raw);
+                    const abs = bookResolveUrl(raw, dir);
                     if (abs === raw) continue;
                     try { el.setAttributeNS(XLINK, 'xlink:href', abs); } catch (eNs) {}
                     el.setAttribute('href', abs);
@@ -11195,16 +11226,25 @@
             const blocks = [];
             const docStart = {};
             const starts = [];
+            // A block's images are relative to the document it came from, not to the book
+            // root, so each block has to remember its own directory. Xeelee's cover lives in
+            // OEBPS/Text/cover_page.xhtml and points at ../Images/cover.jpeg; resolving that
+            // against one shared base lands a level too high and the image 404s. Matter is
+            // flat at the root, which is the only reason a shared base ever appeared to work.
+            const dirs = [];
             for (let i = 0; i < (docs ? docs.length : 0); i++) {
                 docStart[bookNormalizeHref(docs[i].href)] = blocks.length;
+                const href = String(docs[i].href || '').replace(/\\/g, '/');
+                const dir = href.indexOf('/') >= 0 ? href.slice(0, href.lastIndexOf('/') + 1) : '';
                 const bs = bookBlocksFromHtml(docs[i].html);
+                for (let j = 0; j < bs.length; j++) dirs.push(dir);
                 // A spine document is a chapter, and a chapter starts a page. Without this
                 // a book runs continuously and a chapter heading turns up halfway down a
                 // column, which no printed book does and no reader expects.
                 if (bs.length) starts.push(blocks.length);
                 for (let j = 0; j < bs.length; j++) blocks.push(bs[j]);
             }
-            return { blocks: blocks, docStart: docStart, docStarts: starts };
+            return { blocks: blocks, docStart: docStart, docStarts: starts, dirs: dirs };
         }
         /**
          * When a book's TOC hrefs are useless, match its chapter titles instead.

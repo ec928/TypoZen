@@ -336,6 +336,10 @@
         #editor .block svg {
             max-width: 100%;
             max-height: 68vh;
+            /* Both auto, so the viewBox ratio drives the size and the max-height clamp takes
+               the width down with it. width:100% from the markup would hold the width while
+               the height clamped -- letterboxing at best, stretching at worst. */
+            width: auto;
             height: auto;
             display: block;
             margin: 0 auto;
