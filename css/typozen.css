@@ -444,6 +444,66 @@
         #page-indicator.two-up { justify-content: space-between; }
         #page-indicator.two-up .page-num { width: 50%; }
 
+        /* Position in the whole book, in pages.
+           Sits below the numbers, in space applyPageModeHeight() reserves for it, because
+           unlike the numbers this one is dragged: text underneath it would be text you
+           could not click. */
+        #page-scrubber {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            bottom: 2px;
+            height: 16px;
+            z-index: 6;
+        }
+        #page-scrubber-range {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 16px;
+            margin: 0;
+            background: transparent;
+            cursor: pointer;
+        }
+        #page-scrubber-range::-webkit-slider-runnable-track {
+            height: 3px;
+            border-radius: 2px;
+            background: var(--bd, #3F3F46);
+        }
+        #page-scrubber-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 11px;
+            height: 11px;
+            margin-top: -4px;
+            border-radius: 50%;
+            background: var(--accent, #A78BFA);
+            border: none;
+        }
+        #page-scrubber-range:hover::-webkit-slider-thumb { transform: scale(1.15); }
+        #page-scrubber-range:focus { outline: none; }
+        #page-scrubber-range:focus-visible::-webkit-slider-thumb {
+            box-shadow: 0 0 0 3px var(--accent-soft, rgba(167, 139, 250, 0.35));
+        }
+        /* While dragging: the page you would land on, since the view has not moved yet. */
+        #page-scrubber-bubble {
+            position: absolute;
+            bottom: 18px;
+            transform: translateX(-50%);
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: var(--accent, #A78BFA);
+            color: var(--accent-tx, #18181B);
+            font-family: var(--ui-font);
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.12s ease;
+        }
+        #page-scrubber-bubble.showing { opacity: 1; }
+
         /* Source Editor — viewport-tall; scrolls inside itself so the browser never allows
            scrolling past the true end of the text (estimated full-document heights could). */
         #source-editor {

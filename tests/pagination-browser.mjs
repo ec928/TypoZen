@@ -99,6 +99,11 @@ async function checkLayout(page, label) {
     for (let i = 0; i < 10; i++) { await page.evaluate(() => PageMap.step(1)); }
     await settled(page);
     s = await page.evaluate(pageState);
+    if (s.offsets.indexOf(s.offset) === -1) {
+        const near = s.offsets.filter(o => Math.abs(o - s.offset) < 4000);
+        console.log('  ..   offset ' + s.offset + ', page ' + s.current + ' of ' +
+            s.offsets.length + ', nearby boundaries ' + JSON.stringify(near));
+    }
     assert(s.offsets.indexOf(s.offset) !== -1,
         label + ': still exactly on a boundary after ten turns (offset ' + s.offset + ')');
     return s;

@@ -93,6 +93,9 @@ try {
             // Park on a real block a way into the mounted set.
             const el = pick(25);
             const raw0 = el.getAttribute('data-raw') || '';
+            out.pickedRaw = raw0.slice(0, 40);
+            out.pickedIndex = el.getAttribute('data-model-index');
+            out.mounted = blockEls().length;
             focusBlock(el, (el.innerText || '').length);
             await sleep(250);
 
@@ -102,6 +105,7 @@ try {
             await sleep(400);
             out.typeMs = Math.round(performance.now() - t);
             const after = getMarkdownContent(false);
+            out.afterLen = after.length;
             out.typedLanded = after.indexOf(raw0 + 'ZZTOP') >= 0;
             out.grewByFive = (after.length - before.length) === 5;
 
@@ -230,6 +234,8 @@ try {
         });
 
         info('typing ' + r.typeMs + 'ms for 5 chars, Enter ' + r.enterMs + 'ms');
+        info('edited block ' + r.pickedIndex + ' of ' + r.mounted + ' mounted: ' +
+             JSON.stringify(r.pickedRaw) + ', doc grew by ' + (r.afterLen - r.beforeLen));
         if (r.notes.length) info('skipped: ' + r.notes.join('; '));
 
         assert(r.typedLanded, L.name + ': typed text lands at the caret, in order');

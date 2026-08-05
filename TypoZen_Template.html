@@ -169,6 +169,16 @@
         <!-- Book-style page numbers, Reader + Pagination only. Driven from the page map,
              so they double as a visible check that the pagination is real. -->
         <div id="page-indicator" aria-hidden="true" style="display:none;"></div>
+        <!-- Position in the whole book.
+             The editor's own scrollbar spans only the range currently laid out -- about 28
+             pages of a 1400-page novel -- so dragging it cannot reach either end. This
+             addresses pages instead, which is the coordinate the paginated model is built
+             on and the one that covers the document however little of it is mounted. -->
+        <div id="page-scrubber" style="display:none;">
+            <input id="page-scrubber-range" type="range" min="0" max="0" value="0" step="1"
+                   aria-label="Position in document" />
+            <div id="page-scrubber-bubble" aria-hidden="true"></div>
+        </div>
     </div>
 
     <!-- Document Find & Replace (editor/source only) -->

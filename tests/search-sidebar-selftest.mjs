@@ -206,7 +206,16 @@ console.log('\n--- sidebar is chrome, so it uses the menu font not the reading f
     }
 
     // Menu rows highlight in place; the old sidebar slid sideways on hover.
-    assert(!/transform:\s*translateX/.test(css), 'no translateX hover slide remains');
+    //
+    // Scoped to the row hover rule rather than grepping the whole stylesheet. translateX is
+    // ordinary CSS -- centring a tooltip over a slider thumb uses it -- and a global search
+    // for it failed the moment something unrelated needed it.
+    {
+        const at = css.indexOf('.outline-item:hover');
+        assert(at !== -1, 'the sidebar rows have a hover rule');
+        const rule = css.slice(at, css.indexOf('}', at));
+        assert(!/transform\s*:/.test(rule), 'no translateX hover slide remains');
+    }
 
     const xaml = fs.readFileSync(path.join(appDir, 'TypoZen.xaml'), 'utf8');
     assert(/FontFamily="Segoe UI"/.test(xaml),

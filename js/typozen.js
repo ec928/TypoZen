@@ -1110,6 +1110,7 @@
          * A 2-column page is a spread, so it carries two numbers, one under each column.
          */
         function updatePageIndicator() {
+            try { updatePageScrubber(); } catch (eS) {}
             const host = document.getElementById('page-indicator');
             if (!host) return;
             // Shown wherever the document is actually paginated, not only in Reader.
@@ -1139,6 +1140,87 @@
             }
         }
 
+        /**
+         * Position in the whole book, in pages.
+         *
+         * The editor's own scrollbar spans the range currently laid out and nothing more --
+         * about 28 pages of a 1400-page novel -- so dragging it could not reach either end.
+         * This addresses pages, which is the coordinate the paginated model is built on and
+         * the only one that describes the document however little of it is mounted.
+         * PageMap.goto() already mounts the range a page falls in, so seeking anywhere is
+         * the same operation as turning a page.
+         */
+        let _scrubDragging = false;
+
+        function updatePageScrubber() {
+            const host = document.getElementById('page-scrubber');
+            const range = document.getElementById('page-scrubber-range');
+            if (!host || !range) return;
+            if (!isPaginatedLayout() || !PageMap.ensure()) {
+                host.style.display = 'none';
+                return;
+            }
+            host.style.display = 'block';
+            // While a drag is in flight the thumb belongs to the reader: writing a position
+            // into it from the view they have not arrived at yet fights their hand.
+            if (_scrubDragging) return;
+            const total = Math.max(1, PageMap.count());
+            range.max = String(total - 1);
+            range.value = String(Math.max(0, Math.min(PageMap.current(), total - 1)));
+        }
+
+        function bindPageScrubber() {
+            const range = document.getElementById('page-scrubber-range');
+            const bubble = document.getElementById('page-scrubber-bubble');
+            if (!range || range.__tzBound) return;
+            range.__tzBound = true;
+
+            function showBubble() {
+                if (!bubble) return;
+                const total = Math.max(1, PageMap.count());
+                const v = parseInt(range.value, 10) || 0;
+                // Spreads are what the map counts; a two-column layout shows two numbered
+                // pages per spread, and the bubble has to agree with the page numbers.
+                const twoCol = !!(editor && editor.classList.contains('two-col-layout'));
+                bubble.textContent = (twoCol ? v * 2 + 1 : v + 1) + ' / ' +
+                    (twoCol ? total * 2 : total);
+                bubble.style.left = (total > 1 ? (v / (total - 1)) * 100 : 0) + '%';
+                bubble.classList.add('showing');
+            }
+            function hideBubble() { if (bubble) bubble.classList.remove('showing'); }
+
+            function seek() {
+                _scrubDragging = false;
+                hideBubble();
+                const v = parseInt(range.value, 10);
+                if (!isFinite(v)) return;
+                const wantedEnd = v >= (parseInt(range.max, 10) || 0);
+                PageMap.goto(v);
+                // Pages beyond the ranges that have been laid out are an estimate, so
+                // arriving somewhere re-measures it and the total moves: dragging to the end
+                // of a 2,907-page estimate landed on page 5,210 of a now 5,355-page book --
+                // the last range of the book, but visibly short of its end. Settle onto
+                // whatever the last page turns out to be once we are standing on it.
+                if (wantedEnd) {
+                    for (let i = 0; i < 3; i++) {
+                        const last = Math.max(0, PageMap.count() - 1);
+                        if (PageMap.current() >= last) break;
+                        PageMap.goto(last);
+                    }
+                }
+                updatePageIndicator();
+            }
+
+            // Seek on release rather than on every input event: a drag across a novel would
+            // otherwise mount a range per pixel of travel, and a mount lays out 800 blocks.
+            // The bubble is what makes that acceptable -- it names the page under the thumb
+            // while the view stays where it is.
+            range.addEventListener('pointerdown', function () { _scrubDragging = true; showBubble(); });
+            range.addEventListener('input', showBubble);
+            range.addEventListener('change', seek);
+            range.addEventListener('blur', function () { _scrubDragging = false; hideBubble(); });
+        }
+
         /** Put the editor into or out of page layout to match the current view state. */
         function syncPaginationClass() {
             if (!editor) return;
@@ -1148,6 +1230,11 @@
             editor.classList.toggle('page-mode', on);
             PageMap.invalidate();
             if (!on) { editor.scrollLeft = 0; currentTwoColPage = 0; }
+            // The page numbers and the scrubber belong to a paginated layout, and this is
+            // the one place every route into and out of one passes through. Without it the
+            // scrubber stayed on screen after a switch to scrolling, offering to seek pages
+            // that no longer existed.
+            try { updatePageIndicator(); } catch (ePI) {}
 
             // Pagination and virtualisation are incompatible: the browser can only break
             // content into pages it has actually laid out, so a mounted window of blocks
@@ -1816,7 +1903,13 @@
             /** Page offsets within the mounted range. Used by the tests to check alignment. */
             get pages() {
                 const w = this.width(), c = this.localCount(), out = [];
-                for (let i = 0; i < c; i++) out.push({ offset: i * w });
+                // The last page cannot always be scrolled to. A document that ends part way
+                // into its final page leaves a maximum scrollLeft short of that page's
+                // offset, so n * width names a position the browser will never hold: a turn
+                // onto it landed half a page out and stayed there, and the snap that guards
+                // the page invariant kept asking for somewhere unreachable.
+                const max = editor ? Math.max(0, editor.scrollWidth - editor.clientWidth) : 0;
+                for (let i = 0; i < c; i++) out.push({ offset: Math.min(i * w, max) });
                 return out;
             },
 
@@ -2469,14 +2562,21 @@
          * whole flow on every layout, which cost 77ms per keystroke on a 3767-block
          * document. A pixel value costs nothing and is reapplied on resize below.
          */
+        const PAGE_FOOT_RESERVE = 26;
+
         function applyPageModeHeight() {
             if (!editor) return;
             if (!isPaginatedLayout()) { editor.style.height = ''; return; }
             const wrap = document.getElementById('editor-wrapper');
             const box = wrap || mainContainer;
-            const h = box ? box.clientHeight : 0;
+            // Room at the foot of the page for the numbers and the scrubber. The numbers
+            // alone could overlay the text; the scrubber is dragged, and text underneath it
+            // would be text you could not click.
+            const h = (box ? box.clientHeight : 0) - PAGE_FOOT_RESERVE;
             if (h > 40) editor.style.height = h + 'px';
         }
+
+        try { bindPageScrubber(); } catch (eB) {}
 
         window.addEventListener('resize', function () {
             try { applyPageModeHeight(); } catch (e) {}
@@ -9093,6 +9193,9 @@
             try { releaseDocumentStateForHost(); } catch (e0) {}
             const text = markdown == null ? '' : String(markdown);
             DocumentModel.fromMarkdown(text);
+            // Drop any correction left by a book: this document is Markdown and the theme's
+            // size is already its size.
+            try { normaliseBookTextSize(); } catch (eF) {}
             window.__tzPaintGen = (window.__tzPaintGen || 0) + 1;
             const paintGen = window.__tzPaintGen;
 
@@ -10052,7 +10155,12 @@
                 }
             }
             walk(el);
-            if (!found && el.childNodes.length > 0) {
+            // An empty block has no child nodes and no text to walk, so the guard that used
+            // to stand here -- childNodes.length > 0 -- excluded the one case the fallback
+            // exists for: the caret was left wherever it already was, and typing into a
+            // blank line went into whatever block the selection happened to be in, or
+            // nowhere. selectNodeContents on an empty element is a valid collapsed range.
+            if (!found) {
                 range.selectNodeContents(el);
                 range.collapse(false);
                 sel.removeAllRanges();
@@ -11080,6 +11188,26 @@
             // Going through the same commands a reader would use keeps one code path.
             state.mode = 'reader';
             setEditorEditable(false);
+
+            // Reader is pages only. Setting the mode without the pagination it implies left
+            // a book in reader + scroll -- a combination resolveViewState cannot produce --
+            // and since Reader locks the scroll selector there was no way to click out of
+            // it. Opening a book while the previous document was scrolling put the reader
+            // there every time; the only escape was a round trip through Preview.
+            //
+            // The class is set here rather than through syncPaginationClass() because that
+            // remounts the document to turn virtualisation off, and this loader mounts the
+            // book itself a few statements below. Going through it would lay the book out
+            // twice, the first time as Markdown.
+            if (!state.pageAdvance) {
+                state.pageAdvance = true;
+                try { postMsg('sync_page_advance:1'); } catch (eP) {}
+            }
+            editor.classList.add('page-mode');
+            PageMap.invalidate();
+            state.viewMode = 'reader';
+            state.viewScroll = 'pagination';
+
             try { applyEditorChromeForMode(); } catch (eC) {}
             // Tell the shell, or the toolbar keeps showing Preview while the document is
             // in Reader -- the selectors are driven by what the page reports, not by what
@@ -11113,6 +11241,10 @@
             }
 
             currentActiveBlock = editor.querySelector('.block');
+            try { normaliseBookTextSize(); } catch (eN) {}
+            // Page numbers and the scrubber, now rather than at the first page turn: a book
+            // that has just opened is exactly when a reader looks for where they are.
+            try { updatePageIndicator(); } catch (eP) {}
             try { updateOutline(); } catch (eO) {}
             try { updateStatsNow(); } catch (eSt) {}
             try { HistoryManager.clear(); } catch (eH) {}
@@ -11547,6 +11679,59 @@
          * Scoped so a book cannot restyle the application around it, and replaced whole on
          * each load so one book's rules never leak into the next.
          */
+        /**
+         * Make the reader's chosen size the size the book's body text renders at.
+         *
+         * A publisher's stylesheet sizes text against a device default it cannot see:
+         * Xeelee asks for 0.88 of base for every paragraph, so it came out at 12.32px
+         * while the theme said 14 and Matter, which asks for 1em, sat at 14. Two books
+         * open side by side in different sizes, and neither is the one that was chosen.
+         *
+         * The book keeps its own proportions -- a heading it wants at 1.5 stays half again
+         * as large as its body -- and only the base moves. Measured rather than parsed,
+         * because which selector carries body text is a question about a specific book and
+         * not one a stylesheet answers: the most common size among the long paragraphs on
+         * screen is the body, whatever it is called.
+         *
+         * Expressed as a multiple of --fs rather than a fixed pixel size, so changing the
+         * theme's font size still moves the book.
+         */
+        function normaliseBookTextSize() {
+            if (!editor) return;
+            if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') {
+                editor.style.fontSize = '';
+                return;
+            }
+            editor.style.fontSize = '';   // measure against the reader's size, not the last correction
+
+            const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+            const counts = new Map();
+            const blocks = editor.querySelectorAll('.block');
+            let sampled = 0;
+            for (let i = 0; i < blocks.length && sampled < 40; i++) {
+                // Long paragraphs only: headings, captions and chapter numbers are exactly
+                // the sizes the book means to be different, and averaging them in would
+                // normalise to something no paragraph uses.
+                if ((blocks[i].innerText || '').trim().length < 120) continue;
+                const el = blocks[i].firstElementChild || blocks[i];
+                const fs = Math.round(parseFloat(getComputedStyle(el).fontSize) * 100) / 100;
+                if (!fs) continue;
+                counts.set(fs, (counts.get(fs) || 0) + 1);
+                sampled++;
+            }
+            if (!sampled) return;
+
+            let dominant = 0, best = 0;
+            counts.forEach(function (n, fs) { if (n > best) { best = n; dominant = fs; } });
+            const k = root / dominant;
+            if (!isFinite(k) || k <= 0) return;
+            if (Math.abs(k - 1) < 0.02) return;   // already reading at the chosen size
+
+            editor.style.fontSize = 'calc(var(--fs, 16px) * ' + k.toFixed(4) + ')';
+            window.showDebugTelemetry('book text: body was ' + dominant + 'px against a ' +
+                root + 'px theme, scaled by ' + k.toFixed(3));
+        }
+
         function applyBookStyles(cssTexts, assetsBase) {
             let el = document.getElementById('book-styles');
             if (!el) {

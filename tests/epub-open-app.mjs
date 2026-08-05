@@ -42,6 +42,19 @@ const biggest = books
 
 async function openAndCheck(app, book, deep) {
     console.log('\n########## ' + book + ' ##########');
+    // Deliberately scrolling, in Preview, before the book arrives. That is the state a
+    // reader is in when they open a book from a document they were editing, and it is the
+    // one that used to strand them: Reader implies pages, the loader set the mode without
+    // the pagination, and Reader locks the scroll selector behind it.
+    await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        handleCommand('view_set:mode:preview');
+        await sleep(800);
+        handleCommand('view_set:columns:1');
+        await sleep(800);
+        handleCommand('view_set:scroll:scroll');
+        await sleep(800);
+    });
     // The same message the shell sends when a file is opened from Explorer or the menu.
     await app.eval((p) => postMsg('open_file_path:' + p), path.join(appDir, 'tests', book));
     await sleep(1500);
@@ -344,11 +357,25 @@ async function openAndCheck(app, book, deep) {
             const s2 = await app.eval(() => ({
                 mode: state.mode,
                 editable: editor.getAttribute('contenteditable'),
-                readerClass: editor.classList.contains('reader-mode')
+                readerClass: editor.classList.contains('reader-mode'),
+                pageMode: editor.classList.contains('page-mode'),
+                view: currentViewState()
             }));
             info('mode ' + s2.mode + ', editable ' + s2.editable);
             assert(s2.mode === 'reader', 'a book opens in Reader, not Preview');
             assert(s2.editable === 'false' && s2.readerClass, 'and stays read-only');
+            // Reader is pages only, and Reader locks the scroll selector. Opening a book
+            // while the previous document was scrolling used to land in reader + scroll --
+            // a state the resolver cannot produce and the toolbar cannot leave. The only
+            // way out was a round trip through Preview and back.
+            info('view state on open: ' + s2.view.mode + ', ' + s2.view.columns +
+                '-col, ' + s2.view.scroll + (s2.view.scrollLocked ? ' (scroll locked)' : ''));
+            assert(s2.view.scroll === 'pagination',
+                'and opens paginated, which is what Reader means');
+            assert(!(s2.view.scrollLocked && s2.view.scroll !== 'pagination'),
+                'never in a state the scroll selector is locked out of leaving');
+            assert(s2.pageMode,
+                'with the page-mode layout actually applied, not just the flag set');
         }
 
         console.log('\n--- the book’s own typography and page breaks ---');
@@ -368,20 +395,27 @@ async function openAndCheck(app, book, deep) {
                     .filter(b => (b.innerText || '').length > 300)
                     .map(b => b.firstElementChild || b)[0];
 
-                // The reader's own size has to reach the book's text. A stylesheet in rem
-                // is rooted at the application, so the control moves and nothing happens.
-                const was = getComputedStyle(ed).fontSize;
+                // The reader's own size has to reach the book's text, and be the size the
+                // text actually renders at. A stylesheet in rem is rooted at the
+                // application, so the control moved and nothing happened; one asking for
+                // 0.88em rendered a book 12% smaller than the theme it was opened under.
+                //
+                // Driven through --fs, which is what a theme sets. Writing a pixel size
+                // onto the editor instead would overwrite the correction being tested.
+                const rootFs = () => parseFloat(getComputedStyle(document.documentElement).fontSize);
+                const was = rootFs();
                 const before = prose ? parseFloat(getComputedStyle(prose).fontSize) : 0;
-                ed.style.fontSize = '28px';
-                await sleep(300);
+                document.documentElement.style.setProperty('--fs', '28px');
+                await sleep(400);
                 const after = prose ? parseFloat(getComputedStyle(prose).fontSize) : 0;
-                ed.style.fontSize = '';
-                await sleep(200);
+                const afterRoot = rootFs();
+                document.documentElement.style.setProperty('--fs', was + 'px');
+                await sleep(300);
                 return {
                     remLeft: /\d\s*rem\b/i.test(sheet),
                     pagedBreaks: (sheet.match(/page-break-(before|after)\s*:\s*(always|left|right)/gi) || []).length,
                     columnBreaks: (sheet.match(/break-(before|after)\s*:\s*column/gi) || []).length,
-                    editorFont: was, before: before, after: after
+                    editorFont: was + 'px', before: before, after: after, afterRoot: afterRoot
                 };
             });
             info('book css: ' + bs.pagedBreaks + ' paged breaks left, ' + bs.columnBreaks +
@@ -392,11 +426,14 @@ async function openAndCheck(app, book, deep) {
             assert(bs.pagedBreaks === 0,
                 'the book’s own page breaks are column breaks, which is the only kind ' +
                 'a multi-column layout performs');
-            info('prose at editor ' + bs.editorFont + ': ' + bs.before +
-                 'px, and at 28px: ' + bs.after + 'px');
-            assert(bs.before > 0 && bs.after > bs.before * 1.5,
-                'the reader’s font size reaches the book’s text (' +
-                bs.before + ' -> ' + bs.after + ')');
+            info('prose at a ' + bs.editorFont + ' theme: ' + bs.before +
+                 'px, and at a ' + bs.afterRoot + 'px theme: ' + bs.after + 'px');
+            assert(Math.abs(bs.before - parseFloat(bs.editorFont)) <= 0.5,
+                'the book’s body text renders at the size the theme asks for (' +
+                bs.before + ' against ' + bs.editorFont + ')');
+            assert(Math.abs(bs.after - bs.afterRoot) <= 1.0,
+                'and follows the theme when it changes (' +
+                bs.after + ' against ' + bs.afterRoot + 'px)');
         }
 
         console.log('\n--- chapters start pages, and page numbers agree ---');
