@@ -443,6 +443,91 @@ async function main() {
         assert(/\| A \| B \|/.test(md), 'a pasted table keeps its header cells');
         assert(/\| 1 \| 2 \|/.test(md), 'a pasted table keeps its body cells');
 
+
+        console.log('\n=== the ways a person actually triggers things ===');
+        {
+            // An audit of the suites found undo tested as HistoryManager.undo() and search
+            // navigation as findJumpTo(n) -- the internals, not the paths a person takes.
+            // That is the same gap that let copy/paste ship broken: the test called
+            // insertPastedPlainText() directly and never went near the clipboard handlers.
+            // Both of these turned out to work; they are pinned here so they stay that way,
+            // because "the internal function works" has now twice been mistaken for "the
+            // feature works".
+            const undoByKey = await page.evaluate(async () => {
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                const el = editor.querySelector('.block[data-model-index="5"]');
+                if (!el) return { ok: false };
+                focusBlock(el, (el.innerText || '').length);
+                await sleep(200);
+                const before = getMarkdownContent(false);
+                document.execCommand('insertText', false, 'QQQ');
+                await sleep(600);
+                const dirty = getMarkdownContent(false).indexOf('QQQ') >= 0;
+                // The real keystroke, not HistoryManager.undo().
+                window.dispatchEvent(new KeyboardEvent('keydown',
+                    { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+                await sleep(1200);
+                return { ok: true, dirty: dirty, restored: getMarkdownContent(false) === before };
+            });
+            assert(undoByKey.ok && undoByKey.dirty, 'the edit landed, so undo has something to do');
+            assert(undoByKey.restored, 'Ctrl+Z as a keystroke undoes the edit');
+
+            const clickJump = await page.evaluate(async () => {
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                const top = () => {
+                    const h = mainContainer.getBoundingClientRect();
+                    let t = '';
+                    editor.querySelectorAll('.block').forEach(x => {
+                        if (t) return;
+                        const r = x.getBoundingClientRect();
+                        if (r.bottom > h.top + 2 && r.top < h.bottom) t = (x.innerText || '').slice(0, 40);
+                    });
+                    return t;
+                };
+                // A string that certainly exists, a long way down: searching for something
+                // absent would show "No results" and a click on that placeholder proves
+                // nothing, which is exactly how this check first fooled me.
+                const rows = DocumentModel.blocks.map(x => x.raw)
+                    .filter(r => /scroll marker row \d+$/.test(r));
+                if (rows.length < 901) return { ok: false };
+                const q = rows[900].replace(/^Line \d+ of \d+ — /, '');
+                handleCommand('toggle_search_sidebar');
+                await sleep(500);
+                const inp = document.getElementById('sidebarSearchInput');
+                inp.value = q;
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                await sleep(1600);
+                const items = document.querySelectorAll('#search-results-list .search-item');
+                const before = top();
+                items[0].click();          // the mouse, not findJumpTo()
+                await sleep(1500);
+                return {
+                    ok: true, query: q, matches: findState.matches.length,
+                    before: before, after: top(),
+                    marked: (CSS.highlights.get('typozen-find-current') || { size: 0 }).size,
+                    // On screen, not necessarily at the top -- scrolling a match into view
+                    // puts it comfortably inside the viewport, which is the right behaviour.
+                    matchOnScreen: (function () {
+                        const r = findState.ranges[findState.currentRange];
+                        if (!r) return false;
+                        const rect = r.getBoundingClientRect();
+                        const h = mainContainer.getBoundingClientRect();
+                        return rect.bottom > h.top && rect.top < h.bottom;
+                    })()
+                };
+            });
+            assert(clickJump.ok && clickJump.matches === 1,
+                'the fixture contains the searched string exactly once (' +
+                (clickJump.matches === undefined ? 'n/a' : clickJump.matches) + ')');
+            console.log('  ..   clicked a result: ' + JSON.stringify(clickJump.before) +
+                ' -> ' + JSON.stringify(clickJump.after));
+            assert(clickJump.after !== clickJump.before,
+                'clicking a search result with the mouse moves the view');
+            assert(clickJump.matchOnScreen,
+                'and the match itself is on screen afterwards, not merely somewhere new');
+            assert(clickJump.marked === 1, 'the clicked match is the one marked current');
+        }
+
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) {
             console.error('\nSMOKE FAILED');
