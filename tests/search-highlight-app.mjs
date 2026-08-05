@@ -69,6 +69,12 @@ function probe() {
         index: findState.index,
         currentRange: findState.currentRange,
         currentText: blockOf(findState.ranges[findState.currentRange]),
+        // Stray block shading. Every search reveal used to add .focused and never remove
+        // it from the block before, so each jump left another permanently lit row behind.
+        focusedBlocks: (function () {
+            const lit = editor.querySelectorAll('.block.focused');
+            return Array.prototype.map.call(lit, b => (b.innerText || '').slice(0, 30));
+        })(),
         sidebarActiveText: (function () {
             const el = document.querySelector('#search-results-list .search-item.active');
             return el ? (el.innerText || '').replace(/\s+/g, ' ').slice(0, 40) : '(none)';
@@ -135,6 +141,11 @@ try {
         assert(line && s.currentText.indexOf('Line ' + line + ' of') === 0,
             L + ': the current mark is on the line the sidebar has selected (' +
             JSON.stringify(s.currentText) + ' vs sidebar line ' + line + ')');
+
+        info('blocks shaded  : ' + JSON.stringify(s.focusedBlocks));
+        assert(s.focusedBlocks.length <= 1,
+            L + ': at most one block is shaded, not one left behind per jump (' +
+            s.focusedBlocks.length + ': ' + JSON.stringify(s.focusedBlocks) + ')');
 
         // Stepping must move it, and keep it on the sidebar's row.
         await app.eval(() => { window.findJumpTo(8); });

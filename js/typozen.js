@@ -1906,6 +1906,28 @@
          * Virt find: scroll/mount the block that owns the model match, then highlight the
          * query in that block's rendered text (best-effort when raw ≠ visual).
          */
+        /**
+         * Exactly one block carries .focused at a time.
+         *
+         * The search reveals added it to the block they landed on and never removed it from
+         * the one before, so every jump left another permanently shaded row behind: line 3
+         * stayed lit from the first jump while the caret was on line 12. updateActiveBlock
+         * only clears the class from currentActiveBlock when the caret moves, which cannot
+         * help once a second block has been given it directly.
+         */
+        function setFocusedBlock(el) {
+            try {
+                const lit = editor.querySelectorAll('.block.focused');
+                for (let i = 0; i < lit.length; i++) {
+                    if (lit[i] !== el) lit[i].classList.remove('focused');
+                }
+            } catch (e) {}
+            if (el && el.classList) {
+                try { el.classList.add('focused'); } catch (e2) {}
+                currentActiveBlock = el;
+            }
+        }
+
         function revealModelMatch(match, navigate) {
             if (!match || typeof DocumentModel === 'undefined') return;
             const loc = markdownOffsetToBlock(match.start);
@@ -1946,9 +1968,7 @@
                 restoreStickyDocumentLine(modelBlockStartLine(blockIdx));
                 const el0 = elementForModelIndex(blockIdx);
                 if (el0) {
-                    currentActiveBlock = el0;
-                    try { el0.classList.add('focused'); } catch (eF0) {}
-                    setTimeout(function () { try { el0.classList.remove('focused'); } catch (e) {} }, 1200);
+                    setFocusedBlock(el0);
                 }
                 return;
             } catch (eScr) {}
@@ -1960,12 +1980,7 @@
             const blockEl = editor
                 ? editor.querySelector('.block[data-model-index="' + blockIdx + '"]')
                 : null;
-            if (blockEl) {
-                try {
-                    currentActiveBlock = blockEl;
-                    blockEl.classList.add('focused');
-                } catch (eF) {}
-            }
+            if (blockEl) setFocusedBlock(blockEl);
             const ok = highlightModelMatchInMountedDom(match, navigate);
             if (!ok) {
                 // Query only in markdown (e.g. "**") — still bring the block into view
@@ -2889,14 +2904,7 @@
                     // to its real start -- not on a page synthesised from the scroll offset.
                     settleTwoColToLine(1, _pgAnchor);
                 } else {
-                    scheduleColumnSettle(function () {
-                        PageMap.invalidate();
-                        updatePageIndicator();
-                        // Entering or leaving pagination remounts the document, which
-                        // detaches every range the highlighter holds. Repaint once the
-                        // new layout has settled.
-                        repaintFindHighlights();
-                    });
+                    scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
                 }
                 // Report it: the selectors must follow the view however it was changed,
                 // not only when the change came from a selector click.
@@ -3135,14 +3143,7 @@
                 // Reader/Preview/Source changes whether pages apply at all.
                 syncPaginationClass();
                 applyEditorChromeForMode();
-                scheduleColumnSettle(function () {
-                        PageMap.invalidate();
-                        updatePageIndicator();
-                        // Entering or leaving pagination remounts the document, which
-                        // detaches every range the highlighter holds. Repaint once the
-                        // new layout has settled.
-                        repaintFindHighlights();
-                    });
+                scheduleColumnSettle(function () { PageMap.invalidate(); updatePageIndicator(); });
                 // Mode can change from Ctrl+/ or the View menu, not just a selector click.
                 postViewState(currentViewState());
             }
