@@ -322,10 +322,12 @@
                the pages themselves had moved -- landing one page early, every time. The
                anchoring was never the bug.
 
-               Expressed as height: 100% it is resolved by layout, at layout time, every
-               time -- including on a window resize, which a sampled pixel value could not
-               follow at all. */
-            height: 100%;
+               height: 100% fixed the determinism and cost far too much: a percentage on a
+               multi-column contenteditable is re-resolved and the whole flow re-fragmented
+               on every layout, which took a keystroke in a 3767-block document from 130ms
+               to 207ms. The height is set in pixels from #editor-wrapper instead -- see
+               applyPageModeHeight() -- which is stable whatever the container is doing, and
+               reapplied on resize so it still follows the window. */
         }
         #editor.page-mode.two-col-layout {
             column-count: 2;

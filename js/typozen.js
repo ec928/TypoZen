@@ -319,10 +319,7 @@
                     // Measured from #editor-wrapper, not #main-container: the wrapper is the
                     // box the editor actually sits in, and it is unaffected by whether the
                     // container is currently showing a scrollbar. Same number every time.
-                    // CSS owns the page height (#editor.page-mode { height: 100% }).
-                    // Any inline value here would win over it and reintroduce the sampled
-                    // number this replaced, so it is cleared, not set.
-                    editor.style.height = '';
+                    applyPageModeHeight();
                     editor.scrollTop = 0;   // nothing to scroll to now; keep it honest
                 } else {
                     editor.style.height = '';
@@ -1927,6 +1924,33 @@
                 currentActiveBlock = el;
             }
         }
+
+        /**
+         * Pixel height for a paginated column, measured from #editor-wrapper.
+         *
+         * The wrapper is the box the editor sits in and its height does not depend on
+         * whether the container is currently showing a scrollbar, so this reads the same
+         * number however the switch is timed -- which is what the original sampling from
+         * mainContainer.clientHeight got wrong (774 on the first entry into 2-column, 794
+         * on every later one, so the same document was 106 pages then 103).
+         *
+         * Expressed in CSS as height: 100% it was deterministic but far too expensive: a
+         * percentage on a multi-column contenteditable re-resolves and re-fragments the
+         * whole flow on every layout, which cost 77ms per keystroke on a 3767-block
+         * document. A pixel value costs nothing and is reapplied on resize below.
+         */
+        function applyPageModeHeight() {
+            if (!editor) return;
+            if (!isPaginatedLayout()) { editor.style.height = ''; return; }
+            const wrap = document.getElementById('editor-wrapper');
+            const box = wrap || mainContainer;
+            const h = box ? box.clientHeight : 0;
+            if (h > 40) editor.style.height = h + 'px';
+        }
+
+        window.addEventListener('resize', function () {
+            try { applyPageModeHeight(); } catch (e) {}
+        });
 
         function revealModelMatch(match, navigate) {
             if (!match || typeof DocumentModel === 'undefined') return;
