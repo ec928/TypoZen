@@ -314,6 +314,33 @@
             column-count: 2;
         }
 
+        /* Paginated code fences wrap instead of scrolling.
+           overflow-x: auto makes a <pre> a scroll container, and a scroll container is
+           monolithic: the browser cannot split it across a column break. A fence only
+           slightly taller than the column therefore moved wholesale to the next one and
+           left most of a page blank behind it. Measured on the test document: 50 blocks
+           were taller than the 780px column, the tallest by 11px.
+           There is nowhere to scroll sideways on a page anyway, so wrapping is both the
+           readable choice and the one that lets a long fence run across pages. */
+        #editor.page-mode pre {
+            overflow-x: visible;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+        /* Let long content flow across the break rather than being pushed off it. */
+        #editor.page-mode .block,
+        #editor.page-mode pre,
+        #editor.page-mode blockquote,
+        #editor.page-mode table {
+            break-inside: auto;
+        }
+        /* But never leave a heading stranded at the foot of a page. */
+        #editor.page-mode h1, #editor.page-mode h2, #editor.page-mode h3,
+        #editor.page-mode h4, #editor.page-mode h5, #editor.page-mode h6 {
+            break-after: avoid;
+            break-inside: avoid;
+        }
+
         /* Page numbers, bottom-right of each page. Pinned to the viewport rather than
            flowed into the columns: content inside the flow would occupy a column and shift
            the very breaks it is reporting on. */

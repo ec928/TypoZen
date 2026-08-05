@@ -216,6 +216,57 @@ async function main() {
                 ' vs ' + two.page + ', block ' + back.topBlock + ' vs ' + two.topBlock + ')');
         }
 
+        console.log('\n=== pages are not left mostly blank ===');
+        {
+            // A <pre> with overflow-x: auto is a scroll container, and a scroll container
+            // cannot be fragmented across a column break. A code fence only slightly taller
+            // than the column therefore moved wholesale to the next one and left most of a
+            // page empty behind it -- on the test document, 50 blocks were taller than the
+            // 780px column, the worst by 11px. Paginated fences now wrap instead.
+            await page.evaluate(() => handleCommand('view_set:columns:2'));
+            await sleep(2500);
+
+            const tall = await page.evaluate(() => {
+                const colH = editor.clientHeight;
+                let over = 0, maxH = 0;
+                editor.querySelectorAll('.block').forEach(b => {
+                    const h = b.getBoundingClientRect().height;
+                    if (h > maxH) maxH = h;
+                    // A fragmented block's rect spans its pieces, so compare against the
+                    // page rather than the column.
+                    if (h > colH * 2 + 4) over++;
+                });
+                return { colH: colH, maxH: Math.round(maxH), over: over };
+            });
+            assert(tall.over === 0,
+                'no block is taller than a whole page (' + tall.over + ' over ' +
+                (tall.colH * 2) + 'px)');
+
+            const empt = await page.evaluate(async () => {
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                const cap = editor.getBoundingClientRect().height * 2;
+                let worst = { page: -1, fill: 1e9 };
+                for (let p = 0; p < Math.min(PageMap.count(), 48); p += 4) {
+                    PageMap.goto(p);
+                    await sleep(40);
+                    const host = editor.getBoundingClientRect();
+                    let filled = 0;
+                    editor.querySelectorAll('.block').forEach(b => {
+                        const r = b.getBoundingClientRect();
+                        if (r.bottom <= host.top || r.top >= host.bottom) return;
+                        if (r.right <= host.left || r.left >= host.right) return;
+                        filled += r.height;
+                    });
+                    const frac = filled / cap;
+                    if (frac < worst.fill) worst = { page: p, fill: frac };
+                }
+                return worst;
+            });
+            assert(empt.fill > 0.5,
+                'no sampled page is left mostly blank (emptiest was page ' + empt.page +
+                ' at ' + Math.round(empt.fill * 100) + '% full)');
+        }
+
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) {
             console.error('\nPAGINATION FAILED');
