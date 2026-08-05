@@ -9264,8 +9264,67 @@
          * Handles headings, bold, italic, code, tables, lists, links, blockquotes.
          */
         function htmlToMarkdown(html) {
+            /**
+             * Families that mean "this is code". Only what a source actually writes into a
+             * clipboard font-family, which is a short list in practice.
+             */
+            const MONO_FAMILY = /(^|[\s,'"])(monospace|consolas|menlo|monaco|courier|cascadia|sf ?mono|roboto mono|source code pro|fira ?code|fira mono|jetbrains mono|ubuntu mono|dejavu sans mono|liberation mono|andale mono|lucida console)([\s,'"]|$)/i;
+
+            /** The nearest declared font-family wins: an inner span can opt back out of code. */
+            function isMonospaceStyled(el) {
+                for (let a = el; a && a.nodeType === 1; a = a.parentElement) {
+                    const f = a.style && a.style.fontFamily;
+                    if (f) return MONO_FAMILY.test(f);
+                }
+                return false;
+            }
+
+            /**
+             * Turn runs of monospaced block elements into a <pre>, before anything is converted.
+             *
+             * Almost nothing puts code on a clipboard as <pre><code>. An editor or a chat page
+             * emits one styled <div> per line with a coloured <span> per token, and some of
+             * those spans are bold -- so a pasted function arrived as prose with its
+             * indentation collapsed and its keywords turned into **def** and **return**. The
+             * fence was never lost; it was never there, because nothing said "code" except the
+             * font.
+             *
+             * Only leaf blocks, so a wrapper does not swallow the lines inside it, and only
+             * consecutive ones, so two separate snippets stay two fences.
+             */
+            function groupMonospaceBlocks(root) {
+                const BLOCKISH = /^(div|p|li|section|article|figure)$/;
+                const parents = [root].concat(Array.prototype.slice.call(root.querySelectorAll('*')));
+                for (const parent of parents) {
+                    if (!parent.children || !parent.children.length) continue;
+                    if (parent.tagName && parent.tagName.toLowerCase() === 'pre') continue;
+
+                    let run = [];
+                    const flush = () => {
+                        if (run.length) {
+                            const pre = (parent.ownerDocument || document).createElement('pre');
+                            // Trailing whitespace only: leading whitespace is the indentation,
+                            // which is the part of a code block people notice losing.
+                            pre.textContent = run.map(el => el.textContent.replace(/\s+$/, '')).join('\n');
+                            parent.insertBefore(pre, run[0]);
+                            for (const el of run) el.remove();
+                        }
+                        run = [];
+                    };
+                    for (const child of Array.prototype.slice.call(parent.children)) {
+                        const tag = child.tagName.toLowerCase();
+                        const isLeafBlock = BLOCKISH.test(tag) &&
+                            !child.querySelector('div, p, li, section, article, pre, table');
+                        if (isLeafBlock && isMonospaceStyled(child)) run.push(child);
+                        else flush();
+                    }
+                    flush();
+                }
+            }
+
             try {
                 const doc = new DOMParser().parseFromString(html, 'text/html');
+                try { groupMonospaceBlocks(doc.body); } catch (eG) {}
                 const md = walkNode(doc.body).trim();
                 // Collapse runs of 3+ newlines to 2
                 return md.replace(/\n{3,}/g, '\n\n');
@@ -9299,7 +9358,10 @@
                     for (let a = node.parentElement; a; a = a.parentElement) {
                         inherited += a.tagName.toLowerCase() + ' ';
                     }
-                    const inHeading = /\b(h[1-6]|th)\b/.test(inherited);
+                    // Nor inside code. A highlighter's bold keyword is syntax colouring,
+                    // not emphasis, and `**def**` inside a fence is just wrong.
+                    const inHeading = /\b(h[1-6]|th)\b/.test(inherited) ||
+                        /\b(pre|code)\b/.test(inherited) || isMonospaceStyled(node);
                     const st = inHeading ? null : node.style;
                     if (st) {
                         const w = String(st.fontWeight || '').toLowerCase();
@@ -9313,6 +9375,23 @@
                             (m, a, core, z) => core ? a + mark + core + mark + z : m);
                         if (bold) kids = wrap('**');
                         if (italic) kids = wrap('*');
+                    }
+                }
+
+                // A monospaced run inside a sentence is inline code, whether the source
+                // said so with <code> or only with a font. Not inside a fence, where the
+                // backticks would be literal, and not across lines, where it is a block and
+                // groupMonospaceBlocks has already dealt with it.
+                if (/^(span|font|tt|kbd|samp|var)$/.test(tag) && kids.trim() &&
+                    kids.indexOf('\n') < 0 && kids.indexOf('`') < 0) {
+                    let inCode = false;
+                    for (let a = node.parentElement; a; a = a.parentElement) {
+                        const t = a.tagName.toLowerCase();
+                        if (t === 'pre' || t === 'code') { inCode = true; break; }
+                    }
+                    if (!inCode && (/^(tt|kbd|samp|var)$/.test(tag) || isMonospaceStyled(node))) {
+                        kids = kids.replace(/^(\s*)([\s\S]*?)(\s*)$/,
+                            (m, a, core, z) => core ? a + '`' + core + '`' + z : m);
                     }
                 }
 

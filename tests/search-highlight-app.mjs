@@ -142,10 +142,18 @@ try {
             L + ': the current mark is on the line the sidebar has selected (' +
             JSON.stringify(s.currentText) + ' vs sidebar line ' + line + ')');
 
-        info('blocks shaded  : ' + JSON.stringify(s.focusedBlocks));
+        info(L + ' blocks shaded  : ' + JSON.stringify(s.focusedBlocks));
         assert(s.focusedBlocks.length <= 1,
             L + ': at most one block is shaded, not one left behind per jump (' +
             s.focusedBlocks.length + ': ' + JSON.stringify(s.focusedBlocks) + ')');
+        // Counting them was never the complaint. The report was "line 3 line highlight for
+        // no reason": one block shaded, and the wrong one. So the shaded block has to be
+        // the block the current match is in.
+        assert(s.focusedBlocks.length === 0 ||
+               s.currentText.indexOf(s.focusedBlocks[0].slice(0, 24)) === 0,
+            L + ': the shaded block is the one holding the current match (shaded ' +
+            JSON.stringify(s.focusedBlocks[0]) + ' vs match in ' +
+            JSON.stringify(s.currentText) + ')');
 
         // Stepping must move it, and keep it on the sidebar's row.
         await app.eval(() => { window.findJumpTo(8); });
