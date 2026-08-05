@@ -68,6 +68,45 @@ function visibleState() {
 
 const overlap = (a, b) => a.filter(x => b.indexOf(x) !== -1);
 
+/**
+ * Wait until the layout has stopped moving, rather than guessing with a fixed sleep.
+ *
+ * This suite used to sleep 700-1800ms after each column switch. That is enough on an idle
+ * machine and not enough when the build runs every browser suite back to back, so it
+ * failed intermittently in full runs and passed every time standalone -- which is the
+ * worst way for a gate to behave: it blocked four builds without ever indicating a real
+ * defect, and would have hidden one just as easily.
+ *
+ * A column switch settles asynchronously by design: goToPageHoldingBlock retries until
+ * editor.scrollWidth stops changing, so the only honest wait is for the same condition.
+ * Three consecutive identical samples of the geometry that pagination is derived from.
+ */
+async function settled(page, timeoutMs = 8000) {
+    const started = Date.now();
+    let last = null;
+    let stable = 0;
+    while (Date.now() - started < timeoutMs) {
+        const now = await page.evaluate(() => {
+            const ed = document.getElementById('editor');
+            const main = document.getElementById('main-container');
+            return [
+                Math.round(ed.scrollWidth), Math.round(ed.scrollLeft),
+                Math.round(ed.clientHeight), Math.round(ed.clientWidth),
+                Math.round(main.scrollTop),
+                (typeof PageMap !== 'undefined' && PageMap.count) ? PageMap.count() : -1
+            ].join(',');
+        });
+        if (now === last) {
+            if (++stable >= 3) return true;
+        } else {
+            stable = 0;
+            last = now;
+        }
+        await sleep(120);
+    }
+    return false;
+}
+
 async function main() {
     const browser = await puppeteer.launch({ headless: 'new' });
     try {
@@ -81,23 +120,23 @@ async function main() {
 
         const md = fs.readFileSync(path.join(appDir, 'tests', 'large-scroll-mixed.md'), 'utf8');
         await page.evaluate((m) => loadMarkdownContent(m), md);
-        await sleep(1800);
+        await settled(page);
 
         await page.evaluate(() => handleCommand('view_set:mode:reader'));
-        await sleep(700);
+        await settled(page);
 
         console.log('=== 1-col -> 2-col ===');
         // Read a way into the document, so this is not the trivial "everything at page 0".
         // Turn pages: Reader is paginated in both layouts now, so setting scrollTop does
         // nothing at all and the test never left page 0.
         await page.evaluate(() => { for (let i = 0; i < 6; i++) PageMap.step(1); });
-        await sleep(700);
+        await settled(page);
         const oneColBefore = await page.evaluate(visibleState);
         info('1-col showing blocks ' + oneColBefore.visible[0] + '..' +
              oneColBefore.visible[oneColBefore.visible.length - 1]);
 
         await page.evaluate(() => handleCommand('view_set:columns:2'));
-        await sleep(1800);
+        await settled(page);
         const twoColAfter = await page.evaluate(visibleState);
         info('2-col page ' + twoColAfter.page + ' showing blocks ' + twoColAfter.visible[0] + '..' +
              twoColAfter.visible[twoColAfter.visible.length - 1]);
@@ -110,14 +149,14 @@ async function main() {
         console.log('\n=== 2-col -> 1-col ===');
         // Turn some pages so the return trip is not from page 0 either.
         await page.evaluate(() => { for (let i = 0; i < 2; i++) PageMap.step(1); });
-        await sleep(800);
+        await settled(page);
         const twoColBefore = await page.evaluate(visibleState);
         info('2-col page ' + twoColBefore.page + ', first column holds blocks ' +
              twoColBefore.firstColumn[0] + '..' +
              twoColBefore.firstColumn[twoColBefore.firstColumn.length - 1]);
 
         await page.evaluate(() => handleCommand('view_set:columns:1'));
-        await sleep(1800);
+        await settled(page);
         const oneColAfter = await page.evaluate(visibleState);
         info('1-col showing blocks ' + oneColAfter.visible[0] + '..' +
              oneColAfter.visible[oneColAfter.visible.length - 1]);
@@ -129,7 +168,7 @@ async function main() {
 
         console.log('\n=== round trip returns to the original position ===');
         await page.evaluate(() => handleCommand('view_set:columns:2'));
-        await sleep(1800);
+        await settled(page);
         const roundTrip = await page.evaluate(visibleState);
         info('back in 2-col at page ' + roundTrip.page + ' (left at page ' + twoColBefore.page + ')');
         info('showing blocks ' + roundTrip.visible[0] + '..' +
