@@ -11,14 +11,13 @@
  *
  *   node tests/epub-model-selftest.mjs
  */
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { JSDOM } from 'jsdom';
+import { appDir, readEngineSource } from './engine-source.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const appDir = path.join(__dirname, '..');
-const src = fs.readFileSync(path.join(appDir, 'js', 'typozen.js'), 'utf8');
+const src = readEngineSource();
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {

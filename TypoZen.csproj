@@ -21,6 +21,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
+    <!-- Build next to sources so runtime assets (xaml/html/js/css/fonts) resolve without copy. -->
     <OutputPath>.</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
@@ -38,16 +39,17 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
+    <!-- WebView2 DLLs ship beside this project (Build_TypoZen.ps1 also accepts a sibling Text Search folder as fallback). -->
     <Reference Include="Microsoft.Web.WebView2.Core">
-      <HintPath>.\Text Search\Microsoft.Web.WebView2.Core.dll</HintPath>
+      <HintPath>.\Microsoft.Web.WebView2.Core.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.Web.WebView2.WinForms">
-      <HintPath>.\Text Search\Microsoft.Web.WebView2.WinForms.dll</HintPath>
+      <HintPath>.\Microsoft.Web.WebView2.WinForms.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.Web.WebView2.Wpf">
-      <HintPath>.\Text Search\Microsoft.Web.WebView2.Wpf.dll</HintPath>
+      <HintPath>.\Microsoft.Web.WebView2.Wpf.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
@@ -67,11 +69,12 @@
     <Reference Include="WindowsFormsIntegration" />
   </ItemGroup>
   <ItemGroup>
-    <ApplicationDefinition Include="TypoZen.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </ApplicationDefinition>
+    <!-- XAML is loaded at runtime via XamlReader (see TypoZen_App.cs); not an ApplicationDefinition. -->
+    <None Include="TypoZen.xaml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <Compile Include="EpubReader.cs" />
+    <Compile Include="TypoZen_Launch.cs" />
     <Compile Include="TypoZen_App.cs">
       <SubType>Code</SubType>
     </Compile>
@@ -83,6 +86,19 @@
     <None Include="TypoZen_Template.html">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="css\typozen.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="js\typozen.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="js\modules\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="fonts\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <Content Include="TypoZen.ico" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

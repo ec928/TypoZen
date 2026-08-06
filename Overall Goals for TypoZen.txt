@@ -50,6 +50,9 @@ Initial State: Unless changes by the user, default to `Preview`, `1-Column`, and
 5/ Phase 5 is to implement epub functionality
 
 6/ Phase 6: Ensure you can call TypoZen from ZenSeek, passing on the search result and location. TypoZen must open in Reader mode, and if a search result and location are given, immediately jump to that location and highlight the searched item
+   DONE: ZenSeek Show-Reader launches TypoZen.exe --reader --search --match-index for md/txt/epub;
+   TypoZen LaunchRequest + external_find / external_goto_line; pipe handoff for second instance.
+   Docx/xlsx still use ZenSeek's built-in reader.
 
 7/ Phase 7: Get rid of the ZenSeek reader and permanently use TypoZen as the reader.
 

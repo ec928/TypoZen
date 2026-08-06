@@ -361,34 +361,38 @@
            .two-col-layout only changes how many columns fit on a page.
            Neither requires .reader-mode: Preview may paginate too, and the resolver is what
            decides when a combination is legal. */
+        /*
+         * Pages mode geometry is owned entirely by PageGeometry (02-layout.js).
+         * It sets pixel column-width/gap/height. CSS only provides the scroll surface
+         * and defaults; do not set column-count:1 here — that fights the lock.
+         */
         #editor.page-mode {
-            column-count: 1;
-            column-gap: 60px;
+            column-count: auto;
             column-fill: auto;
+            column-gap: 0;
+            overflow-x: auto;
             overflow-y: hidden;
-            width: auto;
-            /* A column IS a page, so the page height is whatever box the editor sits in.
-               This used to be sampled in JS -- editor.style.height = container.clientHeight
-               -- at whatever instant the column switch happened to run. The host restores a
-               saved window size per column mode, so that sample raced the resize: the first
-               entry into 2-column measured 774 and every later one 794, giving columns of
-               766px and then 786px for the same document and window.
-
-               Nothing downstream survives that. A 20px taller column fits more per page, so
-               the document was 106 pages on the first visit and 103 on the second, and
-               2-col -> 1-col -> 2-col returned to the page the reading anchor named while
-               the pages themselves had moved -- landing one page early, every time. The
-               anchoring was never the bug.
-
-               height: 100% fixed the determinism and cost far too much: a percentage on a
-               multi-column contenteditable is re-resolved and the whole flow re-fragmented
-               on every layout, which took a keystroke in a 3767-block document from 130ms
-               to 207ms. The height is set in pixels from #editor-wrapper instead -- see
-               applyPageModeHeight() -- which is stable whatever the container is doing, and
-               reapplied on resize so it still follows the window. */
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
         }
         #editor.page-mode.two-col-layout {
-            column-count: 2;
+            column-gap: 60px;
+        }
+
+        /* Scrubber is the only progress chrome — hide native scrollbars. */
+        body.tz-pages #main-container {
+            overflow: hidden !important;
+        }
+        body.tz-pages #editor.page-mode {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+        body.tz-pages #editor.page-mode::-webkit-scrollbar {
+            width: 0 !important;
+            height: 0 !important;
+            display: none !important;
         }
 
         /* Paginated code fences wrap instead of scrolling.

@@ -71,8 +71,14 @@ console.log('--- no stray control characters in the sources ---');
     // A fourth one landed in a test rather than in the sources: the carrier regex in
     // epub-open-app.mjs ended in a backspace byte, matched no block at all, and the
     // suite reported zero images instead of failing. The tests are sources too.
+    const moduleFiles = fs.existsSync(path.join(__dirname, '..', 'js', 'modules'))
+        ? fs.readdirSync(path.join(__dirname, '..', 'js', 'modules'))
+            .filter(f => f.endsWith('.js'))
+            .map(f => 'js/modules/' + f)
+        : [];
     const files = ['js/typozen.js', 'css/typozen.css', 'TypoZen_Template.html',
                    'TypoZen_App.cs', 'EpubReader.cs']
+        .concat(moduleFiles)
         .concat(fs.readdirSync(path.join(__dirname))
             .filter(f => f.endsWith('.mjs'))
             .map(f => 'tests/' + f));

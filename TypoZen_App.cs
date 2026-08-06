@@ -108,34 +108,16 @@ namespace TypoZen
         public static void Main(string[] args)
         {
             PerfMark("--- Main entered (process start + .NET/WPF load precede this)");
-            // --debug turns on the telemetry log. Off by default: normal use should not
-            // drop a debug.log beside the executable. TypoZen_Debug.bat passes the flag.
-            string initialFile = null;
-            if (args != null)
-            {
-                foreach (string raw in args)
-                {
-                    if (string.IsNullOrWhiteSpace(raw)) continue;
-                    string a = raw.Trim('\"', '\'');
-                    if (a.Equals("--debug", StringComparison.OrdinalIgnoreCase)
-                        || a.Equals("-debug", StringComparison.OrdinalIgnoreCase)
-                        || a.Equals("/debug", StringComparison.OrdinalIgnoreCase))
-                    {
-                        DebugLogEnabled = true;
-                        continue;
-                    }
-                    if (initialFile == null)
-                    {
-                        try { initialFile = Path.GetFullPath(a); }
-                        catch { initialFile = a; }
-                    }
-                }
-            }
+            // --debug, and Phase 6 (ZenSeek): --reader --search --line --match-index + path.
+            LaunchRequest launch = LaunchRequest.ParseArgs(args);
+            if (launch.Debug)
+                DebugLogEnabled = true;
             if (!DebugLogEnabled
                 && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TYPOZEN_DEBUG")))
             {
                 DebugLogEnabled = true;
             }
+            string initialFile = launch.FilePath;
 
             // Automated tests may run multiple processes against throwaway profiles.
             bool e2e = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TYPOZEN_TAB_E2E"));
@@ -157,13 +139,13 @@ namespace TypoZen
                 {
                     // Another TypoZen is running — open the file there as a tab and exit.
                     try { if (mutex != null) mutex.Dispose(); } catch { }
-                    if (HandoffToRunningInstance(initialFile))
+                    if (HandoffToRunningInstance(launch))
                         return;
                     // Pipe not ready yet (race on cold start): few quick retries only.
                     for (int i = 0; i < 8; i++)
                     {
                         Thread.Sleep(50);
-                        if (HandoffToRunningInstance(initialFile))
+                        if (HandoffToRunningInstance(launch))
                             return;
                     }
                     // Last resort: start a second window rather than drop the file open.
@@ -174,7 +156,7 @@ namespace TypoZen
                     try
                     {
                         var app = new Application();
-                        var win = new TypoZenWindow(initialFile);
+                        var win = new TypoZenWindow(launch);
                         win.StartSingleInstanceOpenServer();
                         app.Run(win);
                     }
@@ -192,7 +174,7 @@ namespace TypoZen
 
             {
                 var app = new Application();
-                var win = new TypoZenWindow(initialFile);
+                var win = new TypoZenWindow(launch);
                 if (!e2e) win.StartSingleInstanceOpenServer();
                 app.Run(win);
             }
@@ -202,7 +184,7 @@ namespace TypoZen
         /// Tell the running TypoZen to open a path (or just activate if path is empty).
         /// Returns true if the handoff message was delivered.
         /// </summary>
-        private static bool HandoffToRunningInstance(string filePath)
+        private static bool HandoffToRunningInstance(LaunchRequest req)
         {
             try
             {
@@ -213,8 +195,8 @@ namespace TypoZen
                     client.Connect(250);
                     using (var writer = new StreamWriter(client, new UTF8Encoding(false)) { AutoFlush = true })
                     {
-                        // One line: full path, or empty = activate only.
-                        writer.WriteLine(filePath ?? "");
+                        // One line: plain path (Explorer) or path + #tz1 options (ZenSeek).
+                        writer.WriteLine(req != null ? req.ToPipeLine() : "");
                     }
                 }
                 return true;
@@ -232,6 +214,8 @@ namespace TypoZen
         private System.Drawing.Color _currentThemeBg = System.Drawing.Color.FromArgb(30, 30, 30);
         private string _currentFilePath = null;
         private string _initialFileToOpen = null;
+        private LaunchRequest _pendingLaunch;
+        private int _launchHintPasses = 0;
         private bool _isDirty = false;
         private string _appDir;
 
@@ -351,7 +335,7 @@ namespace TypoZen
         private CancellationTokenSource _openPipeCts;
         private Thread _openPipeThread;
         private bool _editorReady;
-        private readonly List<string> _pendingHandoffPaths = new List<string>();
+        private readonly List<LaunchRequest> _pendingHandoffPaths = new List<LaunchRequest>();
 
         // The theme editor offers FAMILIES, not hand-written CSS stacks.
         //
@@ -458,13 +442,19 @@ namespace TypoZen
         private string BookPositionsPath() { return Path.Combine(CacheDir(), "book_positions.txt"); }
         private string TabSessionBodiesDir() { return Path.Combine(CacheDir(), "session_bodies"); }
 
-        public TypoZenWindow(string initialFile = null)
+        public TypoZenWindow(LaunchRequest launch = null)
         {
             string e2e = Environment.GetEnvironmentVariable("TYPOZEN_TAB_E2E");
             _e2eMode = !string.IsNullOrWhiteSpace(e2e);
             _e2eDir = _e2eMode ? e2e.Trim() : null;
 
-            _initialFileToOpen = initialFile;
+            if (launch == null) launch = new LaunchRequest();
+            _initialFileToOpen = launch.FilePath;
+            if (launch.HasOpenHints)
+            {
+                _pendingLaunch = launch;
+                _launchHintPasses = 0;
+            }
             _appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
             Program.PerfMark("window ctor");
             PurgePendingWebStorage(); // must precede WebView2: it locks the store
@@ -532,10 +522,10 @@ namespace TypoZen
                             try { line = reader.ReadLine(); }
                             catch { line = null; }
                         }
-                        string path = string.IsNullOrWhiteSpace(line) ? null : line.Trim().Trim('"');
+                        LaunchRequest req = LaunchRequest.FromPipeLine(line);
                         try
                         {
-                            Dispatcher.BeginInvoke(new Action(() => HandleExternalOpenRequest(path)),
+                            Dispatcher.BeginInvoke(new Action(() => HandleExternalOpenRequest(req)),
                                 DispatcherPriority.Normal);
                         }
                         catch { }
@@ -566,41 +556,104 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Explorer / second-process open request. Queues until the editor is ready so
-        /// session restore does not wipe a tab opened mid-startup.
+        /// Explorer / second-process / ZenSeek open request. Queues until the editor is
+        /// ready so session restore does not wipe a tab opened mid-startup.
         /// </summary>
-        private void HandleExternalOpenRequest(string path)
+        private void HandleExternalOpenRequest(LaunchRequest req)
         {
             try { BringToFrontForHandoff(); } catch { }
+            if (req == null) return;
+            string path = req.FilePath;
             if (string.IsNullOrEmpty(path)) return;
             if (!File.Exists(path)) return;
             if (!_editorReady)
             {
-                // De-dupe while waiting for WebView ready.
                 for (int i = 0; i < _pendingHandoffPaths.Count; i++)
                 {
-                    if (string.Equals(_pendingHandoffPaths[i], path, StringComparison.OrdinalIgnoreCase))
+                    if (_pendingHandoffPaths[i] != null
+                        && string.Equals(_pendingHandoffPaths[i].FilePath, path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (req.HasOpenHints) _pendingHandoffPaths[i] = req;
                         return;
+                    }
                 }
-                _pendingHandoffPaths.Add(path);
+                _pendingHandoffPaths.Add(req);
                 return;
             }
-            LoadFileFromPath(path);
+            OpenWithLaunchRequest(req);
         }
 
         private void FlushPendingHandoffPaths()
         {
             if (_pendingHandoffPaths.Count == 0) return;
-            var copy = new List<string>(_pendingHandoffPaths);
+            var copy = new List<LaunchRequest>(_pendingHandoffPaths);
             _pendingHandoffPaths.Clear();
             for (int i = 0; i < copy.Count; i++)
             {
                 try
                 {
-                    if (File.Exists(copy[i]))
-                        LoadFileFromPath(copy[i]);
+                    if (copy[i] != null && !string.IsNullOrEmpty(copy[i].FilePath)
+                        && File.Exists(copy[i].FilePath))
+                        OpenWithLaunchRequest(copy[i]);
                 }
                 catch { }
+            }
+        }
+
+        private void OpenWithLaunchRequest(LaunchRequest req)
+        {
+            if (req == null || string.IsNullOrEmpty(req.FilePath)) return;
+            if (req.HasOpenHints)
+            {
+                _pendingLaunch = req;
+                _launchHintPasses = 0;
+            }
+            LoadFileFromPath(req.FilePath);
+            ScheduleApplyPendingLaunch();
+        }
+
+        private void ScheduleApplyPendingLaunch()
+        {
+            if (_pendingLaunch == null || !_pendingLaunch.HasOpenHints) return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try { ApplyPendingLaunchHints(); } catch { }
+            }), DispatcherPriority.Background);
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+            timer.Tick += (s, e) =>
+            {
+                timer.Stop();
+                try { ApplyPendingLaunchHints(); } catch { }
+            };
+            timer.Start();
+        }
+
+        private void ApplyPendingLaunchHints()
+        {
+            LaunchRequest req = _pendingLaunch;
+            if (req == null || !req.HasOpenHints) return;
+            if (_webView == null || _webView.CoreWebView2 == null) return;
+
+            if (req.Reader)
+                SendMsg("cmd:view_set:mode:reader");
+
+            if (!string.IsNullOrEmpty(req.Search))
+            {
+                int mi = req.MatchIndex >= 0 ? req.MatchIndex : 0;
+                SendMsg("external_find:" + Uri.EscapeDataString(req.Search)
+                    + "|match=" + mi.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            else if (req.Line >= 0)
+            {
+                SendMsg("external_goto_line:"
+                    + (req.Line + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            _launchHintPasses++;
+            if (_launchHintPasses >= 2)
+            {
+                _pendingLaunch = null;
+                _launchHintPasses = 0;
             }
         }
 
@@ -1560,6 +1613,14 @@ namespace TypoZen
         /// to consult the single _isDirty flag, which only tracks the active tab, so
         /// background tabs were discarded without a word.
         /// </summary>
+        /// <summary>True when this tab is a read-only book (.epub). Never dirty, never save-prompt.</summary>
+        private static bool IsBookTab(DocTab tab)
+        {
+            return tab != null
+                && !string.IsNullOrEmpty(tab.FilePath)
+                && tab.FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+        }
+
         private List<DocTab> GetDirtyTabs()
         {
             var list = new List<DocTab>();
@@ -1569,8 +1630,11 @@ namespace TypoZen
                 // A book cannot be dirty: it is read-only and has no text behind it. Closing
                 // one was offering to save it, and answering Yes would have led straight to
                 // the export dialog for a document nobody had edited.
-                if (!string.IsNullOrEmpty(_tabs[i].FilePath)
-                    && _tabs[i].FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)) continue;
+                if (IsBookTab(_tabs[i]))
+                {
+                    _tabs[i].IsDirty = false;
+                    continue;
+                }
                 list.Add(_tabs[i]);
             }
             return list;
@@ -3155,7 +3219,7 @@ if (_btnColumnToggle != null)
                 _webView.BackColor = _currentThemeBg;
                 try { _webView.DefaultBackgroundColor = _currentThemeBg; } catch {}
 
-                _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled = Program.DebugLogEnabled;
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                 // Disable Chromium page-find (Ctrl+F) and other browser accelerators.
                 // Page-find was counting sidebar outline duplicates and failing to scroll #main-container.
@@ -3188,13 +3252,51 @@ if (_btnColumnToggle != null)
                 string htmlPath = Path.Combine(_appDir, "TypoZen_Template.html");
                 if (File.Exists(htmlPath))
                 {
-                    // Cache-bust so template HTML edits apply without fighting WebView disk cache
+                    // Cache-bust on the newest of the template, CSS, and JS modules.
+                    // Using only the HTML mtime left WebView serving stale 02-layout /
+                    // 03-shell after search fixes, so ZenSeek still opened Ctrl+F + sidebar.
                     long ticks = File.GetLastWriteTimeUtc(htmlPath).Ticks;
+                    try
+                    {
+                        string cssPath = Path.Combine(_appDir, "css", "typozen.css");
+                        if (File.Exists(cssPath))
+                            ticks = Math.Max(ticks, File.GetLastWriteTimeUtc(cssPath).Ticks);
+                        string modDir = Path.Combine(_appDir, "js", "modules");
+                        if (Directory.Exists(modDir))
+                        {
+                            foreach (string f in Directory.GetFiles(modDir, "*.js"))
+                                ticks = Math.Max(ticks, File.GetLastWriteTimeUtc(f).Ticks);
+                        }
+                    }
+                    catch { }
+
+                    // Stamp ?v= onto script/link tags so module edits cannot stick in the
+                    // WebView HTTP cache after a full navigation (query on the HTML alone
+                    // is not enough — classic script src URLs were unversioned).
+                    string navName = "TypoZen_Template.html";
+                    try
+                    {
+                        string html = File.ReadAllText(htmlPath);
+                        string v = ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        html = System.Text.RegularExpressions.Regex.Replace(
+                            html,
+                            @"src=""(js/modules/[^""]+\.js)(?:\?[^""]*)?""",
+                            "src=\"$1?v=" + v + "\"");
+                        html = System.Text.RegularExpressions.Regex.Replace(
+                            html,
+                            @"href=""(css/typozen\.css)(?:\?[^""]*)?""",
+                            "href=\"$1?v=" + v + "\"");
+                        string stamped = Path.Combine(_appDir, "TypoZen_Template.runtime.html");
+                        File.WriteAllText(stamped, html);
+                        navName = "TypoZen_Template.runtime.html";
+                    }
+                    catch { /* fall back to unstamped template */ }
+
                     Program.PerfMark(string.Format(
                         "navigating (webview {0}x{1} visible={2}, window visible={3})",
                         _webView.Width, _webView.Height, _webView.Visible, this.IsVisible));
                     // perf=1 switches on the page-side marks; absent, they are inert.
-                    _webView.CoreWebView2.Navigate("https://localapp/TypoZen_Template.html?v=" + ticks
+                    _webView.CoreWebView2.Navigate("https://localapp/" + navName + "?v=" + ticks
                         + (Program.PerfEnabled ? "&perf=1" : ""));
                 }
                 else
@@ -3345,6 +3447,7 @@ if (_btnColumnToggle != null)
                     if (!string.IsNullOrEmpty(_initialFileToOpen) && File.Exists(_initialFileToOpen))
                     {
                         string fileToOpen = _initialFileToOpen;
+                        LaunchRequest cliLaunch = _pendingLaunch;
                         _initialFileToOpen = null;
                         // Deferred out of this WebView2 message handler on purpose.
                         // LoadFileFromPath pulls editor state with a blocking script call, and
@@ -3354,7 +3457,13 @@ if (_btnColumnToggle != null)
                         Dispatcher.BeginInvoke(new Action(() =>
                         {
                             Program.PerfMark("requested file: load begin");
-                            LoadFileFromPath(fileToOpen);
+                            if (cliLaunch != null && cliLaunch.HasOpenHints)
+                            {
+                                cliLaunch.FilePath = fileToOpen;
+                                OpenWithLaunchRequest(cliLaunch);
+                            }
+                            else
+                                LoadFileFromPath(fileToOpen);
                             Program.PerfMark("requested file: load done  <<< user sees their document");
                         }), DispatcherPriority.Background);
                     }
@@ -3533,12 +3642,12 @@ if (_btnColumnToggle != null)
             }
             else if (msg.StartsWith("book_position:"))
             {
+                // Historical name: any saved path (epub or markdown) may remember a block.
                 int block;
                 if (int.TryParse(msg.Substring(14), out block))
                 {
                     string p = _currentFilePath;
-                    if (!string.IsNullOrEmpty(p) &&
-                        p.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+                    if (!string.IsNullOrEmpty(p))
                     {
                         try { RememberBookPosition(Path.GetFullPath(p), block); } catch { }
                     }
@@ -3608,7 +3717,8 @@ if (_btnColumnToggle != null)
             }
             else if (msg == "load_done")
             {
-                // Large staged open succeeded — nothing else required (fire-and-forget).
+                // Large staged open / book open finished — apply ZenSeek jump/highlight.
+                ScheduleApplyPendingLaunch();
             }
             else if (msg.StartsWith("load_failed:"))
             {
@@ -5333,6 +5443,13 @@ if (_btnColumnToggle != null)
             var tab = _tabs[_activeTabIndex];
             tab.Content = content;
             tab.FilePath = _currentFilePath;
+            // Books never dirty, even if the page snapshot disagrees with lastSavedContent.
+            if (IsBookTab(tab)
+                || (!string.IsNullOrEmpty(_currentFilePath)
+                    && _currentFilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)))
+            {
+                dirty = false;
+            }
             tab.IsDirty = dirty;
             _isDirty = dirty;
             return true;
@@ -7175,6 +7292,9 @@ if (_btnColumnToggle != null)
             _currentFilePath = tab.FilePath;
             MapDocumentFolder(_currentFilePath);   // images resolve per document
             _isDirty = tab.IsDirty;
+            // Teardown of book CSS/layout is handled inside loadMarkdownContent when
+            // kind was epub (wasBook). Do not send leave_book_surface first — that raced
+            // and could remount HTML as Markdown.
             string content = tab.Content ?? "";
             if (string.IsNullOrEmpty(content) && string.IsNullOrEmpty(tab.FilePath) && !tab.IsDirty)
                 SendMsg("new_document");
@@ -7435,7 +7555,13 @@ if (_btnColumnToggle != null)
             }
 
             var tab = _tabs[index];
-            if (tab.IsDirty)
+            // Books are read-only. Never offer Save on close (host sync used to mark them dirty).
+            if (IsBookTab(tab))
+            {
+                tab.IsDirty = false;
+                if (index == _activeTabIndex) _isDirty = false;
+            }
+            else if (tab.IsDirty)
             {
                 var res = WinForms.MessageBox.Show(
                     "Save changes to " + TabDisplayName(tab) + "?",
@@ -7866,6 +7992,7 @@ if (_btnColumnToggle != null)
                 tab.IsDirty = false;
                 tab.SourceEncoding = "Epub";
                 _currentFilePath = path;
+                _isDirty = false;
 
                 RebuildTabStrip();
 
@@ -7877,7 +8004,11 @@ if (_btnColumnToggle != null)
 
                 // Reopen where they stopped reading. A book with no remembered position --
                 // or one remembered at the very start -- opens at the cover, as it should.
+                // When ZenSeek/CLI opens with --search, skip resume: last-read block and
+                // the search match race (page thrash 13↔141) until only one jump wins.
                 int resumeAt = RememberedBookPosition(path);
+                if (_pendingLaunch != null && !string.IsNullOrEmpty(_pendingLaunch.Search))
+                    resumeAt = -1;
                 SendMsg("fetch_and_load_book:https://localapp/typozen_load/" + fileName
                     + (resumeAt > 0 ? "|at=" + resumeAt : ""));
 

@@ -16,6 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { JSDOM } from 'jsdom';
+import { readEngineSource } from './engine-source.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -283,7 +284,7 @@ console.log('\n--- host no longer walks the folder for a list nobody renders ---
     assert(appCs.indexOf('ScanCurrentDirectory') === -1,
         'ScanCurrentDirectory is gone from the host');
     assert(appCs.indexOf('request_dir') === -1, 'the request_dir round trip is gone');
-    const js = fs.readFileSync(path.join(appDir, 'js', 'typozen.js'), 'utf8');
+    const js = readEngineSource();
     assert(js.indexOf('renderFileList') === -1, 'renderFileList is gone from the page');
     assert(js.indexOf('dir_list:') === -1, 'the dir_list handler is gone from the page');
 }

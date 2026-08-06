@@ -71,9 +71,10 @@ else {
     # *-app.mjs launch TypoZen.exe itself and need a desktop session, so they are not part
     # of the build gate; run them with RUN_APP_E2E=1 .\tests\run-tests.ps1. app-harness.mjs
     # is their helper, not a suite.
+    $helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs')
     $suites = @(Get-ChildItem (Join-Path $appDir "tests\*.mjs") -ErrorAction SilentlyContinue |
                 Where-Object { $_.Name -notlike "*-pending.mjs" -and $_.Name -notlike "*-app.mjs" `
-                               -and $_.Name -ne "app-harness.mjs" } | Sort-Object Name)
+                               -and ($helpers -notcontains $_.Name) } | Sort-Object Name)
     if ($suites.Count -eq 0) {
         Write-Host "  [WARN] no tests\*.mjs found - skip" -ForegroundColor Yellow
     }
@@ -168,15 +169,19 @@ if ($null -ne $msbuild) {
 
 if (-not $compiled) {
     Write-Host "Using .NET PowerShell Compiler..." -ForegroundColor Gray
-    $csFile = Join-Path $appDir "TypoZen_App.cs"
-    $epubFile = Join-Path $appDir "EpubReader.cs"
+    # Separate .cs files (partials + EpubReader). Compile as files, not one concatenated
+    # string — joining sources puts a second file's `using` inside the first namespace.
+    $csFiles = @(Get-ChildItem (Join-Path $appDir "*.cs") -File | Sort-Object Name | ForEach-Object { $_.FullName })
+    if ($csFiles.Count -eq 0) {
+        Write-Host "[ERROR] No .cs files found to compile." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host ("  Sources: " + (($csFiles | ForEach-Object { Split-Path $_ -Leaf }) -join ", ")) -ForegroundColor Gray
     $exeFile = Join-Path $appDir "TypoZen.exe"
     if (Test-Path $exeFile) { 
         try { Remove-Item $exeFile -Force -ErrorAction SilentlyContinue } catch {} 
     }
 
-    $code = (Get-Content $csFile -Raw -Encoding UTF8) + "`n" + (Get-Content $epubFile -Raw -Encoding UTF8)
-    
     $wpfAssemblies = @(
         "System", "System.Core", "System.Drawing", "System.Windows.Forms",
         "Microsoft.VisualBasic",
@@ -213,14 +218,14 @@ if (-not $compiled) {
         # Compile through the provider rather than Add-Type: Add-Type collapses every
         # failure into "Cannot add type. Compilation errors occurred." with no file, line
         # or reason - which made a mere file lock look like broken source. CompilerResults
-        # carries the real diagnostics.
+        # carries the real diagnostics. FromFile keeps partials and per-file usings valid.
         $provider = New-Object Microsoft.CSharp.CSharpCodeProvider
-        $result = $provider.CompileAssemblyFromSource($cp, $code)
+        $result = $provider.CompileAssemblyFromFile($cp, [string[]]$csFiles)
         $errors = @($result.Errors | Where-Object { -not $_.IsWarning })
         if ($errors.Count -gt 0) {
             Write-Host "[ERROR] Compilation failed with $($errors.Count) error(s):" -ForegroundColor Red
             foreach ($e in ($errors | Select-Object -First 15)) {
-                Write-Host ("  TypoZen_App.cs(" + $e.Line + "): " + $e.ErrorNumber + " " + $e.ErrorText) -ForegroundColor Yellow
+                Write-Host ("  " + $e.FileName + "(" + $e.Line + "): " + $e.ErrorNumber + " " + $e.ErrorText) -ForegroundColor Yellow
             }
             exit 1
         }

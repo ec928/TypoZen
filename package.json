@@ -1,4 +1,13 @@
 {
+  "name": "typozen",
+  "private": true,
+  "description": "Test dependencies only — the app itself is vanilla JS with no Node runtime.",
+  "scripts": {
+    "test": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-tests.ps1",
+    "test:app": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:RUN_APP_E2E='1'; ./tests/run-tests.ps1\"",
+    "build-fixture": "node tests/build-test-template.mjs",
+    "parse-check": "node tests/build-test-template.mjs && node tests/parse-check.mjs"
+  },
   "dependencies": {
     "jsdom": "^30.0.1",
     "puppeteer": "^25.4.0",

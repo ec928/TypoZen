@@ -18,13 +18,9 @@
  *
  *   node tests/page-chunks-selftest.mjs
  */
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { readEngineSource } from './engine-source.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const appDir = path.join(__dirname, '..');
-const src = fs.readFileSync(path.join(appDir, 'js', 'typozen.js'), 'utf8');
+const src = readEngineSource();
 
 let passed = 0;
 let failed = 0;
@@ -36,7 +32,7 @@ function assert(cond, msg) {
 // Extract the shipping object rather than reimplementing it: a test that passes against
 // its own copy proves nothing.
 const start = src.indexOf('const PageChunks = {');
-if (start < 0) { console.error('  FAIL PageChunks not found in js/typozen.js'); process.exit(1); }
+if (start < 0) { console.error('  FAIL PageChunks not found in engine modules'); process.exit(1); }
 let depth = 0, end = -1;
 for (let i = src.indexOf('{', start); i < src.length; i++) {
     if (src[i] === '{') depth++;

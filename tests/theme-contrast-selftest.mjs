@@ -23,6 +23,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readEngineSource } from './engine-source.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -114,7 +115,7 @@ console.log('');
 console.log('--- 3. search highlighting is theme-derived and visible in every theme ---');
 {
     const css = fs.readFileSync(path.join(appDir, 'css', 'typozen.css'), 'utf8');
-    const js = fs.readFileSync(path.join(appDir, 'js', 'typozen.js'), 'utf8');
+    const js = readEngineSource();
 
     // It was #f59e0b over rgba(255,180,0,.45): deliberate-looking on a warm light theme,
     // arbitrary on the other twenty-five. Same lesson as the accents themselves -- the

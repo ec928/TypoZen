@@ -32,7 +32,7 @@ try {
     const enabled = await app.eval(() => PAGE_WINDOWING_ENABLED);
     if (!enabled) {
         console.log('  --   PAGE_WINDOWING_ENABLED is false; nothing to verify.');
-        console.log('       Set it true in js/typozen.js to run these checks.');
+        console.log('       Set it true in the page engine (js/modules) to run these checks.');
         console.log('passed=0 failed=0');
         console.log('PAGE WINDOW SKIPPED');
         await app.close();

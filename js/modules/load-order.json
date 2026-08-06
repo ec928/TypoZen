@@ -1,0 +1,13 @@
+{
+  "description": "Editor engine modules in load order. Classic scripts share one global scope.",
+  "modules": [
+    "01-core.js",
+    "02-layout.js",
+    "03-shell.js",
+    "04-lists.js",
+    "04b-format.js",
+    "05-model.js",
+    "06-render-epub.js",
+    "07-stats-host.js"
+  ]
+}

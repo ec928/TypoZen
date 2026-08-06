@@ -233,6 +233,16 @@
     </div>
 
     <script>window.__tzBeforeMain = Math.round(performance.now());</script>
-    <script src="js/typozen.js"></script>
+    <!-- TYPOZEN_ENGINE_BEGIN -->
+    <!-- Classic scripts, fixed order — see js/modules/load-order.json. Shared globals. -->
+    <script src="js/modules/01-core.js"></script>
+    <script src="js/modules/02-layout.js"></script>
+    <script src="js/modules/03-shell.js"></script>
+    <script src="js/modules/04-lists.js"></script>
+    <script src="js/modules/04b-format.js"></script>
+    <script src="js/modules/05-model.js"></script>
+    <script src="js/modules/06-render-epub.js"></script>
+    <script src="js/modules/07-stats-host.js"></script>
+    <!-- TYPOZEN_ENGINE_END -->
 </body>
 </html>

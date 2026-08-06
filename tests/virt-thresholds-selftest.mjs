@@ -22,14 +22,13 @@ function assert(cond, msg) {
 }
 
 console.log('=== threshold constants present and split ===');
-assert(/const SOURCE_FIRST_CHARS\s*=\s*16000/.test(mainScript), 'SOURCE_FIRST_CHARS = 16000');
+assert(/const LARGE_DOC_CHARS\s*=\s*16000/.test(mainScript), 'LARGE_DOC_CHARS = 16000 (stats only)');
+assert(!/const SOURCE_FIRST_CHARS\s*=/.test(mainScript), 'SOURCE_FIRST_CHARS constant removed');
 assert(/const VIRT_MIN_CHARS\s*=\s*120000/.test(mainScript), 'VIRT_MIN_CHARS = 120000');
 assert(/const VIRT_MIN_BLOCKS\s*=\s*2000/.test(mainScript), 'VIRT_MIN_BLOCKS = 2000');
 assert(/const PROGRESSIVE_PAINT_BLOCKS\s*=\s*800/.test(mainScript), 'PROGRESSIVE_PAINT_BLOCKS = 800');
 assert(/const PROGRESSIVE_CREATE_BATCH_BLOCKS\s*=\s*1500/.test(mainScript),
     'PROGRESSIVE_CREATE_BATCH_BLOCKS = 1500');
-assert(mainScript.includes('const LARGE_DOC_CHARS = SOURCE_FIRST_CHARS'),
-    'LARGE_DOC_CHARS aliases SOURCE_FIRST (not virt)');
 
 // shouldVirtualize must not use LARGE_DOC_CHARS / 16000 as virt floor
 const sv = mainScript.match(/shouldVirtualize:\s*function\s*\(\)\s*\{[\s\S]*?\n\s*\},/);

@@ -18,6 +18,9 @@ debug.log
 # tests/build-test-template.mjs on every test run and every build.
 TypoZen_Template_Test.html
 
+# Stamped at launch with ?v= on script/css tags so WebView cannot cache stale modules.
+TypoZen_Template.runtime.html
+
 # Test books. Real novels, used because a converter that looks fine on a synthetic
 # fixture is exactly how the current one shipped losing every image and link.
 tests/*.epub

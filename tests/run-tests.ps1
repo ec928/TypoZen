@@ -10,7 +10,7 @@ Set-Location $PSScriptRoot\..
 Write-Host "Running TypoZen self-tests..." -ForegroundColor Cyan
 
 # The jsdom suites boot from TypoZen_Template_Test.html. Regenerate it from the shipping
-# TypoZen_Template.html + css/typozen.css + js/typozen.js first, or they test a snapshot.
+# TypoZen_Template.html + css/typozen.css + js/modules/* first, or they test a snapshot.
 & node ".\tests\build-test-template.mjs"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Could not regenerate TypoZen_Template_Test.html - aborting." -ForegroundColor Red
@@ -26,8 +26,9 @@ $errFile = [System.IO.Path]::GetTempFileName()
 # but they are the only ones that can see layout, and excluding them is exactly how
 # 2-column mode shipped broken behind a green suite.
 $allSuites = @(Get-ChildItem ".\tests\*.mjs" | Sort-Object Name)
-# app-harness.mjs is a helper, not a suite.
-$allSuites = @($allSuites | Where-Object { $_.Name -ne "app-harness.mjs" })
+# Helpers / generators, not suites.
+$helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs')
+$allSuites = @($allSuites | Where-Object { $helpers -notcontains $_.Name })
 
 # *-app.mjs launch TypoZen.exe and drive it over the DevTools port --debug opens. They
 # need a desktop session and take ~40s, so they are opt-in via RUN_APP_E2E=1 -- but they

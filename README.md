@@ -109,7 +109,7 @@ The status bar updates continuously with word count, character count, estimated 
 - **Atomic document save** — write to a temp file, flush, then replace the target
 - **Standalone HTML export** — self-contained, with the active theme's styles embedded
 - Print / Export PDF (`Ctrl+P`) — Chromium print UI
-- CLI and Explorer integration: `TypoZen.exe "C:\path\doc.md"` (or `.txt`)
+- CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path` (see Phase 6 under Outstanding work)
 
 ### Session & privacy
 Preferences live under `%LocalAppData%\TypoZen_Cache\`.
@@ -155,8 +155,8 @@ TypoZen is a **native shell around a browser engine**. The WPF side owns the win
 | Bridge | `WindowsFormsHost` → WebView2 (**WinForms flavour**) | `window.chrome.webview` messages |
 | Theming | Recursive logical/visual tree walk + `SystemColors` brush keys | CSS from the same `TypoZen_Themes.json` |
 | Typography | — | 4 families bundled in `fonts/`, `local()` first |
-| Engine | Tabs, session, file I/O, encoding detection | `DocumentModel`, `HistoryManager`, virtualization |
-| Build | MSBuild, or `CSharpCodeProvider` fallback | Runtime assets — edit without recompiling |
+| Engine | Tabs, session, file I/O (`TypoZen_App.cs` + `TypoZen_Themes.cs` partials) | `js/modules/*` — `DocumentModel`, `HistoryManager`, virtualization |
+| Build | MSBuild / `Build_TypoZen.ps1` (CodeDom over all `*.cs`) | Runtime assets — edit without recompiling |
 
 Because the XAML, HTML template and theme JSON are all loaded at runtime, the shell chrome, editor engine and themes can be changed without touching C# or rebuilding. Only `TypoZen_App.cs` requires a recompile.
 
@@ -258,6 +258,8 @@ Live constants in `TypoZen_Template.html`. Changing them changes which strategy 
 | `PAGE_FOOT_RESERVE` | 26 px | Strip at the foot of a page for the numbers and the scrubber |
 | `MaxRememberedBooks` | 64 | Reading positions kept in `book_positions.txt` |
 
+`LARGE_DOC_CHARS` is **only** for stats/preferences throttling. It is no longer aliased from a historical `SOURCE_FIRST_CHARS` name — size does not choose Source vs Preview; document type does.
+
 Which path a Preview load takes:
 
 | Condition | Path |
@@ -268,8 +270,6 @@ Which path a Preview load takes:
 | blocks < 800 | Immediate full paint |
 
 Two rules worth keeping: don't gate progressive paint on a character count (it belongs to block count), and don't lower the virtualization floor toward 16 KB without a deliberate product decision — ordinary notes are meant to stay full WYSIWYG.
-
-> **Note:** `LARGE_DOC_CHARS` is aliased from a constant still named `SOURCE_FIRST_CHARS`. That name is historical — size no longer decides Source vs Preview, document type does. Worth renaming.
 
 ### Editor engine
 Standalone vanilla JavaScript — no framework.
@@ -329,10 +329,27 @@ From the project folder:
 **Runtime assets** (edit without recompiling C#):
 
 - `TypoZen.xaml` — shell and menus
-- `TypoZen_Template.html` — page shell; loads the two below by reference
-- `js/typozen.js` — editor engine
+- `TypoZen_Template.html` — page shell; loads CSS and the engine modules by reference
+- `js/modules/` — editor engine (ordered classic scripts; see `js/modules/load-order.json`)
+- `js/typozen.js` — **deprecated stub** that throws if loaded; do not edit
 - `css/typozen.css` — editor styling
 - `TypoZen_Themes.json` — themes
+- `fonts/` — bundled typefaces
+
+The engine is seven modules sharing one global scope (not ES modules):
+
+| Module | Concern |
+|--------|---------|
+| `01-core.js` | State, view selectors, margins, sticky line helpers |
+| `02-layout.js` | Find/search, pagination, page windowing, column memory |
+| `03-shell.js` | `onload`, themes, host commands, table picker |
+| `04-lists.js` | List engine (indent, parse, Tab/Backspace ladder) |
+| `04b-format.js` | Inline format, clipboard, keyboard editing paths |
+| `05-model.js` | `DocumentModel`, virtualization, load/save of content |
+| `06-render-epub.js` | Markdown render, epub load, book links/styles |
+| `07-stats-host.js` | Stats bar, outline, host sync, export |
+
+Edit a module and reload — no bundler step for the app. Tests concat the same files via `tests/engine-source.mjs` / `tests/build-test-template.mjs`.
 
 Rebuild after changing `TypoZen_App.cs`. The build also parses `TypoZen.xaml` before compiling: it is loaded at runtime by `XamlReader`, so markup errors are invisible to the compiler and would otherwise surface as a crash on launch.
 
@@ -341,7 +358,7 @@ Also: `.\Create_Shortcut.ps1` · `.\Generate_Icon.ps1`
 ### Tests
 
 ```powershell
-.\tests\run-tests.ps1                          # default gate — 46 suites
+.\tests\run-tests.ps1                          # default gate — jsdom + browser suites
 $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + 9 suites driving the real TypoZen.exe
 ```
 
@@ -424,7 +441,7 @@ every single one.
 | `Xeelee Sequence` | 460 documents, assets nested under `OEBPS/`, 40,656 blocks | Per-document asset resolution; scale for windowing and the scrubber |
 | `Dune`, `Nemesis Games` | untried | Spare shapes for when something book-specific is suspected |
 
-`TypoZen_Template_Test.html` is **generated**, not edited. `tests/build-test-template.mjs` inlines the shipping `js/typozen.js` and `css/typozen.css` into the page shell, and both runners regenerate it first. It is gitignored. Before this existed the jsdom suites had silently pinned themselves to an Aug-1 snapshot missing `htmlToMarkdown`, `walkTable` and `set_column_mode` entirely — 27 suites reporting green against code that no longer shipped.
+`TypoZen_Template_Test.html` is **generated**, not edited. `tests/build-test-template.mjs` inlines the shipping `js/modules/*` (in load order) and `css/typozen.css` into the page shell, and both runners regenerate it first. It is gitignored. Before this existed the jsdom suites had silently pinned themselves to an Aug-1 snapshot missing `htmlToMarkdown`, `walkTable` and `set_column_mode` entirely — 27 suites reporting green against code that no longer shipped.
 
 A GUI smoke test (`RUN_TAB_E2E=1`, pywinauto) drives the window through the WPF shell. It cannot see inside WebView2, so it verifies launch, tabs and window chrome only.
 
@@ -551,30 +568,55 @@ a user would notice first.
 
 ### Next
 
-- **ZenSeek integration (Phase 6).** Open TypoZen from ZenSeek at a search result — the reader
-  lands in the right document at the right position. Cross-repo; TypoZen's side is the
-  `open_file_path:` / reading-position machinery that already exists.
-- **Retire ZenSeek's own reader (Phase 7)**, once Phase 6 carries its weight.
+- **Retire ZenSeek's own reader (Phase 7)** for types TypoZen already covers (md/txt/epub),
+  once Phase 6 feels solid day to day. Docx/xlsx still use ZenSeek's built-in reader.
+
+### Phase 6 — open from ZenSeek (done)
+
+Double-click a search hit in ZenSeek (or Preview) launches **TypoZen** for
+`.md` / `.markdown` / `.txt` / `.log` / `.csv` / `.epub`:
+
+```text
+TypoZen.exe --reader --search "query" --match-index 0 --line 42 "C:\path\doc.md"
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--reader` | Open in Reader mode (pagination; books already do this) |
+| `--search` | Query to find and highlight |
+| `--match-index` | Which match (0-based), from ZenSeek's inline match list |
+| `--line` | Fallback 0-based line if search is empty |
+| path | Document to open |
+
+A second TypoZen process hands the same payload to the running window over the named pipe
+(`path` + `#tz1` option fields). After load, the host sends `external_find:` /
+`external_goto_line:` so the page jumps and highlights.
+
+TypoZen.exe is resolved as a sibling of the ZenSeek folder (`../TypoZen/TypoZen.exe`).
+If it is missing, or the file is `.docx`/`.xlsx`, ZenSeek keeps its built-in reader.
 
 ### Known gaps
 
 - **Links that are broken in the file itself.** `Matter`'s in-text links point at `#filepos`
-  anchors while its actual anchors are `calibre_pb_*`. The outline and the contents page are
-  recovered by title; a mid-chapter cross-reference has nothing to match on and does nothing.
-  No reader can resolve these by following the file.
-- **Two-column page numbering assumes a spread is two numbered pages.** True for the layouts
-  TypoZen offers, but the map counts spreads and the numbers count pages, and every place that
-  mixes them has had to be corrected once already.
-- **`LARGE_DOC_CHARS` is aliased from `SOURCE_FIRST_CHARS`.** The name is historical — size no
-  longer decides Source vs Preview, document type does. Worth renaming.
-- **Reading position is one number per book.** No per-tab positions, and nothing is remembered
-  for Markdown documents.
-- **The table modal is unreachable UI.** `TypoZen_Template.html` still carries `#tableModal`
-  with its close and confirm handlers wired, but nothing opens it — the toolbar uses the size
-  picker instead. Left in place because removing a dialog is a product decision, not a tidy-up.
+  anchors while its actual anchors are `calibre_pb_*`. When the fragment misses, TypoZen falls
+  back to the link's **title text** against the TOC/outline (including when the *file* part of
+  the href resolved but the fragment did not — that path used to land on the file start and
+  skip the title). A mid-chapter cross-reference with no usable title still has nothing to
+  match on and does nothing. No reader can invent anchors the publisher never wrote.
+- **Two-column numbering: map = spreads, glass = leaf pages.** `PageMap` always counts
+  spreads (one horizontal step). Foot numbers and the scrubber bubble convert through
+  `pageDisplayFromSpread` only — never seek or store leaf page numbers.
+- **Reading position is one block index per file path** (epub and markdown). Untitled
+  buffers are not remembered. No per-tab positions if the same path is open twice.
+- **Custom table size uses `#tableModal`.** The Notepad-style grid picker is the default path
+  (`Ctrl+T`); **Custom size…** opens the number-field dialog. Both share `insertMarkdownTable`.
 - **The scrubber is pages-only.** A scrolling layout keeps the native scrollbar, which is
   correct there — virtualization gives it the full document extent — but it does mean the two
   layouts offer different controls.
+- **Pagination typing cost (~66 ms/keystroke) is inherent.** Multi-column `contenteditable`
+  re-fragments on every mutation. The pixel page height already removed the worse 200 ms
+  path (`height: 100%`). There is no cheap JS fix without leaving real multi-column layout
+  while editing; write in Preview+Scroll, read in Pages.
 
 ### Test coverage that is thinner than it looks
 
@@ -621,7 +663,8 @@ Measured on the 4582-line mixed fixture unless stated:
 The Pages typing cost is the price of real pagination and is deliberate. It was briefly far
 worse: setting `height: 100%` on the multi-column contenteditable made every keystroke
 re-resolve the whole flow, at 207 ms each. The height is a pixel value applied from JS for
-that reason.
+that reason. JS work around the keystroke (stats debounce, a no-op `PageMap.invalidate`) is
+not the bottleneck — Chromium's multi-column reflow is.
 
 ---
 
