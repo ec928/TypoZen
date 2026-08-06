@@ -49,9 +49,36 @@ namespace TypoZen
                 string dir = Path.Combine(root, key);
                 assetDir = dir;
 
+                // The payload for a book that has not changed is the same payload. Building
+                // it means re-reading every spine document out of the zip and JSON-escaping
+                // the lot -- 1,043,141 characters for a mid-sized novel -- and that is what
+                // made switching to an already-open book tab take six seconds. The extracted
+                // assets are already cached against a stamp; this caches the payload beside
+                // them, against the same stamp.
+                string payloadPath = Path.Combine(dir, ".typozen-payload.json");
+                string stampPath = Path.Combine(dir, ".typozen-stamp");
+                string stampWas = null;
+                try { if (File.Exists(stampPath)) stampWas = File.ReadAllText(stampPath); } catch { }
+
                 using (var zip = ZipFile.OpenRead(epubPath))
                 {
                     ExtractIfStale(zip, dir);
+
+                    // Reuse only when the stamp is the one the payload was built from, so a
+                    // re-extract (a changed book) always rebuilds it.
+                    if (stampWas != null && File.Exists(payloadPath))
+                    {
+                        try
+                        {
+                            string stampNow = File.ReadAllText(stampPath);
+                            if (stampNow == stampWas)
+                            {
+                                string cached = File.ReadAllText(payloadPath, new UTF8Encoding(false));
+                                if (!string.IsNullOrEmpty(cached)) return cached;
+                            }
+                        }
+                        catch { }
+                    }
 
                     string opfPath = FindOpfPath(zip);
                     if (opfPath == null) return null;
@@ -89,7 +116,11 @@ namespace TypoZen
                     sb.Append(",\"css\":[").Append(string.Join(",", css)).Append("]");
                     sb.Append(",\"toc\":[").Append(string.Join(",", toc)).Append("]");
                     sb.Append(",\"docs\":[").Append(string.Join(",", docs)).Append("]}");
-                    return sb.ToString();
+                    string payload = sb.ToString();
+                    // Cache beside the assets so the next open of this book is a file read.
+                    // Best effort: a failure here costs the next open its rebuild, nothing more.
+                    try { File.WriteAllText(payloadPath, payload, new UTF8Encoding(false)); } catch { }
+                    return payload;
                 }
             }
             catch

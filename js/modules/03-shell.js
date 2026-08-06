@@ -767,6 +767,10 @@
                     if (editor && !isPaginatedLayout()) editor.scrollLeft = 0;
                     currentTwoColPage = 0;
                 }
+                // One column's page counts say nothing about two. Without this the totals
+                // after a switch were part measurement of the layout just left, which is
+                // why the same book reported a different length in each.
+                try { if (typeof PageChunks !== 'undefined') PageChunks.invalidate(); } catch (ePC) {}
                 syncPaginationClass();
                 applyEditorChromeForMode();
 

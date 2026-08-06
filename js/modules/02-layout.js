@@ -801,6 +801,9 @@
             editor.classList.toggle('page-mode', on);
             try { document.body.classList.toggle('tz-pages', on); } catch (eB2) {}
             PageMap.invalidate();
+            // Entering or leaving pagination changes what a page is, so nothing measured
+            // under the old layout describes the new one.
+            try { PageChunks.invalidate(); } catch (ePC) {}
             if (!on) {
                 editor.scrollLeft = 0;
                 currentTwoColPage = 0;
@@ -948,20 +951,44 @@
                 const box = wrap || mainContainer;
                 const h = Math.max(0, (box ? box.clientHeight : 0) - PAGE_FOOT_RESERVE);
 
-                // Host box first so clientWidth is the final reading width.
-                editor.style.boxSizing = 'border-box';
-                editor.style.width = '100%';
-                editor.style.maxWidth = '100%';
-                editor.style.minWidth = '0';
-                editor.style.paddingLeft = '0';
-                editor.style.paddingRight = '0';
-                editor.style.height = h > 40 ? (h + 'px') : '';
-                editor.style.columnFill = 'auto';
-                editor.style.columnCount = 'auto';
+                // Every write here is guarded on change. relayout() runs from a
+                // ResizeObserver on the editor, so any style that alters its box schedules
+                // another observation -- and re-applying identical values on every pass is
+                // what produced "ResizeObserver loop completed with undelivered
+                // notifications" for each layout.
+                const setStyle = function (prop, value) {
+                    if (editor.style[prop] !== value) editor.style[prop] = value;
+                };
+
+                setStyle('boxSizing', 'border-box');
+                setStyle('minWidth', '0');
+                setStyle('paddingLeft', '0');
+                setStyle('paddingRight', '0');
+                setStyle('height', h > 40 ? (h + 'px') : '');
+                setStyle('columnFill', 'auto');
+                setStyle('columnCount', 'auto');
 
                 // Force layout, then read the only width we will ever trust.
                 void editor.offsetWidth;
-                const paneW = Math.max(1, Math.floor(editor.clientWidth));
+                let paneW = Math.max(1, Math.floor(editor.clientWidth));
+
+                // Pin the pane to whole pixels. width:100% resolves against a parent that is
+                // very often fractional -- measured at 911.36px and 1848.32px in the running
+                // app -- and the browser then lays columns out on that fractional width while
+                // the stride below is an integer. 0.36px lost per page is invisible on page 2
+                // and 148px of drift by page 411: text creeping left until the previous
+                // column shows down the margin. Pinning costs at most one pixel of width and
+                // makes the stride exact in both layouts, because a whole-pixel pane gives a
+                // whole-pixel spread even when a single column lands on a half.
+                // Measured from the wrapper, and only written when it changes. relayout()
+                // runs from a ResizeObserver on the editor, so setting a width derived from
+                // the editor's own width re-triggers the observer -- "ResizeObserver loop
+                // completed with undelivered notifications" on every layout.
+                const outerW = Math.max(1, Math.floor(box ? box.clientWidth : paneW));
+                if (outerW > 1) paneW = outerW;
+                const want = paneW + 'px';
+                setStyle('width', want);
+                setStyle('maxWidth', want);
                 const twoCol = editor.classList.contains('two-col-layout');
                 const gap = twoCol ? PAGE_TWO_COL_GAP : 0;
 
@@ -976,8 +1003,8 @@
                     stride = paneW; // gap 0 ⇒ stride === column-width, pixel-identical
                 }
 
-                editor.style.columnGap = gap + 'px';
-                editor.style.columnWidth = colW + 'px';
+                setStyle('columnGap', gap + 'px');
+                setStyle('columnWidth', colW + 'px');
                 void editor.offsetWidth;
 
                 this._paneW = paneW;
@@ -1285,8 +1312,17 @@
             measured: null,
             /** Pages per block, refined as ranges are measured. Seeds the estimates. */
             perBlock: 0.06,
+            /**
+             * The figure invalidate() goes back to. A property, not a module constant: the
+             * selftest lifts this object out with new Function() and evaluates it alone, so
+             * anything it reaches for from an enclosing scope is a ReferenceError there and
+             * nowhere else.
+             */
+            seedPerBlock: 0.06,
             /** The range currently laid out, or -1. */
             mounted: -1,
+            /** Blocks in the document, so the last (partial) range is not counted as full. */
+            docBlocks: 0,
 
             chunkCount: function (nBlocks) {
                 return Math.max(1, Math.ceil(Math.max(0, nBlocks | 0) / this.size));
@@ -1299,8 +1335,16 @@
 
             firstBlockOfChunk: function (c) { return Math.max(0, c | 0) * this.size; },
 
+            /** How many blocks a range really holds. The last one is short. */
+            blocksInChunk: function (c) {
+                const start = this.firstBlockOfChunk(c);
+                const total = this.docBlocks > 0 ? this.docBlocks : (this.counts ? this.counts.length * this.size : 0);
+                return Math.max(1, Math.min(this.size, total - start));
+            },
+
             /** Build or resize the map. Existing measurements survive. */
             ensure: function (nBlocks) {
+                this.docBlocks = Math.max(0, nBlocks | 0);
                 const n = this.chunkCount(nBlocks);
                 if (!this.counts) { this.counts = []; this.measured = []; }
                 while (this.counts.length < n) {
@@ -1316,8 +1360,9 @@
 
             /** Pages a range is expected to need, from its block count. */
             estimateChunkPages: function (c, nBlocks) {
-                const start = this.firstBlockOfChunk(c);
-                const blocks = Math.max(1, Math.min(this.size, (nBlocks | 0) - start));
+                const blocks = (nBlocks === undefined)
+                    ? this.blocksInChunk(c)
+                    : Math.max(1, Math.min(this.size, (nBlocks | 0) - this.firstBlockOfChunk(c)));
                 return Math.max(1, Math.round(blocks * this.perBlock));
             },
 
@@ -1330,11 +1375,17 @@
                 this.counts[c] = Math.max(1, pages | 0);
                 this.measured[c] = true;
                 // Refine the estimate for ranges not yet laid out.
+                // Each measured range contributes the blocks it actually holds. Adding a
+                // full size for every one counts the last, short range as though it were
+                // full: Matter ends on 376 blocks, so two measured ranges totalling 180
+                // pages were divided by 1600 instead of 1176 and every unmeasured range was
+                // estimated at 90 pages when the one that had been laid out took 121. The
+                // book read 540 pages in one column and 708 in two, for the same text.
                 let sumPages = 0, sumBlocks = 0;
                 for (let i = 0; i < this.counts.length; i++) {
                     if (!this.measured[i]) continue;
                     sumPages += this.counts[i];
-                    sumBlocks += this.size;
+                    sumBlocks += this.blocksInChunk(i);
                 }
                 if (sumBlocks > 0) {
                     const next = Math.max(0.005, Math.min(1, sumPages / sumBlocks));
@@ -1345,9 +1396,8 @@
                     // -- 203 pages reported for a document that is really about 106 -- and
                     // only converged as the reader happened to visit each range.
                     if (changed && this.counts) {
-                        const n = this.counts.length * this.size;
                         for (let i = 0; i < this.counts.length; i++) {
-                            if (!this.measured[i]) this.counts[i] = this.estimateChunkPages(i, n);
+                            if (!this.measured[i]) this.counts[i] = this.estimateChunkPages(i);
                         }
                     }
                 }
@@ -1395,7 +1445,24 @@
                 this.ensure(nBlocksAfter);
             },
 
-            invalidate: function () { }
+            /**
+             * Forget every page count.
+             *
+             * This was an empty function, which is not the same as "nothing needs doing":
+             * a page count belongs to a layout, and one column's measurements describe
+             * nothing about two. They survived a column switch, so the totals a reader saw
+             * after switching were part measurement of the layout they had just left. It
+             * also let each section of the selftest inherit the previous section's density.
+             *
+             * The seed goes back too. A refined pages-per-block is a fact about a document
+             * *in a layout*, and carrying it across is the same mistake one level down.
+             */
+            invalidate: function () {
+                this.counts = null;
+                this.measured = null;
+                this.mounted = -1;
+                this.perBlock = this.seedPerBlock;
+            }
         };
 
         /**

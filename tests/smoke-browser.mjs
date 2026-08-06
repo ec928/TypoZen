@@ -53,9 +53,26 @@ function buildDoc(n) {
 function probe() {
     const ed = document.getElementById('editor');
     const cs = getComputedStyle(ed);
+    // How many columns are actually on screen, rather than what column-count says.
+    //
+    // These checks were written because 2-column shipped with its class applied and
+    // column-count stuck at auto, so they asserted on the property. The property is now
+    // auto by design -- the geometry is driven by a pixel column-width -- and asserting on
+    // it would fail a working layout while still not proving anything is rendered. Count
+    // the distinct column positions the browser actually produced.
+    const paneW = ed.clientWidth;
+    const lefts = new Set();
+    for (const b of ed.querySelectorAll('.block')) {
+        for (const r of b.getClientRects()) {
+            if (r.width <= 0 || r.height <= 0) continue;
+            const x = r.left - ed.getBoundingClientRect().left;
+            if (x >= -2 && x < paneW - 2) lefts.add(Math.round(x));
+        }
+    }
     return {
         classes: ed.className,
         columnCount: cs.columnCount,
+        renderedColumns: lefts.size,
         mode: state.mode,
         pageAdvance: !!state.pageAdvance,
         blocks: ed.querySelectorAll('.block').length,
@@ -93,7 +110,7 @@ async function main() {
         assert(/two-col-layout/.test(s.classes), '2-Column applies the class');
         // The check that matters. The class alone proved nothing: this was 'auto' for the
         // entire time 2-column mode was shipped broken.
-        eq(s.columnCount, '2', '2-Column computes column-count 2 in Preview');
+        eq(s.renderedColumns, 2, '2-Column really renders two columns in Preview');
         assert(s.scrollWidth > s.clientWidth,
             'columns overflow sideways, so there is a second column to page to (' +
             s.scrollWidth + ' > ' + s.clientWidth + ')');
@@ -104,7 +121,7 @@ async function main() {
         await sleep(400);
         s = await page.evaluate(probe);
         assert(!/two-col-layout/.test(s.classes), '1-Column drops the class');
-        assert(s.columnCount === 'auto' || s.columnCount === '1', '1-Column computes a single column');
+        eq(s.renderedColumns, 1, '1-Column really renders a single column');
 
         console.log('\n--- Reader mode ---');
         await page.evaluate(() => handleCommand('view_set:mode:reader'));
@@ -118,7 +135,7 @@ async function main() {
         await page.evaluate(() => handleCommand('view_set:columns:2'));
         await sleep(500);
         s = await page.evaluate(probe);
-        eq(s.columnCount, '2', 'Reader + 2-Column computes column-count 2');
+        eq(s.renderedColumns, 2, 'Reader + 2-Column really renders two columns');
 
         console.log('\n--- Source mode ---');
         await page.evaluate(() => handleCommand('view_set:mode:source'));
@@ -211,7 +228,7 @@ async function main() {
 
             // And the page really is in two columns, so toolbar and screen agree.
             s = await page.evaluate(probe);
-            eq(s.columnCount, '2', 'the document really is two columns at that point');
+            eq(s.renderedColumns, 2, 'the document really is two columns at that point');
 
             await page.evaluate(() => { window.__vs = []; });
             await page.evaluate(() => handleCommand('toggle_mode'));

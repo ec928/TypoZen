@@ -5414,7 +5414,43 @@ if (_btnColumnToggle != null)
         private bool SyncActiveTabFromEditor(bool allowStaleIfClean = false, int timeoutMs = -1)
         {
             if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return true;
+
+            // A book has nothing to pull. It is read-only, it is never dirty, it is never
+            // saved, and ApplyTabToEditor reloads it from the file rather than from Content.
+            // Pulling it anyway marshalled the whole book across the WebView bridge on every
+            // tab switch -- Matter is 1,043,141 characters, which the page produces in 2ms
+            // and the bridge takes six seconds to hand over. That blew the 3s budget, so
+            // leaving a book tab either stalled for six seconds or failed and abandoned the
+            // switch entirely.
+            var activeTab = _tabs[_activeTabIndex];
+            bool activeIsBook = IsBookTab(activeTab)
+                || (!string.IsNullOrEmpty(_currentFilePath)
+                    && _currentFilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase));
+            if (activeIsBook)
+            {
+                if (!string.IsNullOrEmpty(_currentFilePath)) activeTab.FilePath = _currentFilePath;
+                activeTab.Content = "";      // never the book's markup: it is not the tab's to hold
+                activeTab.IsDirty = false;
+                _isDirty = false;
+                return true;
+            }
+
             if (timeoutMs < 0) timeoutMs = DocStateFetchTimeoutMs;
+
+            // A clean tab gets a short budget rather than the full one.
+            //
+            // allowStaleIfClean already says "if this cannot be fetched and the tab looks
+            // clean, carry on with what we have" -- but it only said so after the fetch had
+            // spent its whole budget. A large document that is still painting does not answer
+            // scripts, so every tab switch away from one cost two three-second timeouts and
+            // then proceeded with the stale copy anyway. Six seconds to reach the same
+            // decision. The fresh pull is still attempted, and a dirty tab still gets the
+            // full budget, because there the answer actually matters.
+            if (allowStaleIfClean && ActiveTabLooksClean())
+            {
+                timeoutMs = Math.Min(timeoutMs, 400);
+            }
+
             // If already inside a blocking script, do not nest — treat as stale/fail.
             if (_scriptBlockDepth > 0)
             {
@@ -8015,6 +8051,10 @@ if (_btnColumnToggle != null)
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     try { AddRecentFile(path); } catch { }
+                    // Every other path that opens a file persists the session; this one did
+                    // not, so a book was only ever remembered if some later action happened
+                    // to persist. Open a book, close the app, and the tab was not there.
+                    try { PersistTabSession(); } catch { }
                 }), DispatcherPriority.Background);
             }
             catch (Exception ex)

@@ -175,8 +175,21 @@ async function main() {
             const snap = () => page.evaluate(() => {
                 const sl = Math.round(editor.scrollLeft || 0);
                 const w = Math.round(PageMap.width());
+                // Rendered columns, not the computed property: the geometry is driven by a
+                // pixel column-width now, so column-count reads auto in both layouts.
+                const ed = document.getElementById('editor');
+                const edLeft = ed.getBoundingClientRect().left;
+                const paneW = ed.clientWidth;
+                const lefts = new Set();
+                for (const b of ed.querySelectorAll('.block')) {
+                    for (const r of b.getClientRects()) {
+                        if (r.width <= 0 || r.height <= 0) continue;
+                        const x = r.left - edLeft;
+                        if (x >= -2 && x < paneW - 2) lefts.add(Math.round(x));
+                    }
+                }
                 return {
-                    cols: getComputedStyle(document.getElementById('editor')).columnCount,
+                    cols: String(lefts.size),
                     scrollLeft: sl,
                     scrollTop: Math.round(editor.scrollTop || 0),
                     onBoundary: (sl % w) < 2,

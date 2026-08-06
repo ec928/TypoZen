@@ -113,13 +113,27 @@ console.log('\n--- 4. estimates refine as ranges are measured ---');
     PageChunks.invalidate();
     PageChunks.ensure(N);
     const naive = PageChunks.counts[PageChunks.counts.length - 1];
-    // Measure the first few ranges as much denser than the seed estimate.
-    for (let i = 0; i < 3; i++) PageChunks.setMeasured(i, 40);
-    PageChunks.invalidate();
-    PageChunks.ensure(N);
+    // Measure the first few ranges as much denser than the seed estimate. Expressed
+    // against the range size rather than as a bare number: 40 pages was denser than the
+    // 0.06 seed when a range was 400 blocks and thinner than it once a range became 800,
+    // so the test quietly started asserting the opposite of what it says.
+    const dense = Math.round(PageChunks.size * 0.12);
+    for (let i = 0; i < 3; i++) PageChunks.setMeasured(i, dense);
+    // Read the live map rather than rebuilding it. invalidate() forgets the learned
+    // density on purpose -- a page count belongs to a layout -- so a rebuild in between
+    // was measuring the seed and calling it the refined figure.
     const refined = PageChunks.counts[PageChunks.counts.length - 1];
     assert(refined > naive,
         'unmeasured ranges follow what measurement has shown (' + naive + ' -> ' + refined + ')');
+    // The last range is short, and counting it as a full one is what made a real book
+    // report 540 pages in one column and 708 in two.
+    const lastBlocks = N - PageChunks.size * (PageChunks.counts.length - 1);
+    assert(PageChunks.blocksInChunk(PageChunks.counts.length - 1) === lastBlocks,
+        'the last range is measured by the blocks it holds, not a full range (' +
+        PageChunks.blocksInChunk(PageChunks.counts.length - 1) + ' of ' + PageChunks.size + ')');
+    assert(Math.abs(PageChunks.perBlock - dense / PageChunks.size) < 1e-9,
+        'the density is pages over the blocks actually measured (' +
+        PageChunks.perBlock.toFixed(4) + ')');
     assert(PageChunks.perBlock > 0 && PageChunks.perBlock <= 1,
         'the pages-per-block estimate stays in range (' + PageChunks.perBlock.toFixed(4) + ')');
 }

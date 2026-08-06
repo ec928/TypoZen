@@ -30,7 +30,24 @@ function viewState() {
     const w = Math.round(PageMap.width());
     const sl = Math.round(editor.scrollLeft || 0);
     return {
-        cols: getComputedStyle(document.getElementById('editor')).columnCount,
+        // Columns actually rendered, not the computed property. The geometry is driven by
+        // a pixel column-width now, so column-count reads auto in both layouts; counting
+        // distinct column positions still catches "the class is on but nothing happened",
+        // which is the failure this suite exists for.
+        cols: (function () {
+            const ed = document.getElementById('editor');
+            const edLeft = ed.getBoundingClientRect().left;
+            const paneW = ed.clientWidth;
+            const lefts = new Set();
+            for (const b of ed.querySelectorAll('.block')) {
+                for (const r of b.getClientRects()) {
+                    if (r.width <= 0 || r.height <= 0) continue;
+                    const x = r.left - edLeft;
+                    if (x >= -2 && x < paneW - 2) lefts.add(Math.round(x));
+                }
+            }
+            return String(lefts.size);
+        })(),
         paged: isPaginatedLayout(),
         page: PageMap.current(),
         count: PageMap.count(),
