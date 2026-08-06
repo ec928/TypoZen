@@ -69,8 +69,13 @@ function makeHarness() {
         let _statsTimer = null;
         let _statsLastRun = 0;
         let _contentCache = null;
-        // updateStats also pings the host so "hide while typing" can react
+        // updateStats also pings the host so "hide while typing" can react, and it only
+        // does so from a document that can be typed into -- so the editable surface has to
+        // exist here, or the extracted function throws on a global this suite never had.
         let _lastTypingPing = 0;
+        // The ping is edge-triggered by a real input event on the editor, recorded on
+        // window; the suite stands in for one having just happened.
+        const window = { __tzLastUserEditAt: env.now };
         const postMsg = () => {};
         const STATS_DEBOUNCE_MS = ${DEBOUNCE};
         const STATS_MAX_STALE_MS = ${MAX_STALE};

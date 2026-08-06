@@ -3534,10 +3534,18 @@ if (_btnColumnToggle != null)
                     if (_lblReadingTime != null) _lblReadingTime.Text = parts[2] + " min read";
                     bool dirty = parts[3] == "true";
                     _isDirty = dirty;
-                    if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
+                    // Not while a tab operation is in flight. Stats are debounced and the
+                    // page is mid-swap, so this flag describes whichever document the page
+                    // happens to hold -- not the tab this index now names. A book being
+                    // opened marked the Markdown tab it replaced as unsaved.
+                    if (!_tabOpInProgress
+                        && _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
                     {
-                        bool wasDirty = _tabs[_activeTabIndex].IsDirty;
-                        _tabs[_activeTabIndex].IsDirty = dirty;
+                        var statsTab = _tabs[_activeTabIndex];
+                        // A book is never dirty, whatever the page says while it loads.
+                        if (IsBookTab(statsTab)) dirty = false;
+                        bool wasDirty = statsTab.IsDirty;
+                        statsTab.IsDirty = dirty;
                         if (wasDirty != dirty) RebuildTabStrip();
                     }
                     if (_lblLineCount != null)
@@ -3726,6 +3734,9 @@ if (_btnColumnToggle != null)
             else if (msg == "typing")
             {
                 // Mark dirty immediately so leave/open cannot skip sync while stats lag.
+                // Nor while a tab operation is in flight: the page is mid-swap, so this
+                // describes whatever it currently holds rather than the tab this index names.
+                if (_tabOpInProgress) { OnUserTyping(); return; }
                 bool activeIsBook = _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
                     && !string.IsNullOrEmpty(_tabs[_activeTabIndex].FilePath)
                     && _tabs[_activeTabIndex].FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);

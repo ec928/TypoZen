@@ -99,6 +99,8 @@ export async function launchApp(options) {
 
     const args = ['--debug'];
     if (options.file) args.push(path.join(appDir, options.file));
+    // Extra command-line arguments, for the shapes ZenSeek launches with (--search, --line).
+    if (options.args) for (const a of options.args) args.push(a);
 
     const child = spawn(EXE, args, { cwd: appDir, detached: false, stdio: 'ignore' });
     await waitForDevTools(45000);

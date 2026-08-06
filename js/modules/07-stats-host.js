@@ -54,7 +54,22 @@
             const now = Date.now();
             // Let the host know writing is happening, so "hide while typing" can react.
             // Edge-triggered at most once a second — it only needs to know that you began.
-            if (now - _lastTypingPing > 1000) { _lastTypingPing = now; postMsg('typing'); }
+            // Only when the document was actually edited.
+            //
+            // The host treats this ping as "the user is editing" and marks whichever tab it
+            // thinks is active as unsaved. updateStats() runs on programmatic changes too --
+            // loading a book is one -- so opening a book from a Markdown tab left that tab
+            // dirty, and closing offered to save the book's text over a file nobody had
+            // touched. An `input` event on the editor is the only thing that means editing;
+            // replacing the document's HTML does not raise one.
+            // On window, not a module-scoped let: the listener that sets it lives in an
+            // earlier module than this one, and a script-scoped binding across two classic
+            // scripts is an ordering question nobody should have to think about.
+            const edited = (now - (window.__tzLastUserEditAt || 0)) < 1500;
+            if (edited && now - _lastTypingPing > 1000) {
+                _lastTypingPing = now;
+                postMsg('typing');
+            }
             if (now - _statsLastRun >= STATS_MAX_STALE_MS) {
                 if (_statsTimer) { clearTimeout(_statsTimer); _statsTimer = null; }
                 updateStatsNow();

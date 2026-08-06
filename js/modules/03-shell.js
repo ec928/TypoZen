@@ -347,6 +347,10 @@
                 // after an edit. Stats flush lives on the other input listener.
                 editor.addEventListener('input', function () {
                     noteUserMovement();
+                    // The one place that knows the document was actually edited. The host's
+                    // "is this tab unsaved" flag hangs off this, and updateStats() -- which
+                    // used to raise it -- runs on programmatic changes too.
+                    window.__tzLastUserEditAt = Date.now();
                 });
             }
             initFindBar();

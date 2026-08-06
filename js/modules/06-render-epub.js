@@ -71,6 +71,15 @@
 
             DocumentModel.fromBookBlocks(split.blocks, toc);
             _contentCache = null;
+            // Immediately, not thirty lines further down.
+            //
+            // Between the model becoming the book and lastSavedContent being told about it,
+            // the document is "different from what was last saved" -- which is what dirty
+            // means. Anything in that window that posts stats reports a dirty document, and
+            // the host applies that flag to whichever tab it currently thinks is active. A
+            // Markdown tab that had never been touched came back marked unsaved, and closing
+            // offered to save the book's text over it.
+            state.lastSavedContent = DocumentModel.toPlainText();
 
             // A book is read-only and paginated: that is what it is, not a preference.
             // Going through the same commands a reader would use keeps one code path.
@@ -100,7 +109,6 @@
             // Tell the shell, or the toolbar keeps showing Preview while the document is
             // in Reader -- the selectors are driven by what the page reports, not by what
             // it happens to be doing.
-            state.lastSavedContent = DocumentModel.toPlainText();
             try { postMsg('mode_changed:reader'); } catch (eM) {}
             try { postViewState(currentViewState()); } catch (eV) {}
 
