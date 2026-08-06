@@ -208,6 +208,36 @@
             gap: 6px;
             margin: 1px 4px 8px 4px;   /* line up with the row margins below */
         }
+        /* Match case / whole word. Small enough to sit in the search row without pushing
+           the field around: two glyphs, pressed state carried by the accent, and the same
+           4px radius as every other control here. */
+        .search-opt {
+            flex: 0 0 auto;
+            min-width: 22px;
+            height: 20px;
+            padding: 0 4px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--tx-muted, #A1A1AA);
+            font-family: var(--ui-font);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 18px;
+            cursor: pointer;
+            transition: background-color 0.12s ease, color 0.12s ease;
+        }
+        .search-opt:hover {
+            background: rgba(128, 128, 128, 0.18);
+            color: var(--tx, #F4F4F5);
+        }
+        .search-opt[aria-pressed="true"] {
+            background: var(--accent, #3B82F6);
+            color: var(--accent-tx, #18181B);
+        }
+        /* Whole word reads as a word with its edges marked, which is what it means. */
+        #sidebarWholeWord { text-decoration: underline; text-underline-offset: 2px; }
+
         /* Segoe MDL2 Assets, the same icon font the toolbar and menus use, so the search
            glyph is drawn by the shell's icon set rather than an emoji. */
         .sidebar-search-icon {

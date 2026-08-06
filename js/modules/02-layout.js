@@ -12,6 +12,48 @@
             kind: 'visual'
         };
 
+        /**
+         * The step keys, in one place.
+         *
+         * ',' and '.' are the unshifted '<' and '>', so a reader pressing either gets the
+         * same thing -- which is what the results list has always done. Factored out so the
+         * document can offer the same keys without a second copy of the mapping drifting
+         * from this one.
+         */
+        function findStepDirectionFromKey(e) {
+            if (!e || e.ctrlKey || e.metaKey || e.altKey) return 0;
+            if (e.key === ',' || e.key === '<') return -1;
+            if (e.key === '.' || e.key === '>') return 1;
+            return 0;
+        }
+
+        /**
+         * The same step keys, from the page itself, while reading.
+         *
+         * A reader with the sidebar closed and their eyes on the text should not have to
+         * open a panel to reach the next hit. Only in Reader: the document is read-only
+         * there, so a comma is unambiguously a command and not a character someone is
+         * typing. Bound in the capture phase so it beats anything else listening for keys,
+         * and it calls the same findStep() the results list does.
+         */
+        function bindReaderFindKeys() {
+            if (!editor || editor.__tzReaderFindKeys) return;
+            editor.__tzReaderFindKeys = true;
+            editor.addEventListener('keydown', function (e) {
+                if (state.mode !== 'reader') return;
+                const dir = findStepDirectionFromKey(e);
+                if (!dir) return;
+                if (!findState.matches || !findState.matches.length) return;
+                e.preventDefault();
+                e.stopPropagation();
+                findStep(dir);
+                try { updateSidebarSearchCount(); } catch (err) {}
+                // Keep the keys working for the next press: findStep hands focus to the
+                // match, and a book is not focusable in the way an input is.
+                try { focusEditorNoScroll(); } catch (err2) {}
+            }, true);
+        }
+
         function isFindBarOpen() {
             const bar = document.getElementById('findBar');
             return !!(bar && bar.classList.contains('open'));
@@ -484,10 +526,53 @@
          * results list before they can mean prev/next -- Enter does that immediately, and
          * so does SIDEBAR_SEARCH_IDLE_MS of no typing.
          */
+        /**
+         * Match case and whole word, shown in the sidebar, stored in the find bar.
+         *
+         * getFindOptions() reads the Ctrl+F checkboxes, and both surfaces search the same
+         * findState -- so the sidebar buttons drive those checkboxes rather than keeping a
+         * second copy of the answer. Open Ctrl+F after using them and it already agrees.
+         */
+        function syncSearchOptionButtons() {
+            const pairs = [['sidebarMatchCase', 'findMatchCase'], ['sidebarWholeWord', 'findWholeWord']];
+            for (const [btnId, boxId] of pairs) {
+                const btn = document.getElementById(btnId);
+                const box = document.getElementById(boxId);
+                if (!btn || !box) continue;
+                btn.setAttribute('aria-pressed', box.checked ? 'true' : 'false');
+            }
+        }
+
+        function wireSearchOptionButtons() {
+            const pairs = [['sidebarMatchCase', 'findMatchCase'], ['sidebarWholeWord', 'findWholeWord']];
+            for (const [btnId, boxId] of pairs) {
+                const btn = document.getElementById(btnId);
+                const box = document.getElementById(boxId);
+                if (!btn || !box || btn.__tzWired) continue;
+                btn.__tzWired = true;
+                btn.addEventListener('click', function () {
+                    box.checked = !box.checked;
+                    syncSearchOptionButtons();
+                    // Re-run whatever is in the box now: changing an option with results on
+                    // screen and leaving them stale is worse than not offering the option.
+                    const input = document.getElementById('sidebarSearchInput');
+                    const q = (input && input.value) || findState.query || '';
+                    if (q) {
+                        runFind(q, false, { navigate: false });
+                        updateSidebarSearchCount();
+                    }
+                });
+                // The find bar can change them too.
+                box.addEventListener('change', syncSearchOptionButtons);
+            }
+            syncSearchOptionButtons();
+        }
+
         function wireSidebarSearch() {
             const input = document.getElementById('sidebarSearchInput');
             if (!input || input.__tzWired) return;
             input.__tzWired = true;
+            wireSearchOptionButtons();
 
             input.addEventListener('input', () => {
                 if (_sidebarSearchDebounce) clearTimeout(_sidebarSearchDebounce);
@@ -559,9 +644,9 @@
             }
             list.addEventListener('keydown', (e) => {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
-                let dir = 0;
-                if (e.key === ',' || e.key === '<' || e.key === 'ArrowUp') dir = -1;
-                else if (e.key === '.' || e.key === '>' || e.key === 'ArrowDown') dir = 1;
+                let dir = findStepDirectionFromKey(e);
+                if (!dir && e.key === 'ArrowUp') dir = -1;
+                else if (!dir && e.key === 'ArrowDown') dir = 1;
                 else if (e.key === 'Enter') {
                     // Re-reveal the current match without moving, so Enter confirms.
                     if (findState.matches.length) window.findJumpTo(findState.index);
@@ -1165,11 +1250,39 @@
             _bookPosTimer = setTimeout(function () {
                 _bookPosTimer = null;
                 if (typeof DocumentModel === 'undefined') return;
-                const bi = topLeftModelIndexTwoCol();
+                const bi = currentReadingBlock();
                 if (bi < 0 || bi === _bookPosLast) return;
                 _bookPosLast = bi;
                 try { postMsg('book_position:' + bi); } catch (e) {}
             }, 1200);
+        }
+
+        /**
+         * The block the reader is looking at, for remembering a position.
+         *
+         * Paginated, that is the top-left block of the spread. Scrolling, it is the first
+         * block at or below the top of the *viewport* -- and the viewport is
+         * #main-container, not #editor, because in a scrolling layout the editor is the
+         * whole document and every mounted block intersects it. Measured against the editor
+         * it answered "the first block in the mounted window", roughly the overscan ahead of
+         * where the reader actually was: 558 reported for a reader sitting at 600, then 516
+         * for one sitting at 558. Storing that and restoring it walks backwards through the
+         * document a screenful at a time, every time the tab is reopened.
+         */
+        function currentReadingBlock() {
+            if (!editor) return -1;
+            if (isPaginatedLayout()) return topLeftModelIndexTwoCol();
+            const host = (mainContainer || editor).getBoundingClientRect();
+            const blocks = editor.querySelectorAll('.block');
+            for (let i = 0; i < blocks.length; i++) {
+                const r = blocks[i].getBoundingClientRect();
+                if (r.width === 0 && r.height === 0) continue;
+                if (r.bottom <= host.top + 1) continue;      // scrolled past
+                if (r.top >= host.bottom - 1) break;         // below the fold
+                const mi = DocumentModel.modelIndexOfEl(blocks[i]);
+                if (mi >= 0) return mi;
+            }
+            return -1;
         }
 
         function topLeftModelIndexTwoCol() {

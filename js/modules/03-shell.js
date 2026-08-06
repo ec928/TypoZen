@@ -22,16 +22,38 @@
                 _resumeAtTimer = null;
             }
             _bookPosLast = resumeAt;
-            _resumeAtTimer = setTimeout(function () {
+            // Wait for the document rather than betting on a delay. The host sends this
+            // straight after the content, and a large document arrives as a staged fetch
+            // that is still being parsed 400ms later -- at which point resumeAt is past the
+            // end of a half-built model and the jump was silently dropped.
+            let tries = 0;
+            const attempt = function () {
                 _resumeAtTimer = null;
                 try {
                     // Search handoff wins over last-read restore.
                     if (Date.now() < _externalFindActiveUntil) return;
                     if (typeof DocumentModel === 'undefined') return;
-                    if (resumeAt >= DocumentModel.blocks.length) return;
-                    if (typeof goToModelBlock === 'function') goToModelBlock(resumeAt);
+                    if (resumeAt >= DocumentModel.blocks.length) {
+                        if (++tries < 12) { _resumeAtTimer = setTimeout(attempt, 400); }
+                        return;
+                    }
+                    if (typeof goToModelBlock === 'function') {
+                        goToModelBlock(resumeAt);
+                        // Once more when the layout has settled. The first jump happens
+                        // while most block heights are still estimates, and on a 3,767-block
+                        // document that landed 42 blocks -- most of a screen -- above the
+                        // block asked for. The second lands on measured heights.
+                        _resumeAtTimer = setTimeout(function () {
+                            _resumeAtTimer = null;
+                            try {
+                                if (Date.now() < _externalFindActiveUntil) return;
+                                if (resumeAt < DocumentModel.blocks.length) goToModelBlock(resumeAt);
+                            } catch (e2) {}
+                        }, 700);
+                    }
                 } catch (e1) {}
-            }, 400);
+            };
+            _resumeAtTimer = setTimeout(attempt, 400);
         }
 
         /**
@@ -255,7 +277,19 @@
             // A ResizeObserver catches every cause, including the window and zoom.
             if (typeof ResizeObserver !== 'undefined' && editor) {
                 let _lastPageW = 0;
-                const ro = new ResizeObserver(function () {
+                let _roPending = false;
+                // Out of the callback, into the next frame.
+                //
+                // relayout() writes height, column-width and column-gap, and hides the
+                // container's overflow. Doing that inside the observer's own callback is
+                // what "ResizeObserver loop completed with undelivered notifications" is
+                // reporting: the browser delivers an observation, the callback resizes the
+                // observed element, and the notifications it schedules cannot be delivered
+                // in the same frame. Idempotent writes do not help -- the first pass after
+                // any real change still mutates, and that is enough. A frame later the
+                // layout is settled and the same work is quiet.
+                const applyGeometry = function () {
+                    _roPending = false;
                     if (!isPaginatedLayout()) { _lastPageW = 0; return; }
                     try { PageGeometry.relayout(); } catch (eR) {}
                     const w = Math.round(PageGeometry.stride());
@@ -270,6 +304,12 @@
                     else {
                         try { PageGeometry.snap(); updatePageIndicator(); } catch (eS) {}
                     }
+                };
+                const ro = new ResizeObserver(function () {
+                    if (!isPaginatedLayout()) { _lastPageW = 0; return; }
+                    if (_roPending) return;
+                    _roPending = true;
+                    requestAnimationFrame(applyGeometry);
                 });
                 ro.observe(editor);
             }
@@ -310,6 +350,8 @@
                 });
             }
             initFindBar();
+            // ',' and '.' step through search results while reading, sidebar or no sidebar.
+            try { bindReaderFindKeys(); } catch (eRF) {}
 
             mainContainer.addEventListener('click', (e) => {
                 const sel = window.getSelection();

@@ -149,6 +149,14 @@
                     <input id="sidebarSearchInput" type="text" placeholder="Search…"
                            autocomplete="off" spellcheck="false" aria-label="Search document"
                            aria-controls="search-results-list" />
+                    <!-- Match case / whole word, sharing state with the Ctrl+F bar's
+                         checkboxes so the two views of one search cannot disagree. Two
+                         glyphs rather than two labelled checkboxes: the row is 300px wide
+                         and already carries an icon, a field and a counter. -->
+                    <button type="button" id="sidebarMatchCase" class="search-opt"
+                            aria-pressed="false" title="Match case">Aa</button>
+                    <button type="button" id="sidebarWholeWord" class="search-opt"
+                            aria-pressed="false" title="Match whole word">ab</button>
                     <span id="sidebarSearchCount">0/0</span>
                 </div>
                 <div id="search-results-list" tabindex="0" role="listbox" aria-label="Search results">

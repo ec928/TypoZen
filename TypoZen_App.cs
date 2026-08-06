@@ -232,6 +232,9 @@ namespace TypoZen
             // trailing blank lines, so without these an untouched file came back with
             // every CRLF rewritten to LF and its final newline missing -- a whole-file
             // diff for a document nobody edited.
+            /// <summary>Where reading got to in THIS tab; see the book_position handler.</summary>
+            public int ResumeBlock = 0;
+
             public string LineEnding = "\n";      // "\n" or "\r\n", from the file as loaded
             public string TrailingNewlines = "\n"; // exact run of newlines the file ended with
             public string Title
@@ -2168,6 +2171,7 @@ namespace TypoZen
                         sb0.AppendLine("dirty=" + (tab.IsDirty ? "1" : "0"));
                         sb0.AppendLine("le=" + ((tab.LineEnding == "\r\n") ? "crlf" : "lf"));
                         sb0.AppendLine("trail=" + EncodeTrailToken(tab.TrailingNewlines ?? ""));
+                        sb0.AppendLine("resume=" + tab.ResumeBlock);
                         sb0.AppendLine("body=");
                         sb0.AppendLine();
                     }
@@ -2213,6 +2217,7 @@ namespace TypoZen
                     sb.AppendLine("dirty=" + (dirty ? "1" : "0"));
                     sb.AppendLine("le=" + le);
                     sb.AppendLine("trail=" + trail);
+                    sb.AppendLine("resume=" + tab.ResumeBlock);
                     if (needBody)
                     {
                         string bodyName = "t" + i + ".md";
@@ -2338,6 +2343,7 @@ namespace TypoZen
                     string le = "lf";
                     string trailTok = "lf";
                     string bodyName = "";
+                    int resumeBlock = 0;
                     for (int i = start; i < lines.Length; i++)
                     {
                         string line = lines[i].TrimEnd();
@@ -2346,6 +2352,7 @@ namespace TypoZen
                         else if (line.StartsWith("dirty=")) dirty = line.Substring(6) == "1";
                         else if (line.StartsWith("le=")) le = line.Substring(3);
                         else if (line.StartsWith("trail=")) trailTok = line.Substring(6);
+                        else if (line.StartsWith("resume=")) int.TryParse(line.Substring(7), out resumeBlock);
                         else if (line.StartsWith("body=")) bodyName = line.Substring(5);
                     }
 
@@ -2355,7 +2362,8 @@ namespace TypoZen
                         FilePath = string.IsNullOrWhiteSpace(tabPath) ? null : tabPath,
                         LineEnding = (le == "crlf") ? "\r\n" : "\n",
                         TrailingNewlines = DecodeTrailToken(trailTok),
-                        IsDirty = dirty
+                        IsDirty = dirty,
+                        ResumeBlock = resumeBlock
                     };
 
                     string body = null;
@@ -3646,6 +3654,13 @@ if (_btnColumnToggle != null)
                 int block;
                 if (int.TryParse(msg.Substring(14), out block))
                 {
+                    // On the tab as well as against the path. The path store answers
+                    // "reopen this file where I left it"; the tab answers "come back to
+                    // this tab where I left it", which is a different question when the
+                    // same file is open twice and the only one an untitled buffer can ask.
+                    if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
+                        _tabs[_activeTabIndex].ResumeBlock = block;
+
                     string p = _currentFilePath;
                     if (!string.IsNullOrEmpty(p))
                     {
@@ -7336,6 +7351,16 @@ if (_btnColumnToggle != null)
                 SendMsg("new_document");
             else
                 LoadContentToEditor(content, tab.IsDirty, tab.FilePath);
+
+            // Come back to where this tab was left. The tab's own figure first; the
+            // path-keyed store is the fallback for a tab restored from a session written
+            // before this field existed, or a file being opened fresh.
+            int resume = tab.ResumeBlock;
+            if (resume <= 0 && !string.IsNullOrEmpty(tab.FilePath))
+            {
+                try { resume = RememberedBookPosition(Path.GetFullPath(tab.FilePath)); } catch { }
+            }
+            if (resume > 0) SendMsg("resume_at:" + resume);
             UpdateStatusDisplay();
             // Session/recent I/O off the open hot path — was adding disk latency on every click.
             if (!_restoringTabs)

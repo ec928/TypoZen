@@ -75,6 +75,11 @@ async function main() {
         await settledApp(app);
 
         console.log('--- 2-column, advance two pages ---');
+        // From the top, explicitly. A document now reopens where it was last read, so
+        // "page 0" is no longer where a launch lands -- this test starts wherever the
+        // previous run of it stopped.
+        await app.eval(() => PageMap.goto(0)); await settledApp(app);
+        const startPage = (await st()).page;
         await app.eval(() => PageMap.step(1)); await sleep(600);
         await app.eval(() => PageMap.step(1)); await settledApp(app);
         const two = await st();
@@ -83,7 +88,8 @@ async function main() {
         assert(two.cols === '2', 'two columns are laid out');
         assert(two.aligned, '2-column sits on a page boundary');
         assert(two.top >= 0, 'an anchor block is identifiable in 2-column');
-        assert(two.page === 2, 'two page turns reach page index 2 (pages 5 and 6)');
+        assert(two.page === startPage + 2,
+            'two page turns advance exactly two pages (' + startPage + ' -> ' + two.page + ')');
 
         console.log('\n--- switch to 1-column ---');
         await app.eval(() => handleCommand('view_set:columns:1'));
