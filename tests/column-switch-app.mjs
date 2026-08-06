@@ -27,8 +27,12 @@ function info(msg) { console.log('  ..   ' + msg); }
 
 /** Page, alignment and the block at the top, read from the running app. */
 function viewState() {
-    const w = Math.round(PageMap.width());
-    const sl = Math.round(editor.scrollLeft || 0);
+    // Unrounded. The page stride is fractional now -- the pane resolves against a
+    // container that is very often fractional, and flooring it is what made pages drift --
+    // so rounding both sides before the modulo turns a perfectly aligned page five turns in
+    // into a two-pixel error that grows.
+    const w = PageMap.width();
+    const sl = editor.scrollLeft || 0;
     return {
         // Columns actually rendered, not the computed property. The geometry is driven by
         // a pixel column-width now, so column-count reads auto in both layouts; counting
@@ -51,7 +55,8 @@ function viewState() {
         paged: isPaginatedLayout(),
         page: PageMap.current(),
         count: PageMap.count(),
-        aligned: (sl % w) < 2,
+        // Either side of a boundary: a fractional stride can land just under the next one.
+        aligned: Math.min(sl % w, w - (sl % w)) <= 2,
         scrollTop: Math.round(editor.scrollTop || 0),
         top: topLeftModelIndexTwoCol(),
         indicator: (document.getElementById('page-indicator') || {}).textContent

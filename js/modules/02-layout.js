@@ -969,38 +969,45 @@
                 setStyle('columnCount', 'auto');
 
                 // Force layout, then read the only width we will ever trust.
+                //
+                // Fractional, deliberately. width:100% resolves against a parent that is very
+                // often fractional -- 911.36px and 1848.32px, measured in the running app --
+                // and the browser lays the columns out on that. Flooring it to an integer
+                // made the stride disagree with the real column pitch by a third of a pixel a
+                // page: invisible on page 2, 148px of drift by page 411, with the previous
+                // column showing down the margin.
+                //
+                // Pinning the pane to a whole number of pixels fixed the arithmetic and broke
+                // something worse: a pixel width does not follow its container, so collapsing
+                // the sidebar or resizing the window left the column at its old size and the
+                // text ran off the edge of the window until something happened to relayout.
+                //
+                // A fractional stride costs nothing, because drift only accumulates when
+                // pages are stepped by addition. Every seek here is index * stride computed
+                // from the page number, so the error is one rounding, once, and never grows.
                 void editor.offsetWidth;
-                let paneW = Math.max(1, Math.floor(editor.clientWidth));
-
-                // Pin the pane to whole pixels. width:100% resolves against a parent that is
-                // very often fractional -- measured at 911.36px and 1848.32px in the running
-                // app -- and the browser then lays columns out on that fractional width while
-                // the stride below is an integer. 0.36px lost per page is invisible on page 2
-                // and 148px of drift by page 411: text creeping left until the previous
-                // column shows down the margin. Pinning costs at most one pixel of width and
-                // makes the stride exact in both layouts, because a whole-pixel pane gives a
-                // whole-pixel spread even when a single column lands on a half.
-                // Measured from the wrapper, and only written when it changes. relayout()
-                // runs from a ResizeObserver on the editor, so setting a width derived from
-                // the editor's own width re-triggers the observer -- "ResizeObserver loop
-                // completed with undelivered notifications" on every layout.
-                const outerW = Math.max(1, Math.floor(box ? box.clientWidth : paneW));
-                if (outerW > 1) paneW = outerW;
-                const want = paneW + 'px';
-                setStyle('width', want);
-                setStyle('maxWidth', want);
+                // getBoundingClientRect(), not clientWidth: clientWidth is rounded to an
+                // integer and rounding it back is the whole bug. Padding and border are set
+                // to zero above, so the border box and the content box are the same.
+                let paneW = Math.max(1, editor.getBoundingClientRect().width || editor.clientWidth);
+                setStyle('width', '100%');
+                setStyle('maxWidth', '100%');
                 const twoCol = editor.classList.contains('two-col-layout');
                 const gap = twoCol ? PAGE_TWO_COL_GAP : 0;
 
+                // The exact width the browser will use, not a floor of it: with column-count
+                // auto the used width is (pane - gap) / N whatever we ask for, so asking for
+                // the same figure keeps our arithmetic and its layout identical.
                 let colW;
                 let stride;
                 if (twoCol) {
-                    colW = Math.max(1, Math.floor((paneW - gap) / 2));
-                    // Two columns + inter-gap fill the pane; next spread starts after trailing gap.
+                    colW = Math.max(1, (paneW - gap) / 2);
+                    // Two columns plus the gap between them fill the pane; the next spread
+                    // begins after the trailing gap.
                     stride = paneW + gap;
                 } else {
                     colW = paneW;
-                    stride = paneW; // gap 0 ⇒ stride === column-width, pixel-identical
+                    stride = paneW; // gap 0 => stride is the column pitch exactly
                 }
 
                 setStyle('columnGap', gap + 'px');
