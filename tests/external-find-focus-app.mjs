@@ -2,8 +2,8 @@
  * A search arriving from ZenSeek leaves focus somewhere the step keys work.
  *
  * Reported from real use: opening a book from ZenSeek put the caret in the sidebar's search
- * box with the query selected, so ',' and '.' typed punctuation into it instead of moving
- * between matches. Nobody is about to retype a query that was just handed over.
+ * box with the query selected, so the step keys typed into it instead of moving between
+ * matches. Nobody is about to retype a query that was just handed over.
  *
  * Two faults, and both are checked here:
  *   - the hand-off focused the search input on purpose
@@ -86,7 +86,7 @@ try {
         const before = findState.index;
         const boxWas = (document.getElementById('sidebarSearchInput') || {}).value;
         const target = document.activeElement || editor;
-        for (const k of ['.', '.']) {
+        for (const k of ['ArrowDown', 'ArrowDown']) {
             target.dispatchEvent(new KeyboardEvent('keydown',
                 { key: k, bubbles: true, cancelable: true }));
             await sleep(400);
@@ -98,10 +98,10 @@ try {
             boxNow: (document.getElementById('sidebarSearchInput') || {}).value
         };
     });
-    info("'.' twice: match " + stepped.before + ' -> ' + stepped.after +
+    info('Down twice: match ' + stepped.before + ' -> ' + stepped.after +
          ', query ' + JSON.stringify(stepped.boxNow));
     assert(stepped.after === stepped.before + 2,
-        "'.' steps to the next match straight after the hand-off (" +
+        'Down steps to the next match straight after the hand-off (' +
         stepped.before + ' -> ' + stepped.after + ')');
     assert(stepped.boxNow === stepped.boxWas,
         'and does not type into the query (' + JSON.stringify(stepped.boxNow) + ')');

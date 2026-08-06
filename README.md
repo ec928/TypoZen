@@ -73,7 +73,7 @@ The four bundled by default (Inter, Source Sans 3, Merriweather, Literata) are S
 ### Writing tools
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
 - Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree
-- While reading, `,` and `.` (or `<` and `>`) step to the previous and next match with the sidebar shut and your eyes on the text. Reader only — the document is read-only there, so a comma is a command rather than a character
+- While reading, **Up and Down** step to the previous and next match with the sidebar shut and your eyes on the text — the same keys the results list has always used. Reader only, and only when a search has results, so an arrow still scrolls a book nobody has searched
 - Table insert (`Ctrl+T`)
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps
@@ -308,7 +308,7 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Toggle Source / Live Preview | `Ctrl+/` |
 | Toggle Sidebar | `Ctrl+\` |
 | Find | `Ctrl+F` |
-| Previous / next search result (Reader) | `,` / `.` — also `<` / `>` |
+| Previous / next search result (Reader) | `Up` / `Down` |
 | Find & Replace | `Ctrl+H` |
 | Insert table | `Ctrl+T` |
 | Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
@@ -682,6 +682,13 @@ broken behaviour behind a green suite:
   spanning two blocks typed over with real keystrokes, Find and Replace/Replace All through
   the bar, and editing inside a table cell. It does not cover drag-and-drop, or editing
   outside the mounted window -- see the list-indent gap above.
+- **`editing-sweep-app` is intermittent in `1-col Pages`.** Observed 79/2, 80/1 and 81/0 on
+  consecutive runs of the same build. The failures are always in that one layout and always
+  a gesture that needs the caret placed first -- "typing over a 5-character selection"
+  reported +1 instead of -4, meaning the range was not in place when the key arrived, and
+  "Enter at the end of a bullet" did not continue the list. Either the suite races
+  pagination's relayout when it places the caret, or placing a caret in a paginated layout
+  genuinely does not always take. Worth resolving before trusting a green run of this suite.
 - **No suite drives the WPF chrome.** The application tier reaches into the page over the
   DevTools protocol; menus, dialogs and the tab strip are only touched by the optional
   pywinauto smoke test, which cannot see inside WebView2.

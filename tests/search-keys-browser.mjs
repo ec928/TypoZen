@@ -1,9 +1,11 @@
 /**
  * Stepping through search results without the sidebar, and the two options that shape them.
  *
- *   - ',' and '.' (and '<' '>') move to the previous and next hit while reading, with focus
- *     on the document and the sidebar shut
- *   - they do nothing in an editable mode, where a comma is a comma
+ *   - Up and Down move to the previous and next hit while reading, with focus on the
+ *     document and the sidebar shut
+ *   - they do nothing in an editable mode, and nothing while typing into a field
+ *   - ',' '.' '<' '>' are not shortcuts anywhere: they collided with ordinary typing, and
+ *     an editor that sometimes eats a full stop is worse than one with fewer shortcuts
  *   - match case and whole word are reachable from the sidebar and change the result count
  *   - the sidebar buttons and the Ctrl+F checkboxes are one setting, not two
  *
@@ -54,7 +56,7 @@ async function main() {
         await page.evaluate((m) => loadMarkdownContent(m), md);
         await settled(page);
 
-        console.log('\n=== stepping with , and . while reading ===');
+        console.log('\n=== stepping with Up and Down while reading ===');
         await page.evaluate(() => handleCommand('view_set:mode:reader'));
         await settled(page);
         // Search the way the sidebar does, then shut the sidebar entirely.
@@ -73,25 +75,24 @@ async function main() {
         await settled(page);
 
         const seen = [await page.evaluate(() => findState.index)];
-        for (const k of ['.', '.', '>']) {
-            await pressOnEditor(page, k);
+        for (let i = 0; i < 3; i++) {
+            await pressOnEditor(page, 'ArrowDown');
             await settled(page);
             seen.push(await page.evaluate(() => findState.index));
         }
         info('forward: ' + JSON.stringify(seen));
-        assert(seen[1] === seen[0] + 1 && seen[2] === seen[1] + 1,
-            "'.' moves to the next match");
-        assert(seen[3] === seen[2] + 1, "'>' does the same as '.'");
+        assert(seen[1] === seen[0] + 1 && seen[2] === seen[1] + 1 && seen[3] === seen[2] + 1,
+            'Down moves to the next match, every time');
 
         const back = [];
-        for (const k of [',', '<']) {
-            await pressOnEditor(page, k);
+        for (let i = 0; i < 2; i++) {
+            await pressOnEditor(page, 'ArrowUp');
             await settled(page);
             back.push(await page.evaluate(() => findState.index));
         }
         info('back: ' + JSON.stringify(back));
-        assert(back[0] === seen[3] - 1, "',' moves to the previous match");
-        assert(back[1] === back[0] - 1, "'<' does the same as ','");
+        assert(back[0] === seen[3] - 1 && back[1] === back[0] - 1,
+            'Up moves to the previous match');
 
         // The reader is looking at the match, not at wherever they were.
         const onScreen = await page.evaluate(() => {
@@ -101,16 +102,41 @@ async function main() {
         assert(onScreen.marked === 1,
             'the match it stepped to is the one marked as current (' + onScreen.marked + ')');
 
-        console.log('\n=== a comma is a comma in an editable mode ===');
+        console.log('\n=== an arrow is an arrow everywhere else ===');
         await page.evaluate(() => handleCommand('view_set:mode:preview'));
         await settled(page);
         const before = await page.evaluate(() => findState.index);
-        await pressOnEditor(page, '.');
+        await pressOnEditor(page, 'ArrowDown');
         await settled(page);
         const after = await page.evaluate(() => findState.index);
         assert(after === before,
-            'the step keys do nothing in Preview, where they are text (' +
+            'Down moves the caret, not the match, in an editable mode (' +
             before + ' -> ' + after + ')');
+
+        // The reason the punctuation keys were removed: they were shortcuts everywhere, so
+        // typing one into any field ran a command instead of entering a character.
+        const typed = await page.evaluate(async () => {
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            handleCommand('view_set:mode:reader');
+            await sleep(400);
+            const input = document.getElementById('sidebarSearchInput');
+            input.value = '';
+            input.focus();
+            const idxBefore = findState.index;
+            for (const ch of ['a', ',', '.', 'b']) {
+                input.dispatchEvent(new KeyboardEvent('keydown',
+                    { key: ch, bubbles: true, cancelable: true }));
+                // A keydown nobody cancels is what puts the character in the field.
+                input.value += ch;
+                await sleep(80);
+            }
+            return { value: input.value, idxBefore: idxBefore, idxAfter: findState.index };
+        });
+        info('typed into the search box while reading: ' + JSON.stringify(typed.value));
+        assert(typed.value === 'a,.b',
+            'punctuation typed into a field stays in the field (' + typed.value + ')');
+        assert(typed.idxAfter === typed.idxBefore,
+            'and moves no match (' + typed.idxBefore + ' -> ' + typed.idxAfter + ')');
 
         console.log('\n=== match case and whole word ===');
         await page.evaluate(() => {

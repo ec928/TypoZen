@@ -13,37 +13,34 @@
         };
 
         /**
-         * The step keys, in one place.
+         * Up and Down step through search results from the document itself.
          *
-         * ',' and '.' are the unshifted '<' and '>', so a reader pressing either gets the
-         * same thing -- which is what the results list has always done. Factored out so the
-         * document can offer the same keys without a second copy of the mapping drifting
-         * from this one.
-         */
-        function findStepDirectionFromKey(e) {
-            if (!e || e.ctrlKey || e.metaKey || e.altKey) return 0;
-            if (e.key === ',' || e.key === '<') return -1;
-            if (e.key === '.' || e.key === '>') return 1;
-            return 0;
-        }
-
-        /**
-         * The same step keys, from the page itself, while reading.
+         * Only while reading, and only when there is a result list to step through -- so an
+         * arrow key still scrolls a book that nobody has searched. The sidebar's result list
+         * has always used these keys; this is the same behaviour when the reader's eyes and
+         * focus are on the text instead of on the panel.
          *
-         * A reader with the sidebar closed and their eyes on the text should not have to
-         * open a panel to reach the next hit. Only in Reader: the document is read-only
-         * there, so a comma is unambiguously a command and not a character someone is
-         * typing. Bound in the capture phase so it beats anything else listening for keys,
-         * and it calls the same findStep() the results list does.
+         * There used to be ',' '.' '<' '>' here as well. They are gone: they collided with
+         * ordinary typing whenever focus sat in any input, and an editor that sometimes
+         * eats a full stop is worse than one with fewer shortcuts.
          */
         function bindReaderFindKeys() {
             if (!editor || editor.__tzReaderFindKeys) return;
             editor.__tzReaderFindKeys = true;
             editor.addEventListener('keydown', function (e) {
+                if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
                 if (state.mode !== 'reader') return;
-                const dir = findStepDirectionFromKey(e);
-                if (!dir) return;
                 if (!findState.matches || !findState.matches.length) return;
+
+                // Never while something is being typed into, wherever the event came from.
+                const t = e.target;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+                let dir = 0;
+                if (e.key === 'ArrowUp') dir = -1;
+                else if (e.key === 'ArrowDown') dir = 1;
+                if (!dir) return;
+
                 e.preventDefault();
                 e.stopPropagation();
                 findStep(dir);
@@ -653,9 +650,9 @@
             }
             list.addEventListener('keydown', (e) => {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
-                let dir = findStepDirectionFromKey(e);
-                if (!dir && e.key === 'ArrowUp') dir = -1;
-                else if (!dir && e.key === 'ArrowDown') dir = 1;
+                let dir = 0;
+                if (e.key === 'ArrowUp') dir = -1;
+                else if (e.key === 'ArrowDown') dir = 1;
                 else if (e.key === 'Enter') {
                     // Re-reveal the current match without moving, so Enter confirms.
                     if (findState.matches.length) window.findJumpTo(findState.index);
@@ -2909,14 +2906,6 @@
                     if (e.key === 'F7') { e.preventDefault(); handleCommand('toggle_reveal'); return; }
                     if (e.key === 'F8') { e.preventDefault(); handleCommand('toggle_focus'); return; }
                     if (e.key === 'F9') { e.preventDefault(); handleCommand('toggle_typewriter'); return; }
-                }
-                if (!e.ctrlKey && !e.metaKey && !e.altKey && isFindBarOpen()) {
-                    const t = e.target;
-                    const isTyping = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
-                    if (!isTyping) {
-                        if (e.key === '<' || e.key === ',') { e.preventDefault(); e.stopPropagation(); findStep(-1); return; }
-                        if (e.key === '>' || e.key === '.') { e.preventDefault(); e.stopPropagation(); findStep(1); return; }
-                    }
                 }
                 if (isFindBarOpen() && e.key === 'Enter' && e.target && e.target.closest && !e.target.closest('#findBar')) {
                     if (e.target.closest && e.target.closest('#tableModal')) return;
