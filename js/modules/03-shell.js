@@ -436,10 +436,16 @@
                     } catch (e) {}
                 }
                 else if (msg.startsWith("load_content:")) {
+                    // This document is being replaced; a position report armed by the
+                    // one on screen must not be attributed to the one arriving.
+                    try { cancelPositionReport(); } catch (eCP) {}
                     const content = msg.substring(13);
                     finishLoadContent(content, false);
                 }
                 else if (msg.startsWith("fetch_and_load_book:")) {
+                    // This document is being replaced; a position report armed by the
+                    // one on screen must not be attributed to the one arriving.
+                    try { cancelPositionReport(); } catch (eCP) {}
                     // A book arrives as a staged JSON payload rather than through the
                     // message channel: an omnibus is tens of megabytes of markup.
                     // "<url>" or "<url>|at=<block>", the latter being where this reader was
@@ -475,6 +481,9 @@
                     return;
                 }
                 else if (msg.startsWith("fetch_and_load:")) {
+                    // This document is being replaced; a position report armed by the
+                    // one on screen must not be attributed to the one arriving.
+                    try { cancelPositionReport(); } catch (eCP) {}
                     // Optional trailing |at=<block> (same shape as fetch_and_load_book).
                     let spec = msg.substring(15);
                     let resumeAt = -1;
@@ -585,6 +594,9 @@
                     // when wasBook is true. This message is a no-op reserved for the host.
                 }
                 else if (msg == "new_document") {
+                    // This document is being replaced; a position report armed by the
+                    // one on screen must not be attributed to the one arriving.
+                    try { cancelPositionReport(); } catch (eCP) {}
                     loadMarkdownContent("# Untitled Document\n\nStart typing here...", { replaceBook: true });
                     state.lastSavedContent = getMarkdownContent(false);
                     if (state.mode === 'source') {

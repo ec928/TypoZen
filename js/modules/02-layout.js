@@ -1244,6 +1244,23 @@
          * _currentFilePath is set — untitled buffers and the welcome screen are ignored
          * there. Works for epub and markdown alike.
          */
+        /**
+         * Forget a position report that has not been sent yet.
+         *
+         * The report is debounced, so one armed by scrolling a document can fire after the
+         * host has already switched to another tab -- and the host attributes it to whatever
+         * document is current by then. Reading a .txt and switching to a book wrote the
+         * .txt's block number against the book's path, and the book then reopened at its
+         * cover. Called wherever the host announces that this document is being replaced.
+         */
+        function cancelPositionReport() {
+            if (_bookPosTimer) {
+                try { clearTimeout(_bookPosTimer); } catch (e) {}
+                _bookPosTimer = null;
+            }
+            _bookPosLast = -1;
+        }
+
         function reportBookPosition() {
             if (typeof DocumentModel === 'undefined') return;
             if (_bookPosTimer) clearTimeout(_bookPosTimer);

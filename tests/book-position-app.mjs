@@ -115,6 +115,58 @@ try {
     await app.close();
 }
 
+console.log('\n=== and is not overwritten by the tab you came from ===');
+// Reported from real use: reading a .txt and switching to a book put the book on its
+// cover. The report is debounced, so the one armed by scrolling the .txt fired after the
+// host had already pointed the current path at the book, and the book's own position was
+// overwritten with a block number from a different document.
+app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
+try {
+    await sleep(3000);
+    await app.eval((p) => postMsg('open_file_path:' + p), bookPath);
+    await sleep(10000);
+    const deep = await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        goToModelBlock(1500);
+        await sleep(1200);
+        document.getElementById('editor').dispatchEvent(new Event('scroll'));
+        await sleep(2200);
+        return currentReadingBlock();
+    });
+    info('book left at block ' + deep);
+
+    // Onto a short text document, scroll it, then straight back -- the switch happening
+    // while a report from the text document is still pending.
+    await app.eval((p) => postMsg('open_file_path:' + p),
+        path.join(appDir, 'Overall Goals for TypoZen.txt'));
+    await sleep(5000);
+    await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        goToModelBlock(12);
+        await sleep(300);
+        document.getElementById('editor').dispatchEvent(new Event('scroll'));
+        if (mainContainer) mainContainer.dispatchEvent(new Event('scroll'));
+    });
+    await sleep(250);
+    await app.eval((p) => postMsg('open_file_path:' + p), bookPath);
+    await sleep(11000);
+    await settledApp(app, 30000);
+
+    const reopened = await app.eval(() => ({
+        kind: DocumentModel.kind, at: currentReadingBlock(), blocks: DocumentModel.blocks.length
+    }));
+    info('book reopened at block ' + reopened.at + ' of ' + reopened.blocks);
+    assert(reopened.kind === 'epub', 'the book is what came back');
+    assert(reopened.at > 200,
+        'the book keeps its own position rather than the short document’s (' +
+        reopened.at + ', left at ' + deep + ')');
+} finally {
+    await app.close();
+}
+
+// The store is the real profile's; this test borrowed it.
+putStoreBack();
+
 console.log('\npassed=' + passed + ' failed=' + failed);
 console.log(failed ? 'BOOK POSITION FAILED' : 'BOOK POSITION PASSED');
 process.exit(failed ? 1 : 0);

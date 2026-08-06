@@ -3654,6 +3654,13 @@ if (_btnColumnToggle != null)
                 int block;
                 if (int.TryParse(msg.Substring(14), out block))
                 {
+                    // Not while a tab operation is in flight. The page debounces this, so a
+                    // report armed by the document being left can arrive after the switch
+                    // has already pointed _currentFilePath at the new one -- which wrote a
+                    // .txt's block number against a book's path and reopened the book at
+                    // its cover.
+                    if (_tabOpInProgress) return;
+
                     // On the tab as well as against the path. The path store answers
                     // "reopen this file where I left it"; the tab answers "come back to
                     // this tab where I left it", which is a different question when the
@@ -8068,7 +8075,16 @@ if (_btnColumnToggle != null)
                 // When ZenSeek/CLI opens with --search, skip resume: last-read block and
                 // the search match race (page thrash 13↔141) until only one jump wins.
                 int resumeAt = RememberedBookPosition(path);
-                if (_pendingLaunch != null && !string.IsNullOrEmpty(_pendingLaunch.Search))
+                // Only for the book the launch actually names. A ZenSeek launch carries a
+                // search, and the reason to skip the resume is that the remembered block and
+                // the search match would fight over the view -- which is true of that one
+                // document and of nothing else. The request also survives two loads before
+                // it is cleared, so as written it silently sent every book opened in between
+                // to its cover.
+                if (_pendingLaunch != null && !string.IsNullOrEmpty(_pendingLaunch.Search)
+                    && !string.IsNullOrEmpty(_pendingLaunch.FilePath)
+                    && string.Equals(Path.GetFullPath(_pendingLaunch.FilePath), path,
+                                     StringComparison.OrdinalIgnoreCase))
                     resumeAt = -1;
                 SendMsg("fetch_and_load_book:https://localapp/typozen_load/" + fileName
                     + (resumeAt > 0 ? "|at=" + resumeAt : ""));
