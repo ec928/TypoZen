@@ -72,6 +72,8 @@ The four bundled by default (Inter, Source Sans 3, Merriweather, Literata) are S
 
 ### Writing tools
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
+- Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree
+- While reading, `,` and `.` (or `<` and `>`) step to the previous and next match with the sidebar shut and your eyes on the text. Reader only — the document is read-only there, so a comma is a command rather than a character
 - Table insert (`Ctrl+T`)
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps
@@ -201,6 +203,14 @@ Two things about that last row, because both were wrong first:
 - **A cover is usually not an `<img>`.** Both test books wrap it in
   `<svg><image xlink:href="…"></svg>`, which no `img` rule and no `src` rewrite touches.
 
+Two things make reopening a book cheap. `EpubReader` caches the assembled payload beside
+the extracted assets against the same stamp, so a reopen is a file read rather than a
+re-read and re-escape of every spine document. And `SyncActiveTabFromEditor` skips a book
+entirely: it is read-only, never dirty, never saved, and reloaded from the file rather than
+from `Content`, so pulling it was marshalling the whole book across the WebView bridge on
+every tab switch — 1,043,141 characters, which the page produces in 2 ms and the bridge
+takes six seconds to hand over.
+
 A book's block `raw` is the publisher's markup, so `renderBlockPreview` sets it as HTML and
 returns before any of the Markdown renderer runs. The editor refuses to become editable while
 a book is open, `GetDirtyTabs()` skips `.epub` tabs, and `ReadTextFileDetect` returns empty
@@ -298,6 +308,7 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Toggle Source / Live Preview | `Ctrl+/` |
 | Toggle Sidebar | `Ctrl+\` |
 | Find | `Ctrl+F` |
+| Previous / next search result (Reader) | `,` / `.` — also `<` / `>` |
 | Find & Replace | `Ctrl+H` |
 | Insert table | `Ctrl+T` |
 | Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
@@ -383,7 +394,17 @@ because the fifth one landed in a test.
 
 **jsdom has no layout engine.** `column-count` never applies, `scrollLeft` is inert and every `getBoundingClientRect()` returns zeros. It cannot distinguish "two columns" from "no columns". Any assertion about what is on screen must be a browser or application suite — writing it in jsdom produces a test that passes forever and proves nothing.
 
-**Browser** suites (`smoke-browser`, `pagination-browser`, `twocol-anchoring-browser`, `edit-integrity-browser`, `clipboard-roundtrip-browser`, `paste-code-browser`, `epub-reader-browser`, `search-perf-browser`) load `TypoZen_Template.html` in headless Chrome. `smoke-browser` is deliberately shallow — "does each feature visibly do anything" — because that is the class of check that was missing when 2-column mode shipped applying its CSS class while `column-count` stayed `auto`.
+**Browser** suites (`smoke-browser`, `pagination-browser`, `page-fit-browser`,
+`twocol-anchoring-browser`, `edit-integrity-browser`, `clipboard-roundtrip-browser`,
+`paste-code-browser`, `epub-reader-browser`, `search-keys-browser`, `search-perf-browser`)
+load `TypoZen_Template.html` in headless Chrome.
+
+Two of those are the fast checks worth running on every change rather than at the end:
+`page-fit-browser` (9s) asserts no text passes the pane edge and a column still starts at
+the left edge after a hundred page turns, at three fractional viewport widths and after a
+resize; `search-keys-browser` (8s) covers the step keys and the search options end to end.
+Page drift went unnoticed for a day because the only geometry check was a twenty-minute app
+suite, so it was never run mid-iteration. `smoke-browser` is deliberately shallow — "does each feature visibly do anything" — because that is the class of check that was missing when 2-column mode shipped applying its CSS class while `column-count` stayed `auto`.
 
 **Application** suites are the only ones that see what users see. `tests/app-harness.mjs` launches `TypoZen.exe --debug`, which opens the DevTools protocol on port 9333, and attaches with `puppeteer-core`:
 
@@ -406,9 +427,10 @@ The nine application suites, and what each is the only place to check:
 | `page-window-app` | Only one range is laid out; page numbers stay in one coordinate system |
 | `page-scrubber-app` | Dragging the position control reaches both ends of a 40,656-block book |
 | `epub-open-app` | A real book end to end: opens in Reader and paginated, images load, covers keep their ratio, chapters start columns, TOC and outline jump, body text is the theme size, the file on disk is untouched |
-| `book-position-app` | A book reopens where reading stopped — across **two real launches**, because surviving the process is the whole claim |
+| `book-position-app` | A book reopens where reading stopped — across **two real launches**, because surviving the process is the whole claim; and is not overwritten by the tab you came from, and shows no cover frame on the way |
+| `tab-position-app` | A Markdown tab returns to its own place across a tab switch and a restart |
 | `edit-integrity-app` | Paste and undo do not corrupt neighbouring blocks |
-| `editing-sweep-app` | A survey of ordinary editing in every layout: typing, selection replace, Enter, Backspace-join, list continuation, Tab indent, undo, redo |
+| `editing-sweep-app` | A survey of ordinary editing in every layout: typing, selection replace, Enter, Backspace-join, list continuation, Tab indent, undo/redo, a two-block selection typed over with real keystrokes, Find and Replace/Replace All through the bar, and editing inside a table cell |
 | `search-highlight-app` | Every match highlighted, the current one marked, and the shaded block is the one holding it |
 | `search-perf-app` | Typing in the search box stays responsive on a large document |
 
@@ -517,7 +539,8 @@ Together: a cold open went from ~8.9 s to ~1.0 s.
 - **A test that cannot pass yet is `*-pending.mjs`, not a commented-out assertion.** An earlier suite detected a real failure, commented out its own `process.exit(1)`, and printed `PASSED`; every build afterwards reported success and failure in the same run.
 - If `switchTab` or another function evaluated in isolation gains a dependency, stub it in the suite that evaluates it — and re-run that suite. This has broken twice. `paste-html-selftest` extracts `htmlToMarkdown` alone by brace matching, so a helper it calls has to live **inside** that function; moving one out sent every case to the empty string.
 - **Assert on what renders, not on what was set.** An attribute being present, a `src` being rewritten and a TOC entry mapping to a block index were all true while the screen was wrong. Prefer `naturalWidth`, rendered ratios, column tops and position-after-click.
-- **Drive the real entry point.** Dispatched `KeyboardEvent`s, a real `.click()`, a real `DataTransfer`, `postMsg('open_file_path:')`. Calling the handler underneath tests a path no user reaches, and three separate defects hid exactly there.
+- **Drive the real entry point.** Dispatched `KeyboardEvent`s, a real `.click()`, a real `DataTransfer`, `postMsg('open_file_path:')`, and the harness's own keyboard for typing. Calling the handler underneath tests a path no user reaches: three separate defects hid there, and it has since produced a false *positive* too — `execCommand('insertText')` over a selection spanning two blocks leaves the later blocks' text in place, which reads as data loss, while a real keystroke through the browser's input pipeline is clean.
+- **Two quantities derived from the same mistake will agree.** The check that was supposed to catch page drift compared the page stride against the column pitch, both computed from the same number — so it passed while the text ran off the edge of the window. Assert against something the code did not produce: rendered geometry, bytes on the wire, the position after a click.
 - **Scope a grep to what it means.** A check that the sidebar does not slide on hover searched the whole stylesheet for `translateX` and failed the day a tooltip needed centring.
 
 **Anchoring**
@@ -542,6 +565,21 @@ Use the anchor that already exists rather than deriving a new one:
 - Page geometry is uniform *within the laid-out range*: local page N is at `N × pageWidth`. Global page numbers come from `PageChunks`, and mixing the two prints a page number from one coordinate system beside a total from the other.
 - **`break-before: column`, never `page-break-before: always`.** The legacy spelling is an alias for `break-before: page`, a paged-media break that a multi-column layout ignores completely. Written second it wins, and every chapter runs on mid-column while the marker attribute a test counts is present on all of them.
 - **The last page is not always at `N × pageWidth`.** A document ending part way into its final page leaves a maximum `scrollLeft` short of that offset, so the map would name a position the browser will never hold. `PageMap.pages` clamps to what is reachable.
+- **Never pin the pane to a whole number of pixels.** `width: 100%` resolves against a
+  parent that is very often fractional — 911.36px and 1848.32px, measured in the running app
+  — and flooring that for the page stride loses a third of a pixel per page: invisible on
+  page 2, 148px of drift by page 411, with the previous column showing down the margin. The
+  fix is a **fractional stride** read from `getBoundingClientRect()`, not `clientWidth`
+  (which rounds). Pinning the pane instead fixes the arithmetic and breaks something worse:
+  a pixel width does not follow its container, so a resize or a sidebar collapse leaves the
+  column at its old size and the text runs off the window. Drift only accumulates when pages
+  are stepped by addition, and every seek here is `index * stride` from the page number — so
+  a fractional stride costs one rounding, once, and never grows.
+- **Do not mutate layout inside a `ResizeObserver` callback.** `PageGeometry.relayout()`
+  writes height, column-width and column-gap and hides the container's overflow; doing that
+  in the observer's own callback is exactly what "ResizeObserver loop completed with
+  undelivered notifications" reports. Idempotent writes do not help — the first pass after
+  any real change still mutates. Defer to the next frame.
 - **A fragmented element's `getBoundingClientRect()` is the union of its fragments.** A paragraph running from one column into the next reports a box spanning both. Use `getClientRects()` when asking where something is on a page — a check built on the bounding box reads a correctly broken chapter as prose sitting above a heading.
 
 **Books**
@@ -618,8 +656,12 @@ If it is missing, or the file is `.docx`/`.xlsx`, ZenSeek keeps its built-in rea
 - **Two-column numbering: map = spreads, glass = leaf pages.** `PageMap` always counts
   spreads (one horizontal step). Foot numbers and the scrubber bubble convert through
   `pageDisplayFromSpread` only — never seek or store leaf page numbers.
-- **Reading position is one block index per file path** (epub and markdown). Untitled
-  buffers are not remembered. No per-tab positions if the same path is open twice.
+- **Reading position is remembered twice, deliberately.** The path-keyed store
+  (`book_positions.txt`) answers "reopen this file where I left it"; each tab also carries
+  its own `ResumeBlock`, persisted as `resume=` in the session, which answers "come back to
+  *this tab* where I left it". They differ when the same file is open twice, and only the
+  tab can answer for an untitled buffer. What is still missing: a position is a block index,
+  so it survives editing above it only as well as the block numbering does.
 - **Custom table size uses `#tableModal`.** The Notepad-style grid picker is the default path
   (`Ctrl+T`); **Custom size…** opens the number-field dialog. Both share `insertMarkdownTable`.
 - **The scrubber is pages-only.** A scrolling layout keeps the native scrollbar, which is
@@ -673,6 +715,8 @@ Measured on the 4582-line mixed fixture unless stated:
 | Page turn within a laid-out range | 1–3 ms |
 | Page turn crossing a range boundary | 74–84 ms (800-block ranges, real novels) |
 | Search keypress, before the merge-walk fix | 986 ms |
+| Leaving a book tab, before the state pull was skipped | 6 154 ms → 257 ms |
+| Returning to a book tab, before a clean tab's pull budget was cut | 6 414 ms → 1 226 ms |
 
 The Pages typing cost is the price of real pagination and is deliberate. It was briefly far
 worse: setting `height: 100%` on the multi-column contenteditable made every keystroke
