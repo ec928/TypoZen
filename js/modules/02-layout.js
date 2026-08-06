@@ -492,6 +492,15 @@
                 setTimeout(reassert, 40);
             };
             requestAnimationFrame(() => setTimeout(reassert, 0));
+
+            // Whenever the box takes focus, not only when it is typed into.
+            //
+            // The hand-off to the results list was armed from the input's own `input`
+            // handler, so focus placed here programmatically -- by Alt+S, or by a search
+            // arriving from ZenSeek -- was never scheduled to move on. It sat in the box
+            // indefinitely, and ',' and '.' typed punctuation into a query instead of
+            // stepping through the results.
+            armSidebarSearchIdle();
         }
 
         function cancelSidebarSearchIdle() {
