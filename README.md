@@ -682,13 +682,22 @@ broken behaviour behind a green suite:
   spanning two blocks typed over with real keystrokes, Find and Replace/Replace All through
   the bar, and editing inside a table cell. It does not cover drag-and-drop, or editing
   outside the mounted window -- see the list-indent gap above.
-- **`editing-sweep-app` is intermittent in `1-col Pages`.** Observed 79/2, 80/1 and 81/0 on
-  consecutive runs of the same build. The failures are always in that one layout and always
-  a gesture that needs the caret placed first -- "typing over a 5-character selection"
-  reported +1 instead of -4, meaning the range was not in place when the key arrived, and
-  "Enter at the end of a bullet" did not continue the list. Either the suite races
-  pagination's relayout when it places the caret, or placing a caret in a paginated layout
-  genuinely does not always take. Worth resolving before trusting a green run of this suite.
+- **`editing-sweep-app` is intermittent — a test fault, diagnosed but not fixed.** Observed
+  79/2, 80/1 and 81/0 on consecutive runs of the same build.
+
+  It is not the application. Placing a caret in a paginated layout was measured at 20 of 20
+  in isolation. The cause is that the suite picks the block to edit **by position** —
+  `blockEls()[25]` — and the fixture is deliberately mixed, so that index is a paragraph in
+  one layout, a blank line in another and a table row in a third. Measured directly: index
+  24 is a table, index 25 is empty, index 26 is a paragraph. A range inside a table cell
+  replaces differently, which is exactly how "typing over a 5-character selection" reports
+  +1 instead of -4 on some runs and passes on others.
+
+  An attempt to pick by content instead (a plain paragraph, no pipes, backticks, list
+  markers or headings) moved the flake rather than removing it — the two-block selection
+  then failed instead. Reverted; the committed suite is the version that passes 81/81 when
+  it lands well. **Do not trust a single green run of this suite**, and fix the picking
+  before adding anything to it.
 - **No suite drives the WPF chrome.** The application tier reaches into the page over the
   DevTools protocol; menus, dialogs and the tab strip are only touched by the optional
   pywinauto smoke test, which cannot see inside WebView2.
