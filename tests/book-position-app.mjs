@@ -164,6 +164,46 @@ try {
     await app.close();
 }
 
+console.log('\n=== and does not show the cover on the way there ===');
+// The resume used to run after the first paint, so a book opened 2,000 blocks in showed
+// its cover for a moment and then jumped. The range holding the resume block is mounted
+// first instead, so there is no frame to see.
+app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
+try {
+    await sleep(3000);
+    await app.eval((p) => postMsg('open_file_path:' + p), bookPath);
+    await sleep(11000);
+    await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        goToModelBlock(2200);
+        await sleep(1500);
+        document.getElementById('editor').dispatchEvent(new Event('scroll'));
+        await sleep(2200);
+    });
+    await app.eval((p) => postMsg('open_file_path:' + p),
+        path.join(appDir, 'Overall Goals for TypoZen.txt'));
+    await sleep(5000);
+
+    // Sample hard from the moment the open is asked for, so an early frame at the cover
+    // would be caught rather than slept through.
+    await app.eval((p) => postMsg('open_file_path:' + p), bookPath);
+    const frames = [];
+    for (let i = 0; i < 30 && frames.length < 6; i++) {
+        await sleep(250);
+        const f = await app.eval(() => (DocumentModel.kind === 'epub')
+            ? { c: PageChunks.mounted, at: currentReadingBlock() } : null);
+        if (f) frames.push(f);
+    }
+    info('first frames (range/block): ' + frames.map(f => f.c + '/' + f.at).join('  '));
+    assert(frames.length > 0, 'the book came back');
+    assert(frames.every(f => f.c > 0),
+        'every frame is the range being resumed into, never the front of the book');
+    assert(frames.every(f => f.at > 1000),
+        'and no frame sits on the cover (' + frames.map(f => f.at).join(', ') + ')');
+} finally {
+    await app.close();
+}
+
 // The store is the real profile's; this test borrowed it.
 putStoreBack();
 

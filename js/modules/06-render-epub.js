@@ -36,7 +36,11 @@
          *   { title, author, assetsBase, css: [text...],
          *     docs: [{ href, html }...], toc: [{ title, level, href }...] }
          */
-        function loadBookPayload(payload) {
+        /**
+         * @param {string} payload  the staged JSON
+         * @param {number} [resumeAt]  block to open at, if the reader has been here before
+         */
+        function loadBookPayload(payload, resumeAt) {
             let data = payload;
             if (typeof data === 'string') {
                 try { data = JSON.parse(data); } catch (e) { data = null; }
@@ -112,7 +116,16 @@
                 // page windowing exists to prevent, arrived at by a different door.
                 PageChunks.invalidate();
                 PageChunks.ensure(DocumentModel.blocks.length);
-                mountPageChunk(0);
+                // Straight to the range being resumed into, rather than mounting the front
+                // of the book and correcting afterwards. The correction works, but it is a
+                // second layout the reader watches happen: opening a book you are 3,000
+                // blocks into showed its cover for a moment and then jumped.
+                const wantBlock = (resumeAt > 0 && resumeAt < DocumentModel.blocks.length)
+                    ? resumeAt : 0;
+                mountPageChunk(PageChunks.chunkOfBlock(wantBlock));
+                if (wantBlock > 0) {
+                    try { goToModelBlock(wantBlock); } catch (eG) {}
+                }
             } else {
                 const frag = document.createDocumentFragment();
                 for (let i = 0; i < DocumentModel.blocks.length; i++) {

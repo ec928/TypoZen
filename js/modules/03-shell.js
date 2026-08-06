@@ -465,7 +465,7 @@
                             return r.text();
                         })
                         .then(function (json) {
-                            const ok = loadBookPayload(json);
+                            const ok = loadBookPayload(json, resumeAt);
                             if (ok && resumeAt > 0 && resumeAt < DocumentModel.blocks.length) {
                                 // After the layout, not with it: the book has to be
                                 // paginated before a block can be put on a page, and
