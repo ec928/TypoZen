@@ -173,6 +173,7 @@ In Live Preview each line also carries a rendered form, so the two must never di
 - **Flush before leaving.** The active block is written back before any save, tab switch, mode toggle or host pull.
 - **No length heuristics.** Truth is never decided by "whichever copy is longer" — that rule silently reverted deletions on save, and it is gone.
 - **Model indices, not DOM ordinals.** Under virtualization the first mounted block is not block 0, so formatting, undo, find and caret restore all resolve through model indices.
+- **A whole-document mutation reads the model, not the mounted DOM.** `mutateDocumentMarkdown` snapshots every block, mutates, and reloads the document from the result — so snapshotting `editor.querySelectorAll('.block')` meant rebuilding a virtualized document from the ~99 blocks on screen. Its indices are model indices throughout: what the mutator sees, what `opts.focusIndices` means, and what `_selectedFormatRaws` was already keyed by. Those three agreed only while the mounted window started at block 0, which is why a list indent deep in a document silently did nothing — a bounds check in the caller was the only thing keeping the call away from it.
 - **A model splice renumbers the mounted DOM.** `data-model-index` is not decoration: `syncMountedToModel()` writes each mounted element's `data-raw` back into the slot its attribute names. Inserting or removing a block shifts every row after it, so the attributes on already-mounted elements must move too — `insertBlockAfterIndex` / `removeBlockAt` / `removeBlockRange` call `shiftMountedModelIndices` for exactly that. Leave them stale and the next remount copies the DOM's content into the *wrong* rows: a mid-document paste destroyed the line after the caret this way, and a cross-block delete lost an untouched line.
 - **A structural edit splices the height map, it does not discard it.** `invalidateHeights()` throws away every measurement taken so far, so the next `prefixHeight()` for a distant row is rebuilt from estimates and the viewport pin moves with the error — 1562px per pasted block on a 3769-block document. `spliceHeights` keeps every untouched row's real height.
 - **An element returned by `createBlock` may already be detached.** Under virtualization it remounts, which replaces every mounted element. Chain off the model index and re-resolve, never off the returned node.
@@ -634,18 +635,6 @@ TypoZen.exe is resolved as a sibling of the ZenSeek folder (`../TypoZen/TypoZen.
 If it is missing, or the file is `.docx`/`.xlsx`, ZenSeek keeps its built-in reader.
 
 ### Known gaps
-
-- **A list edit outside the mounted window would destroy the document, and only a bounds
-  check stops it.** `mutateDocumentMarkdown` snapshots `editor.querySelectorAll('.block')`
-  -- the mounted window -- and rebuilds the document from it, so on a virtualized document
-  it replaces every block with the ~99 on screen. `applyListIndentToSelection` bounds the
-  selected model index by the number of *mounted* blocks, which happens to prevent the call
-  from ever being made for a distant block. The visible symptom is mild: Tab silently does
-  not indent a list item two thirds of the way through a long document. The cause is not.
-  Fix `mutateDocumentMarkdown` to mutate the model and treat the DOM as the projection it
-  is; do not remove the bound first. `tests/virt-list-indent-pending.mjs` is the
-  specification, measured: model index 2467 reported correctly, 3,767 blocks before, 99
-  after.
 
 - **Links that are broken in the file itself.** `Matter`'s in-text links point at `#filepos`
   anchors while its actual anchors are `calibre_pb_*`. When the fragment misses, TypoZen falls

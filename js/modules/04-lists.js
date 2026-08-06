@@ -437,12 +437,38 @@
         function mutateDocumentMarkdown(mutator, opts) {
             opts = opts || {};
             if (!editor || typeof mutator !== 'function') return false;
-            const allBlocks = Array.prototype.slice.call(editor.querySelectorAll('.block'));
-            if (!allBlocks.length) return false;
+
+            // The document, not the part of it on screen.
+            //
+            // This used to snapshot editor.querySelectorAll('.block') and then reload the
+            // document from what it produced. Under virtualization that is the mounted
+            // window and nothing else: a list edit two thirds through a 3,767-block
+            // document would have rebuilt it as the ~99 blocks on screen. Nothing reached
+            // it only because applyListIndentToSelection bounded its index by the mounted
+            // count, which prevented the call rather than fixing it -- so Tab silently did
+            // nothing there instead of destroying the file.
+            //
+            // Indices below are model indices throughout: that is what the mutator sees,
+            // what opts.focusIndex/focusIndices mean, and what _selectedFormatRaws is
+            // already keyed by. Before this they were mounted-DOM positions, and the three
+            // agreed only while the window started at block 0.
+            const model = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
+                ? DocumentModel.blocks : null;
+            if (!model || !model.length) return false;
+
+            // A mounted block's data-raw is written in the same transaction as its DOM, so
+            // it is at least as fresh as the model; rows off screen can only come from the
+            // model. Built once rather than a querySelector per row.
+            const mountedRaw = {};
+            const mountedEls = editor.querySelectorAll('.block[data-model-index]');
+            for (let m = 0; m < mountedEls.length; m++) {
+                const mi = parseInt(mountedEls[m].getAttribute('data-model-index'), 10);
+                if (mi >= 0) mountedRaw[mi] = readBlockRawSafe(mountedEls[m]);
+            }
 
             // Snapshot FIRST — single source for mutation AND undo pre-state.
-            // Prefer frozen format raws (mouseup); else readBlockRawSafe (DOM fallback).
-            const allRaws = allBlocks.map(function (b, bi) {
+            // Prefer frozen format raws (mouseup); else the mounted DOM; else the model.
+            const allRaws = model.map(function (blk, bi) {
                 if (typeof _formatSelectionFrozen !== 'undefined' && _formatSelectionFrozen
                     && typeof _selectedFormatRaws !== 'undefined'
                     && Object.prototype.hasOwnProperty.call(_selectedFormatRaws, bi)
@@ -450,8 +476,11 @@
                     && String(_selectedFormatRaws[bi]).trim()) {
                     return coerceBlockRaw(_selectedFormatRaws[bi]);
                 }
-                // Frozen empty is useless — re-read DOM (may still have text)
-                return readBlockRawSafe(b);
+                if (Object.prototype.hasOwnProperty.call(mountedRaw, bi)
+                    && String(mountedRaw[bi] || '').trim()) {
+                    return mountedRaw[bi];
+                }
+                return coerceBlockRaw(blk ? blk.raw : '');
             });
             const preContent = allRaws.join('\n');
             const preNonEmpty = allRaws.filter(function (r) { return String(r || '').trim(); }).length;
@@ -567,14 +596,34 @@
 
         /** Indent/outdent list lines for the current selection (safe reload path). */
         function applyListIndentToSelection(delta) {
-            const allBlocks = Array.prototype.slice.call(editor.querySelectorAll('.block'));
-            if (!allBlocks.length) return false;
             const selectedIdx = getSelectedBlockIndices();
+            if (!selectedIdx || !selectedIdx.length) return false;
+
+            // Model indices, checked against the model.
+            //
+            // getSelectedBlockIndices returns indices into the document; this used to bound
+            // them by the number of *mounted* blocks and read the raw out of the mounted DOM
+            // at that position. At the top of a document the two agree; anywhere else they
+            // do not, so Tab on a list item two thirds through a long document silently did
+            // nothing. That bound was also the only thing keeping the call away from
+            // mutateDocumentMarkdown, which used to rebuild the document from the mounted
+            // window -- it is safe to remove now, and not before.
+            const total = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
+                ? DocumentModel.blocks.length : 0;
+            const rawAt = function (idx) {
+                const el = editor
+                    ? editor.querySelector('.block[data-model-index="' + idx + '"]')
+                    : null;
+                if (el) return getBlockRaw(el);
+                const b = DocumentModel.blocks[idx];
+                return b ? coerceBlockRaw(b.raw) : '';
+            };
+
             const focusIndices = {};
             let any = false;
             for (let i = 0; i < selectedIdx.length; i++) {
                 const idx = selectedIdx[i];
-                if (idx >= 0 && idx < allBlocks.length && isListLine(getBlockRaw(allBlocks[idx]))) {
+                if (idx >= 0 && idx < total && isListLine(rawAt(idx))) {
                     focusIndices[idx] = true;
                     any = true;
                 }
@@ -1883,8 +1932,11 @@
             if (!pieces || !pieces.length) pieces = [''];
             const anyList = pieces.some(function (p) { return isListLine(p); });
             if (anyList && editor) {
-                const allBlocks = Array.prototype.slice.call(editor.querySelectorAll('.block'));
-                const idx = allBlocks.indexOf(block);
+                // A model index, because that is what the mutator is indexed by now. This
+                // was allBlocks.indexOf(block) -- the position among mounted blocks -- which
+                // is the same number only while the window starts at block 0.
+                const idx = (typeof DocumentModel !== 'undefined')
+                    ? DocumentModel.modelIndexOfEl(block) : -1;
                 if (idx >= 0) {
                     const focusIndices = {};
                     focusIndices[idx] = true;
@@ -1892,9 +1944,17 @@
                         if (index === idx) return pieces.slice();
                         return raw;
                     }, { focusIndices: focusIndices });
+                    // One block expanded to pieces.length lines at the same model index.
+                    // Resolved back through the DOM, since the reload remounts and the
+                    // mounted window need not start where it did.
+                    const out = [];
+                    for (let k = 0; k < pieces.length; k++) {
+                        const el = editor.querySelector('.block[data-model-index="' + (idx + k) + '"]');
+                        if (el) out.push(el);
+                    }
+                    if (out.length) return out;
                     const newBlocks = Array.prototype.slice.call(editor.querySelectorAll('.block'));
-                    // One block expanded to pieces.length lines at the same index
-                    return newBlocks.slice(idx, idx + pieces.length);
+                    return newBlocks.slice(0, pieces.length);
                 }
             }
             writeBlockRaw(block, pieces[0]);

@@ -1,30 +1,19 @@
 /**
- * Tab does not indent a list item outside the mounted window -- and must not, yet.
+ * A list edit reaches a block outside the mounted window, and costs no other block.
  *
- * PENDING: this asserts behaviour that is not built. Opt in with RUN_PENDING_E2E=1.
+ * This was a *-pending.mjs file describing behaviour that did not work, and the reason it
+ * was written down rather than fixed in passing: Tab silently failed to indent a list item
+ * two thirds through a document, and the obvious one-line fix -- the caller bounded a model
+ * index by the number of mounted blocks -- turned a silent no-op into data loss. Removing
+ * the bound let the call through to mutateDocumentMarkdown, which snapshotted the mounted
+ * window and rebuilt the whole document from it: 3,766 blocks became 99.
  *
- * What happens today, on a 3,767-block document with the reader two thirds of the way in:
+ * mutateDocumentMarkdown now mutates DocumentModel and treats the DOM as the projection it
+ * is, so both halves hold: the edit lands, and nothing off screen is lost. The block count
+ * assertion is the one that matters -- an indent that works while quietly discarding the
+ * rest of the file would satisfy the other two.
  *
- *   - getSelectedBlockIndices() correctly reports the model index of the bullet (2467)
- *   - applyListIndentToSelection() bounds that index by the number of *mounted* blocks
- *     (~99) rather than the number of blocks in the document, so nothing matches and the
- *     handler returns false
- *   - Tab therefore does nothing, silently, for any list item that is not near the top
- *
- * That looks like a one-line bug and is not. Removing the bound lets the call through to
- * mutateDocumentMarkdown, which snapshots `editor.querySelectorAll('.block')` -- the
- * mounted window -- and rebuilds the document from it. Measured: the model went from 3,766
- * blocks to 99. The bound is load-bearing by accident; it is the only thing standing
- * between a Tab keypress and losing everything not on screen.
- *
- * So the fix is in mutateDocumentMarkdown, not in its caller: it has to mutate the model
- * and treat the DOM as the projection it is. That touches formatting, the frozen selection
- * cache and undo, all of which have their own history, so it is written down here rather
- * than attempted in passing.
- *
- * When it is fixed, this file moves to *-app.mjs and the assertions below stand as they are.
- *
- *   RUN_PENDING_E2E=1 node tests/virt-list-indent-pending.mjs
+ *   RUN_APP_E2E=1 node tests/virt-list-indent-app.mjs
  */
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -101,7 +90,5 @@ try {
 }
 
 console.log('\npassed=' + passed + ' failed=' + failed);
-console.log(failed ? 'VIRT LIST INDENT PENDING (expected)' : 'VIRT LIST INDENT PASSED');
-// Pending: a failure here is the known state, not a regression. It exits 0 so the runner
-// reports it as pending rather than red; the assertions above are the specification.
-process.exit(0);
+console.log(failed ? 'VIRT LIST INDENT FAILED' : 'VIRT LIST INDENT PASSED');
+process.exit(failed ? 1 : 0);
