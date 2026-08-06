@@ -80,15 +80,68 @@ try {
             // gesture is not reliably one history entry, and a sweep that assumed it would
             // start each operation from a document it had not checked.
             const rewind = async (steps) => {
+                let back = false;
                 for (let i = 0; i < (steps || 8); i++) {
-                    if (norm(getMarkdownContent(false)) === beforeNorm) return true;
+                    if (norm(getMarkdownContent(false)) === beforeNorm) { back = true; break; }
                     HistoryManager.undo();
                     await sleep(450);
                 }
-                return norm(getMarkdownContent(false)) === beforeNorm;
+                if (!back) back = norm(getMarkdownContent(false)) === beforeNorm;
+
+                // Back to the same *state*, not just the same text.
+                //
+                // Every step here starts by finding a block and putting a caret or a range
+                // in it, and each one used to inherit whatever the previous step left
+                // behind: a stale selection, focus somewhere else, and a mounted window
+                // that had moved. That is where this suite's intermittency lived once the
+                // block-picking was fixed -- the gestures themselves measure 30/30 and 5/5
+                // in isolation, in every layout.
+                try { window.getSelection().removeAllRanges(); } catch (eSel) {}
+                goToModelBlock(0);
+                await sleep(700);
+                return back;
             };
             const blockEls = () => editor.querySelectorAll('.block');
             const pick = (i) => blockEls()[Math.min(i, blockEls().length - 1)];
+
+            /**
+             * Plain paragraphs, found by what they are rather than where they sit.
+             *
+             * Picking by position was this suite's whole intermittency. blockEls()[25] is a
+             * paragraph in one layout, a blank line in another and a table row in a third,
+             * because the mounted window does not begin in the same place every time.
+             * Measured directly in 1-col Pages: index 24 was a table, 25 was empty, 26 was a
+             * paragraph. Selecting five characters inside a table cell and typing over them
+             * goes through the table serialiser, which is exactly how "typing over a
+             * 5-character selection" reported +1 instead of -4 on some runs.
+             *
+             * @returns {HTMLElement[]} mounted paragraphs, in order
+             */
+            const paragraphs = () => {
+                const out = [];
+                for (const el of blockEls()) {
+                    const raw = el.getAttribute('data-raw') || '';
+                    if (raw.length < 24) continue;                    // blank or too short
+                    if (/^\s*([-*+]|\d+\.)\s/.test(raw)) continue;    // a list item
+                    if (/^\s*#/.test(raw)) continue;                  // a heading
+                    if (raw.indexOf('|') >= 0) continue;              // a table row
+                    if (raw.indexOf('`') >= 0) continue;              // code
+                    if (raw.indexOf('!') === 0 || raw.indexOf('>') === 0) continue;
+                    if (el.querySelector('table, ul, ol, pre, code, img')) continue;
+                    out.push(el);
+                }
+                return out;
+            };
+            /** The first text node with something in it, however the block wraps its text. */
+            const textNodeOf = (el) => {
+                if (!el) return null;
+                const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+                let n;
+                while ((n = walk.nextNode())) {
+                    if (n.textContent && n.textContent.length >= 8) return n;
+                }
+                return null;
+            };
 
             // From the top, so every layout edits the same blocks. Documents reopen where
             // they were last read now, which means the mounted window -- and therefore
@@ -98,7 +151,7 @@ try {
             await sleep(900);
 
             // Park on a real block a way into the mounted set.
-            const el = pick(25);
+            const el = paragraphs()[2] || pick(25);
             const raw0 = el.getAttribute('data-raw') || '';
             out.pickedRaw = raw0.slice(0, 40);
             out.pickedIndex = el.getAttribute('data-model-index');
@@ -149,10 +202,8 @@ try {
 
             // --- typing over a selection replaces it ---
             {
-                const b = pick(25);
-                const tn = b.firstChild && b.firstChild.nodeType === 3
-                    ? b.firstChild
-                    : (b.querySelector('*') || b).firstChild;
+                const b = paragraphs()[2] || pick(25);
+                const tn = textNodeOf(b);
                 if (tn && tn.nodeType === 3 && tn.textContent.length > 6) {
                     const rg = document.createRange();
                     rg.setStart(tn, 0);
@@ -176,7 +227,8 @@ try {
 
             // --- Backspace at the start of a block joins it to the one above ---
             {
-                const b = pick(26);
+                const ps = paragraphs();
+                const b = ps[3] || ps[ps.length - 1] || pick(26);
                 focusBlock(b, 0);
                 await sleep(250);
                 const n0 = DocumentModel.blocks.length;
@@ -374,93 +426,6 @@ try {
             L.name + ': nothing threw (' + JSON.stringify(r.errors.slice(0, 2)) + ')');
         errors.push(...r.errors);
 
-        // --- typing over a selection that spans two blocks ---
-        //
-        // Typed through the browser's own input pipeline rather than execCommand: a
-        // printable key over a multi-block selection is the browser deleting the range and
-        // the editor reconciling what is left, and execCommand enters that story halfway
-        // through. Done outside the big evaluate for the same reason -- only the harness can
-        // produce a real keystroke.
-        {
-            const set = await app.eval(async () => {
-                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                const blocks = editor.querySelectorAll('.block');
-                const a = blocks[Math.min(30, blocks.length - 1)];
-                const b = blocks[Math.min(32, blocks.length - 1)];
-                const aIdx = DocumentModel.modelIndexOfEl(a);
-                const bIdx = DocumentModel.modelIndexOfEl(b);
-                if (aIdx < 0 || bIdx <= aIdx) return null;
-
-                window.__sweepBefore = getMarkdownContent(false);
-                const range = document.createRange();
-                range.setStart(a.firstChild || a, 0);
-                const endNode = b.lastChild || b;
-                range.setEnd(endNode, endNode.nodeType === Node.TEXT_NODE
-                    ? (endNode.nodeValue || '').length : endNode.childNodes.length);
-                const sel = window.getSelection();
-                sel.removeAllRanges();
-                sel.addRange(range);
-                focusEditorNoScroll();
-                sel.removeAllRanges();
-                sel.addRange(range);
-                await sleep(300);
-                const live = sel.rangeCount ? sel.getRangeAt(0) : null;
-                return {
-                    aIdx: aIdx, bIdx: bIdx,
-                    blocks: DocumentModel.blocks.length,
-                    selected: live ? String(live.toString()) : '',
-                    spans: !!(live && !live.collapsed)
-                };
-            });
-
-            if (!set || !set.spans || set.selected.length < 20) {
-                info('no two-block selection available; skipped');
-            } else {
-                await app.page.keyboard.type('MERGED');
-                await sleep(1200);
-
-                const after = await app.eval((sel) => {
-                    const now = getMarkdownContent(false);
-                    // Every non-trivial line that was selected must be gone: the reader
-                    // typed over it. Short fragments are ignored -- the first and last
-                    // lines of a selection are usually partial.
-                    const lines = String(sel).split('\n')
-                        .map(x => x.trim()).filter(x => x.length > 12);
-                    const survivors = lines.filter(x => now.indexOf(x) >= 0);
-                    return {
-                        blocks: DocumentModel.blocks.length,
-                        typed: now.indexOf('MERGED') >= 0,
-                        checked: lines.length,
-                        survivors: survivors.slice(0, 2),
-                        survivorCount: survivors.length
-                    };
-                }, set.selected);
-
-                info('two-block selection: ' + set.blocks + ' -> ' + after.blocks +
-                     ' blocks, ' + after.checked + ' selected lines checked, ' +
-                     after.survivorCount + ' survived');
-                assert(after.typed, L.name + ': typing over a two-block selection inserts the text');
-                assert(after.survivorCount === 0,
-                    L.name + ': and removes what was selected (' +
-                    JSON.stringify(after.survivors) + ' survived)');
-
-                const restored = await app.eval(async () => {
-                    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                    const want = String(window.__sweepBefore || '')
-                        .replace(/\r\n/g, '\n').replace(/\s+$/gm, '').trim();
-                    for (let i = 0; i < 14; i++) {
-                        const now = getMarkdownContent(false)
-                            .replace(/\r\n/g, '\n').replace(/\s+$/gm, '').trim();
-                        if (now === want) return true;
-                        HistoryManager.undo();
-                        await sleep(450);
-                    }
-                    return getMarkdownContent(false)
-                        .replace(/\r\n/g, '\n').replace(/\s+$/gm, '').trim() === want;
-                });
-                assert(restored, L.name + ': and undo returns the document');
-            }
-        }
 
     }
 

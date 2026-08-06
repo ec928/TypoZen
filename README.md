@@ -431,7 +431,9 @@ The nine application suites, and what each is the only place to check:
 | `book-position-app` | A book reopens where reading stopped — across **two real launches**, because surviving the process is the whole claim; and is not overwritten by the tab you came from, and shows no cover frame on the way |
 | `tab-position-app` | A Markdown tab returns to its own place across a tab switch and a restart |
 | `edit-integrity-app` | Paste and undo do not corrupt neighbouring blocks |
-| `editing-sweep-app` | A survey of ordinary editing in every layout: typing, selection replace, Enter, Backspace-join, list continuation, Tab indent, undo/redo, a two-block selection typed over with real keystrokes, Find and Replace/Replace All through the bar, and editing inside a table cell |
+| `editing-sweep-app` | A survey of ordinary editing in every layout: typing, selection replace, Enter, Backspace-join, list continuation, Tab indent, undo/redo, Find and Replace/Replace All through the bar, and editing inside a table cell |
+| `multi-block-edit-app` | Typing over a selection spanning two blocks, three trials per layout, each from a freshly entered layout |
+| `virt-list-indent-app` | A list edit outside the mounted window lands, and costs no other block |
 | `search-highlight-app` | Every match highlighted, the current one marked, and the shaded block is the one holding it |
 | `search-perf-app` | Typing in the search box stays responsive on a large document |
 
@@ -540,7 +542,11 @@ Together: a cold open went from ~8.9 s to ~1.0 s.
 - **A test that cannot pass yet is `*-pending.mjs`, not a commented-out assertion.** An earlier suite detected a real failure, commented out its own `process.exit(1)`, and printed `PASSED`; every build afterwards reported success and failure in the same run.
 - If `switchTab` or another function evaluated in isolation gains a dependency, stub it in the suite that evaluates it — and re-run that suite. This has broken twice. `paste-html-selftest` extracts `htmlToMarkdown` alone by brace matching, so a helper it calls has to live **inside** that function; moving one out sent every case to the empty string.
 - **Assert on what renders, not on what was set.** An attribute being present, a `src` being rewritten and a TOC entry mapping to a block index were all true while the screen was wrong. Prefer `naturalWidth`, rendered ratios, column tops and position-after-click.
-- **Drive the real entry point.** Dispatched `KeyboardEvent`s, a real `.click()`, a real `DataTransfer`, `postMsg('open_file_path:')`, and the harness's own keyboard for typing. Calling the handler underneath tests a path no user reaches: three separate defects hid there, and it has since produced a false *positive* too — `execCommand('insertText')` over a selection spanning two blocks leaves the later blocks' text in place, which reads as data loss, while a real keystroke through the browser's input pipeline is clean.
+- **Pick what you edit by what it is, not by where it sits.** `blockEls()[25]` is a paragraph in one layout, a blank line in another and a table row in a third, because the mounted window does not start in the same place every time — measured in 1-col Pages: index 24 a table, 25 empty, 26 a paragraph. Selecting five characters inside a table cell goes through the table serialiser, which reported "+1 instead of −4" and read exactly like a caret bug. That was the whole of `editing-sweep-app`'s intermittency, together with each step inheriting the selection and mounted window the previous one left.
+
+**A gesture that needs a clean starting state gets its own suite.** Typing over a two-block selection failed about a third of the time as the last step of the sweep and is 5/5 from a freshly entered layout. Both facts are about the test. A check that passes two thirds of the time tells you nothing either way, so it is measured where the answer is trustworthy — `multi-block-edit-app`, three trials per layout — rather than left to flicker inside a longer run.
+
+**Drive the real entry point.** Dispatched `KeyboardEvent`s, a real `.click()`, a real `DataTransfer`, `postMsg('open_file_path:')`, and the harness's own keyboard for typing. Calling the handler underneath tests a path no user reaches: three separate defects hid there, and it has since produced a false *positive* too — `execCommand('insertText')` over a selection spanning two blocks leaves the later blocks' text in place, which reads as data loss, while a real keystroke through the browser's input pipeline is clean.
 - **Two quantities derived from the same mistake will agree.** The check that was supposed to catch page drift compared the page stride against the column pitch, both computed from the same number — so it passed while the text ran off the edge of the window. Assert against something the code did not produce: rendered geometry, bytes on the wire, the position after a click.
 - **Scope a grep to what it means.** A check that the sidebar does not slide on hover searched the whole stylesheet for `translateX` and failed the day a tooltip needed centring.
 
@@ -671,22 +677,6 @@ broken behaviour behind a green suite:
   spanning two blocks typed over with real keystrokes, Find and Replace/Replace All through
   the bar, and editing inside a table cell. It does not cover drag-and-drop, or editing
   outside the mounted window -- see the list-indent gap above.
-- **`editing-sweep-app` is intermittent — a test fault, diagnosed but not fixed.** Observed
-  79/2, 80/1 and 81/0 on consecutive runs of the same build.
-
-  It is not the application. Placing a caret in a paginated layout was measured at 20 of 20
-  in isolation. The cause is that the suite picks the block to edit **by position** —
-  `blockEls()[25]` — and the fixture is deliberately mixed, so that index is a paragraph in
-  one layout, a blank line in another and a table row in a third. Measured directly: index
-  24 is a table, index 25 is empty, index 26 is a paragraph. A range inside a table cell
-  replaces differently, which is exactly how "typing over a 5-character selection" reports
-  +1 instead of -4 on some runs and passes on others.
-
-  An attempt to pick by content instead (a plain paragraph, no pipes, backticks, list
-  markers or headings) moved the flake rather than removing it — the two-block selection
-  then failed instead. Reverted; the committed suite is the version that passes 81/81 when
-  it lands well. **Do not trust a single green run of this suite**, and fix the picking
-  before adding anything to it.
 - **No suite drives the WPF chrome.** The application tier reaches into the page over the
   DevTools protocol; menus, dialogs and the tab strip are only touched by the optional
   pywinauto smoke test, which cannot see inside WebView2.
