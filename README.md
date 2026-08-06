@@ -597,6 +597,18 @@ If it is missing, or the file is `.docx`/`.xlsx`, ZenSeek keeps its built-in rea
 
 ### Known gaps
 
+- **A list edit outside the mounted window would destroy the document, and only a bounds
+  check stops it.** `mutateDocumentMarkdown` snapshots `editor.querySelectorAll('.block')`
+  -- the mounted window -- and rebuilds the document from it, so on a virtualized document
+  it replaces every block with the ~99 on screen. `applyListIndentToSelection` bounds the
+  selected model index by the number of *mounted* blocks, which happens to prevent the call
+  from ever being made for a distant block. The visible symptom is mild: Tab silently does
+  not indent a list item two thirds of the way through a long document. The cause is not.
+  Fix `mutateDocumentMarkdown` to mutate the model and treat the DOM as the projection it
+  is; do not remove the bound first. `tests/virt-list-indent-pending.mjs` is the
+  specification, measured: model index 2467 reported correctly, 3,767 blocks before, 99
+  after.
+
 - **Links that are broken in the file itself.** `Matter`'s in-text links point at `#filepos`
   anchors while its actual anchors are `calibre_pb_*`. When the fragment misses, TypoZen falls
   back to the link's **title text** against the TOC/outline (including when the *file* part of
@@ -623,9 +635,11 @@ If it is missing, or the file is `.docx`/`.xlsx`, ZenSeek keeps its built-in rea
 Said plainly, because implying coverage that does not exist is how this project shipped
 broken behaviour behind a green suite:
 
-- **The editing sweep is a survey, not a regression suite.** It covers typing, selection
-  replace, Enter, Backspace-join, list continuation, Tab indent, undo and redo. It does not
-  cover tables, multi-block selection, drag-and-drop, or find-and-replace as gestures.
+- **The editing sweep is a survey, not a regression suite.** It now covers typing, selection
+  replace, Enter, Backspace-join, list continuation, Tab indent, undo/redo, a selection
+  spanning two blocks typed over with real keystrokes, Find and Replace/Replace All through
+  the bar, and editing inside a table cell. It does not cover drag-and-drop, or editing
+  outside the mounted window -- see the list-indent gap above.
 - **No suite drives the WPF chrome.** The application tier reaches into the page over the
   DevTools protocol; menus, dialogs and the tab strip are only touched by the optional
   pywinauto smoke test, which cannot see inside WebView2.

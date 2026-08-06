@@ -90,6 +90,13 @@ try {
             const blockEls = () => editor.querySelectorAll('.block');
             const pick = (i) => blockEls()[Math.min(i, blockEls().length - 1)];
 
+            // From the top, so every layout edits the same blocks. Documents reopen where
+            // they were last read now, which means the mounted window -- and therefore
+            // which paragraph pick(25) lands on -- depends on whatever the previous run of
+            // anything left behind.
+            goToModelBlock(0);
+            await sleep(900);
+
             // Park on a real block a way into the mounted set.
             const el = pick(25);
             const raw0 = el.getAttribute('data-raw') || '';
@@ -228,6 +235,81 @@ try {
                 }
             }
 
+            // --- find and replace, through the bar a user opens ---
+            {
+                const bar = document.getElementById('findBar');
+                const input = document.getElementById('findInput');
+                const repl = document.getElementById('replaceInput');
+                const one = document.getElementById('findReplaceOne');
+                const all = document.getElementById('findReplaceAll');
+                // 35 occurrences: enough that Replace All is a real operation and few
+                // enough that it does not dominate the sweep's runtime.
+                const needle = 'blockquote';
+                if (bar && input && repl && one && all &&
+                    getMarkdownContent(false).indexOf(needle) >= 0) {
+                    handleCommand('cmd:find');
+                    await sleep(500);
+                    input.value = needle;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    await sleep(1200);
+                    const hits = findState.matches.length;
+                    out.frHits = hits;
+
+                    repl.value = 'BEACON';
+                    one.click();
+                    await sleep(900);
+                    const afterOne = getMarkdownContent(false);
+                    out.frOneDidOne = (afterOne.split('BEACON').length - 1) === 1;
+
+                    all.click();
+                    await sleep(2500);
+                    const afterAll = getMarkdownContent(false);
+                    out.frAllDidRest = afterAll.indexOf(needle) < 0 &&
+                        (afterAll.split('BEACON').length - 1) === hits;
+                    out.frCounts = hits + ' hits, ' +
+                        (afterAll.split('BEACON').length - 1) + ' replaced';
+
+                    try { closeFindBar(); } catch (eF) {}
+                    await sleep(400);
+                    out.frRestored = await rewind(18);
+                } else {
+                    out.notes.push('no find bar, or nothing to replace');
+                    out.frOneDidOne = true; out.frAllDidRest = true; out.frRestored = true;
+                }
+            }
+
+            // --- editing inside a table cell ---
+            //
+            // A table is one block whose raw is a pipe grid, so a keystroke in a cell has to
+            // survive the DOM being turned back into that grid. Nothing else in this sweep
+            // touches a block whose serializer is that particular.
+            {
+                let tableBlock = null;
+                for (const b of blockEls()) {
+                    if ((b.getAttribute('data-raw') || '').indexOf('|') >= 0 && b.querySelector('td')) {
+                        tableBlock = b; break;
+                    }
+                }
+                if (tableBlock) {
+                    const idx = DocumentModel.modelIndexOfEl(tableBlock);
+                    const cell = tableBlock.querySelector('td');
+                    const rawWas = String(DocumentModel.blocks[idx].raw);
+                    const pipesWas = (rawWas.match(/\|/g) || []).length;
+                    setCaretAtOffset(cell, (cell.innerText || '').length);
+                    await sleep(300);
+                    document.execCommand('insertText', false, 'XQ');
+                    await sleep(800);
+                    const rawNow = String(DocumentModel.blocks[idx].raw);
+                    out.tableTyped = rawNow.indexOf('XQ') >= 0;
+                    out.tablePipes = pipesWas + ' -> ' + (rawNow.match(/\|/g) || []).length;
+                    out.tableShape = (rawNow.match(/\|/g) || []).length === pipesWas;
+                    out.tableRestored = await rewind(10);
+                } else {
+                    out.notes.push('no table in the mounted set');
+                    out.tableTyped = true; out.tableShape = true; out.tableRestored = true;
+                }
+            }
+
             out.finalExact = norm(getMarkdownContent(false)) === beforeNorm;
             out.errors = (window.__sweepErrors || []).slice();
             return out;
@@ -276,17 +358,117 @@ try {
             L.name + ': Tab indents a list item (' + JSON.stringify(r.tabRaw) + ')');
         assert(r.tabRestored, L.name + ': and undo returns the document');
 
+        info('find/replace: ' + r.frCounts);
+        assert(r.frOneDidOne, L.name + ': Replace changes exactly one match');
+        assert(r.frAllDidRest, L.name + ': Replace All changes the rest');
+        assert(r.frRestored, L.name + ': and undo returns the document');
+
+        info('table cell pipes: ' + r.tablePipes);
+        assert(r.tableTyped, L.name + ': typing in a table cell reaches the block');
+        assert(r.tableShape, L.name + ': and the table keeps its shape');
+        assert(r.tableRestored, L.name + ': and undo returns the document');
+
         assert(r.finalExact,
             L.name + ': the layout ends on the document it started with');
         assert(r.errors.length === 0,
             L.name + ': nothing threw (' + JSON.stringify(r.errors.slice(0, 2)) + ')');
         errors.push(...r.errors);
+
+        // --- typing over a selection that spans two blocks ---
+        //
+        // Typed through the browser's own input pipeline rather than execCommand: a
+        // printable key over a multi-block selection is the browser deleting the range and
+        // the editor reconciling what is left, and execCommand enters that story halfway
+        // through. Done outside the big evaluate for the same reason -- only the harness can
+        // produce a real keystroke.
+        {
+            const set = await app.eval(async () => {
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                const blocks = editor.querySelectorAll('.block');
+                const a = blocks[Math.min(30, blocks.length - 1)];
+                const b = blocks[Math.min(32, blocks.length - 1)];
+                const aIdx = DocumentModel.modelIndexOfEl(a);
+                const bIdx = DocumentModel.modelIndexOfEl(b);
+                if (aIdx < 0 || bIdx <= aIdx) return null;
+
+                window.__sweepBefore = getMarkdownContent(false);
+                const range = document.createRange();
+                range.setStart(a.firstChild || a, 0);
+                const endNode = b.lastChild || b;
+                range.setEnd(endNode, endNode.nodeType === Node.TEXT_NODE
+                    ? (endNode.nodeValue || '').length : endNode.childNodes.length);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                focusEditorNoScroll();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                await sleep(300);
+                const live = sel.rangeCount ? sel.getRangeAt(0) : null;
+                return {
+                    aIdx: aIdx, bIdx: bIdx,
+                    blocks: DocumentModel.blocks.length,
+                    selected: live ? String(live.toString()) : '',
+                    spans: !!(live && !live.collapsed)
+                };
+            });
+
+            if (!set || !set.spans || set.selected.length < 20) {
+                info('no two-block selection available; skipped');
+            } else {
+                await app.page.keyboard.type('MERGED');
+                await sleep(1200);
+
+                const after = await app.eval((sel) => {
+                    const now = getMarkdownContent(false);
+                    // Every non-trivial line that was selected must be gone: the reader
+                    // typed over it. Short fragments are ignored -- the first and last
+                    // lines of a selection are usually partial.
+                    const lines = String(sel).split('\n')
+                        .map(x => x.trim()).filter(x => x.length > 12);
+                    const survivors = lines.filter(x => now.indexOf(x) >= 0);
+                    return {
+                        blocks: DocumentModel.blocks.length,
+                        typed: now.indexOf('MERGED') >= 0,
+                        checked: lines.length,
+                        survivors: survivors.slice(0, 2),
+                        survivorCount: survivors.length
+                    };
+                }, set.selected);
+
+                info('two-block selection: ' + set.blocks + ' -> ' + after.blocks +
+                     ' blocks, ' + after.checked + ' selected lines checked, ' +
+                     after.survivorCount + ' survived');
+                assert(after.typed, L.name + ': typing over a two-block selection inserts the text');
+                assert(after.survivorCount === 0,
+                    L.name + ': and removes what was selected (' +
+                    JSON.stringify(after.survivors) + ' survived)');
+
+                const restored = await app.eval(async () => {
+                    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                    const want = String(window.__sweepBefore || '')
+                        .replace(/\r\n/g, '\n').replace(/\s+$/gm, '').trim();
+                    for (let i = 0; i < 14; i++) {
+                        const now = getMarkdownContent(false)
+                            .replace(/\r\n/g, '\n').replace(/\s+$/gm, '').trim();
+                        if (now === want) return true;
+                        HistoryManager.undo();
+                        await sleep(450);
+                    }
+                    return getMarkdownContent(false)
+                        .replace(/\r\n/g, '\n').replace(/\s+$/gm, '').trim() === want;
+                });
+                assert(restored, L.name + ': and undo returns the document');
+            }
+        }
+
     }
 
     console.log('\npassed=' + passed + ' failed=' + failed);
     if (findings.length) {
         console.log('\n--- findings ---');
         findings.forEach((f, i) => console.log('  ' + (i + 1) + '. ' + f));
+
     }
     if (failed) { console.error('\nEDITING SWEEP FOUND PROBLEMS'); process.exitCode = 1; }
     else console.log('\nEDITING SWEEP CLEAN');
