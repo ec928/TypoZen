@@ -56,6 +56,7 @@
             const toc = bookRepairTocByTitle(bookTocToBlockIndices(data.toc, split.docStart), split.blocks);
             _bookDocStarts = {};
             for (let i = 0; i < split.docStarts.length; i++) _bookDocStarts[split.docStarts[i]] = 1;
+            _bookPlateBlocks = bookFindPlateBlocks(split.blocks, split.docStarts);
             _bookAssetsBase = String(data.assetsBase || '');
             _bookDocIndex = split.docStart;
             _bookBlockDirs = split.dirs || [];
@@ -870,6 +871,7 @@
             _bookDocIndex = {};
             _bookBlockDirs = [];
             try { _bookDocStarts = {}; } catch (e2) {}
+            try { _bookPlateBlocks = null; } catch (e2b) {}
             try { _bookAnchorIndex = null; } catch (e3) {}
             try { _bookTitleIndex = null; } catch (e4) {}
             try { _bookPosLast = -1; } catch (e5) {}
@@ -1031,6 +1033,95 @@
             }
         }
 
+        /**
+         * Is this block a plate -- a picture that is the whole of the page it sits on?
+         *
+         * Two conditions, and the second was learned the hard way. The block must carry no
+         * text, so an illustration set beside prose is left alone. And the picture has to be
+         * page art in the first place: Matter's "About the Author" is a 230x233 portrait
+         * alone in its block, which satisfies the first condition perfectly and looked
+         * ridiculous blown up to 718x757 -- a three-fold upscale of a thumbnail, filling a
+         * page nobody wanted filled.
+         *
+         * An <svg> wrapper always qualifies: that is the shape every epub cover in the test
+         * set uses, <svg viewBox><image/></svg>, and it exists precisely to say "this
+         * picture is the page". A bare <img> has to prove its size instead.
+         *
+         * naturalHeight is 0 until the image loads, so a picture that has not arrived yet is
+         * re-judged when it does rather than being written off on first sight.
+         */
+        const PLATE_MIN_NATURAL_PX = 400;
+
+        /**
+         * Which blocks belong to a document that is nothing but pictures.
+         *
+         * "A picture alone in its block" is not enough to mean "this picture is the page",
+         * and Matter's appendix proves it: a heading, a table of abbreviations as an image,
+         * another heading, and four character lists as images. Every one of those images is
+         * alone in its block, so every one became a full-page plate and the appendix ran to
+         * six columns where a real reader uses two pages. They are reference tables set as
+         * pictures, not cover art.
+         *
+         * A spine document is the unit that means "page" in an epub. If a document contains
+         * no text at all, then its pictures *are* the page -- that is what a cover, a
+         * frontispiece or a full-page plate looks like in the file. If the document has any
+         * prose in it, its pictures are illustrations sitting inside a page, however alone
+         * they may be in their own block.
+         */
+        let _bookPlateBlocks = null;
+
+        function bookFindPlateBlocks(blocks, docStarts) {
+            const plates = {};
+            if (!blocks || !docStarts || !docStarts.length) return plates;
+            const strip = (s) => String(s == null ? '' : s)
+                .replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
+            for (let d = 0; d < docStarts.length; d++) {
+                const from = docStarts[d];
+                const to = (d + 1 < docStarts.length) ? docStarts[d + 1] : blocks.length;
+                let hasPicture = false, hasText = false;
+                for (let i = from; i < to; i++) {
+                    const raw = blocks[i] && blocks[i].raw != null ? blocks[i].raw : blocks[i];
+                    if (/<(img|svg)\b/i.test(String(raw))) hasPicture = true;
+                    if (strip(raw)) { hasText = true; break; }
+                }
+                if (!hasPicture || hasText) continue;
+                for (let i = from; i < to; i++) plates[i] = 1;
+            }
+            return plates;
+        }
+
+        function markBookPlate(block) {
+            const pics = block.querySelectorAll('img, svg');
+            if (!pics.length || (block.textContent || '').trim()) {
+                block.classList.remove('tz-plate');
+                return;
+            }
+            // Its document has to be a picture document, not merely its block.
+            if (_bookPlateBlocks) {
+                const mi = +block.getAttribute('data-model-index');
+                if (!(mi >= 0) || !_bookPlateBlocks[mi]) {
+                    block.classList.remove('tz-plate');
+                    return;
+                }
+            }
+            let qualifies = false, waiting = [];
+            for (const el of pics) {
+                if (el.localName === 'svg') { qualifies = true; continue; }
+                if ((el.naturalHeight || 0) >= PLATE_MIN_NATURAL_PX ||
+                    (el.naturalWidth || 0) >= PLATE_MIN_NATURAL_PX) { qualifies = true; continue; }
+                if (!el.complete) waiting.push(el);
+            }
+            block.classList.toggle('tz-plate', qualifies);
+            if (qualifies || !waiting.length) return;
+            for (const el of waiting) {
+                el.addEventListener('load', function once() {
+                    el.removeEventListener('load', once);
+                    // The block may have been unmounted and reused by then.
+                    if (el.isConnected) { try { markBookPlate(block); } catch (e) {} }
+                }, { once: true });
+            }
+        }
+
         function renderBlockPreview(block, rawInput = null) {
             const raw = rawInput !== null ? rawInput : (block.getAttribute('data-raw') || '');
             clearListIndentClasses(block);
@@ -1042,6 +1133,11 @@
                 block.innerHTML = sanitizeBookHtml(raw);
                 // At render, not at load: the raw stays exactly as the publisher wrote it.
                 rewriteBookUrls(block);
+
+                // Tagged here because this is the one function that fills a block's content.
+                // Five separate mount paths set data-chapter-start, and adding a sixth thing
+                // for each of them to remember is how one of them ends up not remembering.
+                try { markBookPlate(block); } catch (ePl) {}
                 return;
             }
 

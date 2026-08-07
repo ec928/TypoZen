@@ -133,6 +133,168 @@ async function openAndCheck(app, book, deep) {
         book + ': body text renders at the theme size (' + size.dominant + 'px vs ' +
         size.themeFs + 'px, ' + ratio.toFixed(3) + 'x)');
 
+    // The cover fills the page it is on -- and is still on it.
+    //
+    // Sizing it to exactly the page height put it on the *next* page: the block's margins
+    // and the line box a replaced element sits on pushed it a few pixels over and multicol
+    // moved the whole thing across, so the cover page rendered blank. The size was right and
+    // the position was wrong, and a check that measured only the size passed. So both.
+    const cover = await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        // Get to the front of the book and prove it before measuring anything.
+        //
+        // PageMap.goto(0) alone is not enough on a 45,000-block omnibus: page windowing has
+        // to mount the first range, and this suite arrives having already driven the view
+        // deep into a different book. Measuring before the seek settled reported the cover
+        // 7,053px off to the left and failed a check about sizing on a fact about timing.
+        goToModelBlock(0);
+        await sleep(1500);
+        for (let i = 0; i < 6 && PageMap.current() !== 0; i++) {
+            PageMap.goto(0);
+            await sleep(1200);
+        }
+        if (PageMap.current() !== 0) return { found: false, notAtStart: PageMap.current() };
+        const ed = document.getElementById('editor');
+        const er = ed.getBoundingClientRect();
+        let best = null;
+        for (const el of ed.querySelectorAll('.block img, .block svg')) {
+            const r = el.getBoundingClientRect();
+            if (r.height < 2) continue;
+            if (!best || r.height > best.h) {
+                best = {
+                    h: r.height, w: r.width,
+                    xOff: r.left - er.left,
+                    plate: !!el.closest('.block').classList.contains('tz-plate')
+                };
+            }
+        }
+        return best ? {
+            found: true,
+            h: Math.round(best.h), w: Math.round(best.w),
+            xOff: Math.round(best.xOff), plate: best.plate,
+            paneH: Math.round(er.height), paneW: Math.round(er.width)
+        } : { found: false };
+    });
+    if (cover.notAtStart !== undefined) {
+        failed++;
+        console.error('  FAIL ' + book + ': could not get back to the first page to look at ' +
+            'the cover (stuck on ' + cover.notAtStart + ')');
+    }
+    if (cover.found) {
+        const fillsH = cover.h / cover.paneH;
+        info('cover ' + cover.w + 'x' + cover.h + ' in a ' + cover.paneW + 'x' + cover.paneH +
+             ' page, x=' + cover.xOff + ', plate=' + cover.plate);
+        assert(cover.plate, book + ': the cover is recognised as a plate');
+        assert(cover.xOff >= -2 && cover.xOff < cover.paneW,
+            book + ': the cover is on the page being shown, not the next one (x=' +
+            cover.xOff + ' in a ' + cover.paneW + 'px page)');
+        assert(fillsH > 0.9,
+            book + ': and fills the page it is on (' + Math.round(fillsH * 100) + '% of ' +
+            cover.paneH + 'px)');
+        assert(cover.w <= cover.paneW + 1,
+            book + ': without spilling out of the column (' + cover.w + ' in ' +
+            cover.paneW + ')');
+    }
+
+    // A picture is a plate only when its *document* is nothing but pictures.
+    //
+    // "Alone in its block" is not enough. Matter's appendix is a heading, a table of
+    // abbreviations set as an image, another heading, and four character lists set as
+    // images -- every image alone in its block, so under the weaker rule every one took a
+    // full column and the appendix ran to six columns where a reader uses two pages. They
+    // are reference tables, not cover art, and the document they sit in has prose in it.
+    const plates = await app.eval(() => {
+        if (typeof _bookPlateBlocks === 'undefined' || !_bookPlateBlocks) return null;
+        const strip = (s) => String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        let picturesInProseDocs = 0, plateCount = 0;
+        for (let i = 0; i < DocumentModel.blocks.length; i++) {
+            const raw = DocumentModel.blocks[i].raw;
+            if (!/<(img|svg)\b/i.test(String(raw))) continue;
+            if (_bookPlateBlocks[i]) { plateCount++; continue; }
+            if (!strip(raw)) picturesInProseDocs++;
+        }
+        return { plateCount, picturesInProseDocs, blocks: DocumentModel.blocks.length };
+    });
+    if (plates) {
+        info(plates.plateCount + ' plate blocks, ' + plates.picturesInProseDocs +
+             ' pictures left inline inside documents that carry text');
+        assert(plates.plateCount >= 1,
+            book + ': the cover document is recognised as plates (' + plates.plateCount + ')');
+        assert(plates.plateCount < 40,
+            book + ': and a document with prose in it does not turn its pictures into ' +
+            'full-page plates (' + plates.plateCount + ' plate blocks in ' +
+            plates.blocks + ')');
+    }
+
+    // Every chapter starts at the top of a page.
+    //
+    // In 2-column each column IS a page -- the foot carries two numbers, one under each,
+    // and pageDisplayFromSpread turns a spread into two leaf pages. So a chapter opening at
+    // the top of the right-hand column has opened at the top of a page, exactly as a printed
+    // book does across a spread. What would be wrong is a chapter opening half way down one,
+    // which is what break-before: column exists to prevent and what this measures. Checked in
+    // 2-column because that is the layout where "column" and "page" could come apart.
+    const chapters = await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        handleCommand('view_set:columns:2');
+        await sleep(2500);
+        goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.5));
+        await sleep(3000);
+        const ed = document.getElementById('editor');
+        const er = ed.getBoundingClientRect();
+
+        // "At the top of its column" means nothing is painted above it there -- not that
+        // its box starts at y=0. Two things make the naive version wrong, and both bit:
+        //
+        //  - a chapter heading carries a 36px top margin, so its border-box top is never 0
+        //    even when it opens the page;
+        //  - getBoundingClientRect() on a block fragmented across a column break returns the
+        //    union of its fragments, so it reports a left edge in one column and a top in
+        //    another. Grouping by that put blocks in columns they are not in.
+        //
+        // Client rects are the fragments themselves, one per column, so they say exactly
+        // where ink is.
+        const frags = [];
+        for (const el of ed.querySelectorAll('.block')) {
+            for (const r of el.getClientRects()) {
+                if (r.height < 1 || r.width < 1) continue;
+                frags.push({
+                    el,
+                    col: Math.round((r.left - er.left) / 4) * 4,
+                    top: r.top - er.top
+                });
+            }
+        }
+        const out = [];
+        for (const el of ed.querySelectorAll('.block[data-chapter-start]')) {
+            const mine = frags.filter(f => f.el === el);
+            if (!mine.length) continue;
+            const first = mine.reduce((a, b) => (b.top < a.top ? b : a));
+            let above = 0;
+            for (const f of frags) {
+                if (f.el === el || f.col !== first.col) continue;
+                if (f.top < first.top - 4) above = Math.max(above, Math.round(first.top - f.top));
+            }
+            out.push({
+                mi: +el.getAttribute('data-model-index'),
+                y: Math.round(first.top),
+                above,
+                text: (el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 24) || '(empty)'
+            });
+        }
+        return out;
+    });
+    // `above` is how much content sits over it in its own column. Zero means it opens the
+    // page, whatever margin its heading brings with it.
+    const strayed = chapters.filter(c => c.above > 4);
+    info(chapters.length + ' chapter starts laid out; ' + strayed.length + ' not at a column top' +
+         (strayed.length ? ': ' + JSON.stringify(strayed.slice(0, 3)) : ''));
+    if (chapters.length) {
+        assert(strayed.length === 0,
+            book + ': every chapter start begins at the top of a page, not part way down one (' +
+            strayed.length + ' of ' + chapters.length + ' strayed)');
+    }
+
     if (deep) {
         assert(st.styles > 0, 'the book’s own stylesheets were applied');
         assert(st.inline > 0,

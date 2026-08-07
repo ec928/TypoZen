@@ -1080,6 +1080,18 @@
                 setStyle('columnFill', 'auto');
                 setStyle('columnCount', 'auto');
 
+                // Publish the page box so CSS can size a plate against the page rather than
+                // against the window.
+                //
+                // vh is the window, and the page is the window minus the tab strip, toolbar
+                // and status bar -- so a cover bounded by 66vh stopped 240px short of the
+                // bottom of a 763px page, and stopped there harder the more chrome was on
+                // screen. Worse, it shrank covers below their own resolution: Matter ships
+                // 510x680 and was being painted at 391x521. This is the only number that
+                // actually describes the space a page has, and it is already computed here.
+                if (h > 40) editor.style.setProperty('--tz-page-h', h + 'px');
+                else editor.style.removeProperty('--tz-page-h');
+
                 // Force layout, then read the only width we will ever trust.
                 //
                 // Fractional, deliberately. width:100% resolves against a parent that is very

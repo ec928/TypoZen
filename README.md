@@ -50,6 +50,15 @@ book's own table of contents in the outline.
   measurement meant it was derived from whatever range happened to be mounted, which on a
   resumed book is often front matter — two launches of the same book measured 0.66 and 0.74
   for a factor that should be 0.75.
+- **A plate gets the page it sits on.** A cover, frontispiece or part title — a picture with
+  no text beside it — is sized to the page box, not to `vh`. `vh` is the *window*, which
+  includes the tab strip, toolbar and status bar, so the old bound stopped a cover a quarter
+  of a page short and shrank *Matter*'s below its own resolution (a 510×680 file painted at
+  391×521). Covers are small files (294×500 to 510×739), so filling the page upscales the
+  smaller ones — presence over sharpness, chosen deliberately, because a cover is furniture
+  you glance at rather than text you read. A picture under 400px natural is not a plate: the
+  *Matter* "About the Author" portrait is 230×233 and alone in its block, and filling a page
+  with it at 3× was not an improvement.
 - Chapters start a new page, images and internal links work, and the reading position is
   remembered per book across sessions.
 - A book is never dirty, never saved over, and Save As refuses any path ending `.epub`.

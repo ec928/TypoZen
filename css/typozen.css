@@ -382,6 +382,56 @@
         #editor.page-mode .block svg {
             max-height: 66vh;
         }
+
+        /* A plate gets the page it sits on.
+           ---------------------------------------------------------------------------
+           Reported as "why is the cover always tiny?". It was tiny twice over. The
+           max-height above is in vh, which is the *window*, so on a 789px window it
+           clamped to 521px inside a 763px page and left a quarter of the page empty --
+           and it shrank Matter's cover below its own resolution, painting a 510x680
+           image at 391x521. And auto sizing never scales up, so even unclamped a cover
+           stops at whatever the publisher's file happens to be: these are small, 294x500
+           to 510x739.
+           So a plate is given the page height outright and object-fit keeps its shape.
+           That upscales the smaller covers -- Dune's 294x500 by about 1.5x -- which is a
+           deliberate choice of presence over sharpness, made because a cover is furniture
+           you glance at, not text you read. --tz-page-h is the real page box, published
+           by PageGeometry.relayout(); the vh fallback only applies before the first
+           layout. tz-plate means a picture with no text beside it, so an illustration in
+           the middle of a chapter is untouched by all of this. */
+        /* The block itself contributes nothing. A plate given exactly the page height did
+           not fit on the page: the block's own margins, plus the line box a replaced
+           element sits on, pushed it a few pixels over and multicol moved the whole thing
+           to the next column -- so the cover page rendered blank and the cover appeared on
+           the page after it. Sized to the page, then, means the picture *and* everything
+           the block adds around it. */
+        #editor.page-mode .block.tz-plate {
+            margin: 0;
+            padding: 0;
+            line-height: 0;
+            font-size: 0;
+        }
+        #editor.page-mode .block.tz-plate img,
+        #editor.page-mode .block.tz-plate svg,
+        #editor.page-mode .block.tz-plate svg image {
+            /* A few pixels short on purpose: sub-pixel layout rounds against us, and being
+               one pixel too tall costs the whole page, not one pixel. */
+            height: calc(var(--tz-page-h, 66vh) - 6px);
+            max-height: calc(var(--tz-page-h, 66vh) - 6px);
+            width: auto;
+            max-width: 100%;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+        }
+        /* The wrapper an epub cover usually is: <svg viewBox><image width=100% height=100%>.
+           The inner image has to be told to fill the sized wrapper rather than keep the
+           absolute width the publisher wrote, or the svg grows and the picture inside
+           does not. */
+        #editor.page-mode .block.tz-plate svg image {
+            width: 100%;
+            height: 100%;
+        }
         /* Pagination, both layouts, one mechanism.
            .page-mode puts the document into CSS multi-column, so the browser performs the
            real page breaking and a page turn is a horizontal scroll. 1-column pagination is
