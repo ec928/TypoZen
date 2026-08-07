@@ -899,7 +899,7 @@ Line 897 of 4582 — scroll marker row 897
 - bullet item two
 - bullet item three
 
-> A blockquote row that wraps a little further than one line, so its height differs from the default. lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod 
+> A blockquote row that wraps a little further than one line, so its height differs from the default. lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod
 
 Line 904 of 4582 — scroll marker row 904
 Line 905 of 4582 — scroll marker row 905

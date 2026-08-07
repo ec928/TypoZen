@@ -436,6 +436,7 @@ The nine application suites, and what each is the only place to check:
 | `virt-list-indent-app` | A list edit outside the mounted window lands, and costs no other block |
 | `search-highlight-app` | Every match highlighted, the current one marked, and the shaded block is the one holding it |
 | `search-perf-app` | Typing in the search box stays responsive on a large document |
+| `shell-seam-app` | The WPF chrome, through UI Automation: every menu builds its items once, a theme chosen from the menu repaints the page and is put back, the tab strip lists what the page holds, and nothing is left modal |
 
 **Assert on rendered geometry and loaded bytes, not on structure.** Every epub defect the
 user reported had a green structural assertion sitting over it: an attribute *was* set, a
@@ -677,9 +678,10 @@ broken behaviour behind a green suite:
   spanning two blocks typed over with real keystrokes, Find and Replace/Replace All through
   the bar, and editing inside a table cell. It does not cover drag-and-drop, or editing
   outside the mounted window -- see the list-indent gap above.
-- **No suite drives the WPF chrome.** The application tier reaches into the page over the
-  DevTools protocol; menus, dialogs and the tab strip are only touched by the optional
-  pywinauto smoke test, which cannot see inside WebView2.
+- **The shell seam is covered thinly, not fully.** `shell-seam-app` drives the real menu bar
+  through UI Automation and asserts the effect in the page. It does not click tabs: driving a
+  click onto a title-bar tab through UIA proved unreliable, and tab *switching* is covered
+  through the shell's own messages elsewhere. Dialogs are only checked for absence.
 - **Nothing tests theme rendering.** Contrast ratios and font loading are checked as data
   (`fonts-selftest`, theme JSON validation), never as pixels.
 - **`Dune` and `Nemesis Games` have never been opened by a test.** They are there so a
