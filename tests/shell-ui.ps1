@@ -242,6 +242,16 @@ switch ($Command) {
         Out-Json @{ status = $out }
     }
 
+    'maximize' {
+        $wp = $null
+        if ($root.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$wp)) {
+            $wp.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Maximized)
+            Start-Sleep -Milliseconds 600
+            $r = $root.Current.BoundingRectangle
+            Out-Json @{ maximized = $true; w = [int]$r.Width; h = [int]$r.Height }
+        } else { Out-Json @{ error = 'no window pattern' } }
+    }
+
     'dialogs' {
         # Any modal window this process owns, by title. A dialog left open is why a hung
         # close used to look like a frozen application.
