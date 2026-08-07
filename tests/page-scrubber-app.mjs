@@ -139,6 +139,46 @@ try {
     assert(r.stillPaginated,
         'a book stays paginated when asked to scroll, rather than landing somewhere ' +
         'the scroll selector is locked out of leaving');
+
+    console.log('\n=== where the scrubber leaves you is where a column switch keeps you ===');
+    // Read into the book by turning pages, drag the thumb back to the title, then switch
+    // columns. The switch restores the *reading anchor*, and only PageMap.step() used to
+    // move it -- so the scrubber travelled while the anchor stayed at the last page turn,
+    // and the switch dutifully put the reader back there. Reported as: move to the title
+    // via the scrubber, switch to 2 columns, land on page 381.
+    const jump = await app.eval(async () => {
+        const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+        handleCommand('view_set:columns:1');
+        await sleep(2000);
+        for (let i = 0; i < 6; i++) { PageMap.step(1); await sleep(250); }
+        await sleep(1000);
+        const read = topLeftModelIndexTwoCol();
+
+        // The real control, and the event a release fires -- not PageMap.goto(), which
+        // would skip the very code that has to do the work.
+        const range = document.getElementById('page-scrubber-range');
+        range.value = '0';
+        range.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(2500);
+        const scrubbed = topLeftModelIndexTwoCol();
+
+        handleCommand('view_set:columns:2');
+        await sleep(4000);
+        return {
+            read: read,
+            scrubbed: scrubbed,
+            after: topLeftModelIndexTwoCol(),
+            page: PageMap.current()
+        };
+    });
+    info('read to block ' + jump.read + ', scrubbed to ' + jump.scrubbed +
+        ', after the switch ' + jump.after + ' (page ' + jump.page + ')');
+    assert(jump.read > 0, 'turning pages moved off the first block (' + jump.read + ')');
+    assert(jump.scrubbed === 0,
+        'the scrubber reached the start of the book (' + jump.scrubbed + ')');
+    assert(jump.after <= jump.scrubbed + 5,
+        'and switching columns stays there rather than returning to where reading ' +
+        'had got to (block ' + jump.after + ', was ' + jump.read + ')');
 } finally {
     await app.close();
 }

@@ -867,6 +867,27 @@
                         PageMap.goto(last);
                     }
                 }
+
+                // Dragging the scrubber is a reader saying where they are, so it moves the
+                // reading anchor -- the same as turning a page, and for the same reason.
+                //
+                // Only PageMap.step() used to set it, and the anchor is what a column switch
+                // restores. So: read to page 576, drag the thumb back to the title page,
+                // switch to 2-column, and the switch put you back at page 576 -- it had been
+                // told the reader was still there. Reported exactly that way.
+                //
+                // Set here rather than inside PageMap.goto(), which would look tidier and be
+                // wrong: goto() is also the tail of the column switch itself, and re-reading
+                // the anchor from the view a switch just produced replaces "what I was
+                // reading" with "the top of the page it landed on", so switching back and
+                // forth walks backwards a page at a time. That is the decay the comment on
+                // step() describes. The distinction is not where the code sits, it is
+                // whether a person asked to move.
+                try {
+                    const t = topLeftModelIndexTwoCol();
+                    if (t >= 0) _readingAnchor = t;
+                } catch (eA) {}
+
                 updatePageIndicator();
             }
 
