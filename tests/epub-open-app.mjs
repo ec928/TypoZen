@@ -90,6 +90,49 @@ async function openAndCheck(app, book, deep) {
         book + ': only part of the book is laid out (' + st.mounted + ' of ' +
         st.blocks + ')');
 
+    // The body renders at the size the theme asked for.
+    //
+    // Measured from the element that directly owns each text node, weighted by characters.
+    // Both of those matter, and getting either wrong is what hid this for so long: the
+    // normaliser read block.querySelector('p'), which on Matter (div.block > div.calibre7 >
+    // span.calibre15, no <p> at all) found a container inheriting the theme size, declared
+    // the book correct, and left 99.2% of its text painting a third too large. Counting
+    // elements rather than characters hides it too -- one enormous chapter and one drop cap
+    // are one element each.
+    const size = await app.eval(() => {
+        const ed = document.getElementById('editor');
+        const counts = new Map();
+        let total = 0;
+        const walker = document.createTreeWalker(ed, NodeFilter.SHOW_TEXT, null);
+        let n;
+        while ((n = walker.nextNode())) {
+            const s = (n.nodeValue || '').trim();
+            if (s.length < 20) continue;
+            const owner = n.parentElement;
+            if (!owner) continue;
+            const px = Math.round(parseFloat(getComputedStyle(owner).fontSize) * 10) / 10;
+            if (!px || px < 4) continue;
+            counts.set(px, (counts.get(px) || 0) + s.length);
+            total += s.length;
+        }
+        let dominant = 0, best = 0;
+        counts.forEach((c, px) => { if (c > best) { best = c; dominant = px; } });
+        return {
+            themeFs: parseFloat(getComputedStyle(document.documentElement)
+                .getPropertyValue('--fs')) || 0,
+            dominant: dominant,
+            share: total ? best / total : 0
+        };
+    });
+    const ratio = size.themeFs ? size.dominant / size.themeFs : 0;
+    info('body ' + size.dominant + 'px against theme ' + size.themeFs + 'px (' +
+        ratio.toFixed(3) + 'x, ' + Math.round(size.share * 100) + '% of characters)');
+    assert(size.share > 0.5,
+        book + ': one size covers the body (' + Math.round(size.share * 100) + '% of characters)');
+    assert(ratio > 0.94 && ratio < 1.06,
+        book + ': body text renders at the theme size (' + size.dominant + 'px vs ' +
+        size.themeFs + 'px, ' + ratio.toFixed(3) + 'x)');
+
     if (deep) {
         assert(st.styles > 0, 'the book’s own stylesheets were applied');
         assert(st.inline > 0,
@@ -391,9 +434,26 @@ async function openAndCheck(app, book, deep) {
 
                 const sheet = (document.getElementById('book-styles') || {}).textContent || '';
                 const ed = document.getElementById('editor');
-                const prose = Array.prototype.slice.call(ed.querySelectorAll('.block'))
-                    .filter(b => (b.innerText || '').length > 300)
-                    .map(b => b.firstElementChild || b)[0];
+                // The element that owns the text, not the block's first child.
+                //
+                // firstElementChild was a container: on Matter (div.block > div.calibre7 >
+                // span.calibre15) it is div.calibre7, which inherits the theme size, so
+                // this assertion read exactly what the theme had set and passed no matter
+                // what the reader saw. The text is a level deeper at 1.33333em, and this
+                // check sat green through a book rendering a third too large.
+                const prose = (function () {
+                    for (const b of ed.querySelectorAll('.block')) {
+                        if ((b.innerText || '').length <= 300) continue;
+                        const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT, null);
+                        let node = null, len = 0, x;
+                        while ((x = w.nextNode())) {
+                            const s = (x.nodeValue || '').trim();
+                            if (s.length > len) { len = s.length; node = x; }
+                        }
+                        if (node && node.parentElement) return node.parentElement;
+                    }
+                    return null;
+                })();
 
                 // The reader's own size has to reach the book's text, and be the size the
                 // text actually renders at. A stylesheet in rem is rooted at the

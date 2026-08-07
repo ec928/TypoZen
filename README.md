@@ -40,8 +40,16 @@ book's own table of contents in the outline.
   `break-before: column` (a paged-media break is ignored by a multi-column layout), and
   `preserveAspectRatio="none"` is stripped from cover wrappers.
 - **Body text renders at the size the theme asks for.** Publishers size against a device
-  default they cannot see — one test book asks for 0.88 of base on every paragraph — so the
-  book keeps its proportions and only its base is normalised.
+  default they cannot see — one test book asks for 0.88 of base on every paragraph, another
+  1.333 — so the book keeps its proportions and only its base is normalised. The size is
+  measured from the element that **directly owns each text node**, weighted by characters,
+  and refined as more of the book mounts. Every one of those three words was a bug: measuring
+  the block's first child read a container inheriting the theme size, so *Matter* was declared
+  correct while 99.2% of its text painted a third too large; counting elements instead of
+  characters lets a drop cap outvote a chapter; and locking the factor on the first
+  measurement meant it was derived from whatever range happened to be mounted, which on a
+  resumed book is often front matter — two launches of the same book measured 0.66 and 0.74
+  for a factor that should be 0.75.
 - Chapters start a new page, images and internal links work, and the reading position is
   remembered per book across sessions.
 - A book is never dirty, never saved over, and Save As refuses any path ending `.epub`.
@@ -52,7 +60,9 @@ the whole book**. It addresses pages rather than scroll offset, because the edit
 scrollbar can only span what is currently laid out — about 28 pages of a 1400-page novel.
 
 ### Themes & typography
-**27 handcrafted themes** in `TypoZen_Themes.json` — modern dark/light, reading and serif faces, Gruvbox and warm palettes, plus **4 mono themes** grouped at the end and labelled `(Mono)`.
+**20 handcrafted themes** in `TypoZen_Themes.json` — modern dark/light, reading and serif faces, Gruvbox and warm palettes. The Themes menu lays them out in three columns built at runtime from the theme data itself: **Dark** (11), **Light** (5) and **Mono** (4 — Dracula, Nord, Tokyo Night, Monokai, the ones whose face is monospace), with **Customize Theme…** under the third.
+
+**All 20 set `FS` to 16.** They previously ranged 13–15, which is comfortable for editing a file you are working on and small for reading a novel end to end. A theme's `FS` is the base every document and every book is normalised to, so this moves both.
 
 Each theme is built around a deliberately chosen typeface, not just a colour palette — the reading themes use **Literata** and **Merriweather** because they were designed for long-form reading; the UI themes use **Inter** and **Source Sans 3** for clarity at small sizes.
 
@@ -718,6 +728,12 @@ broken behaviour behind a green suite:
   `page-fit-browser` now runs its geometry checks with Word Wrap off as well as on. The
   other persisted settings (chrome auto-hide, status bar, zoom, session bodies) are still
   only ever exercised at their defaults.
+- **Measure the element that owns the text.** `epub-open-app` asserted that book body text
+  renders at the theme size, and read `block.firstElementChild` to do it — a container, which
+  inherits the theme size and therefore reported it back no matter what the reader saw. It
+  passed while *Matter* rendered a third too large next to a correct *Xeelee*, which is how
+  the fault was reported: not "this book is wrong" but "these two do not match". Both books
+  are now checked character-weighted from the text owner, and at two different theme sizes.
 - **Measure the ink, not the box.** `page-fit-browser` asserted that no *element* ran past
   the pane and passed while text ran 1,898px past it: a block's box is the column width
   whatever the text inside does. It now measures line boxes via `Range.getClientRects()`

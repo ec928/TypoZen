@@ -50,6 +50,20 @@ function ui(cmd, arg) {
 const FIXTURE = path.join(__dirname, 'large-scroll-mixed.md');
 const fixtureWas = fs.readFileSync(FIXTURE);
 
+// The same promise, for the reader's settings.
+//
+// This suite changes the theme on purpose and puts it back afterwards, and the theme it
+// picks is persisted the moment it is applied -- to the real profile, not a sandbox. So a
+// restore that does not land leaves someone's editor in a theme they never chose. It has
+// happened: the driver clicks at screen coordinates, a menu that was open in another
+// window took the click, the restore silently did nothing, and the run ended with
+// Catppuccin Mocha written into settings.json over the reader's Gruvbox Serif.
+// Asserting the restore is not enough on its own -- a failed assertion still leaves the
+// damage behind -- so the file is put back as well.
+const SETTINGS = process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'TypoZen_Cache', 'settings.json') : null;
+const settingsWas = (SETTINGS && fs.existsSync(SETTINGS)) ? fs.readFileSync(SETTINGS) : null;
+
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
 try {
     await sleep(4500);
@@ -155,6 +169,31 @@ const fixtureNow = fs.readFileSync(FIXTURE);
 assert(Buffer.compare(fixtureWas, fixtureNow) === 0,
     'the document this opened is untouched on disk (' +
     fixtureWas.length + ' -> ' + fixtureNow.length + ' bytes)');
+
+// The app has exited by now, so writing the file back cannot be raced by a save on close.
+if (settingsWas) {
+    // The theme fields only. lastFilePath and lastContent change every time anything is
+    // opened, which is the suite working correctly -- comparing the whole file would cry
+    // wolf on every run, and a check that always fails is a check nobody reads.
+    const themeOf = (buf) => {
+        const s = String(buf);
+        return ((s.match(/"themeName"\s*:\s*"([^"]*)"/) || [])[1] || '?') + ' #' +
+               ((s.match(/"themeIndex"\s*:\s*(\d+)/) || [])[1] || '?');
+    };
+    const settingsNow = fs.readFileSync(SETTINGS);
+    const was = themeOf(settingsWas), now = themeOf(settingsNow);
+    if (was !== now) {
+        // Put the theme back without disturbing anything else the app legitimately wrote.
+        const fixed = String(settingsNow)
+            .replace(/"themeName"\s*:\s*"[^"]*"/, '"themeName":"' + was.split(' #')[0] + '"')
+            .replace(/"themeIndex"\s*:\s*\d+/, '"themeIndex":' + was.split(' #')[1]);
+        fs.writeFileSync(SETTINGS, fixed);
+        console.error('  ..   the saved theme was changed and has been put back (' +
+            was + ' <- ' + now + ')');
+    }
+    assert(was === now,
+        'the reader\'s saved theme is as this found it (' + was + ')');
+}
 
 console.log('\npassed=' + passed + ' failed=' + failed);
 console.log(failed ? 'SHELL SEAM FAILED' : 'SHELL SEAM PASSED');

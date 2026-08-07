@@ -651,32 +651,66 @@
             }
             if (!(themePx > 0)) themePx = 16;
 
-            // Already corrected for this theme size — do not clear fontSize (that reflows
-            // the whole multicol flow and restarts page geometry waits).
-            if (_bookTextScaleK > 0 && editor.style.fontSize) {
-                return;
+            // Refine, rather than lock on the first measurement.
+            //
+            // This used to return here as soon as any correction had been applied, so the
+            // factor was whatever the very first mounted range happened to imply -- and
+            // page windowing mounts one range at a time, so on a book that opens at its
+            // cover that range is front matter, whose title page and copyright block carry
+            // different em factors from the body. Two launches of the same book measured
+            // 0.6564 and 0.7447 for a factor that should be 0.75, purely on where the
+            // reader had left off. The body then rendered at 0.88x and 0.99x of the theme.
+            //
+            // So when a correction is already in place we measure the text *as corrected*
+            // and adjust the existing factor by however far off it landed, which needs no
+            // clearing and therefore none of the reflow the old comment was avoiding. It
+            // converges on the true factor as more of the book is seen, instead of
+            // freezing whatever the first glimpse suggested.
+            const alreadyCorrected = _bookTextScaleK > 0 && !!editor.style.fontSize;
+            if (!alreadyCorrected) {
+                // Nothing applied yet: measure the book's own CSS against the theme base.
+                editor.style.fontSize = '';
             }
-
-            // Clear prior correction so we measure the book's own CSS against the theme base.
-            editor.style.fontSize = '';
 
             const counts = new Map();
             const blocks = editor.querySelectorAll('.block');
-            let sampled = 0;
+            let sampled = 0, chars = 0;
             for (let i = 0; i < blocks.length && sampled < 60; i++) {
                 // Prefer long body paragraphs; fall back to medium lines if the window
                 // is front-matter (page windowing mounts one range at a time).
                 const t = (blocks[i].innerText || '').trim();
                 if (t.length < 40) continue;
-                const el = blocks[i].querySelector('p') || blocks[i].firstElementChild || blocks[i];
-                const fs = Math.round(parseFloat(getComputedStyle(el).fontSize) * 100) / 100;
-                if (!fs || fs < 6) continue;
-                // Weight longer paragraphs more so captions do not win.
-                const w = t.length >= 120 ? 3 : 1;
-                counts.set(fs, (counts.get(fs) || 0) + w);
+
+                // Measure the element that OWNS the text, not the one that contains it.
+                //
+                // This used to read blocks[i].querySelector('p') || firstElementChild.
+                // Matter's blocks are div.block > div.calibre7 > span.calibre15, with no
+                // <p> anywhere: the fallback measured div.calibre7, which inherits the
+                // theme's 14px, so the book looked correct and was left alone -- while
+                // 99.2% of its body text painted from span.calibre15 at 1.33333em, a third
+                // larger than the theme asked for. Xeelee only ever worked because its
+                // blocks happen to be div.block > p.bodytext, so querySelector('p') landed
+                // on the right element by luck. Side by side in two tabs, the correct book
+                // looked 25% smaller than the broken one, which is how this was reported.
+                const walker = document.createTreeWalker(blocks[i], NodeFilter.SHOW_TEXT, null);
+                let node;
+                while ((node = walker.nextNode())) {
+                    const s = (node.nodeValue || '').trim();
+                    if (s.length < 20) continue;          // skip glue between inline tags
+                    const owner = node.parentElement;
+                    if (!owner) continue;
+                    const fs = Math.round(parseFloat(getComputedStyle(owner).fontSize) * 100) / 100;
+                    if (!fs || fs < 6) continue;
+                    // Weighted by characters, because what the eye judges is the size of
+                    // the bulk of the text -- not how many elements it is spread across.
+                    // A drop cap is one element and one character; a chapter is one
+                    // element and four thousand.
+                    counts.set(fs, (counts.get(fs) || 0) + s.length);
+                    chars += s.length;
+                }
                 sampled++;
             }
-            if (!sampled) {
+            if (!chars) {
                 // No measurable body yet — force 1em base so later remounts can refine.
                 editor.style.fontSize = 'var(--fs, 16px)';
                 _bookTextScaleK = 1;
@@ -687,20 +721,33 @@
             counts.forEach(function (n, fs) { if (n > best) { best = n; dominant = fs; } });
             if (!(dominant > 0)) return;
 
-            // Scale so body text lands at themePx. Body currently paints at `dominant`.
-            const k = themePx / dominant;
-            if (!isFinite(k) || k <= 0) return;
-            if (Math.abs(k - 1) < 0.03) {
-                // Already at theme size; pin editor to --fs so inheritance is stable.
-                editor.style.fontSize = 'var(--fs, 16px)';
-                _bookTextScaleK = 1;
+            // How far the body is from the theme size, right now, as rendered.
+            const off = themePx / dominant;
+            if (!isFinite(off) || off <= 0) return;
+
+            // Within a hair of correct: leave the layout alone. Writing font-size re-
+            // fragments the whole multi-column flow, so a no-op write is not free.
+            if (Math.abs(off - 1) < 0.02) {
+                if (!editor.style.fontSize) {
+                    editor.style.fontSize = 'var(--fs, 16px)';
+                    _bookTextScaleK = 1;
+                }
                 return;
             }
 
+            // Correcting text that is already corrected adjusts the factor we have; a
+            // first measurement establishes it outright.
+            let k = alreadyCorrected ? _bookTextScaleK * off : off;
+            // A book whose body would need more than this is not telling us about its
+            // body -- it is front matter, a colophon, or markup we have misread. Refuse
+            // rather than render the novel at a size nobody asked for.
+            if (!(k >= 0.4 && k <= 2.5)) return;
+
             editor.style.fontSize = 'calc(var(--fs, 16px) * ' + k.toFixed(4) + ')';
             _bookTextScaleK = k;
-            window.showDebugTelemetry('book text: body was ' + dominant + 'px, theme --fs=' +
-                themePx + 'px, scaled by ' + k.toFixed(3));
+            window.showDebugTelemetry('book text: body at ' + dominant + 'px, theme --fs=' +
+                themePx + 'px, factor ' + (alreadyCorrected ? 'refined to ' : 'set to ') +
+                k.toFixed(3));
             // Font change reflows multicol; re-lock page columns and stay on this page.
             try {
                 if (typeof isPaginatedLayout === 'function' && isPaginatedLayout()
@@ -716,12 +763,20 @@
         /** Schedule normalise after layout paints (fonts, multicol, page window). */
         function scheduleNormaliseBookTextSize() {
             if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') return;
-            // Already pinned — skip the multi-shot schedule (was 5 reflows per page turn).
-            if (_bookTextScaleK > 0 && editor && editor.style.fontSize) return;
+            // Once a factor is in place, one shot instead of three.
+            //
+            // This used to return outright, which is what made the first measurement final:
+            // every later remount -- the ones that mount actual body text rather than the
+            // cover -- was skipped here before normaliseBookTextSize could refine anything.
+            // It still needs to be cheap, because it runs on every page turn, so the
+            // multi-shot schedule is dropped and the single call short-circuits inside
+            // normaliseBookTextSize when the body is already within 2% of the theme.
+            const pinned = _bookTextScaleK > 0 && editor && editor.style.fontSize;
             const run = function () {
                 try { normaliseBookTextSize(); } catch (e) {}
             };
             run();
+            if (pinned) return;
             if (typeof requestAnimationFrame === 'function') {
                 requestAnimationFrame(function () {
                     requestAnimationFrame(run);
