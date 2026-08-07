@@ -641,6 +641,26 @@ A second TypoZen process hands the same payload to the running window over the n
 TypoZen.exe is resolved as a sibling of the ZenSeek folder (`../TypoZen/TypoZen.exe`).
 If it is missing, or the file is `.docx`/`.xlsx`, ZenSeek keeps its built-in reader.
 
+### The module split, reviewed
+
+`js/modules/*` replaced a 12,719-line monolith in a session that is not recorded here.
+Reviewed mechanically rather than read end to end, which is both cheaper and better evidence:
+
+- **331 functions in the monolith, 0 missing** from the modules.
+- **26 function bodies changed** by the split, against 305 moved unaltered. That is the whole
+  review surface, and most of those 26 are covered by suites that run against real books and
+  real page geometry.
+- **No function is defined in two modules**, and **no top-level binding is declared twice** —
+  both now asserted by `modules-selftest`, because classic scripts share one scope and the
+  first is a silent overwrite while the second is a runtime error on load.
+
+`sanitizeBookHtml` was read line by line, being the one function where a regression is a
+security problem rather than a bug. The split **strengthened** it — `template`,
+`foreignObject`, SVG animation elements, `data:text/html` URLs and remote `<use>` were all
+added — and none of that was asserted anywhere, so it is now. Doing that found a real defect:
+the remote-`<use>` guard compared `el.tagName === 'USE'`, and an SVG element's `tagName`
+keeps the case it was written in, so it had never once fired.
+
 ### Known gaps
 
 - **Links that are broken in the file itself.** `Matter`'s in-text links point at `#filepos`

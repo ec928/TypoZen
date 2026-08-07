@@ -961,7 +961,11 @@
                         if ((name === 'href' || name === 'src' || name === 'xlink:href')
                             && (/^\s*javascript:/i.test(val)
                                 || /^\s*data\s*:\s*text\/html/i.test(val)
-                                || (el.tagName === 'USE' && /^\s*https?:/i.test(val)))) {
+                                // localName, not tagName: an SVG element's tagName keeps
+                                // the case it was written in, so 'use' never equalled 'USE'
+                                // and this guard had never once fired. HTML elements report
+                                // uppercase, which is what made it look right.
+                                || (el.localName === 'use' && /^\s*https?:/i.test(val)))) {
                             el.removeAttribute(attrs[a].name);
                         }
                     }

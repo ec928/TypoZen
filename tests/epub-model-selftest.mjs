@@ -75,6 +75,37 @@ console.log('--- 2. book markup is rendered, minus anything executable ---');
     assert(!/javascript:/i.test(out), 'javascript: URLs are removed from href and src');
     assert(out.indexOf('hi') !== -1, 'and the text survives all of that');
 
+    // Everything else that can execute or navigate. These were added when the engine was
+    // split into modules and nothing asserted them, so a later tidy-up could have dropped
+    // any of them silently -- and this is the one function in the app where a regression is
+    // a security problem rather than a bug. A book is a file someone downloaded.
+    const nasty = sanitizeBookHtml(
+        '<iframe src="http://elsewhere/x"></iframe>' +
+        '<object data="x.swf"></object><embed src="x.swf">' +
+        '<base href="http://elsewhere/">' +
+        '<form action="http://elsewhere/"><input name="p"></form>' +
+        '<link rel="stylesheet" href="http://elsewhere/x.css">' +
+        '<meta http-equiv="refresh" content="0;url=http://elsewhere/">' +
+        '<template><script>steal()</script></template>' +
+        '<svg><foreignObject><body>x</body></foreignObject>' +
+        '<animate onbegin="steal()"/><set onbegin="steal()"/></svg>' +
+        '<p>kept</p>');
+    for (const tag of ['iframe', 'object', 'embed', 'base', 'form', 'link', 'meta',
+                       'template', 'foreignObject', 'animate', 'set']) {
+        assert(!new RegExp('<' + tag, 'i').test(nasty), tag + ' is removed');
+    }
+    assert(nasty.indexOf('kept') !== -1, 'and ordinary markup beside it survives');
+
+    // data: URLs that carry markup, and <use> reaching off the machine, are both ways to
+    // get content in that never went through any of the above.
+    const urls = sanitizeBookHtml(
+        '<a href="data:text/html;base64,PHNjcmlwdD4=">a</a>' +
+        '<svg><use href="http://elsewhere/x.svg#i"/></svg>' +
+        '<img src="../images/local.png" alt="local">');
+    assert(!/data\s*:\s*text\/html/i.test(urls), 'data:text/html URLs are removed');
+    assert(!/use[^>]+http/i.test(urls), 'an SVG use pointing off the machine is removed');
+    assert(urls.indexOf('local.png') !== -1, 'while a relative image src is left alone');
+
     // Fidelity is the entire reason for carrying HTML, so structure must be untouched.
     const rich = '<h2 class="chapter">One</h2>' +
         '<p class="epigraph-right">an epigraph</p>' +

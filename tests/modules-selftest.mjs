@@ -44,6 +44,55 @@ console.log('=== engine modules ===');
     assert(src.indexOf('function resolveViewState') >= 0, 'resolveViewState present');
 }
 
+console.log('');
+console.log('--- the split did not duplicate or shadow anything ---');
+{
+    // Classic scripts sharing one scope: two modules defining the same function is not an
+    // error, it is the later one silently winning. Two modules declaring the same `let` at
+    // top level IS an error, and only at runtime, in the browser, on load.
+    const order = JSON.parse(fs.readFileSync(
+        path.join(appDir, 'js', 'modules', 'load-order.json'), 'utf8')).modules;
+
+    const fnHome = {};       // function name -> [modules that define it]
+    const letHome = {};      // top-level let/const name -> [modules that declare it]
+    for (const mod of order) {
+        const text = fs.readFileSync(path.join(appDir, 'js', 'modules', mod), 'utf8');
+        for (const m of text.matchAll(/^\s{0,12}function\s+([A-Za-z_$][\w$]*)\s*\(/gm)) {
+            (fnHome[m[1]] = fnHome[m[1]] || []).push(mod);
+        }
+        // Eight spaces of indent is this codebase's top level inside its one wrapper.
+        for (const m of text.matchAll(/^ {8}(?:let|const)\s+([A-Za-z_$][\w$]*)\s*[=;]/gm)) {
+            (letHome[m[1]] = letHome[m[1]] || []).push(mod);
+        }
+    }
+
+    const dupFns = Object.keys(fnHome).filter(k => fnHome[k].length > 1);
+    if (dupFns.length) {
+        for (const k of dupFns.slice(0, 5)) console.log('      ' + k + ': ' + fnHome[k].join(', '));
+    }
+    assert(dupFns.length === 0,
+        'no function is defined in two modules (' + dupFns.length + ')');
+
+    const dupLets = Object.keys(letHome).filter(k => letHome[k].length > 1);
+    if (dupLets.length) {
+        for (const k of dupLets.slice(0, 5)) console.log('      ' + k + ': ' + letHome[k].join(', '));
+    }
+    assert(dupLets.length === 0,
+        'no top-level binding is declared in two modules (' + dupLets.length + ')');
+}
+
+console.log('');
+console.log('--- nothing was lost when the monolith was split ---');
+{
+    // js/typozen.js is a stub that throws; the engine it replaced is in history. Every
+    // function that shipped in it must still exist somewhere in the modules. Measured when
+    // this was written: 331 functions in the monolith, 0 missing.
+    const stub = fs.readFileSync(path.join(appDir, 'js', 'typozen.js'), 'utf8');
+    assert(/no longer the engine|DEPRECATED/i.test(stub),
+        'js/typozen.js is a stub that fails loudly rather than an abandoned copy');
+    assert(stub.length < 2000, 'and is small enough to be obviously not the engine');
+}
+
 console.log('=== template wires every module ===');
 {
     const template = fs.readFileSync(path.join(appDir, 'TypoZen_Template.html'), 'utf8');
