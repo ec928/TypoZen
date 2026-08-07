@@ -969,6 +969,22 @@
                 // two-column spread has no notion of; a column break is the honest reading.
                 .replace(/\bpage-break-(before|after)\s*:\s*(always|left|right)\s*(;|})/gi,
                     function (m, side, how, end) { return 'break-' + side + ': column' + end; })
+                // `break-after: page` is deliberately NOT converted, and this is the reason.
+                //
+                // It looks like the same request as `page-break-after: always` and it is not.
+                // Xeelee carries it on body classes -- .bt1-body-text2, .bt1-fo1, .story-dates
+                // -- which is to say on ordinary paragraphs, in their thousands. In the reader
+                // the publisher wrote for, each spine document is laid out on its own, so a
+                // paged break on the last paragraph of a file costs nothing and a paged break
+                // anywhere else is simply ignored. Our flow is every document concatenated,
+                // so converting it to a column break fires after nearly every paragraph.
+                // Measured: columns went from 97% and 99% full to 9% and 12% -- two paragraphs
+                // on a whole spread, which is what a reader would call the app being broken.
+                //
+                // The legacy `page-break-*` conversion above is safe because publishers use
+                // that spelling to mean a break they actually want. This spelling, in this
+                // book, means nothing at all. Honouring a declaration is not the same as
+                // honouring an intention, and the two only look alike from the stylesheet.
                 .replace(/\bpage-break-inside\s*:\s*avoid\s*(;|})/gi, 'break-inside: avoid$1')
                 // rem is rooted at the application, not at the reader's text, so a book
                 // asking for 0.88rem renders at 0.88 of TypoZen's UI size and the reader's

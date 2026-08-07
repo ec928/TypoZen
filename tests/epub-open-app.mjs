@@ -196,6 +196,41 @@ async function openAndCheck(app, book, deep) {
             cover.paneW + ')');
     }
 
+    // A page of a book is full of text.
+    //
+    // The most basic thing a reader does, and nothing asserted it. Converting the book's
+    // `break-after: page` to a column break -- which looked like honouring the publisher --
+    // put a break after nearly every paragraph, because Xeelee carries that declaration on
+    // its body classes. Columns went from 97% full to 9%: two paragraphs on a whole spread.
+    // Every existing suite stayed green, because they all check *where* things are and none
+    // of them checks that there is anything to read.
+    const density = await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.6));
+        await sleep(3000);
+        const ed = document.getElementById('editor');
+        const er = ed.getBoundingClientRect();
+        const cols = new Map();
+        for (const b of ed.querySelectorAll('.block')) {
+            for (const r of b.getClientRects()) {
+                if (r.height < 1 || r.width < 1) continue;
+                const c = Math.round((r.left - er.left) / 4) * 4;
+                const e = cols.get(c) || { top: Infinity, bot: -Infinity };
+                e.top = Math.min(e.top, r.top - er.top);
+                e.bot = Math.max(e.bot, r.bottom - er.top);
+                cols.set(c, e);
+            }
+        }
+        const fills = [...cols.values()]
+            .map(e => Math.round(100 * (e.bot - e.top) / er.height))
+            .sort((a, b) => a - b);
+        return { fills, median: fills[Math.floor(fills.length / 2)] || 0, columns: fills.length };
+    });
+    info('column fill across ' + density.columns + ' columns, median ' + density.median + '%');
+    assert(density.median >= 80,
+        book + ': a page of the book is full of text (median column ' + density.median +
+        '% full; front matter and part titles are legitimately sparse, a novel is not)');
+
     // A picture is a plate only when its *document* is nothing but pictures.
     //
     // "Alone in its block" is not enough. Matter's appendix is a heading, a table of
