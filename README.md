@@ -721,25 +721,58 @@ Both caches are gitignored and rebuilt on demand; neither is safe to assume pres
 largest file the application writes, and 176 of them had reached **939 MB** before anyone
 looked in the folder.
 
-### Performance notes worth keeping
+### Performance, measured
 
-Measured on the 4582-line mixed fixture unless stated:
+Re-measured after page windowing landed, because the previous figures were taken before it
+and were wrong by an order of magnitude in the place that mattered most.
 
-| Thing | Cost |
+On the 4,582-line mixed fixture, median of 8–10 samples, layout forced before each reading:
+
+| | 1-col Scroll | 1-col Pages | 2-col Pages |
+|---|---|---|---|
+| Typing, per keystroke | 1 ms | 4 ms | 3 ms (worst 8) |
+| Serialising the whole document (205 KB) | <1 ms | 1 ms | — |
+| Indenting a list item | 29 ms | 21 ms | — |
+| Search across 2,100 matches | 5 ms | 20 ms | — |
+| Page turn | — | 3 ms | 3 ms |
+
+**Typing in Pages was 66 ms and is now 3–4 ms.** Page windowing is why: only one 800-block
+range is in the multi-column flow, so a keystroke re-fragments that rather than 3,767 blocks.
+The old figure was described here as inherent to real pagination. It was inherent to laying
+out the whole document.
+
+Indenting a list item reloads the document — `mutateDocumentMarkdown` mutates the model and
+reloads from the result — and costs 21–29 ms for it. Slower than an ordinary keystroke, and
+the price of that path being correct off screen rather than only on it.
+
+Books: Matter (4,376 blocks) opens in 363 ms with its payload cached. Leaving a book tab is
+257 ms and returning is ~1.2 s.
+
+### Startup, and where it goes
+
+1,344 ms from process start to the document being on screen, from the app's own marks
+(`TYPOZEN_PERF=1`, `perf.log`):
+
+| | |
 |---|---|
-| Typing, Scroll | ~7 ms per keystroke |
-| Typing, Pages | ~66 ms per keystroke — one multi-column flow re-fragments |
-| Page turn within a laid-out range | 1–3 ms |
-| Page turn crossing a range boundary | 74–84 ms (800-block ranges, real novels) |
-| Search keypress, before the merge-walk fix | 986 ms |
-| Leaving a book tab, before the state pull was skipped | 6 154 ms → 257 ms |
-| Returning to a book tab, before a clean tab's pull budget was cut | 6 414 ms → 1 226 ms |
+| Main entered | 10 ms |
+| XAML parsed (`XamlReader.Load`, 47 KB) | 398 ms |
+| Window loaded | 456 ms |
+| WebView2 environment | 546 ms |
+| WebView2 controller | 952 ms |
+| Template navigated and page ready | 1,145 ms |
+| Session restored (6 tabs) | 1,159 ms |
+| **Document on screen** | **1,344 ms** |
 
-The Pages typing cost is the price of real pagination and is deliberate. It was briefly far
-worse: setting `height: 100%` on the multi-column contenteditable made every keystroke
-re-resolve the whole flow, at 207 ms each. The height is a pixel value applied from JS for
-that reason. JS work around the keystroke (stats debounce, a no-op `PageMap.invalidate`) is
-not the bottleneck — Chromium's multi-column reflow is.
+Two thirds of that is XAML parsing and WebView2 initialisation, and they run one after the
+other: the environment is not created until `window.Loaded`. The recoverable parts are
+**~360 ms of XAML parsing** — runtime `XamlReader.Load` is a deliberate choice so the chrome
+can be edited without recompiling, which a build-time switch could keep for debug while
+compiling it for release — and **~90 ms** by creating the WebView2 environment at `Main`
+rather than at `window.Loaded`. The 406 ms controller step needs a window handle and cannot
+start earlier.
+
+Everything else is already below the threshold where anyone would notice.
 
 ---
 
