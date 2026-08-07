@@ -451,6 +451,10 @@ namespace TypoZen
             _e2eMode = !string.IsNullOrWhiteSpace(e2e);
             _e2eDir = _e2eMode ? e2e.Trim() : null;
 
+            // Before the XAML, not after the window loads. See _envTask.
+            _envTask = StartWebView2Environment();
+            Program.PerfMark("WebView2 environment requested");
+
             if (launch == null) launch = new LaunchRequest();
             _initialFileToOpen = launch.FilePath;
             if (launch.HasOpenHints)
@@ -3151,6 +3155,61 @@ if (_btnColumnToggle != null)
             catch { }
         }
 
+        /// <summary>
+        /// The WebView2 environment, started before the XAML is parsed.
+        /// </summary>
+        /// <remarks>
+        /// Creating it needs nothing from the window -- a cache directory and the command
+        /// line, both known at construction -- while the controller that follows it does
+        /// need a window handle and cannot be moved. Started at the top of the constructor
+        /// it overlaps the ~360ms XamlReader.Load rather than queueing behind it, and is
+        /// ready by the time window.Loaded asks for it. Measured before: environment ready
+        /// at 546ms, of which 90ms was spent waiting for it after the window had loaded.
+        /// </remarks>
+        private Task<CoreWebView2Environment> _envTask;
+
+        private Task<CoreWebView2Environment> StartWebView2Environment()
+        {
+            try
+            {
+                string userDataDir = CacheDir();
+                if (!Directory.Exists(userDataDir)) Directory.CreateDirectory(userDataDir);
+                return CoreWebView2Environment.CreateAsync(null, userDataDir, BuildWebView2Options());
+            }
+            catch (Exception ex)
+            {
+                Program.PerfMark("WebView2 environment could not be started early: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>Command-line switches for the browser process. One definition, so the
+        /// early start and any later retry cannot drift apart.</summary>
+        private CoreWebView2EnvironmentOptions BuildWebView2Options()
+        {
+            // With --debug, open the DevTools protocol on a fixed port so a test can drive
+            // THIS process rather than a copy of the page in a separate browser.
+            //
+            // Every attempt to fix column switching until now was verified against
+            // TypoZen_Template.html loaded in plain Chrome, where the fault does not occur --
+            // so the tests passed and the app stayed broken, repeatedly. The harness needs to
+            // attach to the real WebView2, with the real WPF host, real window size and real
+            // focus behaviour. Off unless --debug, so an ordinary run never opens a port.
+            string extraArgs =
+                "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1\""
+                + " --disable-background-networking"
+                + " --disable-component-update"
+                + " --disable-sync"
+                + " --no-first-run"
+                + " --no-default-browser-check";
+            if (Program.DebugLogEnabled)
+            {
+                extraArgs += " --remote-debugging-port=" + Program.RemoteDebugPort.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                           + " --remote-allow-origins=*";
+            }
+            return new CoreWebView2EnvironmentOptions(extraArgs, null, null, false);
+        }
+
         private async void InitializeWebViewAsync()
         {
             var border = (Border)FindElement("webViewContainer");
@@ -3206,20 +3265,15 @@ if (_btnColumnToggle != null)
                 // harness needs to attach to the real WebView2, with the real WPF host,
                 // real window size and real focus behaviour. Off unless --debug, so an
                 // ordinary run never opens a port.
-                string extraArgs =
-                    "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1\""
-                    + " --disable-background-networking"
-                    + " --disable-component-update"
-                    + " --disable-sync"
-                    + " --no-first-run"
-                    + " --no-default-browser-check";
-                if (Program.DebugLogEnabled)
+                // Started before the XAML was parsed; usually finished by now. Falls back
+                // to creating it here if the early start could not run.
+                Task<CoreWebView2Environment> envTask = _envTask;
+                if (envTask == null)
                 {
-                    extraArgs += " --remote-debugging-port=" + Program.RemoteDebugPort.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                               + " --remote-allow-origins=*";
+                    envTask = CoreWebView2Environment.CreateAsync(null, userDataDir, BuildWebView2Options());
+                    Program.PerfMark("WebView2 environment started late (no early task)");
                 }
-                var opts = new CoreWebView2EnvironmentOptions(extraArgs, null, null, false);
-                var env = await CoreWebView2Environment.CreateAsync(null, userDataDir, opts);
+                var env = await envTask;
                 Program.PerfMark("WebView2 environment ready");
                 await _webView.EnsureCoreWebView2Async(env);
                 Program.PerfMark("WebView2 controller ready");

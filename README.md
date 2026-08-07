@@ -750,29 +750,41 @@ Books: Matter (4,376 blocks) opens in 363 ms with its payload cached. Leaving a 
 
 ### Startup, and where it goes
 
-1,344 ms from process start to the document being on screen, from the app's own marks
+1,151 ms from process start to the document being on screen, from the app's own marks
 (`TYPOZEN_PERF=1`, `perf.log`):
 
 | | |
 |---|---|
 | Main entered | 10 ms |
-| XAML parsed (`XamlReader.Load`, 47 KB) | 398 ms |
-| Window loaded | 456 ms |
-| WebView2 environment | 546 ms |
-| WebView2 controller | 952 ms |
-| Template navigated and page ready | 1,145 ms |
-| Session restored (6 tabs) | 1,159 ms |
-| **Document on screen** | **1,344 ms** |
+| WebView2 environment requested | 49 ms |
+| XAML parsed (`XamlReader.Load`, 47 KB) | 366 ms |
+| Window loaded | 419 ms |
+| WebView2 environment ready | 487 ms |
+| WebView2 controller ready | 889 ms |
+| Template navigated and page ready | ~1,090 ms |
+| **Document on screen** | **1,151 ms** |
 
-Two thirds of that is XAML parsing and WebView2 initialisation, and they run one after the
-other: the environment is not created until `window.Loaded`. The recoverable parts are
-**~360 ms of XAML parsing** — runtime `XamlReader.Load` is a deliberate choice so the chrome
-can be edited without recompiling, which a build-time switch could keep for debug while
-compiling it for release — and **~90 ms** by creating the WebView2 environment at `Main`
-rather than at `window.Loaded`. The 406 ms controller step needs a window handle and cannot
-start earlier.
+It was 1,344 ms. The environment is created at the top of the constructor rather than at
+`window.Loaded`: it needs a cache directory and the command line, both known then, so it
+overlaps the XAML parse instead of queueing behind it. The controller that follows needs a
+window handle and cannot move.
 
-Everything else is already below the threshold where anyone would notice.
+**The rest is not worth chasing, and the arithmetic that said otherwise was wrong.** The
+366 ms before `window Loaded` looks like XML parsing and mostly is not. Parsing the same
+file three times in one process:
+
+```
+parse 1: 216 ms     parse 2: 20 ms     parse 3: 20 ms
+```
+
+Roughly 196 ms of it is one-time WPF type loading and JIT, which a compiled `.baml` pays
+too — it instantiates the same types. Compiling the XAML would save something like the 20 ms
+of real parse work, not the 360 ms a first reading suggests, and it would cost the property
+that the shell and its menus can be edited without recompiling. Measured before building it,
+which is the only reason that is known.
+
+What remains: ~470 ms spawning the WebView2 browser process, and ~260 ms navigating the
+template and booting the page. Neither has an obvious lever.
 
 ---
 
