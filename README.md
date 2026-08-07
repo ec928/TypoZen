@@ -700,6 +700,14 @@ keeps the case it was written in, so it had never once fired.
   `#editor.page-mode` and `#editor.reader-mode`. The View menu still shows the setting's real
   state while reading, where it has no effect — the tick is honest about the preference, not
   about the current page.
+- **A book with mixed body classes is normalised to its commonest one.** The base is scaled
+  so the dominant body size lands on the theme's `FS`, which is exact for text carrying the
+  publisher's body class and slightly off for text that carries none. Measured on *Xeelee*:
+  about 10% of long paragraphs sit above the target because they wear no `0.88em` class.
+  Correct fix is to divide the `font-size` declarations in the book's own CSS by the measured
+  factor at injection time and leave the container at `FS` — then unstyled text is right by
+  definition and headings keep their proportion *to the body*. Needs two passes, because the
+  factor is not known until after first layout.
 - **The scrubber is pages-only.** A scrolling layout keeps the native scrollbar, which is
   correct there — virtualization gives it the full document extent — but it does mean the two
   layouts offer different controls.
@@ -739,6 +747,13 @@ broken behaviour behind a green suite:
   whatever the text inside does. It now measures line boxes via `Range.getClientRects()`
   as well. Same family of mistake as the stride-versus-pitch check it was written to
   replace — a measurement that cannot see the thing it is named after.
+- **`shell-seam-app` needs the machine to itself.** UI Automation exposes no invoke pattern
+  for these menu items, so the driver clicks at real screen coordinates — and any window the
+  user has open can take a click meant for the app. That is not a hypothetical: a Themes menu
+  open in another window swallowed the restore click and the run ended with a theme the
+  reader never chose written into `settings.json`. The suite now snapshots the saved theme and
+  writes it back, so the worst case is a loud failure rather than a silent change, but it is
+  still not safe to run while the machine is in use.
 - **Nothing tests theme rendering.** Contrast ratios and font loading are checked as data
   (`fonts-selftest`, theme JSON validation), never as pixels.
 - **`Dune` and `Nemesis Games` have never been opened by a test.** They are there so a
