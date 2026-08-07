@@ -252,6 +252,15 @@
                 && DocumentModel.kind === 'epub');
             editor.setAttribute('contenteditable', allowed ? 'true' : 'false');
             editor.classList.toggle('reader-mode', !allowed);
+            // A book, specifically -- which is not the same as "not editable". Preview on a
+            // Markdown file is also read-only, and a source setting like Word Wrap still
+            // means something there because the file has real line breaks behind it. A book
+            // has none, so an unwrapped one is one endless line and nothing else.
+            // Toggled here because this is the single funnel every editability change goes
+            // through, so it cannot be left set when a Markdown file replaces a book in the
+            // same tab.
+            editor.classList.toggle('book-mode',
+                typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
         }
 
         function updateOutline() {

@@ -308,7 +308,8 @@
         }
 
         /* WYSIWYG Editor */
-        /* Word wrap off: lines run long and the pane scrolls sideways. */
+        /* Word wrap off: lines run long and the pane scrolls sideways. Only where there
+           is a sideways to scroll -- see the page-mode override further down. */
         body.nowrap #editor .block { white-space: pre; }
         body.nowrap #main-container { overflow-x: auto; }
         body.nowrap #source-editor { white-space: pre; overflow-x: auto; }
@@ -424,6 +425,27 @@
             height: 0 !important;
             display: none !important;
         }
+
+        /* Word wrap is a source-editing setting, and it cannot apply on a page.
+           Pagination *is* the horizontal axis: Chromium lays the document out in columns
+           and the view steps sideways one page at a time, so there is no sideways scroll
+           left to give an unwrapped line. `white-space: pre` then renders a paragraph as
+           a single line thousands of pixels wide which starts in its own column and runs
+           straight across every column to its right -- painting four or five pages of
+           text on top of one another. Reported as "the epubs are corrupt": the files were
+           intact, View > Word Wrap was off, and every page of every book was unreadable.
+           The rule it overrides is older than paginated 1-column and its comment still
+           describes what used to happen -- "the pane scrolls sideways" -- which was true
+           while 1-column was a continuous scroll. It stopped being true when 1-column
+           started paginating through the same multi-column engine as 2-column.
+           Two selectors, deliberately layered. page-mode is the one that matters and it
+           does not depend on anything being kept in sync -- if the layout paginates, text
+           wraps, full stop. book-mode additionally covers a book being read in a scrolling
+           layout, where nowrap is not corrupting, only useless: an epub has no source whose
+           line breaks are worth preserving. Preview on a Markdown file is deliberately not
+           included; that file does have real lines, and the setting still means something. */
+        body.nowrap #editor.page-mode .block,
+        body.nowrap #editor.book-mode .block { white-space: normal; }
 
         /* Paginated code fences wrap instead of scrolling.
            overflow-x: auto makes a <pre> a scroll container, and a scroll container is

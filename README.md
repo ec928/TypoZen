@@ -680,6 +680,16 @@ keeps the case it was written in, so it had never once fired.
   so it survives editing above it only as well as the block numbering does.
 - **Custom table size uses `#tableModal`.** The Notepad-style grid picker is the default path
   (`Ctrl+T`); **Custom size…** opens the number-field dialog. Both share `insertMarkdownTable`.
+- **Word Wrap is ignored on a page, and in books.** It is a source-editing setting: with it
+  off, `body.nowrap` sets `white-space: pre` so lines run long and the pane scrolls sideways.
+  A paginated layout has no sideways left to give — the horizontal axis *is* the page axis —
+  so an unwrapped paragraph became one line thousands of pixels wide that started in its own
+  column and ran across the next four, painting five pages of text on top of each other.
+  Reported as *"the epubs are corrupt"*: the files were intact, `"wordWrap": false` had been
+  sitting in `window_state.json` the whole time. `css/typozen.css` now overrides it for
+  `#editor.page-mode` and `#editor.reader-mode`. The View menu still shows the setting's real
+  state while reading, where it has no effect — the tick is honest about the preference, not
+  about the current page.
 - **The scrubber is pages-only.** A scrolling layout keeps the native scrollbar, which is
   correct there — virtualization gives it the full document extent — but it does mean the two
   layouts offer different controls.
@@ -702,6 +712,17 @@ broken behaviour behind a green suite:
   through UI Automation and asserts the effect in the page. It does not click tabs: driving a
   click onto a title-bar tab through UIA proved unreliable, and tab *switching* is covered
   through the shell's own messages elsewhere. Dialogs are only checked for absence.
+- **Every suite ran with default settings until Word Wrap broke every book.** Forty-nine
+  suites, none of which had ever set `body.nowrap` — so a saved View setting that made the
+  reader unusable was invisible to all of them, for as long as the reader has existed.
+  `page-fit-browser` now runs its geometry checks with Word Wrap off as well as on. The
+  other persisted settings (chrome auto-hide, status bar, zoom, session bodies) are still
+  only ever exercised at their defaults.
+- **Measure the ink, not the box.** `page-fit-browser` asserted that no *element* ran past
+  the pane and passed while text ran 1,898px past it: a block's box is the column width
+  whatever the text inside does. It now measures line boxes via `Range.getClientRects()`
+  as well. Same family of mistake as the stride-versus-pitch check it was written to
+  replace — a measurement that cannot see the thing it is named after.
 - **Nothing tests theme rendering.** Contrast ratios and font loading are checked as data
   (`fonts-selftest`, theme JSON validation), never as pixels.
 - **`Dune` and `Nemesis Games` have never been opened by a test.** They are there so a

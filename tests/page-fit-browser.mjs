@@ -41,8 +41,11 @@ function fitState() {
     const paneW = ed.clientWidth;
 
     let worstRight = -Infinity, worstRightText = '';
+    let worstInk = -Infinity, worstInkText = '';
     let leftmost = Infinity;
-    let fragments = 0;
+    let fragments = 0, lines = 0;
+
+    const range = document.createRange();
 
     for (const b of ed.querySelectorAll('.block')) {
         // Per-fragment, never the bounding box: a paragraph running from one column into
@@ -61,6 +64,27 @@ function fitState() {
             }
             if (left < leftmost) leftmost = left;
         }
+
+        // And now the ink, which is a different measurement and the one that matters.
+        //
+        // A block's box is the column width whatever the text inside it does. With
+        // white-space: pre the text does not wrap, so the line runs thousands of pixels
+        // past the box while every element rect above still reports a tidy 1017.6px --
+        // which is why this suite passed, in this exact file, while every page of every
+        // book was painted on top of the four pages after it. Range rects are line boxes:
+        // they follow the glyphs.
+        range.selectNodeContents(b);
+        for (const r of range.getClientRects()) {
+            if (r.width <= 0 || r.height <= 0) continue;
+            const left = r.left - pane.left;
+            const right = r.right - pane.left;
+            if (right <= 0 || left >= paneW) continue;
+            lines++;
+            if (right > worstInk) {
+                worstInk = right;
+                worstInkText = (b.innerText || '').replace(/\s+/g, ' ').slice(0, 30);
+            }
+        }
     }
 
     return {
@@ -69,8 +93,11 @@ function fitState() {
         scrollLeft: Math.round((ed.scrollLeft || 0) * 100) / 100,
         overflowRight: Math.round((worstRight - paneW) * 100) / 100,
         overflowText: worstRightText,
+        inkOverflow: Math.round((worstInk - paneW) * 100) / 100,
+        inkText: worstInkText,
         leftmost: Math.round(leftmost * 100) / 100,
         fragments: fragments,
+        lines: lines,
         page: PageMap.current(),
         pages: PageMap.count()
     };
@@ -80,13 +107,17 @@ async function checkLayout(page, label, turns) {
     console.log('\n=== ' + label + ' ===');
 
     let s = await page.evaluate(fitState);
-    info('pane ' + s.paneW + 'px, stride ' + s.stride + ', ' + s.fragments + ' fragments on screen');
+    info('pane ' + s.paneW + 'px, stride ' + s.stride + ', ' + s.fragments +
+         ' fragments and ' + s.lines + ' lines on screen');
     assert(s.fragments > 0, label + ': something is laid out to look at');
 
     // A column of text must not be wider than the pane it is read in.
     assert(s.overflowRight <= 1,
         label + ': no text runs past the right edge of the pane (' +
         s.overflowRight + 'px over, at "' + s.overflowText + '")');
+    assert(s.inkOverflow <= 1,
+        label + ': and no rendered line does either (' +
+        s.inkOverflow + 'px over, at "' + s.inkText + '")');
     assert(s.leftmost >= -1,
         label + ': nothing hangs off the left edge (' + s.leftmost + 'px)');
 
@@ -99,9 +130,19 @@ async function checkLayout(page, label, turns) {
     info('after ' + turns + ' turns: page ' + s.page + ' of ' + s.pages +
          ', scrollLeft ' + s.scrollLeft + ', leftmost fragment at ' + s.leftmost + 'px');
 
+    // Before anything else: there is still something to look at. With nothing on screen
+    // worstRight stays -Infinity, serialises as null, and null <= 1 is true in Javascript
+    // -- so every check below would pass on a blank page. Seen for real: 40 turns in
+    // 2-column ran off the end of the document and the suite reported "nullpx over".
+    assert(s.fragments > 0,
+        label + ': there is still a page of text after ' + turns + ' turns (page ' +
+        s.page + ' of ' + s.pages + ')');
     assert(s.overflowRight <= 1,
         label + ': still nothing past the right edge after ' + turns + ' turns (' +
         s.overflowRight + 'px over, at "' + s.overflowText + '")');
+    assert(s.inkOverflow <= 1,
+        label + ': and still no line past it either (' +
+        s.inkOverflow + 'px over, at "' + s.inkText + '")');
 
     // The reader is looking at the start of a column, not part way into one. This is the
     // drift itself: a fraction of a pixel lost per page, accumulating until a sliver of the
@@ -148,6 +189,32 @@ async function main() {
             await page.evaluate(() => handleCommand('view_set:columns:2'));
             await settled(page);
             await checkLayout(page, width + 'px wide, 2 columns', 100);
+        }
+
+        // Word Wrap off, which is a saved View setting and was the whole of "the epubs
+        // are corrupt".
+        //
+        // Everything above runs with the default, so nothing here had ever seen
+        // body.nowrap -- and body.nowrap sets white-space: pre on every block. That rule
+        // predates paginated 1-column and assumes an unwrapped line has somewhere to go
+        // sideways; on a page the sideways axis is the page axis, so the line runs across
+        // the next four columns instead and the reader sees five pages at once. It was on
+        // in the reporter's settings the entire time these suites were being written.
+        await page.setViewport({ width: 1437, height: 900 });
+        await settled(page);
+        await page.evaluate(() => handleCommand('wordwrap_off'));
+        await settled(page);
+        try {
+            for (const cols of [1, 2]) {
+                await page.evaluate((c) => handleCommand('view_set:columns:' + c), cols);
+                await settled(page);
+                assert(await page.evaluate(() => document.body.classList.contains('nowrap')),
+                    'Word Wrap off, ' + cols + ' column: the setting really is applied');
+                await checkLayout(page, 'Word Wrap off, ' + cols + ' column', 40);
+            }
+        } finally {
+            await page.evaluate(() => handleCommand('wordwrap_on'));
+            await settled(page);
         }
 
         // A resize with no command after it.

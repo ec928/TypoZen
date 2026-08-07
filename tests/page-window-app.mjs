@@ -89,12 +89,22 @@ try {
     console.log('\n=== turning pages crosses ranges ===');
     const turned = await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        // Start from the front, not from wherever the app happened to open.
+        //
+        // This used to read PageChunks.mounted as it found it, which is set by the restored
+        // reading position -- so the range it called "start" was whatever the previous
+        // suite in the run had left behind. Run alone it opened in range 3 and passed; run
+        // after the others it opened in range 4 of 4, "the next range" did not exist,
+        // goto() clamped to the end and the assertion failed on a product that was working.
+        PageMap.goto(1);
+        await sleep(600);
         const startChunk = PageChunks.mounted;
         const target = PageChunks.prefixPages(startChunk + 1) + 1;
         PageMap.goto(target);
         await sleep(600);
         return {
             startChunk: startChunk,
+            chunks: PageChunks.chunkCount(DocumentModel.blocks.length),
             asked: target,
             nowChunk: PageChunks.mounted,
             nowPage: PageMap.current(),
@@ -103,7 +113,13 @@ try {
         };
     });
     info('range ' + turned.startChunk + ' -> ' + turned.nowChunk +
-        ', page ' + turned.nowPage + ', top block ' + turned.topBlock);
+        ' (of ' + turned.chunks + '), page ' + turned.nowPage +
+        ', top block ' + turned.topBlock);
+    // And say so out loud if there is nothing to cross into, rather than reporting the
+    // clamp as a windowing failure.
+    assert(turned.startChunk === 0,
+        'the crossing starts from the first range, whatever was open before (' +
+        turned.startChunk + ')');
     assert(turned.nowChunk === turned.startChunk + 1,
         'going to a page in the next range mounts that range');
     assert(turned.topBlock >= turned.firstBlockOfChunk,
