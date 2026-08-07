@@ -15,6 +15,7 @@
  *   RUN_APP_E2E=1 node tests/shell-seam-app.mjs
  */
 import { execSync } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { launchApp } from './app-harness.mjs';
@@ -41,6 +42,13 @@ function ui(cmd, arg) {
         return { error: 'driver failed: ' + (e.message || e) };
     }
 }
+
+// The fixture, byte for byte, before and after. An earlier version of this driver clicked
+// its way onto File > Save and wrote to it; the change was one trailing space and it reached
+// a commit before anyone noticed. A suite that drives real menus has to prove it did not
+// touch the document it opened.
+const FIXTURE = path.join(__dirname, 'large-scroll-mixed.md');
+const fixtureWas = fs.readFileSync(FIXTURE);
 
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
 try {
@@ -142,6 +150,11 @@ try {
 } finally {
     await app.close();
 }
+
+const fixtureNow = fs.readFileSync(FIXTURE);
+assert(Buffer.compare(fixtureWas, fixtureNow) === 0,
+    'the document this opened is untouched on disk (' +
+    fixtureWas.length + ' -> ' + fixtureNow.length + ' bytes)');
 
 console.log('\npassed=' + passed + ' failed=' + failed);
 console.log(failed ? 'SHELL SEAM FAILED' : 'SHELL SEAM PASSED');

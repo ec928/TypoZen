@@ -17,7 +17,8 @@
 
 param(
     [Parameter(Mandatory = $true)][string]$Command,
-    [string]$Arg = ''
+    [string]$Arg = '',
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,6 +69,22 @@ function Get-TabElements($root) {
         $out += $t
     }
     return $out
+}
+
+# Items this driver refuses to invoke.
+#
+# Learned the hard way: a stray click during an earlier version of this script landed on
+# File > Save and wrote to the test fixture, which then travelled into a commit. A driver
+# that can reach every menu can reach the destructive ones, and a test has no business
+# saving, closing or deleting anything. Pass -Force to override deliberately.
+$script:Dangerous = 'save|close|delete|remove|exit|quit|new|overwrite|export'
+
+function Assert-Safe($name) {
+    if ($Force) { return }
+    if ($name -match $script:Dangerous) {
+        Out-Json @{ error = "refusing to invoke '$name': looks destructive. Pass -Force if that is really wanted." }
+        exit 2
+    }
 }
 
 function Click-Element($el) {
@@ -171,12 +188,14 @@ switch ($Command) {
                 if ($ec) { $ec.Collapse() }
                 Out-Json @{ error = "no item '$($parts[1])' under '$($parts[0])'" }; break
             }
+            Assert-Safe $parts[1]
             $how = Click-Element $found
             Out-Json @{ invoked = $Arg; how = $how }
         } else {
             $found = $null
             foreach ($i in $items) { if ($i.Current.Name -eq $Arg) { $found = $i; break } }
             if (-not $found) { Out-Json @{ error = "no item '$Arg'" }; break }
+            Assert-Safe $Arg
             $how = Click-Element $found
             Out-Json @{ invoked = $Arg; how = $how }
         }
