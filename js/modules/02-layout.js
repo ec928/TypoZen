@@ -1834,14 +1834,28 @@
                     return true;
                 }
 
-                const loc = PageChunks.locatePage(n);
-                if (loc.chunk !== PageChunks.mounted) {
-                    // Mounting re-measures the range, so its page count -- and every global
-                    // number after it -- can change. Resolve the target again against the map
-                    // as it now stands rather than against the estimate that got us here.
+                // Mounting re-measures the range, so its page count -- and every global
+                // number after it -- can change. Resolve the target again against the map as
+                // it now stands, and keep going until the answer stops moving.
+                //
+                // This used to resolve exactly once and then give up: if re-measuring moved
+                // page n into a *different* range, it applied the local index from the stale
+                // estimate to the range it had just mounted. Asking the scrubber for page
+                // 2101 landed on 1960, and asking it for the title page landed 431 pages in.
+                // The page turn that followed then reported the true number, so a single
+                // press appeared to jump hundreds of pages -- which is how this was
+                // reported, and why it looked like a broken Page Up rather than a broken
+                // seek. Each mount measures one more range, so this tightens rather than
+                // oscillates; the bound is only there so a pathological map cannot spin.
+                let loc = PageChunks.locatePage(n);
+                for (let tries = 0; tries < 4 && loc.chunk !== PageChunks.mounted; tries++) {
                     mountPageChunk(loc.chunk);
-                    const again = PageChunks.locatePage(n);
-                    return this.gotoLocal(again.chunk === PageChunks.mounted ? again.local : loc.local);
+                    loc = PageChunks.locatePage(n);
+                }
+                if (loc.chunk !== PageChunks.mounted) {
+                    // Still disagreeing after four measurements: land inside the range that
+                    // is actually mounted rather than at an index belonging to another one.
+                    return this.gotoLocal(Math.max(0, Math.min(loc.local, this.localCount() - 1)));
                 }
                 return this.gotoLocal(loc.local);
             },

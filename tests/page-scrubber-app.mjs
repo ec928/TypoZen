@@ -140,6 +140,39 @@ try {
         'a book stays paginated when asked to scroll, rather than landing somewhere ' +
         'the scroll selector is locked out of leaving');
 
+    console.log('\n=== the scrubber lands on the page it was asked for ===');
+    // Asked for 2101, landed on 1960. Asked for the title page, landed 431 pages in.
+    //
+    // goto() resolved the target against the estimated map, mounted the range that implied,
+    // and re-resolved exactly once -- then, if measuring that range had moved page n into a
+    // different range, applied the local index from the stale estimate to the range it had
+    // just mounted. The next page turn reported the true number, so one press of Page Up
+    // appeared to jump four hundred pages and the seek looked innocent. Every mount measures
+    // one more range, so resolving until the answer stops moving converges.
+    const seeks = await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        const range = document.getElementById('page-scrubber-range');
+        const out = [];
+        for (const f of [0, 0.25, 0.55, 0.88]) {
+            const want = Math.floor(parseInt(range.max, 10) * f);
+            range.value = String(want);
+            range.dispatchEvent(new Event('change', { bubbles: true }));
+            await sleep(3000);
+            out.push({ want: want, got: PageMap.current(), of: PageMap.count() });
+        }
+        return out;
+    });
+    for (const s of seeks) {
+        info('asked ' + s.want + ' of ' + s.of + ', landed on ' + s.got +
+             ' (' + (s.got - s.want) + ')');
+    }
+    const adrift = seeks.filter(s => Math.abs(s.got - s.want) > 1);
+    assert(adrift.length === 0,
+        'every scrubber seek lands on the page it was asked for (' + adrift.length +
+        ' of ' + seeks.length + ' adrift' +
+        (adrift.length ? ', worst ' + Math.max(...adrift.map(s => Math.abs(s.got - s.want))) +
+            ' pages' : '') + ')');
+
     console.log('\n=== where the scrubber leaves you is where a column switch keeps you ===');
     // Read into the book by turning pages, drag the thumb back to the title, then switch
     // columns. The switch restores the *reading anchor*, and only PageMap.step() used to

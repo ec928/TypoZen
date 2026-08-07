@@ -980,6 +980,23 @@
                     return 'url("' + base + u.replace(/^\.\//, '') + '")';
                 });
 
+            // The reader's leading, not the publisher's.
+            //
+            // An omnibus is not one book: Xeelee is twelve, each with its own stylesheet,
+            // and they disagree. Measured across it -- 1.6 for the first books, 1.2 for the
+            // later ones, with the occasional paragraph at something else again. Reading
+            // straight through, the page visibly tightens and loosens for no reason the
+            // reader can see, which is what "messy, and often very tight in some places"
+            // means. The theme already decides the typeface and the size; leading is the
+            // third part of the same decision and there is no sense in honouring a
+            // publisher's on a page whose width and font neither of us chose.
+            //
+            // Dropped rather than rewritten, so everything inherits the one value the app
+            // sets. The cost is that deliberately tight setting -- a verse, a title page --
+            // is levelled too. That is a real loss and a small one against a novel that
+            // changes leading halfway through.
+            joined = joined.replace(/(^|[;{])\s*line-height\s*:[^;}]*/gi, '$1');
+
             // Divide the declared sizes through, after rem has become em so both are caught.
             // Relative units only: an em or a % is the publisher expressing a proportion,
             // which is exactly what we are renormalising. A px is an absolute the publisher
