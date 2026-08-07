@@ -68,7 +68,11 @@
 
             // Styles before blocks: the first paint should already be the book's own
             // typography rather than a flash of unstyled text a reader would notice.
-            try { applyBookStyles(data.css, data.assetsBase || ''); } catch (eS) {}
+            // Kept because the size correction re-applies them with a divisor, and it has to
+            // divide the publisher's own numbers rather than numbers it divided before.
+            _bookCssTexts = data.css || [];
+            _bookEmDivisor = 1;
+            try { applyBookStyles(_bookCssTexts, data.assetsBase || ''); } catch (eS) {}
 
             DocumentModel.fromBookBlocks(split.blocks, toc);
             _contentCache = null;
@@ -632,6 +636,10 @@
         // Last scale factor applied to #editor for an epub. Avoids clear→remeasure→set on
         // every page turn, which kept scrollWidth moving and fed goToPage re-anchor thrash.
         let _bookTextScaleK = 0;
+        // The publisher's stylesheets as delivered, and the divisor currently applied to
+        // their declared sizes. Both belong to the book that is open.
+        let _bookCssTexts = [];
+        let _bookEmDivisor = 1;
 
         function normaliseBookTextSize() {
             if (!editor) return;
@@ -726,29 +734,30 @@
             const off = themePx / dominant;
             if (!isFinite(off) || off <= 0) return;
 
-            // Within a hair of correct: leave the layout alone. Writing font-size re-
-            // fragments the whole multi-column flow, so a no-op write is not free.
-            if (Math.abs(off - 1) < 0.02) {
-                if (!editor.style.fontSize) {
-                    editor.style.fontSize = 'var(--fs, 16px)';
-                    _bookTextScaleK = 1;
-                }
-                return;
+            // The editor always sits at exactly --fs. Text the publisher left unstyled is
+            // then correct without anyone doing anything to it, which is the whole point of
+            // correcting the declarations rather than the container.
+            if (editor.style.fontSize !== 'var(--fs, 16px)') {
+                editor.style.fontSize = 'var(--fs, 16px)';
             }
+            _bookTextScaleK = 1;
 
-            // Correcting text that is already corrected adjusts the factor we have; a
-            // first measurement establishes it outright.
-            let k = alreadyCorrected ? _bookTextScaleK * off : off;
-            // A book whose body would need more than this is not telling us about its
-            // body -- it is front matter, a colophon, or markup we have misread. Refuse
-            // rather than render the novel at a size nobody asked for.
-            if (!(k >= 0.4 && k <= 2.5)) return;
+            // Within a hair of correct: leave it alone. Re-applying the stylesheet
+            // re-fragments the whole multi-column flow, so a no-op pass is not free.
+            if (Math.abs(off - 1) < 0.02) return;
 
-            editor.style.fontSize = 'calc(var(--fs, 16px) * ' + k.toFixed(4) + ')';
-            _bookTextScaleK = k;
-            window.showDebugTelemetry('book text: body at ' + dominant + 'px, theme --fs=' +
-                themePx + 'px, factor ' + (alreadyCorrected ? 'refined to ' : 'set to ') +
-                k.toFixed(3));
+            // What the publisher's body class actually asks for, in em. Cumulative, because
+            // the sizes just measured were rendered through the divisor already in force --
+            // and the first measurement can come from front matter, whose classes differ
+            // from the body's, so this has to be able to correct itself later.
+            const emFactor = _bookEmDivisor * (dominant / themePx);
+            if (!(emFactor >= 0.4 && emFactor <= 2.5)) return;
+            if (Math.abs(emFactor - _bookEmDivisor) < 0.005) return;
+
+            _bookEmDivisor = emFactor;
+            try { applyBookStyles(_bookCssTexts, _bookAssetsBase, emFactor); } catch (eD) { return; }
+            window.showDebugTelemetry('book text: body at ' + dominant + 'px against --fs=' +
+                themePx + 'px, declared sizes divided by ' + emFactor.toFixed(4));
             // Font change reflows multicol; re-lock page columns and stay on this page.
             try {
                 if (typeof isPaginatedLayout === 'function' && isPaginatedLayout()
@@ -872,6 +881,7 @@
             _bookBlockDirs = [];
             try { _bookDocStarts = {}; } catch (e2) {}
             try { _bookPlateBlocks = null; } catch (e2b) {}
+            try { _bookCssTexts = []; _bookEmDivisor = 1; } catch (e2c) {}
             try { _bookAnchorIndex = null; } catch (e3) {}
             try { _bookTitleIndex = null; } catch (e4) {}
             try { _bookPosLast = -1; } catch (e5) {}
@@ -920,7 +930,23 @@
             }
         }
 
-        function applyBookStyles(cssTexts, assetsBase) {
+        /**
+         * The book's own stylesheets, optionally with every declared size divided through.
+         *
+         * emDivisor is how the reader's text size is honoured without touching the box the
+         * text sits in. A publisher sizes against a device default it cannot see -- Xeelee
+         * asks for 0.88em on its body classes, Matter for 1.33333em -- and the old fix
+         * scaled #editor by the reciprocal so the dominant size landed on the theme. That
+         * works for text wearing the class and only for that text: anything the publisher
+         * left unstyled inherited the scaled base and came out wrong in the other
+         * direction. Measured on Xeelee, about one paragraph in ten.
+         *
+         * Dividing the declarations instead leaves #editor at exactly --fs, so unstyled
+         * text is right by definition, 0.88em/0.88 is 1em and right too, and a 1.5em
+         * heading becomes 1.7em -- still half again the size of the body, which is the
+         * proportion the publisher was expressing.
+         */
+        function applyBookStyles(cssTexts, assetsBase, emDivisor) {
             let el = document.getElementById('book-styles');
             if (!el) {
                 el = document.createElement('style');
@@ -930,7 +956,7 @@
             if (!cssTexts || !cssTexts.length) { el.textContent = ''; return; }
 
             const base = String(assetsBase || '');
-            const joined = cssTexts.join('\n')
+            let joined = cssTexts.join('\n')
                 // @page and @import belong to the book's own pagination and packaging;
                 // TypoZen owns the page and has already fetched the stylesheets.
                 .replace(/@page[^{]*\{[^}]*\}/gi, '')
@@ -953,6 +979,20 @@
                     if (/^(data:|https?:|\/)/i.test(u)) return m;
                     return 'url("' + base + u.replace(/^\.\//, '') + '")';
                 });
+
+            // Divide the declared sizes through, after rem has become em so both are caught.
+            // Relative units only: an em or a % is the publisher expressing a proportion,
+            // which is exactly what we are renormalising. A px is an absolute the publisher
+            // meant literally, and there is no proportion in it to rescale.
+            const d = Number(emDivisor);
+            if (isFinite(d) && d > 0 && Math.abs(d - 1) > 0.001) {
+                joined = joined.replace(
+                    /(font-size\s*:\s*)(\d*\.?\d+)(em|%)/gi,
+                    function (m, head, num, unit) {
+                        const v = parseFloat(num) / d;
+                        return head + (Math.round(v * 10000) / 10000) + unit;
+                    });
+            }
 
             // Every rule is confined to the editor. Naive but sufficient: these are book
             // stylesheets, not application ones, and shipping a CSS parser would gain

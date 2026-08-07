@@ -217,6 +217,31 @@ async function main() {
             await settled(page);
         }
 
+        // The rest of the persisted view settings, each against the same geometry.
+        //
+        // Word Wrap above is here because it broke every page of every book while forty-nine
+        // suites stayed green -- and the only reason it was invisible is that every suite ran
+        // at the defaults. That is an argument about the whole set, not about one member of
+        // it, so the others get the same treatment: margins change the pane width, the
+        // sidebar changes it again, and focus and typewriter both move the view. Cheap,
+        // because checkLayout is the same check already written.
+        for (const [name, on, off] of [
+            ['wide margins', 'set_margin_wide', 'set_margin_narrow'],
+            ['regular margins', 'set_margin_regular', 'set_margin_narrow'],
+            ['the sidebar open', 'toggle_sidebar', 'toggle_sidebar'],
+            ['focus mode', 'toggle_focus', 'toggle_focus'],
+            ['typewriter mode', 'toggle_typewriter', 'toggle_typewriter']
+        ]) {
+            await page.evaluate((c) => handleCommand(c), on);
+            await settled(page);
+            try {
+                await checkLayout(page, name, 12);
+            } finally {
+                await page.evaluate((c) => handleCommand(c), off);
+                await settled(page);
+            }
+        }
+
         // A resize with no command after it.
         //
         // This is the case a pinned pixel width fails: the pane keeps the size it was given,

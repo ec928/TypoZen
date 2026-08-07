@@ -40,16 +40,23 @@ book's own table of contents in the outline.
   `break-before: column` (a paged-media break is ignored by a multi-column layout), and
   `preserveAspectRatio="none"` is stripped from cover wrappers.
 - **Body text renders at the size the theme asks for.** Publishers size against a device
-  default they cannot see — one test book asks for 0.88 of base on every paragraph, another
-  1.333 — so the book keeps its proportions and only its base is normalised. The size is
-  measured from the element that **directly owns each text node**, weighted by characters,
-  and refined as more of the book mounts. Every one of those three words was a bug: measuring
-  the block's first child read a container inheriting the theme size, so *Matter* was declared
-  correct while 99.2% of its text painted a third too large; counting elements instead of
-  characters lets a drop cap outvote a chapter; and locking the factor on the first
-  measurement meant it was derived from whatever range happened to be mounted, which on a
-  resumed book is often front matter — two launches of the same book measured 0.66 and 0.74
-  for a factor that should be 0.75.
+  default they cannot see — *Xeelee* asks for `0.88em` on its body classes, *Matter* for
+  `1.33333em`. The correction divides the **declarations in the book's own stylesheet** by the
+  measured factor and leaves `#editor` at exactly `--fs`, so text the publisher left unstyled
+  is right without anything being done to it, `0.88em ÷ 0.88` is `1em` and right too, and a
+  `1.5em` heading becomes `1.7em` — still half again the body, which is the proportion the
+  publisher was expressing. Scaling the *container* instead, which is what this did first,
+  is exact only for text wearing the class and wrong in the other direction for everything
+  else: about one *Xeelee* paragraph in ten. Now 96.9% of its characters and 99.2% of
+  *Matter*'s land on the theme size exactly.
+- The factor is measured from the element that **directly owns each text node**, weighted by
+  characters, and refined as more of the book mounts. Each of those was a bug in turn:
+  measuring the block's first child read a container that inherits the theme size and hands
+  it back, so *Matter* was declared correct while 99.2% of its text painted a third too
+  large; counting elements rather than characters lets a drop cap outvote a chapter; and
+  locking the factor on first sight took it from whatever range happened to be mounted, which
+  on a resumed book is usually front matter — two launches of the same book measured 0.66 and
+  0.74 for a factor that should be 0.75.
 - **A plate gets the page it sits on.** A cover, frontispiece or part title — a picture with
   no text beside it — is sized to the page box, not to `vh`. `vh` is the *window*, which
   includes the tab strip, toolbar and status bar, so the old bound stopped a cover a quarter
@@ -633,8 +640,11 @@ a user would notice first.
 
 ### Next
 
-- **Retire ZenSeek's own reader (Phase 7)** for types TypoZen already covers (md/txt/epub),
-  once Phase 6 feels solid day to day. Docx/xlsx still use ZenSeek's built-in reader.
+Nothing queued. **Phase 7 — retiring ZenSeek's own reader — was considered and dropped.**
+Replacing a working reader with a second one is a loss of choice, not a feature, so ZenSeek
+keeps both and the reader is the user's decision: a toggle on the search bar, TypoZen by
+default, right-click to point it at a different TypoZen.exe. Docx/xlsx were never in scope
+for TypoZen and use ZenSeek's built-in reader regardless.
 
 ### Phase 6 — open from ZenSeek (done)
 
@@ -709,14 +719,6 @@ keeps the case it was written in, so it had never once fired.
   `#editor.page-mode` and `#editor.reader-mode`. The View menu still shows the setting's real
   state while reading, where it has no effect — the tick is honest about the preference, not
   about the current page.
-- **A book with mixed body classes is normalised to its commonest one.** The base is scaled
-  so the dominant body size lands on the theme's `FS`, which is exact for text carrying the
-  publisher's body class and slightly off for text that carries none. Measured on *Xeelee*:
-  about 10% of long paragraphs sit above the target because they wear no `0.88em` class.
-  Correct fix is to divide the `font-size` declarations in the book's own CSS by the measured
-  factor at injection time and leave the container at `FS` — then unstyled text is right by
-  definition and headings keep their proportion *to the body*. Needs two passes, because the
-  factor is not known until after first layout.
 - **The scrubber is pages-only.** A scrolling layout keeps the native scrollbar, which is
   correct there — virtualization gives it the full document extent — but it does mean the two
   layouts offer different controls.
@@ -739,12 +741,15 @@ broken behaviour behind a green suite:
   through UI Automation and asserts the effect in the page. It does not click tabs: driving a
   click onto a title-bar tab through UIA proved unreliable, and tab *switching* is covered
   through the shell's own messages elsewhere. Dialogs are only checked for absence.
-- **Every suite ran with default settings until Word Wrap broke every book.** Forty-nine
+- **Every suite ran at the default settings until Word Wrap broke every book.** Forty-nine
   suites, none of which had ever set `body.nowrap` — so a saved View setting that made the
-  reader unusable was invisible to all of them, for as long as the reader has existed.
-  `page-fit-browser` now runs its geometry checks with Word Wrap off as well as on. The
-  other persisted settings (chrome auto-hide, status bar, zoom, session bodies) are still
-  only ever exercised at their defaults.
+  reader unusable was invisible to all of them, for as long as the reader has existed. That
+  is an argument about the whole set rather than one member of it, so `page-fit-browser` now
+  repeats its geometry checks for every persisted setting that reaches the page: Word Wrap,
+  wide and regular margins, the sidebar, focus mode and typewriter mode. None of them turned
+  up a second defect. What is still only ever seen at its default is the shell's own state —
+  chrome auto-hide, status bar visibility, zoom, session bodies — which no page suite can
+  reach.
 - **Measure the element that owns the text.** `epub-open-app` asserted that book body text
   renders at the theme size, and read `block.firstElementChild` to do it — a container, which
   inherits the theme size and therefore reported it back no matter what the reader saw. It
@@ -765,8 +770,6 @@ broken behaviour behind a green suite:
   still not safe to run while the machine is in use.
 - **Nothing tests theme rendering.** Contrast ratios and font loading are checked as data
   (`fonts-selftest`, theme JSON validation), never as pixels.
-- **`Dune` and `Nemesis Games` have never been opened by a test.** They are there so a
-  book-specific suspicion has somewhere to go.
 - **The GUI smoke test is opt-in and rarely run.** `RUN_TAB_E2E=1`.
 
 ### Housekeeping the application does
