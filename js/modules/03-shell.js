@@ -1185,6 +1185,30 @@
                     _sidebarEdgeOnly = false;
                 }
             }
+            else if (cmd === "goto_page") {
+                try { if (typeof openGoToPageDialog === 'function') openGoToPageDialog(); } catch (eGp) {}
+            }
+            else if (cmd === "goto_chapter") {
+                try {
+                    if (typeof _currentChapterBi === 'number' && _currentChapterBi >= 0
+                        && typeof goToReadingBlock === 'function') {
+                        if (typeof captureReturnJump === 'function') captureReturnJump();
+                        goToReadingBlock(_currentChapterBi);
+                    }
+                } catch (eCh) {}
+            }
+            else if (cmd === "set_place_marker") {
+                try { if (typeof setPlaceMarker === 'function') setPlaceMarker(); } catch (ePm) {}
+            }
+            else if (cmd === "goto_place_marker") {
+                try { if (typeof gotoPlaceMarker === 'function') gotoPlaceMarker(); } catch (eGm) {}
+            }
+            else if (cmd === "return_jump") {
+                try { if (typeof returnFromJump === 'function') returnFromJump(); } catch (eRj) {}
+            }
+            else if (cmd === "clear_search_history") {
+                try { if (typeof clearSearchHistoryOnly === 'function') clearSearchHistoryOnly(); } catch (eCs) {}
+            }
             else if (cmd === "toggle_search_sidebar") {
                 // Alt+S, the ZenSeek gesture. Closed, or open on another tab, means the
                 // user wants search: reveal it. Only a sidebar already showing Search
@@ -1196,7 +1220,7 @@
                     postSidebarState();
                     switchTab('search');
                     wireSidebarSearch();
-                    // Seed from the selection, the way a search box is expected to.
+                    // Seed from the selection, else restore the last Search query.
                     const input = document.getElementById('sidebarSearchInput');
                     if (input) {
                         try {
@@ -1206,6 +1230,10 @@
                             } else if (state.mode === 'source' && sourceEditor) {
                                 const a = sourceEditor.selectionStart, b = sourceEditor.selectionEnd;
                                 if (b > a) input.value = sourceEditor.value.substring(a, b).slice(0, 200);
+                            }
+                            if (!String(input.value || '').trim()
+                                && typeof _lastSearchQuery === 'string' && _lastSearchQuery) {
+                                input.value = _lastSearchQuery;
                             }
                         } catch (e) {}
                         if (input.value) runFind(input.value, true, { navigate: false });
@@ -1239,7 +1267,14 @@
                 // superseded copies until it compacts, so the host also deletes the store
                 // itself at next launch.
                 try { localStorage.clear(); } catch (e) {}
-                try { if (typeof setSearchHistory === 'function') setSearchHistory([]); } catch (eH) {}
+                try { if (typeof clearSearchHistoryOnly === 'function') clearSearchHistoryOnly(); } catch (eH) {}
+                try {
+                    const mc = document.getElementById('findMatchCase');
+                    const ww = document.getElementById('findWholeWord');
+                    if (mc) mc.checked = false;
+                    if (ww) ww.checked = false;
+                    if (typeof syncSearchOptionButtons === 'function') syncSearchOptionButtons();
+                } catch (eFo) {}
             }
             else if (cmd === "toggle_reveal") {
                 state.revealOnFocus = !state.revealOnFocus;

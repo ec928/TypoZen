@@ -283,6 +283,8 @@ namespace TypoZen
         // UI Controls
         private TextBlock _lblStatus;
         private TextBlock _lblChapter;
+        /// <summary>Model block index for the chapter shown in the status bar (-1 = none).</summary>
+        private int _chapterBlockIndex = -1;
         private TextBlock _lblFilePath;
         private TextBlock _lblWordCount;
         private TextBlock _lblLineCount;
@@ -757,6 +759,14 @@ namespace TypoZen
                 try { if (_webView != null) _webView.Focus(); } catch { }
                 SendMsg("cmd:find");
             });
+            BindClick("mGoToPage", (s, e) =>
+            {
+                try { if (_webView != null) _webView.Focus(); } catch { }
+                SendMsg("cmd:goto_page");
+            });
+            BindClick("mSetPlaceMark", (s, e) => SendMsg("cmd:set_place_marker"));
+            BindClick("mGoPlaceMark", (s, e) => SendMsg("cmd:goto_place_marker"));
+            BindClick("mReturnJump", (s, e) => SendMsg("cmd:return_jump"));
             BindClick("mInsertLink", (s, e) => SendMsg("fmt:link"));
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
             BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
@@ -790,7 +800,35 @@ namespace TypoZen
             BindClick("mStatusBarToggle", (s, e) => SetStatusBarVisible(!_statusBarVisible));
             BindClick("mSessionRestoreContent", (s, e) => SetSessionRestoreContent(!_sessionRestoreContent));
             BindClick("mRecentEnabled", (s, e) => SetRecentFilesEnabled(!_recentFilesEnabled));
+            BindClick("mClearSearchHistory", (s, e) =>
+            {
+                try
+                {
+                    var prefs = LoadHostPrefs();
+                    prefs.SearchHistory = new List<string>();
+                    prefs.LastSearchQuery = "";
+                    WriteHostPrefs(prefs);
+                }
+                catch { }
+                SendMsg("cmd:clear_search_history");
+            });
             BindClick("mClearData", (s, e) => ClearStoredData());
+
+            // Status-bar chapter → jump to chapter start in the page.
+            try
+            {
+                if (_lblChapter == null) _lblChapter = FindElement("lblChapter") as TextBlock;
+                if (_lblChapter != null)
+                {
+                    _lblChapter.MouseLeftButtonUp += (s, e) =>
+                    {
+                        if (_chapterBlockIndex < 0) return;
+                        try { if (_webView != null) _webView.Focus(); } catch { }
+                        SendMsg("cmd:goto_chapter");
+                    };
+                }
+            }
+            catch { }
 
             BindClick("mHelpSyntax", (s, e) => SendMsg("cmd:help_syntax"));
             BindClick("mAbout", (s, e) => WinForms.MessageBox.Show(
@@ -1483,7 +1521,29 @@ namespace TypoZen
                     else SaveFile();
                     e.Handled = true;
                 }
-                else if (e.Key == Key.P) { ExportPdf(); e.Handled = true; }
+                else if (e.Key == Key.P && (Keyboard.Modifiers & ModifierKeys.Shift) != ModifierKeys.Shift)
+                { ExportPdf(); e.Handled = true; }
+                else if (e.Key == Key.G)
+                {
+                    try { if (_webView != null) _webView.Focus(); } catch { }
+                    SendMsg("cmd:goto_page");
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.M && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    SendMsg("cmd:set_place_marker");
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.P && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    SendMsg("cmd:goto_place_marker");
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.J && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    SendMsg("cmd:return_jump");
+                    e.Handled = true;
+                }
                 else if (e.Key == Key.B) { SendMsg("fmt:bold"); e.Handled = true; }
                 else if (e.Key == Key.I) { SendMsg("fmt:italic"); e.Handled = true; }
                 else if (e.Key == Key.K) { SendMsg("fmt:link"); e.Handled = true; }
@@ -2707,7 +2767,10 @@ namespace TypoZen
                 var prefs = LoadHostPrefs();
                 prefs.LastFilePath = "";
                 prefs.LastContent = "";
-                prefs.SearchHistory = new System.Collections.Generic.List<string>();
+                prefs.SearchHistory = new List<string>();
+                prefs.LastSearchQuery = "";
+                prefs.FindMatchCase = false;
+                prefs.FindWholeWord = false;
                 WriteHostPrefs(prefs);
             }
             catch { }
@@ -3839,7 +3902,23 @@ if (_btnColumnToggle != null)
             }
             else if (msg.StartsWith("chapter:"))
             {
-                string title = msg.Length > 8 ? msg.Substring(8) : "";
+                // "chapter:<blockIndex>\t<title>" — index is for click-to-jump; empty title hides.
+                string body = msg.Length > 8 ? msg.Substring(8) : "";
+                int bi = -1;
+                string title = body;
+                int tab = body.IndexOf('\t');
+                if (tab >= 0)
+                {
+                    int.TryParse(body.Substring(0, tab), out bi);
+                    title = body.Substring(tab + 1);
+                }
+                else if (body.Length > 0 && body[0] >= '0' && body[0] <= '9')
+                {
+                    // Tolerate bare index with no title.
+                    int.TryParse(body, out bi);
+                    title = "";
+                }
+                _chapterBlockIndex = bi;
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     try
@@ -3979,8 +4058,13 @@ if (_btnColumnToggle != null)
             public string LastFilePath = "";
             public string LastContent = ""; // always written empty
             /// <summary>Global Search-tab recent queries (most recent first, max 8).</summary>
-            public System.Collections.Generic.List<string> SearchHistory =
-                new System.Collections.Generic.List<string>();
+            public List<string> SearchHistory = new List<string>();
+            /// <summary>Last text left in the Search box (restored on Alt+S).</summary>
+            public string LastSearchQuery = "";
+            public bool FindMatchCase;
+            public bool FindWholeWord;
+            /// <summary>"outline" or "search".</summary>
+            public string SidebarTab = "outline";
         }
 
         private static string JsonEscape(string s)
@@ -4137,6 +4221,11 @@ if (_btnColumnToggle != null)
                 b = ExtractJsonBool(json, "typewriterMode"); if (b.HasValue) p.TypewriterMode = b.Value;
                 var hist = ExtractJsonStringArray(json, "searchHistory");
                 if (hist != null) p.SearchHistory = hist;
+                s = ExtractJsonString(json, "lastSearchQuery"); if (s != null) p.LastSearchQuery = s;
+                s = ExtractJsonString(json, "sidebarTab");
+                if (s == "outline" || s == "search") p.SidebarTab = s;
+                b = ExtractJsonBool(json, "findMatchCase"); if (b.HasValue) p.FindMatchCase = b.Value;
+                b = ExtractJsonBool(json, "findWholeWord"); if (b.HasValue) p.FindWholeWord = b.Value;
             }
             catch { }
             return p;
@@ -4145,6 +4234,7 @@ if (_btnColumnToggle != null)
         private void WriteHostPrefs(HostPrefs p)
         {
             if (p == null) p = new HostPrefs();
+            string tab = (p.SidebarTab == "search") ? "search" : "outline";
             // Never persist document body in settings.json (tab session owns unsaved text).
             string json = "{"
                 + "\"themeIndex\":" + p.ThemeIndex + ","
@@ -4157,6 +4247,10 @@ if (_btnColumnToggle != null)
                 + "\"margin\":\"" + JsonEscape(string.IsNullOrEmpty(p.Margin) ? "narrow" : p.Margin) + "\","
                 + "\"lastFilePath\":\"" + JsonEscape(p.LastFilePath ?? "") + "\","
                 + "\"searchHistory\":" + FormatJsonStringArray(p.SearchHistory) + ","
+                + "\"lastSearchQuery\":\"" + JsonEscape(p.LastSearchQuery ?? "") + "\","
+                + "\"findMatchCase\":" + (p.FindMatchCase ? "true" : "false") + ","
+                + "\"findWholeWord\":" + (p.FindWholeWord ? "true" : "false") + ","
+                + "\"sidebarTab\":\"" + tab + "\","
                 + "\"lastContent\":\"\""
                 + "}";
             string prefsPath = PrefsPath();
@@ -4194,6 +4288,12 @@ if (_btnColumnToggle != null)
                 b = ExtractJsonBool(pageJson, "typewriterMode"); if (b.HasValue) prefs.TypewriterMode = b.Value;
                 var hist = ExtractJsonStringArray(pageJson, "searchHistory");
                 if (hist != null) prefs.SearchHistory = hist;
+                s = ExtractJsonString(pageJson, "lastSearchQuery");
+                if (s != null) prefs.LastSearchQuery = s;
+                s = ExtractJsonString(pageJson, "sidebarTab");
+                if (s == "outline" || s == "search") prefs.SidebarTab = s;
+                b = ExtractJsonBool(pageJson, "findMatchCase"); if (b.HasValue) prefs.FindMatchCase = b.Value;
+                b = ExtractJsonBool(pageJson, "findWholeWord"); if (b.HasValue) prefs.FindWholeWord = b.Value;
                 // lastContent from page is ignored (document text does not belong in settings).
             }
 

@@ -272,6 +272,9 @@
         // reading position. Empty when the document has no headings/TOC.
         let _chapterEntries = [];
         let _lastChapterPosted = null;
+        let _lastChapterBiPosted = null;
+        /** Block index of the chapter currently shown in the status bar (for click-to-jump). */
+        let _currentChapterBi = -1;
 
         function updateOutline() {
             if (!outlineList) return;
@@ -332,6 +335,7 @@
                     // The whole handler was wrapped in a bare catch, so nothing said so.
                     try {
                         const line = modelBlockStartLine(idx);
+                        try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
                         if (DocumentModel && DocumentModel.kind === 'epub') {
                             goToModelBlock(idx);
                             return;
@@ -403,16 +407,22 @@
             if (!(bi >= 0)) bi = 0;
 
             let title = '';
+            let chapterBi = -1;
             const list = _chapterEntries;
             if (list && list.length) {
                 for (let i = 0; i < list.length; i++) {
-                    if ((list[i].bi | 0) <= bi) title = list[i].title || '';
-                    else break;
+                    if ((list[i].bi | 0) <= bi) {
+                        title = list[i].title || '';
+                        chapterBi = list[i].bi | 0;
+                    } else break;
                 }
             }
-            if (title === _lastChapterPosted) return;
+            _currentChapterBi = chapterBi;
+            if (title === _lastChapterPosted && chapterBi === _lastChapterBiPosted) return;
             _lastChapterPosted = title;
-            try { postMsg('chapter:' + title); } catch (eP) {}
+            _lastChapterBiPosted = chapterBi;
+            // Host: "chapter:<blockIndex>\t<title>" so the status label is clickable.
+            try { postMsg('chapter:' + (chapterBi >= 0 ? chapterBi : -1) + '\t' + title); } catch (eP) {}
         }
 
         /**
@@ -451,6 +461,8 @@
             document.querySelectorAll('.tab-pane').forEach(p => {
                 p.classList.toggle('active', p.id === 'tab-' + tab);
             });
+            // Remember Outline vs Search across restarts (global pref, not per tab).
+            try { if (typeof scheduleSavePreferences === 'function') scheduleSavePreferences(); } catch (eSp) {}
         };
 
         function generateExportHtml() {

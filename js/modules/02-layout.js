@@ -187,6 +187,8 @@
 
         window.findJumpTo = function(index) {
             if (!findState.matches.length || index < 0 || index >= findState.matches.length) return;
+            // Leave a breadcrumb so Return from Jump can restore reading position.
+            try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
             findState.index = index;
             if (state.mode === 'source' || findState.kind === 'source') {
                 const m = findState.matches[findState.index];
@@ -559,6 +561,7 @@
                 btn.addEventListener('click', function () {
                     box.checked = !box.checked;
                     syncSearchOptionButtons();
+                    scheduleSavePreferences();
                     // Re-run whatever is in the box now: changing an option with results on
                     // screen and leaving them stale is worse than not offering the option.
                     const input = document.getElementById('sidebarSearchInput');
@@ -569,17 +572,26 @@
                     }
                 });
                 // The find bar can change them too.
-                box.addEventListener('change', syncSearchOptionButtons);
+                box.addEventListener('change', function () {
+                    syncSearchOptionButtons();
+                    scheduleSavePreferences();
+                });
             }
             syncSearchOptionButtons();
         }
 
         // Global recent Search-tab queries (not per tab). Most-recent first, max 8.
-        // Survives restarts via settings.json + localStorage; cleared with Clear Stored Data.
+        // Survives restarts via settings.json + localStorage; cleared with Clear Stored Data
+        // or Privacy → Clear Recent Searches (history only).
         const SEARCH_HISTORY_MAX = 8;
         let _searchHistory = [];
         let _searchHistOpen = false;
         let _searchHistHighlight = -1;
+        // Last text in the Search box (including uncommitted typing), restored on Alt+S.
+        let _lastSearchQuery = '';
+        // Session place-marker and search-return breadcrumb (block indices; not persisted).
+        let _placeMarkerBlock = -1;
+        let _returnJumpBlock = -1;
 
         function normalizeSearchHistory(list) {
             const out = [];
@@ -601,13 +613,98 @@
             try { syncSearchHistoryButton(); } catch (eB) {}
         }
 
+        function removeSearchHistoryItem(q) {
+            q = String(q == null ? '' : q);
+            setSearchHistory(_searchHistory.filter(function (x) { return x !== q; }));
+            scheduleSavePreferences();
+        }
+
+        function clearSearchHistoryOnly() {
+            setSearchHistory([]);
+            _lastSearchQuery = '';
+            try {
+                const input = document.getElementById('sidebarSearchInput');
+                if (input) input.value = '';
+            } catch (eI) {}
+            scheduleSavePreferences();
+        }
+
         /** Record a committed search (Enter / history pick). Live typing does not count. */
         function rememberSearchQuery(q) {
             q = String(q == null ? '' : q).trim();
             if (!q) return;
+            _lastSearchQuery = q;
             const next = [q].concat(_searchHistory.filter(function (x) { return x !== q; }));
             setSearchHistory(next);
             scheduleSavePreferences();
+        }
+
+        function rememberLastSearchText(q) {
+            _lastSearchQuery = String(q == null ? '' : q);
+            scheduleSavePreferences();
+        }
+
+        function currentReadingBlockIndex() {
+            try {
+                if (typeof _readingAnchor === 'number' && _readingAnchor >= 0) return _readingAnchor;
+                if (typeof topLeftModelIndexTwoCol === 'function') {
+                    const t = topLeftModelIndexTwoCol();
+                    if (t >= 0) return t;
+                }
+            } catch (e) {}
+            return 0;
+        }
+
+        /** Jump to a model block using the layout's own navigation path. */
+        function goToReadingBlock(bi) {
+            bi = bi | 0;
+            if (bi < 0) return false;
+            try {
+                if (typeof DocumentModel !== 'undefined' && DocumentModel.blocks
+                    && bi >= DocumentModel.blocks.length) {
+                    bi = Math.max(0, DocumentModel.blocks.length - 1);
+                }
+            } catch (eB) {}
+            try {
+                if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub'
+                    && typeof goToModelBlock === 'function') {
+                    goToModelBlock(bi);
+                } else if (typeof isPaginatedLayout === 'function' && isPaginatedLayout()
+                    && typeof goToPageHoldingBlock === 'function') {
+                    goToPageHoldingBlock(bi);
+                } else if (typeof modelBlockStartLine === 'function'
+                    && typeof restoreStickyDocumentLine === 'function') {
+                    restoreStickyDocumentLine(modelBlockStartLine(bi));
+                } else if (typeof goToModelBlock === 'function') {
+                    goToModelBlock(bi);
+                } else return false;
+                if (typeof _readingAnchor !== 'undefined') _readingAnchor = bi;
+                try { if (typeof postChapterLabel === 'function') postChapterLabel(); } catch (eC) {}
+                return true;
+            } catch (eG) {
+                return false;
+            }
+        }
+
+        function captureReturnJump() {
+            const bi = currentReadingBlockIndex();
+            if (bi >= 0) _returnJumpBlock = bi;
+        }
+
+        function setPlaceMarker() {
+            _placeMarkerBlock = currentReadingBlockIndex();
+        }
+
+        function gotoPlaceMarker() {
+            if (!(_placeMarkerBlock >= 0)) return;
+            goToReadingBlock(_placeMarkerBlock);
+        }
+
+        function returnFromJump() {
+            if (!(_returnJumpBlock >= 0)) return;
+            const bi = _returnJumpBlock;
+            _returnJumpBlock = -1;
+            goToReadingBlock(bi);
         }
 
         function syncSearchHistoryButton() {
@@ -638,6 +735,8 @@
             }
             for (let i = 0; i < _searchHistory.length; i++) {
                 const q = _searchHistory[i];
+                const row = document.createElement('div');
+                row.className = 'sidebar-search-hist-row';
                 const item = document.createElement('button');
                 item.type = 'button';
                 item.className = 'sidebar-search-hist-item';
@@ -650,8 +749,34 @@
                     e.preventDefault();
                     pickSearchHistoryItem(q);
                 });
-                menu.appendChild(item);
+                const rm = document.createElement('button');
+                rm.type = 'button';
+                rm.className = 'sidebar-search-hist-remove';
+                rm.title = 'Remove from recent searches';
+                rm.setAttribute('aria-label', 'Remove ' + q);
+                rm.textContent = '\u00D7';
+                rm.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeSearchHistoryItem(q);
+                    if (_searchHistory.length) openSearchHistoryMenu();
+                    else closeSearchHistoryMenu();
+                });
+                row.appendChild(item);
+                row.appendChild(rm);
+                menu.appendChild(row);
             }
+            const clearRow = document.createElement('button');
+            clearRow.type = 'button';
+            clearRow.className = 'sidebar-search-hist-clear';
+            clearRow.textContent = 'Clear recent searches';
+            clearRow.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                clearSearchHistoryOnly();
+                closeSearchHistoryMenu();
+            });
+            menu.appendChild(clearRow);
         }
 
         function openSearchHistoryMenu() {
@@ -677,6 +802,7 @@
             input.value = q;
             rememberSearchQuery(q);
             if (_sidebarSearchDebounce) { clearTimeout(_sidebarSearchDebounce); _sidebarSearchDebounce = null; }
+            try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
             runFind(q, false, { navigate: true });
             updateSidebarSearchCount();
             focusSearchResults();
@@ -727,6 +853,7 @@
                 if (_sidebarSearchDebounce) clearTimeout(_sidebarSearchDebounce);
                 _sidebarSearchDebounce = setTimeout(() => {
                     _sidebarSearchDebounce = null;
+                    rememberLastSearchText(input.value);
                     runFind(input.value, false, { navigate: false });
                     updateSidebarSearchCount();
                 }, SIDEBAR_SEARCH_DEBOUNCE_MS);
@@ -766,6 +893,7 @@
                     // Run synchronously so Enter acts on what is on screen, then jump to
                     // the first match and hand the navigation keys to the results.
                     rememberSearchQuery(input.value);
+                    try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
                     runFind(input.value, false, { navigate: true });
                     updateSidebarSearchCount();
                     focusSearchResults();
@@ -1013,6 +1141,7 @@
             if (!isFinite(leaf) || leaf < 1) return;
             const clamped = Math.min(leaf, d.totalLeaves);
             const spread0 = twoCol ? Math.floor((clamped - 1) / 2) : (clamped - 1);
+            try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
             PageMap.goto(spread0);
             try {
                 const t = topLeftModelIndexTwoCol();
@@ -3199,6 +3328,34 @@
                     openFindBar(null, true);
                     return;
                 }
+                // Ctrl+G → go-to-page (paginated). F3 remains find next.
+                if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey
+                    && (e.key === 'g' || e.key === 'G')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openGoToPageDialog();
+                    return;
+                }
+                if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+                    if (e.key === 'M' || e.key === 'm') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setPlaceMarker();
+                        return;
+                    }
+                    if (e.key === 'P' || e.key === 'p') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        gotoPlaceMarker();
+                        return;
+                    }
+                    if (e.key === 'J' || e.key === 'j') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        returnFromJump();
+                        return;
+                    }
+                }
                 // Function keys when WebView has focus (host may not see them)
                 if (!e.ctrlKey && !e.metaKey && !e.altKey) {
                     if (e.key === 'F7') { e.preventDefault(); handleCommand('toggle_reveal'); return; }
@@ -3218,11 +3375,6 @@
                     e.preventDefault();
                     e.stopPropagation();
                     closeFindBar();
-                } else if ((e.ctrlKey || e.metaKey) && (e.key === 'g' || e.key === 'G')) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    findStep(e.shiftKey ? -1 : 1);
-                    focusFindInput(false);
                 }
             }, true);
         }
@@ -3257,6 +3409,18 @@
                 margin: state.margin || 'narrow',
                 // Global recent Search queries (max 8). Host allowlists this into settings.json.
                 searchHistory: _searchHistory.slice(0, SEARCH_HISTORY_MAX),
+                lastSearchQuery: _lastSearchQuery || '',
+                findMatchCase: !!(document.getElementById('findMatchCase')
+                    && document.getElementById('findMatchCase').checked),
+                findWholeWord: !!(document.getElementById('findWholeWord')
+                    && document.getElementById('findWholeWord').checked),
+                sidebarTab: (function () {
+                    try {
+                        const t = document.querySelector('.sidebar-tab.active');
+                        const id = t && t.getAttribute('data-tab');
+                        return (id === 'search') ? 'search' : 'outline';
+                    } catch (e) { return 'outline'; }
+                })(),
                 // A full copy of the open document. Only sent when the host says content
                 // persistence is on — otherwise it would land in settings.json AND in
                 // localStorage, which is a duplicate of your document in two more places.
@@ -3327,6 +3491,23 @@
                 setMargin(savedPrefs.margin || 'narrow');
                 if (Array.isArray(savedPrefs.searchHistory)) {
                     setSearchHistory(savedPrefs.searchHistory);
+                }
+                if (typeof savedPrefs.lastSearchQuery === 'string') {
+                    _lastSearchQuery = savedPrefs.lastSearchQuery;
+                    try {
+                        const si = document.getElementById('sidebarSearchInput');
+                        if (si && !si.value) si.value = _lastSearchQuery;
+                    } catch (eSq) {}
+                }
+                try {
+                    const mc = document.getElementById('findMatchCase');
+                    const ww = document.getElementById('findWholeWord');
+                    if (mc) mc.checked = !!savedPrefs.findMatchCase;
+                    if (ww) ww.checked = !!savedPrefs.findWholeWord;
+                    syncSearchOptionButtons();
+                } catch (eFo) {}
+                if (savedPrefs.sidebarTab === 'search' || savedPrefs.sidebarTab === 'outline') {
+                    try { if (typeof switchTab === 'function') switchTab(savedPrefs.sidebarTab); } catch (eSt) {}
                 }
 
                 if (savedPrefs.mode === 'source') {

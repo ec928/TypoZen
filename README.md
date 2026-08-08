@@ -75,10 +75,15 @@ In a paginated layout the foot of the page carries page numbers and a **scrubber
 the whole book**. It addresses pages rather than scroll offset, because the editor's own
 scrollbar can only span what is currently laid out — about 28 pages of a 1400-page novel.
 
-- **Click a page number** to open a go-to-page prompt (leaf page number; in two-column mode
-  that maps to the correct spread under the hood).
+- **Click a page number** or press **`Ctrl+G`** to open a go-to-page prompt (leaf page number;
+  in two-column mode that maps to the correct spread under the hood).
 - The status bar shows the **current chapter** from the book TOC or document outline, updated
-  as you read.
+  as you read. **Click the chapter label** to jump to that chapter's start.
+- **Place marker** (`Ctrl+Shift+M` / Edit → Set Place Marker) remembers a spot in the open
+  document; **Go to Place Marker** (`Ctrl+Shift+P`) returns there. Separately, jumping via
+  search, outline, go-to-page, or chapter click leaves a **return breadcrumb** — **Return from
+  Jump** (`Ctrl+Shift+J`) goes back to where you were reading. Markers are session-local (not
+  written to disk).
 
 ### Themes & typography
 **20 handcrafted themes** in `TypoZen_Themes.json` — modern dark/light, reading and serif faces, Gruvbox and warm palettes. The Themes menu lays them out in three columns built at runtime from the theme data itself: **Dark** (11), **Light** (5) and **Mono** (4 — Dracula, Nord, Tokyo Night, Monokai, the ones whose face is monospace), with **Customize Theme…** under the third.
@@ -103,8 +108,8 @@ The four bundled by default (Inter, Source Sans 3, Merriweather, Literata) are S
 
 ### Writing tools
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
-- Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree
-- **Recent searches** — the Search tab is a combo box: the last **8** committed queries (Enter, or a pick from the list) are kept **globally** (not per tab), restored across restarts via `settings.json`, and cleared with File → Privacy → Clear Stored Data. Click the chevron or press ↓ on an empty box for the dropdown (ZenSeek-style)
+- Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree. Both options (and which sidebar tab you last used — Outline vs Search) are **remembered** across restarts
+- **Recent searches** — the Search tab is a combo box: the last **8** committed queries (Enter, or a pick from the list) are kept **globally** (not per tab) in `settings.json`. Click the chevron or press ↓ on an empty box for the dropdown. Remove one with **×**, clear all from the menu footer or **File → Privacy → Clear Recent Searches**. **Alt+S** also restores the last text left in the Search box (selection still wins when you have one). Full **Clear Stored Data** still wipes history too
 - While reading, **Up and Down** step to the previous and next match with the sidebar shut and your eyes on the text — the same keys the results list has always used. Reader only, and only when a search has results, so an arrow still scrolls a book nobody has searched. **F3** / **Shift+F3** also step next/prev
 - Table insert (`Ctrl+T`)
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
@@ -155,9 +160,10 @@ Preferences live under `%LocalAppData%\TypoZen_Cache\`.
 |--------|---------|---------|
 | **Remember unsaved documents between sessions** | **Off** | When on, dirty/untitled tab bodies are stored for restore. When off, nothing document-like is kept in the cache beyond what you explicitly save. |
 | **Keep recent files list** | On | File → Open Recent |
-| **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents. Includes recent Search queries, open tabs, recent files, and web storage (on next launch). |
+| **Clear Recent Searches** | — | Drops the last-8 Search history and the restored Search-box text only |
+| **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents. Includes recent Search queries, open tabs, recent files, match-case/whole-word, and web storage (on next launch). |
 
-Also restored: window size and position, theme, margins, mode, F7/F8/F9, zoom, scrubber/status-bar visibility, auto-hide, open tab paths (bodies only if the option above is on), and the last eight Search queries.
+Also restored: window size and position, theme, margins, mode, F7/F8/F9, zoom, scrubber/status-bar visibility, auto-hide, open tab paths (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
 
 ### Network behaviour
 
@@ -344,9 +350,13 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Toggle Source / Live Preview | `Ctrl+/` |
 | Toggle Sidebar | `Ctrl+\` |
 | Find | `Ctrl+F` |
+| Go to page (paginated) | `Ctrl+G` |
 | Search sidebar | `Alt+S` |
 | Previous / next search result (Reader) | `Up` / `Down`, or `F3` / `Shift+F3` |
 | Find & Replace | `Ctrl+H` |
+| Set place marker | `Ctrl+Shift+M` |
+| Go to place marker | `Ctrl+Shift+P` |
+| Return from jump (search/outline/goto) | `Ctrl+Shift+J` |
 | Insert table | `Ctrl+T` |
 | Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
 | Strikethrough | `Ctrl+Shift+X` |

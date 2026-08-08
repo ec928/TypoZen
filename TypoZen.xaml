@@ -437,6 +437,7 @@
                                 <MenuItem x:Name="mSessionRestoreContent" Header="Remember _unsaved documents between sessions" IsCheckable="True" IsChecked="False"/>
                                 <MenuItem x:Name="mRecentEnabled" Header="Keep _recent files list" IsCheckable="True" IsChecked="True"/>
                                 <Separator/>
+                                <MenuItem x:Name="mClearSearchHistory" Header="Clear Recent _Searches"/>
                                 <MenuItem x:Name="mClearData" Header="_Clear Stored Data..."/>
                             </MenuItem>
                             <Separator/>
@@ -451,6 +452,11 @@
                             <MenuItem x:Name="mPaste" Header="_Paste" InputGestureText="Ctrl+V"/>
                             <Separator/>
                             <MenuItem x:Name="mFind" Header="_Find &amp; Replace..." InputGestureText="Ctrl+F"/>
+                            <MenuItem x:Name="mGoToPage" Header="_Go to Page..." InputGestureText="Ctrl+G"/>
+                            <Separator/>
+                            <MenuItem x:Name="mSetPlaceMark" Header="Set Place _Marker" InputGestureText="Ctrl+Shift+M"/>
+                            <MenuItem x:Name="mGoPlaceMark" Header="Go to Place Marker" InputGestureText="Ctrl+Shift+P"/>
+                            <MenuItem x:Name="mReturnJump" Header="_Return from Jump" InputGestureText="Ctrl+Shift+J"/>
                             <Separator/>
                             <MenuItem x:Name="mInsertLink" Header="Insert _Link" InputGestureText="Ctrl+K"/>
                             <MenuItem x:Name="mInsertTable" Header="Insert _Table" InputGestureText="Ctrl+T"/>
@@ -652,7 +658,8 @@
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.72">
                     <TextBlock x:Name="lblChapter" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
                                TextTrimming="CharacterEllipsis" MaxWidth="220"
-                               ToolTip="Current chapter (from the book TOC or document outline)"/>
+                               Cursor="Hand" VerticalAlignment="Center"
+                               ToolTip="Current chapter — click to jump to its start"/>
                     <TextBlock x:Name="lblWordCount" Text="0 words" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Word count (selection / document when text is selected)"/>
                     <TextBlock x:Name="lblLineCount" Text="Ln 1/1" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Current line / total lines"/>
                     <TextBlock x:Name="lblCharCount" Text="0 chars" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Character count (selection / document when text is selected)"/>
