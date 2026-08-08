@@ -1183,9 +1183,28 @@
                 const maxL = Math.max(0, this.localCount() - 1);
                 const i = Math.max(0, Math.min(localIndex | 0, maxL));
                 const max = this.maxScroll();
-                // Integer math only — never fractional page positions.
+                // Integer math only — never fractional page positions, except the last one.
+                //
+                // The final page of a range is usually partial: content ends part way into
+                // it, so its start offset sits just past the end of the scroll range.
+                // Measured on Xeelee -- page 39 of 40 begins at 70200 while the furthest
+                // scrollLeft can reach is 70181, nineteen pixels short.
+                //
+                // This used to snap back to the previous whole boundary, which had two
+                // costs. It hid the tail of every range -- close to a page of text per
+                // chunk, unreachable by paging. And it stranded the reader: PageMap.step
+                // sees a page it believes is in range, seeks to it, is silently returned to
+                // where it started, and reports success -- so it never tries the next range
+                // and every further press does nothing. That is the "cannot go beyond this
+                // page unless I force the scrubber" report, and the scrubber escapes only
+                // because it seeks into a different range and remounts.
+                //
+                // Ending at maxScroll shows the tail flush to the right edge, which is what
+                // a short last page should look like, and it keeps localIndex() in step:
+                // 70181 rounds to page 39, so the map and the view agree that the range is
+                // exhausted and the next turn crosses into the next one.
                 let target = i * s;
-                if (target > max) target = max - (max % s); // last reachable boundary
+                if (target > max) target = max;
                 if (target < 0) target = 0;
 
                 if (typeof markProgrammaticScroll === 'function') markProgrammaticScroll(400);
@@ -1890,9 +1909,19 @@
             stepLocal: function (dir) {
                 if (!isPaginatedLayout() || !editor) return false;
                 PageChunks.ensure(DocumentModel.blocks.length);
-                const target = this.localCurrent() + dir;
+                const from = this.localCurrent();
+                const target = from + dir;
                 if (target >= 0 && target < this.localCount()) {
-                    return this.gotoLocal(target);
+                    // A turn that lands back where it started is not a turn.
+                    //
+                    // The page count and the seek derive from different numbers -- the
+                    // content extent and the scrollable range -- and any disagreement
+                    // between them used to trap the reader here forever: the target looked
+                    // in range, the seek clamped back, success was reported, and the branch
+                    // that crosses into the next range below was never reached. The clamp
+                    // that caused it is fixed, but this is the safety net: whatever the
+                    // geometry decides, paging forward cannot stand still.
+                    if (this.gotoLocal(target) && this.localCurrent() !== from) return true;
                 }
                 const c = PageChunks.mounted + dir;
                 if (c < 0 || c >= PageChunks.counts.length) return false;

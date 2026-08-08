@@ -86,6 +86,75 @@ try {
     assert(modelNow === base.blocks,
         'the model still holds every block (' + modelNow + ' vs ' + base.blocks + ')');
 
+    console.log('\n=== paging forward never stands still ===');
+    // Reported as "I cannot go beyond this page unless I force the scrubber", and it took
+    // several attempts to find because it needs the reader to arrive by turning pages.
+    //
+    // The page count comes from the content extent and the seek comes from the scrollable
+    // range, and those differ by up to a page whenever the last page of a range is partial.
+    // The map then offers a page the seek cannot reach: the target looked in range, so the
+    // branch that crosses into the next range was never tried; the seek clamped back to
+    // where it started and reported success. Every further press did nothing, forever.
+    // Measured on Xeelee: page 39 of 40 began at 70200 with the furthest scroll at 70181.
+    const walk = await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.42));
+        await sleep(2500);
+        let stalls = 0, first = null, crossed = 0, atEnd = false, hiccups = 0;
+        let chunk = PageChunks.mounted;
+        for (let i = 0; i < 120; i++) {
+            // A reader's cadence, not a machine's. The key handler throttles repeats to
+            // 150ms, so stepping faster than that measures a race the app never sees --
+            // a turn issued before a freshly mounted range has settled computes against
+            // stale geometry and does nothing. That is worth knowing and is not this
+            // check's subject, which is whether a settled reader can be stranded.
+            await sleep(220);
+            const before = PageMap.current();
+            PageMap.step(1);
+            // Settle before judging. A turn that crosses a range has to mount 800 blocks,
+            // so a fixed short wait reports a stall for what is only slowness -- and a
+            // flaky assertion about being stranded is worse than none.
+            let moved = false;
+            for (let t = 0; t < 12 && !moved; t++) {
+                await sleep(60);
+                moved = PageMap.current() !== before;
+            }
+            if (!moved) {
+                atEnd = PageMap.current() >= PageMap.count() - 1;
+                if (atEnd) break;   // end of the document; refusing is correct
+                // One lost turn is a hiccup, not being stranded. Mounting a range lays out
+                // 800 blocks, and a turn issued before that settles is computed against
+                // stale geometry and does nothing -- reproducibly, on the turn after a
+                // crossing. Pressing again works. What the reader reported, and what this
+                // asserts, is the other thing: a page you cannot get past at all.
+                hiccups++;
+                await sleep(900);
+                const retryFrom = PageMap.current();
+                PageMap.step(1);
+                for (let t = 0; t < 12 && !moved; t++) {
+                    await sleep(80);
+                    moved = PageMap.current() !== retryFrom;
+                }
+                if (!moved) {
+                    stalls++;
+                    first = { turn: i, page: retryFrom, of: PageMap.count(),
+                        local: PageMap.localCurrent(), localCount: PageMap.localCount() };
+                    break;
+                }
+            }
+            if (PageChunks.mounted !== chunk) { crossed++; chunk = PageChunks.mounted; }
+        }
+        return { stalls, first, crossed, atEnd, hiccups };
+    });
+    info('120 turns, ' + walk.crossed + ' range crossings, ' + walk.hiccups +
+         ' turns lost to a mount, ' + walk.stalls + ' stalls' +
+         (walk.atEnd ? ', stopped at the end of the document' : '') +
+         (walk.first ? ' — first at ' + JSON.stringify(walk.first) : ''));
+    assert(walk.stalls === 0,
+        'a page turn always turns a page (' + walk.stalls + ' stalled)');
+    assert(walk.crossed > 0,
+        'and the walk crossed at least one range boundary (' + walk.crossed + ')');
+
     console.log('\n=== turning pages crosses ranges ===');
     const turned = await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));

@@ -91,6 +91,7 @@ function fitState() {
         paneW: paneW,
         stride: (typeof PageGeometry !== 'undefined') ? PageGeometry.stride() : PageMap.width(),
         scrollLeft: Math.round((ed.scrollLeft || 0) * 100) / 100,
+        maxScroll: Math.round(PageGeometry.maxScroll()),
         overflowRight: Math.round((worstRight - paneW) * 100) / 100,
         overflowText: worstRightText,
         inkOverflow: Math.round((worstInk - paneW) * 100) / 100,
@@ -151,9 +152,31 @@ async function checkLayout(page, label, turns) {
         label + ': a column still starts at the left edge after ' + turns + ' turns (' +
         s.leftmost + 'px in)');
 
-    // And the scroll offset is a whole number of strides, which is the same statement
-    // made against the model rather than against the pixels.
-    const rem = Math.min(s.scrollLeft % s.stride, s.stride - (s.scrollLeft % s.stride));
+    // And the scroll offset is a whole number of strides -- the same statement as above,
+    // made against the model rather than the pixels.
+    //
+    // Except on the last page, which is the point of the exception rather than a hole in
+    // the check. The final page of a range is partial: content ends part way into it, so
+    // its start offset sits just past the furthest scrollLeft can reach. Snapping back to
+    // the previous whole boundary is what this used to require, and it hid the tail of
+    // every range and stranded the reader -- the map offered a page the seek could not
+    // reach, so paging forward clamped onto itself and never crossed into the next range.
+    // The last page now ends at maxScroll, flush right, as a short page should.
+    // If the walk ran to the end, step back one page and measure there. Skipping the check
+    // when we happen to be on the last page would make it vacuous -- and since every one of
+    // these walks reaches the end, it would be vacuous in every case, which is precisely the
+    // hollow pass this file already had to have fixed once.
+    let offsetState = s;
+    if (s.scrollLeft >= s.maxScroll - 1) {
+        info(label + ': ran to the end, resting at ' + s.scrollLeft + ' of ' + s.maxScroll +
+             '; measuring the offset one page back');
+        await page.evaluate(() => PageMap.step(-1));
+        await settled(page);
+        offsetState = await page.evaluate(fitState);
+    }
+    const rem = Math.min(offsetState.scrollLeft % offsetState.stride,
+        offsetState.stride - (offsetState.scrollLeft % offsetState.stride));
+    s = offsetState;
     assert(rem <= 1,
         label + ': the scroll offset is a whole number of pages (' +
         s.scrollLeft + ' with stride ' + s.stride + ', ' + rem.toFixed(2) + ' out)');
