@@ -804,6 +804,24 @@
                     }
                 }
 
+                let activeCaret = null;
+                try {
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount > 0 && sel.isCollapsed) {
+                        const range = sel.getRangeAt(0);
+                        const block = getAncestorBlock(range.startContainer);
+                        if (block) {
+                            const mi = DocumentModel.modelIndexOfEl(block);
+                            if (mi >= 0) {
+                                const pre = document.createRange();
+                                pre.selectNodeContents(block);
+                                pre.setEnd(range.startContainer, range.startOffset);
+                                activeCaret = { mi: mi, offset: pre.toString().length };
+                            }
+                        }
+                    }
+                } catch (e) {}
+
                 paintWindow(start, end);
                 measureMountedHeights();
                 // Re-pin: measured heights change prefix(anchor) — keep the same content on screen
@@ -814,6 +832,13 @@
                     paintWindow(win.start, win.end);
                     measureMountedHeights();
                     pinScrollToAnchor();
+                }
+
+                if (activeCaret) {
+                    try {
+                        const newBlock = elementForModelIndex(activeCaret.mi);
+                        if (newBlock) setCaretAtOffset(newBlock, activeCaret.offset);
+                    } catch (e) {}
                 }
 
                 try { repaintFindHighlights(); } catch (eF) {}
