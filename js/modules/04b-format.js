@@ -1118,8 +1118,45 @@
         }
 
         /**
+         * Document line at the top of the Preview/Reader viewport (what the user is looking
+         * at). Source already has hardLineFromSourceScrollTop; without this, scrolling Preview
+         * without clicking left sticky at an old caret and mode switch jumped away.
+         */
+        function hardLineFromPreviewViewport() {
+            try {
+                if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks
+                    || !DocumentModel.blocks.length) return 1;
+                let mi = -1;
+                if (typeof isPaginatedLayout === 'function' && isPaginatedLayout()
+                    && typeof topLeftModelIndexTwoCol === 'function') {
+                    mi = topLeftModelIndexTwoCol();
+                }
+                if (!(mi >= 0) && typeof modelIndexAtViewportCenter === 'function') {
+                    mi = modelIndexAtViewportCenter();
+                }
+                if (!(mi >= 0) && typeof _readingAnchor === 'number' && _readingAnchor >= 0) {
+                    mi = _readingAnchor;
+                }
+                if (!(mi >= 0)) return Math.max(1, _stickyLineCache | 0);
+                return modelBlockStartLine(mi);
+            } catch (e) {
+                return Math.max(1, _stickyLineCache | 0, 1);
+            }
+        }
+
+        /** Keep sticky cache aligned with the visible page while scrolling Preview. */
+        function rememberStickyFromPreviewScroll() {
+            if (state.mode === 'source') return;
+            try {
+                const line = hardLineFromPreviewViewport();
+                if (line >= 1) rememberStickyLine(line);
+            } catch (e) {}
+        }
+
+        /**
          * Line to restore on mode switch. Prefer frozen sticky cache when live caret
          * looks like focus-steal poison (selectionStart 0 → line 1).
+         * Preview also consults the viewport (same idea as Source's scrollTop map).
          */
         function captureStickyDocumentLine() {
             try {
@@ -1137,23 +1174,31 @@
                     // Focus already gone (toolbar/mode button) → frozen cache
                     return frozen;
                 }
-                // Preview: if selection still in editor, live; else cache
+                // Preview: prefer what is on screen over a stale caret after scroll.
+                let viewLine = 1;
+                try { viewLine = hardLineFromPreviewViewport(); } catch (eV) { viewLine = frozen; }
                 const sel = window.getSelection();
                 const inEd = sel && sel.anchorNode && editor && editor.contains(sel.anchorNode);
                 if (inEd || (document.activeElement === editor
                     || (editor && editor.contains(document.activeElement)))) {
                     const live = captureStickyDocumentLineLive();
                     // Chrome-destroyed selection often reports block 0 / line 1
-                    if ((live | 0) <= 1 && frozen > 1 && !inEd) return frozen;
-                    if ((live | 0) <= 1 && frozen > 1) {
-                        // focused but live collapsed — keep frozen for mode switch safety
-                        // (user truly on L1 already has frozen === 1)
-                        return frozen;
+                    if ((live | 0) <= 1 && frozen > 1 && !inEd) {
+                        return Math.max(frozen, viewLine | 0);
                     }
-                    rememberStickyLine(live);
-                    return live;
+                    if ((live | 0) <= 1 && frozen > 1) {
+                        return Math.max(frozen, viewLine | 0);
+                    }
+                    // Viewport wins when it disagrees with caret (scrolled without click).
+                    const chosen = (Math.abs((viewLine | 0) - (live | 0)) > 12)
+                        ? (viewLine | 0) : (live | 0);
+                    rememberStickyLine(chosen);
+                    return chosen;
                 }
-                return frozen;
+                // Mode button stole focus: viewport + frozen
+                const chosen = Math.max(frozen, viewLine | 0);
+                rememberStickyLine(chosen);
+                return chosen;
             } catch (e) {
                 return Math.max(1, _stickyLineCache | 0, _lastCaretLine | 0);
             }
@@ -1575,6 +1620,11 @@
                     cacheSelectedBlocks();
                     cacheInlineSelection();
                 }
+                // Keep multi-block Delete freeze current while the range is live (Shift+scroll)
+                try {
+                    if (typeof snapshotMultiBlockSelectionFromLive === 'function')
+                        snapshotMultiBlockSelectionFromLive();
+                } catch (eMb) {}
                 updateActiveBlock();
                 rememberStickyFromPreviewIfFocused();
                 updateStats(false);
@@ -1592,6 +1642,12 @@
             try { refreshLastGoodDocRaws(); } catch (e) {}
             _formatSelectionFrozen = false;
             _selectedFormatRaws = {};
+        }, true);
+        editor.addEventListener('mouseup', function () {
+            try {
+                if (typeof snapshotMultiBlockSelectionFromLive === 'function')
+                    snapshotMultiBlockSelectionFromLive();
+            } catch (eMu) {}
         }, true);
         // Keyboard multi-select (Shift+Arrow): snapshot while still collapsed / first extend
         editor.addEventListener('keydown', function (e) {

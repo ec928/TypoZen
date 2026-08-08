@@ -2176,31 +2176,42 @@
             // was left to restructure the blocks.
             editor.addEventListener('cut', function onEditorCut(e) {
                 if (state.mode === 'source') return;
+                try {
+                    if (typeof snapshotMultiBlockSelectionFromLive === 'function')
+                        snapshotMultiBlockSelectionFromLive();
+                } catch (eSnap) {}
                 const sel = window.getSelection();
-                if (!sel || sel.isCollapsed || !sel.rangeCount) return;
-                const range = sel.getRangeAt(0);
-                const startBlock = getAncestorBlock(range.startContainer);
-                const endBlock = getAncestorBlock(range.endContainer);
-                if (!startBlock || !endBlock || startBlock === endBlock) return;  // one block: browser is fine
+                let multi = false;
+                if (sel && !sel.isCollapsed && sel.rangeCount
+                    && sel.anchorNode && editor.contains(sel.anchorNode)) {
+                    const range = sel.getRangeAt(0);
+                    const startBlock = getAncestorBlock(range.startContainer);
+                    const endBlock = getAncestorBlock(range.endContainer);
+                    if (startBlock && endBlock && startBlock !== endBlock) multi = true;
+                }
+                if (!multi && typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze
+                    && _mbSelFreeze.toIdx > _mbSelFreeze.fromIdx) multi = true;
+                if (!multi) return;  // one block: browser is fine
 
                 try {
                     if (e.clipboardData) e.clipboardData.setData('text/plain', selectionToPlainText());
                 } catch (err) {}
                 e.preventDefault();
 
-                HistoryManager.beginEdit();
+                // History is recorded inside applyModelMultiBlockDelete (via removeCrossBlockSelection).
                 const cutAt = removeCrossBlockSelection();
                 if (cutAt) {
                     window.isProgrammaticFocus = true;
-                    focusBlock(cutAt.block);
-                    setTimeout(function () {
-                        try { setCaretAtOffset(cutAt.block, cutAt.offset); } catch (err2) {}
-                        ensureCaretVisible(cutAt.block);
-                    }, 0);
+                    if (cutAt.block) {
+                        focusBlock(cutAt.block);
+                        setTimeout(function () {
+                            try { setCaretAtOffset(cutAt.block, cutAt.offset); } catch (err2) {}
+                            try { ensureCaretVisible(cutAt.block); } catch (err3) {}
+                        }, 0);
+                    }
                 }
                 updateStats();
                 updateOutline();
-                HistoryManager.commitEdit();
             });
 
             // Dragging text WITHIN the document moves DOM nodes between blocks with no

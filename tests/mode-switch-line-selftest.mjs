@@ -261,6 +261,14 @@ console.log('=== source viewport sticky (scroll without caret) ===');
     assert(mainScript.includes('hardLineFromSourceScrollTop'), 'hardLineFromSourceScrollTop exists');
     assert(mainScript.includes('captureSourceStickyLineForModeSwitch'),
         'mode switch uses source viewport capture');
+    assert(mainScript.includes('function hardLineFromPreviewViewport'),
+        'hardLineFromPreviewViewport exists (Preview scroll sticky)');
+    assert(mainScript.includes('rememberStickyFromPreviewScroll'),
+        'Preview scroll updates sticky cache');
+    assert(mainScript.includes('snapshotMultiBlockSelectionFromLive'),
+        'multi-block Delete freezes model selection for Shift+scroll');
+    assert(mainScript.includes('applyModelMultiBlockDelete'),
+        'multi-block Delete mutates full DocumentModel not only mounted DOM');
     assert(mainScript.includes('anchorIndex'), 'virt mount accepts locked anchor');
 }
 

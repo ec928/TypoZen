@@ -333,9 +333,25 @@
             // markProgrammaticScroll window.
             if (mainContainer) mainContainer.addEventListener('scroll', noteUserMovement, { passive: true });
             if (mainContainer) mainContainer.addEventListener('scroll', reportBookPosition, { passive: true });
+            // Preview scroll must update sticky from the viewport, or Preview→Source
+            // restores an old caret far from what was on screen.
+            if (mainContainer) {
+                mainContainer.addEventListener('scroll', function () {
+                    try {
+                        if (typeof rememberStickyFromPreviewScroll === 'function')
+                            rememberStickyFromPreviewScroll();
+                    } catch (eSt) {}
+                }, { passive: true });
+            }
             if (editor) {
                 editor.addEventListener('scroll', noteUserMovement, { passive: true });
                 editor.addEventListener('scroll', reportBookPosition, { passive: true });
+                editor.addEventListener('scroll', function () {
+                    try {
+                        if (typeof rememberStickyFromPreviewScroll === 'function')
+                            rememberStickyFromPreviewScroll();
+                    } catch (eSt2) {}
+                }, { passive: true });
 
                 // Keep scrollLeft on a page boundary. PageGeometry owns the stride.
                 let _snapTimer = null;
@@ -1077,7 +1093,25 @@
                     try { expandAllFragmentedBlocks(); } catch (e0) {}
                     // Phase 1: flush active DOM → data-raw, then serialize (I3).
                     try { flushActiveBlockToRaw(); } catch (e) {}
+                    // Soft-break expand changes hard-line numbering. Re-capture sticky
+                    // against the structure Source will actually show — using the pre-expand
+                    // line was a common jump (e.g. mid-doc Preview → top of Source).
+                    try {
+                        const afterExpand = (typeof captureStickyDocumentLineLive === 'function')
+                            ? (captureStickyDocumentLineLive() | 0) : 0;
+                        const viewAfter = (typeof hardLineFromPreviewViewport === 'function')
+                            ? (hardLineFromPreviewViewport() | 0) : 0;
+                        stickyLine = Math.max(stickyLine | 0, afterExpand, viewAfter,
+                            _stickyLineCache | 0, _lastCaretLine | 0, 1);
+                        rememberStickyLine(stickyLine);
+                    } catch (eRecap) {}
                     const md = getMarkdownContent(false, { flushActive: false });
+                    try {
+                        const total = (typeof countHardLines === 'function')
+                            ? countHardLines(md) : String(md || '').split('\n').length;
+                        if (stickyLine > total) stickyLine = Math.max(1, total);
+                        rememberStickyLine(stickyLine);
+                    } catch (eClamp) {}
                     sourceEditor.value = md;
                     // Keep undo stack: mode switch must not wipe history. Align stack top
                     // with the flushed document so the next edit/undo is coherent.
@@ -1099,6 +1133,8 @@
                     applyEditorChromeForMode();
                     resizeSourceEditor();
                     postMsg("mode_changed:source");
+                    // Restore immediately (not only next frame) so status/scroll match Source.
+                    try { restoreStickyDocumentLine(stickyLine); } catch (eS0) {}
                     requestAnimationFrame(function () {
                         try { resizeSourceEditor(); } catch (eR) {}
                         try { restoreStickyDocumentLine(stickyLine); } catch (eS) {}

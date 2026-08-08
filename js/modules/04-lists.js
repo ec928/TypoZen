@@ -167,60 +167,213 @@
         }
 
         /**
+         * Frozen multi-block selection for Delete after Shift+scroll+click.
+         * Under virtualization the live selection often loses the start block once it
+         * scrolls off; we keep model indices + head/tail text while the gesture is live.
+         */
+        let _mbSelFreeze = null; // { fromIdx, toIdx, prefix, suffix }
+
+        function clearMultiBlockSelFreeze() { _mbSelFreeze = null; }
+
+        function snapshotMultiBlockSelectionFromLive() {
+            if (state.mode === 'source' || !editor) return;
+            try {
+                const sel = window.getSelection();
+                if (!sel || sel.isCollapsed || !sel.rangeCount) {
+                    // Keep last freeze briefly so Delete after focus-steal still works
+                    return;
+                }
+                if (!sel.anchorNode || !editor.contains(sel.anchorNode)) return;
+                const range = sel.getRangeAt(0);
+                const startBlock = getAncestorBlock(range.startContainer);
+                const endBlock = getAncestorBlock(range.endContainer);
+                if (!startBlock || !endBlock) return;
+                let fromIdx = formatBlockIndex(startBlock);
+                let toIdx = formatBlockIndex(endBlock);
+                if (fromIdx < 0 || toIdx < 0) return;
+                if (fromIdx === toIdx) {
+                    // Same block: not multi-block (browser handles single-block)
+                    _mbSelFreeze = null;
+                    return;
+                }
+                if (fromIdx > toIdx) {
+                    const t = fromIdx; fromIdx = toIdx; toIdx = t;
+                }
+                // Tree-order range for prefix/suffix (works for backwards select too).
+                const head = document.createRange();
+                head.selectNodeContents(startBlock);
+                try {
+                    if (startBlock.contains(range.startContainer)
+                        || range.startContainer === startBlock) {
+                        head.setEnd(range.startContainer, range.startOffset);
+                    } else if (endBlock.contains(range.startContainer)) {
+                        // Backwards: start is in end block — empty prefix of true first
+                        head.setEnd(head.startContainer, head.startOffset);
+                    }
+                } catch (eH) {}
+                let prefix = '';
+                try { prefix = head.toString(); } catch (eP) { prefix = ''; }
+
+                const tail = document.createRange();
+                tail.selectNodeContents(endBlock);
+                try {
+                    if (endBlock.contains(range.endContainer)
+                        || range.endContainer === endBlock) {
+                        tail.setStart(range.endContainer, range.endOffset);
+                    }
+                } catch (eT) {}
+                let suffix = '';
+                try { suffix = tail.toString(); } catch (eS) { suffix = ''; }
+
+                // If selection was backwards, tree-order range still has start<=end; recompute
+                // prefix/suffix from the true first/last blocks by model order.
+                if (formatBlockIndex(startBlock) > formatBlockIndex(endBlock)) {
+                    try {
+                        const h2 = document.createRange();
+                        h2.selectNodeContents(endBlock);
+                        h2.setEnd(range.endContainer, range.endOffset);
+                        prefix = h2.toString();
+                        const t2 = document.createRange();
+                        t2.selectNodeContents(startBlock);
+                        t2.setStart(range.startContainer, range.startOffset);
+                        suffix = t2.toString();
+                    } catch (eSwap) {}
+                }
+
+                _mbSelFreeze = {
+                    fromIdx: fromIdx,
+                    toIdx: toIdx,
+                    prefix: prefix,
+                    suffix: suffix
+                };
+            } catch (e) {}
+        }
+
+        /**
+         * Delete model blocks [fromIdx..toIdx], joining prefix+suffix into one block.
+         * Reloads from full model markdown so virtualization cannot leave a half-deleted doc.
+         * Returns { focusIndex, offset } or null.
+         */
+        function applyModelMultiBlockDelete(spec) {
+            if (!spec || typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return null;
+            let fromIdx = spec.fromIdx | 0;
+            let toIdx = spec.toIdx | 0;
+            if (fromIdx > toIdx) {
+                const t = fromIdx; fromIdx = toIdx; toIdx = t;
+            }
+            if (fromIdx < 0 || toIdx < 0 || toIdx >= DocumentModel.blocks.length) return null;
+            if (fromIdx === toIdx) return null;
+
+            // Snapshot full document (mounted DOM preferred for ends, model for middle).
+            const model = DocumentModel.blocks;
+            const mountedRaw = {};
+            try {
+                const mountedEls = editor.querySelectorAll('.block[data-model-index]');
+                for (let m = 0; m < mountedEls.length; m++) {
+                    const mi = parseInt(mountedEls[m].getAttribute('data-model-index'), 10);
+                    if (mi >= 0) mountedRaw[mi] = readBlockRawSafe(mountedEls[m]);
+                }
+            } catch (eM) {}
+            const allRaws = model.map(function (blk, bi) {
+                if (Object.prototype.hasOwnProperty.call(mountedRaw, bi)
+                    && String(mountedRaw[bi] || '').length) {
+                    return coerceBlockRaw(mountedRaw[bi]);
+                }
+                return coerceBlockRaw(blk ? blk.raw : '');
+            });
+            const preContent = allRaws.join('\n');
+            const preNonEmpty = allRaws.filter(function (r) { return String(r || '').trim(); }).length;
+
+            const joined = coerceBlockRaw(String(spec.prefix || '') + String(spec.suffix || ''));
+            const out = allRaws.slice(0, fromIdx).concat([joined]).concat(allRaws.slice(toIdx + 1));
+            if (!out.length) out.push('');
+            const postContent = out.join('\n');
+            const postNonEmpty = out.filter(function (r) { return String(r || '').trim(); }).length;
+            // Refuse accidental full wipe
+            if (preNonEmpty > 0 && postNonEmpty === 0 && preNonEmpty > 1) return null;
+
+            if (typeof HistoryManager !== 'undefined') {
+                HistoryManager.recordEditPair(preContent, postContent);
+            }
+            const hm = typeof HistoryManager !== 'undefined' ? HistoryManager : null;
+            const wasRestoring = hm ? hm.isRestoring : false;
+            if (hm) hm.isRestoring = true;
+            try {
+                const focusLine = (typeof modelBlockStartLine === 'function')
+                    ? modelBlockStartLine(fromIdx) : 1;
+                loadMarkdownContent(postContent, { stickyLine: focusLine });
+            } finally {
+                if (hm) hm.isRestoring = wasRestoring;
+            }
+            clearMultiBlockSelFreeze();
+            return {
+                focusIndex: fromIdx,
+                offset: String(spec.prefix || '').length
+            };
+        }
+
+        /**
          * Delete a selection that spans several blocks, joining the surviving head and tail
-         * into one line, and return where the caret belongs. Shared by cut and paste-over:
-         * left to the browser, both restructured blocks in ways the one-block-one-line
-         * serializer then mangled.
+         * into one line, and return where the caret belongs. Shared by cut and paste-over.
+         * Uses the full DocumentModel (not only mounted DOM siblings) so Shift+scroll+click
+         * selections that cross the virtual window still delete every middle block.
          * Returns { block, offset } or null when the selection sits inside one block.
          */
         function removeCrossBlockSelection() {
             const sel = window.getSelection();
-            if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
-            const range = sel.getRangeAt(0);
-            const startBlock = getAncestorBlock(range.startContainer);
-            const endBlock = getAncestorBlock(range.endContainer);
-            if (!startBlock || !endBlock || startBlock === endBlock) return null;
+            let fromIdx = -1, toIdx = -1, prefix = '', suffix = '';
+            let liveOk = false;
 
-            const head = document.createRange();
-            head.selectNodeContents(startBlock);
-            head.setEnd(range.startContainer, range.startOffset);
-            const prefix = head.toString();
-
-            const tail = document.createRange();
-            tail.selectNodeContents(endBlock);
-            tail.setStart(range.endContainer, range.endOffset);
-            const suffix = tail.toString();
-
-            // Batch-remove middle blocks + keep DocumentModel aligned.
-            let fromIdx = DocumentModel.modelIndexOfEl(startBlock);
-            let toIdx = DocumentModel.modelIndexOfEl(endBlock);
-            if (startBlock.parentNode) {
-                const doomed = [];
-                let node = startBlock.nextElementSibling;
-                while (node && node !== endBlock) {
-                    doomed.push(node);
-                    node = node.nextElementSibling;
-                }
-                if (endBlock !== startBlock) doomed.push(endBlock);
-                for (let i = 0; i < doomed.length; i++) {
-                    try { doomed[i].remove(); } catch (e) {}
+            if (sel && !sel.isCollapsed && sel.rangeCount
+                && sel.anchorNode && editor.contains(sel.anchorNode)) {
+                const range = sel.getRangeAt(0);
+                const startBlock = getAncestorBlock(range.startContainer);
+                const endBlock = getAncestorBlock(range.endContainer);
+                if (startBlock && endBlock && startBlock !== endBlock) {
+                    fromIdx = formatBlockIndex(startBlock);
+                    toIdx = formatBlockIndex(endBlock);
+                    if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
+                        snapshotMultiBlockSelectionFromLive();
+                        if (_mbSelFreeze) {
+                            fromIdx = _mbSelFreeze.fromIdx;
+                            toIdx = _mbSelFreeze.toIdx;
+                            prefix = _mbSelFreeze.prefix;
+                            suffix = _mbSelFreeze.suffix;
+                            liveOk = true;
+                        }
+                    }
                 }
             }
+            // Live selection dead (scrolled off / focus steal): use freeze from the gesture
+            if (!liveOk && _mbSelFreeze && (_mbSelFreeze.toIdx > _mbSelFreeze.fromIdx)) {
+                fromIdx = _mbSelFreeze.fromIdx;
+                toIdx = _mbSelFreeze.toIdx;
+                prefix = _mbSelFreeze.prefix;
+                suffix = _mbSelFreeze.suffix;
+                liveOk = true;
+            }
+            if (!liveOk || fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return null;
 
-            writeBlockRaw(startBlock, coerceBlockRaw(prefix + suffix));
-            // Model: drop removed range, keep start block raw (writeBlockRaw already set it).
+            const result = applyModelMultiBlockDelete({
+                fromIdx: fromIdx,
+                toIdx: toIdx,
+                prefix: prefix,
+                suffix: suffix
+            });
+            if (!result) return null;
+
+            // After reload, resolve the focus block
+            let block = null;
             try {
-                if (fromIdx < 0 || toIdx < 0) {
-                    if (!DocumentModel.virtEnabled) DocumentModel.rebuildFromFullDom();
-                } else if (toIdx > fromIdx) {
-                    DocumentModel.removeBlockRange(fromIdx + 1, toIdx);
-                    if (DocumentModel.virtEnabled) mountVirtWindow(true);
-                    else reindexMountedBlocks();
+                block = (typeof elementForModelIndex === 'function')
+                    ? elementForModelIndex(result.focusIndex)
+                    : null;
+                if (!block && editor) {
+                    block = editor.querySelector(
+                        '.block[data-model-index="' + result.focusIndex + '"]');
                 }
-            } catch (eM) {
-                try { DocumentModel.rebuildFromFullDom(); } catch (e2) {}
-            }
-            return { block: startBlock, offset: prefix.length };
+            } catch (eB) {}
+            return { block: block, offset: result.offset | 0, focusIndex: result.focusIndex };
         }
 
         /**
@@ -230,14 +383,21 @@
         function handleMultiBlockSelectionDelete(e) {
             if (window.isComposing || (e && e.isComposing) || (e && e.keyCode === 229)) return false;
             if (state.mode === 'source') return false;
+
+            // Refresh freeze from live selection if still multi-block
+            try { snapshotMultiBlockSelectionFromLive(); } catch (eSnap) {}
+
             const sel = window.getSelection();
-            if (!sel || !sel.rangeCount || sel.isCollapsed) return false;
-            if (!sel.anchorNode || !editor.contains(sel.anchorNode)) return false;
-            const range = sel.getRangeAt(0);
-            const startBlock = getAncestorBlock(range.startContainer);
-            const endBlock = getAncestorBlock(range.endContainer);
-            if (!startBlock || !endBlock) return false;
-            if (startBlock === endBlock) return false; // single block: browser is fine
+            let willHandle = false;
+            if (_mbSelFreeze && _mbSelFreeze.toIdx > _mbSelFreeze.fromIdx) willHandle = true;
+            if (sel && !sel.isCollapsed && sel.rangeCount
+                && sel.anchorNode && editor.contains(sel.anchorNode)) {
+                const range = sel.getRangeAt(0);
+                const startBlock = getAncestorBlock(range.startContainer);
+                const endBlock = getAncestorBlock(range.endContainer);
+                if (startBlock && endBlock && startBlock !== endBlock) willHandle = true;
+            }
+            if (!willHandle) return false;
 
             if (e) {
                 e.preventDefault();
@@ -245,21 +405,20 @@
                 if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
             }
 
-            const pre = getMarkdownContent(false);
             const cutAt = removeCrossBlockSelection();
             if (!cutAt) return true;
 
             try {
                 window.isProgrammaticFocus = true;
-                focusBlock(cutAt.block);
-                setCaretAtOffset(cutAt.block, cutAt.offset | 0);
+                if (cutAt.block) {
+                    focusBlock(cutAt.block);
+                    setCaretAtOffset(cutAt.block, cutAt.offset | 0);
+                } else if (typeof goToModelBlock === 'function' && cutAt.focusIndex >= 0) {
+                    goToModelBlock(cutAt.focusIndex);
+                }
             } catch (err) {}
 
-            const post = getMarkdownContent(false);
-            if (typeof HistoryManager !== 'undefined') {
-                HistoryManager.recordEditPair(pre, post);
-            }
-            // Defer outline/stats so the delete paints first
+            // History already recorded inside applyModelMultiBlockDelete
             try {
                 if (typeof updateStats === 'function') updateStats();
                 if (typeof updateOutline === 'function') {
