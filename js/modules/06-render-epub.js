@@ -53,7 +53,8 @@
             const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
 
             const split = bookBlocksFromDocs(data.docs);
-            const toc = bookRepairTocByTitle(bookTocToBlockIndices(data.toc, split.docStart), split.blocks);
+            const toc = bookRepairTocByTitle(bookTocToBlockIndices(data.toc, split.docStart),
+                split.blocks, split.docStarts);
             _bookDocStarts = {};
             for (let i = 0; i < split.docStarts.length; i++) _bookDocStarts[split.docStarts[i]] = 1;
             _bookPlateBlocks = bookFindPlateBlocks(split.blocks, split.docStarts);
@@ -487,6 +488,22 @@
          * The start map is what turns a table of contents into something navigable: a TOC
          * entry names a document, and the reader needs a block index to scroll to.
          */
+        /**
+         * Does this block put anything on the page?
+         *
+         * A picture counts; so does any text. `&nbsp;` and friends do not -- a spacer
+         * paragraph is exactly what a publisher uses to push content down a page it is
+         * already laying out separately, and it is the thing a forced break cannot hang on.
+         */
+        function bookBlockHasInk(b) {
+            const raw = String((b && b.raw != null) ? b.raw : (b || ''));
+            if (/<(img|svg|image|table|hr)\b/i.test(raw)) return true;
+            return !!raw.replace(/<[^>]*>/g, ' ')
+                .replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
         function bookBlocksFromDocs(docs) {
             const blocks = [];
             const docStart = {};
@@ -498,7 +515,6 @@
             // flat at the root, which is the only reason a shared base ever appeared to work.
             const dirs = [];
             for (let i = 0; i < (docs ? docs.length : 0); i++) {
-                docStart[bookNormalizeHref(docs[i].href)] = blocks.length;
                 const href = String(docs[i].href || '').replace(/\\/g, '/');
                 const dir = href.indexOf('/') >= 0 ? href.slice(0, href.lastIndexOf('/') + 1) : '';
                 const bs = bookBlocksFromHtml(docs[i].html);
@@ -506,7 +522,30 @@
                 // A spine document is a chapter, and a chapter starts a page. Without this
                 // a book runs continuously and a chapter heading turns up halfway down a
                 // column, which no printed book does and no reader expects.
-                if (bs.length) starts.push(blocks.length);
+                //
+                // Anchored on the first block that renders something, not simply the first.
+                // Xeelee's stories each begin with a blank spacer -- part0451.xhtml is four
+                // blocks and the first is empty -- so the boundary landed on a block with
+                // nothing in it, the forced break before it did not fire, and FORMIDABLE
+                // CARESS, THE TIME PIT and THE LOWLAND EXPEDITION all ran on mid-column with
+                // a dozen paragraphs of the previous story above them. The document boundary
+                // was never wrong; it was attached to something that cannot carry a break.
+                //
+                // The table of contents and the book's own internal links resolve through
+                // docStart, so it takes the same anchor. It used to record the raw first
+                // block, which was the same thing while the boundary was there too -- and
+                // stopped being the same thing the moment the boundary moved. Leaving them
+                // apart would have sent every outline entry and every in-book link to a
+                // spacer sitting at the tail of the previous page: one page early, every
+                // time. One anchor, computed once, used by both.
+                let anchor = blocks.length;
+                if (bs.length) {
+                    let k = 0;
+                    while (k < bs.length - 1 && !bookBlockHasInk(bs[k])) k++;
+                    anchor = blocks.length + k;
+                    starts.push(anchor);
+                }
+                docStart[bookNormalizeHref(docs[i].href)] = anchor;
                 for (let j = 0; j < bs.length; j++) blocks.push(bs[j]);
             }
             return { blocks: blocks, docStart: docStart, docStarts: starts, dirs: dirs };
@@ -533,7 +572,7 @@
             return map;
         }
 
-        function bookRepairTocByTitle(toc, blocks) {
+        function bookRepairTocByTitle(toc, blocks, docStarts) {
             if (!toc || toc.length < 3) return toc;
             const distinct = {};
             for (let i = 0; i < toc.length; i++) distinct[toc[i].blockIndex] = 1;
@@ -543,16 +582,63 @@
 
             const headings = bookHeadingIndex(blocks);
             let repaired = 0;
+            const byTitle = [];
             for (let i = 0; i < toc.length; i++) {
                 const key = String(toc[i].title || '').replace(/\s+/g, ' ').trim().toLowerCase();
                 if (Object.prototype.hasOwnProperty.call(headings, key)) {
                     toc[i].blockIndex = headings[key];
+                    byTitle[i] = true;
                     repaired++;
                 }
             }
+            // Second pass: a table of contents is in order, and that is information.
+            //
+            // Title matching gets the chapters, because a chapter has its title printed at
+            // the top of it. It cannot get "Title Page", "Copyright Page", "Dedication" or
+            // "About the Author" -- labels a converter invented for sections that carry no
+            // such heading -- so those entries stayed on the block the collapse left them on
+            // and every one of them opened the table of contents itself. Measured on Matter:
+            // 36 entries sharing 28 targets, with five landing on "Table of Contents".
+            //
+            // Anything that did not move is therefore placed on the next spine boundary after
+            // the entry before it. That uses two facts the book really does provide -- the
+            // documents, and the order of the list -- instead of an anchor it does not:
+            // Matter's TOC points at filepos3742 and friends, and the file contains only
+            // calibre_pb_0..68. Those anchors do not exist and no amount of care will resolve
+            // them; the order of the list is the only thing left that is true.
+            let ordered = 0;
+            if (docStarts && docStarts.length) {
+                const starts = docStarts.slice().sort(function (a, b) { return a - b; });
+                // Trusted only where the title matched. An entry the title pass could not
+                // place is still sitting on the collapse, and a collapsed value happens to
+                // be a perfectly ordinary number -- the first entry's was block 1, greater
+                // than nothing before it, so a monotonicity test accepted it and shifted
+                // every placement after it by one. "About the Author" kept pointing at the
+                // table of contents while the author's biography went to "Title Page".
+                // Seeded at the file the collapsed hrefs pointed into, not at the start of
+                // the book. The href is not useless -- its fragment is dead, but its file
+                // still says "at or after here", and the documents before it (a cover, the
+                // contents page itself) have no entry pointing at them. Walking from zero
+                // handed those to the first entries and pushed everything down by two.
+                let prev = -1, si = 0;
+                for (const k of Object.keys(distinct)) {
+                    const v = +k;
+                    if (v >= 0 && (prev < 0 || v < prev)) prev = v;
+                }
+                prev = prev < 0 ? -1 : prev;
+                for (let i = 0; i < toc.length; i++) {
+                    if (byTitle[i] && toc[i].blockIndex > prev) { prev = toc[i].blockIndex; continue; }
+                    while (si < starts.length && starts[si] <= prev) si++;
+                    if (si >= starts.length) break;
+                    toc[i].blockIndex = starts[si];
+                    prev = starts[si];
+                    ordered++;
+                }
+            }
+
             window.showDebugTelemetry('book toc: hrefs collapsed to ' +
                 Object.keys(distinct).length + ' targets for ' + toc.length +
-                ' entries; matched ' + repaired + ' by title');
+                ' entries; matched ' + repaired + ' by title, placed ' + ordered + ' by order');
             return toc;
         }
 
@@ -969,22 +1055,30 @@
                 // two-column spread has no notion of; a column break is the honest reading.
                 .replace(/\bpage-break-(before|after)\s*:\s*(always|left|right)\s*(;|})/gi,
                     function (m, side, how, end) { return 'break-' + side + ': column' + end; })
-                // `break-after: page` is deliberately NOT converted, and this is the reason.
+                // A paged break *after* an element is neutralised, not translated.
                 //
-                // It looks like the same request as `page-break-after: always` and it is not.
-                // Xeelee carries it on body classes -- .bt1-body-text2, .bt1-fo1, .story-dates
-                // -- which is to say on ordinary paragraphs, in their thousands. In the reader
-                // the publisher wrote for, each spine document is laid out on its own, so a
-                // paged break on the last paragraph of a file costs nothing and a paged break
-                // anywhere else is simply ignored. Our flow is every document concatenated,
-                // so converting it to a column break fires after nearly every paragraph.
-                // Measured: columns went from 97% and 99% full to 9% and 12% -- two paragraphs
-                // on a whole spread, which is what a reader would call the app being broken.
+                // This one cost a day. Xeelee puts `break-after: page` on body classes --
+                // .bt1-body-text4 and friends -- so it lands on thousands of ordinary
+                // paragraphs, including the one immediately before every story title. At a
+                // break point the preceding element's break-after and the next element's
+                // break-before combine and the strongest wins: `page` outranks `column`. A
+                // multi-column layout has no pages, so the combined value is discarded --
+                // and TypoZen's own chapter break, sitting on the very next block, is
+                // swallowed with it. Found by bisecting 3,114 rules of the book's stylesheet:
+                // chapter starts opening their own page went from 1 of 3 to 3 of 3 the moment
+                // this rule was removed.
                 //
-                // The legacy `page-break-*` conversion above is safe because publishers use
-                // that spelling to mean a break they actually want. This spelling, in this
-                // book, means nothing at all. Honouring a declaration is not the same as
-                // honouring an intention, and the two only look alike from the stylesheet.
+                // Translating it to a column break instead is what emptied every page
+                // earlier: a forced break after nearly every paragraph took columns from 97%
+                // full to 9%. So neither honouring it nor translating it is right. In a
+                // reader that lays each spine document out separately -- which is what the
+                // publisher wrote for -- it is a no-op; here it is actively destructive, and
+                // `auto` is the faithful rendering of a declaration that meant nothing.
+                //
+                // break-before: page is left to the conversion above, because "start this
+                // element on a new page" is a request that survives the translation.
+                .replace(/\bbreak-after\s*:\s*(page|left|right|recto|verso)\s*(;|})/gi,
+                    function (m, how, end) { return 'break-after: auto' + end; })
                 .replace(/\bpage-break-inside\s*:\s*avoid\s*(;|})/gi, 'break-inside: avoid$1')
                 // rem is rooted at the application, not at the reader's text, so a book
                 // asking for 0.88rem renders at 0.88 of TypoZen's UI size and the reader's
@@ -1754,13 +1848,14 @@
             // full-mount branch below, which rebuilds the model from whatever is mounted --
             // the same shape of mistake as windowing, with a whole novel at stake.
             //
-            // Returned before the fragment repair, not after. expandAllFragmentedBlocks()
-            // mutates the DOM to undo soft breaks left by editing; a book has no editing and
-            // no soft breaks, so on a book it is pure damage. Search builds its haystack
-            // through this function with repair on, so opening a book with a search -- which
-            // is how ZenSeek launches it -- grew a read-only document by 78 characters and
-            // two lines. This guard is kept out of the page-break revert deliberately: it is
-            // about not corrupting the model, which is a different concern entirely.
+            // Returned BEFORE the fragment repair below, which is where this guard belonged
+            // all along. expandAllFragmentedBlocks() mutates the DOM to undo soft breaks left
+            // by editing -- and a book has no editing and no soft breaks, so on a book it is
+            // pure damage. Search builds its haystack with getMarkdownContent(), repair on,
+            // so opening a book with a search -- exactly how ZenSeek launches it -- grew the
+            // document by 78 characters and two lines, duplicating a line, and left a
+            // read-only file comparing as edited with a save prompt to match. Two lines too
+            // late for a guard whose own comment says the model is the document, full stop.
             if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') {
                 return DocumentModel.toPlainText();
             }
