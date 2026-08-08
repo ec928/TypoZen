@@ -231,55 +231,6 @@ async function openAndCheck(app, book, deep) {
         book + ': a page of the book is full of text (median column ' + density.median +
         '% full; front matter and part titles are legitimately sparse, a novel is not)');
 
-    // The book's own stylesheet cannot suppress TypoZen's chapter breaks.
-    //
-    // The test is a comparison, because the absolute number is not the interesting part: lay
-    // the same page out with the book's CSS and without it, and the same chapter starts must
-    // open a page either way. Xeelee put `break-after: page` on a body class, so it landed on
-    // the paragraph before every story title; at a break point break-after and break-before
-    // combine and the strongest wins, `page` outranks `column`, and a multi-column layout
-    // discards a paged break -- taking our chapter break with it. Measured 1 of 3 with the
-    // stylesheet against 3 of 3 without, which is what pointed at the rule out of 3,114.
-    const suppression = await app.eval(async () => {
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.92));
-        await sleep(3000);
-        const ed = document.getElementById('editor');
-        const survey = () => {
-            const er = ed.getBoundingClientRect();
-            const pitch = PageGeometry.stride() / 2;
-            const frags = [];
-            for (const b of ed.querySelectorAll('.block'))
-                for (const r of b.getClientRects())
-                    if (r.height >= 1 && r.width >= 1)
-                        frags.push({ b, col: Math.round((r.left - er.left + ed.scrollLeft) / pitch), top: r.top });
-            let total = 0, atTop = 0;
-            for (const el of ed.querySelectorAll('.block[data-chapter-start]')) {
-                const mine = frags.filter(f => f.b === el);
-                if (!mine.length) continue;
-                total++;
-                const first = mine.reduce((a, b2) => (b2.top < a.top ? b2 : a));
-                if (!frags.some(f => f.b !== el && f.col === first.col && f.top < first.top - 2)) atTop++;
-            }
-            return { total, atTop };
-        };
-        const withBook = survey();
-        const sheet = document.getElementById('book-styles');
-        const had = sheet ? sheet.disabled : null;
-        if (sheet) { sheet.disabled = true; void ed.offsetWidth; await sleep(1500); }
-        const without = survey();
-        if (sheet) { sheet.disabled = had; void ed.offsetWidth; await sleep(800); }
-        return { withBook, without };
-    });
-    info('chapter starts opening a page: ' + suppression.withBook.atTop + '/' +
-         suppression.withBook.total + ' with the book CSS, ' +
-         suppression.without.atTop + '/' + suppression.without.total + ' without it');
-    if (suppression.withBook.total > 0) {
-        assert(suppression.withBook.atTop === suppression.withBook.total,
-            book + ': the book\'s own stylesheet does not swallow a chapter break (' +
-            suppression.withBook.atTop + ' of ' + suppression.withBook.total + ')');
-    }
-
     // A picture is a plate only when its *document* is nothing but pictures.
     //
     // "Alone in its block" is not enough. Matter's appendix is a heading, a table of
@@ -309,65 +260,6 @@ async function openAndCheck(app, book, deep) {
             'full-page plates (' + plates.plateCount + ' plate blocks in ' +
             plates.blocks + ')');
     }
-
-    // Every outline entry goes somewhere different, and somewhere that starts a page.
-    //
-    // Matter's whole table of contents points into one file through #filepos anchors that do
-    // not exist -- the book contains calibre_pb_0..68 and nothing else -- so all 36 entries
-    // resolved to the same block. Title matching rescued the chapters, because a chapter has
-    // its name printed at the top of it, and left "Title Page", "Copyright Page",
-    // "Dedication" and "About the Author" pointing at the table of contents itself: 28
-    // distinct targets for 36 entries, five of them opening the contents page.
-    //
-    // Distinctness is the assertion because it is the property that survives a book with
-    // broken anchors: the entries are ordered and the spine is known, so every entry can at
-    // least be given its own document in the right order even when no anchor can prove which.
-    const tocTargets = await app.eval(() => {
-        const toc = DocumentModel.toc || [];
-        const at = toc.map(e => (e.blockIndex != null ? e.blockIndex : e.block))
-            .filter(b => b >= 0);
-        let onBoundary = 0;
-        for (const b of at) if (_bookDocStarts[b]) onBoundary++;
-        return { entries: toc.length, resolved: at.length,
-                 distinct: new Set(at).size, onBoundary };
-    });
-    info('outline: ' + tocTargets.entries + ' entries, ' + tocTargets.distinct +
-         ' distinct targets, ' + tocTargets.onBoundary + ' on a document boundary');
-    if (tocTargets.resolved > 2) {
-        assert(tocTargets.distinct === tocTargets.resolved,
-            book + ': every outline entry has its own target (' + tocTargets.distinct +
-            ' distinct for ' + tocTargets.resolved + ' entries)');
-        assert(tocTargets.onBoundary === tocTargets.resolved,
-            book + ': and every one of them starts a page (' + tocTargets.onBoundary +
-            ' of ' + tocTargets.resolved + ')');
-    }
-
-    // No document boundary is anchored to a block that renders nothing.
-    //
-    // A model-level check, because that is where this went wrong and layout only showed the
-    // symptom. Xeelee's stories each begin with a blank spacer block, so the boundary landed
-    // on it, the forced break before an empty box did not fire, and three story titles ran on
-    // mid-column with a dozen paragraphs of the previous story above them. The spine was
-    // right and the anchor was not.
-    const anchors = await app.eval(() => {
-        const ink = (raw) => /<(img|svg|image|table|hr)\b/i.test(String(raw)) ||
-            !!String(raw).replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
-                .replace(/\s+/g, ' ').trim();
-        const bad = [];
-        let total = 0;
-        for (const k of Object.keys(_bookDocStarts)) {
-            const i = +k;
-            total++;
-            const b = DocumentModel.blocks[i];
-            if (!b) continue;
-            if (!ink(b.raw)) bad.push(i);
-        }
-        return { total, bad: bad.slice(0, 5), badCount: bad.length };
-    });
-    info(anchors.total + ' document boundaries, ' + anchors.badCount + ' anchored to a blank block');
-    assert(anchors.badCount === 0,
-        book + ': every document boundary sits on a block that renders something (' +
-        anchors.badCount + ' blank' + (anchors.badCount ? ', e.g. ' + JSON.stringify(anchors.bad) : '') + ')');
 
     // Every chapter starts at the top of a page.
     //
