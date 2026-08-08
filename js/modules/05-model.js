@@ -1787,39 +1787,76 @@
             }
         }, { passive: false, capture: true });
 
+        /**
+         * Page / scroll keyboard navigation.
+         *
+         * CRITICAL: do NOT skip when e.target.isContentEditable. #editor is contenteditable
+         * in Preview, and that guard made PageDown/arrows never call PageMap.step — only
+         * the browser caret moved (or nothing happened under page-mode overflow:hidden).
+         * Real typing surfaces are INPUT/TEXTAREA and the find/sidebar fields only.
+         */
         document.addEventListener('keydown', function (e) {
-            if (state.pageAdvance) {
-                if (e.target && e.target.closest && e.target.closest('#sidebar')) return;
-                if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            const t = e.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+            if (t && t.closest && t.closest('#sidebar, #findBar, #tableModal')) return;
 
-                if (e.key === 'PageDown' || e.key === 'PageUp' || e.key === ' ') {
-                    e.preventDefault();
-                    let now = Date.now();
-                    if (now - lastPageScrollTime < 150) return;
-                    lastPageScrollTime = now;
-                    
-                    // PageUp/PageDown/Space turn exactly one page, in both layouts. In
-                    // 1-column these did nothing but nudge the scroll offset, which is why
-                    // Page Down appeared to only move the caret.
-                    const back = (e.key === 'PageUp' || (e.key === ' ' && e.shiftKey));
-                    PageMap.step(back ? -1 : 1);
-                } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                    e.preventDefault();
-                    let mainContainer = document.getElementById('main-container') || document.documentElement;
-                    let isTwoCol = isPaginatedLayout();
-                    let scrollEl = isTwoCol ? editor : mainContainer;
-                    let jumpY = 0;
-                    let jumpX = 0;
-                    if (isTwoCol) {
-                        if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') jumpX = -50;
-                        else jumpX = 50;
-                        if (scrollEl.scrollTop !== 0) scrollEl.scrollTop = 0; // Fix diagonal offset
-                    } else {
-                        if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') jumpY = -50;
-                        else jumpY = 50;
-                    }
-                    scrollEl.scrollBy({ top: jumpY, left: jumpX, behavior: 'smooth' });
+            // --- Paginated (Pages / Reader page-advance): every turn goes through PageMap ---
+            if (state.pageAdvance && typeof isPaginatedLayout === 'function' && isPaginatedLayout()
+                && typeof PageMap !== 'undefined' && PageMap.step) {
+                // Reader: Up/Down step search hits when a query is live (bindReaderFindKeys).
+                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown')
+                    && state.mode === 'reader'
+                    && typeof findState !== 'undefined'
+                    && findState.matches && findState.matches.length) {
+                    return;
                 }
+
+                let dir = 0;
+                if (e.key === 'PageDown' || e.key === 'ArrowRight' || e.key === 'ArrowDown') dir = 1;
+                else if (e.key === 'PageUp' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') dir = -1;
+                else if (e.key === ' ') dir = e.shiftKey ? -1 : 1;
+                else return;
+
+                e.preventDefault();
+                e.stopPropagation();
+                const now = Date.now();
+                // Short debounce so key-repeat still advances; long enough to kill double-fire.
+                if (now - lastPageScrollTime < 90) return;
+                lastPageScrollTime = now;
+                PageMap.step(dir);
+                try {
+                    if (typeof rememberStickyFromPreviewScroll === 'function')
+                        rememberStickyFromPreviewScroll();
+                } catch (eSt) {}
+                return;
+            }
+
+            // --- Scroll Preview: PageUp/Down/Space must scroll #main-container ---
+            // Focus is usually in contenteditable #editor; the browser then only nudges
+            // the caret or a non-scrolling editor, so you could not leave the first screen.
+            if (!state.pageAdvance && state.mode !== 'source') {
+                const main = document.getElementById('main-container');
+                if (!main) return;
+                const inDoc = !t || t === editor || (editor && editor.contains(t))
+                    || t === main || t === document.body || t === document.documentElement;
+                if (!inDoc) return;
+
+                let delta = 0;
+                if (e.key === 'PageDown') delta = 1;
+                else if (e.key === 'PageUp') delta = -1;
+                else if (e.key === ' ' && !e.shiftKey) delta = 1;
+                else if (e.key === ' ' && e.shiftKey) delta = -1;
+                else return;
+
+                e.preventDefault();
+                e.stopPropagation();
+                const amount = Math.max(120, (main.clientHeight || 400) - 48);
+                main.scrollBy(0, delta * amount);
+                try {
+                    if (typeof rememberStickyFromPreviewScroll === 'function')
+                        rememberStickyFromPreviewScroll();
+                } catch (eSt2) {}
             }
         }, { capture: true });
 
