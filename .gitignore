@@ -27,3 +27,6 @@ tests/*.epub
 
 # Extracted books: a per-book asset cache, rebuilt on demand.
 typozen_books/
+
+# Scratch output from tests/tabs-content-e2e.py (includes a WebView2 profile).
+tests/_tab_e2e_out/
