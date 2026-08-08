@@ -464,6 +464,20 @@
                             <MenuItem x:Name="mToggleReveal" Header="_Reveal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
                             <MenuItem x:Name="mToggleFocus" Header="_Focus Mode" InputGestureText="F8" IsCheckable="True"/>
                             <MenuItem x:Name="mToggleTypewriter" Header="_Typewriter Scrolling" InputGestureText="F9" IsCheckable="True"/>
+                            <MenuItem x:Name="mWordWrap" Header="_Word Wrap" IsCheckable="True" IsChecked="True"/>
+                            <Separator/>
+                            <MenuItem Header="_Line Spacing">
+                                <MenuItem x:Name="mLineTight" Header="_Tight" IsCheckable="True"/>
+                                <MenuItem x:Name="mLineNormal" Header="_Normal" IsCheckable="True" IsChecked="True"/>
+                                <MenuItem x:Name="mLineRelaxed" Header="_Relaxed" IsCheckable="True"/>
+                                <MenuItem x:Name="mLineLoose" Header="_Loose" IsCheckable="True"/>
+                            </MenuItem>
+                            <MenuItem Header="_Paragraph Spacing">
+                                <MenuItem x:Name="mParaTight" Header="_Tight" IsCheckable="True"/>
+                                <MenuItem x:Name="mParaNormal" Header="_Normal" IsCheckable="True" IsChecked="True"/>
+                                <MenuItem x:Name="mParaRelaxed" Header="_Relaxed" IsCheckable="True"/>
+                                <MenuItem x:Name="mParaLoose" Header="_Loose" IsCheckable="True"/>
+                            </MenuItem>
                             <Separator/>
                             <MenuItem Header="_Editor Margins">
                                 <MenuItem x:Name="mMarginNarrow" Header="_Narrow Margins" IsCheckable="True"/>
@@ -471,9 +485,14 @@
                                 <MenuItem x:Name="mMarginWide" Header="_Wide Margins" IsCheckable="True"/>
                             </MenuItem>
                             <Separator/>
-                            <!-- Hides command bar + tab chips while writing; slim caption (drag/─□×) stays. Pointer to top or Alt restores. -->
-                            <MenuItem x:Name="mChromeAutoHide" Header="_Auto-hide menu" IsCheckable="True"/>
-                            <MenuItem x:Name="mWordWrap" Header="_Word Wrap" IsCheckable="True" IsChecked="True"/>
+                            <!-- Auto-hide clears every piece of chrome for reading: command bar, tab chips,
+                                 status bar and scrubber. A slim caption (drag and the window buttons) stays.
+                                 Pointer to the top or Alt brings the menu back; pointer to the bottom brings
+                                 the scrubber back. The three toggles under it are the same surfaces held
+                                 manually, so a reader can keep exactly what they want and drop the rest. -->
+                            <MenuItem x:Name="mChromeAutoHide" Header="_Auto-hide" IsCheckable="True"/>
+                            <MenuItem x:Name="mMenuToggle" Header="_Menu" InputGestureText="F10" IsCheckable="True" IsChecked="True"/>
+                            <MenuItem x:Name="mScrubberToggle" Header="Scr_ubber" IsCheckable="True" IsChecked="True"/>
                             <MenuItem x:Name="mStatusBarToggle" Header="Status _Bar" IsCheckable="True" IsChecked="True"/>
                             <Separator/>
                             <MenuItem x:Name="mZoomIn" Header="Zoom _In" InputGestureText="Ctrl++"/>

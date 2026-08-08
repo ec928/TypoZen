@@ -737,10 +737,96 @@
                 + ',typewriter=' + (state.typewriterMode ? '1' : '0'));
         }
 
+        /**
+         * Write a spacing custom property and put the reader back where they were.
+         *
+         * Taller lines mean fewer of them per page, so the page a reader is on is not the
+         * page their paragraph is on once the value changes -- and the total moves under
+         * them too. The ResizeObserver that normally re-anchors cannot help here: it only
+         * fires on a width change, and spacing changes height. So this does the same three
+         * things by hand: relayout for the new stride, retire the page count, and seek back
+         * to the block that was on screen.
+         *
+         * Reads the page rather than _readingAnchor, which is the opposite way round from
+         * the column-switch path, and deliberately. That variable is a memory of where the
+         * reader was when the layout last changed under them; it is not refreshed by every
+         * page turn, so after a few turns it names a page they left long ago. A spacing
+         * change is different -- the reader is looking at the text at this moment, and the
+         * DOM is the only thing that knows which text that is. Trusting the remembered
+         * value here threw the reader back to wherever the last relayout had put them.
+         */
+        let _spacingSeekToken = 0;
+
+        function applySpacing(prop, value) {
+            const anchor = isPaginatedLayout() ? topLeftModelIndexTwoCol() : -1;
+            document.documentElement.style.setProperty(prop, value);
+            if (!isPaginatedLayout()) return;
+
+            // Twice, because once is not enough and measurably so. The first seek runs
+            // against a multi-column flow that has been told its lines are taller but has
+            // not finished re-breaking on it, so it computes the right page number from
+            // stale geometry and leaves the view three pages back -- page counter correct,
+            // reader in the wrong place. The second, on the settle chain the column switch
+            // already uses, sees the real layout and lands. Keeping the first is what stops
+            // the page jumping visibly in between.
+            //
+            // The chain runs for a second and a half, which is long enough for the reader
+            // to have turned a page or grabbed the scrubber, and a correction that fires
+            // after that would drag them back to a paragraph they have left. So it stands
+            // down on two conditions: a newer spacing change, and any movement of the view
+            // it did not make itself. Their movement is newer than our correction.
+            const token = ++_spacingSeekToken;
+            let placedAt = -1;
+            const seek = function () {
+                if (token !== _spacingSeekToken) return;
+                const ed = document.getElementById('editor');
+                if (placedAt >= 0 && ed && Math.abs(ed.scrollLeft - placedAt) > 2) {
+                    _spacingSeekToken++;
+                    return;
+                }
+                try {
+                    PageGeometry.relayout();
+                    PageMap.invalidate();
+                    if (anchor >= 0) goToPageHoldingBlock(anchor);
+                    else PageGeometry.snap();
+                    updatePageIndicator();
+                } catch (e) {}
+                if (ed) placedAt = ed.scrollLeft;
+            };
+            seek();
+            if (typeof scheduleColumnSettle === 'function') scheduleColumnSettle(seek);
+        }
+
         // --- COMMAND & FORMATTING HANDLER ---
         function handleCommand(cmd) {
             if (cmd === "wordwrap_on") { document.body.classList.remove("nowrap"); return; }
             if (cmd === "wordwrap_off") { document.body.classList.add("nowrap"); return; }
+
+            // The scrubber is the one piece of reading chrome the page owns rather than the
+            // shell, so hiding it has to come through here. A class, because
+            // updatePageScrubber writes display on every page turn and would undo anything
+            // set directly.
+            if (cmd === "scrubber_on") { document.body.classList.remove("tz-no-scrubber"); return; }
+            if (cmd === "scrubber_off") { document.body.classList.add("tz-no-scrubber"); return; }
+
+            // Reading comfort. Both are plain CSS custom properties on the root: line-height
+            // is inherited so it reaches a book's text as well as a Markdown file's, and the
+            // paragraph gap is the block's own margin, and a block is one paragraph in both
+            // kinds of document.
+            if (cmd.startsWith("set_line_spacing:")) {
+                const v = parseFloat(cmd.substring(17));
+                if (isFinite(v) && v > 0.5 && v < 4) {
+                    applySpacing('--lh', String(v));
+                }
+                return;
+            }
+            if (cmd.startsWith("set_para_spacing:")) {
+                const v = parseFloat(cmd.substring(17));
+                if (isFinite(v) && v >= 0 && v < 200) {
+                    applySpacing('--para', v + 'px');
+                }
+                return;
+            }
             if (cmd.startsWith("view_set:")) {
                 // "view_set:<selector>:<value>" from one of the segmented controls.
                 const bits = cmd.substring(9).split(':');

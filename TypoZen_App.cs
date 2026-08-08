@@ -775,6 +775,16 @@ namespace TypoZen
 
             // Chrome visibility, word wrap, status bar, print
             BindClick("mChromeAutoHide", (s, e) => SetChromeAutoHide(!_chromeAutoHide));
+            BindClick("mMenuToggle", (s, e) => SetMenuVisible(!_menuVisible));
+            BindClick("mScrubberToggle", (s, e) => SetScrubberVisible(!_scrubberVisible));
+            BindClick("mLineTight",   (s, e) => SetLineSpacing(0));
+            BindClick("mLineNormal",  (s, e) => SetLineSpacing(1));
+            BindClick("mLineRelaxed", (s, e) => SetLineSpacing(2));
+            BindClick("mLineLoose",   (s, e) => SetLineSpacing(3));
+            BindClick("mParaTight",   (s, e) => SetParaSpacing(0));
+            BindClick("mParaNormal",  (s, e) => SetParaSpacing(1));
+            BindClick("mParaRelaxed", (s, e) => SetParaSpacing(2));
+            BindClick("mParaLoose",   (s, e) => SetParaSpacing(3));
             BindClick("mWordWrap", (s, e) => SetWordWrap(!_wordWrap));
             BindClick("mStatusBarToggle", (s, e) => SetStatusBarVisible(!_statusBarVisible));
             BindClick("mSessionRestoreContent", (s, e) => SetSessionRestoreContent(!_sessionRestoreContent));
@@ -1408,11 +1418,21 @@ namespace TypoZen
         {
             // Alt / F10 always bring the chrome back. Without a keyboard route you could
             // end up unable to reach the View menu to turn auto-hide off again.
-            if (_chromeHidden && (e.Key == Key.System || e.SystemKey == Key.LeftAlt
-                || e.SystemKey == Key.RightAlt || e.Key == Key.F10))
+            //
+            // It has to answer for View > Menu as well, not just auto-hide: that toggle
+            // hides the bar holding the View menu, so switching it off with no way back
+            // would be a one-way door. Auto-hide reveals temporarily -- the pointer left
+            // and the bar goes again -- but a menu switched off by hand is a settled
+            // choice, so the key reverses the choice rather than papering over it.
+            if (e.Key == Key.System || e.SystemKey == Key.LeftAlt
+                || e.SystemKey == Key.RightAlt || e.Key == Key.F10)
             {
-                SetChromeHidden(false);
-                _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(3000);
+                if (!_menuVisible) SetMenuVisible(true);
+                else if (_chromeHidden)
+                {
+                    SetChromeHidden(false);
+                    _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(3000);
+                }
             }
 
             if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
@@ -2802,6 +2822,7 @@ namespace TypoZen
                 string json = string.Format(System.Globalization.CultureInfo.InvariantCulture,
                     "{{\"state\":\"{0}\",\"width\":{1},\"height\":{2},\"left\":{3},\"top\":{4},\"zoom\":{5}," +
                     "\"chrome\":\"{6}\",\"wordWrap\":{7},\"statusBar\":{8}," +
+                    "\"menuBar\":{21},\"scrubber\":{22},\"lineSpacing\":{23},\"paraSpacing\":{24}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
                     "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20}}}",
@@ -2811,7 +2832,8 @@ namespace TypoZen
                     _encodingWarnDisabled ? "false" : "true",
                     _isTwoColumnMode ? "true" : "false",
                     _col2Rect.HasValue ? _col2Rect.Value.Width : 0, _col2Rect.HasValue ? _col2Rect.Value.Height : 0, _col2Rect.HasValue ? _col2Rect.Value.Left : 0, _col2Rect.HasValue ? _col2Rect.Value.Top : 0,
-                    _col1Rect.HasValue ? _col1Rect.Value.Width : 0, _col1Rect.HasValue ? _col1Rect.Value.Height : 0, _col1Rect.HasValue ? _col1Rect.Value.Left : 0, _col1Rect.HasValue ? _col1Rect.Value.Top : 0);
+                    _col1Rect.HasValue ? _col1Rect.Value.Width : 0, _col1Rect.HasValue ? _col1Rect.Value.Height : 0, _col1Rect.HasValue ? _col1Rect.Value.Left : 0, _col1Rect.HasValue ? _col1Rect.Value.Top : 0,
+                    _menuVisible ? "true" : "false", _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing);
 
                 WriteStateFileAtomic(path, json);
             }
@@ -2926,6 +2948,14 @@ namespace TypoZen
                 if (mWrap.Success) _wordWrap = mWrap.Groups[1].Value == "true";
                 var mSb = Regex.Match(json, @"\""statusBar\""\s*:\s*(true|false)");
                 if (mSb.Success) _statusBarVisible = mSb.Groups[1].Value == "true";
+                var mMenuBar = Regex.Match(json, @"\""menuBar\""\s*:\s*(true|false)");
+                if (mMenuBar.Success) _menuVisible = mMenuBar.Groups[1].Value == "true";
+                var mScrub = Regex.Match(json, @"\""scrubber\""\s*:\s*(true|false)");
+                if (mScrub.Success) _scrubberVisible = mScrub.Groups[1].Value == "true";
+                var mLine = Regex.Match(json, @"\""lineSpacing\""\s*:\s*(\d+)");
+                if (mLine.Success) _lineSpacing = Clamp4(int.Parse(mLine.Groups[1].Value));
+                var mPara = Regex.Match(json, @"\""paraSpacing\""\s*:\s*(\d+)");
+                if (mPara.Success) _paraSpacing = Clamp4(int.Parse(mPara.Groups[1].Value));
                 var mBodies = Regex.Match(json, @"\""sessionBodies\""\s*:\s*(true|false)");
                 if (mBodies.Success) _sessionRestoreContent = mBodies.Groups[1].Value == "true";
                 var mRecent = Regex.Match(json, @"\""recentFiles\""\s*:\s*(true|false)");
@@ -4921,6 +4951,12 @@ if (_btnColumnToggle != null)
         // WebView2 inside a WindowsFormsHost, an HWND child that swallows mouse input, so
         // WPF never sees the cursor while it is over your text.
         private bool _chromeAutoHide;
+        // How far into the bottom of the window counts as reaching for the scrubber, and
+        // how far past its edge still counts -- the pointer often overshoots onto the
+        // taskbar, and losing the scrubber at that moment is exactly when it is wanted.
+        private const double BottomBandPx = 56;
+        private const double BottomReachPx = 24;
+
         private bool _chromeHidden;
         private DispatcherTimer _chromeWatch;
         private DateTime _chromeHideAfter = DateTime.MaxValue;
@@ -4980,6 +5016,16 @@ if (_btnColumnToggle != null)
                 // window is the natural gesture, and it used to sail straight past.
                 bool nearTop = ShouldRevealChrome(x, y, chromeBottom, _chromeHidden);
 
+                // The bottom band brings the scrubber back on its own, without disturbing
+                // the menu. Reading with no chrome at all is the point of auto-hide, and
+                // reaching for the scrubber should not also flash the toolbar back.
+                bool nearBottom = ShouldRevealScrubber(x, y);
+                if (nearBottom != _bottomHover)
+                {
+                    _bottomHover = nearBottom;
+                    ApplyChromeVisibility();
+                }
+
                 if (nearTop || IsAnyMenuOpen())
                 {
                     _chromeHideAfter = DateTime.MaxValue;
@@ -5013,6 +5059,18 @@ if (_btnColumnToggle != null)
             return y <= limit;
         }
 
+        /// <summary>
+        /// Pure bottom-band test, in the same device-independent pixels as ActualWidth.
+        /// Split out for the same reason ShouldRevealChrome is: the alternative is asserting
+        /// against a real cursor, and the watcher moves the pointer state out from under any
+        /// test that tries.
+        /// </summary>
+        internal bool ShouldRevealScrubber(double x, double y)
+        {
+            if (x < 0 || x > ActualWidth) return false;
+            return y >= ActualHeight - BottomBandPx && y <= ActualHeight + BottomReachPx;
+        }
+
         // Full caption with tab chips vs slim strip (drag + min/max/close only).
         private const double CaptionHeightExpanded = 36;
         private const double CaptionHeightCollapsed = 28;
@@ -5033,13 +5091,45 @@ if (_btnColumnToggle != null)
         private void SetChromeHidden(bool hidden)
         {
             _chromeHidden = hidden;
-            // Writing mode: tuck command bar + tab chips. Keep a slim caption so the
-            // window still has drag + min/max/close (Notepad-style chrome without the clutter).
+            ApplyChromeVisibility();
+        }
+
+        /// <summary>
+        /// One place decides what chrome is on screen.
+        ///
+        /// Three surfaces, two sources of truth. The View menu toggles say what the reader
+        /// wants kept -- menu, scrubber, status bar -- and auto-hide temporarily overrides
+        /// all three so a page of prose has nothing around it. Restoring does not turn
+        /// things back on blindly: it returns to whatever the toggles ask for, so a reader
+        /// who has switched the status bar off does not get it back every time the pointer
+        /// brushes the top of the window.
+        ///
+        /// The scrubber is the exception that made this worth centralising: it lives in the
+        /// page rather than the shell, so it is set by message, and while auto-hide is on it
+        /// answers to the pointer being near the bottom instead of the top.
+        /// </summary>
+        private void ApplyChromeVisibility()
+        {
+            bool menuGone   = _chromeHidden || !_menuVisible;
+            bool statusGone = _chromeHidden || !_statusBarVisible;
+            bool scrubGone  = !_scrubberVisible || (_chromeHidden && !_bottomHover);
+
             var bar = FindElement("topToolbar") as UIElement;
-            if (bar != null) bar.Visibility = hidden ? Visibility.Collapsed : Visibility.Visible;
+            if (bar != null) bar.Visibility = menuGone ? Visibility.Collapsed : Visibility.Visible;
 
             var scroller = FindElement("tabScroller") as UIElement;
-            if (scroller != null) scroller.Visibility = hidden ? Visibility.Collapsed : Visibility.Visible;
+            if (scroller != null) scroller.Visibility = menuGone ? Visibility.Collapsed : Visibility.Visible;
+
+            var sbar = FindElement("statusBar") as UIElement;
+            if (sbar != null) sbar.Visibility = statusGone ? Visibility.Collapsed : Visibility.Visible;
+
+            if (scrubGone != _scrubberSuppressed)
+            {
+                _scrubberSuppressed = scrubGone;
+                SendMsg(scrubGone ? "cmd:scrubber_off" : "cmd:scrubber_on");
+            }
+
+            bool hidden = menuGone;
 
             var band = FindElement("tabBar") as Border;
             if (band != null)
@@ -5060,6 +5150,29 @@ if (_btnColumnToggle != null)
                     chrome.CaptionHeight = hidden ? CaptionHeightCollapsed : CaptionHeightExpanded;
             }
             catch { }
+        }
+
+        private bool _menuVisible = true;
+        private bool _scrubberVisible = true;
+        private bool _scrubberSuppressed;
+        private bool _bottomHover;
+
+        /// <summary>Menu bar and tab strip, held on or off by hand.</summary>
+        private void SetMenuVisible(bool on)
+        {
+            _menuVisible = on;
+            SetMenuChecked("mMenuToggle", on);
+            ApplyChromeVisibility();
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        /// <summary>The reading scrubber, which lives in the page.</summary>
+        private void SetScrubberVisible(bool on)
+        {
+            _scrubberVisible = on;
+            SetMenuChecked("mScrubberToggle", on);
+            ApplyChromeVisibility();
+            if (!_applyingRestoredSettings) SaveWindowState();
         }
 
         /// <summary>
@@ -5141,10 +5254,48 @@ if (_btnColumnToggle != null)
         {
             _statusBarVisible = on;
             SetMenuChecked("mStatusBarToggle", on);
-            var sb = FindElement("statusBar") as UIElement;
-            if (sb != null) sb.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            ApplyChromeVisibility();
             if (!_applyingRestoredSettings) SaveWindowState();
         }
+
+        // Four steps each, centred on what the stylesheet already shipped: one notch
+        // tighter for readers who want more words per page, two looser for the ones who
+        // find dense prose hard to track. Presets rather than a number box -- every value
+        // here has been looked at on a real page, which is not true of an open field.
+        private static readonly double[] LineSpacingPresets = { 1.4, 1.6, 1.8, 2.0 };
+        private static readonly int[] ParaSpacingPresets = { 1, 3, 7, 12 };
+        private static readonly string[] LineSpacingItems =
+            { "mLineTight", "mLineNormal", "mLineRelaxed", "mLineLoose" };
+        private static readonly string[] ParaSpacingItems =
+            { "mParaTight", "mParaNormal", "mParaRelaxed", "mParaLoose" };
+
+        private int _lineSpacing = 1;
+        private int _paraSpacing = 1;
+
+        /// <summary>Height of a line of body text, as a multiple of the font size.</summary>
+        private void SetLineSpacing(int index)
+        {
+            _lineSpacing = Clamp4(index);
+            for (int i = 0; i < LineSpacingItems.Length; i++)
+                SetMenuChecked(LineSpacingItems[i], i == _lineSpacing);
+            SendMsg("cmd:set_line_spacing:" + LineSpacingPresets[_lineSpacing].ToString(
+                System.Globalization.CultureInfo.InvariantCulture));
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        /// <summary>Gap between paragraphs, in pixels.</summary>
+        private void SetParaSpacing(int index)
+        {
+            _paraSpacing = Clamp4(index);
+            for (int i = 0; i < ParaSpacingItems.Length; i++)
+                SetMenuChecked(ParaSpacingItems[i], i == _paraSpacing);
+            SendMsg("cmd:set_para_spacing:" + ParaSpacingPresets[_paraSpacing].ToString(
+                System.Globalization.CultureInfo.InvariantCulture));
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        // A stale state file naming a fifth preset must not throw on startup.
+        private static int Clamp4(int i) { return i < 0 ? 0 : (i > 3 ? 3 : i); }
 
         private bool _wordWrap = true;
         private bool _statusBarVisible = true;
@@ -5165,11 +5316,21 @@ if (_btnColumnToggle != null)
             {
                 SetChromeAutoHide(_chromeAutoHide);
                 SetStatusBarVisible(_statusBarVisible);
+                SetMenuVisible(_menuVisible);
+                SetScrubberVisible(_scrubberVisible);
                 SetMenuChecked("mSessionRestoreContent", _sessionRestoreContent);
                 SetMenuChecked("mRecentEnabled", _recentFilesEnabled);
                 if (includePageSettings)
                 {
                     SetWordWrap(_wordWrap);
+                    SetLineSpacing(_lineSpacing);
+                    SetParaSpacing(_paraSpacing);
+
+                    // The scrubber lives in the page, so its state is only real once the
+                    // page exists. ApplyChromeVisibility above ran against no WebView and
+                    // its message went nowhere; resend now, or a reader who switched the
+                    // scrubber off would find it back on every launch.
+                    SendMsg(_scrubberSuppressed ? "cmd:scrubber_off" : "cmd:scrubber_on");
                     // The page defaults to not persisting content; tell it the real setting
                     // once it exists, or an opted-in user would silently lose the feature.
                     SendMsg(_sessionRestoreContent ? "cmd:persist_content_on" : "cmd:persist_content_off");
@@ -6755,6 +6916,132 @@ if (_btnColumnToggle != null)
                     if (sbHidden && sbBack) Pass("status bar toggles");
                     else Fail("status bar toggle failed (hidden=" + sbHidden + " back=" + sbBack + ")");
 
+                    // --- Auto-hide clears EVERYTHING, and the manual toggles under it ---
+                    //
+                    // Auto-hide used to tuck the command bar and the tab chips and leave the
+                    // status bar and the scrubber sitting there, which is not "no UI". The
+                    // three toggles beside it are the same surfaces held by hand, and the
+                    // interesting case is what a reveal restores: whatever the toggles ask
+                    // for, not everything. A reader who switched the status bar off must not
+                    // get it back every time the pointer brushes the top of the window.
+                    SetChromeAutoHide(true);
+                    SetChromeHidden(true);
+                    await Task.Delay(150);
+                    bool allGone = bar != null && bar.Visibility != Visibility.Visible
+                        && tabs != null && tabs.Visibility != Visibility.Visible
+                        && sbar != null && sbar.Visibility != Visibility.Visible
+                        && _scrubberSuppressed;
+                    log.AppendLine("AUTOHIDE-ALL bar=" + (bar == null ? "?" : bar.Visibility.ToString())
+                        + " tabs=" + (tabs == null ? "?" : tabs.Visibility.ToString())
+                        + " status=" + (sbar == null ? "?" : sbar.Visibility.ToString())
+                        + " scrubberOff=" + _scrubberSuppressed);
+                    if (allGone) Pass("auto-hide clears the status bar and the scrubber too, not just the menu");
+                    else Fail("auto-hide left some UI on screen");
+
+                    // The bottom band is the scrubber's own reveal: reaching for it must not
+                    // also flash the toolbar back.
+                    //
+                    // The watch has to be stopped for this. It is running -- auto-hide is on
+                    // -- and it writes _bottomHover from where the mouse actually is, so it
+                    // overwrote the value under test within the first tick and the check
+                    // failed against correct code.
+                    bool watchWasOn = _chromeWatch != null && _chromeWatch.IsEnabled;
+                    if (_chromeWatch != null) _chromeWatch.Stop();
+                    _bottomHover = true;
+                    ApplyChromeVisibility();
+                    await Task.Delay(100);
+                    bool scrubBack = !_scrubberSuppressed;
+                    bool menuStayedGone = bar != null && bar.Visibility != Visibility.Visible;
+                    if (scrubBack && menuStayedGone)
+                        Pass("pointer at the bottom brings the scrubber back and leaves the menu hidden");
+                    else Fail("bottom reveal wrong (scrubber=" + scrubBack + " menuHidden=" + menuStayedGone + ")");
+                    _bottomHover = false;
+                    ApplyChromeVisibility();
+                    if (watchWasOn && _chromeWatch != null) _chromeWatch.Start();
+
+                    // And the band geometry itself, as a pure function: the bottom strip of
+                    // the window and a little past its edge, because the pointer overshoots
+                    // onto the taskbar exactly when the scrubber is wanted.
+                    bool bandInside = ShouldRevealScrubber(200, ActualHeight - 10);
+                    bool bandOvershoot = ShouldRevealScrubber(200, ActualHeight + 12);
+                    bool bandMissMiddle = ShouldRevealScrubber(200, ActualHeight / 2);
+                    bool bandMissOffRight = ShouldRevealScrubber(ActualWidth + 30, ActualHeight - 10);
+                    log.AppendLine("SCRUBZONE inside=" + bandInside + " overshoot=" + bandOvershoot +
+                        " middle=" + bandMissMiddle + " offRight=" + bandMissOffRight);
+                    if (bandInside && bandOvershoot && !bandMissMiddle && !bandMissOffRight)
+                        Pass("the scrubber reveal band is the bottom strip, not the middle of the page");
+                    else Fail("scrubber reveal geometry wrong");
+
+                    // Revealing honours the toggles rather than turning everything on.
+                    SetStatusBarVisible(false);
+                    SetChromeHidden(false);
+                    await Task.Delay(150);
+                    bool respected = bar != null && bar.Visibility == Visibility.Visible
+                        && sbar != null && sbar.Visibility != Visibility.Visible;
+                    if (respected) Pass("revealing brings back the menu but respects a status bar switched off by hand");
+                    else Fail("revealing overrode the manual status bar setting");
+                    SetStatusBarVisible(true);
+                    SetChromeAutoHide(false);
+                    await Task.Delay(100);
+
+                    SetMenuVisible(false);
+                    await Task.Delay(100);
+                    bool menuOff = bar != null && bar.Visibility != Visibility.Visible
+                        && tabs != null && tabs.Visibility != Visibility.Visible;
+                    if (menuOff) Pass("View > Menu hides the menu on its own, with auto-hide off");
+                    else Fail("View > Menu did not hide the menu");
+
+                    // The escape hatch. Switching the menu off hides the bar that holds the
+                    // View menu, so without a keyboard route it would be a one-way door.
+                    var src = PresentationSource.FromVisual(this);
+                    if (src == null) log.AppendLine("NOTE no presentation source, skipped F10 rescue check");
+                    else
+                    {
+                        TypoZenWindow_KeyDown(this, new KeyEventArgs(
+                            Keyboard.PrimaryDevice, src, 0, Key.F10)
+                            { RoutedEvent = Keyboard.KeyDownEvent });
+                        await Task.Delay(150);
+                        bool menuRescued = _menuVisible && bar != null && bar.Visibility == Visibility.Visible;
+                        if (menuRescued) Pass("F10 brings the menu back after switching it off (not a one-way door)");
+                        else Fail("F10 could not recover a menu switched off by hand");
+                    }
+                    if (!_menuVisible) SetMenuVisible(true);
+
+                    SetScrubberVisible(false);
+                    await Task.Delay(100);
+                    bool scrubOff = _scrubberSuppressed;
+                    SetScrubberVisible(true);
+                    await Task.Delay(100);
+                    if (scrubOff && !_scrubberSuppressed) Pass("View > Scrubber toggles the scrubber");
+                    else Fail("scrubber toggle failed (off=" + scrubOff + " backOn=" + !_scrubberSuppressed + ")");
+
+                    // Spacing presets: four each, and the menu must tick exactly one.
+                    SetLineSpacing(3);
+                    SetParaSpacing(0);
+                    await Task.Delay(100);
+                    int lineTicks = 0, paraTicks = 0;
+                    foreach (var n in LineSpacingItems)
+                    { var mi = FindElement(n) as MenuItem; if (mi != null && mi.IsChecked) lineTicks++; }
+                    foreach (var n in ParaSpacingItems)
+                    { var mi = FindElement(n) as MenuItem; if (mi != null && mi.IsChecked) paraTicks++; }
+                    var looseItem = FindElement("mLineLoose") as MenuItem;
+                    var tightItem = FindElement("mParaTight") as MenuItem;
+                    bool ticksRight = lineTicks == 1 && paraTicks == 1
+                        && looseItem != null && looseItem.IsChecked
+                        && tightItem != null && tightItem.IsChecked;
+                    log.AppendLine("SPACING lineTicks=" + lineTicks + " paraTicks=" + paraTicks);
+                    if (ticksRight) Pass("spacing presets tick exactly the one chosen");
+                    else Fail("spacing menu ticks wrong (line=" + lineTicks + " para=" + paraTicks + ")");
+
+                    // A state file naming a preset that no longer exists must not throw.
+                    SetLineSpacing(99);
+                    SetParaSpacing(-5);
+                    await Task.Delay(50);
+                    if (_lineSpacing == 3 && _paraSpacing == 0) Pass("an out-of-range preset clamps instead of throwing");
+                    else Fail("preset clamping wrong (line=" + _lineSpacing + " para=" + _paraSpacing + ")");
+                    SetLineSpacing(1);
+                    SetParaSpacing(1);
+
                     // Reveal geometry, in DIPs relative to the client area. y<0 is the
                     // title bar. This was compared against physical pixels before, making
                     // the hot zone ~4 logical px and effectively unreachable.
@@ -6780,8 +7067,23 @@ if (_btnColumnToggle != null)
                     await Task.Delay(100);
                     _chromeAutoHide = true;                  // as RestoreWindowState leaves it
                     _statusBarVisible = false;
+                    _menuVisible = false;
+                    _scrubberVisible = false;
                     ApplyRestoredViewSettings(false);
                     await Task.Delay(150);
+
+                    var menuItem = FindElement("mMenuToggle") as MenuItem;
+                    var scrubItem = FindElement("mScrubberToggle") as MenuItem;
+                    bool newOnesApplied = menuItem != null && !menuItem.IsChecked
+                        && scrubItem != null && !scrubItem.IsChecked
+                        && bar != null && bar.Visibility != Visibility.Visible
+                        && _scrubberSuppressed;
+                    if (newOnesApplied) Pass("restored Menu and Scrubber settings are applied and ticked to match");
+                    else Fail("restored Menu/Scrubber settings ignored or out of sync with their menu items");
+                    _menuVisible = true;
+                    _scrubberVisible = true;
+                    ApplyRestoredViewSettings(false);
+                    await Task.Delay(100);
 
                     var autoItem = FindElement("mChromeAutoHide") as MenuItem;
                     bool menuTicked = autoItem != null && autoItem.IsChecked;

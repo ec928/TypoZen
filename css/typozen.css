@@ -24,7 +24,11 @@
             color: var(--tx, #F4F4F5);
             font-family: var(--font, sans-serif);
             font-size: var(--fs, 16px);
-            line-height: 1.6;
+            /* Reading comfort, chosen from View > Line Spacing. Unitless so it scales with
+               whatever font size the theme asks for, and inherited, so a book gets it too --
+               the publisher's own line-height is stripped when a book's stylesheet is
+               applied, which is what leaves this in charge. */
+            line-height: var(--lh, 1.6);
             overflow: hidden;
             display: flex;
             height: 100vh;
@@ -562,6 +566,10 @@
             height: 16px;
             z-index: 6;
         }
+        /* Hidden by class, not by display: updatePageScrubber sets display on every page
+           turn, so anything it can overwrite is not a setting. */
+        body.tz-no-scrubber #page-scrubber { display: none !important; }
+
         #page-scrubber-range {
             -webkit-appearance: none;
             appearance: none;
@@ -743,7 +751,10 @@
         /* Block Elements in Live Preview */
         .block {
             position: relative;
-            margin-bottom: 3px;
+            /* The gap between paragraphs, from View > Paragraph Spacing. One block is one
+               paragraph in both kinds of document, so this reaches a book as well as a
+               Markdown file. */
+            margin-bottom: var(--para, 3px);
             padding: 2px 8px;
             border-radius: 6px;
             outline: none;
