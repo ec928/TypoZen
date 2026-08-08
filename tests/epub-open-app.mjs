@@ -310,6 +310,38 @@ async function openAndCheck(app, book, deep) {
             plates.blocks + ')');
     }
 
+    // Every outline entry goes somewhere different, and somewhere that starts a page.
+    //
+    // Matter's whole table of contents points into one file through #filepos anchors that do
+    // not exist -- the book contains calibre_pb_0..68 and nothing else -- so all 36 entries
+    // resolved to the same block. Title matching rescued the chapters, because a chapter has
+    // its name printed at the top of it, and left "Title Page", "Copyright Page",
+    // "Dedication" and "About the Author" pointing at the table of contents itself: 28
+    // distinct targets for 36 entries, five of them opening the contents page.
+    //
+    // Distinctness is the assertion because it is the property that survives a book with
+    // broken anchors: the entries are ordered and the spine is known, so every entry can at
+    // least be given its own document in the right order even when no anchor can prove which.
+    const tocTargets = await app.eval(() => {
+        const toc = DocumentModel.toc || [];
+        const at = toc.map(e => (e.blockIndex != null ? e.blockIndex : e.block))
+            .filter(b => b >= 0);
+        let onBoundary = 0;
+        for (const b of at) if (_bookDocStarts[b]) onBoundary++;
+        return { entries: toc.length, resolved: at.length,
+                 distinct: new Set(at).size, onBoundary };
+    });
+    info('outline: ' + tocTargets.entries + ' entries, ' + tocTargets.distinct +
+         ' distinct targets, ' + tocTargets.onBoundary + ' on a document boundary');
+    if (tocTargets.resolved > 2) {
+        assert(tocTargets.distinct === tocTargets.resolved,
+            book + ': every outline entry has its own target (' + tocTargets.distinct +
+            ' distinct for ' + tocTargets.resolved + ' entries)');
+        assert(tocTargets.onBoundary === tocTargets.resolved,
+            book + ': and every one of them starts a page (' + tocTargets.onBoundary +
+            ' of ' + tocTargets.resolved + ')');
+    }
+
     // No document boundary is anchored to a block that renders nothing.
     //
     // A model-level check, because that is where this went wrong and layout only showed the

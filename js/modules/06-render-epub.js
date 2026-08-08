@@ -53,7 +53,8 @@
             const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
 
             const split = bookBlocksFromDocs(data.docs);
-            const toc = bookRepairTocByTitle(bookTocToBlockIndices(data.toc, split.docStart), split.blocks);
+            const toc = bookRepairTocByTitle(bookTocToBlockIndices(data.toc, split.docStart),
+                split.blocks, split.docStarts);
             _bookDocStarts = {};
             for (let i = 0; i < split.docStarts.length; i++) _bookDocStarts[split.docStarts[i]] = 1;
             _bookPlateBlocks = bookFindPlateBlocks(split.blocks, split.docStarts);
@@ -571,7 +572,7 @@
             return map;
         }
 
-        function bookRepairTocByTitle(toc, blocks) {
+        function bookRepairTocByTitle(toc, blocks, docStarts) {
             if (!toc || toc.length < 3) return toc;
             const distinct = {};
             for (let i = 0; i < toc.length; i++) distinct[toc[i].blockIndex] = 1;
@@ -581,16 +582,63 @@
 
             const headings = bookHeadingIndex(blocks);
             let repaired = 0;
+            const byTitle = [];
             for (let i = 0; i < toc.length; i++) {
                 const key = String(toc[i].title || '').replace(/\s+/g, ' ').trim().toLowerCase();
                 if (Object.prototype.hasOwnProperty.call(headings, key)) {
                     toc[i].blockIndex = headings[key];
+                    byTitle[i] = true;
                     repaired++;
                 }
             }
+            // Second pass: a table of contents is in order, and that is information.
+            //
+            // Title matching gets the chapters, because a chapter has its title printed at
+            // the top of it. It cannot get "Title Page", "Copyright Page", "Dedication" or
+            // "About the Author" -- labels a converter invented for sections that carry no
+            // such heading -- so those entries stayed on the block the collapse left them on
+            // and every one of them opened the table of contents itself. Measured on Matter:
+            // 36 entries sharing 28 targets, with five landing on "Table of Contents".
+            //
+            // Anything that did not move is therefore placed on the next spine boundary after
+            // the entry before it. That uses two facts the book really does provide -- the
+            // documents, and the order of the list -- instead of an anchor it does not:
+            // Matter's TOC points at filepos3742 and friends, and the file contains only
+            // calibre_pb_0..68. Those anchors do not exist and no amount of care will resolve
+            // them; the order of the list is the only thing left that is true.
+            let ordered = 0;
+            if (docStarts && docStarts.length) {
+                const starts = docStarts.slice().sort(function (a, b) { return a - b; });
+                // Trusted only where the title matched. An entry the title pass could not
+                // place is still sitting on the collapse, and a collapsed value happens to
+                // be a perfectly ordinary number -- the first entry's was block 1, greater
+                // than nothing before it, so a monotonicity test accepted it and shifted
+                // every placement after it by one. "About the Author" kept pointing at the
+                // table of contents while the author's biography went to "Title Page".
+                // Seeded at the file the collapsed hrefs pointed into, not at the start of
+                // the book. The href is not useless -- its fragment is dead, but its file
+                // still says "at or after here", and the documents before it (a cover, the
+                // contents page itself) have no entry pointing at them. Walking from zero
+                // handed those to the first entries and pushed everything down by two.
+                let prev = -1, si = 0;
+                for (const k of Object.keys(distinct)) {
+                    const v = +k;
+                    if (v >= 0 && (prev < 0 || v < prev)) prev = v;
+                }
+                prev = prev < 0 ? -1 : prev;
+                for (let i = 0; i < toc.length; i++) {
+                    if (byTitle[i] && toc[i].blockIndex > prev) { prev = toc[i].blockIndex; continue; }
+                    while (si < starts.length && starts[si] <= prev) si++;
+                    if (si >= starts.length) break;
+                    toc[i].blockIndex = starts[si];
+                    prev = starts[si];
+                    ordered++;
+                }
+            }
+
             window.showDebugTelemetry('book toc: hrefs collapsed to ' +
                 Object.keys(distinct).length + ' targets for ' + toc.length +
-                ' entries; matched ' + repaired + ' by title');
+                ' entries; matched ' + repaired + ' by title, placed ' + ordered + ' by order');
             return toc;
         }
 
