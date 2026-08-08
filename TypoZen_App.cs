@@ -282,6 +282,7 @@ namespace TypoZen
 
         // UI Controls
         private TextBlock _lblStatus;
+        private TextBlock _lblChapter;
         private TextBlock _lblFilePath;
         private TextBlock _lblWordCount;
         private TextBlock _lblLineCount;
@@ -716,6 +717,7 @@ namespace TypoZen
 
             // Bind Status bar
             _lblStatus = (TextBlock)FindElement("lblStatus");
+            _lblChapter = FindElement("lblChapter") as TextBlock;
             _lblFilePath = (TextBlock)FindElement("lblFilePath");
             _lblWordCount = (TextBlock)FindElement("lblWordCount");
             _lblLineCount = (TextBlock)FindElement("lblLineCount");
@@ -775,7 +777,6 @@ namespace TypoZen
 
             // Chrome visibility, word wrap, status bar, print
             BindClick("mChromeAutoHide", (s, e) => SetChromeAutoHide(!_chromeAutoHide));
-            BindClick("mMenuToggle", (s, e) => SetMenuVisible(!_menuVisible));
             BindClick("mScrubberToggle", (s, e) => SetScrubberVisible(!_scrubberVisible));
             BindClick("mLineTight",   (s, e) => SetLineSpacing(0));
             BindClick("mLineNormal",  (s, e) => SetLineSpacing(1));
@@ -1300,6 +1301,7 @@ namespace TypoZen
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_MOUSEWHEEL = 0x020A;
+        private const int VK_MENU = 0x12, VK_LMENU = 0xA4, VK_RMENU = 0xA5;
 
         private void InstallEditorKeyFilter()
         {
@@ -1330,13 +1332,35 @@ namespace TypoZen
 
             if (msg.message != WM_KEYDOWN && msg.message != WM_SYSKEYDOWN) return;
 
-            // Alt arrives as WM_SYSKEYDOWN. Reveal hidden chrome here too: while the
-            // WebView has focus Window.KeyDown never fires, so this is the only route
-            // back to the menu — without it, auto-hide can lock you out of View.
-            if (_chromeHidden && msg.message == WM_SYSKEYDOWN)
+            // Alt arrives as WM_SYSKEYDOWN while WebView has focus. Reveal auto-hidden
+            // chrome; Alt+letter opens File/Edit/View/Themes/Help (and Alt+S search).
+            if (msg.message == WM_SYSKEYDOWN)
             {
-                SetChromeHidden(false);
-                _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(3000);
+                int k = msg.wParam.ToInt32() & 0xFFFF;
+                bool bareAlt = (k == VK_MENU || k == VK_LMENU || k == VK_RMENU);
+                if (bareAlt && _chromeHidden)
+                {
+                    SetChromeHidden(false);
+                    _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(ChromeHideDelayMs);
+                }
+                if ((WinForms.Control.ModifierKeys & WinForms.Keys.Alt) == WinForms.Keys.Alt
+                    && (WinForms.Control.ModifierKeys & WinForms.Keys.Control) != WinForms.Keys.Control
+                    && k >= 0x41 && k <= 0x5A)
+                {
+                    char letter = (char)('a' + (k - 0x41));
+                    if (letter == 'f' || letter == 'e' || letter == 'v' || letter == 't' || letter == 'h')
+                    {
+                        handled = true;
+                        char L = letter;
+                        Dispatcher.BeginInvoke(new Action(() => OpenMenuByAccessKey(L)), DispatcherPriority.Send);
+                    }
+                    else if (letter == 's')
+                    {
+                        handled = true;
+                        Dispatcher.BeginInvoke(new Action(() => SendMsg("cmd:toggle_search_sidebar")),
+                            DispatcherPriority.Send);
+                    }
+                }
             }
 
             // Ctrl held? (GetKeyState high bit)
@@ -1416,22 +1440,36 @@ namespace TypoZen
 
         private void TypoZenWindow_KeyDown(object sender, KeyEventArgs e)
         {
-            // Alt / F10 always bring the chrome back. Without a keyboard route you could
-            // end up unable to reach the View menu to turn auto-hide off again.
-            //
-            // It has to answer for View > Menu as well, not just auto-hide: that toggle
-            // hides the bar holding the View menu, so switching it off with no way back
-            // would be a one-way door. Auto-hide reveals temporarily -- the pointer left
-            // and the bar goes again -- but a menu switched off by hand is a settled
-            // choice, so the key reverses the choice rather than papering over it.
-            if (e.Key == Key.System || e.SystemKey == Key.LeftAlt
-                || e.SystemKey == Key.RightAlt || e.Key == Key.F10)
+            // Plain Alt reveals auto-hidden chrome when WPF chrome has focus.
+            if (e.Key == Key.LeftAlt || e.Key == Key.RightAlt
+                || e.SystemKey == Key.LeftAlt || e.SystemKey == Key.RightAlt)
             {
-                if (!_menuVisible) SetMenuVisible(true);
-                else if (_chromeHidden)
+                if (_chromeHidden)
                 {
                     SetChromeHidden(false);
-                    _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(3000);
+                    _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(ChromeHideDelayMs);
+                }
+            }
+            // Alt+F/E/V/T/H open top-level menus; Alt+S is search sidebar.
+            else if ((Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt
+                     && (Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
+            {
+                Key sk = e.SystemKey != Key.None ? e.SystemKey : e.Key;
+                char letter = '\0';
+                if (sk == Key.F) letter = 'f';
+                else if (sk == Key.E) letter = 'e';
+                else if (sk == Key.V) letter = 'v';
+                else if (sk == Key.T) letter = 't';
+                else if (sk == Key.H) letter = 'h';
+                else if (sk == Key.S)
+                {
+                    SendMsg("cmd:toggle_search_sidebar");
+                    e.Handled = true;
+                }
+                if (letter != '\0')
+                {
+                    OpenMenuByAccessKey(letter);
+                    e.Handled = true;
                 }
             }
 
@@ -2627,6 +2665,7 @@ namespace TypoZen
                 "  • unsaved text kept for session restore\n" +
                 "  • the list of open tabs\n" +
                 "  • the recent files list\n" +
+                "  • recent Search queries\n" +
                 "  • pasted images held in the cache\n" +
                 "  • saved web storage (cleared on next launch)\n\n" +
                 "Your documents are not touched. Only " + CacheDir() + " is affected.",
@@ -2662,12 +2701,13 @@ namespace TypoZen
             }
             catch { }
 
-            // Blank document scratch fields; keep theme/mode via host prefs merge.
+            // Blank document scratch fields and recent searches; keep theme/mode.
             try
             {
                 var prefs = LoadHostPrefs();
                 prefs.LastFilePath = "";
                 prefs.LastContent = "";
+                prefs.SearchHistory = new System.Collections.Generic.List<string>();
                 WriteHostPrefs(prefs);
             }
             catch { }
@@ -2822,7 +2862,7 @@ namespace TypoZen
                 string json = string.Format(System.Globalization.CultureInfo.InvariantCulture,
                     "{{\"state\":\"{0}\",\"width\":{1},\"height\":{2},\"left\":{3},\"top\":{4},\"zoom\":{5}," +
                     "\"chrome\":\"{6}\",\"wordWrap\":{7},\"statusBar\":{8}," +
-                    "\"menuBar\":{21},\"scrubber\":{22},\"lineSpacing\":{23},\"paraSpacing\":{24}," +
+                    "\"scrubber\":{21},\"lineSpacing\":{22},\"paraSpacing\":{23}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
                     "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20}}}",
@@ -2833,7 +2873,7 @@ namespace TypoZen
                     _isTwoColumnMode ? "true" : "false",
                     _col2Rect.HasValue ? _col2Rect.Value.Width : 0, _col2Rect.HasValue ? _col2Rect.Value.Height : 0, _col2Rect.HasValue ? _col2Rect.Value.Left : 0, _col2Rect.HasValue ? _col2Rect.Value.Top : 0,
                     _col1Rect.HasValue ? _col1Rect.Value.Width : 0, _col1Rect.HasValue ? _col1Rect.Value.Height : 0, _col1Rect.HasValue ? _col1Rect.Value.Left : 0, _col1Rect.HasValue ? _col1Rect.Value.Top : 0,
-                    _menuVisible ? "true" : "false", _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing);
+                    _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing);
 
                 WriteStateFileAtomic(path, json);
             }
@@ -2948,8 +2988,6 @@ namespace TypoZen
                 if (mWrap.Success) _wordWrap = mWrap.Groups[1].Value == "true";
                 var mSb = Regex.Match(json, @"\""statusBar\""\s*:\s*(true|false)");
                 if (mSb.Success) _statusBarVisible = mSb.Groups[1].Value == "true";
-                var mMenuBar = Regex.Match(json, @"\""menuBar\""\s*:\s*(true|false)");
-                if (mMenuBar.Success) _menuVisible = mMenuBar.Groups[1].Value == "true";
                 var mScrub = Regex.Match(json, @"\""scrubber\""\s*:\s*(true|false)");
                 if (mScrub.Success) _scrubberVisible = mScrub.Groups[1].Value == "true";
                 var mLine = Regex.Match(json, @"\""lineSpacing\""\s*:\s*(\d+)");
@@ -3789,10 +3827,33 @@ if (_btnColumnToggle != null)
                 // has to repaint every stateful control. Without the field the sidebar
                 // button kept whatever colour it was first given and drifted out of step
                 // with the theme, since nothing else knew whether it was on.
+                //
+                // User toggles pin the sidebar open (or clear the pin when closed). Edge
+                // hover does not send this — so hover cannot pin.
                 _sidebarOpen = msg.Substring(14) == "1";
+                _sidebarPinned = _sidebarOpen;
+                if (!_sidebarPinned) StartChromeWatch();
                 Dispatcher.BeginInvoke(new Action(() =>
                     SetToolbarActive(FindElement("btnToggleSidebar") as Button, _sidebarOpen)),
                     DispatcherPriority.Normal);
+            }
+            else if (msg.StartsWith("chapter:"))
+            {
+                string title = msg.Length > 8 ? msg.Substring(8) : "";
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        if (_lblChapter == null) _lblChapter = FindElement("lblChapter") as TextBlock;
+                        if (_lblChapter != null)
+                        {
+                            _lblChapter.Text = string.IsNullOrEmpty(title) ? "" : title;
+                            _lblChapter.Visibility = string.IsNullOrEmpty(title)
+                                ? Visibility.Collapsed : Visibility.Visible;
+                        }
+                    }
+                    catch { }
+                }), DispatcherPriority.Background);
             }
             else if (msg == "focus_webview")
             {
@@ -3917,6 +3978,9 @@ if (_btnColumnToggle != null)
             public string Margin = "narrow";
             public string LastFilePath = "";
             public string LastContent = ""; // always written empty
+            /// <summary>Global Search-tab recent queries (most recent first, max 8).</summary>
+            public System.Collections.Generic.List<string> SearchHistory =
+                new System.Collections.Generic.List<string>();
         }
 
         private static string JsonEscape(string s)
@@ -3971,6 +4035,85 @@ if (_btnColumnToggle != null)
             return v;
         }
 
+        /// <summary>
+        /// Parse a JSON string array value for one key. Used for searchHistory.
+        /// Returns an empty list when the key is present as [] or missing entries.
+        /// Returns null when the key is absent so callers can leave the field alone.
+        /// </summary>
+        private static System.Collections.Generic.List<string> ExtractJsonStringArray(string json, string key)
+        {
+            if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(key)) return null;
+            var head = Regex.Match(json, "\"" + Regex.Escape(key) + "\"\\s*:\\s*\\[");
+            if (!head.Success) return null;
+            int i = head.Index + head.Length;
+            var list = new System.Collections.Generic.List<string>();
+            while (i < json.Length)
+            {
+                while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
+                if (i >= json.Length) break;
+                if (json[i] == ']') break;
+                if (json[i] == ',') { i++; continue; }
+                if (json[i] != '"') break;
+                i++; // opening quote
+                var sb = new StringBuilder();
+                while (i < json.Length)
+                {
+                    char c = json[i++];
+                    if (c == '\\' && i < json.Length)
+                    {
+                        char n = json[i++];
+                        switch (n)
+                        {
+                            case '"': sb.Append('"'); break;
+                            case '\\': sb.Append('\\'); break;
+                            case '/': sb.Append('/'); break;
+                            case 'b': sb.Append('\b'); break;
+                            case 'f': sb.Append('\f'); break;
+                            case 'n': sb.Append('\n'); break;
+                            case 'r': sb.Append('\r'); break;
+                            case 't': sb.Append('\t'); break;
+                            case 'u':
+                                if (i + 3 < json.Length)
+                                {
+                                    int code;
+                                    if (int.TryParse(json.Substring(i, 4),
+                                        System.Globalization.NumberStyles.HexNumber,
+                                        System.Globalization.CultureInfo.InvariantCulture, out code))
+                                        sb.Append((char)code);
+                                    i += 4;
+                                }
+                                break;
+                            default: sb.Append(n); break;
+                        }
+                    }
+                    else if (c == '"') break;
+                    else sb.Append(c);
+                }
+                string s = sb.ToString().Trim();
+                if (s.Length > 0 && list.Count < 8 && !list.Contains(s))
+                    list.Add(s);
+            }
+            return list;
+        }
+
+        private static string FormatJsonStringArray(System.Collections.Generic.List<string> items)
+        {
+            if (items == null || items.Count == 0) return "[]";
+            var sb = new StringBuilder();
+            sb.Append('[');
+            int n = 0;
+            for (int i = 0; i < items.Count && n < 8; i++)
+            {
+                string s = items[i];
+                if (string.IsNullOrEmpty(s)) continue;
+                if (n > 0) sb.Append(',');
+                sb.Append('"').Append(JsonEscape(s)).Append('"');
+                n++;
+            }
+            sb.Append(']');
+            return sb.ToString();
+        }
+
         private HostPrefs LoadHostPrefs()
         {
             var p = new HostPrefs();
@@ -3992,6 +4135,8 @@ if (_btnColumnToggle != null)
                 b = ExtractJsonBool(json, "revealOnFocus"); if (b.HasValue) p.RevealOnFocus = b.Value;
                 b = ExtractJsonBool(json, "focusMode"); if (b.HasValue) p.FocusMode = b.Value;
                 b = ExtractJsonBool(json, "typewriterMode"); if (b.HasValue) p.TypewriterMode = b.Value;
+                var hist = ExtractJsonStringArray(json, "searchHistory");
+                if (hist != null) p.SearchHistory = hist;
             }
             catch { }
             return p;
@@ -4011,6 +4156,7 @@ if (_btnColumnToggle != null)
                 + "\"typewriterMode\":" + (p.TypewriterMode ? "true" : "false") + ","
                 + "\"margin\":\"" + JsonEscape(string.IsNullOrEmpty(p.Margin) ? "narrow" : p.Margin) + "\","
                 + "\"lastFilePath\":\"" + JsonEscape(p.LastFilePath ?? "") + "\","
+                + "\"searchHistory\":" + FormatJsonStringArray(p.SearchHistory) + ","
                 + "\"lastContent\":\"\""
                 + "}";
             string prefsPath = PrefsPath();
@@ -4046,6 +4192,8 @@ if (_btnColumnToggle != null)
                 b = ExtractJsonBool(pageJson, "revealOnFocus"); if (b.HasValue) prefs.RevealOnFocus = b.Value;
                 b = ExtractJsonBool(pageJson, "focusMode"); if (b.HasValue) prefs.FocusMode = b.Value;
                 b = ExtractJsonBool(pageJson, "typewriterMode"); if (b.HasValue) prefs.TypewriterMode = b.Value;
+                var hist = ExtractJsonStringArray(pageJson, "searchHistory");
+                if (hist != null) prefs.SearchHistory = hist;
                 // lastContent from page is ignored (document text does not belong in settings).
             }
 
@@ -4997,7 +5145,8 @@ if (_btnColumnToggle != null)
 
         private void ChromeWatchTick()
         {
-            if (!_chromeAutoHide) return;
+            // Always run while auto-hide is on, or while the sidebar can edge-reveal.
+            if (!_chromeAutoHide && _sidebarPinned) return;
             try
             {
                 // Convert the physical cursor position into the SAME units as ActualWidth
@@ -5008,7 +5157,6 @@ if (_btnColumnToggle != null)
                 Point p = PointFromScreen(new Point(screenPos.X, screenPos.Y));
                 double x = p.X;
                 double y = p.Y;
-                bool insideHorizontally = x >= 0 && x <= ActualWidth;
 
                 double chromeBottom = ChromeHeight();
                 // Reveal from anywhere in the top band INCLUDING the title bar above the
@@ -5026,6 +5174,17 @@ if (_btnColumnToggle != null)
                     ApplyChromeVisibility();
                 }
 
+                // Extreme left edge: temporary sidebar unless the user pinned it open.
+                bool nearLeft = ShouldRevealSidebar(x, y);
+                if (nearLeft != _leftHover)
+                {
+                    _leftHover = nearLeft;
+                    if (!_sidebarPinned)
+                        SendMsg(nearLeft ? "cmd:sidebar_edge:1" : "cmd:sidebar_edge:0");
+                }
+
+                if (!_chromeAutoHide) return;
+
                 if (nearTop || IsAnyMenuOpen())
                 {
                     _chromeHideAfter = DateTime.MaxValue;
@@ -5033,8 +5192,7 @@ if (_btnColumnToggle != null)
                     return;
                 }
 
-                // Pointer is away. In auto mode hide again after a grace period; in typing
-                // mode stay visible until the next keystroke tells us to hide.
+                // Pointer is away. Hide again after a grace period.
                 if (!_chromeHidden)
                 {
                     if (_chromeHideAfter == DateTime.MaxValue)
@@ -5069,6 +5227,19 @@ if (_btnColumnToggle != null)
         {
             if (x < 0 || x > ActualWidth) return false;
             return y >= ActualHeight - BottomBandPx && y <= ActualHeight + BottomReachPx;
+        }
+
+        /// <summary>
+        /// Extreme left strip (and a little past the outer edge). Reveals the outline/search
+        /// sidebar temporarily unless the user pinned it open with the toolbar/menu toggle.
+        /// Hysteresis: thin strip to open, wider band to stay open so the pointer can move
+        /// into the sidebar itself without the host closing it under the cursor.
+        /// </summary>
+        internal bool ShouldRevealSidebar(double x, double y)
+        {
+            if (y < -TitleBarReachPx || y > ActualHeight + BottomReachPx) return false;
+            double limit = _leftHover ? LeftStayPx : LeftHotZonePx;
+            return x >= -LeftReachPx && x <= limit;
         }
 
         // Full caption with tab chips vs slim strip (drag + min/max/close only).
@@ -5110,7 +5281,7 @@ if (_btnColumnToggle != null)
         /// </summary>
         private void ApplyChromeVisibility()
         {
-            bool menuGone   = _chromeHidden || !_menuVisible;
+            bool menuGone   = _chromeHidden;
             bool statusGone = _chromeHidden || !_statusBarVisible;
             bool scrubGone  = !_scrubberVisible || (_chromeHidden && !_bottomHover);
 
@@ -5152,19 +5323,16 @@ if (_btnColumnToggle != null)
             catch { }
         }
 
-        private bool _menuVisible = true;
         private bool _scrubberVisible = true;
         private bool _scrubberSuppressed;
         private bool _bottomHover;
-
-        /// <summary>Menu bar and tab strip, held on or off by hand.</summary>
-        private void SetMenuVisible(bool on)
-        {
-            _menuVisible = on;
-            SetMenuChecked("mMenuToggle", on);
-            ApplyChromeVisibility();
-            if (!_applyingRestoredSettings) SaveWindowState();
-        }
+        private bool _leftHover;
+        /// <summary>True when the user opened the sidebar with the toggle (stays until closed).</summary>
+        private bool _sidebarPinned = true;
+        private const int LeftHotZonePx = 10;
+        /// <summary>While edge-open, keep revealing across typical sidebar width.</summary>
+        private const int LeftStayPx = 280;
+        private const int LeftReachPx = 24;
 
         /// <summary>The reading scrubber, which lives in the page.</summary>
         private void SetScrubberVisible(bool on)
@@ -5226,7 +5394,8 @@ if (_btnColumnToggle != null)
 
             _chromeHideAfter = DateTime.MaxValue;
             if (!on) SetChromeHidden(false);
-            else StartChromeWatch();
+            // Pointer watch also drives left-edge sidebar hover when the bar is unpinned.
+            if (on || !_sidebarPinned) StartChromeWatch();
             // Starts visible either way: you watch it retract rather than wondering where
             // it went, which is what makes the behaviour discoverable without a tutorial.
             if (!_applyingRestoredSettings) SaveWindowState();
@@ -5316,7 +5485,6 @@ if (_btnColumnToggle != null)
             {
                 SetChromeAutoHide(_chromeAutoHide);
                 SetStatusBarVisible(_statusBarVisible);
-                SetMenuVisible(_menuVisible);
                 SetScrubberVisible(_scrubberVisible);
                 SetMenuChecked("mSessionRestoreContent", _sessionRestoreContent);
                 SetMenuChecked("mRecentEnabled", _recentFilesEnabled);
@@ -6984,28 +7152,16 @@ if (_btnColumnToggle != null)
                     SetChromeAutoHide(false);
                     await Task.Delay(100);
 
-                    SetMenuVisible(false);
-                    await Task.Delay(100);
-                    bool menuOff = bar != null && bar.Visibility != Visibility.Visible
-                        && tabs != null && tabs.Visibility != Visibility.Visible;
-                    if (menuOff) Pass("View > Menu hides the menu on its own, with auto-hide off");
-                    else Fail("View > Menu did not hide the menu");
+                    // Menu is always discoverable (auto-hide top edge); no View > Menu toggle.
+                    Pass("menu is not a manual toggle (always discoverable from the top edge)");
 
-                    // The escape hatch. Switching the menu off hides the bar that holds the
-                    // View menu, so without a keyboard route it would be a one-way door.
-                    var src = PresentationSource.FromVisual(this);
-                    if (src == null) log.AppendLine("NOTE no presentation source, skipped F10 rescue check");
-                    else
-                    {
-                        TypoZenWindow_KeyDown(this, new KeyEventArgs(
-                            Keyboard.PrimaryDevice, src, 0, Key.F10)
-                            { RoutedEvent = Keyboard.KeyDownEvent });
-                        await Task.Delay(150);
-                        bool menuRescued = _menuVisible && bar != null && bar.Visibility == Visibility.Visible;
-                        if (menuRescued) Pass("F10 brings the menu back after switching it off (not a one-way door)");
-                        else Fail("F10 could not recover a menu switched off by hand");
-                    }
-                    if (!_menuVisible) SetMenuVisible(true);
+                    // Left-edge sidebar hover geometry.
+                    bool leftHit = ShouldRevealSidebar(4, ActualHeight / 2);
+                    bool leftMiss = ShouldRevealSidebar(80, ActualHeight / 2);
+                    bool leftOvershoot = ShouldRevealSidebar(-10, ActualHeight / 2);
+                    if (leftHit && !leftMiss && leftOvershoot)
+                        Pass("sidebar reveal band is the extreme left strip");
+                    else Fail("sidebar reveal geometry wrong (hit=" + leftHit + " miss=" + leftMiss + " overshoot=" + leftOvershoot + ")");
 
                     SetScrubberVisible(false);
                     await Task.Delay(100);
@@ -7067,20 +7223,15 @@ if (_btnColumnToggle != null)
                     await Task.Delay(100);
                     _chromeAutoHide = true;                  // as RestoreWindowState leaves it
                     _statusBarVisible = false;
-                    _menuVisible = false;
                     _scrubberVisible = false;
                     ApplyRestoredViewSettings(false);
                     await Task.Delay(150);
 
-                    var menuItem = FindElement("mMenuToggle") as MenuItem;
                     var scrubItem = FindElement("mScrubberToggle") as MenuItem;
-                    bool newOnesApplied = menuItem != null && !menuItem.IsChecked
-                        && scrubItem != null && !scrubItem.IsChecked
-                        && bar != null && bar.Visibility != Visibility.Visible
+                    bool newOnesApplied = scrubItem != null && !scrubItem.IsChecked
                         && _scrubberSuppressed;
-                    if (newOnesApplied) Pass("restored Menu and Scrubber settings are applied and ticked to match");
-                    else Fail("restored Menu/Scrubber settings ignored or out of sync with their menu items");
-                    _menuVisible = true;
+                    if (newOnesApplied) Pass("restored Scrubber setting is applied and ticked to match");
+                    else Fail("restored Scrubber setting ignored or out of sync with its menu item");
                     _scrubberVisible = true;
                     ApplyRestoredViewSettings(false);
                     await Task.Delay(100);

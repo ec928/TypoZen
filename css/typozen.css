@@ -251,10 +251,19 @@
             flex: 0 0 auto;
             line-height: 1;
         }
+        /* Combo shell: input + chevron, like ZenSeek's Search ComboBox. */
+        .sidebar-search-combo {
+            position: relative;
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: stretch;
+        }
         #sidebarSearchInput {
             flex: 1;
             min-width: 0;
-            padding: 5px 8px;
+            width: 100%;
+            padding: 5px 26px 5px 8px;
             border-radius: 4px;
             border: 1px solid var(--border, #3F3F46);
             background: var(--surface, rgba(255,255,255,0.05));
@@ -269,6 +278,75 @@
         }
         #sidebarSearchInput:focus {
             border-color: var(--accent, #3B82F6);
+        }
+        .sidebar-search-combo:focus-within #sidebarSearchInput {
+            border-color: var(--accent, #3B82F6);
+        }
+        .sidebar-search-hist-btn {
+            position: absolute;
+            right: 1px;
+            top: 1px;
+            bottom: 1px;
+            width: 22px;
+            padding: 0;
+            border: none;
+            border-radius: 0 3px 3px 0;
+            background: transparent;
+            color: var(--tx-muted, #A1A1AA);
+            font-family: var(--ui-icon-font);
+            font-size: 10px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .sidebar-search-hist-btn:hover {
+            color: var(--tx, #F4F4F5);
+            background: rgba(128, 128, 128, 0.16);
+        }
+        .sidebar-search-hist-btn:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+        .sidebar-search-hist-menu {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% + 2px);
+            z-index: 40;
+            max-height: 220px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 4px 0;
+            border: 1px solid var(--border, #3F3F46);
+            border-radius: 6px;
+            background: var(--panel, #27272A);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+        .sidebar-search-hist-item {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 10px;
+            border: none;
+            background: transparent;
+            color: var(--tx, #F4F4F5);
+            font-family: var(--ui-font);
+            font-size: var(--ui-fs);
+            text-align: left;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .sidebar-search-hist-item:hover,
+        .sidebar-search-hist-item[aria-selected="true"] {
+            background: var(--accent-bg, rgba(59,130,246,0.25));
+        }
+        .sidebar-search-hist-empty {
+            padding: 8px 10px;
+            color: var(--tx-muted, #A1A1AA);
+            font-family: var(--ui-font);
+            font-size: 12px;
+            font-style: italic;
         }
         #sidebarSearchCount {
             font-family: var(--ui-font);
@@ -538,17 +616,24 @@
             bottom: 6px;
             display: none;
             justify-content: flex-end;
-            pointer-events: none;
+            /* Clickable for go-to-page; scrubber sits above on its own layer. */
+            pointer-events: auto;
             z-index: 5;
             font-family: var(--ui-font);
             font-size: 12px;
             color: var(--tx-muted, #A1A1AA);
             opacity: 0.75;
+            cursor: pointer;
         }
         #page-indicator .page-num {
             padding: 0 16px;
             text-align: right;
             font-variant-numeric: tabular-nums;
+            cursor: pointer;
+        }
+        #page-indicator:hover {
+            opacity: 1;
+            color: var(--tx, #E4E4E7);
         }
         /* One number per column, each sitting under its own column. */
         #page-indicator.two-up { justify-content: space-between; }

@@ -75,6 +75,11 @@ In a paginated layout the foot of the page carries page numbers and a **scrubber
 the whole book**. It addresses pages rather than scroll offset, because the editor's own
 scrollbar can only span what is currently laid out — about 28 pages of a 1400-page novel.
 
+- **Click a page number** to open a go-to-page prompt (leaf page number; in two-column mode
+  that maps to the correct spread under the hood).
+- The status bar shows the **current chapter** from the book TOC or document outline, updated
+  as you read.
+
 ### Themes & typography
 **20 handcrafted themes** in `TypoZen_Themes.json` — modern dark/light, reading and serif faces, Gruvbox and warm palettes. The Themes menu lays them out in three columns built at runtime from the theme data itself: **Dark** (11), **Light** (5) and **Mono** (4 — Dracula, Nord, Tokyo Night, Monokai, the ones whose face is monospace), with **Customize Theme…** under the third.
 
@@ -99,14 +104,18 @@ The four bundled by default (Inter, Source Sans 3, Merriweather, Literata) are S
 ### Writing tools
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
 - Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree
-- While reading, **Up and Down** step to the previous and next match with the sidebar shut and your eyes on the text — the same keys the results list has always used. Reader only, and only when a search has results, so an arrow still scrolls a book nobody has searched
+- **Recent searches** — the Search tab is a combo box: the last **8** committed queries (Enter, or a pick from the list) are kept **globally** (not per tab), restored across restarts via `settings.json`, and cleared with File → Privacy → Clear Stored Data. Click the chevron or press ↓ on an empty box for the dropdown (ZenSeek-style)
+- While reading, **Up and Down** step to the previous and next match with the sidebar shut and your eyes on the text — the same keys the results list has always used. Reader only, and only when a search has results, so an arrow still scrolls a book nobody has searched. **F3** / **Shift+F3** also step next/prev
 - Table insert (`Ctrl+T`)
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps
-- Sidebar (`Ctrl+\`): live `H1`–`H6` outline plus local `.md` / `.txt` / `.markdown` files
+- Sidebar (`Ctrl+\`): live outline (headings, or a book's own TOC) and the Search pane
 - Zoom: `Ctrl++` / `Ctrl+-` / `Ctrl+0` or Ctrl+scroll
 - **Notepad-style chrome** — document tabs in the **title bar** with min/max/close; File/Edit/View and format icons on the command row below
-- **Auto-hide menu** — tucks the command row and tab chips, keeping a slim caption for dragging and window controls (pointer to top, or Alt, restores)
+- **Auto-hide chrome** (View → Auto-hide) — tucks the command row, tab chips and status bar, keeping a slim caption for dragging and window controls. Pointer to the **top** (or bare Alt) restores the menu; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back
+- The menu is **always discoverable** — there is no hide-the-menu toggle. When auto-hide is off it stays put; when on, reach the top of the window
+- **Left-edge sidebar hover** — with the sidebar unpinned (closed by the toggle), moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it. Opening it with the toolbar, `Ctrl+\`, or Alt+S **pins** it until you close it again
+- **Alt+F / E / V / T / H** open the matching top-level menu from the keyboard (including while the editor has focus); **Alt+S** is Search, not a menu letter
 
 ### Tabs
 Full multi-document editing, with the tab strip living in the title bar.
@@ -130,7 +139,7 @@ Bullet, ordered and task lists, with real nesting.
 - Indentation is a property of the raw Markdown (leading spaces), rendered with `margin-left` rather than nested `<ul>` DOM — so Source round-trips exactly
 
 ### Live statistics
-The status bar updates continuously with word count, character count, estimated reading time (~200 wpm), total lines, current line, and — when text is selected — **selected** word and character counts. Serialization is debounced so counters stay responsive on very large documents.
+The status bar updates continuously with word count, character count, estimated reading time (~200 wpm), total lines, current line, **current chapter** (from TOC/outline when available), zoom, and — when text is selected — **selected** word and character counts. Serialization is debounced so counters stay responsive on very large documents.
 
 ### Files & export
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
@@ -146,9 +155,9 @@ Preferences live under `%LocalAppData%\TypoZen_Cache\`.
 |--------|---------|---------|
 | **Remember unsaved documents between sessions** | **Off** | When on, dirty/untitled tab bodies are stored for restore. When off, nothing document-like is kept in the cache beyond what you explicitly save. |
 | **Keep recent files list** | On | File → Open Recent |
-| **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents |
+| **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents. Includes recent Search queries, open tabs, recent files, and web storage (on next launch). |
 
-Also restored: window size and position, theme, margins, mode, F7/F8/F9, zoom, and open tab paths (bodies only if the option above is on).
+Also restored: window size and position, theme, margins, mode, F7/F8/F9, zoom, scrubber/status-bar visibility, auto-hide, open tab paths (bodies only if the option above is on), and the last eight Search queries.
 
 ### Network behaviour
 
@@ -335,20 +344,22 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Toggle Source / Live Preview | `Ctrl+/` |
 | Toggle Sidebar | `Ctrl+\` |
 | Find | `Ctrl+F` |
-| Previous / next search result (Reader) | `Up` / `Down` |
+| Search sidebar | `Alt+S` |
+| Previous / next search result (Reader) | `Up` / `Down`, or `F3` / `Shift+F3` |
 | Find & Replace | `Ctrl+H` |
 | Insert table | `Ctrl+T` |
 | Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
 | Strikethrough | `Ctrl+Shift+X` |
 | Close tab | `Ctrl+W` |
 | Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Open File / Edit / View / Themes / Help menu | `Alt+F` / `Alt+E` / `Alt+V` / `Alt+T` / `Alt+H` |
 | Help (syntax) | `F1` |
 | Reveal Markdown | `F7` |
 | Focus mode | `F8` |
 | Typewriter scroll | `F9` |
 | Fullscreen | `F11` |
 
-**Menus (no default shortcut):** Themes → Customize Theme… · View → Editor Margins · File → Privacy
+**Menus (no default shortcut):** Themes → Customize Theme… · View → Editor Margins · View → Auto-hide · File → Privacy
 
 ---
 
@@ -379,7 +390,7 @@ The engine is seven modules sharing one global scope (not ES modules):
 | Module | Concern |
 |--------|---------|
 | `01-core.js` | State, view selectors, margins, sticky line helpers |
-| `02-layout.js` | Find/search, pagination, page windowing, column memory |
+| `02-layout.js` | Find/search (incl. global search history), pagination, page windowing, column memory |
 | `03-shell.js` | `onload`, themes, host commands, table picker |
 | `04-lists.js` | List engine (indent, parse, Tab/Backspace ladder) |
 | `04b-format.js` | Inline format, clipboard, keyboard editing paths |

@@ -798,6 +798,10 @@
         }
 
         // --- COMMAND & FORMATTING HANDLER ---
+        // True while the sidebar is open only because the pointer is on the extreme left.
+        // Edge-hover must not pin; a user toggle (toolbar / Alt+S) posts sidebar_state and clears this.
+        let _sidebarEdgeOnly = false;
+
         function handleCommand(cmd) {
             if (cmd === "wordwrap_on") { document.body.classList.remove("nowrap"); return; }
             if (cmd === "wordwrap_off") { document.body.classList.add("nowrap"); return; }
@@ -1154,8 +1158,32 @@
                 postViewState(currentViewState());
             }
             else if (cmd === "toggle_sidebar") {
-                sidebar.classList.toggle('collapsed');
-                postSidebarState();
+                // User pin: open if collapsed (or only edge-open), close if permanently open.
+                // Edge-hover leaves the bar open without pinning; a toolbar click in that
+                // state must pin it, not slam it shut.
+                if (!sidebar) return;
+                if (sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.remove('collapsed');
+                    postSidebarState();
+                } else if (_sidebarEdgeOnly) {
+                    postSidebarState(); // keep open, pin permanently
+                } else {
+                    sidebar.classList.add('collapsed');
+                    postSidebarState();
+                }
+            }
+            else if (cmd === "sidebar_edge:1" || cmd === "sidebar_edge:0") {
+                // Temporary left-edge hover. Never posts sidebar_state — that would pin.
+                if (!sidebar) return;
+                if (cmd === "sidebar_edge:1") {
+                    if (!sidebar.classList.contains('collapsed')) return; // already open (pinned)
+                    sidebar.classList.remove('collapsed');
+                    _sidebarEdgeOnly = true;
+                } else {
+                    if (!_sidebarEdgeOnly) return; // pinned open stays open
+                    sidebar.classList.add('collapsed');
+                    _sidebarEdgeOnly = false;
+                }
             }
             else if (cmd === "toggle_search_sidebar") {
                 // Alt+S, the ZenSeek gesture. Closed, or open on another tab, means the
@@ -1211,6 +1239,7 @@
                 // superseded copies until it compacts, so the host also deletes the store
                 // itself at next launch.
                 try { localStorage.clear(); } catch (e) {}
+                try { if (typeof setSearchHistory === 'function') setSearchHistory([]); } catch (eH) {}
             }
             else if (cmd === "toggle_reveal") {
                 state.revealOnFocus = !state.revealOnFocus;

@@ -485,13 +485,12 @@
                                 <MenuItem x:Name="mMarginWide" Header="_Wide Margins" IsCheckable="True"/>
                             </MenuItem>
                             <Separator/>
-                            <!-- Auto-hide clears every piece of chrome for reading: command bar, tab chips,
-                                 status bar and scrubber. A slim caption (drag and the window buttons) stays.
-                                 Pointer to the top or Alt brings the menu back; pointer to the bottom brings
-                                 the scrubber back. The three toggles under it are the same surfaces held
-                                 manually, so a reader can keep exactly what they want and drop the rest. -->
+                            <!-- Auto-hide clears chrome for reading: command bar, tab chips, status bar
+                                 and scrubber. A slim caption stays. Pointer to the top (or Alt) brings
+                                 the menu back; pointer to the bottom brings the scrubber back.
+                                 Scrubber / status bar can still be held off by hand. The menu itself
+                                 is not a toggle — it is always discoverable from the top edge. -->
                             <MenuItem x:Name="mChromeAutoHide" Header="_Auto-hide" IsCheckable="True"/>
-                            <MenuItem x:Name="mMenuToggle" Header="_Menu" InputGestureText="F10" IsCheckable="True" IsChecked="True"/>
                             <MenuItem x:Name="mScrubberToggle" Header="Scr_ubber" IsCheckable="True" IsChecked="True"/>
                             <MenuItem x:Name="mStatusBarToggle" Header="Status _Bar" IsCheckable="True" IsChecked="True"/>
                             <Separator/>
@@ -651,6 +650,9 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.72">
+                    <TextBlock x:Name="lblChapter" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
+                               TextTrimming="CharacterEllipsis" MaxWidth="220"
+                               ToolTip="Current chapter (from the book TOC or document outline)"/>
                     <TextBlock x:Name="lblWordCount" Text="0 words" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Word count (selection / document when text is selected)"/>
                     <TextBlock x:Name="lblLineCount" Text="Ln 1/1" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Current line / total lines"/>
                     <TextBlock x:Name="lblCharCount" Text="0 chars" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Character count (selection / document when text is selected)"/>

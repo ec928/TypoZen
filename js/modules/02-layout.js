@@ -574,13 +574,156 @@
             syncSearchOptionButtons();
         }
 
+        // Global recent Search-tab queries (not per tab). Most-recent first, max 8.
+        // Survives restarts via settings.json + localStorage; cleared with Clear Stored Data.
+        const SEARCH_HISTORY_MAX = 8;
+        let _searchHistory = [];
+        let _searchHistOpen = false;
+        let _searchHistHighlight = -1;
+
+        function normalizeSearchHistory(list) {
+            const out = [];
+            const seen = Object.create(null);
+            if (!Array.isArray(list)) return out;
+            for (let i = 0; i < list.length; i++) {
+                const q = String(list[i] == null ? '' : list[i]).trim();
+                if (!q || seen[q]) continue;
+                seen[q] = true;
+                out.push(q);
+                if (out.length >= SEARCH_HISTORY_MAX) break;
+            }
+            return out;
+        }
+
+        function setSearchHistory(list) {
+            _searchHistory = normalizeSearchHistory(list);
+            try { renderSearchHistoryMenu(); } catch (eR) {}
+            try { syncSearchHistoryButton(); } catch (eB) {}
+        }
+
+        /** Record a committed search (Enter / history pick). Live typing does not count. */
+        function rememberSearchQuery(q) {
+            q = String(q == null ? '' : q).trim();
+            if (!q) return;
+            const next = [q].concat(_searchHistory.filter(function (x) { return x !== q; }));
+            setSearchHistory(next);
+            scheduleSavePreferences();
+        }
+
+        function syncSearchHistoryButton() {
+            const btn = document.getElementById('sidebarSearchHistoryBtn');
+            if (!btn) return;
+            btn.disabled = _searchHistory.length === 0;
+            btn.setAttribute('aria-expanded', _searchHistOpen ? 'true' : 'false');
+        }
+
+        function closeSearchHistoryMenu() {
+            const menu = document.getElementById('sidebarSearchHistoryMenu');
+            if (menu) menu.hidden = true;
+            _searchHistOpen = false;
+            _searchHistHighlight = -1;
+            syncSearchHistoryButton();
+        }
+
+        function renderSearchHistoryMenu() {
+            const menu = document.getElementById('sidebarSearchHistoryMenu');
+            if (!menu) return;
+            menu.innerHTML = '';
+            if (!_searchHistory.length) {
+                const empty = document.createElement('div');
+                empty.className = 'sidebar-search-hist-empty';
+                empty.textContent = 'No recent searches';
+                menu.appendChild(empty);
+                return;
+            }
+            for (let i = 0; i < _searchHistory.length; i++) {
+                const q = _searchHistory[i];
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'sidebar-search-hist-item';
+                item.setAttribute('role', 'option');
+                item.setAttribute('aria-selected', i === _searchHistHighlight ? 'true' : 'false');
+                item.textContent = q;
+                item.title = q;
+                item.addEventListener('mousedown', function (e) {
+                    // mousedown so the input does not steal focus and close first.
+                    e.preventDefault();
+                    pickSearchHistoryItem(q);
+                });
+                menu.appendChild(item);
+            }
+        }
+
+        function openSearchHistoryMenu() {
+            if (!_searchHistory.length) return;
+            renderSearchHistoryMenu();
+            const menu = document.getElementById('sidebarSearchHistoryMenu');
+            if (!menu) return;
+            menu.hidden = false;
+            _searchHistOpen = true;
+            _searchHistHighlight = -1;
+            syncSearchHistoryButton();
+        }
+
+        function toggleSearchHistoryMenu() {
+            if (_searchHistOpen) closeSearchHistoryMenu();
+            else openSearchHistoryMenu();
+        }
+
+        function pickSearchHistoryItem(q) {
+            const input = document.getElementById('sidebarSearchInput');
+            closeSearchHistoryMenu();
+            if (!input) return;
+            input.value = q;
+            rememberSearchQuery(q);
+            if (_sidebarSearchDebounce) { clearTimeout(_sidebarSearchDebounce); _sidebarSearchDebounce = null; }
+            runFind(q, false, { navigate: true });
+            updateSidebarSearchCount();
+            focusSearchResults();
+        }
+
+        function moveSearchHistoryHighlight(delta) {
+            if (!_searchHistOpen || !_searchHistory.length) return;
+            const n = _searchHistory.length;
+            if (_searchHistHighlight < 0) _searchHistHighlight = delta > 0 ? 0 : n - 1;
+            else _searchHistHighlight = (_searchHistHighlight + delta + n) % n;
+            renderSearchHistoryMenu();
+            const menu = document.getElementById('sidebarSearchHistoryMenu');
+            if (!menu) return;
+            const el = menu.querySelectorAll('.sidebar-search-hist-item')[_searchHistHighlight];
+            if (el && el.scrollIntoView) try { el.scrollIntoView({ block: 'nearest' }); } catch (eS) {}
+        }
+
         function wireSidebarSearch() {
             const input = document.getElementById('sidebarSearchInput');
             if (!input || input.__tzWired) return;
             input.__tzWired = true;
             wireSearchOptionButtons();
+            syncSearchHistoryButton();
+
+            const histBtn = document.getElementById('sidebarSearchHistoryBtn');
+            if (histBtn && !histBtn.__tzWired) {
+                histBtn.__tzWired = true;
+                histBtn.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleSearchHistoryMenu();
+                });
+            }
+
+            // Click outside closes the recent-query menu.
+            if (!document.__tzSearchHistDocWired) {
+                document.__tzSearchHistDocWired = true;
+                document.addEventListener('mousedown', function (e) {
+                    if (!_searchHistOpen) return;
+                    const combo = document.querySelector('.sidebar-search-combo');
+                    if (combo && combo.contains(e.target)) return;
+                    closeSearchHistoryMenu();
+                }, true);
+            }
 
             input.addEventListener('input', () => {
+                if (_searchHistOpen) closeSearchHistoryMenu();
                 if (_sidebarSearchDebounce) clearTimeout(_sidebarSearchDebounce);
                 _sidebarSearchDebounce = setTimeout(() => {
                     _sidebarSearchDebounce = null;
@@ -593,22 +736,54 @@
             input.addEventListener('keydown', (e) => {
                 // The editor's global shortcut handlers must not see ordinary typing here.
                 e.stopPropagation();
+                if (_searchHistOpen) {
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        moveSearchHistoryHighlight(+1);
+                        return;
+                    }
+                    if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        moveSearchHistoryHighlight(-1);
+                        return;
+                    }
+                    if (e.key === 'Enter' && _searchHistHighlight >= 0) {
+                        e.preventDefault();
+                        pickSearchHistoryItem(_searchHistory[_searchHistHighlight]);
+                        return;
+                    }
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        closeSearchHistoryMenu();
+                        return;
+                    }
+                }
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     cancelSidebarSearchIdle();
+                    closeSearchHistoryMenu();
                     if (_sidebarSearchDebounce) { clearTimeout(_sidebarSearchDebounce); _sidebarSearchDebounce = null; }
                     // Run synchronously so Enter acts on what is on screen, then jump to
                     // the first match and hand the navigation keys to the results.
+                    rememberSearchQuery(input.value);
                     runFind(input.value, false, { navigate: true });
                     updateSidebarSearchCount();
                     focusSearchResults();
-                } else if (e.key === 'ArrowDown') {
+                } else if (e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                    // Empty box + history: open the recent list (ZenSeek-style). Otherwise
+                    // hand focus to the results list.
                     e.preventDefault();
                     cancelSidebarSearchIdle();
+                    if (!String(input.value || '').trim() && _searchHistory.length) {
+                        openSearchHistoryMenu();
+                        moveSearchHistoryHighlight(+1);
+                        return;
+                    }
                     focusSearchResults();
                 } else if (e.key === 'Escape') {
                     e.preventDefault();
                     cancelSidebarSearchIdle();
+                    closeSearchHistoryMenu();
                     input.value = '';
                     runFind('', false, { navigate: false });
                     updateSidebarSearchCount();
@@ -616,7 +791,18 @@
             });
 
             // Typing again after focus moved away should not fight the idle timer.
-            input.addEventListener('blur', cancelSidebarSearchIdle);
+            input.addEventListener('blur', function () {
+                cancelSidebarSearchIdle();
+                // Delay close so a mousedown on a history item still fires first.
+                setTimeout(function () {
+                    if (_searchHistOpen && document.activeElement !== input
+                        && document.activeElement !== histBtn) {
+                        const menu = document.getElementById('sidebarSearchHistoryMenu');
+                        if (menu && menu.contains(document.activeElement)) return;
+                        closeSearchHistoryMenu();
+                    }
+                }, 120);
+            });
         }
 
         /**
@@ -791,6 +977,8 @@
             const d = pageDisplayFromSpread(PageMap.current(), PageMap.count(), twoCol);
             host.style.display = 'flex';
             host.classList.toggle('two-up', twoCol);
+            host.title = 'Click to go to page';
+            host.setAttribute('role', 'button');
             if (twoCol) {
                 host.innerHTML =
                     '<span class="page-num">' + d.left + '</span>' +
@@ -798,6 +986,40 @@
             } else {
                 host.innerHTML = '<span class="page-num">' + d.bubble + '</span>';
             }
+            if (!host.__tzGotoBound) {
+                host.__tzGotoBound = true;
+                host.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openGoToPageDialog();
+                });
+            }
+            try { if (typeof postChapterLabel === 'function') postChapterLabel(); } catch (eCh) {}
+        }
+
+        /**
+         * Leaf page number → spread index (PageMap addresses spreads). In 2-column mode
+         * the display shows two leaf numbers per spread; the user enters a leaf.
+         */
+        function openGoToPageDialog() {
+            if (!isPaginatedLayout() || !PageMap.ensure()) return;
+            const twoCol = !!(editor && editor.classList.contains('two-col-layout'));
+            const d = pageDisplayFromSpread(PageMap.current(), PageMap.count(), twoCol);
+            const raw = window.prompt(
+                'Go to page (1\u2013' + d.totalLeaves + '):',
+                String(d.left));
+            if (raw == null) return;
+            const leaf = parseInt(String(raw).replace(/[^\d].*$/, '').trim(), 10);
+            if (!isFinite(leaf) || leaf < 1) return;
+            const clamped = Math.min(leaf, d.totalLeaves);
+            const spread0 = twoCol ? Math.floor((clamped - 1) / 2) : (clamped - 1);
+            PageMap.goto(spread0);
+            try {
+                const t = topLeftModelIndexTwoCol();
+                if (t >= 0) _readingAnchor = t;
+            } catch (eA) {}
+            try { updatePageIndicator(); } catch (eI) {}
+            try { if (typeof postChapterLabel === 'function') postChapterLabel(); } catch (eC) {}
         }
 
         /**
@@ -3033,6 +3255,8 @@
                 focusMode: state.focusMode || false,
                 typewriterMode: state.typewriterMode || false,
                 margin: state.margin || 'narrow',
+                // Global recent Search queries (max 8). Host allowlists this into settings.json.
+                searchHistory: _searchHistory.slice(0, SEARCH_HISTORY_MAX),
                 // A full copy of the open document. Only sent when the host says content
                 // persistence is on — otherwise it would land in settings.json AND in
                 // localStorage, which is a duplicate of your document in two more places.
@@ -3101,6 +3325,9 @@
                 if (editor) editor.classList.toggle('focus-mode', state.focusMode);
                 state.typewriterMode = !!savedPrefs.typewriterMode;
                 setMargin(savedPrefs.margin || 'narrow');
+                if (Array.isArray(savedPrefs.searchHistory)) {
+                    setSearchHistory(savedPrefs.searchHistory);
+                }
 
                 if (savedPrefs.mode === 'source') {
                     const currentWysiwyg = getMarkdownContent();

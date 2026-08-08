@@ -86,6 +86,13 @@ console.log('--- markup: Files tab is gone ---');
         'the query input lives inside the Search pane, not the find bar');
     assert(d.querySelector('#findBar #sidebarSearchInput') === null,
         'the query input is not part of the Ctrl+F find bar');
+    // Recent-query combo (ZenSeek-style), global last-8 list.
+    assert(d.getElementById('sidebarSearchHistoryBtn') !== null,
+        'the Search box has a recent-searches dropdown button');
+    assert(d.getElementById('sidebarSearchHistoryMenu') !== null,
+        'the Search box has a recent-searches menu');
+    assert(d.querySelector('.sidebar-search-combo #sidebarSearchInput') !== null,
+        'the query input lives inside the combo shell');
     // Markup order: query box above the results it drives.
     const pane = d.getElementById('tab-search');
     const kids = [...pane.children];
@@ -102,12 +109,20 @@ console.log('\n--- focus handoff is wired in the page script ---');
         'there is a helper that moves focus to the results');
     assert(mainScript.indexOf('function wireSidebarSearch') !== -1,
         'the sidebar query box has its own wiring');
+    assert(mainScript.indexOf('function rememberSearchQuery') !== -1,
+        'committed searches are recorded in global history');
+    assert(/SEARCH_HISTORY_MAX\s*=\s*8/.test(mainScript),
+        'search history keeps the last 8 queries');
+    assert(mainScript.indexOf('searchHistory') !== -1,
+        'search history is part of prefs persistence');
     // Enter must hand off immediately rather than only running the search.
+    // (There may be an earlier Enter branch for the history dropdown highlight.)
     const wireSrc = mainScript.slice(mainScript.indexOf('function wireSidebarSearch'));
-    const enterIdx = wireSrc.indexOf("e.key === 'Enter'");
-    assert(enterIdx !== -1, 'Enter is handled in the query box');
-    assert(wireSrc.slice(enterIdx, enterIdx + 600).indexOf('focusSearchResults()') !== -1,
+    assert(wireSrc.indexOf("e.key === 'Enter'") !== -1, 'Enter is handled in the query box');
+    assert(wireSrc.indexOf('focusSearchResults()') !== -1,
         'Enter hands focus to the results list');
+    assert(wireSrc.indexOf('rememberSearchQuery(input.value)') !== -1,
+        'Enter records the query in search history');
     // Alt+S must target the sidebar box, not the find bar.
     assert(mainScript.indexOf('focusSidebarSearchInput') !== -1,
         'Alt+S focuses the sidebar query box');

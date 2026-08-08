@@ -180,6 +180,10 @@
                     }, 250);
                 }
             }
+            // Chapter label for continuous scroll (paginated path updates via page indicator).
+            try {
+                if (typeof isPaginatedLayout !== 'function' || !isPaginatedLayout()) postChapterLabel();
+            } catch (eCh) {}
         }
 
         /**
@@ -263,10 +267,17 @@
                 typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
         }
 
+        // Outline/TOC entries for the status-bar chapter label, rebuilt with the outline.
+        // Sorted by block index; the "current chapter" is the last entry at or before the
+        // reading position. Empty when the document has no headings/TOC.
+        let _chapterEntries = [];
+        let _lastChapterPosted = null;
+
         function updateOutline() {
             if (!outlineList) return;
             outlineList.innerHTML = '';
             let found = 0;
+            _chapterEntries = [];
 
             // Prefer DocumentModel so outline works when Preview is virtualized
             // (most blocks are not in the DOM).
@@ -305,6 +316,7 @@
 
             function addOutlineEntry(idx, level, title) {
                 found++;
+                _chapterEntries.push({ bi: idx | 0, title: String(title || '') });
                 const item = document.createElement('div');
                 item.className = 'outline-item outline-h' + level;
                 item.innerText = title;
@@ -331,6 +343,7 @@
                             restoreStickyDocumentLine(line);
                         }
                         try { updateStatsNow({ forceCaretLine: line }); } catch (eU) {}
+                        try { postChapterLabel(); } catch (eCh) {}
 
                         // Flash the target once it is on screen, whichever path got it there.
                         setTimeout(function () {
@@ -374,6 +387,32 @@
             if (found === 0) {
                 outlineList.innerHTML = '<div class="outline-item" style="opacity:0.5;">No headings found...</div>';
             }
+            try { postChapterLabel(); } catch (eCh2) {}
+        }
+
+        /**
+         * Status-bar chapter title for the block currently being read.
+         * Posts only when the title changes so page turns do not spam the host.
+         */
+        function postChapterLabel() {
+            let bi = -1;
+            try {
+                if (typeof _readingAnchor === 'number' && _readingAnchor >= 0) bi = _readingAnchor;
+                else if (typeof topLeftModelIndexTwoCol === 'function') bi = topLeftModelIndexTwoCol();
+            } catch (eBi) { bi = -1; }
+            if (!(bi >= 0)) bi = 0;
+
+            let title = '';
+            const list = _chapterEntries;
+            if (list && list.length) {
+                for (let i = 0; i < list.length; i++) {
+                    if ((list[i].bi | 0) <= bi) title = list[i].title || '';
+                    else break;
+                }
+            }
+            if (title === _lastChapterPosted) return;
+            _lastChapterPosted = title;
+            try { postMsg('chapter:' + title); } catch (eP) {}
         }
 
         /**
@@ -385,9 +424,14 @@
          * Tell the host whether the sidebar is showing, so its toolbar button can be shaded
          * like every other active control. Selection state had only ever been painted
          * inside the Mode pillbox.
+         *
+         * Only call this for a *user* pin (toggle / Alt+S / restore). Edge-hover open
+         * must not post, or the host would treat the temporary reveal as permanent.
          */
         function postSidebarState() {
             if (!sidebar) return;
+            // A deliberate post clears the edge-only flag: the host now owns pin state.
+            _sidebarEdgeOnly = false;
             postMsg('sidebar_state:' + (sidebar.classList.contains('collapsed') ? '0' : '1'));
         }
 

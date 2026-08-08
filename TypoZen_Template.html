@@ -146,9 +146,19 @@
                 <div class="sidebar-search-row">
                     <!-- &#xE721; is Segoe MDL2 Assets "Search", the shell's own icon set -->
                     <span class="sidebar-search-icon" aria-hidden="true">&#xE721;</span>
-                    <input id="sidebarSearchInput" type="text" placeholder="Search…"
-                           autocomplete="off" spellcheck="false" aria-label="Search document"
-                           aria-controls="search-results-list" />
+                    <!-- Editable combo: type a query, or open the last 8 (global) searches. -->
+                    <div class="sidebar-search-combo">
+                        <input id="sidebarSearchInput" type="text" placeholder="Search…"
+                               autocomplete="off" spellcheck="false" aria-label="Search document"
+                               aria-controls="search-results-list"
+                               aria-autocomplete="list"
+                               aria-haspopup="listbox" />
+                        <button type="button" id="sidebarSearchHistoryBtn" class="sidebar-search-hist-btn"
+                                aria-label="Recent searches" aria-haspopup="listbox" aria-expanded="false"
+                                title="Recent searches">&#xE70D;</button>
+                        <div id="sidebarSearchHistoryMenu" class="sidebar-search-hist-menu" hidden
+                             role="listbox" aria-label="Recent searches"></div>
+                    </div>
                     <!-- Match case / whole word, sharing state with the Ctrl+F bar's
                          checkboxes so the two views of one search cannot disagree. Two
                          glyphs rather than two labelled checkboxes: the row is 300px wide
