@@ -86,13 +86,14 @@ scrollbar can only span what is currently laid out — about 28 pages of a 1400-
   written to disk).
 
 ### Themes & typography
-**25 themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size — not invented names. The Themes menu lays them out in three columns at runtime: **Dark**, **Light**, and **Mono** (font stack ends in `monospace`: Dracula, Nord, Tokyo Night, Monokai), with **Customize Theme…** under Mono.
+**25 themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customize Theme…** option lives).
 
-| Column | Themes (palette origin) |
-|--------|-------------------------|
-| **Dark** | Gruvbox, Gruvbox Serif, Solarized Dark, Catppuccin Mocha, Rosé Pine, GitHub Dark Classic, One Dark, Material Oceanic, Material Palenight, VSCode Dark+, Tomorrow Night, **Everforest** (sainnhe, dark medium), **Kanagawa** (Wave), **Ayu Mirage** |
-| **Light** | Gruvbox Light, Solarized Light, Catppuccin Latte, Rosé Pine Dawn, One Light, VSCode Light+, **Ayu Light** |
-| **Mono** | Dracula, Nord, Tokyo Night, Monokai |
+| Column | Themes |
+|--------|--------|
+| **Dark** | Ayu Mirage, Catppuccin Mocha, Everforest, GitHub Dark Classic, Gruvbox, Gruvbox Serif, Kanagawa, Material Oceanic, Material Palenight, One Dark, Rosé Pine, Solarized Dark, Tomorrow Night, VSCode Dark+ |
+| **Light** | Ayu Light, Catppuccin Latte, Gruvbox Light, One Light, Rosé Pine Dawn, Solarized Light, VSCode Light+ |
+| **Mono** | Dracula, Monokai, Nord, Tokyo Night |
+| **Custom Themes** | Custom saved themes, plus **Customize Theme...** |
 
 **All set `FS` to 16** (base size for document and book normalisation). Palettes are reduced to three colours for the shell + page; they are not full syntax-highlight schemes.
 
@@ -436,7 +437,7 @@ Also: `.\Create_Shortcut.ps1` · `.\Generate_Icon.ps1`
 $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + 9 suites driving the real TypoZen.exe
 ```
 
-There are **four tiers**, and which tier a thing belongs in is decided by what it needs to observe, not by preference. Getting this wrong is how TypoZen shipped visibly broken behaviour behind a green suite for a fortnight.
+Tests are split into four tiers depending on what they need to observe:
 
 | Tier | Naming | Runs by default | Sees |
 |---|---|---|---|
@@ -445,122 +446,23 @@ There are **four tiers**, and which tier a thing belongs in is decided by what i
 | application | `*-app.mjs` | `RUN_APP_E2E=1` | the shipped `.exe` — WPF shell, real window |
 | pending | `*-pending.mjs` | `RUN_PENDING_E2E=1` | behaviour not built yet |
 
-**jsdom** is fast and covers the document model, dual-source invariants, virtualization thresholds and format indices, scroll stability, find under virtualization, sticky mode-switch, lists, undo, tabs, tables and clipboard conversion — plus a whole-file parse check, since the other suites extract individual functions and would not catch a syntax error elsewhere.
-
-**`parse-check.mjs` guards against invisible characters.** Five bugs in this project came from
-writing a regex through a tool that interpreted the backslashes: `\b` became `0x08`, `\1`
-became `0x01`, and a NUL ended up as a separator. Each produced a pattern that matches nothing
-and looks entirely normal in an editor, and each presented as a feature silently doing nothing
-— "No headings found" on every book, every internal link going nowhere, zero images reported
-by a test that should have failed. The check covers the shipping sources **and** `tests/*.mjs`,
-because the fifth one landed in a test.
-
-**jsdom has no layout engine.** `column-count` never applies, `scrollLeft` is inert and every `getBoundingClientRect()` returns zeros. It cannot distinguish "two columns" from "no columns". Any assertion about what is on screen must be a browser or application suite — writing it in jsdom produces a test that passes forever and proves nothing.
-
-**Browser** suites (`smoke-browser`, `pagination-browser`, `page-fit-browser`,
-`twocol-anchoring-browser`, `edit-integrity-browser`, `clipboard-roundtrip-browser`,
-`paste-code-browser`, `epub-reader-browser`, `search-keys-browser`, `search-perf-browser`)
-load `TypoZen_Template.html` in headless Chrome.
-
-Two of those are the fast checks worth running on every change rather than at the end:
-`page-fit-browser` (9s) asserts no text passes the pane edge and a column still starts at
-the left edge after a hundred page turns, at three fractional viewport widths and after a
-resize; `search-keys-browser` (8s) covers the step keys and the search options end to end.
-Page drift went unnoticed for a day because the only geometry check was a twenty-minute app
-suite, so it was never run mid-iteration. `smoke-browser` is deliberately shallow — "does each feature visibly do anything" — because that is the class of check that was missing when 2-column mode shipped applying its CSS class while `column-count` stayed `auto`.
-
-**Application** suites are the only ones that see what users see. `tests/app-harness.mjs` launches `TypoZen.exe --debug`, which opens the DevTools protocol on port 9333, and attaches with `puppeteer-core`:
-
-```js
-import { launchApp, sleep } from './app-harness.mjs';
-const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
-await app.eval(() => handleCommand('view_set:columns:2'));
-await app.close();
-```
-
-This exists because column switching was "fixed" six times against headless Chrome, where the fault cannot occur. The differences that mattered were all outside the page: the WPF shell owns the window, per-layout window geometry resizes it on a column switch (1-column runs ~803px wide, not 1603), page width follows from that, and focus moves between WPF chrome and the WebView. The bug was ultimately a **2px** measurement slop that only produced a wrong answer at the real window size.
-
-> **Run `RUN_APP_E2E=1` before claiming any column or pagination behaviour is fixed.** The runner prints this next to the skipped suites.
-
-The nine application suites, and what each is the only place to check:
-
-| Suite | Covers |
-|---|---|
-| `column-switch-app` | 2-col → 1-col → 2-col returns to the same layout and position |
-| `page-window-app` | Only one range is laid out; page numbers stay in one coordinate system |
-| `page-scrubber-app` | Dragging the position control reaches both ends of a 40,656-block book |
-| `epub-open-app` | A real book end to end: opens in Reader and paginated, images load, covers keep their ratio, chapters start columns, TOC and outline jump, body text is the theme size, the file on disk is untouched |
-| `book-position-app` | A book reopens where reading stopped — across **two real launches**, because surviving the process is the whole claim; and is not overwritten by the tab you came from, and shows no cover frame on the way |
-| `tab-position-app` | A Markdown tab returns to its own place across a tab switch and a restart |
-| `edit-integrity-app` | Paste and undo do not corrupt neighbouring blocks |
-| `editing-sweep-app` | A survey of ordinary editing in every layout: typing, selection replace, Enter, Backspace-join, list continuation, Tab indent, undo/redo, Find and Replace/Replace All through the bar, and editing inside a table cell |
-| `multi-block-edit-app` | Typing over a selection spanning two blocks, three trials per layout, each from a freshly entered layout |
-| `virt-list-indent-app` | A list edit outside the mounted window lands, and costs no other block |
-| `search-highlight-app` | Every match highlighted, the current one marked, and the shaded block is the one holding it |
-| `search-perf-app` | Typing in the search box stays responsive on a large document |
-| `shell-seam-app` | The WPF chrome, through UI Automation: every menu builds its items once, a theme chosen from the menu repaints the page and is put back, the tab strip lists what the page holds, and nothing is left modal |
-
-**Assert on rendered geometry and loaded bytes, not on structure.** Every epub defect the
-user reported had a green structural assertion sitting over it: an attribute *was* set, a
-`src` *was* rewritten, a TOC entry *did* map to a block index — while the thing on screen was
-broken. The checks that hold now measure `naturalWidth`, bounding-rect ratios against a
-`viewBox`, column tops from per-fragment rects, and scroll position after a real `.click()`.
-
-**Run book suites against both books.** `Matter` is flat at the archive root and `Xeelee` is
-nested; they fail in opposite directions, and neither alone can catch both bugs. `epub-open-app`
-runs its full pass on each.
-
-**Drive real events.** `execCommand('insertParagraph')` is a path no keyboard reaches — Enter,
-Backspace and Tab are all handled by the editor's own listeners. Swapping the sweep to real
-`KeyboardEvent`s found, on its first run, that undo could not undo typing in a paginated
-layout.
-
-**Fixtures.** `tests/large-scroll-4000.md` is uniform; `tests/large-scroll-mixed.md` has images, long code fences, tables, headings and wrapping paragraphs. The second exists because uniform rows cannot exercise the height mapping that virtualized scrolling depends on.
-
-Four real `.epub` files sit in `tests/` and the book suites read them directly —
-`tests/epub-zip.mjs` is just enough ZIP to do that without a dependency. They are real books
-on purpose: the converter that shipped looked perfectly reasonable against a hand-written
-fixture, and it was only counting images and headings in a real one that showed it dropping
-every single one.
-
-| Book | Shape | Why it is here |
-|---|---|---|
-| `Matter` | 42 documents, flat at the archive root, NCX pointing every entry at one file | Asset paths that work under any base; a TOC that has to be repaired by title |
-| `Xeelee Sequence` | 460 documents, assets nested under `OEBPS/`, 40,656 blocks | Per-document asset resolution; scale for windowing and the scrubber |
-| `Dune`, `Nemesis Games` | untried | Spare shapes for when something book-specific is suspected |
-
-`TypoZen_Template_Test.html` is **generated**, not edited. `tests/build-test-template.mjs` inlines the shipping `js/modules/*` (in load order) and `css/typozen.css` into the page shell, and both runners regenerate it first. It is gitignored. Before this existed the jsdom suites had silently pinned themselves to an Aug-1 snapshot missing `htmlToMarkdown`, `walkTable` and `set_column_mode` entirely — 27 suites reporting green against code that no longer shipped.
-
-A GUI smoke test (`RUN_TAB_E2E=1`, pywinauto) drives the window through the WPF shell. It cannot see inside WebView2, so it verifies launch, tabs and window chrome only.
-
-**`package.json` and `node_modules/` live at the repo root, not in `tests/`**, even though only
-the tests use them. Node resolves `node_modules` by walking *up* from the importing file, so
-`tests/*.mjs` finds a root install without anything being configured; a manifest at the root is
-also where every tool looks for one. Three packages, all test-only: `jsdom` for the model tier,
-`puppeteer` (which brings its own Chrome) for the browser tier, and `puppeteer-core` for the
-application tier, which attaches to the DevTools port `TypoZen.exe --debug` opens rather than
-launching a browser of its own. Nothing in the shipped application depends on any of it — the
-editor is vanilla JS with no build step.
+- **jsdom** covers the document model, parse checks, and logic that doesn't depend on a layout engine.
+- **Browser** suites load `TypoZen_Template.html` in headless Chrome to assert real layout, geometry, and search performance.
+- **Application** suites use `puppeteer-core` to attach to `TypoZen.exe --debug` via the DevTools protocol, verifying WPF shell interactions and complex paginated layout behaviours.
 
 ### Debugging
 
-A normal run writes no log and opens no port.
+A normal run writes no log and opens no port. To debug:
 
 ```powershell
 .\TypoZen_Debug.bat "tests\large-scroll-mixed.md"
 ```
 
-`--debug` (or `TYPOZEN_DEBUG`) turns on the page's telemetry channel, appends it to `debug.log` beside the executable, and opens the DevTools port the application harness attaches to. The batch file clears the previous log first. Useful lines:
-
-- `goToPage: block N is on page P of C` — which page a column switch chose, and why
-- `settleTwoCol: corrected to page=N` — a post-layout correction fired
-- `PageMap: built <layout> with N pages`
-
-The page keeps a capped in-memory telemetry ring regardless, which the harnesses read; only the host round trip and console output are gated.
+This turns on the page's telemetry channel (appending to `debug.log`) and opens the DevTools port the application harness attaches to.
 
 ### Startup profiling
 
-Off by default. Set `TYPOZEN_PERF` to write a startup timeline:
+Set `TYPOZEN_PERF` to write a startup timeline:
 
 ```powershell
 $env:TYPOZEN_PERF = '1'        # this shell only — never set it persistently
@@ -568,307 +470,7 @@ $env:TYPOZEN_PERF = '1'        # this shell only — never set it persistently
 Get-Content "$env:LOCALAPPDATA\TypoZen_Cache\perf.log"
 ```
 
-Marks are milliseconds from entry to `Main`; the log is appended, so delete it between runs. The page adds its own marks (prefixed `(page)`) when the host navigates with `?perf=1`, so host and template appear on one timeline.
-
-One representative cold open is below. **Treat the figures as a shape, not a benchmark** — repeat runs vary by roughly ±10%, and the session-restore line scales with how many tabs are being reopened:
-
-| Mark | ms | Cost |
-|------|----|------|
-| XAML loaded | 309 | 286 |
-| window Loaded | 357 | |
-| WebView2 environment ready | 434 | 77 |
-| WebView2 controller ready | 779 | 345 |
-| template navigation completed | 893 | 114 |
-| page reported ready | 900 | 7 |
-| session restore done (2 tabs) | 915 | 13 |
-| requested file loaded | **972** | 40 |
-
-WebView2's own controller startup is now the largest single item and is not ours to remove.
-
-**Two defects were found here, and both were invisible without these marks:**
-
-*Blocking script call inside a message handler.* `LoadFileFromPath` was called synchronously from the WebView2 `ready` handler. It pulls editor state with a blocking script round trip, which cannot be delivered while that handler is still running, so both attempts ran to their 3 s timeouts. Deferring the load with `Dispatcher.BeginInvoke` cut it from 6,015 ms to 35 ms. The same pattern existed on the "reopen last file" path.
-
-*DNS lookups for virtual hosts.* `localapp` and `docfolder` are served from disk by `SetVirtualHostNameToFolderMapping`, but Chromium still resolves them as hostnames on every navigation. Where DNS is remote — a VPN, for instance — that NXDOMAIN round trip cost ~2 s **per navigation** before the mapping was consulted. Measured in isolation, a 146-byte page took exactly as long as the 473 KB template, which is what identified it as per-navigation rather than payload. Pinning both names to loopback via `--host-resolver-rules` took navigation from 2,063 ms to 61 ms.
-
-Together: a cold open went from ~8.9 s to ~1.0 s.
-
-**Measure in-process, not from outside.** UI Automation calls marshal onto TypoZen's UI thread and cost ~150–200 ms each, so polling for a control during startup starves the startup being measured — that approach reported ~9 s for a cold open and stayed flat as the session grew, because the instrument dominated the result. These marks exist because that lesson cost real time.
-
-### Working on TypoZen
-
-**Testing**
-
-- Tests assert **production logic** extracted from or hooked into the shipping files. Don't reimplement an editor helper inside a test when the real function can be extracted — a test that passes against its own copy proves nothing.
-- **Pick the tier by what must be observed.** Layout, scroll position, page boundaries and caret behaviour need a browser or application suite. Putting them in jsdom yields a permanently green test of nothing.
-- **Prove a new test can fail.** Reintroduce the bug and watch it go red. Several checks here looked like coverage and were tautologies — one compared page offsets against the same estimates the offsets were derived from, so it could only ever agree with itself.
-- **A test that cannot pass yet is `*-pending.mjs`, not a commented-out assertion.** An earlier suite detected a real failure, commented out its own `process.exit(1)`, and printed `PASSED`; every build afterwards reported success and failure in the same run.
-- If `switchTab` or another function evaluated in isolation gains a dependency, stub it in the suite that evaluates it — and re-run that suite. This has broken twice. `paste-html-selftest` extracts `htmlToMarkdown` alone by brace matching, so a helper it calls has to live **inside** that function; moving one out sent every case to the empty string.
-- **Assert on what renders, not on what was set.** An attribute being present, a `src` being rewritten and a TOC entry mapping to a block index were all true while the screen was wrong. Prefer `naturalWidth`, rendered ratios, column tops and position-after-click.
-- **Pick what you edit by what it is, not by where it sits.** `blockEls()[25]` is a paragraph in one layout, a blank line in another and a table row in a third, because the mounted window does not start in the same place every time — measured in 1-col Pages: index 24 a table, 25 empty, 26 a paragraph. Selecting five characters inside a table cell goes through the table serialiser, which reported "+1 instead of −4" and read exactly like a caret bug. That was the whole of `editing-sweep-app`'s intermittency, together with each step inheriting the selection and mounted window the previous one left.
-
-**A gesture that needs a clean starting state gets its own suite.** Typing over a two-block selection failed about a third of the time as the last step of the sweep and is 5/5 from a freshly entered layout. Both facts are about the test. A check that passes two thirds of the time tells you nothing either way, so it is measured where the answer is trustworthy — `multi-block-edit-app`, three trials per layout — rather than left to flicker inside a longer run.
-
-**Drive the real entry point.** Dispatched `KeyboardEvent`s, a real `.click()`, a real `DataTransfer`, `postMsg('open_file_path:')`, and the harness's own keyboard for typing. Calling the handler underneath tests a path no user reaches: three separate defects hid there, and it has since produced a false *positive* too — `execCommand('insertText')` over a selection spanning two blocks leaves the later blocks' text in place, which reads as data loss, while a real keystroke through the browser's input pipeline is clean.
-- **Two quantities derived from the same mistake will agree.** The check that was supposed to catch page drift compared the page stride against the column pitch, both computed from the same number — so it passed while the text ran off the edge of the window. Assert against something the code did not produce: rendered geometry, bytes on the wire, the position after a click.
-- **Scope a grep to what it means.** A check that the sidebar does not slide on hover searched the whole stylesheet for `translateX` and failed the day a tooltip needed centring.
-
-**Anchoring**
-
-Use the anchor that already exists rather than deriving a new one:
-
-- an edit → the **caret** (undo restores the caret of the state being undone, i.e. the edit site, not the restored state's own caret)
-- a page turn → the **reading position**, carried across a column switch rather than re-measured, because a switch lands you at a page *start* and re-measuring decays one page per switch
-- a mode switch in a scrolling view → caret if visible, else the top-left line
-
-**Never move the view by hand**
-
-- **Never call `editor.focus()`.** `#editor` is the whole contenteditable document, so focusing it scrolls its top edge into view — i.e. to line 1 — before the caller has placed the caret. Use `focusEditorNoScroll()`. This is what sent undo to the top of the document.
-- **A deferred load decides at request time, not at completion.** `loadMarkdownContent` seeds a fresh history at the end of the load; on the progressive path that end arrives across `requestAnimationFrame` batches, by which time `undo()` has already cleared `isRestoring` — so the seed wiped the stack undo was halfway through using and typing could no longer be undone. Capture the flag when the work is asked for.
-- **`setCaretAtOffset` must handle an empty element.** Its fallback was guarded by `childNodes.length > 0`, which excludes precisely the case with no text to walk: the caret stayed wherever it was and typing into a blank line went nowhere.
-- **Never assign `mainContainer.scrollTop` to show a block.** Under virtualization the remount rebuilds the spacers, the document height collapses for a frame and the browser clamps the scroll back to 0 — the caret moves and the view does not. Use `restoreStickyDocumentLine(line)` when scrolling or `goToPageHoldingBlock(block)` when paginated. This pattern has been found and removed three times (outline, search, column switch); if a fourth appears, `grep "scrollTop ="` before adding another.
-
-**Pagination**
-
-- Pagination is a real layout, not a scroll gesture: `.page-mode` puts the document into CSS multi-column and a page turn is a horizontal scroll. Don't reintroduce "scroll by ~90% of the viewport".
-- Pagination and virtualization are mutually exclusive — the browser can only break content it has laid out — so entering page mode remounts the document. That cost is deliberate. Page windowing is what makes it affordable on a novel; see the Architecture section.
-- Page geometry is uniform *within the laid-out range*: local page N is at `N × pageWidth`. Global page numbers come from `PageChunks`, and mixing the two prints a page number from one coordinate system beside a total from the other.
-- **`break-before: column`, never `page-break-before: always`.** The legacy spelling is an alias for `break-before: page`, a paged-media break that a multi-column layout ignores completely. Written second it wins, and every chapter runs on mid-column while the marker attribute a test counts is present on all of them.
-- **The last page is not always at `N × pageWidth`.** A document ending part way into its final page leaves a maximum `scrollLeft` short of that offset, so the map would name a position the browser will never hold. `PageMap.pages` clamps to what is reachable.
-- **Never pin the pane to a whole number of pixels.** `width: 100%` resolves against a
-  parent that is very often fractional — 911.36px and 1848.32px, measured in the running app
-  — and flooring that for the page stride loses a third of a pixel per page: invisible on
-  page 2, 148px of drift by page 411, with the previous column showing down the margin. The
-  fix is a **fractional stride** read from `getBoundingClientRect()`, not `clientWidth`
-  (which rounds). Pinning the pane instead fixes the arithmetic and breaks something worse:
-  a pixel width does not follow its container, so a resize or a sidebar collapse leaves the
-  column at its old size and the text runs off the window. Drift only accumulates when pages
-  are stepped by addition, and every seek here is `index * stride` from the page number — so
-  a fractional stride costs one rounding, once, and never grows.
-- **Do not mutate layout inside a `ResizeObserver` callback.** `PageGeometry.relayout()`
-  writes height, column-width and column-gap and hides the container's overflow; doing that
-  in the observer's own callback is exactly what "ResizeObserver loop completed with
-  undelivered notifications" reports. Idempotent writes do not help — the first pass after
-  any real change still mutates. Defer to the next frame.
-- **A fragmented element's `getBoundingClientRect()` is the union of its fragments.** A paragraph running from one column into the next reports a box spanning both. Use `getClientRects()` when asking where something is on a page — a check built on the bounding box reads a correctly broken chapter as prose sitting above a heading.
-
-**Books**
-
-- **Resolve a book's URLs against the document the block came from**, never against one shared assets base. Half the test books work either way, which is what makes the bug survive.
-- **The reader's chosen size wins.** A book sized in `rem` is rooted at the application and the font-size control cannot reach it; a book asking for `0.88em` renders smaller than the theme. Both are corrected when the stylesheet is applied.
-- **A mode implies its layout.** Reader is pages only, and setting the mode without the pagination it implies produced reader + scroll — a state the resolver cannot produce and, because Reader locks the scroll selector, one the toolbar cannot leave. Go through `resolveViewState`, or apply what it would have.
-- Some books are broken in ways no reader can fix by following the file: one test book's in-text links point at `#filepos` anchors while its actual anchors are `calibre_pb_*`. Where the titles are recoverable, match by title — gated on the href having failed, so sound books keep their exact targets.
-
-**General**
-
-- Prefer one concern per change: small diffs, easy to revert.
-- Don't re-couple progressive paint to a character threshold, and don't lower the virtualization floor without a product decision.
-- Where something genuinely isn't covered, say so plainly rather than implying coverage that doesn't exist.
-
-This README is the single source of truth for how TypoZen works. Completed design records are kept under `docs/archive/` for history; they are **not** maintained, and where they disagree with this file, this file wins.
-
----
-
-## Outstanding work
-
-Kept here rather than in a tracker so it stays next to the code it concerns. Ordered by what
-a user would notice first.
-
-### Next
-
-Nothing queued. **Phase 7 — retiring ZenSeek's own reader — was considered and dropped.**
-Replacing a working reader with a second one is a loss of choice, not a feature, so ZenSeek
-keeps both and the reader is the user's decision: a toggle on the search bar, TypoZen by
-default, right-click to point it at a different TypoZen.exe. Docx/xlsx were never in scope
-for TypoZen and use ZenSeek's built-in reader regardless.
-
-### Phase 6 — open from ZenSeek (done)
-
-Double-click a search hit in ZenSeek (or Preview) launches **TypoZen** for
-`.md` / `.markdown` / `.txt` / `.log` / `.csv` / `.epub`:
-
-```text
-TypoZen.exe --reader --search "query" --match-index 0 --line 42 "C:\path\doc.md"
-```
-
-| Flag | Meaning |
-|------|---------|
-| `--reader` | Open in Reader mode (pagination; books already do this) |
-| `--search` | Query to find and highlight |
-| `--match-index` | Which match (0-based), from ZenSeek's inline match list |
-| `--line` | Fallback 0-based line if search is empty |
-| path | Document to open |
-
-A second TypoZen process hands the same payload to the running window over the named pipe
-(`path` + `#tz1` option fields). After load, the host sends `external_find:` /
-`external_goto_line:` so the page jumps and highlights.
-
-TypoZen.exe is resolved as a sibling of the ZenSeek folder (`../TypoZen/TypoZen.exe`).
-If it is missing, or the file is `.docx`/`.xlsx`, ZenSeek keeps its built-in reader.
-
-### The module split, reviewed
-
-`js/modules/*` replaced a 12,719-line monolith in a session that is not recorded here.
-Reviewed mechanically rather than read end to end, which is both cheaper and better evidence:
-
-- **331 functions in the monolith, 0 missing** from the modules.
-- **26 function bodies changed** by the split, against 305 moved unaltered. That is the whole
-  review surface, and most of those 26 are covered by suites that run against real books and
-  real page geometry.
-- **No function is defined in two modules**, and **no top-level binding is declared twice** —
-  both now asserted by `modules-selftest`, because classic scripts share one scope and the
-  first is a silent overwrite while the second is a runtime error on load.
-
-`sanitizeBookHtml` was read line by line, being the one function where a regression is a
-security problem rather than a bug. The split **strengthened** it — `template`,
-`foreignObject`, SVG animation elements, `data:text/html` URLs and remote `<use>` were all
-added — and none of that was asserted anywhere, so it is now. Doing that found a real defect:
-the remote-`<use>` guard compared `el.tagName === 'USE'`, and an SVG element's `tagName`
-keeps the case it was written in, so it had never once fired.
-
-### Known gaps
-
-- **Two-column numbering: map = spreads, glass = leaf pages.** `PageMap` always counts
-  spreads (one horizontal step). Foot numbers and the scrubber bubble convert through
-  `pageDisplayFromSpread` only — never seek or store leaf page numbers.
-- **Reading position** is a block index in path-keyed store + per-tab `ResumeBlock` (same
-  content on screen is enough; exact character-stable resume after heavy edits above the
-  point is not guaranteed).
-- **Custom table size uses `#tableModal`.** The Notepad-style grid picker is the default path
-  (`Ctrl+T`); **Custom size…** opens the number-field dialog. Both share `insertMarkdownTable`.
-- **Word Wrap** is a Source / scroll-Preview setting only (see Writing tools). CSS still
-  forces wrap on page/book layouts as a safety net if an old `window_state.json` had
-  unwrap saved.
-- **The scrubber is pages-only.** A scrolling layout keeps the native scrollbar, which is
-  correct there — virtualization gives it the full document extent — but it does mean the two
-  layouts offer different controls.
-- **Pagination typing cost (~66 ms/keystroke) is inherent.** Multi-column `contenteditable`
-  re-fragments on every mutation. The pixel page height already removed the worse 200 ms
-  path (`height: 100%`). There is no cheap JS fix without leaving real multi-column layout
-  while editing; write in Preview+Scroll, read in Pages.
-
-### Test coverage that is thinner than it looks
-
-Said plainly, because implying coverage that does not exist is how this project shipped
-broken behaviour behind a green suite:
-
-- **The editing sweep is a survey, not a regression suite.** It now covers typing, selection
-  replace, Enter, Backspace-join, list continuation, Tab indent, undo/redo, a selection
-  spanning two blocks typed over with real keystrokes, Find and Replace/Replace All through
-  the bar, and editing inside a table cell. It does not cover drag-and-drop, or editing
-  outside the mounted window -- see the list-indent gap above.
-- **The shell seam is covered thinly, not fully.** `shell-seam-app` drives the real menu bar
-  through UI Automation and asserts the effect in the page. It does not click tabs: driving a
-  click onto a title-bar tab through UIA proved unreliable, and tab *switching* is covered
-  through the shell's own messages elsewhere. Dialogs are only checked for absence.
-- **Every suite ran at the default settings until Word Wrap broke every book.** Forty-nine
-  suites, none of which had ever set `body.nowrap` — so a saved View setting that made the
-  reader unusable was invisible to all of them, for as long as the reader has existed. That
-  is an argument about the whole set rather than one member of it, so `page-fit-browser` now
-  repeats its geometry checks for every persisted setting that reaches the page: Word Wrap,
-  wide and regular margins, the sidebar, focus mode and typewriter mode. None of them turned
-  up a second defect. What is still only ever seen at its default is the shell's own state —
-  chrome auto-hide, status bar visibility, zoom, session bodies — which no page suite can
-  reach.
-- **Measure the element that owns the text.** `epub-open-app` asserted that book body text
-  renders at the theme size, and read `block.firstElementChild` to do it — a container, which
-  inherits the theme size and therefore reported it back no matter what the reader saw. It
-  passed while *Matter* rendered a third too large next to a correct *Xeelee*, which is how
-  the fault was reported: not "this book is wrong" but "these two do not match". Both books
-  are now checked character-weighted from the text owner, and at two different theme sizes.
-- **Measure the ink, not the box.** `page-fit-browser` asserted that no *element* ran past
-  the pane and passed while text ran 1,898px past it: a block's box is the column width
-  whatever the text inside does. It now measures line boxes via `Range.getClientRects()`
-  as well. Same family of mistake as the stride-versus-pitch check it was written to
-  replace — a measurement that cannot see the thing it is named after.
-- **`shell-seam-app` needs the machine to itself.** UI Automation exposes no invoke pattern
-  for these menu items, so the driver clicks at real screen coordinates — and any window the
-  user has open can take a click meant for the app. That is not a hypothetical: a Themes menu
-  open in another window swallowed the restore click and the run ended with a theme the
-  reader never chose written into `settings.json`. The suite now snapshots the saved theme and
-  writes it back, so the worst case is a loud failure rather than a silent change, but it is
-  still not safe to run while the machine is in use.
-- **Nothing tests theme rendering.** Contrast ratios and font loading are checked as data
-  (`fonts-selftest`, theme JSON validation), never as pixels.
-- **The GUI smoke test is opt-in and rarely run.** `RUN_TAB_E2E=1`.
-
-### Housekeeping the application does
-
-Both caches are gitignored and rebuilt on demand; neither is safe to assume present.
-
-| Directory | Holds | Swept by |
-|---|---|---|
-| `typozen_load/` | Document bodies and book payloads staged for the page to fetch | `PruneLoadStageDir` — files older than 5 minutes, everything on exit |
-| `typozen_books/` | Extracted epub assets, one folder per book, keyed by a stable hash | `PruneOldBooks(keep: 8)` |
-
-`PruneLoadStageDir` swept only `body_*.md` until it was corrected: a book payload is the
-largest file the application writes, and 176 of them had reached **939 MB** before anyone
-looked in the folder.
-
-### Performance, measured
-
-Re-measured after page windowing landed, because the previous figures were taken before it
-and were wrong by an order of magnitude in the place that mattered most.
-
-On the 4,582-line mixed fixture, median of 8–10 samples, layout forced before each reading:
-
-| | 1-col Scroll | 1-col Pages | 2-col Pages |
-|---|---|---|---|
-| Typing, per keystroke | 1 ms | 4 ms | 3 ms (worst 8) |
-| Serialising the whole document (205 KB) | <1 ms | 1 ms | — |
-| Indenting a list item | 29 ms | 21 ms | — |
-| Search across 2,100 matches | 5 ms | 20 ms | — |
-| Page turn | — | 3 ms | 3 ms |
-
-**Typing in Pages was 66 ms and is now 3–4 ms.** Page windowing is why: only one 800-block
-range is in the multi-column flow, so a keystroke re-fragments that rather than 3,767 blocks.
-The old figure was described here as inherent to real pagination. It was inherent to laying
-out the whole document.
-
-Indenting a list item reloads the document — `mutateDocumentMarkdown` mutates the model and
-reloads from the result — and costs 21–29 ms for it. Slower than an ordinary keystroke, and
-the price of that path being correct off screen rather than only on it.
-
-Books: Matter (4,376 blocks) opens in 363 ms with its payload cached. Leaving a book tab is
-257 ms and returning is ~1.2 s.
-
-### Startup, and where it goes
-
-1,151 ms from process start to the document being on screen, from the app's own marks
-(`TYPOZEN_PERF=1`, `perf.log`):
-
-| | |
-|---|---|
-| Main entered | 10 ms |
-| WebView2 environment requested | 49 ms |
-| XAML parsed (`XamlReader.Load`, 47 KB) | 366 ms |
-| Window loaded | 419 ms |
-| WebView2 environment ready | 487 ms |
-| WebView2 controller ready | 889 ms |
-| Template navigated and page ready | ~1,090 ms |
-| **Document on screen** | **1,151 ms** |
-
-It was 1,344 ms. The environment is created at the top of the constructor rather than at
-`window.Loaded`: it needs a cache directory and the command line, both known then, so it
-overlaps the XAML parse instead of queueing behind it. The controller that follows needs a
-window handle and cannot move.
-
-**The rest is not worth chasing, and the arithmetic that said otherwise was wrong.** The
-366 ms before `window Loaded` looks like XML parsing and mostly is not. Parsing the same
-file three times in one process:
-
-```
-parse 1: 216 ms     parse 2: 20 ms     parse 3: 20 ms
-```
-
-Roughly 196 ms of it is one-time WPF type loading and JIT, which a compiled `.baml` pays
-too — it instantiates the same types. Compiling the XAML would save something like the 20 ms
-of real parse work, not the 360 ms a first reading suggests, and it would cost the property
-that the shell and its menus can be edited without recompiling. Measured before building it,
-which is the only reason that is known.
-
-What remains: ~470 ms spawning the WebView2 browser process, and ~260 ms navigating the
-template and booting the page. Neither has an obvious lever.
+Marks are milliseconds from entry to `Main`; the log is appended, so delete it between runs. 
 
 ---
 

@@ -124,7 +124,9 @@
             const sideQ = side ? String(side.value || '').trim() : '';
             const searchPane = document.getElementById('tab-search');
             const searchActive = !!(searchPane && searchPane.classList.contains('active'));
-            const keepQ = sideQ || (searchActive && findState.query ? String(findState.query) : '');
+            // Only fall back to the sidebar's query if the sidebar is actually open.
+            // Otherwise, closing the find bar would resurrect old searches instead of exiting search mode.
+            const keepQ = searchActive ? (sideQ || (findState.query ? String(findState.query) : '')) : '';
             if (keepQ) {
                 if (side && !sideQ) side.value = keepQ;
                 // Keep matches for the sidebar; re-paint highlights for the current hit.
@@ -190,11 +192,12 @@
             // Leave a breadcrumb so Return from Jump can restore reading position.
             try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
             findState.index = index;
+            const takeFocus = isFindBarOpen();
             if (state.mode === 'source' || findState.kind === 'source') {
                 const m = findState.matches[findState.index];
-                scrollSourceMatchIntoView(m.start, m.end, true);
+                scrollSourceMatchIntoView(m.start, m.end, takeFocus);
             } else if (findState.kind === 'model') {
-                revealModelMatch(findState.matches[findState.index], true);
+                revealModelMatch(findState.matches[findState.index], true, !takeFocus);
             } else {
                 const surface = getFindHaystack();
                 findState.ranges = rangesFromWysiwygMatches(findState.matches, surface.map);
@@ -421,7 +424,7 @@
                     esc(after + trailing);
 
                 const active = (i === findState.index) ? ' active' : '';
-                html += '<div class="search-item' + active + '" onclick="window.findJumpTo(' + i + ')"' +
+                html += '<div class="search-item' + active + '" onclick="window.findJumpTo(' + i + '); try { this.closest(\'#search-results-list\').focus({preventScroll:true}); } catch(e) {}"' +
                     ' title="Line ' + lines[i] + ' — match ' + (i + 1) + ' of ' + findState.matches.length + '">' +
                     '<span class="search-line">' + lines[i] + '</span>' +
                     '<span class="search-text">' + snippet + '</span></div>';
@@ -872,7 +875,11 @@
                     _sidebarSearchDebounce = null;
                     rememberLastSearchText(input.value);
                     runFind(input.value, false, { navigate: false });
+                    if (typeof syncSearchIndexToLocation === 'function') {
+                        try { syncSearchIndexToLocation(); } catch (eSync) {}
+                    }
                     updateSidebarSearchCount();
+                    updateSearchSidebar();
                 }, SIDEBAR_SEARCH_DEBOUNCE_MS);
                 armSidebarSearchIdle();
             });
@@ -932,6 +939,8 @@
                     input.value = '';
                     runFind('', false, { navigate: false });
                     updateSidebarSearchCount();
+                    updateSearchSidebar();
+                    if (typeof commitSearchFocus === 'function') commitSearchFocus();
                 }
             });
 
@@ -981,6 +990,14 @@
             }
             list.addEventListener('keydown', (e) => {
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
+                if (typeof isPaginatedLayout === 'function' && isPaginatedLayout() && typeof PageMap !== 'undefined' && PageMap.step) {
+                    if (e.key === 'PageDown' || e.key === 'ArrowRight') {
+                        e.preventDefault(); e.stopPropagation(); PageMap.step(1); return;
+                    }
+                    if (e.key === 'PageUp' || e.key === 'ArrowLeft') {
+                        e.preventDefault(); e.stopPropagation(); PageMap.step(-1); return;
+                    }
+                }
                 let dir = 0;
                 if (e.key === 'ArrowUp') dir = -1;
                 else if (e.key === 'ArrowDown') dir = 1;
@@ -992,8 +1009,13 @@
                     return;
                 }
                 else if (e.key === 'Escape') {
-                    // Back to the query box to refine the search.
-                    focusSidebarSearchInput(true);
+                    cancelSidebarSearchIdle();
+                    const input = document.getElementById('sidebarSearchInput');
+                    if (input) input.value = '';
+                    runFind('', false, { navigate: false });
+                    updateSidebarSearchCount();
+                    updateSearchSidebar();
+                    if (typeof commitSearchFocus === 'function') commitSearchFocus();
                     e.preventDefault();
                     e.stopPropagation();
                     return;
@@ -3010,7 +3032,7 @@
             } catch (e) {}
         });
 
-        function revealModelMatch(match, navigate) {
+        function revealModelMatch(match, navigate, noFocus) {
             if (!match || typeof DocumentModel === 'undefined') return;
             const loc = markdownOffsetToBlock(match.start);
             const blockIdx = loc.blockIndex;
@@ -3053,7 +3075,7 @@
             // to 0 -- so clicking a result moved the caret and left the view where it was.
             // Exactly the defect the outline had; this is the same path.
             try {
-                restoreStickyDocumentLine(matchLine);
+                restoreStickyDocumentLine(matchLine, noFocus);
                 const el0 = elementForModelIndex(blockIdx);
                 if (el0) {
                     setFocusedBlock(el0);
@@ -3114,6 +3136,74 @@
                 highlightModelMatchInMountedDom(findState.matches[findState.index], false);
             } catch (e) {}
         }
+
+        window.commitSearchFocus = function() {
+            try {
+                if (state.mode === 'source') {
+                    if (typeof sourceEditor !== 'undefined' && sourceEditor && sourceEditor.style.display !== 'none') {
+                        sourceEditor.focus();
+                    }
+                } else {
+                    if (typeof currentActiveBlock !== 'undefined' && currentActiveBlock && typeof focusBlock === 'function') {
+                        focusBlock(currentActiveBlock, 0);
+                    } else if (typeof focusEditorNoScroll === 'function') {
+                        focusEditorNoScroll();
+                    }
+                }
+            } catch (e) {}
+        };
+
+        window.syncSearchIndexToLocation = function() {
+            try {
+                if (!findState.matches || findState.matches.length === 0) return;
+                
+                let targetPos = -1;
+                if (state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) {
+                    targetPos = sourceEditor.selectionStart || 0;
+                } else {
+                    if (typeof captureStickyDocumentLine === 'function' && typeof modelBlockStartLineToIndex === 'function') {
+                        const line = captureStickyDocumentLine();
+                        targetPos = modelBlockStartLineToIndex(line);
+                    }
+                    if (targetPos < 0 && typeof currentActiveBlock !== 'undefined' && currentActiveBlock && typeof DocumentModel !== 'undefined') {
+                        targetPos = DocumentModel.modelIndexOfEl(currentActiveBlock);
+                    }
+                    if (targetPos < 0 && typeof _stickyLineCache !== 'undefined') {
+                        targetPos = Math.max(0, _stickyLineCache - 1);
+                    }
+                }
+                
+                let bestIdx = -1;
+                for (let i = 0; i < findState.matches.length; i++) {
+                    let matchPos = -1;
+                    if (findState.kind === 'model') {
+                        if (typeof markdownOffsetToBlock === 'function') {
+                            const m = markdownOffsetToBlock(findState.matches[i].start);
+                            if (m) matchPos = m.blockIndex;
+                        }
+                    } else if (findState.kind === 'source') {
+                        matchPos = findState.matches[i].start;
+                    } else if (findState.kind === 'visual') {
+                        if (findState.ranges && findState.ranges[i]) {
+                            const r = findState.ranges[i];
+                            const blk = r.startContainer ? getAncestorBlock(r.startContainer) : null;
+                            if (blk && typeof DocumentModel !== 'undefined') {
+                                matchPos = DocumentModel.modelIndexOfEl(blk);
+                            }
+                        }
+                    }
+                    
+                    if (matchPos > targetPos) {
+                        break;
+                    }
+                    bestIdx = i;
+                }
+                
+                findState.index = bestIdx < 0 ? -1 : bestIdx;
+                updateFindCount();
+                updateSearchSidebar();
+            } catch (e) {}
+        };
 
         function runFind(query, keepIndex, options) {
             const navigate = !!(options && options.navigate);
@@ -3266,9 +3356,9 @@
             findState.index = (findState.index + dir + findState.matches.length) % findState.matches.length;
             if (state.mode === 'source' || findState.kind === 'source') {
                 const m = findState.matches[findState.index];
-                scrollSourceMatchIntoView(m.start, m.end, true);
+                scrollSourceMatchIntoView(m.start, m.end, isFindBarOpen());
             } else if (findState.kind === 'model') {
-                revealModelMatch(findState.matches[findState.index], true);
+                revealModelMatch(findState.matches[findState.index], true, !isFindBarOpen());
             } else {
                 // Rebuild ranges from current visual text (same list as matches)
                 const surface = getFindHaystack();

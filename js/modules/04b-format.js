@@ -1347,7 +1347,7 @@
          * Put the user on hard line `line1Based` in the CURRENT mode and leave the caret there
          * so the next captureStickyDocumentLine() returns the same number.
          */
-        function restoreStickyDocumentLine(line1Based) {
+        function restoreStickyDocumentLine(line1Based, noFocus) {
             let line = Math.max(1, line1Based | 0);
             rememberStickyLine(line);
             try {
@@ -1355,15 +1355,12 @@
                     const total = countHardLines(sourceEditor.value || '');
                     if (line > total) line = total;
                     rememberStickyLine(line);
-                    // Source text is authoritative — drop stale preview cache so stats
-                    // do not clamp Ln 16 → Ln 11 against an old short document.
                     _contentCache = sourceEditor.value || '';
                     resizeSourceEditor();
-                    scrollSourceToHardLine(line, true);
+                    scrollSourceToHardLine(line, !noFocus);
                     try { updateStatsNow({ forceCaretLine: line }); } catch (eU) {}
                     return;
                 }
-                // Preview
                 if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks
                     || !DocumentModel.blocks.length || !mainContainer) {
                     try { updateStatsNow({ forceCaretLine: line }); } catch (eEarly) {}
@@ -1381,15 +1378,12 @@
                 const loc = modelLocationFromDocumentLine(line);
                 const bi = loc.blockIndex;
                 window.showDebugTelemetry('restoreSticky: line=' + line + ' maps to blockIndex=' + bi);
-                // Never trust prefixHeight alone for visual restore — estimates overshoot
-                // and leave Ln N focused/status-correct but scrolled off-screen above.
                 const el = ensureModelBlockVisible(bi, { topPad: 48 });
                 if (el) {
                     window.showDebugTelemetry('restoreSticky: ensureModelBlockVisible returned el, setting focus');
                     currentActiveBlock = el;
                     try {
-                        // Focus editor + caret so status Ln and next capture see this block
-                        focusBlock(el, 0);
+                        if (!noFocus) focusBlock(el, 0);
                     } catch (eF) {}
                     // Focus/caret can nudge scroll in WebView2 — re-snap once
                     try {

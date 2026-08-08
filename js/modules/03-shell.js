@@ -1303,8 +1303,8 @@
                 if (sidebar.classList.contains('collapsed') || !showingSearch) {
                     sidebar.classList.remove('collapsed');
                     postSidebarState();
-                    switchTab('search');
-                    wireSidebarSearch();
+                    if (typeof switchTab === 'function') switchTab('search');
+                    if (typeof wireSidebarSearch === 'function') wireSidebarSearch();
                     // Seed from the selection, else restore the last Search query.
                     const input = document.getElementById('sidebarSearchInput');
                     if (input) {
@@ -1321,14 +1321,33 @@
                                 input.value = _lastSearchQuery;
                             }
                         } catch (e) {}
-                        if (input.value) runFind(input.value, true, { navigate: false });
+                        if (input.value) {
+                            runFind(input.value, true, { navigate: false });
+                            if (typeof syncSearchIndexToLocation === 'function') {
+                                try { syncSearchIndexToLocation(); } catch (eSync) {}
+                            }
+                        }
                         updateSidebarSearchCount();
+                        if (typeof updateSearchSidebar === 'function') updateSearchSidebar();
+                        
+                        focusSidebarSearchInput(true);
+                        if (typeof armSidebarSearchIdle === 'function') armSidebarSearchIdle();
+                    } else {
+                        focusSidebarSearchInput(true);
+                        if (typeof armSidebarSearchIdle === 'function') armSidebarSearchIdle();
                     }
-                    focusSidebarSearchInput(true);
                 } else {
                     sidebar.classList.add('collapsed');
                     postSidebarState();
                     cancelSidebarSearchIdle();
+                    try {
+                        if (typeof commitSearchFocus === 'function') commitSearchFocus();
+                        const input = document.getElementById('sidebarSearchInput');
+                        if (input) input.value = '';
+                        if (typeof runFind === 'function') runFind('', false, { navigate: false });
+                        if (typeof updateSidebarSearchCount === 'function') updateSidebarSearchCount();
+                        if (typeof updateSearchSidebar === 'function') updateSearchSidebar();
+                    } catch (e) {}
                 }
                 scheduleSavePreferences();
             }

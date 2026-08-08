@@ -104,14 +104,28 @@
 
         .sidebar-content {
             flex: 1;
-            overflow-y: auto;
-            padding: 10px 4px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 10px 0 0 0;
         }
         .tab-pane {
             display: none;
+            flex-direction: column;
+            flex: 1;
+            height: 100%;
+            overflow: hidden;
         }
         .tab-pane.active {
-            display: block;
+            display: flex;
+        }
+        
+        #outline-list,
+        #search-results-list {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 0 4px 10px 4px;
         }
 
         /* Outline / Search rows.
@@ -211,6 +225,7 @@
             align-items: center;
             gap: 6px;
             margin: 1px 4px 8px 4px;   /* line up with the row margins below */
+            flex-shrink: 0;
         }
         /* Match case / whole word. Small enough to sit in the search row without pushing
            the field around: two glyphs, pressed state carried by the accent, and the same

@@ -452,8 +452,30 @@
             // a query box with no listeners on it: typing did nothing, Enter did nothing,
             // and the pane sat on "No results..." while looking perfectly focused.
             if (tab === 'search') {
+                if (typeof syncSearchIndexToLocation === 'function') {
+                    try { syncSearchIndexToLocation(); } catch (eSync) {}
+                }
+                const input = document.getElementById('sidebarSearchInput');
+                const list = document.getElementById('search-results-list');
+                if (input) {
+                    setTimeout(() => {
+                        input.focus({preventScroll:true});
+                        input.select();
+                        if (typeof armSidebarSearchIdle === 'function') armSidebarSearchIdle();
+                    }, 10);
+                }
                 wireSidebarSearch();
                 wireSearchResultKeys();
+                if (typeof updateSearchSidebar === 'function') updateSearchSidebar();
+            } else {
+                try {
+                    if (typeof commitSearchFocus === 'function') commitSearchFocus();
+                    const input = document.getElementById('sidebarSearchInput');
+                    if (input) input.value = '';
+                    if (typeof runFind === 'function') runFind('', false, { navigate: false });
+                    if (typeof updateSidebarSearchCount === 'function') updateSidebarSearchCount();
+                    if (typeof updateSearchSidebar === 'function') updateSearchSidebar();
+                } catch (e) {}
             }
             document.querySelectorAll('.sidebar-tab').forEach(t => {
                 t.classList.toggle('active', t.getAttribute('data-tab') === tab);
