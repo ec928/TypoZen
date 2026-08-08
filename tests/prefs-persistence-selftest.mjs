@@ -56,6 +56,7 @@ function run(opts) {
     const factory = new Function(
         'isRestoring', 'scheduleSavePreferences', 'window', 'state', 'sidebar',
         'getMarkdownContent', 'localStorage', 'postMsg', '_contentCache',
+        '_searchHistory', 'SEARCH_HISTORY_MAX', '_lastSearchQuery', 'document',
         src + '\nreturn savePreferences;'
     );
     const savePreferences = factory(
@@ -75,7 +76,14 @@ function run(opts) {
         function (m) { posted.push(m); },
         // Cache of the last serialize. null forces savePreferences to serialize itself,
         // which is the path we want under test; the cached path is covered separately.
-        opts.contentCache === undefined ? null : opts.contentCache
+        opts.contentCache === undefined ? null : opts.contentCache,
+        [], // _searchHistory
+        8,  // SEARCH_HISTORY_MAX
+        '', // _lastSearchQuery
+        {
+            getElementById: function() { return null; },
+            querySelector: function() { return null; }
+        }   // document
     );
     savePreferences(true); // fromScheduler
     return { posted, stored, localStorage };
