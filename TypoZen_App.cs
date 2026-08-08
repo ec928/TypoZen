@@ -796,7 +796,12 @@ namespace TypoZen
             BindClick("mParaNormal",  (s, e) => SetParaSpacing(1));
             BindClick("mParaRelaxed", (s, e) => SetParaSpacing(2));
             BindClick("mParaLoose",   (s, e) => SetParaSpacing(3));
-            BindClick("mWordWrap", (s, e) => SetWordWrap(!_wordWrap));
+            BindClick("mWordWrap", (s, e) =>
+            {
+                // Disabled in the menu when wrap has no effect (Pages / Reader / epub).
+                if (!IsWordWrapApplicable()) return;
+                SetWordWrap(!_wordWrap);
+            });
             BindClick("mStatusBarToggle", (s, e) => SetStatusBarVisible(!_statusBarVisible));
             BindClick("mSessionRestoreContent", (s, e) => SetSessionRestoreContent(!_sessionRestoreContent));
             BindClick("mRecentEnabled", (s, e) => SetRecentFilesEnabled(!_recentFilesEnabled));
@@ -1417,15 +1422,9 @@ namespace TypoZen
             else if (vk == 0x4B) cmd = "fmt:link";                           // K
             else if (vk == 0x54) cmd = "fmt:table";                          // T
             else if (vk == 0x58 && shift) cmd = "fmt:strike";                // Ctrl+Shift+X
-            // Ctrl+W / Ctrl+Tab: page JS posts tab:close|next|prev when editor focused;
-            // WPF KeyDown handles chrome focus. Avoid preprocess here (double-fire).
-            //
-            // KNOWN BROKEN, not yet fixed: keyboard tab switching does not work reliably
-            // while the editor has focus. Handling Ctrl+Tab in this filter was tried and
-            // made it worse - tabs jumped to unpredictable targets and a "Could not reach
-            // editor" sync failure appeared - so it was reverted. Do not retry that
-            // approach without first establishing which handler actually receives the
-            // keystroke; the message filter does not appear to see it.
+            // Ctrl+W / Ctrl+Tab: page JS posts tab:close|next|prev when the editor has
+            // focus (05-model.js). Do not also handle Ctrl+Tab here — double-fire made
+            // tab targets jump. Chrome-focused Ctrl+Tab is handled in Window.KeyDown.
             else if (vk == 0x46 && !shift) cmd = "cmd:find";                 // F
             else if (vk == 0x48) cmd = "cmd:find_replace";                   // H
             else if (vk == 0xBF || vk == 0x6F) toggleSource = true;          // Ctrl+/
@@ -3139,6 +3138,12 @@ namespace TypoZen
             _viewMode = mode;
             _viewColumnsLocked = columnsLocked;
             _viewScrollLocked = scrollLocked;
+            _isPageAdvanceMode = (scroll == "pagination");
+            // Keep legacy mode chrome in step for Word Wrap / toolbars that still read it.
+            if (mode == "source") _editorMode = "source";
+            else if (mode == "reader") _editorMode = "reader";
+            else _editorMode = "wysiwyg";
+            RefreshWordWrapMenuAvailability();
 
 if (_btnColumnToggle != null)
             {
@@ -3880,8 +3885,10 @@ if (_btnColumnToggle != null)
                     bool cLock = p[3] == "1";
                     bool sLock = p[4] == "1";
                     Dispatcher.BeginInvoke(new Action(() =>
-                        RenderViewSelectors(vMode, vCols, vScroll, cLock, sLock)),
-                        DispatcherPriority.Normal);
+                    {
+                        RenderViewSelectors(vMode, vCols, vScroll, cLock, sLock);
+                        RefreshWordWrapMenuAvailability();
+                    }), DispatcherPriority.Normal);
                 }
             }
             else if (msg.StartsWith("sidebar_state:"))
@@ -4016,6 +4023,8 @@ if (_btnColumnToggle != null)
             else if (msg.StartsWith("mode_changed:"))
             {
                 ApplyModeToggleChrome(msg.Substring(13));
+                Dispatcher.BeginInvoke(new Action(RefreshWordWrapMenuAvailability),
+                    DispatcherPriority.Normal);
             }
             else if (msg.StartsWith("margin_changed:"))
             {
@@ -5280,12 +5289,24 @@ if (_btnColumnToggle != null)
                 {
                     _leftHover = nearLeft;
                     if (!_sidebarPinned)
-                        SendMsg(nearLeft ? "cmd:sidebar_edge:1" : "cmd:sidebar_edge:0");
+                    {
+                        // Closing is deferred: the page refuses edge-close while the
+                        // pointer is over #sidebar, and the stay band covers the full
+                        // sidebar width. Immediate close at 280px used to yank the bar
+                        // shut under Match case / Whole word (right side of the search row).
+                        if (nearLeft)
+                            SendMsg("cmd:sidebar_edge:1");
+                        else
+                            SendMsg("cmd:sidebar_edge:0");
+                    }
                 }
 
                 if (!_chromeAutoHide) return;
 
-                if (nearTop || IsAnyMenuOpen())
+                // Keep chrome up while the pointer is in the left band too: collapsing the
+                // toolbar resizes the WebView and slides the sidebar controls under the
+                // cursor mid-click.
+                if (nearTop || nearLeft || IsAnyMenuOpen())
                 {
                     _chromeHideAfter = DateTime.MaxValue;
                     if (_chromeHidden) SetChromeHidden(false);
@@ -5332,13 +5353,17 @@ if (_btnColumnToggle != null)
         /// <summary>
         /// Extreme left strip (and a little past the outer edge). Reveals the outline/search
         /// sidebar temporarily unless the user pinned it open with the toolbar/menu toggle.
-        /// Hysteresis: thin strip to open, wider band to stay open so the pointer can move
-        /// into the sidebar itself without the host closing it under the cursor.
+        /// Hysteresis: thin strip to *open*; full sidebar width to *stay* once open (edge
+        /// hover sticky via _leftHover, or pinned via _sidebarOpen). Match case / Whole word
+        /// sit on the right of the 300px bar — a 280px stay band closed under those buttons.
         /// </summary>
         internal bool ShouldRevealSidebar(double x, double y)
         {
             if (y < -TitleBarReachPx || y > ActualHeight + BottomReachPx) return false;
-            double limit = _leftHover ? LeftStayPx : LeftHotZonePx;
+            // Stay wide while the bar is open so chrome auto-hide and edge-close do not
+            // fire mid-click on search options.
+            bool stayWide = _leftHover || _sidebarOpen;
+            double limit = stayWide ? LeftStayPx : LeftHotZonePx;
             return x >= -LeftReachPx && x <= limit;
         }
 
@@ -5430,8 +5455,11 @@ if (_btnColumnToggle != null)
         /// <summary>True when the user opened the sidebar with the toggle (stays until closed).</summary>
         private bool _sidebarPinned = true;
         private const int LeftHotZonePx = 10;
-        /// <summary>While edge-open, keep revealing across typical sidebar width.</summary>
-        private const int LeftStayPx = 280;
+        /// <summary>
+        /// While edge-open (or while _leftHover), keep the left band live across the full
+        /// sidebar (#sidebar is 300px) plus slack so the search option buttons stay usable.
+        /// </summary>
+        private const int LeftStayPx = 360;
         private const int LeftReachPx = 24;
 
         /// <summary>The reading scrubber, which lives in the page.</summary>
@@ -5515,8 +5543,65 @@ if (_btnColumnToggle != null)
         {
             _wordWrap = on;
             SetMenuChecked("mWordWrap", on);
-            SendMsg(on ? "cmd:wordwrap_on" : "cmd:wordwrap_off");
+            // Only push the body class when wrap can take effect. Preference is still
+            // stored so leaving Pages/Reader restores what the user chose.
+            if (IsWordWrapApplicable())
+                SendMsg(on ? "cmd:wordwrap_on" : "cmd:wordwrap_off");
+            RefreshWordWrapMenuAvailability();
             if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        /// <summary>
+        /// Word wrap only affects Source and scroll Preview. In Pages / Reader / epub the
+        /// page axis is horizontal, so unwrap was overridden in CSS (and used to look like
+        /// a corrupt book). Grey the menu item out instead of leaving a live-looking tick.
+        /// </summary>
+        private bool IsWordWrapApplicable()
+        {
+            if (IsEpubPath(_currentFilePath)) return false;
+            if (string.Equals(_viewMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
+            if (string.Equals(_editorMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
+            // Source always wraps via the textarea path.
+            if (string.Equals(_viewMode, "source", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(_editorMode, "source", StringComparison.OrdinalIgnoreCase)) return true;
+            // Preview: only when scrolling, not paginated.
+            if (_isPageAdvanceMode) return false;
+            if (string.Equals(_viewScroll, "pagination", StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
+        }
+
+        private static bool IsEpubPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            return path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void RefreshWordWrapMenuAvailability()
+        {
+            try
+            {
+                var mi = FindElement("mWordWrap") as MenuItem;
+                if (mi == null) return;
+                bool applicable = IsWordWrapApplicable();
+                mi.IsEnabled = applicable;
+                mi.ToolTip = applicable
+                    ? "Wrap long lines (Source and scroll Preview)"
+                    : "Word wrap does not apply while reading pages or a book";
+                if (!applicable)
+                {
+                    // Do not show a live-looking tick while wrap cannot affect the page.
+                    mi.IsChecked = false;
+                    // Ensure unwrap is not left active under Pages/Reader (belt + CSS).
+                    SendMsg("cmd:wordwrap_on");
+                }
+                else
+                {
+                    mi.IsChecked = _wordWrap;
+                    // Restore the real preference when returning to Source / scroll Preview.
+                    SendMsg(_wordWrap ? "cmd:wordwrap_on" : "cmd:wordwrap_off");
+                }
+            }
+            catch { }
         }
 
         private void SetStatusBarVisible(bool on)
@@ -7255,13 +7340,21 @@ if (_btnColumnToggle != null)
                     // Menu is always discoverable (auto-hide top edge); no View > Menu toggle.
                     Pass("menu is not a manual toggle (always discoverable from the top edge)");
 
-                    // Left-edge sidebar hover geometry.
+                    // Left-edge sidebar hover geometry (open strip is thin; stay band is wide).
                     bool leftHit = ShouldRevealSidebar(4, ActualHeight / 2);
                     bool leftMiss = ShouldRevealSidebar(80, ActualHeight / 2);
                     bool leftOvershoot = ShouldRevealSidebar(-10, ActualHeight / 2);
                     if (leftHit && !leftMiss && leftOvershoot)
                         Pass("sidebar reveal band is the extreme left strip");
                     else Fail("sidebar reveal geometry wrong (hit=" + leftHit + " miss=" + leftMiss + " overshoot=" + leftOvershoot + ")");
+                    // Stay band must cover the 300px sidebar (search options live near its right).
+                    _leftHover = true;
+                    bool stayOnOptions = ShouldRevealSidebar(320, ActualHeight / 2);
+                    bool stayPastBar = ShouldRevealSidebar(400, ActualHeight / 2);
+                    _leftHover = false;
+                    if (stayOnOptions && !stayPastBar)
+                        Pass("sidebar stay band covers the full bar including search options");
+                    else Fail("sidebar stay band wrong (options=" + stayOnOptions + " past=" + stayPastBar + ")");
 
                     SetScrubberVisible(false);
                     await Task.Delay(100);
@@ -7960,6 +8053,7 @@ if (_btnColumnToggle != null)
             {
                 _currentFilePath = tab.FilePath;
                 _isDirty = false;
+                RefreshWordWrapMenuAvailability();
                 Dispatcher.BeginInvoke(new Action(() => OpenBook(tab.FilePath)),
                     DispatcherPriority.Normal);
                 return;
@@ -7968,6 +8062,7 @@ if (_btnColumnToggle != null)
             _currentFilePath = tab.FilePath;
             MapDocumentFolder(_currentFilePath);   // images resolve per document
             _isDirty = tab.IsDirty;
+            RefreshWordWrapMenuAvailability();
             // Teardown of book CSS/layout is handled inside loadMarkdownContent when
             // kind was epub (wasBook). Do not send leave_book_surface first — that raced
             // and could remount HTML as Markdown.
@@ -8679,6 +8774,7 @@ if (_btnColumnToggle != null)
                 tab.SourceEncoding = "Epub";
                 _currentFilePath = path;
                 _isDirty = false;
+                RefreshWordWrapMenuAvailability();
 
                 RebuildTabStrip();
 
@@ -8868,11 +8964,13 @@ if (_btnColumnToggle != null)
                     _btnToggleScrollMode.Opacity = 1.0;
                 }
             }
+            RefreshWordWrapMenuAvailability();
         }
 
         private void ApplyScrollModeToggleChrome(bool pageAdvance)
         {
             _isPageAdvanceMode = pageAdvance;
+            RefreshWordWrapMenuAvailability();
             if (_btnToggleScrollMode == null) return;
             if (pageAdvance)
             {

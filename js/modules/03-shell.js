@@ -801,6 +801,39 @@
         // True while the sidebar is open only because the pointer is on the extreme left.
         // Edge-hover must not pin; a user toggle (toolbar / Alt+S) posts sidebar_state and clears this.
         let _sidebarEdgeOnly = false;
+        // Pointer currently over #sidebar (or its descendants). Host edge-close is ignored
+        // while this is true — otherwise Match case / Whole word (right of the search row)
+        // sit past the host stay-band and the bar collapses under the cursor.
+        let _pointerOverSidebar = false;
+        let _sidebarEdgeCloseTimer = null;
+
+        function wireSidebarEdgePointerGuard() {
+            if (!sidebar || sidebar.__tzEdgePtrWired) return;
+            sidebar.__tzEdgePtrWired = true;
+            sidebar.addEventListener('mouseenter', function () {
+                _pointerOverSidebar = true;
+                if (_sidebarEdgeCloseTimer) {
+                    try { clearTimeout(_sidebarEdgeCloseTimer); } catch (eC) {}
+                    _sidebarEdgeCloseTimer = null;
+                }
+            });
+            sidebar.addEventListener('mouseleave', function () {
+                _pointerOverSidebar = false;
+                // Leaving the bar while edge-open: close after a short grace so a diagonal
+                // move toward the document is not a fight with the host hot-zone.
+                if (!_sidebarEdgeOnly) return;
+                if (_sidebarEdgeCloseTimer) {
+                    try { clearTimeout(_sidebarEdgeCloseTimer); } catch (eC2) {}
+                }
+                _sidebarEdgeCloseTimer = setTimeout(function () {
+                    _sidebarEdgeCloseTimer = null;
+                    if (_pointerOverSidebar || !_sidebarEdgeOnly) return;
+                    sidebar.classList.add('collapsed');
+                    _sidebarEdgeOnly = false;
+                }, 220);
+            });
+        }
+        try { wireSidebarEdgePointerGuard(); } catch (eW) {}
 
         function handleCommand(cmd) {
             if (cmd === "wordwrap_on") { document.body.classList.remove("nowrap"); return; }
@@ -1175,14 +1208,30 @@
             else if (cmd === "sidebar_edge:1" || cmd === "sidebar_edge:0") {
                 // Temporary left-edge hover. Never posts sidebar_state — that would pin.
                 if (!sidebar) return;
+                try { wireSidebarEdgePointerGuard(); } catch (eW2) {}
                 if (cmd === "sidebar_edge:1") {
+                    if (_sidebarEdgeCloseTimer) {
+                        try { clearTimeout(_sidebarEdgeCloseTimer); } catch (eC3) {}
+                        _sidebarEdgeCloseTimer = null;
+                    }
                     if (!sidebar.classList.contains('collapsed')) return; // already open (pinned)
                     sidebar.classList.remove('collapsed');
                     _sidebarEdgeOnly = true;
                 } else {
                     if (!_sidebarEdgeOnly) return; // pinned open stays open
-                    sidebar.classList.add('collapsed');
-                    _sidebarEdgeOnly = false;
+                    // Host leave-hot-zone: keep open while the pointer is still on the bar.
+                    if (_pointerOverSidebar) return;
+                    if (_sidebarEdgeCloseTimer) {
+                        try { clearTimeout(_sidebarEdgeCloseTimer); } catch (eC4) {}
+                    }
+                    // Brief grace so a move from the left strip into the search row is not
+                    // a close-open-close flicker when host ticks before mouseenter fires.
+                    _sidebarEdgeCloseTimer = setTimeout(function () {
+                        _sidebarEdgeCloseTimer = null;
+                        if (!_sidebarEdgeOnly || _pointerOverSidebar) return;
+                        sidebar.classList.add('collapsed');
+                        _sidebarEdgeOnly = false;
+                    }, 180);
                 }
             }
             else if (cmd === "goto_page") {

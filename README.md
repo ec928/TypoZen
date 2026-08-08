@@ -86,19 +86,33 @@ scrollbar can only span what is currently laid out — about 28 pages of a 1400-
   written to disk).
 
 ### Themes & typography
-**20 handcrafted themes** in `TypoZen_Themes.json` — modern dark/light, reading and serif faces, Gruvbox and warm palettes. The Themes menu lays them out in three columns built at runtime from the theme data itself: **Dark** (11), **Light** (5) and **Mono** (4 — Dracula, Nord, Tokyo Night, Monokai, the ones whose face is monospace), with **Customize Theme…** under the third.
+**25 themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size — not invented names. The Themes menu lays them out in three columns at runtime: **Dark**, **Light**, and **Mono** (font stack ends in `monospace`: Dracula, Nord, Tokyo Night, Monokai), with **Customize Theme…** under Mono.
 
-**All 20 set `FS` to 16.** They previously ranged 13–15, which is comfortable for editing a file you are working on and small for reading a novel end to end. A theme's `FS` is the base every document and every book is normalised to, so this moves both.
+| Column | Themes (palette origin) |
+|--------|-------------------------|
+| **Dark** | Gruvbox, Gruvbox Serif, Solarized Dark, Catppuccin Mocha, Rosé Pine, GitHub Dark Classic, One Dark, Material Oceanic, Material Palenight, VSCode Dark+, Tomorrow Night, **Everforest** (sainnhe, dark medium), **Kanagawa** (Wave), **Ayu Mirage** |
+| **Light** | Gruvbox Light, Solarized Light, Catppuccin Latte, Rosé Pine Dawn, One Light, VSCode Light+, **Ayu Light** |
+| **Mono** | Dracula, Nord, Tokyo Night, Monokai |
 
-Each theme is built around a deliberately chosen typeface, not just a colour palette — the reading themes use **Literata** and **Merriweather** because they were designed for long-form reading; the UI themes use **Inter** and **Source Sans 3** for clarity at small sizes.
+**All set `FS` to 16** (base size for document and book normalisation). Palettes are reduced to three colours for the shell + page; they are not full syntax-highlight schemes.
 
-- **Fonts ship with the app.** The families live in `fonts/`, so every theme looks the way it was designed on any machine — no manual installation, nothing to hunt down, and **no font is ever fetched from the network**. TypoZen works identically offline, on a locked-down network, or on a fresh PC. (The app requests nothing over the network at all — though the WebView2 runtime beneath it does; see [Network behaviour](#network-behaviour).)
-- **Your installed copies win.** Each `@font-face` lists `local()` first, so if you already have Inter or Literata installed, that's what renders and the bundled file is never touched.
-- **Deep recursive theming** — selecting a theme walks the WPF logical and visual trees, so menus, dropdowns, toolbar, sidebar and status bar all inherit matching background, foreground, border and accent brushes.
-- **Themes → Customize Theme…** — name, colours and font preset with live preview, **Save as New** (built-ins are never overwritten), Reset, and Cancel that restores the theme you started with.
-- Mono themes prefer **Cascadia Mono** / **Consolas**, which ship with Windows.
+Font stacks are TypoZen’s pairing: reading-oriented entries lean **Literata** / **Merriweather** / **Bookerly** (Gruvbox Light leads with Literata, Merriweather fallback); UI-oriented entries lean **Inter** / **Source Sans 3**; Mono uses **Cascadia Mono** / **Consolas** (on Windows).
 
-The four bundled by default (Inter, Source Sans 3, Merriweather, Literata) are SIL Open Font Licence, which permits redistribution.
+**For epub / long reading** prefer serif + soft paper or low-glare dark over Mono/IDE themes:
+
+| Situation | Themes |
+|-----------|--------|
+| Daytime novel | **Rosé Pine Dawn**, **Solarized Light**, **Gruvbox Light** |
+| Night, still bookish | **Rosé Pine**, **Gruvbox Serif** |
+| Night, soft green | **Everforest** |
+
+Avoid the Mono column (Dracula, Nord, Tokyo Night, Monokai) for immersion; fine for code.
+
+- **Fonts ship with the app** in `fonts/` (except system mono). No network font fetch. `local()` first so an installed copy wins. (WebView2 itself still does Microsoft traffic — see [Network behaviour](#network-behaviour).)
+- **Deep recursive theming** — menus, toolbar, sidebar and status bar take the same brushes as the page.
+- **Themes → Customize Theme…** — live preview, **Save as New** (built-ins never overwritten), Reset, Cancel.
+
+Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
 
 > **Bookerly is not.** It is Amazon's, drawn by Dalton Maag, and its copyright forbids redistribution without written permission. Two themes name it, and before it was bundled they silently rendered Georgia instead: an "install for me only" copy registers under HKCU and the WebView2 renderer sandbox does not enumerate per-user fonts, so `local('Bookerly')` found nothing. It is fine in a private build; remove `fonts/Bookerly*.ttf` and its `@font-face` block before distributing to anyone else.
 
@@ -114,12 +128,13 @@ The four bundled by default (Inter, Source Sans 3, Merriweather, Literata) are S
 - Table insert (`Ctrl+T`)
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps
+- **Word Wrap** (View) — applies in **Source** and **scroll Preview** only. On **Pages**, **Reader**, or an **epub**, the menu item is **disabled** (no fake tick); the stored preference returns when wrap can apply again
 - Sidebar (`Ctrl+\`): live outline (headings, or a book's own TOC) and the Search pane
 - Zoom: `Ctrl++` / `Ctrl+-` / `Ctrl+0` or Ctrl+scroll
 - **Notepad-style chrome** — document tabs in the **title bar** with min/max/close; File/Edit/View and format icons on the command row below
 - **Auto-hide chrome** (View → Auto-hide) — tucks the command row, tab chips and status bar, keeping a slim caption for dragging and window controls. Pointer to the **top** (or bare Alt) restores the menu; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back
 - The menu is **always discoverable** — there is no hide-the-menu toggle. When auto-hide is off it stays put; when on, reach the top of the window
-- **Left-edge sidebar hover** — with the sidebar unpinned (closed by the toggle), moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it. Opening it with the toolbar, `Ctrl+\`, or Alt+S **pins** it until you close it again
+- **Left-edge sidebar hover** — with the sidebar unpinned (closed by the toggle), moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it (stay band covers the full bar so Match case / Whole word stay usable). Opening with the toolbar, `Ctrl+\`, or Alt+S **pins** it until you close it again
 - **Alt+F / E / V / T / H** open the matching top-level menu from the keyboard (including while the editor has focus); **Alt+S** is Search, not a menu letter
 
 ### Tabs
@@ -144,7 +159,7 @@ Bullet, ordered and task lists, with real nesting.
 - Indentation is a property of the raw Markdown (leading spaces), rendered with `margin-left` rather than nested `<ul>` DOM — so Source round-trips exactly
 
 ### Live statistics
-The status bar updates continuously with word count, character count, estimated reading time (~200 wpm), total lines, current line, **current chapter** (from TOC/outline when available), zoom, and — when text is selected — **selected** word and character counts. Serialization is debounced so counters stay responsive on very large documents.
+The status bar updates continuously with word count, character count, estimated reading time (~200 wpm), total lines, **current line** (caret in Source/Preview — same document-line coordinate as Search result gutters after a jump), **current chapter** (click to jump to its start), zoom, and — when text is selected — **selected** word and character counts. Serialization is debounced so counters stay responsive on very large documents.
 
 ### Files & export
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
@@ -713,33 +728,17 @@ keeps the case it was written in, so it had never once fired.
 
 ### Known gaps
 
-- **Links that are broken in the file itself.** `Matter`'s in-text links point at `#filepos`
-  anchors while its actual anchors are `calibre_pb_*`. When the fragment misses, TypoZen falls
-  back to the link's **title text** against the TOC/outline (including when the *file* part of
-  the href resolved but the fragment did not — that path used to land on the file start and
-  skip the title). A mid-chapter cross-reference with no usable title still has nothing to
-  match on and does nothing. No reader can invent anchors the publisher never wrote.
 - **Two-column numbering: map = spreads, glass = leaf pages.** `PageMap` always counts
   spreads (one horizontal step). Foot numbers and the scrubber bubble convert through
   `pageDisplayFromSpread` only — never seek or store leaf page numbers.
-- **Reading position is remembered twice, deliberately.** The path-keyed store
-  (`book_positions.txt`) answers "reopen this file where I left it"; each tab also carries
-  its own `ResumeBlock`, persisted as `resume=` in the session, which answers "come back to
-  *this tab* where I left it". They differ when the same file is open twice, and only the
-  tab can answer for an untitled buffer. What is still missing: a position is a block index,
-  so it survives editing above it only as well as the block numbering does.
+- **Reading position** is a block index in path-keyed store + per-tab `ResumeBlock` (same
+  content on screen is enough; exact character-stable resume after heavy edits above the
+  point is not guaranteed).
 - **Custom table size uses `#tableModal`.** The Notepad-style grid picker is the default path
   (`Ctrl+T`); **Custom size…** opens the number-field dialog. Both share `insertMarkdownTable`.
-- **Word Wrap is ignored on a page, and in books.** It is a source-editing setting: with it
-  off, `body.nowrap` sets `white-space: pre` so lines run long and the pane scrolls sideways.
-  A paginated layout has no sideways left to give — the horizontal axis *is* the page axis —
-  so an unwrapped paragraph became one line thousands of pixels wide that started in its own
-  column and ran across the next four, painting five pages of text on top of each other.
-  Reported as *"the epubs are corrupt"*: the files were intact, `"wordWrap": false` had been
-  sitting in `window_state.json` the whole time. `css/typozen.css` now overrides it for
-  `#editor.page-mode` and `#editor.reader-mode`. The View menu still shows the setting's real
-  state while reading, where it has no effect — the tick is honest about the preference, not
-  about the current page.
+- **Word Wrap** is a Source / scroll-Preview setting only (see Writing tools). CSS still
+  forces wrap on page/book layouts as a safety net if an old `window_state.json` had
+  unwrap saved.
 - **The scrubber is pages-only.** A scrolling layout keeps the native scrollbar, which is
   correct there — virtualization gives it the full document extent — but it does mean the two
   layouts offer different controls.

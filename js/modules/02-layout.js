@@ -261,20 +261,37 @@
             let bi = 0;              // block under the pointer
             let pos = 0;             // char offset of that block's start
             let line = 1;            // document line of that block's start
-            let rawLen = rawOf(0).length;
+            let raw = rawOf(0);
+            let rawLen = raw.length;
 
             for (let i = 0; i < offsets.length; i++) {
                 const off = Math.max(0, offsets[i] | 0);
                 // Offsets ascend, so the pointer only ever moves forward.
                 while (bi < blocks.length - 1 && off > pos + rawLen) {
-                    line += linesInBlockRaw(rawOf(bi));
+                    line += linesInBlockRaw(raw);
                     pos += rawLen + 1;          // +1 for the joining newline
                     bi++;
-                    rawLen = rawOf(bi).length;
+                    raw = rawOf(bi);
+                    rawLen = raw.length;
                 }
-                out[i] = line;
+                // Block start alone is wrong: a multi-line paragraph/chapter body would
+                // label every hit with the first line of its block, while the status bar
+                // (and the page) report the real line within the block. Count newlines
+                // from the block start up to the match.
+                let within = 0;
+                const lim = Math.min(Math.max(0, off - pos), rawLen);
+                for (let j = 0; j < lim; j++) {
+                    if (raw.charCodeAt(j) === 10) within++;
+                }
+                out[i] = line + within;
             }
             return out;
+        }
+
+        /** 1-based document line for a model-surface match offset (same basis as status Ln). */
+        function documentLineForModelOffset(offset) {
+            const lines = documentLinesForModelOffsets([Math.max(0, offset | 0)]);
+            return lines[0] | 0 || 1;
         }
 
         function updateSearchSidebar() {
@@ -2997,6 +3014,18 @@
             if (!match || typeof DocumentModel === 'undefined') return;
             const loc = markdownOffsetToBlock(match.start);
             const blockIdx = loc.blockIndex;
+            // Same coordinate as the Search sidebar gutter and status "Ln N".
+            // Paginated jumps used to skip stats entirely, so the status bar kept the
+            // previous sticky line (e.g. 13612) while the list showed the match (13488+).
+            let matchLine = 1;
+            try {
+                matchLine = documentLineForModelOffset(match.start);
+            } catch (eL) {
+                try { matchLine = modelBlockStartLine(blockIdx); } catch (eL2) { matchLine = 1; }
+            }
+            try {
+                if (typeof rememberStickyLine === 'function') rememberStickyLine(matchLine);
+            } catch (eSt) {}
 
             // Paginated views do not scroll mainContainer at all -- it is overflow-hidden
             // and the editor scrolls sideways -- so setting scrollTop here did nothing and
@@ -3014,6 +3043,7 @@
                 };
                 paintPage();
                 requestAnimationFrame(function () { setTimeout(paintPage, 120); });
+                try { updateStatsNow({ forceCaretLine: matchLine }); } catch (eStP) {}
                 return;
             }
 
@@ -3023,7 +3053,7 @@
             // to 0 -- so clicking a result moved the caret and left the view where it was.
             // Exactly the defect the outline had; this is the same path.
             try {
-                restoreStickyDocumentLine(modelBlockStartLine(blockIdx));
+                restoreStickyDocumentLine(matchLine);
                 const el0 = elementForModelIndex(blockIdx);
                 if (el0) {
                     setFocusedBlock(el0);
@@ -3035,7 +3065,7 @@
                 };
                 paintScroll();
                 requestAnimationFrame(function () { setTimeout(paintScroll, 80); });
-                try { updateStatsNow(); } catch (eSt0) {}
+                try { updateStatsNow({ forceCaretLine: matchLine }); } catch (eSt0) {}
                 return;
             } catch (eScr) {}
             // Suppress refreshFindAfterVirtMount re-entry while we intentionally remount

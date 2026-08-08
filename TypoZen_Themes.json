@@ -1,6 +1,7 @@
 [
   {"Name":"Gruvbox","FN":"'Source Sans 3', 'Inter', sans-serif","FS":16,"Bg":"#282828","Tx":"#EBDBB2","Hi":"#FABD2F"},
   {"Name":"Gruvbox Serif","FN":"'Merriweather', 'Literata', serif","FS":16,"Bg":"#282828","Tx":"#EBDBB2","Hi":"#FABD2F"},
+  {"Name":"Gruvbox Light","FN":"'Literata', 'Merriweather', serif","FS":16,"Bg":"#FBF1C7","Tx":"#3C3836","Hi":"#B57614"},
   {"Name":"Solarized Light","FN":"'Bookerly', 'Literata', serif","FS":16,"Bg":"#FDF6E3","Tx":"#657B83","Hi":"#268BD2"},
   {"Name":"Solarized Dark","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#002B36","Tx":"#839496","Hi":"#268BD2"},
   {"Name":"Dracula","FN":"'Cascadia Mono', 'Consolas', monospace","FS":16,"Bg":"#282A36","Tx":"#F8F8F2","Hi":"#BD93F9"},
@@ -18,5 +19,10 @@
   {"Name":"Material Palenight","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#292D3E","Tx":"#BFC7D5","Hi":"#C792EA"},
   {"Name":"VSCode Dark+","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#1E1E1E","Tx":"#D4D4D4","Hi":"#569CD6"},
   {"Name":"VSCode Light+","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#FFFFFF","Tx":"#333333","Hi":"#0066BF"},
-  {"Name":"Tomorrow Night","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#1D1F21","Tx":"#C5C8C6","Hi":"#81A2BE"}
+  {"Name":"Tomorrow Night","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#1D1F21","Tx":"#C5C8C6","Hi":"#81A2BE"},
+  {"Name":"Everforest","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#2D353B","Tx":"#D3C6AA","Hi":"#A7C080"},
+  {"Name":"Kanagawa","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#1F1F28","Tx":"#DCD7BA","Hi":"#7E9CD8"},
+  {"Name":"Ayu Mirage","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#1F2430","Tx":"#CCCAC2","Hi":"#FFCC66"},
+  {"Name":"Ayu Light","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#FAFAFA","Tx":"#5C6773","Hi":"#FF9940"},
+  {"Name":"Gruvbox Light (Custom)","FN":"'Literata', 'Merriweather', serif","FS":18,"Bg":"#FBF1C7","Tx":"#3C3836","Hi":"#B57614","Custom":true}
 ]
