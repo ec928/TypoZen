@@ -261,6 +261,33 @@ async function openAndCheck(app, book, deep) {
             plates.blocks + ')');
     }
 
+    // No document boundary is anchored to a block that renders nothing.
+    //
+    // A model-level check, because that is where this went wrong and layout only showed the
+    // symptom. Xeelee's stories each begin with a blank spacer block, so the boundary landed
+    // on it, the forced break before an empty box did not fire, and three story titles ran on
+    // mid-column with a dozen paragraphs of the previous story above them. The spine was
+    // right and the anchor was not.
+    const anchors = await app.eval(() => {
+        const ink = (raw) => /<(img|svg|image|table|hr)\b/i.test(String(raw)) ||
+            !!String(raw).replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+                .replace(/\s+/g, ' ').trim();
+        const bad = [];
+        let total = 0;
+        for (const k of Object.keys(_bookDocStarts)) {
+            const i = +k;
+            total++;
+            const b = DocumentModel.blocks[i];
+            if (!b) continue;
+            if (!ink(b.raw)) bad.push(i);
+        }
+        return { total, bad: bad.slice(0, 5), badCount: bad.length };
+    });
+    info(anchors.total + ' document boundaries, ' + anchors.badCount + ' anchored to a blank block');
+    assert(anchors.badCount === 0,
+        book + ': every document boundary sits on a block that renders something (' +
+        anchors.badCount + ' blank' + (anchors.badCount ? ', e.g. ' + JSON.stringify(anchors.bad) : '') + ')');
+
     // Every chapter starts at the top of a page.
     //
     // In 2-column each column IS a page -- the foot carries two numbers, one under each,

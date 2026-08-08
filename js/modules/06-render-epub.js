@@ -487,6 +487,22 @@
          * The start map is what turns a table of contents into something navigable: a TOC
          * entry names a document, and the reader needs a block index to scroll to.
          */
+        /**
+         * Does this block put anything on the page?
+         *
+         * A picture counts; so does any text. `&nbsp;` and friends do not -- a spacer
+         * paragraph is exactly what a publisher uses to push content down a page it is
+         * already laying out separately, and it is the thing a forced break cannot hang on.
+         */
+        function bookBlockHasInk(b) {
+            const raw = String((b && b.raw != null) ? b.raw : (b || ''));
+            if (/<(img|svg|image|table|hr)\b/i.test(raw)) return true;
+            return !!raw.replace(/<[^>]*>/g, ' ')
+                .replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
         function bookBlocksFromDocs(docs) {
             const blocks = [];
             const docStart = {};
@@ -498,7 +514,6 @@
             // flat at the root, which is the only reason a shared base ever appeared to work.
             const dirs = [];
             for (let i = 0; i < (docs ? docs.length : 0); i++) {
-                docStart[bookNormalizeHref(docs[i].href)] = blocks.length;
                 const href = String(docs[i].href || '').replace(/\\/g, '/');
                 const dir = href.indexOf('/') >= 0 ? href.slice(0, href.lastIndexOf('/') + 1) : '';
                 const bs = bookBlocksFromHtml(docs[i].html);
@@ -506,7 +521,30 @@
                 // A spine document is a chapter, and a chapter starts a page. Without this
                 // a book runs continuously and a chapter heading turns up halfway down a
                 // column, which no printed book does and no reader expects.
-                if (bs.length) starts.push(blocks.length);
+                //
+                // Anchored on the first block that renders something, not simply the first.
+                // Xeelee's stories each begin with a blank spacer -- part0451.xhtml is four
+                // blocks and the first is empty -- so the boundary landed on a block with
+                // nothing in it, the forced break before it did not fire, and FORMIDABLE
+                // CARESS, THE TIME PIT and THE LOWLAND EXPEDITION all ran on mid-column with
+                // a dozen paragraphs of the previous story above them. The document boundary
+                // was never wrong; it was attached to something that cannot carry a break.
+                //
+                // The table of contents and the book's own internal links resolve through
+                // docStart, so it takes the same anchor. It used to record the raw first
+                // block, which was the same thing while the boundary was there too -- and
+                // stopped being the same thing the moment the boundary moved. Leaving them
+                // apart would have sent every outline entry and every in-book link to a
+                // spacer sitting at the tail of the previous page: one page early, every
+                // time. One anchor, computed once, used by both.
+                let anchor = blocks.length;
+                if (bs.length) {
+                    let k = 0;
+                    while (k < bs.length - 1 && !bookBlockHasInk(bs[k])) k++;
+                    anchor = blocks.length + k;
+                    starts.push(anchor);
+                }
+                docStart[bookNormalizeHref(docs[i].href)] = anchor;
                 for (let j = 0; j < bs.length; j++) blocks.push(bs[j]);
             }
             return { blocks: blocks, docStart: docStart, docStarts: starts, dirs: dirs };
