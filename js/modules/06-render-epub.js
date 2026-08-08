@@ -1007,22 +1007,30 @@
                 // two-column spread has no notion of; a column break is the honest reading.
                 .replace(/\bpage-break-(before|after)\s*:\s*(always|left|right)\s*(;|})/gi,
                     function (m, side, how, end) { return 'break-' + side + ': column' + end; })
-                // `break-after: page` is deliberately NOT converted, and this is the reason.
+                // A paged break *after* an element is neutralised, not translated.
                 //
-                // It looks like the same request as `page-break-after: always` and it is not.
-                // Xeelee carries it on body classes -- .bt1-body-text2, .bt1-fo1, .story-dates
-                // -- which is to say on ordinary paragraphs, in their thousands. In the reader
-                // the publisher wrote for, each spine document is laid out on its own, so a
-                // paged break on the last paragraph of a file costs nothing and a paged break
-                // anywhere else is simply ignored. Our flow is every document concatenated,
-                // so converting it to a column break fires after nearly every paragraph.
-                // Measured: columns went from 97% and 99% full to 9% and 12% -- two paragraphs
-                // on a whole spread, which is what a reader would call the app being broken.
+                // This one cost a day. Xeelee puts `break-after: page` on body classes --
+                // .bt1-body-text4 and friends -- so it lands on thousands of ordinary
+                // paragraphs, including the one immediately before every story title. At a
+                // break point the preceding element's break-after and the next element's
+                // break-before combine and the strongest wins: `page` outranks `column`. A
+                // multi-column layout has no pages, so the combined value is discarded --
+                // and TypoZen's own chapter break, sitting on the very next block, is
+                // swallowed with it. Found by bisecting 3,114 rules of the book's stylesheet:
+                // chapter starts opening their own page went from 1 of 3 to 3 of 3 the moment
+                // this rule was removed.
                 //
-                // The legacy `page-break-*` conversion above is safe because publishers use
-                // that spelling to mean a break they actually want. This spelling, in this
-                // book, means nothing at all. Honouring a declaration is not the same as
-                // honouring an intention, and the two only look alike from the stylesheet.
+                // Translating it to a column break instead is what emptied every page
+                // earlier: a forced break after nearly every paragraph took columns from 97%
+                // full to 9%. So neither honouring it nor translating it is right. In a
+                // reader that lays each spine document out separately -- which is what the
+                // publisher wrote for -- it is a no-op; here it is actively destructive, and
+                // `auto` is the faithful rendering of a declaration that meant nothing.
+                //
+                // break-before: page is left to the conversion above, because "start this
+                // element on a new page" is a request that survives the translation.
+                .replace(/\bbreak-after\s*:\s*(page|left|right|recto|verso)\s*(;|})/gi,
+                    function (m, how, end) { return 'break-after: auto' + end; })
                 .replace(/\bpage-break-inside\s*:\s*avoid\s*(;|})/gi, 'break-inside: avoid$1')
                 // rem is rooted at the application, not at the reader's text, so a book
                 // asking for 0.88rem renders at 0.88 of TypoZen's UI size and the reader's
@@ -1787,16 +1795,27 @@
             if (opts && opts.flushActive === true) {
                 try { flushActiveBlockToRaw(); } catch (eF) {}
             }
-            // Expand soft-breaks only when repairing (mutates DOM).
-            if (repairFragments !== false) {
-                try { expandAllFragmentedBlocks(); } catch (e) {}
-            }
             // A book is read-only and its blocks are HTML, so there is nothing to serialise
             // back: the model is the document, full stop. Falling through would reach the
             // full-mount branch below, which rebuilds the model from whatever is mounted --
             // the same shape of mistake as windowing, with a whole novel at stake.
+            //
+            // Returned BEFORE the fragment repair below, which is where this guard belonged
+            // all along. expandAllFragmentedBlocks() mutates the DOM to undo soft breaks left
+            // by editing -- and a book has no editing and no soft breaks, so on a book it is
+            // pure damage. Search builds its haystack with getMarkdownContent(), repair on,
+            // so opening a book with a search -- exactly how ZenSeek launches it -- grew the
+            // document by 78 characters and two lines, duplicating a line, and left a
+            // read-only file comparing as edited with a save prompt to match. Two lines too
+            // late for a guard whose own comment says the model is the document, full stop.
             if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') {
                 return DocumentModel.toPlainText();
+            }
+
+            // Expand soft-breaks only when repairing (mutates DOM). Markdown only, now that
+            // the book has already returned above.
+            if (repairFragments !== false) {
+                try { expandAllFragmentedBlocks(); } catch (e) {}
             }
 
             try {
