@@ -445,7 +445,7 @@
             postMsg('sidebar_state:' + (sidebar.classList.contains('collapsed') ? '0' : '1'));
         }
 
-        window.switchTab = function(tab) {
+        window.switchTab = function(tab, noFocus) {
             if (tab !== 'outline' && tab !== 'search') tab = 'outline';
             // Reaching Search with the mouse must wire it up too. This used to happen only
             // from the Alt+S handler and from updateSearchSidebar, so clicking the tab gave
@@ -459,6 +459,7 @@
                 const list = document.getElementById('search-results-list');
                 if (input) {
                     setTimeout(() => {
+                        if (noFocus) return;
                         input.focus({preventScroll:true});
                         input.select();
                         if (typeof armSidebarSearchIdle === 'function') armSidebarSearchIdle();

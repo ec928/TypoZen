@@ -98,13 +98,14 @@
                         const sb = document.getElementById('sidebar');
                         if (sb) sb.classList.remove('collapsed');
                     } catch (eSb) {}
-                    if (typeof window.switchTab === 'function') window.switchTab('search');
+                    if (typeof window.switchTab === 'function') window.switchTab('search', true);
                     const side = document.getElementById('sidebarSearchInput');
                     if (side) side.value = query;
                     try {
                         const fi = document.getElementById('findInput');
                         if (fi) fi.value = query;
                     } catch (eFi) {}
+                    if (typeof window.rememberSearchQuery === 'function') window.rememberSearchQuery(query);
                     if (typeof hideFindBarChrome === 'function') hideFindBarChrome();
                     else {
                         try {
@@ -127,8 +128,7 @@
                         if (typeof hideFindBarChrome === 'function') hideFindBarChrome();
                     }
                     try {
-                        _searchRenderedSig = '';
-                        _searchRenderedList = null;
+                        if (typeof forceSearchSidebarRepaint === 'function') forceSearchSidebarRepaint();
                         if (typeof updateSearchSidebar === 'function') updateSearchSidebar();
                         if (typeof updateSidebarSearchCount === 'function') updateSidebarSearchCount();
                         if (typeof wireSidebarSearch === 'function') wireSidebarSearch();

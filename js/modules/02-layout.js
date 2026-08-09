@@ -297,6 +297,14 @@
             return lines[0] | 0 || 1;
         }
 
+        function forceSearchSidebarRepaint() {
+            _searchRenderedSig = '';
+            _searchRenderedList = null;
+        }
+        window.forceSearchSidebarRepaint = forceSearchSidebarRepaint;
+        window.updateSearchSidebar = updateSearchSidebar;
+        window.rememberSearchQuery = rememberSearchQuery;
+
         function updateSearchSidebar() {
             const list = document.getElementById('search-results-list');
             if (!list) return;
