@@ -136,6 +136,14 @@
                 try {
                     // ZenSeek / Phase 6: Run find, jump to match N.
                     // DO NOT open the sidebar or switch tabs. Let the user read.
+                    window.__tzExternalSearchActive = true;
+                    if (typeof window.switchTab === 'function') window.switchTab('none');
+                    try {
+                        const sb = document.getElementById('sidebar');
+                        if (sb) sb.classList.add('collapsed');
+                        if (typeof postMsg === 'function') postMsg('sidebar_state:0');
+                    } catch(eSb) {}
+                    
                     const side = document.getElementById('sidebarSearchInput');
                     if (side) side.value = query;
                     try {

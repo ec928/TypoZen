@@ -28,26 +28,31 @@
             if (!editor || editor.__tzReaderFindKeys) return;
             editor.__tzReaderFindKeys = true;
             document.addEventListener('keydown', function (e) {
-                if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-                if (state.mode !== 'reader') return;
                 if (!findState.matches || !findState.matches.length) return;
+                if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
 
                 // Never while something is being typed into, wherever the event came from.
                 const t = e.target;
-                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+                const isInput = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+                if (isInput) return;
 
-                let dir = 0;
-                if (e.key === 'ArrowUp') dir = -1;
-                else if (e.key === 'ArrowDown') dir = 1;
-                if (!dir) return;
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    if (state.mode === 'reader' || window.__tzExternalSearchActive) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        findStep(e.key === 'ArrowUp' ? -1 : 1);
+                        try { updateSidebarSearchCount(); } catch (err) {}
+                        try { focusEditorNoScroll(); } catch (err2) {}
+                    }
+                } else {
+                    if (window.__tzExternalSearchActive) {
+                        window.__tzExternalSearchActive = false;
+                    }
+                }
+            }, true);
 
-                e.preventDefault();
-                e.stopPropagation();
-                findStep(dir);
-                try { updateSidebarSearchCount(); } catch (err) {}
-                // Keep the keys working for the next press: findStep hands focus to the
-                // match, and a book is not focusable in the way an input is.
-                try { focusEditorNoScroll(); } catch (err2) {}
+            document.addEventListener('mousedown', function() {
+                window.__tzExternalSearchActive = false;
             }, true);
         }
 
