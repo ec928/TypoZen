@@ -56,13 +56,7 @@
             _resumeAtTimer = setTimeout(attempt, 400);
         }
 
-        let _pendingZenSeekFocus = false;
-        window.addEventListener('focus', function() {
-            if (_pendingZenSeekFocus) {
-                _pendingZenSeekFocus = false;
-                if (typeof focusSearchResults === 'function') focusSearchResults();
-            }
-        });
+
 
         /**
          * Phase 6 — open from ZenSeek: run find, jump to match N, highlight.
@@ -147,31 +141,24 @@
                         //
                         
                         if (typeof focusSearchResults === 'function') {
-                            _pendingZenSeekFocus = true;
-                            setTimeout(() => { _pendingZenSeekFocus = false; }, 15000);
-
                             let focusSuccessTicks = 0;
-                            const grabFocus = setInterval(() => {
-                                const active = document.activeElement;
-                                // If the user already deliberately focused something else, don't fight them.
-                                if (document.hasFocus() && active && active.id !== 'search-results-list' && active.id !== 'sidebarSearchInput' && active !== document.body) {
-                                    clearInterval(grabFocus);
-                                    return;
-                                }
-
-                                focusSearchResults();
-                                
-                                if (document.hasFocus() && document.activeElement && document.activeElement.id === 'search-results-list') {
-                                    focusSuccessTicks++;
-                                    if (focusSuccessTicks > 3) clearInterval(grabFocus);
-                                } else {
-                                    focusSuccessTicks = 0;
-                                    if (!document.hasFocus()) {
-                                        window.focus(); // Demand focus from WPF host
+                            const tryFocus = setInterval(() => {
+                                // Wait until the OS actually gives us physical keyboard focus.
+                                // If we call focusSearchResults() while in the background, Chromium will
+                                // perform a "focus reset" when the window eventually activates, wiping it out.
+                                if (document.hasFocus()) {
+                                    focusSearchResults();
+                                    if (document.activeElement && document.activeElement.id === 'search-results-list') {
+                                        focusSuccessTicks++;
+                                        if (focusSuccessTicks > 3) clearInterval(tryFocus);
                                     }
+                                } else {
+                                    // Demand focus from the WPF host while we wait
+                                    window.focus();
                                 }
                             }, 50);
-                            setTimeout(() => clearInterval(grabFocus), 3000);
+                            // Fallback: stop trying if the window remains in background for 15 seconds
+                            setTimeout(() => clearInterval(tryFocus), 15000);
                         }
                     } catch (eS) {}
                 } catch (e) {
