@@ -140,11 +140,7 @@
                         // ',' and '.' type punctuation into a focused input instead. Focus
                         // goes where the keys work: the document while reading, the results
                         // list otherwise -- both of which step on ',' and '.'.
-                        const readOnly = !!(editor
-                            && editor.getAttribute('contenteditable') !== 'true');
-                        if (readOnly && typeof focusEditorNoScroll === 'function') {
-                            focusEditorNoScroll();
-                        } else if (typeof focusSearchResults === 'function') {
+                        if (typeof focusSearchResults === 'function') {
                             focusSearchResults();
                         }
                     } catch (eS) {}

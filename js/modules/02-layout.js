@@ -876,6 +876,10 @@
                 }, true);
             }
 
+            input.addEventListener('focus', () => {
+                armSidebarSearchIdle();
+            });
+
             input.addEventListener('input', () => {
                 if (_searchHistOpen) closeSearchHistoryMenu();
                 if (_sidebarSearchDebounce) clearTimeout(_sidebarSearchDebounce);
