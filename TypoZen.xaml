@@ -418,7 +418,7 @@
                     <Button x:Name="btnToggleSidebar" Style="{StaticResource GhostToolbarButton}"
                             FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE8A0;" FontSize="14"
                             MinWidth="32" Padding="6,2" Margin="0,0,4,0"
-                            ToolTip="Toggle File Tree &amp; Outline (Ctrl+\)"/>
+                            ToolTip="Toggle File Tree &amp; Outline (Alt+\)"/>
                     <Menu x:Name="topMenu" Background="Transparent" Padding="2,0" VerticalAlignment="Center">
                         <MenuItem Header="_File">
                             <MenuItem x:Name="mNew" Header="_New" InputGestureText="Ctrl+N"/>
@@ -464,7 +464,7 @@
                         </MenuItem>
                         <MenuItem Header="_View">
                             <MenuItem x:Name="mToggleSource" Header="Toggle _Source Mode" InputGestureText="Ctrl+/"/>
-                            <MenuItem x:Name="mToggleSidebar" Header="Toggle _Sidebar (Outline/Search)" InputGestureText="Ctrl+\"/>
+                            <MenuItem x:Name="mToggleSidebar" Header="Toggle _Sidebar (Outline/Search)" InputGestureText="Alt+\"/>
                             <MenuItem x:Name="mSearchSidebar" Header="Search Side_bar" InputGestureText="Alt+S"/>
                             <Separator/>
                             <MenuItem x:Name="mToggleReveal" Header="_Reveal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>

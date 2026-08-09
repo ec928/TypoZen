@@ -1402,21 +1402,28 @@ namespace TypoZen
                     _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(ChromeHideDelayMs);
                 }
                 if ((WinForms.Control.ModifierKeys & WinForms.Keys.Alt) == WinForms.Keys.Alt
-                    && (WinForms.Control.ModifierKeys & WinForms.Keys.Control) != WinForms.Keys.Control
-                    && k >= 0x41 && k <= 0x5A)
+                    && (WinForms.Control.ModifierKeys & WinForms.Keys.Control) != WinForms.Keys.Control)
                 {
-                    char letter = (char)('a' + (k - 0x41));
-                    if (letter == 'f' || letter == 'e' || letter == 'v' || letter == 't' || letter == 'h')
+                    if (k >= 0x41 && k <= 0x5A)
                     {
-                        handled = true;
-                        char L = letter;
-                        Dispatcher.BeginInvoke(new Action(() => OpenMenuByAccessKey(L)), DispatcherPriority.Send);
+                        char letter = (char)('a' + (k - 0x41));
+                        if (letter == 'f' || letter == 'e' || letter == 'v' || letter == 't' || letter == 'h')
+                        {
+                            handled = true;
+                            char L = letter;
+                            Dispatcher.BeginInvoke(new Action(() => OpenMenuByAccessKey(L)), DispatcherPriority.Send);
+                        }
+                        else if (letter == 's')
+                        {
+                            handled = true;
+                            Dispatcher.BeginInvoke(new Action(() => SendMsg("cmd:toggle_search_sidebar")),
+                                DispatcherPriority.Send);
+                        }
                     }
-                    else if (letter == 's')
+                    else if (k == 0xDC || k == 0xE2)
                     {
                         handled = true;
-                        Dispatcher.BeginInvoke(new Action(() => SendMsg("cmd:toggle_search_sidebar")),
-                            DispatcherPriority.Send);
+                        Dispatcher.BeginInvoke(new Action(() => SendMsg("cmd:toggle_sidebar")), DispatcherPriority.Send);
                     }
                 }
             }
@@ -1443,7 +1450,6 @@ namespace TypoZen
             else if (vk == 0x46 && !shift) cmd = "cmd:find";                 // F
             else if (vk == 0x48) cmd = "cmd:find_replace";                   // H
             else if (vk == 0xBF || vk == 0x6F) toggleSource = true;          // Ctrl+/
-            else if (vk == 0xDC) cmd = "cmd:toggle_sidebar";                 // Ctrl+\
             else return;
 
             // Swallow so page JS never also runs the same chord (double undo/format).
@@ -1596,7 +1602,6 @@ namespace TypoZen
                 else if (e.Key == Key.OemMinus || e.Key == Key.Subtract) { ZoomBy(-ZoomStep); e.Handled = true; }
                 else if (e.Key == Key.D0 || e.Key == Key.NumPad0) { SetZoom(1.0); e.Handled = true; }
                 else if (e.Key == Key.Oem2 || e.Key == Key.Divide) { ToggleSourceMode(); e.Handled = true; } // Ctrl+/
-                else if (e.Key == Key.Oem5 || e.Key == Key.OemBackslash) { SendMsg("cmd:toggle_sidebar"); e.Handled = true; } // Ctrl+\
             }
             // Alt+S opens the search sidebar. The page claims this itself while the WebView
             // has focus; this covers the case where WPF chrome holds focus instead. Alt
@@ -1605,6 +1610,12 @@ namespace TypoZen
                      && (Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
             {
                 SendMsg("cmd:toggle_search_sidebar");
+                e.Handled = true;
+            }
+            else if ((e.SystemKey == Key.Oem5 || e.SystemKey == Key.OemBackslash) && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt
+                     && (Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
+            {
+                SendMsg("cmd:toggle_sidebar");
                 e.Handled = true;
             }
             else if (e.Key == Key.D && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
