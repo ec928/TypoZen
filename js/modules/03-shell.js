@@ -119,6 +119,7 @@
                     }
                     if (typeof hideFindBarChrome === 'function') hideFindBarChrome();
                     if (typeof findState !== 'undefined' && findState.matches && findState.matches.length) {
+                        _externalFindGen++; // cancel remaining retries once matches are found
                         const idx = Math.min(matchIndex, findState.matches.length - 1);
                         if (typeof window.findJumpTo === 'function') window.findJumpTo(idx);
                         else if (typeof runFind === 'function') {
@@ -152,6 +153,9 @@
             // to re-fire goToPage against resume-at and thrash the page.
             _externalFindTimers.push(setTimeout(run, 200));
             _externalFindTimers.push(setTimeout(run, 900));
+            _externalFindTimers.push(setTimeout(run, 2000));
+            _externalFindTimers.push(setTimeout(run, 4000));
+            _externalFindTimers.push(setTimeout(run, 8000));
         }
 
         /** Phase 6 — jump to a 1-based document line when there is no search string. */
