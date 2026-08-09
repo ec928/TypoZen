@@ -8075,7 +8075,7 @@ if (_btnColumnToggle != null)
                 _currentFilePath = tab.FilePath;
                 _isDirty = false;
                 RefreshWordWrapMenuAvailability();
-                Dispatcher.BeginInvoke(new Action(() => OpenBook(tab.FilePath)),
+                Dispatcher.BeginInvoke(new Action(() => OpenBook(tab.FilePath, true)),
                     DispatcherPriority.Normal);
                 return;
             }
@@ -8735,7 +8735,7 @@ if (_btnColumnToggle != null)
         /// nothing to write -- which is the behaviour wanted, expressed as a fact about the
         /// document rather than as a guard bolted onto each of those paths.
         /// </summary>
-        private void OpenBook(string path)
+        private void OpenBook(string path, bool forceLoad = false)
         {
             path = Path.GetFullPath(path);
 
@@ -8757,7 +8757,7 @@ if (_btnColumnToggle != null)
                 }
             }
 
-            if (existing >= 0 && existing == _activeTabIndex && _editorReady && !string.IsNullOrEmpty(_currentFilePath) && string.Equals(Path.GetFullPath(_currentFilePath), path, StringComparison.OrdinalIgnoreCase))
+            if (!forceLoad && existing >= 0 && existing == _activeTabIndex && _editorReady && !string.IsNullOrEmpty(_currentFilePath) && string.Equals(Path.GetFullPath(_currentFilePath), path, StringComparison.OrdinalIgnoreCase))
             {
                 // The book is already the active document in the DOM. Do not reload it,
                 // otherwise it wipes out incoming external search requests from ZenSeek.

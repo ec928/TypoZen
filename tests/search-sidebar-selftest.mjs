@@ -162,7 +162,7 @@ console.log('\n--- switchTab targets by data-tab ---');
     dom.window.wireSidebarSearch = function () {};
     dom.window.wireSearchResultKeys = function () {};
 
-    const src = mainScript.slice(mainScript.indexOf('window.switchTab = function(tab)'));
+    const src = mainScript.slice(mainScript.indexOf('window.switchTab = function(tab, noFocus)'));
     const end = src.indexOf('\n        };');
     dom.window.eval(src.slice(0, end + '\n        };'.length));
 
