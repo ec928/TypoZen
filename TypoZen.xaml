@@ -511,6 +511,7 @@
                         </MenuItem>
                         <MenuItem Header="_Help">
                             <MenuItem x:Name="mHelpSyntax" Header="Markdown _Syntax Guide" InputGestureText="F1"/>
+                            <MenuItem x:Name="mToggleDebug" Header="Toggle _Debug HUD" InputGestureText="Ctrl+Shift+D"/>
                             <Separator/>
                             <MenuItem x:Name="mAbout" Header="_About TypoZen"/>
                         </MenuItem>

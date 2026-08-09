@@ -1776,6 +1776,14 @@
             const paged = isPaginatedLayout();
             const pageW = paged ? twoColPageWidth() : 0;
             const scrollLeft = editor.scrollLeft || 0;
+            
+            if (paged && pageW > 0) {
+                const rem = scrollLeft % pageW;
+                if (rem > 5 && rem < pageW - 5) {
+                    return -1; // Stale scrollLeft due to layout change; fallback to _readingAnchor
+                }
+            }
+
             const curPage = paged ? Math.max(0, Math.round(scrollLeft / pageW)) : -1;
             let best = null;
             for (let i = 0; i < blocks.length; i++) {
@@ -2425,6 +2433,7 @@
             const isTopLevel = (tries == null && gen == null);
             if (isTopLevel) {
                 _gotoBlockGen++;
+                _readingAnchor = anchorBlock;
                 if (_gotoRecheckTimer) {
                     try { clearTimeout(_gotoRecheckTimer); } catch (eT) {}
                     _gotoRecheckTimer = null;

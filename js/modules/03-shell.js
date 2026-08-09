@@ -13,28 +13,53 @@
             if (debugLog.length > 25) debugLog.shift();
         };
 
-        if (window.chrome && window.chrome.webview && !navigator.userAgent.includes('jsdom')) {
-            const debugOverlay = document.createElement('div');
-            debugOverlay.style.position = 'fixed';
-            debugOverlay.style.top = '10px';
-            debugOverlay.style.right = '10px';
-            debugOverlay.style.backgroundColor = 'rgba(0,0,0,0.85)';
-            debugOverlay.style.color = 'lime';
-            debugOverlay.style.padding = '10px';
-            debugOverlay.style.zIndex = '999999';
-            debugOverlay.style.fontFamily = 'monospace';
-            debugOverlay.style.fontSize = '12px';
-            debugOverlay.style.pointerEvents = 'none';
-            debugOverlay.style.whiteSpace = 'pre';
-            debugOverlay.style.maxWidth = '400px';
+        let _debugHudTimer = null;
+        let _debugHudEl = null;
 
-            setInterval(() => {
-                if (!document.body.contains(debugOverlay)) document.body.appendChild(debugOverlay);
+        window.toggleDebugHUD = function() {
+            if (_debugHudTimer) {
+                clearInterval(_debugHudTimer);
+                _debugHudTimer = null;
+                if (_debugHudEl && _debugHudEl.parentNode) {
+                    _debugHudEl.parentNode.removeChild(_debugHudEl);
+                }
+                _debugHudEl = null;
+                return;
+            }
+
+            _debugHudEl = document.createElement('div');
+            _debugHudEl.style.position = 'fixed';
+            _debugHudEl.style.top = '10px';
+            _debugHudEl.style.right = '10px';
+            _debugHudEl.style.backgroundColor = 'rgba(0,0,0,0.85)';
+            _debugHudEl.style.color = 'lime';
+            _debugHudEl.style.padding = '10px';
+            _debugHudEl.style.zIndex = '999999';
+            _debugHudEl.style.fontFamily = 'monospace';
+            _debugHudEl.style.fontSize = '12px';
+            _debugHudEl.style.pointerEvents = 'none';
+            _debugHudEl.style.whiteSpace = 'pre';
+            _debugHudEl.style.maxWidth = '400px';
+            document.body.appendChild(_debugHudEl);
+
+            _debugHudTimer = setInterval(() => {
+                if (!document.body.contains(_debugHudEl)) document.body.appendChild(_debugHudEl);
                 const active = document.activeElement;
                 const activeStr = active ? (active.id || active.tagName) : 'null';
-                debugOverlay.textContent = `hasFocus: ${document.hasFocus()}\nactive: ${activeStr}\n-- Log --\n${debugLog.join('\n')}`;
-            }, 100);
+                
+                let layoutStr = `Paginated: ${typeof isPaginatedLayout === 'function' ? isPaginatedLayout() : '?'}`;
+                let scrollStr = `ScrollLeft: ${typeof editor !== 'undefined' && editor ? editor.scrollLeft : '?'}`;
+                let pageWStr = `PageW: ${typeof twoColPageWidth === 'function' ? twoColPageWidth() : '?'}`;
+                let anchorStr = `ReadingAnchor: ${typeof _readingAnchor !== 'undefined' ? _readingAnchor : '?'}`;
+                
+                let searchStr = `ExtSearchActive: ${typeof window.__tzExternalSearchActive !== 'undefined' ? window.__tzExternalSearchActive : '?'}`;
+                let matchStr = `FindIndex: ${typeof findState !== 'undefined' ? findState.index : '?'} / ${typeof findState !== 'undefined' && findState.matches ? findState.matches.length : '?'}`;
 
+                _debugHudEl.textContent = `hasFocus: ${document.hasFocus()}\nactive: ${activeStr}\n\n[Layout]\n${layoutStr}\n${scrollStr}\n${pageWStr}\n${anchorStr}\n\n[Search]\n${searchStr}\n${matchStr}\n\n-- Log --\n${debugLog.join('\n')}`;
+            }, 100);
+        };
+
+        if (window.chrome && window.chrome.webview && !navigator.userAgent.includes('jsdom')) {
             window.addEventListener('focus', () => window.addDebugLog('window focus'));
             window.addEventListener('blur', () => window.addDebugLog('window blur'));
             document.addEventListener('focusin', (e) => {
@@ -1482,6 +1507,9 @@
             }
             else if (cmd === "help_syntax") {
                 alert("TypoZen Markdown Syntax & Shortcuts:\n\n# Heading 1 to ###### Heading 6\n**Bold** (Ctrl+B) | *Italic* (Ctrl+I)\n~~Strikethrough~~ (Ctrl+Shift+X)\n`Inline Code` or ```Code block```\n> Blockquote\n- Bullet List | 1. Numbered List\n- [ ] Task checklist\n[Link Text](URL) (Ctrl+K)\n| Col 1 | Col 2 |\n| --- | --- | (Ctrl+T for Table)\n| Cell | Cell |\n\nEditor Shortcuts:\nCtrl+F Find  |  Ctrl+H Find/Replace\nCtrl+/: Source Mode\nCtrl+\\: Sidebar\nCtrl++ Zoom In  |  Ctrl+- Zoom Out  |  Ctrl+0 Reset Zoom  |  Ctrl+scroll\nCtrl+W Close tab  |  Ctrl+Tab / Ctrl+Shift+Tab cycle tabs\nF1 Help  F7 Reveal  F8 Focus  F9 Typewriter  F11 Fullscreen");
+            }
+            else if (cmd === "toggle_debug_hud") {
+                if (typeof window.toggleDebugHUD === 'function') window.toggleDebugHUD();
             }
         }
 

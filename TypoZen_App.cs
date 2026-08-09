@@ -850,6 +850,7 @@ namespace TypoZen
             catch { }
 
             BindClick("mHelpSyntax", (s, e) => SendMsg("cmd:help_syntax"));
+            BindClick("mToggleDebug", (s, e) => SendMsg("cmd:toggle_debug_hud"));
             BindClick("mAbout", (s, e) => WinForms.MessageBox.Show(
                 "TypoZen — WYSIWYG Markdown & Text Editor\n\n" +
                 "Writing\n" +
@@ -1604,6 +1605,11 @@ namespace TypoZen
                      && (Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
             {
                 SendMsg("cmd:toggle_search_sidebar");
+                e.Handled = true;
+            }
+            else if (e.Key == Key.D && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
+            {
+                SendMsg("cmd:toggle_debug_hud");
                 e.Handled = true;
             }
             else if (e.Key == Key.F1) { SendMsg("cmd:help_syntax"); e.Handled = true; }
