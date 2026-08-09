@@ -142,7 +142,14 @@
                         // goes where the keys work: the document while reading, the results
                         // list otherwise -- both of which step on ',' and '.'.
                         if (typeof focusSearchResults === 'function') {
-                            focusSearchResults();
+                            const tryFocus = setInterval(() => {
+                                if (document.hasFocus()) {
+                                    focusSearchResults();
+                                    clearInterval(tryFocus);
+                                }
+                            }, 50);
+                            // Fallback: stop trying if the window remains in background for 10 seconds
+                            setTimeout(() => clearInterval(tryFocus), 10000);
                         }
                     } catch (eS) {}
                 } catch (e) {
