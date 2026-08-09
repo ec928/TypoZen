@@ -56,6 +56,14 @@
             _resumeAtTimer = setTimeout(attempt, 400);
         }
 
+        let _pendingZenSeekFocus = false;
+        window.addEventListener('focus', function() {
+            if (_pendingZenSeekFocus) {
+                _pendingZenSeekFocus = false;
+                if (typeof focusSearchResults === 'function') focusSearchResults();
+            }
+        });
+
         /**
          * Phase 6 — open from ZenSeek: run find, jump to match N, highlight.
          * Payload: url-encoded query, optional "|match=N" (0-based among matches).
@@ -142,14 +150,11 @@
                         // goes where the keys work: the document while reading, the results
                         // list otherwise -- both of which step on ',' and '.'.
                         if (typeof focusSearchResults === 'function') {
-                            const tryFocus = setInterval(() => {
-                                if (document.hasFocus()) {
-                                    focusSearchResults();
-                                    clearInterval(tryFocus);
-                                }
-                            }, 50);
-                            // Fallback: stop trying if the window remains in background for 10 seconds
-                            setTimeout(() => clearInterval(tryFocus), 10000);
+                            focusSearchResults();
+                            if (!document.hasFocus()) {
+                                _pendingZenSeekFocus = true;
+                                setTimeout(function() { _pendingZenSeekFocus = false; }, 5000);
+                            }
                         }
                     } catch (eS) {}
                 } catch (e) {
