@@ -8751,6 +8751,13 @@ if (_btnColumnToggle != null)
                 }
             }
 
+            if (existing >= 0 && existing == _activeTabIndex && _editorReady && !string.IsNullOrEmpty(_currentFilePath) && string.Equals(Path.GetFullPath(_currentFilePath), path, StringComparison.OrdinalIgnoreCase))
+            {
+                // The book is already the active document in the DOM. Do not reload it,
+                // otherwise it wipes out incoming external search requests from ZenSeek.
+                return;
+            }
+
             string assetDir;
             string payload = EpubReader.ReadToPayload(path, _appDir, out assetDir);
             if (payload == null)

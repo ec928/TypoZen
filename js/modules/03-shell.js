@@ -1375,7 +1375,9 @@
                         if (input.value) {
                             runFind(input.value, true, { navigate: false });
                             if (typeof syncSearchIndexToLocation === 'function') {
-                                try { syncSearchIndexToLocation(); } catch (eSync) {}
+                                try { 
+                                    if (!window.__tzExternalSearchActive) syncSearchIndexToLocation(); 
+                                } catch (eSync) {}
                             }
                         }
                         updateSidebarSearchCount();
