@@ -27,14 +27,14 @@
         function bindReaderFindKeys() {
             if (!editor || editor.__tzReaderFindKeys) return;
             editor.__tzReaderFindKeys = true;
-            editor.addEventListener('keydown', function (e) {
+            document.addEventListener('keydown', function (e) {
                 if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
                 if (state.mode !== 'reader') return;
                 if (!findState.matches || !findState.matches.length) return;
 
                 // Never while something is being typed into, wherever the event came from.
                 const t = e.target;
-                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
 
                 let dir = 0;
                 if (e.key === 'ArrowUp') dir = -1;
@@ -3639,7 +3639,7 @@
                     syncSearchOptionButtons();
                 } catch (eFo) {}
                 if (savedPrefs.sidebarTab === 'search' || savedPrefs.sidebarTab === 'outline') {
-                    try { if (typeof switchTab === 'function') switchTab(savedPrefs.sidebarTab); } catch (eSt) {}
+                    try { if (typeof switchTab === 'function') switchTab(savedPrefs.sidebarTab, true); } catch (eSt) {}
                 }
 
                 if (savedPrefs.mode === 'source') {

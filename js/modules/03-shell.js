@@ -2,6 +2,48 @@
 // Lines 3028-4154 of the former monolith. Classic script; shares page globals.
 // Load order is fixed -- see js/modules/load-order.json and TypoZen_Template.html.
 
+        // --- DEBUG OVERLAY ---
+        const debugLog = [];
+        window.addDebugLog = function(msg) {
+            const d = new Date();
+            const time = String(d.getMinutes()).padStart(2, '0') + ':' + 
+                         String(d.getSeconds()).padStart(2, '0') + '.' + 
+                         String(d.getMilliseconds()).padStart(3, '0');
+            debugLog.push(`[${time}] ${msg}`);
+            if (debugLog.length > 25) debugLog.shift();
+        };
+
+        if (window.chrome && window.chrome.webview && !navigator.userAgent.includes('jsdom')) {
+            const debugOverlay = document.createElement('div');
+            debugOverlay.style.position = 'fixed';
+            debugOverlay.style.top = '10px';
+            debugOverlay.style.right = '10px';
+            debugOverlay.style.backgroundColor = 'rgba(0,0,0,0.85)';
+            debugOverlay.style.color = 'lime';
+            debugOverlay.style.padding = '10px';
+            debugOverlay.style.zIndex = '999999';
+            debugOverlay.style.fontFamily = 'monospace';
+            debugOverlay.style.fontSize = '12px';
+            debugOverlay.style.pointerEvents = 'none';
+            debugOverlay.style.whiteSpace = 'pre';
+            debugOverlay.style.maxWidth = '400px';
+
+            setInterval(() => {
+                if (!document.body.contains(debugOverlay)) document.body.appendChild(debugOverlay);
+                const active = document.activeElement;
+                const activeStr = active ? (active.id || active.tagName) : 'null';
+                debugOverlay.textContent = `hasFocus: ${document.hasFocus()}\nactive: ${activeStr}\n-- Log --\n${debugLog.join('\n')}`;
+            }, 100);
+
+            window.addEventListener('focus', () => window.addDebugLog('window focus'));
+            window.addEventListener('blur', () => window.addDebugLog('window blur'));
+            document.addEventListener('focusin', (e) => {
+                const t = e.target;
+                window.addDebugLog(`focusin: ${t ? (t.id || t.tagName) : 'null'}`);
+            });
+        }
+        // ---------------------
+
         /**
          * Jump to a remembered block after a load has painted. Shared by books, large
          * fetch_and_load, and inline load_content + resume_at.
@@ -92,15 +134,8 @@
             const run = function () {
                 if (gen !== _externalFindGen) return;
                 try {
-                    // ZenSeek / Phase 6: Search sidebar only — never open Ctrl+F.
-                    try {
-                        if (typeof postMsg === 'function') postMsg('sidebar_state:1');
-                    } catch (eSide) {}
-                    try {
-                        const sb = document.getElementById('sidebar');
-                        if (sb) sb.classList.remove('collapsed');
-                    } catch (eSb) {}
-                    if (typeof window.switchTab === 'function') window.switchTab('search', true);
+                    // ZenSeek / Phase 6: Run find, jump to match N.
+                    // DO NOT open the sidebar or switch tabs. Let the user read.
                     const side = document.getElementById('sidebarSearchInput');
                     if (side) side.value = query;
                     try {
@@ -130,36 +165,14 @@
                         }
                         if (typeof hideFindBarChrome === 'function') hideFindBarChrome();
                     }
-                    log("run() called.");
                     try {
-                        if (typeof forceSearchSidebarRepaint === 'function') forceSearchSidebarRepaint();
                         if (typeof updateSearchSidebar === 'function') updateSearchSidebar();
                         if (typeof updateSidebarSearchCount === 'function') updateSidebarSearchCount();
                         if (typeof wireSidebarSearch === 'function') wireSidebarSearch();
                         if (typeof wireSearchResultKeys === 'function') wireSearchResultKeys();
-                        // Not the search box.
-                        //
                         
-                        if (typeof focusSearchResults === 'function') {
-                            let focusSuccessTicks = 0;
-                            const tryFocus = setInterval(() => {
-                                // Wait until the OS actually gives us physical keyboard focus.
-                                // If we call focusSearchResults() while in the background, Chromium will
-                                // perform a "focus reset" when the window eventually activates, wiping it out.
-                                if (document.hasFocus()) {
-                                    focusSearchResults();
-                                    if (document.activeElement && document.activeElement.id === 'search-results-list') {
-                                        focusSuccessTicks++;
-                                        if (focusSuccessTicks > 3) clearInterval(tryFocus);
-                                    }
-                                } else {
-                                    // Demand focus from the WPF host while we wait
-                                    window.focus();
-                                }
-                            }, 50);
-                            // Fallback: stop trying if the window remains in background for 15 seconds
-                            setTimeout(() => clearInterval(tryFocus), 15000);
-                        }
+                        // Hand focus to the editor so bindReaderFindKeys catches ArrowUp/ArrowDown
+                        if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
                     } catch (eS) {}
                 } catch (e) {
                     try { window.showDebugTelemetry('external_find: ' + e.message); } catch (e2) {}
