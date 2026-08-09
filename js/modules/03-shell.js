@@ -147,11 +147,28 @@
                         //
                         
                         if (typeof focusSearchResults === 'function') {
+                            _pendingZenSeekFocus = true;
+                            setTimeout(() => { _pendingZenSeekFocus = false; }, 15000);
+
+                            let focusSuccessTicks = 0;
                             const grabFocus = setInterval(() => {
-                                window.focus(); // Demand focus from WPF host
-                                focusSearchResults();
-                                if (document.hasFocus() && document.querySelector(':focus')) {
+                                const active = document.activeElement;
+                                // If the user already deliberately focused something else, don't fight them.
+                                if (document.hasFocus() && active && active.id !== 'search-results-list' && active.id !== 'sidebarSearchInput' && active !== document.body) {
                                     clearInterval(grabFocus);
+                                    return;
+                                }
+
+                                focusSearchResults();
+                                
+                                if (document.hasFocus() && document.activeElement && document.activeElement.id === 'search-results-list') {
+                                    focusSuccessTicks++;
+                                    if (focusSuccessTicks > 3) clearInterval(grabFocus);
+                                } else {
+                                    focusSuccessTicks = 0;
+                                    if (!document.hasFocus()) {
+                                        window.focus(); // Demand focus from WPF host
+                                    }
                                 }
                             }, 50);
                             setTimeout(() => clearInterval(grabFocus), 3000);
