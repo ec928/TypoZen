@@ -452,6 +452,20 @@
             tzMark('(page) onload complete, signalling ready');
             tzFlush();
             postMsg("ready:" + (state.themeIndex || 0));
+
+            // Auto-focus the editor on startup so the user doesn't have to click
+            setTimeout(() => {
+                if (_resumeAtTimer) return;
+                try {
+                    if (state.mode === 'wysiwyg') {
+                        if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
+                        else if (editor) editor.focus();
+                    } else if (state.mode === 'source') {
+                        const src = document.getElementById('sourceEditor');
+                        if (src) src.focus();
+                    }
+                } catch(eFocus) {}
+            }, 250);
         };
 
         function postMsg(msg) {

@@ -24,6 +24,9 @@ namespace TypoZen
 {
     public class Program
     {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool AllowSetForegroundWindow(uint dwProcessId);
+
         // One running window; further Explorer double-clicks hand off paths over a named pipe
         // and exit (Notepad-style tabs, not a new process per file).
         private const string SingleInstanceMutexName = @"Local\TypoZen_SingleInstance_v1";
@@ -199,6 +202,11 @@ namespace TypoZen
                         writer.WriteLine(req != null ? req.ToPipeLine() : "");
                     }
                 }
+                
+                // We are the foreground process (ZenSeek launched us). Give the OS permission
+                // for the existing background process to take the foreground when it receives this pipe message.
+                try { AllowSetForegroundWindow(unchecked((uint)-1)); } catch { }
+                
                 return true;
             }
             catch
@@ -3451,6 +3459,7 @@ if (_btnColumnToggle != null)
                     // Navigation can reset zoom on some runtimes — re-apply
                     ApplyZoomToWebView();
                     UpdateZoomLabel();
+                    _webView.Focus();
                 };
 
                 string htmlPath = Path.Combine(_appDir, "TypoZen_Template.html");
