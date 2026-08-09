@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -557,10 +557,16 @@ namespace TypoZen
                     WindowState = WindowState.Normal;
                 Show();
                 Activate();
+                
                 // Flash topmost so the shell actually raises us over Explorer.
                 Topmost = true;
                 Topmost = false;
+                
+                // Aggressively steal foreground if Windows is blocking it
+                bool foreground = TryForceForeground();
+                
                 Focus();
+                if (foreground && _webView != null) _webView.Focus();
             }
             catch { }
         }
