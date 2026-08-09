@@ -69,38 +69,6 @@
          * Payload: url-encoded query, optional "|match=N" (0-based among matches).
          */
         function applyExternalFind(payload) {
-            let logDiv = document.getElementById('tz-debug-log');
-            if (!logDiv) {
-                logDiv = document.createElement('div');
-                logDiv.id = 'tz-debug-log';
-                logDiv.style.cssText = 'position:fixed;top:10px;right:10px;z-index:99999;background:rgba(0,0,0,0.8);color:lime;padding:10px;font-family:monospace;white-space:pre-wrap;font-size:12px;max-height:80vh;overflow-y:auto;width:450px;pointer-events:none;';
-                document.body.appendChild(logDiv);
-                
-                window.addEventListener('focus', () => {
-                    logDiv.innerText += (Date.now() % 10000) + ": EVENT window.onfocus\n";
-                });
-                window.addEventListener('blur', () => {
-                    logDiv.innerText += (Date.now() % 10000) + ": EVENT window.onblur\n";
-                });
-            }
-            logDiv.innerText = "--- ZenSeek focus debug 3 ---\n";
-            function log(msg) {
-                logDiv.innerText += (Date.now() % 10000) + ": " + msg + "\n";
-            }
-            log("applyExternalFind started. payload=" + payload);
-
-            let pollTicks = 0;
-            const debugPoll = setInterval(() => {
-                pollTicks++;
-                const el = document.activeElement;
-                const elStr = el ? (el.id || el.tagName || el.className) : "null";
-                const hasFoc = document.hasFocus();
-                const cssFoc = document.querySelector(':focus');
-                const cssStr = cssFoc ? (cssFoc.id || cssFoc.tagName) : "none";
-                log(`Tick ${pollTicks}: active=${elStr}, hasFoc=${hasFoc}, :focus=${cssStr}`);
-                if (pollTicks > 30) clearInterval(debugPoll); // 3 seconds
-            }, 100);
-
             let raw = String(payload == null ? '' : payload);
             let matchIndex = 0;
             const bar = raw.indexOf('|match=');
@@ -177,17 +145,16 @@
                         if (typeof wireSearchResultKeys === 'function') wireSearchResultKeys();
                         // Not the search box.
                         //
-                        // The query came from ZenSeek; nobody is about to retype it. What
-                        // they want is to read the match and step to the next one, and both
-                        // ',' and '.' type punctuation into a focused input instead. Focus
-                        // goes where the keys work: the document while reading, the results
-                        // list otherwise -- both of which step on ',' and '.'.
+                        
                         if (typeof focusSearchResults === 'function') {
-                            focusSearchResults();
-                            if (!document.hasFocus()) {
-                                _pendingZenSeekFocus = true;
-                                setTimeout(function() { _pendingZenSeekFocus = false; }, 5000);
-                            }
+                            const grabFocus = setInterval(() => {
+                                window.focus(); // Demand focus from WPF host
+                                focusSearchResults();
+                                if (document.hasFocus() && document.querySelector(':focus')) {
+                                    clearInterval(grabFocus);
+                                }
+                            }, 50);
+                            setTimeout(() => clearInterval(grabFocus), 3000);
                         }
                     } catch (eS) {}
                 } catch (e) {
