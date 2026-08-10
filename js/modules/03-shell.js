@@ -1397,7 +1397,13 @@
                 const searchPane = document.getElementById('tab-search');
                 const showingSearch = searchPane && searchPane.classList.contains('active');
                 if (sidebar.classList.contains('collapsed') || !showingSearch) {
-                    const savedSticky = (typeof _stickyLineCache !== 'undefined') ? (_stickyLineCache | 0) : null;
+                    let savedSticky = (typeof _stickyLineCache !== 'undefined') ? (_stickyLineCache | 0) : null;
+                    try {
+                        if (state.mode === 'wysiwyg' && typeof getCaretLineNumber === 'function') {
+                            const liveCaret = getCaretLineNumber();
+                            if (liveCaret >= 1) savedSticky = liveCaret;
+                        }
+                    } catch (e) {}
                     if (window.markProgrammaticScroll) window.markProgrammaticScroll(800);
                     sidebar.classList.remove('collapsed');
                     postSidebarState();

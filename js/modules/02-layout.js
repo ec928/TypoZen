@@ -468,7 +468,7 @@
         // focus to the results. Typing must not be interrupted, but a user who stops
         // should get the navigation keys without reaching for Enter or the mouse.
         const SIDEBAR_SEARCH_IDLE_MS = 3000;
-        const SIDEBAR_SEARCH_DEBOUNCE_MS = 200;
+        const SIDEBAR_SEARCH_DEBOUNCE_MS = 2000;
         let _sidebarSearchDebounce = null;
         let _sidebarSearchIdle = null;
 
@@ -888,6 +888,20 @@
             input.addEventListener('input', () => {
                 if (_searchHistOpen) closeSearchHistoryMenu();
                 if (_sidebarSearchDebounce) clearTimeout(_sidebarSearchDebounce);
+                
+                if (!input.value) {
+                    _sidebarSearchDebounce = null;
+                    rememberLastSearchText('');
+                    runFind('', false, { navigate: false });
+                    if (typeof syncSearchIndexToLocation === 'function') {
+                        try { syncSearchIndexToLocation(); } catch (eSync) {}
+                    }
+                    updateSidebarSearchCount();
+                    updateSearchSidebar();
+                    armSidebarSearchIdle();
+                    return;
+                }
+                
                 _sidebarSearchDebounce = setTimeout(() => {
                     _sidebarSearchDebounce = null;
                     rememberLastSearchText(input.value);
@@ -3202,6 +3216,14 @@
 
                 // Get the user's current line (already a 1-based document line number)
                 let targetLine = (_stickyLineCache | 0) || 1;
+                try {
+                    if (state.mode === 'wysiwyg' && typeof getCaretLineNumber === 'function') {
+                        const caretLine = getCaretLineNumber();
+                        if (caretLine >= 1 && Math.abs(targetLine - caretLine) <= 100) {
+                            targetLine = caretLine;
+                        }
+                    }
+                } catch (e) {}
 
                 // For source mode, compute line from cursor position
                 if (state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) {

@@ -922,6 +922,9 @@
 
                     // Virt without a caret in the editor: report the line at viewport center
                     // (first mounted block would read as window-start, e.g. 4474/4532 at bottom).
+                    if (state.mode === 'wysiwyg' && !selInEditor && typeof _lastCaretLine !== 'undefined' && _lastCaretLine >= 1) {
+                        return Math.min(_lastCaretLine, total);
+                    }
                     if (typeof DocumentModel !== 'undefined' && DocumentModel.virtEnabled
                         && DocumentModel.blocks && DocumentModel.blocks.length && !selInEditor) {
                         const idx = modelIndexAtViewportCenter();
@@ -1034,7 +1037,6 @@
             const n = line | 0;
             if (n >= 1) {
                 _stickyLineCache = n;
-                _lastCaretLine = n;
             }
         }
 
@@ -1148,6 +1150,11 @@
         function rememberStickyFromPreviewScroll() {
             if (state.mode === 'source') return;
             try {
+                // Do not steal sticky line on scroll if search is open
+                const searchPane = document.getElementById('tab-search');
+                const showingSearch = searchPane && searchPane.classList.contains('active');
+                if (showingSearch && !window.__tzExternalSearchActive) return;
+
                 const line = hardLineFromPreviewViewport();
                 if (line >= 1) rememberStickyLine(line);
             } catch (e) {}
