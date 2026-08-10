@@ -1174,7 +1174,19 @@
                     // Focus already gone (toolbar/mode button) → frozen cache
                     return frozen;
                 }
+                // Sidebar search has focus — the frozen cache IS the user's position.
+                // Do NOT consult viewport center, it's inaccurate.
+                const sidebarFocused = document.activeElement && (
+                    document.activeElement.id === 'sidebarSearchInput' ||
+                    (document.activeElement.closest && document.activeElement.closest('#tab-search'))
+                );
+                if (sidebarFocused) {
+                    return frozen;
+                }
                 // Preview: prefer what is on screen over a stale caret after scroll.
+                if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#sidebar')) {
+                    return frozen;
+                }
                 let viewLine = 1;
                 try { viewLine = hardLineFromPreviewViewport(); } catch (eV) { viewLine = frozen; }
                 const sel = window.getSelection();
@@ -1349,6 +1361,7 @@
          */
         function restoreStickyDocumentLine(line1Based, noFocus) {
             let line = Math.max(1, line1Based | 0);
+            if (window.markProgrammaticScroll) window.markProgrammaticScroll(800);
             rememberStickyLine(line);
             try {
                 if (state.mode === 'source' && sourceEditor) {

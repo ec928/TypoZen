@@ -926,27 +926,27 @@
                         return;
                     }
                 }
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' || (e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey)) {
                     e.preventDefault();
                     cancelSidebarSearchIdle();
-                    closeSearchHistoryMenu();
-                    if (_sidebarSearchDebounce) { clearTimeout(_sidebarSearchDebounce); _sidebarSearchDebounce = null; }
-                    // Run synchronously so Enter acts on what is on screen, then jump to
-                    // the first match and hand the navigation keys to the results.
-                    rememberSearchQuery(input.value);
-                    try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
-                    runFind(input.value, false, { navigate: true });
-                    updateSidebarSearchCount();
-                    focusSearchResults();
-                } else if (e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey) {
-                    // Empty box + history: open the recent list (ZenSeek-style). Otherwise
-                    // hand focus to the results list.
-                    e.preventDefault();
-                    cancelSidebarSearchIdle();
-                    if (!String(input.value || '').trim() && _searchHistory.length) {
+                    
+                    if (e.key === 'ArrowDown' && !String(input.value || '').trim() && _searchHistory.length) {
                         openSearchHistoryMenu();
                         moveSearchHistoryHighlight(+1);
                         return;
+                    }
+                    
+                    closeSearchHistoryMenu();
+                    if (_sidebarSearchDebounce) { clearTimeout(_sidebarSearchDebounce); _sidebarSearchDebounce = null; }
+                    rememberSearchQuery(input.value);
+                    try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
+                    
+                    runFind(input.value, false, { navigate: false });
+                    if (typeof syncSearchIndexToLocation === 'function') syncSearchIndexToLocation();
+                    if (findState.matches && findState.matches.length > 0 && typeof findJumpTo === 'function') {
+                        findJumpTo(findState.index);
+                    } else {
+                        updateSidebarSearchCount();
                     }
                     focusSearchResults();
                 } else if (e.key === 'Escape') {
@@ -2384,9 +2384,11 @@
         let _colMemory = { c1: null, c2: null };
         let _colMemoryDirty = false;
         let _progScrollUntil = 0;
+        window.getProgScrollUntil = function() { return _progScrollUntil; };
 
         /** Scrolls we cause ourselves must not count as the reader moving. */
-        function markProgrammaticScroll(ms) { _progScrollUntil = Date.now() + (ms || 600); }
+        window.markProgrammaticScroll = function(ms) { _progScrollUntil = Date.now() + (ms || 600); };
+        function markProgrammaticScroll(ms) { window.markProgrammaticScroll(ms); }
         function noteUserMovement() { if (Date.now() > _progScrollUntil) _colMemoryDirty = true; }
 
 
@@ -3170,10 +3172,25 @@
                         sourceEditor.focus();
                     }
                 } else {
-                    if (typeof currentActiveBlock !== 'undefined' && currentActiveBlock && typeof focusBlock === 'function') {
-                        focusBlock(currentActiveBlock, 0);
-                    } else if (typeof focusEditorNoScroll === 'function') {
-                        focusEditorNoScroll();
+                    // Use _stickyLineCache to find the block to focus.
+                    // It was updated by revealModelMatch during search navigation.
+                    let handled = false;
+                    if (typeof _stickyLineCache !== 'undefined' && _stickyLineCache >= 1
+                        && typeof modelLocationFromDocumentLine === 'function'
+                        && typeof editor !== 'undefined' && editor) {
+                        try {
+                            const loc = modelLocationFromDocumentLine(_stickyLineCache);
+                            const el = editor.querySelector('.block[data-model-index="' + loc.blockIndex + '"]');
+                            if (el && typeof focusBlock === 'function') {
+                                focusBlock(el, 0);
+                                handled = true;
+                            }
+                        } catch (eSticky) {}
+                    }
+                    if (!handled) {
+                        if (typeof focusEditorNoScroll === 'function') {
+                            focusEditorNoScroll();
+                        }
                     }
                 }
             } catch (e) {}
@@ -3182,50 +3199,55 @@
         window.syncSearchIndexToLocation = function() {
             try {
                 if (!findState.matches || findState.matches.length === 0) return;
-                
-                let targetPos = -1;
+
+                // Get the user's current line (already a 1-based document line number)
+                let targetLine = (_stickyLineCache | 0) || 1;
+
+                // For source mode, compute line from cursor position
                 if (state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) {
-                    targetPos = sourceEditor.selectionStart || 0;
+                    const pos = sourceEditor.selectionStart || 0;
+                    targetLine = sourceEditor.value.substring(0, pos).split(/\r?\n/).length;
+                }
+
+                // Find the first match whose document line is >= targetLine
+                let bestIdx = 0; // default to first match
+                if (findState.kind === 'source') {
+                    // Source mode: compare char offsets directly
+                    const targetPos = (state.mode === 'source' && sourceEditor) 
+                        ? (sourceEditor.selectionStart || 0) : 0;
+                    for (let i = 0; i < findState.matches.length; i++) {
+                        if (findState.matches[i].start >= targetPos) {
+                            bestIdx = i;
+                            break;
+                        }
+                        bestIdx = i; // fallback to last
+                    }
                 } else {
-                    if (typeof captureStickyDocumentLine === 'function' && typeof modelBlockStartLineToIndex === 'function') {
-                        const line = captureStickyDocumentLine();
-                        targetPos = modelBlockStartLineToIndex(line);
-                    }
-                    if (targetPos < 0 && typeof currentActiveBlock !== 'undefined' && currentActiveBlock && typeof DocumentModel !== 'undefined') {
-                        targetPos = DocumentModel.modelIndexOfEl(currentActiveBlock);
-                    }
-                    if (targetPos < 0 && typeof _stickyLineCache !== 'undefined') {
-                        targetPos = Math.max(0, _stickyLineCache - 1);
+                    // Model/visual mode: compare document line numbers
+                    for (let i = 0; i < findState.matches.length; i++) {
+                        let matchLine = 1;
+                        if (findState.kind === 'model' && typeof documentLineForModelOffset === 'function') {
+                            matchLine = documentLineForModelOffset(findState.matches[i].start);
+                        } else if (findState.kind === 'visual') {
+                            // For visual, use block start line as approximation
+                            try {
+                                const blk = findState.ranges && findState.ranges[i]
+                                    ? getAncestorBlock(findState.ranges[i].startContainer) : null;
+                                if (blk && typeof DocumentModel !== 'undefined' && typeof modelBlockStartLine === 'function') {
+                                    const mi = DocumentModel.modelIndexOfEl(blk);
+                                    if (mi >= 0) matchLine = modelBlockStartLine(mi);
+                                }
+                            } catch (e) {}
+                        }
+                        if (matchLine >= targetLine) {
+                            bestIdx = i;
+                            break;
+                        }
+                        bestIdx = i;
                     }
                 }
-                
-                let bestIdx = -1;
-                for (let i = 0; i < findState.matches.length; i++) {
-                    let matchPos = -1;
-                    if (findState.kind === 'model') {
-                        if (typeof markdownOffsetToBlock === 'function') {
-                            const m = markdownOffsetToBlock(findState.matches[i].start);
-                            if (m) matchPos = m.blockIndex;
-                        }
-                    } else if (findState.kind === 'source') {
-                        matchPos = findState.matches[i].start;
-                    } else if (findState.kind === 'visual') {
-                        if (findState.ranges && findState.ranges[i]) {
-                            const r = findState.ranges[i];
-                            const blk = r.startContainer ? getAncestorBlock(r.startContainer) : null;
-                            if (blk && typeof DocumentModel !== 'undefined') {
-                                matchPos = DocumentModel.modelIndexOfEl(blk);
-                            }
-                        }
-                    }
-                    
-                    if (matchPos > targetPos) {
-                        break;
-                    }
-                    bestIdx = i;
-                }
-                
-                findState.index = bestIdx < 0 ? -1 : bestIdx;
+
+                findState.index = bestIdx;
                 updateFindCount();
                 updateSearchSidebar();
             } catch (e) {}

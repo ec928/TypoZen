@@ -54,8 +54,9 @@
                 
                 let searchStr = `ExtSearchActive: ${typeof window.__tzExternalSearchActive !== 'undefined' ? window.__tzExternalSearchActive : '?'}`;
                 let matchStr = `FindIndex: ${typeof findState !== 'undefined' ? findState.index : '?'} / ${typeof findState !== 'undefined' && findState.matches ? findState.matches.length : '?'}`;
+                let lineStr = `StickyLine: ${typeof _stickyLineCache !== 'undefined' ? _stickyLineCache : '?'} | CaretLine: ${typeof _lastCaretLine !== 'undefined' ? _lastCaretLine : '?'}`;
 
-                _debugHudEl.textContent = `hasFocus: ${document.hasFocus()}\nactive: ${activeStr}\n\n[Layout]\n${layoutStr}\n${scrollStr}\n${pageWStr}\n${anchorStr}\n\n[Search]\n${searchStr}\n${matchStr}\n\n-- Log --\n${debugLog.join('\n')}`;
+                _debugHudEl.textContent = `hasFocus: ${document.hasFocus()}\nactive: ${activeStr}\n\n[Layout]\n${layoutStr}\n${scrollStr}\n${pageWStr}\n${anchorStr}\n${lineStr}\n\n[Search]\n${searchStr}\n${matchStr}\n\n-- Log --\n${debugLog.join('\n')}`;
             }, 100);
         };
 
@@ -151,6 +152,7 @@
             _externalFindTimers = [];
             // Block resume-at for long enough that late book-position restore cannot fight us.
             _externalFindActiveUntil = Date.now() + 4000;
+            setTimeout(function() { window.__tzExternalSearchActive = false; }, 9000);
             if (_resumeAtTimer) {
                 try { clearTimeout(_resumeAtTimer); } catch (eR) {}
                 _resumeAtTimer = null;
@@ -158,6 +160,7 @@
 
             const run = function () {
                 if (gen !== _externalFindGen) return;
+                if (window._isFetching) return;
                 try {
                     // ZenSeek / Phase 6: Run find, jump to match N.
                     // DO NOT open the sidebar or switch tabs. Let the user read.
@@ -197,6 +200,7 @@
                             runFind(query, true, { navigate: true });
                         }
                         if (typeof hideFindBarChrome === 'function') hideFindBarChrome();
+                        window.__tzExternalSearchActive = false;
                     }
                     try {
                         if (typeof updateSearchSidebar === 'function') updateSearchSidebar();
@@ -400,6 +404,7 @@
             if (mainContainer) {
                 mainContainer.addEventListener('scroll', function () {
                     try {
+                        if (window.getProgScrollUntil && Date.now() <= window.getProgScrollUntil()) return;
                         if (typeof rememberStickyFromPreviewScroll === 'function')
                             rememberStickyFromPreviewScroll();
                     } catch (eSt) {}
@@ -410,6 +415,7 @@
                 editor.addEventListener('scroll', reportBookPosition, { passive: true });
                 editor.addEventListener('scroll', function () {
                     try {
+                        if (window.getProgScrollUntil && Date.now() <= window.getProgScrollUntil()) return;
                         if (typeof rememberStickyFromPreviewScroll === 'function')
                             rememberStickyFromPreviewScroll();
                     } catch (eSt2) {}
@@ -419,7 +425,7 @@
                 let _snapTimer = null;
                 editor.addEventListener('scroll', function () {
                     if (!isPaginatedLayout()) return;
-                    if (Date.now() <= _progScrollUntil) return;
+                    if (window.getProgScrollUntil && Date.now() <= window.getProgScrollUntil()) return;
                     if (_snapTimer) clearTimeout(_snapTimer);
                     _snapTimer = setTimeout(function () {
                         _snapTimer = null;
@@ -482,9 +488,17 @@
             setTimeout(() => {
                 if (_resumeAtTimer) return;
                 try {
-                    if (state.mode === 'wysiwyg') {
-                        if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
-                        else if (editor) editor.focus();
+                    if (state.mode === 'wysiwyg' || state.mode === 'preview') {
+                        if (editor) {
+                            const first = editor.querySelector('.block');
+                            if (first && typeof focusBlock === 'function') {
+                                focusBlock(first, 0);
+                            } else if (typeof focusEditorNoScroll === 'function') {
+                                focusEditorNoScroll();
+                            } else {
+                                editor.focus();
+                            }
+                        }
                     } else if (state.mode === 'source') {
                         const src = document.getElementById('sourceEditor');
                         if (src) src.focus();
@@ -568,12 +582,14 @@
                         if (!isFinite(resumeAt)) resumeAt = -1;
                     }
                     const url = spec;
+                    window._isFetching = true;
                     fetch(url, { cache: 'no-store' })
                         .then(function (r) {
                             if (!r.ok) throw new Error('fetch ' + r.status);
                             return r.text();
                         })
                         .then(function (json) {
+                            window._isFetching = false;
                             const ok = loadBookPayload(json, resumeAt);
                             if (ok && resumeAt > 0 && resumeAt < DocumentModel.blocks.length) {
                                 // After the layout, not with it: the book has to be
@@ -584,6 +600,7 @@
                             try { postMsg(ok ? 'load_done' : 'load_failed:book'); } catch (e0) {}
                         })
                         .catch(function (err) {
+                            window._isFetching = false;
                             try { console.error('TypoZen fetch_and_load_book failed', err); } catch (e) {}
                             try { postMsg('load_failed:' + String(err && err.message ? err.message : err)); } catch (e2) {}
                         });
@@ -603,17 +620,20 @@
                         if (!isFinite(resumeAt)) resumeAt = -1;
                     }
                     const url = spec;
+                    window._isFetching = true;
                     fetch(url, { cache: 'no-store' })
                         .then(function (r) {
                             if (!r.ok) throw new Error('fetch ' + r.status);
                             return r.text();
                         })
                         .then(function (content) {
+                            window._isFetching = false;
                             finishLoadContent(content, false);
                             if (resumeAt > 0) scheduleResumeAtBlock(resumeAt);
                             try { postMsg('load_done'); } catch (e0) {}
                         })
                         .catch(function (err) {
+                            window._isFetching = false;
                             try {
                                 console.error('TypoZen fetch_and_load failed', err);
                             } catch (e) {}
@@ -1377,8 +1397,13 @@
                 const searchPane = document.getElementById('tab-search');
                 const showingSearch = searchPane && searchPane.classList.contains('active');
                 if (sidebar.classList.contains('collapsed') || !showingSearch) {
+                    const savedSticky = (typeof _stickyLineCache !== 'undefined') ? (_stickyLineCache | 0) : null;
+                    if (window.markProgrammaticScroll) window.markProgrammaticScroll(800);
                     sidebar.classList.remove('collapsed');
                     postSidebarState();
+                    if (savedSticky !== null && savedSticky >= 1 && typeof rememberStickyLine === 'function') {
+                        rememberStickyLine(savedSticky);
+                    }
                     if (typeof switchTab === 'function') switchTab('search');
                     if (typeof wireSidebarSearch === 'function') wireSidebarSearch();
                     // Seed from the selection, else restore the last Search query.
@@ -1415,16 +1440,21 @@
                         if (typeof armSidebarSearchIdle === 'function') armSidebarSearchIdle();
                     }
                 } else {
+                    const savedStickyClose = (typeof _stickyLineCache !== 'undefined') ? (_stickyLineCache | 0) : null;
+                    if (window.markProgrammaticScroll) window.markProgrammaticScroll(800);
                     sidebar.classList.add('collapsed');
                     postSidebarState();
+                    if (savedStickyClose !== null && savedStickyClose >= 1 && typeof rememberStickyLine === 'function') {
+                        rememberStickyLine(savedStickyClose);
+                    }
                     cancelSidebarSearchIdle();
                     try {
-                        if (typeof commitSearchFocus === 'function') commitSearchFocus();
                         const input = document.getElementById('sidebarSearchInput');
                         if (input) input.value = '';
                         if (typeof runFind === 'function') runFind('', false, { navigate: false });
                         if (typeof updateSidebarSearchCount === 'function') updateSidebarSearchCount();
                         if (typeof updateSearchSidebar === 'function') updateSearchSidebar();
+                        if (typeof commitSearchFocus === 'function') commitSearchFocus();
                     } catch (e) {}
                 }
                 scheduleSavePreferences();
