@@ -457,7 +457,7 @@ Rebuild after changing any of the three `.cs` sources. The build also parses `Ty
 
 ```powershell
 .\tests\run-tests.ps1                          # default gate — jsdom + browser suites
-$env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + 9 suites driving the real TypoZen.exe
+$env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + the suites driving the real TypoZen.exe
 ```
 
 Tests are split into four tiers depending on what they need to observe:
