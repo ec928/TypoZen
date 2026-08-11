@@ -79,6 +79,12 @@ scrollbar can only span what is currently laid out — about 28 pages of a 1400-
 
 - **Click a page number** or press **`Ctrl+G`** to open a go-to-page prompt (leaf page number;
   in two-column mode that maps to the correct spread under the hood).
+- **Turning pages** splits on whether there is a caret to move. `PageUp` / `PageDown` and the
+  wheel always turn the page. **Arrows and `Space` turn it only where nothing is editable** —
+  Reader, and any book — because in **Pages** the arrows belong to the text. They used to be
+  claimed here in Preview too, so a paginated document could be read but not written in: every
+  arrow key was swallowed and the caret never moved. Reader sets `#editor` to
+  `contenteditable="false"`, which is what makes the distinction reliable rather than a guess.
 - The status bar shows the **current chapter** from the book TOC or document outline, updated
   as you read. **Click the chapter label** to jump to that chapter's start.
 - **Place marker** (`Ctrl+Shift+M` / Edit → Set Place Marker) remembers a spot in the open
@@ -378,6 +384,8 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Go to page (paginated) | `Ctrl+G` |
 | Search sidebar | `Alt+S` |
 | Previous / next search result (Reader) | `Up` / `Down`, or `F3` / `Shift+F3` |
+| Turn the page (any paginated mode) | `PageUp` / `PageDown`, or the wheel |
+| Turn the page (Reader / a book only) | Arrows, or `Space` / `Shift+Space` |
 | Find & Replace | `Ctrl+H` |
 | Set place marker | `Ctrl+Shift+M` |
 | Go to place marker | `Ctrl+Shift+P` |

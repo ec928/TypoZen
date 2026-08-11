@@ -1822,10 +1822,17 @@
         /**
          * Page / scroll keyboard navigation.
          *
-         * CRITICAL: do NOT skip when e.target.isContentEditable. #editor is contenteditable
-         * in Preview, and that guard made PageDown/arrows never call PageMap.step — only
-         * the browser caret moved (or nothing happened under page-mode overflow:hidden).
-         * Real typing surfaces are INPUT/TEXTAREA and the find/sidebar fields only.
+         * CRITICAL: do NOT skip the whole handler when e.target.isContentEditable. #editor
+         * is contenteditable in Preview, and that guard made PageDown/PageUp never call
+         * PageMap.step — only the browser caret moved (or nothing happened at all under
+         * page-mode overflow:hidden). Real typing surfaces are INPUT/TEXTAREA and the
+         * find/sidebar fields, which return above.
+         *
+         * The keys are split on it instead. PageUp/PageDown turn the page wherever they
+         * are pressed; the arrows and Space only turn it where nothing is editable, which
+         * is Reader and a book. That distinction is trustworthy rather than assumed:
+         * Reader really does set #editor to contenteditable="false", so isContentEditable
+         * reports false there and true in Preview.
          */
         document.addEventListener('keydown', function (e) {
             if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1845,9 +1852,26 @@
                 }
 
                 let dir = 0;
-                if (e.key === 'PageDown' || e.key === 'ArrowRight' || e.key === 'ArrowDown') dir = 1;
-                else if (e.key === 'PageUp' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') dir = -1;
-                else if (e.key === ' ' && !(t && t.isContentEditable)) dir = e.shiftKey ? -1 : 1;
+                // PageUp / PageDown always turn the page. They are not editing keys, and
+                // with the arrows handed back to the caret they are the keyboard way to
+                // turn a page while writing -- along with the wheel, the scrubber and
+                // Ctrl+G.
+                if (e.key === 'PageDown') dir = 1;
+                else if (e.key === 'PageUp') dir = -1;
+                // Everything else turns the page only where there is no caret to move.
+                //
+                // Reader sets #editor to contenteditable="false" -- for a book and for a
+                // paginated Markdown document alike -- so arrows page there exactly as
+                // they always have, which is the main reading gesture. In Preview the
+                // caret is real and the arrows belong to it: every one of them used to be
+                // swallowed by the preventDefault below, so Pages could be read in but not
+                // written in, which is most of the way to not being an editing mode at all.
+                else if (!(t && t.isContentEditable)) {
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') dir = 1;
+                    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') dir = -1;
+                    else if (e.key === ' ') dir = e.shiftKey ? -1 : 1;
+                    else return;
+                }
                 else return;
 
                 e.preventDefault();
