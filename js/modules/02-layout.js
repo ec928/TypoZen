@@ -1410,6 +1410,13 @@
             if (el) { el.hidden = true; const b = document.getElementById('selPopBody'); if (b) b.hidden = true; }
         }
 
+        /** True while the popover is showing an answer, which must outlive its selection. */
+        function selPopHoldsResult() {
+            const pop = document.getElementById('selPop');
+            const body = document.getElementById('selPopBody');
+            return !!(pop && !pop.hidden && body && !body.hidden && body.childNodes.length);
+        }
+
         /** The single word under a selection, if that is what it is. */
         function selectedWord(text) {
             const t = String(text || '').trim();

@@ -1023,6 +1023,12 @@ namespace TypoZen
                     }
                 }
                 catch {}
+                // After the WebView is gone, never before: Chromium holds handles on the
+                // images it has fetched, so deleting the extraction while it is alive fails
+                // silently and leaves exactly what privacy mode is there to remove. This is
+                // the trigger — an ordinary exit clears the session's extracted books, and
+                // the sweep inside catches anything a previous crash left behind.
+                try { EpubReader.EndPrivateSession(); } catch { }
                 Application.Current.Shutdown();
                 Environment.Exit(0);
             };
@@ -3737,6 +3743,7 @@ if (_btnColumnToggle != null)
                 // IMessageFilter (InstallEditorKeyFilter) so undo/format chords always work.
                 try { _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false; } catch {}
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping("localapp", _appDir, CoreWebView2HostResourceAccessKind.Allow);
+                MapBookHost();
                 MapDocumentFolder(_currentFilePath);
                 _webView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
 
@@ -6166,7 +6173,42 @@ if (_btnColumnToggle != null)
                 if (mi != null) mi.IsEnabled = !on;
             }
             if (on && _autosaveTimer != null) _autosaveTimer.Stop();
+
+            // Extraction goes somewhere disposable while this is on. Switching mid-session
+            // only affects books opened from here -- one already open keeps the directory it
+            // was unpacked into, because its images are still being fetched from it.
+            if (on)
+            {
+                if (EpubReader.PrivateSessionRoot == null) EpubReader.BeginPrivateSession();
+            }
+            else
+            {
+                EpubReader.EndPrivateSession();
+            }
+            MapBookHost();
+
             if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        /// <summary>
+        /// Point the book virtual host at wherever extraction is currently going.
+        ///
+        /// Re-mapped rather than set once, because privacy mode moves the root: an image
+        /// URL in a book payload is https://localbooks/<key>/..., and that has to resolve
+        /// whether the key sits in the application folder or in this session's temporary
+        /// one.
+        /// </summary>
+        private void MapBookHost()
+        {
+            if (_webView == null || _webView.CoreWebView2 == null) return;
+            try
+            {
+                string root = EpubReader.CacheRoot(_appDir);
+                Directory.CreateDirectory(root);
+                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "localbooks", root, CoreWebView2HostResourceAccessKind.Allow);
+            }
+            catch { }
         }
 
         /// <summary>True when nothing that names a document may be written.</summary>

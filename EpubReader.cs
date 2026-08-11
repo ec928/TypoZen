@@ -25,10 +25,70 @@ namespace TypoZen
     /// </summary>
     public static class EpubReader
     {
-        /// <summary>Where a book's extracted assets live, so images and CSS resolve.</summary>
+        /// <summary>
+        /// Where a book's extracted assets live, so images and CSS resolve.
+        ///
+        /// In privacy mode this moves out of the application folder entirely rather than
+        /// being swept afterwards, because the directory name is the leak: extraction is
+        /// keyed by a readable name -- "Matter_-_Iain_M_Banks_68aa4804" -- so the mere
+        /// existence of the folder says what was being read, for the whole session and
+        /// after any crash. Redirecting the destination means nothing ever lands there,
+        /// cleanup is one directory rather than per-book bookkeeping, and a private session
+        /// neither pollutes nor evicts the ordinary cache.
+        ///
+        /// A book still has to be unzipped to be read, so this is a smaller claim than
+        /// "nothing on disk": it is an opaquely named directory under TEMP, deleted when
+        /// the window closes and swept on the next launch if that never happened.
+        /// </summary>
         public static string CacheRoot(string appDir)
         {
+            if (PrivateSessionRoot != null) return PrivateSessionRoot;
             return Path.Combine(appDir, "typozen_books");
+        }
+
+        /// <summary>Set while privacy mode is on; null means the ordinary cache.</summary>
+        public static string PrivateSessionRoot;
+
+        /// <summary>Name the current session's private extraction directory, and make it.</summary>
+        public static string BeginPrivateSession()
+        {
+            try
+            {
+                string dir = Path.Combine(Path.GetTempPath(),
+                    "tz-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(dir);
+                PrivateSessionRoot = dir;
+                return dir;
+            }
+            catch { PrivateSessionRoot = null; return null; }
+        }
+
+        /// <summary>
+        /// Remove this session's private extraction directory, and any left by a session
+        /// that never got to run this -- a kill cannot be caught, so the next launch is the
+        /// only chance to clear up after one.
+        /// </summary>
+        public static void EndPrivateSession()
+        {
+            string mine = PrivateSessionRoot;
+            PrivateSessionRoot = null;
+            if (mine != null) { try { Directory.Delete(mine, true); } catch { } }
+            SweepAbandonedPrivateSessions();
+        }
+
+        public static void SweepAbandonedPrivateSessions()
+        {
+            try
+            {
+                foreach (var d in new DirectoryInfo(Path.GetTempPath()).GetDirectories("tz-*"))
+                {
+                    // Only ours, and only once it cannot be a live sibling instance.
+                    if (d.Name.Length != 35) continue;
+                    if ((DateTime.UtcNow - d.LastWriteTimeUtc).TotalHours < 12) continue;
+                    try { d.Delete(true); } catch { }
+                }
+            }
+            catch { }
         }
 
         /// <summary>
@@ -112,7 +172,11 @@ namespace TypoZen
                     sb.Append("{\"title\":").Append(JsonStr(MetaOf(opfXml, "title")));
                     sb.Append(",\"author\":").Append(JsonStr(MetaOf(opfXml, "creator")));
                     sb.Append(",\"assetsBase\":").Append(JsonStr(
-                        "https://localapp/typozen_books/" + key + "/" + opfDir));
+                        // Books have their own virtual host, mapped to whichever root
+                        // CacheRoot chose. Addressing them under localapp baked the
+                        // application folder into every image URL, which cannot work
+                        // once a private session extracts somewhere else.
+                        "https://localbooks/" + key + "/" + opfDir));
                     sb.Append(",\"css\":[").Append(string.Join(",", css)).Append("]");
                     sb.Append(",\"toc\":[").Append(string.Join(",", toc)).Append("]");
                     sb.Append(",\"docs\":[").Append(string.Join(",", docs)).Append("]}");

@@ -410,12 +410,24 @@
             // making it: raising it on every selectionchange makes it flicker across the
             // text as the mouse drags.
             try {
-                document.addEventListener('mouseup', function () {
-                    setTimeout(function () { try { showSelPop(); } catch (e) {} }, 10);
+                document.addEventListener('mouseup', function (e) {
+                    // Not for a release inside the popover itself. Letting go over Define
+                    // fired this, and showSelPop clears the result body before repositioning
+                    // -- so the definition painted and was wiped 10ms later. That is the
+                    // "flashes for a split second" report, and the popover was erasing its
+                    // own answer.
+                    if (e.target && e.target.closest && e.target.closest('#selPop')) return;
+                    setTimeout(function () { try { showSelPop(); } catch (e2) {} }, 10);
                 });
                 document.addEventListener('selectionchange', function () {
                     const s = window.getSelection();
-                    if (!s || s.isCollapsed) { try { hideSelPop(); } catch (e) {} }
+                    if (s && !s.isCollapsed) return;
+                    // A shown result outlives the selection that asked for it. Clicking the
+                    // button can collapse the selection, and hiding on that would be the
+                    // same self-erasure by another route. Escape, a click outside, or a new
+                    // selection still dismiss it.
+                    if (typeof selPopHoldsResult === 'function' && selPopHoldsResult()) return;
+                    try { hideSelPop(); } catch (e3) {}
                 });
             } catch (eSp2) {}
             // Preview scroll must update sticky from the viewport, or Preview→Source
