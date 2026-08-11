@@ -1404,6 +1404,10 @@
            would cost more than the feature. */
 
         let _selPopWord = '';
+        /** Which question was asked: 'define' or 'synonyms'. One reply carries both. */
+        let _selPopAsked = 'define';
+        /** View > Synonyms with Definitions -- show both for a single press. */
+        let _synWithDefs = false;
 
         function hideSelPop() {
             const el = document.getElementById('selPop');
@@ -1463,6 +1467,8 @@
             // Define is for a word. Offering it over a paragraph would be a button that
             // cannot work, which is worse than one that is not there.
             if (define) define.hidden = !_selPopWord;
+            const synB = document.getElementById('selPopSyn');
+            if (synB) synB.hidden = !_selPopWord;
 
             const body = document.getElementById('selPopBody');
             if (body) { body.hidden = true; body.innerHTML = ''; }
@@ -1479,7 +1485,7 @@
         }
 
         /** Render whatever the host found, or say plainly that there is nothing to look in. */
-        function showDefinition(word, definition, installed) {
+        function showDefinition(word, definition, installed, synonyms) {
             const body = document.getElementById('selPopBody');
             if (!body) return;
             body.innerHTML = '';
@@ -1488,12 +1494,26 @@
             head.textContent = word;
             body.appendChild(head);
 
-            if (definition) {
+            // Only what was asked for, unless the option folds them together. Answering
+            // a question nobody asked is how a popover becomes a wall of text.
+            const wantDef = _selPopAsked === 'define' || _synWithDefs;
+            const wantSyn = _selPopAsked === 'synonyms' || _synWithDefs;
+
+            if (wantSyn) {
+                const sy = document.createElement('div');
+                sy.className = synonyms ? 'selpop-def selpop-syn' : 'selpop-hint';
+                sy.textContent = synonyms ? synonyms
+                    : (installed ? 'No synonyms for this word.'
+                                 : 'No thesaurus installed — the same script writes one.');
+                body.appendChild(sy);
+            }
+
+            if (wantDef && definition) {
                 const d = document.createElement('div');
                 d.className = 'selpop-def';
                 d.textContent = definition;
                 body.appendChild(d);
-            } else if (!installed) {
+            } else if (wantDef && !installed) {
                 // No dictionary is a setup state, not an error, so it says what to do.
                 const h = document.createElement('div');
                 h.className = 'selpop-hint';
@@ -1505,7 +1525,7 @@
                     'download to build <code>dictionary.tsv</code>, or drop your own ' +
                     '(word, tab, definition) beside TypoZen.exe or in the cache folder.';
                 body.appendChild(h);
-            } else {
+            } else if (wantDef) {
                 const h = document.createElement('div');
                 h.className = 'selpop-hint';
                 h.textContent = 'Not in the installed dictionary.';
@@ -1568,11 +1588,17 @@
                     }
                 } catch (e) {}
             });
+            const ask = function (which) {
+                return function () {
+                    if (!_selPopWord) return;
+                    _selPopAsked = which;
+                    try { postMsg('define:' + _selPopWord); } catch (e) {}
+                };
+            };
             const define = document.getElementById('selPopDefine');
-            if (define) define.addEventListener('click', function () {
-                if (!_selPopWord) return;
-                try { postMsg('define:' + _selPopWord); } catch (e) {}
-            });
+            if (define) define.addEventListener('click', ask('define'));
+            const synBtn = document.getElementById('selPopSyn');
+            if (synBtn) synBtn.addEventListener('click', ask('synonyms'));
 
             document.addEventListener('keydown', function (e) {
                 if (e.key === 'Escape' && !pop.hidden) hideSelPop();

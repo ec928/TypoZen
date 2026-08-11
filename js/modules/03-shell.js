@@ -680,9 +680,9 @@
                     if (isFinite(resumeAt) && resumeAt > 0) scheduleResumeAtBlock(resumeAt);
                 }
                 else if (msg.startsWith("definition:")) {
-                    // "definition:<installed 0|1>	<word>	<text>"
+                    // "definition:<installed 0|1>	<word>	<text>	<synonyms>"
                     const parts = msg.substring(11).split('	');
-                    try { showDefinition(parts[1] || '', parts[2] || '', parts[0] === '1'); }
+                    try { showDefinition(parts[1] || '', parts[2] || '', parts[0] === '1', parts[3] || ''); }
                     catch (eDf) {}
                 }
                 else if (msg.startsWith("marks_load:")) {
@@ -1044,6 +1044,10 @@
             // so justified-without-hyphens is the rivers-of-white setting this feature
             // defaults away from, and ragged-right-with-hyphens breaks words to close a
             // gap that is not there. One switch, both properties, one re-anchor.
+            if (cmd.startsWith("set_syn_with_defs:")) {
+                _synWithDefs = cmd.substring(18) === '1';
+                return;
+            }
             if (cmd.startsWith("set_justify:")) {
                 const on = cmd.substring(12) === '1';
                 applySpacing({

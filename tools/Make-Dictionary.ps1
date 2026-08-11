@@ -1,11 +1,16 @@
 <#
 .SYNOPSIS
-    Build TypoZen's dictionary.tsv from a WordNet database you already have.
+    Build TypoZen's dictionary.tsv and thesaurus.tsv from a WordNet database you have.
 
 .DESCRIPTION
-    TypoZen bundles no dictionary and downloads nothing, so the definitions half of
-    Define needs a file you supply. This turns WordNet's data files into the one-line-
-    per-word TSV it reads, which is otherwise a fiddly bit of parsing to write yourself.
+    TypoZen bundles no dictionary and downloads nothing, so Define needs a file you
+    supply. This turns WordNet's data files into the one-line-per-word TSVs it reads,
+    which is otherwise a fiddly bit of parsing to write yourself.
+
+    It writes two files from the same pass, because WordNet is a thesaurus as well as a
+    dictionary and it would be silly to read 90 MB twice. A synset is a set of words that
+    mean the same thing -- "causal_agent, cause, causal_agency" is one -- so the gloss
+    gives the definition and the other members of the set give the synonyms.
 
     WordNet is the obvious source: free under a permissive licence, plain text, about
     150,000 entries, and a single download. Get "WordNet 3.1 database files" (or 3.0)
@@ -33,6 +38,7 @@
 param(
     [string]$Source = ".\dict",
     [string]$Out = (Join-Path $env:LOCALAPPDATA "TypoZen_Cache\dictionary.tsv"),
+    [string]$ThesaurusOut = (Join-Path $env:LOCALAPPDATA "TypoZen_Cache\thesaurus.tsv"),
     [int]$MaxSenses = 3
 )
 
@@ -59,6 +65,10 @@ Write-Host ("Reading " + $files.Count + " WordNet files from " + $Source) -Foreg
 $map = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 
+# word -> synonym groups, one group per sense, in the order WordNet files them.
+$syn = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+
 foreach ($f in $files) {
     Write-Host ("  " + (Split-Path $f -Leaf)) -ForegroundColor Gray
     foreach ($line in [System.IO.File]::ReadLines($f)) {
@@ -81,6 +91,7 @@ foreach ($f in $files) {
         $wc = 0
         if (-not [int]::TryParse($head[3], [System.Globalization.NumberStyles]::HexNumber,
                                  $null, [ref]$wc)) { continue }
+        $words = [System.Collections.Generic.List[string]]::new()
         for ($i = 0; $i -lt $wc; $i++) {
             $idx = 4 + ($i * 2)
             if ($idx -ge $head.Count) { break }
@@ -96,6 +107,25 @@ foreach ($f in $files) {
             $list = $map[$w]
             if ($list.Count -lt $MaxSenses -and -not $list.Contains($gloss)) {
                 [void]$list.Add($gloss)
+            }
+            [void]$words.Add($w)
+        }
+
+        # Every other member of the synset is a synonym of each member. A one-word synset
+        # has none, which is most of them, and writing an empty line for those would double
+        # the file for nothing.
+        if ($words.Count -gt 1) {
+            foreach ($w in $words) {
+                $others = @($words | Where-Object { $_ -ne $w })
+                if ($others.Count -eq 0) { continue }
+                if (-not $syn.ContainsKey($w)) {
+                    $syn[$w] = [System.Collections.Generic.List[string]]::new()
+                }
+                $g = $syn[$w]
+                if ($g.Count -lt $MaxSenses) {
+                    $joined = ($others -join ', ')
+                    if (-not $g.Contains($joined)) { [void]$g.Add($joined) }
+                }
             }
         }
     }
@@ -121,4 +151,16 @@ try {
 }
 finally { $sw.Dispose() }
 
-Write-Host "Done. Restart TypoZen, select a word, and press Define." -ForegroundColor Green
+Write-Host ("Writing " + $syn.Keys.Count + " thesaurus entries to " + $ThesaurusOut) -ForegroundColor Cyan
+$tdir = Split-Path $ThesaurusOut -Parent
+if ($tdir -and -not (Test-Path $tdir)) { New-Item -ItemType Directory -Force $tdir | Out-Null }
+$tw = [System.IO.StreamWriter]::new($ThesaurusOut, $false, [System.Text.UTF8Encoding]::new($false))
+try {
+    foreach ($kv in $syn.GetEnumerator()) {
+        $line = ($kv.Value -join '; ') -replace "[`t`r`n]", ' '
+        $tw.WriteLine($kv.Key + "`t" + $line)
+    }
+}
+finally { $tw.Dispose() }
+
+Write-Host "Done. Restart TypoZen, select a word, and press Define or Synonyms." -ForegroundColor Green

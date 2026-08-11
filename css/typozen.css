@@ -1098,6 +1098,9 @@
         .selpop-word { color: var(--tx, #F4F4F5); font-weight: 600; font-size: var(--ui-fs); }
         .selpop-def { margin-top: 4px; color: var(--tx, #F4F4F5); }
         .selpop-hint { margin-top: 6px; opacity: 0.75; }
+        /* Synonyms read as a list rather than as prose, so they are set apart from a
+           definition when both are shown. */
+        .selpop-syn { color: var(--mark-ink, #E8A33D); }
         .selpop-hint code {
             font-family: 'Cascadia Mono', Consolas, monospace;
             background: rgba(128,128,128,0.18); border-radius: 3px; padding: 0 3px;

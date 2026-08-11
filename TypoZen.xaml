@@ -512,6 +512,11 @@
                                  opens rivers of white in a narrow column. A publisher's own
                                  justification is rewritten to read the same switch. -->
                             <MenuItem x:Name="mJustify" Header="_Justified" IsCheckable="True" IsChecked="False"/>
+                            <!-- Off by default: Define and Synonyms are two questions and the
+                                 popover answers the one that was asked. On, a single press
+                                 shows both, for readers who always want the pair. -->
+                            <MenuItem x:Name="mSynWithDefs" Header="S_ynonyms with Definitions" IsCheckable="True" IsChecked="False"
+                                      ToolTip="Show synonyms alongside a definition instead of on their own button"/>
                             <Separator/>
                             <!-- Auto-hide clears chrome for reading: command bar, tab chips, status bar
                                  and scrubber. A slim caption stays. Pointer to the top (or Alt) brings
