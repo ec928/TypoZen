@@ -8123,7 +8123,19 @@ if (_btnColumnToggle != null)
                     try { PersistTabSession(); } catch { }
                 }), DispatcherPriority.Background);
             }
-            if (!string.IsNullOrEmpty(tab.FilePath))
+            // Unconditionally. This is the only repaint every caller has: restore, New Tab,
+            // closing the active tab and switching all end here, and the one path that
+            // returns before reaching it (SwitchToTab onto the tab already showing) calls
+            // RebuildTabStrip itself for exactly that reason.
+            //
+            // It used to be guarded by `if (!string.IsNullOrEmpty(tab.FilePath))`, with no
+            // braces, so an untitled tab was never drawn. The tab was created, made active,
+            // loaded and persisted -- everything except appearing. Clicking + therefore
+            // looked like it did nothing at all, and every click added another invisible
+            // tab: a session file with ten untitled tabs behind a strip showing one. A
+            // restart did not clear it because the session restored all ten and then took
+            // this same branch. Only a tab with a path ever repainted the strip, which is
+            // why opening a file appeared to fix it.
             RebuildTabStrip();
         }
 
