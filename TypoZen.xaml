@@ -418,7 +418,7 @@
                     <Button x:Name="btnToggleSidebar" Style="{StaticResource GhostToolbarButton}"
                             FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE8A0;" FontSize="14"
                             MinWidth="32" Padding="6,2" Margin="0,0,4,0"
-                            ToolTip="Toggle File Tree &amp; Outline (Alt+\)"/>
+                            ToolTip="Toggle Outline and Search Sidebar (Alt+\)"/>
                     <Menu x:Name="topMenu" Background="Transparent" Padding="2,0" VerticalAlignment="Center">
                         <MenuItem Header="_File">
                             <MenuItem x:Name="mNew" Header="_New" InputGestureText="Ctrl+N"/>
@@ -463,7 +463,6 @@
                             <MenuItem x:Name="mStrike" Header="Strike_through" InputGestureText="Ctrl+Shift+X"/>
                         </MenuItem>
                         <MenuItem Header="_View">
-                            <MenuItem x:Name="mToggleSource" Header="Toggle _Source Mode" InputGestureText="Ctrl+/"/>
                             <MenuItem x:Name="mToggleSidebar" Header="Toggle _Sidebar (Outline/Search)" InputGestureText="Alt+\"/>
                             <MenuItem x:Name="mSearchSidebar" Header="Search Side_bar" InputGestureText="Alt+S"/>
                             <Separator/>
@@ -484,12 +483,18 @@
                                 <MenuItem x:Name="mParaRelaxed" Header="_Relaxed" IsCheckable="True"/>
                                 <MenuItem x:Name="mParaLoose" Header="_Loose" IsCheckable="True"/>
                             </MenuItem>
-                            <Separator/>
+                            <!-- Margins belong with Line and Paragraph Spacing: all three set the
+                                 shape of the text block, and only the reader's eye tells them apart. -->
                             <MenuItem Header="_Editor Margins">
                                 <MenuItem x:Name="mMarginNarrow" Header="_Narrow Margins" IsCheckable="True"/>
                                 <MenuItem x:Name="mMarginRegular" Header="_Regular Margins" IsCheckable="True" IsChecked="True"/>
                                 <MenuItem x:Name="mMarginWide" Header="_Wide Margins" IsCheckable="True"/>
                             </MenuItem>
+                            <!-- Off by default. A browser justifies by stretching word spaces only,
+                                 with no hyphenation and no fixed measure, so a book set justified
+                                 opens rivers of white in a narrow column. A publisher's own
+                                 justification is rewritten to read the same switch. -->
+                            <MenuItem x:Name="mJustify" Header="_Justified" IsCheckable="True" IsChecked="False"/>
                             <Separator/>
                             <!-- Auto-hide clears chrome for reading: command bar, tab chips, status bar
                                  and scrubber. A slim caption stays. Pointer to the top (or Alt) brings
@@ -497,6 +502,11 @@
                                  Scrubber / status bar can still be held off by hand. The menu itself
                                  is not a toggle — it is always discoverable from the top edge. -->
                             <MenuItem x:Name="mChromeAutoHide" Header="_Auto-hide" IsCheckable="True"/>
+                            <!-- Separate from chrome auto-hide, and off by default: the left-edge
+                                 reveal fires on any pointer travel to x < 10, which a reader who
+                                 keeps the sidebar shut experiences as the panel flying out on its
+                                 own. Opt in. -->
+                            <MenuItem x:Name="mSidebarAutoHide" Header="Side Panel Auto-_hide" IsCheckable="True" IsChecked="False"/>
                             <MenuItem x:Name="mScrubberToggle" Header="Scr_ubber" IsCheckable="True" IsChecked="True"/>
                             <MenuItem x:Name="mStatusBarToggle" Header="Status _Bar" IsCheckable="True" IsChecked="True"/>
                             <Separator/>

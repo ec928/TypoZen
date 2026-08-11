@@ -455,6 +455,11 @@
             outline: none;
             min-height: 500px;
             color: var(--tx, #F4F4F5);
+            /* View -> Justified. The property is the only place the choice lives: a
+               book's own "text-align: justify" is rewritten to read this same variable
+               (applyBookStyles), so the publisher's rules keep their specificity and
+               their centred and right-aligned rules are left exactly as written. */
+            text-align: var(--tz-align, left);
         }
         
         #editor.reader-mode {

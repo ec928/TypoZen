@@ -1107,6 +1107,23 @@
             // changes leading halfway through.
             joined = joined.replace(/(^|[;{])\s*line-height\s*:[^;}]*/gi, '$1');
 
+            // The reader's justification, not the publisher's -- and left by default.
+            //
+            // Trade paperback justification depends on hyphenation and a typesetter's
+            // discretion over a fixed measure. A reader window is none of those: the
+            // measure changes with the window, the font is the theme's, and the browser
+            // justifies by stretching word spaces alone, so a long word at a line end
+            // opens rivers of white down the column. Every book here asks for it --
+            // Xeelee on 96 rules, Matter on 7 -- and it is the publisher describing
+            // their page, not this one.
+            //
+            // Rewritten rather than dropped, because dropping it would be a decision the
+            // reader cannot undo. The declaration keeps its selector and its specificity
+            // and reads --tz-align, which View -> Justified sets; centred and
+            // right-aligned rules are untouched, since those are the publisher saying
+            // something about a specific element rather than about the body text.
+            joined = joined.replace(/text-align\s*:\s*justify/gi, 'text-align: var(--tz-align, left)');
+
             // Divide the declared sizes through, after rem has become em so both are caught.
             // Relative units only: an em or a % is the publisher expressing a proportion,
             // which is exactly what we are renormalising. A px is an absolute the publisher

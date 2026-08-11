@@ -976,6 +976,15 @@
                 }
                 return;
             }
+            // Justification is the third part of the same decision, and it re-breaks every
+            // line exactly as leading does -- so it goes through the same path, which sets
+            // the property and then puts the reader back on the block they were reading.
+            // #editor reads --tz-align, and so does every book rule that asked to justify
+            // (applyBookStyles), so one property covers Markdown and books alike.
+            if (cmd.startsWith("set_justify:")) {
+                applySpacing('--tz-align', cmd.substring(12) === '1' ? 'justify' : 'left');
+                return;
+            }
             if (cmd.startsWith("view_set:")) {
                 // "view_set:<selector>:<value>" from one of the segmented controls.
                 const bits = cmd.substring(9).split(':');
@@ -1651,11 +1660,6 @@
             } else if (state.mode === 'source' && sourceEditor) {
                 try { sourceEditor.focus(); } catch (e2) {}
             }
-        }
-
-        /** Legacy name: toolbar / Ctrl+T open the visual picker. */
-        function openTableModal() {
-            openTableSizePicker();
         }
 
         /** Number fields for sizes beyond the 10×8 grid. */

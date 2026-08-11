@@ -218,6 +218,34 @@ namespace TypoZen
 
     public class TypoZenWindow : Window
     {
+        private bool _suppressNextAltMenu;
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            var source = PresentationSource.FromVisual(this) as System.Windows.Interop.HwndSource;
+            if (source != null)
+            {
+                source.AddHook(WndProc);
+            }
+        }
+
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            const int WM_SYSCOMMAND = 0x0112;
+            const int SC_KEYMENU = 0xF100;
+            if (msg == WM_SYSCOMMAND && (wParam.ToInt32() & 0xFFF0) == SC_KEYMENU)
+            {
+                if (_suppressNextAltMenu)
+                {
+                    _suppressNextAltMenu = false;
+                    handled = true;
+                    return IntPtr.Zero;
+                }
+            }
+            return IntPtr.Zero;
+        }
+
         private WebView2 _webView;
         private System.Drawing.Color _currentThemeBg = System.Drawing.Color.FromArgb(30, 30, 30);
         private string _currentFilePath = null;
@@ -242,6 +270,15 @@ namespace TypoZen
             // diff for a document nobody edited.
             /// <summary>Where reading got to in THIS tab; see the book_position handler.</summary>
             public int ResumeBlock = 0;
+
+            /// <summary>
+            /// 1 or 2 columns for THIS tab; 0 = never chosen, so the window's own setting
+            /// stands. A layout is a property of what is being read, not of the window: a
+            /// novel wants a two-column spread and the notes file in the next tab does
+            /// not, and having one tab's choice follow you into the other is the whole
+            /// reason this is per-tab rather than one more field in window_state.json.
+            /// </summary>
+            public int Columns = 0;
 
             public string LineEnding = "\n";      // "\n" or "\r\n", from the file as loaded
             public string TrailingNewlines = "\n"; // exact run of newlines the file ended with
@@ -307,9 +344,6 @@ namespace TypoZen
         private const double ZoomStep = 0.1;
         private double _zoomFactor = 1.0;
         private bool _zoomApplying; // suppress ZoomFactorChanged while we set ZoomFactor
-        private Button _btnToggleMode;
-        private Button _btnToggleScrollMode;
-        private Button _btnToggleColumnMode;
         // Phase 3A view selectors
         private Border _grpMode;
         private Button _btnColumnToggle, _btnScrollToggle;
@@ -785,7 +819,6 @@ namespace TypoZen
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
             BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
 
-            BindClick("mToggleSource", (s, e) => ToggleSourceMode());
             BindClick("mToggleSidebar", (s, e) => SendMsg("cmd:toggle_sidebar"));
             BindClick("mSearchSidebar", (s, e) => SendMsg("cmd:toggle_search_sidebar"));
             BindClick("mToggleReveal", (s, e) => SendMsg("cmd:toggle_reveal"));
@@ -810,6 +843,8 @@ namespace TypoZen
             BindClick("mParaNormal",  (s, e) => SetParaSpacing(1));
             BindClick("mParaRelaxed", (s, e) => SetParaSpacing(2));
             BindClick("mParaLoose",   (s, e) => SetParaSpacing(3));
+            BindClick("mJustify",     (s, e) => SetJustified(!_justified));
+            BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mWordWrap", (s, e) =>
             {
                 // Disabled in the menu when wrap has no effect (Pages / Reader / epub).
@@ -910,12 +945,6 @@ namespace TypoZen
             BindClick("mTblAlignNone", (s, e) => SendMsg("table:align:"));
 
             BindClick("btnToggleSidebar", (s, e) => SendMsg("cmd:toggle_sidebar"));
-            _btnToggleMode = (Button)FindElement("btnToggleMode");
-            if (_btnToggleMode != null)
-            {
-                _btnToggleMode.Click += (s, e) => ToggleSourceMode();
-                ApplyModeToggleChrome("wysiwyg");
-            }
 
             // Phase 3A segmented controls. Every segment just reports the click; the page's
             // resolver decides the resulting state and sends it back via view_state:, which
@@ -1396,10 +1425,14 @@ namespace TypoZen
             {
                 int k = msg.wParam.ToInt32() & 0xFFFF;
                 bool bareAlt = (k == VK_MENU || k == VK_LMENU || k == VK_RMENU);
-                if (bareAlt && _chromeHidden)
+                if (bareAlt)
                 {
-                    SetChromeHidden(false);
-                    _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(ChromeHideDelayMs);
+                    _suppressNextAltMenu = false;
+                    if (_chromeHidden)
+                    {
+                        SetChromeHidden(false);
+                        _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(ChromeHideDelayMs);
+                    }
                 }
                 if ((WinForms.Control.ModifierKeys & WinForms.Keys.Alt) == WinForms.Keys.Alt
                     && (WinForms.Control.ModifierKeys & WinForms.Keys.Control) != WinForms.Keys.Control)
@@ -1416,6 +1449,7 @@ namespace TypoZen
                         else if (letter == 's')
                         {
                             handled = true;
+                            _suppressNextAltMenu = true;
                             Dispatcher.BeginInvoke(new Action(() => SendMsg("cmd:toggle_search_sidebar")),
                                 DispatcherPriority.Send);
                         }
@@ -1423,6 +1457,7 @@ namespace TypoZen
                     else if (k == 0xDC || k == 0xE2)
                     {
                         handled = true;
+                        _suppressNextAltMenu = true;
                         Dispatcher.BeginInvoke(new Action(() => SendMsg("cmd:toggle_sidebar")), DispatcherPriority.Send);
                     }
                 }
@@ -1435,7 +1470,6 @@ namespace TypoZen
 
             int vk = msg.wParam.ToInt32() & 0xFFFF;
             string cmd = null;
-            bool toggleSource = false;
 
             if (vk == 0x5A) cmd = shift ? "cmd:redo" : "cmd:undo";          // Z
             else if (vk == 0x59) cmd = "cmd:redo";                           // Y
@@ -1449,17 +1483,11 @@ namespace TypoZen
             // tab targets jump. Chrome-focused Ctrl+Tab is handled in Window.KeyDown.
             else if (vk == 0x46 && !shift) cmd = "cmd:find";                 // F
             else if (vk == 0x48) cmd = "cmd:find_replace";                   // H
-            else if (vk == 0xBF || vk == 0x6F) toggleSource = true;          // Ctrl+/
             else return;
 
             // Swallow so page JS never also runs the same chord (double undo/format).
             handled = true;
 
-            if (toggleSource)
-            {
-                Dispatcher.BeginInvoke(new Action(ToggleSourceMode), DispatcherPriority.Send);
-                return;
-            }
             if (cmd == "cmd:find" || cmd == "cmd:find_replace")
             {
                 string c = cmd;
@@ -1502,6 +1530,7 @@ namespace TypoZen
             if (e.Key == Key.LeftAlt || e.Key == Key.RightAlt
                 || e.SystemKey == Key.LeftAlt || e.SystemKey == Key.RightAlt)
             {
+                _suppressNextAltMenu = false;
                 if (_chromeHidden)
                 {
                     SetChromeHidden(false);
@@ -1522,6 +1551,13 @@ namespace TypoZen
                 else if (sk == Key.S)
                 {
                     SendMsg("cmd:toggle_search_sidebar");
+                    _suppressNextAltMenu = true;
+                    e.Handled = true;
+                }
+                else if (sk == Key.Oem5 || sk == Key.OemBackslash)
+                {
+                    SendMsg("cmd:toggle_sidebar");
+                    _suppressNextAltMenu = true;
                     e.Handled = true;
                 }
                 if (letter != '\0')
@@ -1601,23 +1637,8 @@ namespace TypoZen
                 else if (e.Key == Key.OemPlus || e.Key == Key.Add) { ZoomBy(+ZoomStep); e.Handled = true; }
                 else if (e.Key == Key.OemMinus || e.Key == Key.Subtract) { ZoomBy(-ZoomStep); e.Handled = true; }
                 else if (e.Key == Key.D0 || e.Key == Key.NumPad0) { SetZoom(1.0); e.Handled = true; }
-                else if (e.Key == Key.Oem2 || e.Key == Key.Divide) { ToggleSourceMode(); e.Handled = true; } // Ctrl+/
             }
             // Alt+S opens the search sidebar. The page claims this itself while the WebView
-            // has focus; this covers the case where WPF chrome holds focus instead. Alt
-            // arrives as a SystemKey, so e.Key is Key.System and the letter is in SystemKey.
-            else if (e.SystemKey == Key.S && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt
-                     && (Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
-            {
-                SendMsg("cmd:toggle_search_sidebar");
-                e.Handled = true;
-            }
-            else if ((e.SystemKey == Key.Oem5 || e.SystemKey == Key.OemBackslash) && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt
-                     && (Keyboard.Modifiers & ModifierKeys.Control) != ModifierKeys.Control)
-            {
-                SendMsg("cmd:toggle_sidebar");
-                e.Handled = true;
-            }
             else if (e.Key == Key.D && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
             {
                 SendMsg("cmd:toggle_debug_hud");
@@ -2324,6 +2345,7 @@ namespace TypoZen
                         sb0.AppendLine("le=" + ((tab.LineEnding == "\r\n") ? "crlf" : "lf"));
                         sb0.AppendLine("trail=" + EncodeTrailToken(tab.TrailingNewlines ?? ""));
                         sb0.AppendLine("resume=" + tab.ResumeBlock);
+                        sb0.AppendLine("cols=" + tab.Columns);
                         sb0.AppendLine("body=");
                         sb0.AppendLine();
                     }
@@ -2370,6 +2392,7 @@ namespace TypoZen
                     sb.AppendLine("le=" + le);
                     sb.AppendLine("trail=" + trail);
                     sb.AppendLine("resume=" + tab.ResumeBlock);
+                    sb.AppendLine("cols=" + tab.Columns);
                     if (needBody)
                     {
                         string bodyName = "t" + i + ".md";
@@ -2496,6 +2519,7 @@ namespace TypoZen
                     string trailTok = "lf";
                     string bodyName = "";
                     int resumeBlock = 0;
+                    int cols = 0;
                     for (int i = start; i < lines.Length; i++)
                     {
                         string line = lines[i].TrimEnd();
@@ -2505,6 +2529,7 @@ namespace TypoZen
                         else if (line.StartsWith("le=")) le = line.Substring(3);
                         else if (line.StartsWith("trail=")) trailTok = line.Substring(6);
                         else if (line.StartsWith("resume=")) int.TryParse(line.Substring(7), out resumeBlock);
+                        else if (line.StartsWith("cols=")) int.TryParse(line.Substring(5), out cols);
                         else if (line.StartsWith("body=")) bodyName = line.Substring(5);
                     }
 
@@ -2515,7 +2540,10 @@ namespace TypoZen
                         LineEnding = (le == "crlf") ? "\r\n" : "\n",
                         TrailingNewlines = DecodeTrailToken(trailTok),
                         IsDirty = dirty,
-                        ResumeBlock = resumeBlock
+                        ResumeBlock = resumeBlock,
+                        // A session written before this field existed says nothing, which is
+                        // 0 and means "no choice recorded" -- not "one column".
+                        Columns = (cols == 2) ? 2 : (cols == 1 ? 1 : 0)
                     };
 
                     string body = null;
@@ -2956,6 +2984,7 @@ namespace TypoZen
                     "{{\"state\":\"{0}\",\"width\":{1},\"height\":{2},\"left\":{3},\"top\":{4},\"zoom\":{5}," +
                     "\"chrome\":\"{6}\",\"wordWrap\":{7},\"statusBar\":{8}," +
                     "\"scrubber\":{21},\"lineSpacing\":{22},\"paraSpacing\":{23}," +
+                    "\"justified\":{24},\"sidebarAutoHide\":{25}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
                     "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20}}}",
@@ -2966,7 +2995,8 @@ namespace TypoZen
                     _isTwoColumnMode ? "true" : "false",
                     _col2Rect.HasValue ? _col2Rect.Value.Width : 0, _col2Rect.HasValue ? _col2Rect.Value.Height : 0, _col2Rect.HasValue ? _col2Rect.Value.Left : 0, _col2Rect.HasValue ? _col2Rect.Value.Top : 0,
                     _col1Rect.HasValue ? _col1Rect.Value.Width : 0, _col1Rect.HasValue ? _col1Rect.Value.Height : 0, _col1Rect.HasValue ? _col1Rect.Value.Left : 0, _col1Rect.HasValue ? _col1Rect.Value.Top : 0,
-                    _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing);
+                    _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing,
+                    _justified ? "true" : "false", _sidebarAutoHide ? "true" : "false");
 
                 WriteStateFileAtomic(path, json);
             }
@@ -3087,6 +3117,10 @@ namespace TypoZen
                 if (mLine.Success) _lineSpacing = Clamp4(int.Parse(mLine.Groups[1].Value));
                 var mPara = Regex.Match(json, @"\""paraSpacing\""\s*:\s*(\d+)");
                 if (mPara.Success) _paraSpacing = Clamp4(int.Parse(mPara.Groups[1].Value));
+                var mJust = Regex.Match(json, @"\""justified\""\s*:\s*(true|false)");
+                if (mJust.Success) _justified = mJust.Groups[1].Value == "true";
+                var mSideAuto = Regex.Match(json, @"\""sidebarAutoHide\""\s*:\s*(true|false)");
+                if (mSideAuto.Success) _sidebarAutoHide = mSideAuto.Groups[1].Value == "true";
                 var mBodies = Regex.Match(json, @"\""sessionBodies\""\s*:\s*(true|false)");
                 if (mBodies.Success) _sessionRestoreContent = mBodies.Groups[1].Value == "true";
                 var mRecent = Regex.Match(json, @"\""recentFiles\""\s*:\s*(true|false)");
@@ -3170,6 +3204,14 @@ namespace TypoZen
             _viewColumnsLocked = columnsLocked;
             _viewScrollLocked = scrollLocked;
             _isPageAdvanceMode = (scroll == "pagination");
+
+            // Record the layout against the tab showing it, but only while the reader
+            // could have chosen it. Source locks columns to 1 -- a textarea cannot flow
+            // into them -- so writing that 1 back would quietly forget a book's spread
+            // the moment someone glanced at the raw Markdown.
+            if (!columnsLocked && _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
+                _tabs[_activeTabIndex].Columns = (columns == 2) ? 2 : 1;
+
             // Keep legacy mode chrome in step for Word Wrap / toolbars that still read it.
             if (mode == "source") _editorMode = "source";
             else if (mode == "reader") _editorMode = "reader";
@@ -3934,7 +3976,7 @@ if (_btnColumnToggle != null)
                 // hover does not send this — so hover cannot pin.
                 _sidebarOpen = msg.Substring(14) == "1";
                 _sidebarPinned = _sidebarOpen;
-                if (!_sidebarPinned) StartChromeWatch();
+                if (!_sidebarPinned && _sidebarAutoHide) StartChromeWatch();
                 Dispatcher.BeginInvoke(new Action(() =>
                     SetToolbarActive(FindElement("btnToggleSidebar") as Button, _sidebarOpen)),
                     DispatcherPriority.Normal);
@@ -4054,7 +4096,11 @@ if (_btnColumnToggle != null)
             }
             else if (msg.StartsWith("mode_changed:"))
             {
-                ApplyModeToggleChrome(msg.Substring(13));
+                // Word Wrap is enabled or greyed out by mode, so the field has to be
+                // current before the refresh runs. RenderViewSelectors sets it too, from
+                // view_state:, but a mode change is reported by both and whichever
+                // arrives first must leave the same answer behind.
+                _editorMode = msg.Substring(13);
                 Dispatcher.BeginInvoke(new Action(RefreshWordWrapMenuAvailability),
                     DispatcherPriority.Normal);
             }
@@ -5035,7 +5081,6 @@ if (_btnColumnToggle != null)
                 _tabText = txBrush;
                 _tabTextMuted = mutedTxBrush;
                 RebuildTabStrip();
-                ApplyModeToggleChrome(_editorMode);
             }
             catch {}
         }
@@ -5286,8 +5331,10 @@ if (_btnColumnToggle != null)
 
         private void ChromeWatchTick()
         {
-            // Always run while auto-hide is on, or while the sidebar can edge-reveal.
-            if (!_chromeAutoHide && _sidebarPinned) return;
+            // Always run while auto-hide is on, or while the sidebar can edge-reveal —
+            // which needs both the setting (View → Side Panel Auto-hide, off by default)
+            // and a sidebar the user has actually closed.
+            if (!_chromeAutoHide && (_sidebarPinned || !_sidebarAutoHide)) return;
             try
             {
                 // Convert the physical cursor position into the SAME units as ActualWidth
@@ -5315,8 +5362,11 @@ if (_btnColumnToggle != null)
                     ApplyChromeVisibility();
                 }
 
-                // Extreme left edge: temporary sidebar unless the user pinned it open.
-                bool nearLeft = ShouldRevealSidebar(x, y);
+                // Extreme left edge: temporary sidebar unless the user pinned it open —
+                // and only when the reveal has been asked for. With the setting off the
+                // band is dead, so the tick can still be running for chrome auto-hide
+                // without the side panel following the pointer.
+                bool nearLeft = _sidebarAutoHide && ShouldRevealSidebar(x, y);
                 if (nearLeft != _leftHover)
                 {
                     _leftHover = nearLeft;
@@ -5554,8 +5604,9 @@ if (_btnColumnToggle != null)
 
             _chromeHideAfter = DateTime.MaxValue;
             if (!on) SetChromeHidden(false);
-            // Pointer watch also drives left-edge sidebar hover when the bar is unpinned.
-            if (on || !_sidebarPinned) StartChromeWatch();
+            // Pointer watch also drives left-edge sidebar hover when the bar is unpinned
+            // and that reveal is switched on.
+            if (on || (_sidebarAutoHide && !_sidebarPinned)) StartChromeWatch();
             // Starts visible either way: you watch it retract rather than wondering where
             // it went, which is what makes the behaviour discoverable without a tutorial.
             if (!_applyingRestoredSettings) SaveWindowState();
@@ -5680,6 +5731,54 @@ if (_btnColumnToggle != null)
             if (!_applyingRestoredSettings) SaveWindowState();
         }
 
+        /// <summary>
+        /// Off by default, for books as much as for Markdown.
+        ///
+        /// Every test book asks to be justified -- Xeelee on 96 rules, Matter on 7 -- and
+        /// that is the publisher describing a printed measure they set with hyphenation
+        /// and a typesetter's eye. A browser has neither: it justifies by stretching word
+        /// spaces alone, over a measure that changes with the window, so a narrow column
+        /// of a novel comes out with rivers of white running down it. applyBookStyles
+        /// rewrites those declarations to read the same custom property this sets, so the
+        /// choice is one switch over both kinds of document and the publisher's centred
+        /// and right-aligned rules are left exactly as written.
+        /// </summary>
+        private bool _justified;
+
+        private void SetJustified(bool on)
+        {
+            _justified = on;
+            SetMenuChecked("mJustify", on);
+            SendMsg("cmd:set_justify:" + (on ? "1" : "0"));
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        /// <summary>
+        /// Whether the left screen edge reveals the sidebar while it is closed.
+        ///
+        /// Off by default. The reveal fires on any pointer travel into the leftmost strip,
+        /// which for someone who closed the sidebar on purpose reads as the panel opening
+        /// by itself. Independent of chrome auto-hide: one is about the toolbar, this is
+        /// about the side panel, and wanting a bare reading window is not the same as
+        /// wanting the outline to follow the mouse.
+        /// </summary>
+        private bool _sidebarAutoHide;
+
+        private void SetSidebarAutoHide(bool on)
+        {
+            _sidebarAutoHide = on;
+            SetMenuChecked("mSidebarAutoHide", on);
+            if (!on && _leftHover)
+            {
+                // Switched off mid-hover: the page is holding a bar open that nothing will
+                // now close, because the tick that would send sidebar_edge:0 has stopped.
+                _leftHover = false;
+                if (!_sidebarPinned) SendMsg("cmd:sidebar_edge:0");
+            }
+            if (on) StartChromeWatch();
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
         // A stale state file naming a fifth preset must not throw on startup.
         private static int Clamp4(int i) { return i < 0 ? 0 : (i > 3 ? 3 : i); }
 
@@ -5701,6 +5800,7 @@ if (_btnColumnToggle != null)
             try
             {
                 SetChromeAutoHide(_chromeAutoHide);
+                SetSidebarAutoHide(_sidebarAutoHide);
                 SetStatusBarVisible(_statusBarVisible);
                 SetScrubberVisible(_scrubberVisible);
                 SetMenuChecked("mSessionRestoreContent", _sessionRestoreContent);
@@ -5710,6 +5810,7 @@ if (_btnColumnToggle != null)
                     SetWordWrap(_wordWrap);
                     SetLineSpacing(_lineSpacing);
                     SetParaSpacing(_paraSpacing);
+                    SetJustified(_justified);
 
                     // The scrubber lives in the page, so its state is only real once the
                     // page exists. ApplyChromeVisibility above ran against no WebView and
@@ -8113,6 +8214,7 @@ if (_btnColumnToggle != null)
                 try { resume = RememberedBookPosition(Path.GetFullPath(tab.FilePath)); } catch { }
             }
             if (resume > 0) SendMsg("resume_at:" + resume);
+            RequestTabColumns(tab);
             UpdateStatusDisplay();
             // Session/recent I/O off the open hot path — was adding disk latency on every click.
             if (!_restoringTabs)
@@ -8137,6 +8239,21 @@ if (_btnColumnToggle != null)
             // this same branch. Only a tab with a path ever repainted the strip, which is
             // why opening a file appeared to fix it.
             RebuildTabStrip();
+        }
+
+        /// <summary>
+        /// Put the tab's own column layout back, if it ever had one.
+        ///
+        /// Through view_set rather than set_column_mode, for the same reason the restored
+        /// window setting goes that way: the raw command applies columns and nothing else,
+        /// which leaves 2 columns marked as Scroll -- a state the resolver forbids, because
+        /// two columns need a bottom boundary to flow into. Nothing is sent for a tab that
+        /// has never reported a layout, so a brand new tab simply keeps what is on screen.
+        /// </summary>
+        private void RequestTabColumns(DocTab tab)
+        {
+            if (tab == null || tab.Columns <= 0) return;
+            SendMsg("cmd:view_set:columns:" + (tab.Columns == 2 ? "2" : "1"));
         }
 
         private void RebuildTabStrip()
@@ -8853,6 +8970,7 @@ if (_btnColumnToggle != null)
                     resumeAt = -1;
                 SendMsg("fetch_and_load_book:https://localapp/typozen_load/" + fileName
                     + (resumeAt > 0 ? "|at=" + resumeAt : ""));
+                RequestTabColumns(tab);
 
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
@@ -8953,93 +9071,6 @@ if (_btnColumnToggle != null)
             if (_webView != null && _webView.CoreWebView2 != null)
             {
                 _webView.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
-            }
-        }
-
-        private void ToggleSourceMode()
-        {
-            SendMsg("cmd:toggle_mode");
-        }
-
-        /// <summary>
-        /// Quiet ghost button for Preview (default writing); mild accent only in Source
-        /// so the document stays the visual focus.
-        /// </summary>
-        private void ApplyModeToggleChrome(string mode)
-        {
-            _editorMode = mode;
-            if (_btnToggleMode == null) return;
-            if (mode == "source")
-            {
-                _btnToggleMode.Content = "Source";
-                _btnToggleMode.Background = _modeSourceBg ?? Brushes.Transparent;
-                _btnToggleMode.BorderBrush = _modeSourceBorder ?? Brushes.Gray;
-                _btnToggleMode.BorderThickness = new Thickness(1.5);
-                _btnToggleMode.FontWeight = FontWeights.SemiBold;
-                if (_modeSourceBorder != null) _btnToggleMode.Foreground = _modeSourceBorder;
-                if (_btnToggleScrollMode != null) 
-                {
-                    _btnToggleScrollMode.IsEnabled = true;
-                    _btnToggleScrollMode.Opacity = 1.0;
-                }
-            }
-            else if (mode == "reader")
-            {
-                _btnToggleMode.Content = "Reader";
-                _btnToggleMode.Background = Brushes.Transparent;
-                _btnToggleMode.BorderBrush = _modeGhostBorder ?? Brushes.Gray;
-                _btnToggleMode.BorderThickness = new Thickness(1.5);
-                _btnToggleMode.FontWeight = FontWeights.SemiBold;
-                if (_modeGhostFg != null) _btnToggleMode.Foreground = _modeGhostFg;
-                if (_btnToggleColumnMode != null) _btnToggleColumnMode.Visibility = Visibility.Visible;
-                if (_btnToggleScrollMode != null) 
-                {
-                    _btnToggleScrollMode.IsEnabled = false;
-                    _btnToggleScrollMode.Opacity = 0.5;
-                    ApplyScrollModeToggleChrome(true);
-                    SendMsg("cmd:set_page_advance:1");
-                }
-            }
-            else
-            {
-                _btnToggleMode.Content = "Preview";
-                _btnToggleMode.Background = Brushes.Transparent;
-                _btnToggleMode.BorderBrush = _modeGhostBorder ?? Brushes.Gray;
-                _btnToggleMode.BorderThickness = new Thickness(1.5);
-                _btnToggleMode.FontWeight = FontWeights.Normal;
-                if (_modeGhostFg != null) _btnToggleMode.Foreground = _modeGhostFg;
-                if (_btnToggleColumnMode != null) _btnToggleColumnMode.Visibility = Visibility.Collapsed;
-                if (_btnToggleScrollMode != null) 
-                {
-                    _btnToggleScrollMode.IsEnabled = true;
-                    _btnToggleScrollMode.Opacity = 1.0;
-                }
-            }
-            RefreshWordWrapMenuAvailability();
-        }
-
-        private void ApplyScrollModeToggleChrome(bool pageAdvance)
-        {
-            _isPageAdvanceMode = pageAdvance;
-            RefreshWordWrapMenuAvailability();
-            if (_btnToggleScrollMode == null) return;
-            if (pageAdvance)
-            {
-                _btnToggleScrollMode.Content = "Page";
-                _btnToggleScrollMode.Background = _modeSourceBg ?? Brushes.Transparent;
-                _btnToggleScrollMode.BorderBrush = _modeSourceBorder ?? Brushes.Gray;
-                _btnToggleScrollMode.BorderThickness = new Thickness(1.5);
-                _btnToggleScrollMode.FontWeight = FontWeights.SemiBold;
-                if (_modeSourceBorder != null) _btnToggleScrollMode.Foreground = _modeSourceBorder;
-            }
-            else
-            {
-                _btnToggleScrollMode.Content = "Scroll";
-                _btnToggleScrollMode.Background = Brushes.Transparent;
-                _btnToggleScrollMode.BorderBrush = _modeGhostBorder ?? Brushes.Gray;
-                _btnToggleScrollMode.BorderThickness = new Thickness(1.5);
-                _btnToggleScrollMode.FontWeight = FontWeights.Normal;
-                if (_modeGhostFg != null) _btnToggleScrollMode.Foreground = _modeGhostFg;
             }
         }
 

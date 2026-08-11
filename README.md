@@ -11,7 +11,7 @@ Works well with **`.md`**, **`.txt`**, and related text files.
 ### Dual-mode editing
 - **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, emphasis)
 - **Source Mode** — raw Markdown/text in a growing textarea (one scrollbar with the outer pane, never nested)
-- Toggle with **`Ctrl+/`** or the toolbar; labels show the **current** mode
+- Switch with the **Mode** control on the toolbar (Source / Preview / Reader); the lit segment is the **current** mode
 - **Sticky mode switching** — the same hard line stays put for both the status readout *and* the scroll position when you toggle
 - Source uses the **active theme font** (pick a **(Mono)** theme if you want monospaced source and preview)
 
@@ -34,11 +34,13 @@ book's own table of contents in the outline.
   *Blindsight* to Markdown dropped 6/6 images, 162/162 links, 170/170 list items and 210/210
   footnote references, and broke 16 of 17 headings. Carrying the HTML has no conversion step
   and therefore nothing to lose.
-- The book's stylesheets are applied, scoped to the editor, with three corrections: `rem`
+- The book's stylesheets are applied, scoped to the editor, with four corrections: `rem`
   becomes `em` (a book sized in `rem` is rooted at the application and the reader's font-size
   control cannot touch it), the book's own `page-break-before: always` becomes
-  `break-before: column` (a paged-media break is ignored by a multi-column layout), and
-  `preserveAspectRatio="none"` is stripped from cover wrappers.
+  `break-before: column` (a paged-media break is ignored by a multi-column layout),
+  `text-align: justify` becomes `text-align: var(--tz-align, left)` so **View → Justified**
+  owns it (see Writing tools), and `preserveAspectRatio="none"` is stripped from cover
+  wrappers.
 - **Body text renders at the size the theme asks for.** Publishers size against a device
   default they cannot see — *Xeelee* asks for `0.88em` on its body classes, *Matter* for
   `1.33333em`. The correction divides the **declarations in the book's own stylesheet** by the
@@ -86,7 +88,7 @@ scrollbar can only span what is currently laid out — about 28 pages of a 1400-
   written to disk).
 
 ### Themes & typography
-**25 themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customize Theme…** option lives).
+**25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customize Theme…** option lives).
 
 | Column | Themes |
 |--------|--------|
@@ -128,14 +130,15 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
 - While reading, **Up and Down** step to the previous and next match with the sidebar shut and your eyes on the text — the same keys the results list has always used. Reader only, and only when a search has results, so an arrow still scrolls a book nobody has searched. **F3** / **Shift+F3** also step next/prev
 - Table insert (`Ctrl+T`)
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
-- Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps
+- Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps. Grouped in View with Line Spacing and Paragraph Spacing, because all three set the shape of the text block
+- **Justified** (View) — **off by default, including for books.** A browser justifies by stretching word spaces alone, with no hyphenation and over a measure that changes with the window, so a novel set justified opens rivers of white down a narrow column. Every test book asks for it — *Xeelee* on 96 rules, *Matter* on 7 — and those declarations are rewritten to read this switch rather than dropped, so they keep their selectors and the publisher's *centred* and *right-aligned* rules are untouched
 - **Word Wrap** (View) — applies in **Source** and **scroll Preview** only. On **Pages**, **Reader**, or an **epub**, the menu item is **disabled** (no fake tick); the stored preference returns when wrap can apply again
 - Sidebar (`Ctrl+\`): live outline (headings, or a book's own TOC) and the Search pane
 - Zoom: `Ctrl++` / `Ctrl+-` / `Ctrl+0` or Ctrl+scroll
 - **Notepad-style chrome** — document tabs in the **title bar** with min/max/close; File/Edit/View and format icons on the command row below
 - **Auto-hide chrome** (View → Auto-hide) — tucks the command row, tab chips and status bar, keeping a slim caption for dragging and window controls. Pointer to the **top** (or bare Alt) restores the menu; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back
 - The menu is **always discoverable** — there is no hide-the-menu toggle. When auto-hide is off it stays put; when on, reach the top of the window
-- **Left-edge sidebar hover** — with the sidebar unpinned (closed by the toggle), moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it (stay band covers the full bar so Match case / Whole word stay usable). Opening with the toolbar, `Ctrl+\`, or Alt+S **pins** it until you close it again
+- **Left-edge sidebar hover** (View → Side Panel Auto-hide) — **off by default**, and separate from chrome auto-hide: wanting a bare reading window is not the same as wanting the outline to follow the mouse. Switched on, and with the sidebar unpinned (closed by the toggle), moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it (stay band covers the full bar so Match case / Whole word stay usable). Opening with the toolbar, `Ctrl+\`, or Alt+S **pins** it until you close it again
 - **Alt+F / E / V / T / H** open the matching top-level menu from the keyboard (including while the editor has focus); **Alt+S** is Search, not a menu letter
 
 ### Tabs
@@ -146,6 +149,7 @@ Full multi-document editing, with the tab strip living in the title bar.
 - **Scroll arrows** appear only when the strip overflows, and the active tab is always scrolled into view
 - **Per-tab unsaved indicator**, tracked independently of every other tab
 - **Per-tab file fidelity** — each tab remembers its file's line-ending style (LF / CRLF) and whether it ended with a trailing newline, so saving one document never quietly rewrites the whole file's line endings
+- **Per-tab column layout** — 1-Col or 2-Col belongs to the document, not the window: a novel wants a two-column spread and the notes file in the next tab does not. Recorded per tab and restored with the session. Source locks columns to 1, so the layout is only written down while the choice was actually available — glancing at raw Markdown does not forget a book's spread
 - **Fail-closed switching** — if the editor's content cannot be synced back to the tab, the switch or new-tab operation is *refused* rather than proceeding and risking unsaved edits
 - **Session restore** reopens your tabs on next launch (bodies only if you've enabled unsaved-document restore under File → Privacy)
 
@@ -179,7 +183,7 @@ Preferences live under `%LocalAppData%\TypoZen_Cache\`.
 | **Clear Recent Searches** | — | Drops the last-8 Search history and the restored Search-box text only |
 | **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents. Includes recent Search queries, open tabs, recent files, match-case/whole-word, and web storage (on next launch). |
 
-Also restored: window size and position, theme, margins, mode, F7/F8/F9, zoom, scrubber/status-bar visibility, auto-hide, open tab paths (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
+Also restored: window size and position, theme, margins, mode, line and paragraph spacing, justification, F7/F8/F9, zoom, scrubber/status-bar visibility, chrome auto-hide, side-panel auto-hide, open tab paths **and each tab's column layout** (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
 
 ### Network behaviour
 
@@ -220,10 +224,10 @@ TypoZen is a **native shell around a browser engine**. The WPF side owns the win
 | Bridge | `WindowsFormsHost` → WebView2 (**WinForms flavour**) | `window.chrome.webview` messages |
 | Theming | Recursive logical/visual tree walk + `SystemColors` brush keys | CSS from the same `TypoZen_Themes.json` |
 | Typography | — | 4 families bundled in `fonts/`, `local()` first |
-| Engine | Tabs, session, file I/O (`TypoZen_App.cs` + `TypoZen_Themes.cs` partials) | `js/modules/*` — `DocumentModel`, `HistoryManager`, virtualization |
+| Engine | Tabs, session, file I/O, themes — all of it in `TypoZenWindow` (`TypoZen_App.cs`) | `js/modules/*` — `DocumentModel`, `HistoryManager`, virtualization |
 | Build | MSBuild / `Build_TypoZen.ps1` (CodeDom over all `*.cs`) | Runtime assets — edit without recompiling |
 
-Because the XAML, HTML template and theme JSON are all loaded at runtime, the shell chrome, editor engine and themes can be changed without touching C# or rebuilding. Only `TypoZen_App.cs` requires a recompile.
+Because the XAML, HTML template and theme JSON are all loaded at runtime, the shell chrome, editor engine and themes can be changed without touching C# or rebuilding. Only the `.cs` sources require a recompile — see [Build](#build) for what those are.
 
 > Sibling project **ZenSeek** uses the same content approach — WebView2 rendering a generated HTML document against a shared-shape theme JSON — but hosts it from a PowerShell script with a WinForms reader window rather than a compiled WPF shell.
 
@@ -255,7 +259,7 @@ the same code for both.
 | `EpubReader.cs` | shell | Unzips to a cache folder, reads `container.xml` → OPF → spine, returns one JSON payload: title, author, assets base, stylesheets, TOC, documents. **No HTML processing at all.** |
 | `loadBookPayload()` | page | Splits each spine document into blocks, builds the TOC, applies the book's CSS, mounts |
 | `bookBlocksFromDocs()` | page | One block per top-level element of each `<body>`; also returns each block's owning document directory |
-| `applyBookStyles()` | page | Scopes every rule to `#editor` and applies the three corrections listed under Highlights |
+| `applyBookStyles()` | page | Scopes every rule to `#editor` and applies the four corrections listed under Highlights |
 | `rewriteBookUrls()` | page | Resolves `src` / `href` / `xlink:href` **against the document the block came from** |
 
 Two things about that last row, because both were wrong first:
@@ -369,7 +373,6 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Save | `Ctrl+S` |
 | Save As | `Ctrl+Shift+S` |
 | Print / Export PDF | `Ctrl+P` |
-| Toggle Source / Live Preview | `Ctrl+/` |
 | Toggle Sidebar | `Ctrl+\` |
 | Find | `Ctrl+F` |
 | Go to page (paginated) | `Ctrl+G` |
@@ -391,7 +394,9 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Typewriter scroll | `F9` |
 | Fullscreen | `F11` |
 
-**Menus (no default shortcut):** Themes → Customize Theme… · View → Editor Margins · View → Auto-hide · File → Privacy
+**Menus (no default shortcut):** Themes → Customize Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Auto-hide, Side Panel Auto-hide · File → Privacy
+
+Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
 
 ---
 
@@ -407,6 +412,16 @@ From the project folder:
 - Output: `TypoZen.exe` in the project folder
 - The full self-test suite runs first — a failing suite fails the build
 
+**Compiled sources.** Three files, and the CodeDom path finds them by globbing **`*.cs` in the project folder** — so anything with that extension dropped beside them is compiled too. A throwaway experiment goes somewhere else, or gets another extension.
+
+| Source | Holds |
+|--------|-------|
+| `TypoZen_App.cs` | `Program` (entry point, single-instance pipe, CLI), `TypoZenWindow` (the whole shell: tabs, session, menus, themes, file I/O, host↔page bridge), `ThemeInfo`, `ThemeCustomizeWindow` |
+| `EpubReader.cs` | `EpubReader` — unzip, `container.xml` → OPF → spine, and the cached JSON payload. No HTML processing (see [Books](#books)) |
+| `TypoZen_Launch.cs` | `LaunchRequest` — how a document was asked for: path plus ZenSeek's `--reader` / `--search` / `--line` / `--match-index` hints |
+
+**Referenced assemblies.** Three DLLs sit beside the sources — `Microsoft.Web.WebView2.Core`, `Microsoft.Web.WebView2.WinForms` and `WebView2Loader`. The **WinForms** flavour only: the control is hosted in a `WindowsFormsHost`, nothing imports `Microsoft.Web.WebView2.Wpf`, and neither of the other two assemblies references it, so it is not shipped. The build fails with a named list if any is missing, and falls back to a sibling `Text Search` folder for the ones it cannot find. `TypoZen.ico` is passed as `/win32icon`. `TypoZen.csproj` describes the same build for MSBuild and Visual Studio — **keep it and `Build_TypoZen.ps1` in step**, since each carries its own copy of the reference list.
+
 **Runtime assets** (edit without recompiling C#):
 
 - `TypoZen.xaml` — shell and menus
@@ -417,7 +432,7 @@ From the project folder:
 - `TypoZen_Themes.json` — themes
 - `fonts/` — bundled typefaces
 
-The engine is seven modules sharing one global scope (not ES modules):
+The engine is eight modules sharing one global scope (not ES modules), loaded in the order `js/modules/load-order.json` gives:
 
 | Module | Concern |
 |--------|---------|
@@ -432,9 +447,11 @@ The engine is seven modules sharing one global scope (not ES modules):
 
 Edit a module and reload — no bundler step for the app. Tests concat the same files via `tests/engine-source.mjs` / `tests/build-test-template.mjs`.
 
-Rebuild after changing `TypoZen_App.cs`. The build also parses `TypoZen.xaml` before compiling: it is loaded at runtime by `XamlReader`, so markup errors are invisible to the compiler and would otherwise surface as a crash on launch.
+Rebuild after changing any of the three `.cs` sources. The build also parses `TypoZen.xaml` before compiling: it is loaded at runtime by `XamlReader`, so markup errors are invisible to the compiler and would otherwise surface as a crash on launch.
 
-Also: `.\Create_Shortcut.ps1` · `.\Generate_Icon.ps1`
+**Other scripts in the folder:** `Build_TypoZen.bat` (double-click wrapper for the build) · `TypoZen_Debug.bat` (launch with `--debug`; see [Debugging](#debugging)) · `Create_Shortcut.ps1` · `Generate_Icon.ps1`
+
+**Not in source control, rebuilt on demand:** `TypoZen_Template.runtime.html` (stamped with `?v=` at launch so WebView2 cannot cache stale modules), `TypoZen_Template_Test.html` (the jsdom fixture, regenerated by `tests/build-test-template.mjs`), `obj/` (MSBuild intermediates), `TypoZen.pdb`, `typozen_load/` (staged document and book payloads, swept after 5 minutes), `typozen_books/` (extracted book assets), `debug.log`.
 
 ### Tests
 
@@ -455,6 +472,7 @@ Tests are split into four tiers depending on what they need to observe:
 - **jsdom** covers the document model, parse checks, and logic that doesn't depend on a layout engine.
 - **Browser** suites load `TypoZen_Template.html` in headless Chrome to assert real layout, geometry, and search performance.
 - **Application** suites use `puppeteer-core` to attach to `TypoZen.exe --debug` via the DevTools protocol, verifying WPF shell interactions and complex paginated layout behaviours.
+- Some of them also drive the **chrome from outside the process** through `tests/shell-ui.ps1`, which reports menus, tab chips and dialogs over UI Automation as JSON. That is the only tier that can see what is actually painted: the page knows nothing about tabs, and the session file is written from the same model the model tests read, so both agreed with each other while the tab strip disagreed with both — see `tab-strip-paint-app.mjs`.
 
 ### Debugging
 
