@@ -946,6 +946,12 @@
                 const here = markTargetBlock();
                 const on = here >= 0 && markIndexAtBlock(here) >= 0;
                 try { postMarkState(); } catch (e) {}
+                // The chapter label answers the same question -- "where am I now" -- and
+                // scanning the mounted blocks twice per scroll to ask it separately would be
+                // wasteful. One read, both answers.
+                try {
+                    if (typeof postChapterLabel === 'function') postChapterLabel(here);
+                } catch (eCh) {}
                 const addBtn = document.getElementById('markAddBtn');
                 if (addBtn) {
                     addBtn.classList.toggle('on', on);

@@ -398,11 +398,28 @@
          * Status-bar chapter title for the block currently being read.
          * Posts only when the title changes so page turns do not spam the host.
          */
-        function postChapterLabel() {
+        function postChapterLabel(atBlock) {
             let bi = -1;
             try {
-                if (typeof _readingAnchor === 'number' && _readingAnchor >= 0) bi = _readingAnchor;
-                else if (typeof topLeftModelIndexTwoCol === 'function') bi = topLeftModelIndexTwoCol();
+                // The page first, _readingAnchor only as a fallback -- which is the opposite
+                // of what this did, and the reason the status bar could sit on "Section 7 of
+                // 140" while the reader was in Section 14.
+                //
+                // applySpacing already wrote down why, one module over: the anchor "is a
+                // memory of where the reader was when the layout last changed under them; it
+                // is not refreshed by every page turn, so after a few turns it names a page
+                // they left long ago". Jumping to a bookmark sets it, and then scrolling away
+                // in a continuous layout never touches it again. Which chapter you are in is
+                // a question about this moment, and the DOM is the only thing that knows.
+                //
+                // The fallback still matters: topLeftModelIndexTwoCol returns -1 while a
+                // layout change has left scrollLeft stale, and the remembered anchor is the
+                // right answer for exactly that gap.
+                if (atBlock >= 0) bi = atBlock;
+                else if (typeof currentReadingBlock === 'function') bi = currentReadingBlock();
+                if (!(bi >= 0) && typeof _readingAnchor === 'number' && _readingAnchor >= 0) {
+                    bi = _readingAnchor;
+                }
             } catch (eBi) { bi = -1; }
             if (!(bi >= 0)) bi = 0;
 
