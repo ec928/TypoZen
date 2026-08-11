@@ -445,8 +445,26 @@
             postMsg('sidebar_state:' + (sidebar.classList.contains('collapsed') ? '0' : '1'));
         }
 
+        /** Chapter (or heading) covering a block: the last outline entry at or before it. */
+        function chapterTitleForBlock(bi) {
+            const list = _chapterEntries;
+            if (!(bi >= 0) || !list || !list.length) return '';
+            let title = '';
+            for (let i = 0; i < list.length; i++) {
+                if ((list[i].bi | 0) <= bi) title = list[i].title || '';
+                else break;
+            }
+            return title;
+        }
+
         window.switchTab = function(tab, noFocus) {
-            if (tab !== 'outline' && tab !== 'search') tab = 'outline';
+            if (tab !== 'outline' && tab !== 'search' && tab !== 'marks') tab = 'outline';
+            // Marks are resolved on load, not on every draw, so opening the pane is just a
+            // redraw -- but it has to happen, or the tab shows whatever was there when the
+            // document before it was open.
+            if (tab === 'marks') {
+                try { wireMarksPane(); renderMarks(); } catch (eMk) {}
+            }
             // Reaching Search with the mouse must wire it up too. This used to happen only
             // from the Alt+S handler and from updateSearchSidebar, so clicking the tab gave
             // a query box with no listeners on it: typing did nothing, Enter did nothing,

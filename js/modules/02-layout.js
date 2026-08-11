@@ -675,6 +675,34 @@
             return s.replace(/\s+/g, '').toLowerCase().slice(0, MARK_FP_CHARS);
         }
 
+        /**
+         * The block a mark should actually land on, given the one the reader is at.
+         *
+         * A blank line is a block, and the block at the top of the viewport is very often
+         * one: marking the page put the mark on nothing, which named itself "(untitled
+         * mark)" and — worse, because it is invisible — fingerprinted as the empty string,
+         * so it had no anchor and could not survive the document being edited. Both faults
+         * from the same cause.
+         *
+         * Forward first, because the reader's eye is on the text below the gap rather than
+         * above it, and this is the same rule the book loader already applies when it
+         * anchors a chapter break on the first block that renders something rather than on
+         * the spacer in front of it. Bounded: a run of blanks longer than this is the end
+         * of the document, and then backward, and then wherever we started.
+         */
+        function markSnapToInk(block, raws) {
+            const n = raws ? raws.length : 0;
+            if (!(block >= 0) || !n) return block;
+            const LOOK = 8;
+            for (let i = block; i < n && i < block + LOOK; i++) {
+                if (markFingerprint(raws[i])) return i;
+            }
+            for (let i = block - 1; i >= 0 && i > block - LOOK; i--) {
+                if (markFingerprint(raws[i])) return i;
+            }
+            return block;
+        }
+
         /** A mark names itself from its text, so a new one is legible without being typed. */
         function markNameFromRaw(raw) {
             let s = String(raw == null ? '' : raw);
@@ -779,6 +807,8 @@
          */
         function toggleMarkAtBlock(block) {
             if (!(block >= 0)) return false;
+            const raws0 = markBlockRaws();
+            block = markSnapToInk(block, raws0);
             const at = markIndexAtBlock(block);
             if (at >= 0) {
                 _marks.splice(at, 1);
@@ -786,7 +816,7 @@
                 try { renderMarks(); } catch (e) {}
                 return false;
             }
-            const raws = markBlockRaws();
+            const raws = raws0;
             const raw = (block < raws.length) ? raws[block] : '';
             _marks.push({
                 block: block,
@@ -800,8 +830,164 @@
             return true;
         }
 
-        /** Placeholder until the Marks pane lands; keeps the store callable on its own. */
-        function renderMarks() { /* pane comes next */ }
+        /** Where a mark sits, said in whatever unit this document has: page, or line. */
+        function markWhereText(bi) {
+            try {
+                if (isPaginatedLayout() && typeof PageMap !== 'undefined' && PageMap.pageOfBlock) {
+                    const p = PageMap.pageOfBlock(bi);
+                    if (p >= 0) return 'p ' + (p + 1);
+                }
+            } catch (e) {}
+            try {
+                if (typeof documentLineForBlock === 'function') {
+                    const ln = documentLineForBlock(bi);
+                    if (ln >= 1) return 'ln ' + ln;
+                }
+            } catch (e2) {}
+            return '';
+        }
+
+        /**
+         * Draw the pane.
+         *
+         * Ordered by position, never by when they were made: you read forwards, and a list
+         * in creation order has to be translated every time you look at it. The mark you
+         * are nearest is highlighted -- in a 600-page novel "which of these is behind me"
+         * is the first question, and it is the same signal the search list already gives
+         * for the current match.
+         */
+        function renderMarks() {
+            const list = document.getElementById('marks-list');
+            if (!list) return;
+            const count = document.getElementById('marksCount');
+            if (count) count.textContent = _marks.length + (_marks.length === 1 ? ' mark' : ' marks');
+
+            const addBtn = document.getElementById('markAddBtn');
+            let here = -1;
+            try { here = currentReadingBlock(); } catch (e) {}
+            if (addBtn) {
+                const on = here >= 0 && markIndexAtBlock(here) >= 0;
+                addBtn.classList.toggle('on', on);
+                addBtn.lastElementChild.textContent = on ? 'Remove this mark' : 'Mark this page';
+            }
+
+            if (!_marks.length) {
+                list.innerHTML = '';
+                const empty = document.createElement('div');
+                empty.className = 'mark-empty';
+                empty.textContent = 'No bookmarks in this document yet.';
+                list.appendChild(empty);
+                return;
+            }
+
+            // The nearest mark at or before where the reader is; the first one otherwise.
+            let nearest = -1;
+            for (let i = 0; i < _marks.length; i++) {
+                const b = _marks[i].block;
+                if (b >= 0 && b <= here) nearest = i;
+            }
+            if (nearest < 0) nearest = 0;
+
+            const frag = document.createDocumentFragment();
+            for (let i = 0; i < _marks.length; i++) {
+                const m = _marks[i];
+                const lost = !(m.block >= 0);
+                const row = document.createElement('div');
+                row.className = 'mark-item' + (i === nearest && !lost ? ' active' : '') +
+                    (lost ? ' lost' : '');
+                row.setAttribute('role', 'option');
+                row.setAttribute('data-mark', String(i));
+
+                const rib = document.createElement('span');
+                rib.className = 'mark-rib';
+                rib.setAttribute('aria-hidden', 'true');
+                rib.textContent = '▮';
+
+                const body = document.createElement('span');
+                body.className = 'mark-body';
+                const name = document.createElement('span');
+                name.className = 'mark-name';
+                name.textContent = m.name || '(untitled mark)';
+                body.appendChild(name);
+                const where = document.createElement('span');
+                where.className = 'mark-where';
+                let chapter = '';
+                try {
+                    if (!lost && typeof chapterTitleForBlock === 'function') {
+                        chapter = chapterTitleForBlock(m.block) || '';
+                    }
+                } catch (e) {}
+                where.textContent = lost
+                    ? 'the text this marked is no longer here'
+                    : chapter;
+                if (where.textContent) body.appendChild(where);
+
+                const page = document.createElement('span');
+                page.className = 'mark-page';
+                page.textContent = lost ? '' : markWhereText(m.block);
+
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'mark-del';
+                del.textContent = '×';
+                del.title = 'Remove this bookmark';
+                del.setAttribute('aria-label', 'Remove bookmark: ' + (m.name || ''));
+
+                row.appendChild(rib);
+                row.appendChild(body);
+                row.appendChild(page);
+                row.appendChild(del);
+                frag.appendChild(row);
+            }
+            list.innerHTML = '';
+            list.appendChild(frag);
+        }
+
+        /** One delegated listener on the pane, so a redraw cannot leave stale ones behind. */
+        function wireMarksPane() {
+            const list = document.getElementById('marks-list');
+            if (list && !list.__tzWired) {
+                list.__tzWired = true;
+                list.addEventListener('click', function (e) {
+                    const row = e.target.closest ? e.target.closest('.mark-item') : null;
+                    if (!row) return;
+                    const i = parseInt(row.getAttribute('data-mark'), 10);
+                    if (!isFinite(i) || !_marks[i]) return;
+                    if (e.target.classList && e.target.classList.contains('mark-del')) {
+                        _marks.splice(i, 1);
+                        persistMarks();
+                        renderMarks();
+                        return;
+                    }
+                    const bi = _marks[i].block;
+                    if (!(bi >= 0)) return;   // unresolved: nowhere to go
+                    // Same courtesy search and the outline give: leave a breadcrumb so
+                    // Ctrl+Shift+J comes back to where the reader was.
+                    try { captureReturnJump(); } catch (e2) {}
+                    goToReadingBlock(bi);
+                    renderMarks();
+                });
+            }
+            const add = document.getElementById('markAddBtn');
+            if (add && !add.__tzWired) {
+                add.__tzWired = true;
+                add.addEventListener('click', function () {
+                    let bi = -1;
+                    try { bi = currentReadingBlock(); } catch (e) {}
+                    toggleMarkAtBlock(bi);
+                });
+            }
+            const clear = document.getElementById('marksClearBtn');
+            if (clear && !clear.__tzWired) {
+                clear.__tzWired = true;
+                clear.addEventListener('click', function () {
+                    if (!_marks.length) return;
+                    _marks = [];
+                    persistMarks();
+                    renderMarks();
+                });
+            }
+        }
 
         /** Marks -> one line for the host, which stores it against the document's path. */
         function serializeMarks(marks) {
@@ -3812,7 +3998,7 @@
                     try {
                         const t = document.querySelector('.sidebar-tab.active');
                         const id = t && t.getAttribute('data-tab');
-                        return (id === 'search') ? 'search' : 'outline';
+                        return (id === 'search' || id === 'marks') ? id : 'outline';
                     } catch (e) { return 'outline'; }
                 })(),
                 // A full copy of the open document. Only sent when the host says content

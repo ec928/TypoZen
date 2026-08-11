@@ -190,6 +190,76 @@
             background-color: rgba(128, 128, 128, 0.16);
             color: var(--tx, #F4F4F5);
         }
+        /* --- Bookmarks -----------------------------------------------------------
+           A ribbon colour of its own, deliberately not --accent: the accent already
+           means "current search match" in this sidebar, and two things sharing one
+           colour is how the hover and selection states collided above. Derived from
+           the theme's own text colour so it sits in every palette rather than being
+           one fixed orange that fights half of them. */
+        #sidebar {
+            --mark: color-mix(in srgb, #E8A33D 72%, var(--tx, #F4F4F5));
+            --mark-bg: color-mix(in srgb, #E8A33D 16%, transparent);
+        }
+        .mark-add {
+            display: flex; align-items: center; gap: 7px;
+            margin: 6px 8px 4px; padding: 6px 10px;
+            font-family: var(--ui-font); font-size: var(--ui-fs); font-weight: 600;
+            color: var(--tx, #F4F4F5);
+            background: rgba(128, 128, 128, 0.12);
+            border: 1px solid var(--border, #3F3F46);
+            border-radius: 4px; cursor: pointer;
+            transition: background-color 0.12s ease, border-color 0.12s ease;
+        }
+        .mark-add:hover { background: rgba(128, 128, 128, 0.2); }
+        .mark-add:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 1px; }
+        .mark-add .mark-rib { color: var(--mark); font-size: 12px; }
+        /* Already marked: the button says so rather than silently doing the opposite. */
+        .mark-add.on { color: var(--mark); background: var(--mark-bg); border-color: var(--mark); }
+
+        #marks-list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 2px 4px 8px; }
+        .mark-empty { padding: 6px 10px; font-size: var(--ui-fs-dense); opacity: 0.55; }
+        .mark-item {
+            display: grid; grid-template-columns: 12px 1fr auto auto; gap: 6px;
+            align-items: baseline;
+            padding: 3px 4px; margin: 0 2px; border-radius: 4px;
+            font-size: var(--ui-fs-dense); line-height: 1.45;
+            color: var(--tx-muted, #A1A1AA); cursor: pointer;
+            transition: background-color 0.12s ease, color 0.12s ease;
+        }
+        .mark-item:hover { background-color: rgba(128, 128, 128, 0.16); color: var(--tx, #F4F4F5); }
+        .mark-item.active { background: var(--accent-bg, rgba(59,130,246,0.15)); }
+        .mark-item.active .mark-name { color: var(--tx, #F4F4F5); font-weight: 600; }
+        .mark-item .mark-rib { color: var(--mark); font-size: 11px; }
+        .mark-body { min-width: 0; }
+        .mark-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .mark-where {
+            display: block; font-size: 11px; opacity: 0.8;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .mark-page { font-size: 11px; opacity: 0.75; font-variant-numeric: tabular-nums; }
+        /* An unresolved mark -- its text is no longer in the document. Shown rather than
+           dropped: it is the reader's, and deleting it silently on open is how a feature
+           quietly loses work. Struck through, so it reads as broken and not merely dim. */
+        .mark-item.lost .mark-name { text-decoration: line-through; opacity: 0.7; }
+        .mark-item.lost { cursor: default; }
+        .mark-del {
+            background: none; border: 0; padding: 0 3px; cursor: pointer;
+            color: inherit; opacity: 0; font-size: 13px; line-height: 1;
+            font-family: var(--ui-font);
+        }
+        .mark-item:hover .mark-del, .mark-del:focus-visible { opacity: 0.7; }
+        .mark-del:hover { opacity: 1; }
+        .marks-foot {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 5px 10px; border-top: 1px solid var(--border, #3F3F46);
+            font-size: 11.5px; color: var(--tx-muted, #A1A1AA);
+        }
+        .mark-clear {
+            background: none; border: 0; padding: 0; cursor: pointer;
+            color: inherit; font-family: var(--ui-font); font-size: 11.5px;
+        }
+        .mark-clear:hover { color: var(--tx, #F4F4F5); text-decoration: underline; }
+
         .outline-h1 { font-weight: 700; color: var(--tx, #F4F4F5); }
         .outline-h2 { padding-left: 14px; font-weight: 600; }
         .outline-h3 { padding-left: 26px; font-size: 12px; }

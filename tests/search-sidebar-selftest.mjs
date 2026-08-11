@@ -66,10 +66,16 @@ console.log('--- markup: Files tab is gone ---');
     assert(d.getElementById('tab-outline') !== null, 'the Outline pane survives');
     assert(d.getElementById('tab-search') !== null, 'the Search pane survives');
 
+    assert(d.getElementById('tab-marks') !== null, 'the Marks pane is present');
+
+    // The count is not the point -- the Files tab staying gone is, and the order is, since
+    // the restored sidebarTab preference names a tab by string. Listed rather than counted
+    // so adding a pane is a deliberate edit here and not a silently satisfied number.
     const tabs = [...d.querySelectorAll('.sidebar-tab')];
-    eq(tabs.length, 2, 'two sidebar tabs remain');
-    eq(tabs.map(t => t.getAttribute('data-tab')).join(','), 'outline,search',
+    eq(tabs.map(t => t.getAttribute('data-tab')).join(','), 'outline,search,marks',
         'each tab carries a data-tab, in order');
+    assert(!tabs.some(t => t.getAttribute('data-tab') === 'files'),
+        'and Files is not among them');
 
     const list = d.getElementById('search-results-list');
     assert(list !== null, 'the results list exists');

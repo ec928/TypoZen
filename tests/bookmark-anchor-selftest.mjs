@@ -35,7 +35,7 @@ function extractFunction(name) {
     throw new Error('unclosed function ' + name);
 }
 
-const names = ['markFingerprint', 'markNameFromRaw', 'resolveMarkIndex',
+const names = ['markFingerprint', 'markNameFromRaw', 'resolveMarkIndex', 'markSnapToInk',
                'serializeMarks', 'parseMarks', 'htmlFragmentToText'];
 let src = 'const MARK_FP_CHARS = 80, MARK_SEARCH_RADIUS = 400;\n' +
           "const MARK_FS = '\\u001f', MARK_RS = '\\u001e';\n";
@@ -141,6 +141,26 @@ console.log('\n=== marks name themselves ===');
     info('long paragraph names itself: ' + JSON.stringify(long));
     assert(long.length <= 50 && long.endsWith('…'), 'a long one is cut and marked as cut');
     assert(!/\s…$/.test(long), 'and not left with a dangling space before the ellipsis');
+}
+
+console.log('\n=== a mark never lands on a blank line ===');
+{
+    // Markdown puts a blank line between paragraphs, so every other block is empty and the
+    // block at the top of the viewport is very often one of them. A mark there names itself
+    // nothing and fingerprints as the empty string, which leaves it with no anchor at all --
+    // two faults from one cause, both found by driving the real pane.
+    const raws = ['# Fixture', '', 'The first paragraph.', '', 'The second paragraph.', ''];
+    assert(api.markSnapToInk(1, raws) === 2, 'a blank between paragraphs snaps to the one below');
+    assert(api.markSnapToInk(3, raws) === 4, 'and so does the next');
+    assert(api.markSnapToInk(2, raws) === 2, 'a block with text is left where it is');
+    assert(api.markSnapToInk(5, raws) === 4,
+        'a trailing blank has nothing below it, so it snaps back to the last real block');
+    assert(api.markFingerprint(raws[api.markSnapToInk(1, raws)]).length > 0,
+        'the snapped block has a fingerprint, which is the point');
+
+    const allBlank = ['', '', ''];
+    assert(api.markSnapToInk(1, allBlank) === 1, 'a document with no text leaves the mark alone');
+    assert(api.markSnapToInk(0, []) === 0, 'and an empty document does not throw');
 }
 
 console.log('\n=== the stored form survives a round trip ===');

@@ -131,6 +131,7 @@
         <div class="sidebar-header">
             <div class="sidebar-tab active" data-tab="outline" onclick="switchTab('outline')">Outline</div>
             <div class="sidebar-tab" data-tab="search" onclick="switchTab('search')" title="Search (Alt+S)">Search</div>
+            <div class="sidebar-tab" data-tab="marks" onclick="switchTab('marks')" title="Bookmarks in this document">Marks</div>
         </div>
         <div class="sidebar-content">
             <div id="tab-outline" class="tab-pane active">
@@ -171,6 +172,22 @@
                 </div>
                 <div id="search-results-list" tabindex="0" role="listbox" aria-label="Search results">
                     <div class="search-item" style="opacity:0.5;">No results...</div>
+                </div>
+            </div>
+            <!-- Bookmarks. The button is the point: the place marker this replaces went
+                 unused because it was two shortcuts and nothing on screen, so every
+                 gesture here is available to the pointer and Ctrl+Shift+M is only an
+                 accelerator. This button is also what teaches the gutter ribbon exists. -->
+            <div id="tab-marks" class="tab-pane">
+                <button type="button" id="markAddBtn" class="mark-add" title="Bookmark the page you are on">
+                    <span class="mark-rib" aria-hidden="true">&#x25AE;</span><span>Mark this page</span>
+                </button>
+                <div id="marks-list" tabindex="0" role="listbox" aria-label="Bookmarks">
+                    <div class="mark-empty">No bookmarks in this document yet.</div>
+                </div>
+                <div class="marks-foot">
+                    <span id="marksCount">0 marks</span>
+                    <button type="button" id="marksClearBtn" class="mark-clear">Clear all</button>
                 </div>
             </div>
         </div>
