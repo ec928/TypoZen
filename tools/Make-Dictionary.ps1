@@ -101,7 +101,12 @@ foreach ($f in $files) {
     }
 }
 
-Write-Host ("Writing " + $map.Count + " words to " + $Out) -ForegroundColor Cyan
+# $map.Keys.Count, not $map.Count. PowerShell resolves a member on a Dictionary against
+# its *keys* first, and "count" is a word in WordNet -- so $map.Count returned the
+# definitions of "count" and the progress line read "Writing the act of counting; reciting
+# numbers in ascending order ... words to". Harmless here, and exactly the kind of thing
+# that is not harmless somewhere else.
+Write-Host ("Writing " + $map.Keys.Count + " words to " + $Out) -ForegroundColor Cyan
 $dir = Split-Path $Out -Parent
 if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
 
