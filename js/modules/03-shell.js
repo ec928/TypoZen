@@ -400,6 +400,11 @@
             if (mainContainer) mainContainer.addEventListener('scroll', noteUserMovement, { passive: true });
             if (mainContainer) mainContainer.addEventListener('scroll', reportBookPosition, { passive: true });
             try { mainContainer.addEventListener('scroll', refreshMarkState, { passive: true }); } catch (eMs) {}
+            // Selecting text changes what the Mark button will do, so it changes what the
+            // button must say. Without this the label followed the reader's position but
+            // not their selection: it read "Mark this page" over highlighted words and
+            // then highlighted them -- the same lie as before, wearing a different hat.
+            try { document.addEventListener('selectionchange', refreshMarkState); } catch (eSel) {}
             // Preview scroll must update sticky from the viewport, or Preview→Source
             // restores an old caret far from what was on screen.
             if (mainContainer) {
@@ -1419,7 +1424,7 @@
                 } catch (eCh) {}
             }
             else if (cmd === "mark_toggle") {
-                try { toggleMarkAtBlock(markTargetBlock()); } catch (eMk) {}
+                try { if (!annotateSelection()) toggleMarkAtBlock(markTargetBlock()); } catch (eMk) {}
                 return;
             }
             else if (cmd === "show_marks") {

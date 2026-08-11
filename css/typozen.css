@@ -243,6 +243,10 @@
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .mark-page { font-size: 11px; opacity: 0.75; font-variant-numeric: tabular-nums; }
+        /* A highlight reads differently from a place: its second line is the reader's
+           own note rather than the chapter it sits in. */
+        .mark-item.annot .mark-rib { opacity: 0.9; }
+        .mark-where.mark-note { font-style: italic; opacity: 1; color: var(--mark-ink); }
         /* An unresolved mark -- its text is no longer in the document. Shown rather than
            dropped: it is the reader's, and deleting it silently on open is how a feature
            quietly loses work. Struck through, so it reads as broken and not merely dim. */
@@ -1031,6 +1035,18 @@
         ::highlight(typozen-find-current) {
             background-color: var(--accent, #f59e0b);
             color: var(--accent-tx, #111);
+        }
+        /* An annotation. Quieter than a search match on purpose: a search hit is
+           transient and wants the eye, a highlight is something the reader put there
+           and has to be readable underneath for as long as the book is open. Painted
+           rather than wrapped -- a <mark> element inside a .block would round-trip
+           into data-raw and become part of the document. */
+        ::highlight(typozen-mark) {
+            background-color: var(--mark-bg, rgba(232, 163, 61, 0.16));
+            text-decoration: underline;
+            text-decoration-color: var(--mark-ink, #E8A33D);
+            text-decoration-thickness: 1px;
+            text-underline-offset: 2px;
         }
 
         /* Block Elements in Live Preview */

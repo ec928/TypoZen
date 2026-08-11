@@ -112,6 +112,14 @@ two shortcuts and nothing on screen:
 - Marks land on a block that renders something — a blank line is a block, and one marked there would have no fingerprint and so no anchor at all
 - Stored in `bookmarks.txt` in the cache, keyed by path, last **64** documents; marks *within* a document are not capped. Your file never grows metadata because you read it, at the honest cost that marks do not travel with it
 
+### Annotations
+Select text and the Mark button becomes **Highlight selection**. A highlight is a bookmark with a range, and a note is a highlight with text attached — which is why bookmarks were built first: the anchoring is the whole problem, and this reuses it unchanged.
+
+- Painted with the **CSS Custom Highlight API**, the same mechanism search uses for its matches. Not a `<mark>` element: a `.block` round-trips into `data-raw`, so anything wrapped round the words would become part of your document
+- **Named by the words it quotes.** Double-click the row to write a **note** — for a highlight that edits the note, not the quotation, since renaming it would be rewriting the book
+- Highlighting the same range twice removes it, the same toggle the gutter and the button use
+- Stored beside bookmarks, with the same fingerprint anchor, so a highlight follows its sentence when the document is edited above it
+
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your *reading position*, which is automatic, written atomically as you read, and unaffected by any of this.
 
 ### Themes & typography

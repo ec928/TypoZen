@@ -916,6 +916,27 @@
             try { return markSnapToInk(here, markBlockRaws()); } catch (e2) { return here; }
         }
 
+        /**
+         * What the Mark button says and how it looks. The only place that decides.
+         *
+         * Written twice at first -- once in renderMarks and once in refreshMarkState --
+         * and the two promptly disagreed: only one of them knew that a selection turns the
+         * button into Highlight selection, so selecting text and letting the other one run
+         * put the label back to "Mark this page" over highlighted words, which it would
+         * then have highlighted. That is the same lie this button was just fixed for, and
+         * it came back the moment the answer had two authors.
+         */
+        function updateMarkButton() {
+            const btn = document.getElementById('markAddBtn');
+            if (!btn) return;
+            const sel = selectionInsideOneBlock();
+            const here = markTargetBlock();
+            const on = !sel && here >= 0 && markIndexAtBlock(here) >= 0;
+            btn.classList.toggle('on', on);
+            btn.lastElementChild.textContent = sel ? 'Highlight selection'
+                : (on ? 'Remove this mark' : 'Mark this page');
+        }
+
         /** Tell the shell whether the page being read carries a mark, for the toolbar button. */
         function postMarkState() {
             const here = markTargetBlock();
@@ -952,11 +973,7 @@
                 try {
                     if (typeof postChapterLabel === 'function') postChapterLabel(here);
                 } catch (eCh) {}
-                const addBtn = document.getElementById('markAddBtn');
-                if (addBtn) {
-                    addBtn.classList.toggle('on', on);
-                    addBtn.lastElementChild.textContent = on ? 'Remove this mark' : 'Mark this page';
-                }
+                updateMarkButton();
                 // The row the reader is nearest, without redrawing the list.
                 const rows = document.querySelectorAll('#marks-list .mark-item');
                 if (rows.length) {
@@ -975,6 +992,7 @@
 
         function renderMarks() {
             try { paintMarkRibbons(); } catch (e) {}
+            try { paintAnnotations(); } catch (e) {}
             try { paintScrubberTicks(); } catch (e) {}
             try { postMarkState(); } catch (e) {}
             const list = document.getElementById('marks-list');
@@ -982,13 +1000,8 @@
             const count = document.getElementById('marksCount');
             if (count) count.textContent = _marks.length + (_marks.length === 1 ? ' mark' : ' marks');
 
-            const addBtn = document.getElementById('markAddBtn');
             const here = markTargetBlock();
-            if (addBtn) {
-                const on = here >= 0 && markIndexAtBlock(here) >= 0;
-                addBtn.classList.toggle('on', on);
-                addBtn.lastElementChild.textContent = on ? 'Remove this mark' : 'Mark this page';
-            }
+            updateMarkButton();
 
             if (!_marks.length) {
                 list.innerHTML = '';
@@ -1036,9 +1049,15 @@
                         chapter = chapterTitleForBlock(m.block) || '';
                     }
                 } catch (e) {}
+                const isNote = m.e > m.s;
+                if (isNote) {
+                    rib.textContent = '\u270E';   // a highlight, not a place
+                    row.classList.add('annot');
+                }
                 where.textContent = lost
                     ? 'the text this marked is no longer here'
-                    : chapter;
+                    : (isNote && m.note ? m.note : chapter);
+                if (isNote && m.note) where.classList.add('mark-note');
                 if (where.textContent) body.appendChild(where);
 
                 const page = document.createElement('span');
@@ -1113,6 +1132,7 @@
                     pending = setTimeout(function () {
                         pending = null;
                         try { paintMarkRibbons(); } catch (e) {}
+                        try { paintAnnotations(); } catch (e) {}
                     }, 60);
                 }).observe(editor, { childList: true, subtree: true });
             } catch (eObs) {}
@@ -1169,7 +1189,13 @@
                     if (!isFinite(i) || !_marks[i]) return;
                     e.preventDefault();
                     e.stopPropagation();
-                    const nameEl = row.querySelector('.mark-name');
+                    // A highlight is named by the words it quotes, so renaming it
+                    // would be rewriting the book. The second line -- the note -- is
+                    // the part that is the reader's to write.
+                    const annot = _marks[i].e > _marks[i].s;
+                    const nameEl = annot
+                        ? (row.querySelector('.mark-where') || row.querySelector('.mark-name'))
+                        : row.querySelector('.mark-name');
                     if (!nameEl) return;
                     nameEl.setAttribute('contenteditable', 'plaintext-only');
                     nameEl.focus();
@@ -1185,7 +1211,9 @@
                             const v = (nameEl.textContent || '').replace(/\s+/g, ' ').trim();
                             // Emptying the name asks for the text back, rather than leaving
                             // a row with nothing written on it.
-                            if (v) { _marks[i].name = v; _marks[i].named = true; }
+                            if (annot) {
+                                _marks[i].note = v;
+                            } else if (v) { _marks[i].name = v; _marks[i].named = true; }
                             else {
                                 const raws = markBlockRaws();
                                 _marks[i].name = markNameFromRaw(raws[_marks[i].block] || '');
@@ -1208,7 +1236,14 @@
             const add = document.getElementById('markAddBtn');
             if (add && !add.__tzWired) {
                 add.__tzWired = true;
+                // mousedown, not click: the button taking focus collapses the
+                // selection before a click handler ever runs, so by then there is
+                // nothing left to highlight.
+                add.addEventListener('mousedown', function (ev) {
+                    if (annotateSelection()) { ev.preventDefault(); return; }
+                });
                 add.addEventListener('click', function () {
+                    if (annotateSelection()) return;
                     toggleMarkAtBlock(markTargetBlock());
                 });
             }
@@ -1224,6 +1259,136 @@
             }
         }
 
+        /* ---- Annotations -------------------------------------------------------
+           A highlight is a mark with a range, and a note is a highlight with text
+           attached -- which is why bookmarks were built first: the anchoring is the
+           whole problem, and this reuses it unchanged. A mark carries s and e, two
+           character offsets into its block's text; absent, it is a plain bookmark.
+
+           Drawn with the CSS Custom Highlight API, the same mechanism search already
+           uses for its matches, and for the same reason the gutter ribbon is a
+           pseudo-element: a .block round-trips into data-raw, so a <mark> element
+           wrapped round the words would become part of the document the moment
+           anything serialised. A custom highlight paints over text without being in
+           it. */
+
+        /** DOM point -> character offset within a block, counting a BR as one. */
+        function blockOffsetOfPoint(blockEl, node, nodeOffset) {
+            if (!blockEl || !node) return -1;
+            let seen = 0, found = -1;
+            (function walk(n) {
+                if (found >= 0) return;
+                if (n.nodeType === 3) {
+                    if (n === node) { found = seen + nodeOffset; return; }
+                    seen += n.nodeValue.length;
+                } else if (n.nodeName === 'BR') {
+                    if (n === node) { found = seen; return; }
+                    seen += 1;
+                } else {
+                    for (let i = 0; i < n.childNodes.length; i++) {
+                        if (n === node && i === nodeOffset) { found = seen; return; }
+                        walk(n.childNodes[i]);
+                        if (found >= 0) return;
+                    }
+                    if (n === node && nodeOffset >= n.childNodes.length) found = seen;
+                }
+            })(blockEl);
+            return found;
+        }
+
+        /** Character offsets -> a live Range inside a mounted block, or null. */
+        function rangeForBlockOffsets(blockEl, s, e) {
+            if (!blockEl || !(e > s)) return null;
+            let seen = 0, startNode = null, startOff = 0, endNode = null, endOff = 0;
+            (function walk(n) {
+                if (endNode) return;
+                if (n.nodeType === 3) {
+                    const len = n.nodeValue.length;
+                    if (!startNode && seen + len >= s) { startNode = n; startOff = s - seen; }
+                    if (startNode && seen + len >= e) { endNode = n; endOff = e - seen; }
+                    seen += len;
+                } else if (n.nodeName === 'BR') {
+                    seen += 1;
+                } else {
+                    for (let i = 0; i < n.childNodes.length && !endNode; i++) walk(n.childNodes[i]);
+                }
+            })(blockEl);
+            if (!startNode || !endNode) return null;
+            try {
+                const r = document.createRange();
+                r.setStart(startNode, Math.max(0, Math.min(startOff, startNode.nodeValue.length)));
+                r.setEnd(endNode, Math.max(0, Math.min(endOff, endNode.nodeValue.length)));
+                return r;
+            } catch (err) { return null; }
+        }
+
+        /** True when there is text selected inside one block -- the thing to annotate. */
+        function selectionInsideOneBlock() {
+            try {
+                const sel = window.getSelection();
+                if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+                const r = sel.getRangeAt(0);
+                const a = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+                const b = r.endContainer.nodeType === 1 ? r.endContainer : r.endContainer.parentElement;
+                if (!a || !b) return null;
+                const ba = a.closest('.block'), bb = b.closest('.block');
+                if (!ba || ba !== bb || !editor.contains(ba)) return null;
+                const mi = parseInt(ba.getAttribute('data-model-index'), 10);
+                if (!isFinite(mi) || mi < 0) return null;
+                const s = blockOffsetOfPoint(ba, r.startContainer, r.startOffset);
+                const e = blockOffsetOfPoint(ba, r.endContainer, r.endOffset);
+                if (!(e > s) || s < 0) return null;
+                return { block: mi, s: s, e: e, text: r.toString() };
+            } catch (err) { return null; }
+        }
+
+        /** Highlight what is selected. Returns false when nothing usable is selected. */
+        function annotateSelection() {
+            const pick = selectionInsideOneBlock();
+            if (!pick) return false;
+            // An identical range twice is a request to remove it, the same toggle the
+            // gutter and the button already use.
+            for (let i = 0; i < _marks.length; i++) {
+                if (_marks[i].block === pick.block && _marks[i].s === pick.s && _marks[i].e === pick.e) {
+                    _marks.splice(i, 1);
+                    persistMarks(); renderMarks();
+                    return true;
+                }
+            }
+            const raws = markBlockRaws();
+            const raw = raws[pick.block] || '';
+            _marks.push({
+                block: pick.block, named: false,
+                fp: markFingerprint(raw),
+                // The quoted words name it, which is what a highlight is for.
+                name: markNameFromRaw(pick.text),
+                s: pick.s, e: pick.e, note: ''
+            });
+            sortMarks(); persistMarks(); renderMarks();
+            try { window.getSelection().removeAllRanges(); } catch (e) {}
+            return true;
+        }
+
+        /** Paint every annotation whose block is mounted. */
+        function paintAnnotations() {
+            let CSSH = null;
+            try { CSSH = (window.CSS && CSS.highlights) ? CSS.highlights : null; } catch (e) {}
+            if (!CSSH || typeof Highlight === 'undefined') return;
+            const ranges = [];
+            for (let i = 0; i < _marks.length; i++) {
+                const m = _marks[i];
+                if (!(m.block >= 0) || !(m.e > m.s)) continue;
+                const el = editor && editor.querySelector('.block[data-model-index="' + m.block + '"]');
+                if (!el) continue;
+                const r = rangeForBlockOffsets(el, m.s, m.e);
+                if (r) ranges.push(r);
+            }
+            try {
+                if (ranges.length) CSSH.set('typozen-mark', new Highlight(...ranges));
+                else CSSH.delete('typozen-mark');
+            } catch (e2) {}
+        }
+
         /** Marks -> one line for the host, which stores it against the document's path. */
         function serializeMarks(marks) {
             const out = [];
@@ -1233,7 +1398,9 @@
                 const clean = function (s) {
                     return String(s == null ? '' : s).split(MARK_FS).join(' ').split(MARK_RS).join(' ');
                 };
-                out.push([m.block | 0, m.named ? '1' : '0', clean(m.fp), clean(m.name)].join(MARK_FS));
+                out.push([m.block | 0, m.named ? '1' : '0', clean(m.fp), clean(m.name),
+                          (m.s == null ? '' : m.s | 0), (m.e == null ? '' : m.e | 0),
+                          clean(m.note)].join(MARK_FS));
             }
             return out.join(MARK_RS);
         }
@@ -1250,7 +1417,14 @@
                 if (f.length < 4) continue;
                 const block = parseInt(f[0], 10);
                 if (!isFinite(block) || block < 0) continue;
-                out.push({ block: block, named: f[1] === '1', fp: f[2], name: f[3] });
+                const rec = { block: block, named: f[1] === '1', fp: f[2], name: f[3],
+                              note: f.length > 6 ? f[6] : '' };
+                // Fields added after the first release: a record without them is a
+                // plain bookmark, which is what parseMarks tolerating a short record
+                // was for.
+                const s = parseInt(f[4], 10), e = parseInt(f[5], 10);
+                if (isFinite(s) && isFinite(e) && e > s) { rec.s = s; rec.e = e; }
+                out.push(rec);
             }
             return out;
         }
@@ -4147,7 +4321,7 @@
                     if (e.key === 'M' || e.key === 'm') {
                         e.preventDefault();
                         e.stopPropagation();
-                        toggleMarkAtBlock(currentReadingBlock());
+                        if (!annotateSelection()) toggleMarkAtBlock(markTargetBlock());
                         return;
                     }
                     if (e.key === 'P' || e.key === 'p') {
