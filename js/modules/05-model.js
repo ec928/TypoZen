@@ -1688,6 +1688,13 @@
                 postMsg('menu_access:' + e.key.toLowerCase());
                 e.preventDefault();
             }
+            // Alt+\ toggles the sidebar (show/hide without changing tab or clearing search).
+            // Backslash is not [a-zA-Z] so it needs its own check.
+            if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === '\\' || e.key === '|')) {
+                handleCommand('toggle_sidebar');
+                e.preventDefault();
+                return;
+            }
         }, true);
 
         window.addEventListener('keydown', (e) => {
@@ -1840,7 +1847,7 @@
                 let dir = 0;
                 if (e.key === 'PageDown' || e.key === 'ArrowRight' || e.key === 'ArrowDown') dir = 1;
                 else if (e.key === 'PageUp' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') dir = -1;
-                else if (e.key === ' ') dir = e.shiftKey ? -1 : 1;
+                else if (e.key === ' ' && !(t && t.isContentEditable)) dir = e.shiftKey ? -1 : 1;
                 else return;
 
                 e.preventDefault();
@@ -1870,8 +1877,8 @@
                 let delta = 0;
                 if (e.key === 'PageDown') delta = 1;
                 else if (e.key === 'PageUp') delta = -1;
-                else if (e.key === ' ' && !e.shiftKey) delta = 1;
-                else if (e.key === ' ' && e.shiftKey) delta = -1;
+                else if (e.key === ' ' && !e.shiftKey && !(t && t.isContentEditable)) delta = 1;
+                else if (e.key === ' ' && e.shiftKey && !(t && t.isContentEditable)) delta = -1;
                 else return;
 
                 e.preventDefault();
@@ -1903,6 +1910,16 @@
                         found = true;
                     } else {
                         currentOffset += len;
+                    }
+                } else if (node.nodeName === 'BR') {
+                    if (currentOffset >= targetOffset) {
+                        range.setStartBefore(node);
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        found = true;
+                    } else {
+                        currentOffset += 1;
                     }
                 } else {
                     for (let i = 0; i < node.childNodes.length; i++) {

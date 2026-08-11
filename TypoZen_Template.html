@@ -130,7 +130,7 @@
     <div id="sidebar">
         <div class="sidebar-header">
             <div class="sidebar-tab active" data-tab="outline" onclick="switchTab('outline')">Outline</div>
-            <div class="sidebar-tab" data-tab="search" onclick="switchTab('search')">Search</div>
+            <div class="sidebar-tab" data-tab="search" onclick="switchTab('search')" title="Search (Alt+S)">Search</div>
         </div>
         <div class="sidebar-content">
             <div id="tab-outline" class="tab-pane active">
@@ -255,7 +255,7 @@
     <!-- Classic scripts, fixed order — see js/modules/load-order.json. Shared globals. -->
     <script src="js/modules/01-core.js"></script>
     <script src="js/modules/02-layout.js"></script>
-    <script src="js/modules/03-shell.js?v=2"></script>
+    <script src="js/modules/03-shell.js"></script>
     <script src="js/modules/04-lists.js"></script>
     <script src="js/modules/04b-format.js"></script>
     <script src="js/modules/05-model.js"></script>
