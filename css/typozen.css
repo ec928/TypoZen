@@ -196,10 +196,16 @@
            colour is how the hover and selection states collided above. Derived from
            the theme's own text colour so it sits in every palette rather than being
            one fixed orange that fights half of them. */
-        #sidebar {
-            --mark: color-mix(in srgb, #E8A33D 72%, var(--tx, #F4F4F5));
+        html {
+            /* One ribbon colour for the whole app: the sidebar rows, the gutter beside a
+               marked paragraph and the ticks on the scrubber. Mixed with the theme's own
+               text colour so it sits in all 25 palettes rather than being one fixed orange
+               that fights half of them, and deliberately not --accent, which already means
+               "current search match" in the sidebar. */
+            --mark-ink: color-mix(in srgb, #E8A33D 72%, var(--tx, #F4F4F5));
             --mark-bg: color-mix(in srgb, #E8A33D 16%, transparent);
         }
+        #sidebar { --mark: var(--mark-ink); }
         .mark-add {
             display: flex; align-items: center; gap: 7px;
             margin: 6px 8px 4px; padding: 6px 10px;
@@ -259,6 +265,39 @@
             color: inherit; font-family: var(--ui-font); font-size: 11.5px;
         }
         .mark-clear:hover { color: var(--tx, #F4F4F5); text-decoration: underline; }
+
+        /* --- The gutter ribbon ---------------------------------------------------
+           Drawn with ::before rather than a real element, and clicked by coordinate.
+           A .block is a projection of one model row and its content round-trips to
+           data-raw on every edit; putting a child inside it would put a ribbon into
+           the document the moment anything serialised. A pseudo-element cannot be
+           serialised and cannot be typed into.
+
+           It sits in the block's own left padding, so nothing reflows when a mark
+           appears -- the space is already there. */
+        #editor .block::before {
+            content: '▮';
+            position: absolute;
+            left: -6px;
+            top: 0.15em;
+            width: 14px;
+            text-align: center;
+            font-size: 0.72em;
+            line-height: 1.6;
+            color: var(--mark-ink, #E8A33D);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.12s ease;
+        }
+        #editor .block { position: relative; }
+        /* Hovering offers one. Not in Source, which has no blocks, and not while a
+           selection is being dragged across the text. */
+        #editor .block:hover::before { opacity: 0.3; }
+        #editor .block.tz-marked::before { opacity: 1; }
+        #editor .block.tz-marked:hover::before { opacity: 0.75; }
+        /* The strip that takes the click. Only as wide as the ribbon, so it cannot
+           steal a click meant for the first character of a line. */
+        #editor.tz-marks-live .block { cursor: text; }
 
         .outline-h1 { font-weight: 700; color: var(--tx, #F4F4F5); }
         .outline-h2 { padding-left: 14px; font-weight: 600; }
@@ -802,6 +841,19 @@
         /* Hidden by class, not by display: updatePageScrubber sets display on every page
            turn, so anything it can overwrite is not a setting. */
         body.tz-no-scrubber #page-scrubber { display: none !important; }
+
+        /* Bookmark ticks. Painted into a layer behind the range input, from a gradient
+           list built in paintScrubberTicks -- elements would have to be kept in step with
+           the thumb and cleaned up; a background does not. */
+        #page-scrubber::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: var(--tick-image, none);
+            z-index: 0;
+        }
+        #page-scrubber-range { position: relative; z-index: 1; }
 
         #page-scrubber-range {
             -webkit-appearance: none;

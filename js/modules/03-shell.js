@@ -1420,11 +1420,14 @@
                 try { toggleMarkAtBlock(currentReadingBlock()); } catch (eMk) {}
                 return;
             }
-            else if (cmd === "set_place_marker") {
-                try { if (typeof setPlaceMarker === 'function') setPlaceMarker(); } catch (ePm) {}
-            }
-            else if (cmd === "goto_place_marker") {
-                try { if (typeof gotoPlaceMarker === 'function') gotoPlaceMarker(); } catch (eGm) {}
+            else if (cmd === "show_marks") {
+                try {
+                    const sb = document.getElementById('sidebar');
+                    if (sb) sb.classList.remove('collapsed');
+                    postMsg('sidebar_state:1');
+                    if (typeof switchTab === 'function') switchTab('marks');
+                } catch (eSm) {}
+                return;
             }
             else if (cmd === "return_jump") {
                 try { if (typeof returnFromJump === 'function') returnFromJump(); } catch (eRj) {}

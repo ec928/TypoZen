@@ -87,11 +87,32 @@ scrollbar can only span what is currently laid out — about 28 pages of a 1400-
   `contenteditable="false"`, which is what makes the distinction reliable rather than a guess.
 - The status bar shows the **current chapter** from the book TOC or document outline, updated
   as you read. **Click the chapter label** to jump to that chapter's start.
-- **Place marker** (`Ctrl+Shift+M` / Edit → Set Place Marker) remembers a spot in the open
-  document; **Go to Place Marker** (`Ctrl+Shift+P`) returns there. Separately, jumping via
-  search, outline, go-to-page, or chapter click leaves a **return breadcrumb** — **Return from
-  Jump** (`Ctrl+Shift+J`) goes back to where you were reading. Markers are session-local (not
-  written to disk).
+- **Bookmarks** — see below. Separately, jumping via search, outline, go-to-page, or chapter
+  click leaves a **return breadcrumb** — **Return from Jump** (`Ctrl+Shift+J`) goes back to
+  where you were reading. The breadcrumb is automatic rather than chosen, and session-local.
+
+### Bookmarks
+Named places that survive the exit, in a **Marks** tab beside Outline and Search.
+
+Four ways to set one, because the single place marker this replaced went unused for being
+two shortcuts and nothing on screen:
+
+| Where | What |
+|---|---|
+| **The gutter** | Hover a paragraph and a hollow ribbon appears in the margin beside it; click to fill it, click again to remove. Drawn with `::before` and hit-tested by coordinate — a real element inside a `.block` would end up in `data-raw` and therefore in your document |
+| **Toolbar** | **Mark** / **Marked**, shaded when the page you are on carries one — the same signal `2-Col` and `Pages` give when they are off their default |
+| **Marks pane** | **Mark this page**, which becomes **Remove this mark** |
+| **Keyboard** | `Ctrl+Shift+M` toggles, `Ctrl+Shift+P` opens the pane |
+
+- **Ordered by position, never by when they were made.** You read forwards; a list in creation order has to be translated every time you look at it. The mark you are nearest is highlighted
+- **Named from their own text**, so a new one is legible without being typed. Double-click to rename; empty the name to get the text back
+- **Ticks on the scrubber** show every mark across the whole book — five marks over 604 pages is a shape you read at a glance
+- **They survive the document being edited.** A mark stores the text it was set on as well as where it was: the index is a hint, the fingerprint is the truth, and they are resolved against each other on open. Insert a paragraph above a mark and it follows its own sentence rather than staying on a number. Searched outward from the hint, nearest first, bounded at 400 blocks — fingerprinting means parsing a block's HTML, and a 45,000-block omnibus would otherwise pay that half a million times per open
+- **A mark whose text is gone is shown struck through**, not deleted. It is yours; dropping it silently on open is how a feature loses work
+- Marks land on a block that renders something — a blank line is a block, and one marked there would have no fingerprint and so no anchor at all
+- Stored in `bookmarks.txt` in the cache, keyed by path, last **64** documents; marks *within* a document are not capped. Your file never grows metadata because you read it, at the honest cost that marks do not travel with it
+
+> **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your *reading position*, which is automatic, written atomically as you read, and unaffected by any of this.
 
 ### Themes & typography
 **25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customize Theme…** option lives).
@@ -388,8 +409,8 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Turn the page (any paginated mode) | `PageUp` / `PageDown`, or the wheel |
 | Turn the page (Reader / a book only) | Arrows, or `Space` / `Shift+Space` |
 | Find & Replace | `Ctrl+H` |
-| Set place marker | `Ctrl+Shift+M` |
-| Go to place marker | `Ctrl+Shift+P` |
+| Bookmark this page (toggle) | `Ctrl+Shift+M` |
+| Show bookmarks | `Ctrl+Shift+P` |
 | Return from jump (search/outline/goto) | `Ctrl+Shift+J` |
 | Insert table | `Ctrl+T` |
 | Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |

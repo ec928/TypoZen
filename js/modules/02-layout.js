@@ -622,8 +622,12 @@
         let _searchHistHighlight = -1;
         // Last text in the Search box (including uncommitted typing), restored on Alt+S.
         let _lastSearchQuery = '';
-        // Session place-marker and search-return breadcrumb (block indices; not persisted).
-        let _placeMarkerBlock = -1;
+        // Search-return breadcrumb: where the reader was before a jump, so Ctrl+Shift+J
+        // can undo it. Not persisted, and deliberately not a bookmark -- it is dropped
+        // automatically rather than chosen, and folding the two together would cost the
+        // automatic one. The session place marker that used to sit beside it is gone,
+        // replaced by bookmarks, which are the same idea with a name and a life beyond
+        // this session.
         let _returnJumpBlock = -1;
 
         /* ---- Bookmarks ---------------------------------------------------------
@@ -777,6 +781,9 @@
          * and taking the reader's note with it.
          */
         function loadMarksPayload(payload) {
+            // The gutter must work whether or not the pane has ever been opened, so it
+            // is wired on every document rather than when the tab is first shown.
+            try { wireMarkGutter(); } catch (eG) {}
             _marks = parseMarks(payload);
             const raws = markBlockRaws();
             for (let i = 0; i < _marks.length; i++) {
@@ -856,7 +863,53 @@
          * is the first question, and it is the same signal the search list already gives
          * for the current match.
          */
+        /**
+         * Ticks across the scrubber: the only view that spans the whole book.
+         *
+         * Five marks over 604 pages is a shape you read at a glance; five rows in a list
+         * is not. Drawn as a background gradient on the track rather than as elements, so
+         * there is nothing to keep in step with the thumb and nothing to clean up.
+         */
+        function paintScrubberTicks() {
+            const host = document.getElementById('page-scrubber');
+            if (!host) return;
+            let stops = [];
+            try {
+                if (isPaginatedLayout() && typeof PageMap !== 'undefined' && PageMap.ensure
+                    && PageMap.ensure() && PageMap.pageOfBlock) {
+                    const total = Math.max(1, PageMap.count());
+                    for (let i = 0; i < _marks.length; i++) {
+                        if (!(_marks[i].block >= 0)) continue;
+                        const p = PageMap.pageOfBlock(_marks[i].block);
+                        if (!(p >= 0)) continue;
+                        const pct = Math.max(0, Math.min(100, (p / Math.max(1, total - 1)) * 100));
+                        stops.push(pct);
+                    }
+                }
+            } catch (e) { stops = []; }
+            if (!stops.length) { host.style.removeProperty('--tick-image'); return; }
+            const c = 'var(--mark-ink, #E8A33D)';
+            const img = stops.map(function (pct) {
+                // A 2px sliver at each mark. calc keeps the sliver a fixed width at any
+                // scrubber length rather than a percentage that grows with the window.
+                return 'linear-gradient(' + c + ', ' + c + ') no-repeat calc(' + pct +
+                    '% - 1px) 50% / 2px 11px';
+            }).join(', ');
+            host.style.setProperty('--tick-image', img);
+        }
+
+        /** Tell the shell whether the page being read carries a mark, for the toolbar button. */
+        function postMarkState() {
+            let here = -1;
+            try { here = currentReadingBlock(); } catch (e) {}
+            const on = here >= 0 && markIndexAtBlock(here) >= 0;
+            try { postMsg('mark_state:' + (on ? '1' : '0') + ',' + _marks.length); } catch (e2) {}
+        }
+
         function renderMarks() {
+            try { paintMarkRibbons(); } catch (e) {}
+            try { paintScrubberTicks(); } catch (e) {}
+            try { postMarkState(); } catch (e) {}
             const list = document.getElementById('marks-list');
             if (!list) return;
             const count = document.getElementById('marksCount');
@@ -943,6 +996,79 @@
             list.appendChild(frag);
         }
 
+        /**
+         * Paint tz-marked onto whichever blocks are mounted right now.
+         *
+         * By model index, never by DOM position: under virtualization the first mounted
+         * block is not block 0, and the whole engine already resolves through
+         * data-model-index for exactly this reason. Called after any change to the list and
+         * after a remount, because a remount replaces every element and takes the classes
+         * with it.
+         */
+        function paintMarkRibbons() {
+            if (!editor) return;
+            const want = Object.create(null);
+            for (let i = 0; i < _marks.length; i++) {
+                if (_marks[i].block >= 0) want[_marks[i].block] = 1;
+            }
+            const nodes = editor.querySelectorAll('.block[data-model-index]');
+            for (let i = 0; i < nodes.length; i++) {
+                const mi = parseInt(nodes[i].getAttribute('data-model-index'), 10);
+                nodes[i].classList.toggle('tz-marked', !!want[mi]);
+            }
+        }
+
+        /**
+         * A click in the ribbon strip marks the block; a click in the text does not.
+         *
+         * The strip is the block's own left padding, which is empty. Hit-testing by
+         * coordinate rather than by element because the ribbon is a pseudo-element -- see
+         * the CSS for why it has to be one. Guarded on a collapsed selection so that
+         * finishing a drag-select near the left edge does not also drop a bookmark.
+         */
+        function wireMarkGutter() {
+            if (!editor || editor.__tzMarkGutter) return;
+            editor.__tzMarkGutter = true;
+
+            /* Repaint when blocks arrive.
+               An observer rather than a call at each mount site: blocks are created by
+               virtualization, by progressive paint, by a book remount and by ordinary
+               editing, and a ribbon missing from one of those paths would be a bug nobody
+               reports because the mark is still in the list. Debounced, and only when
+               elements were actually added, so typing costs nothing. */
+            let pending = null;
+            try {
+                new MutationObserver(function (recs) {
+                    let added = false;
+                    for (let i = 0; i < recs.length && !added; i++) {
+                        added = recs[i].addedNodes && recs[i].addedNodes.length > 0;
+                    }
+                    if (!added || pending) return;
+                    pending = setTimeout(function () {
+                        pending = null;
+                        try { paintMarkRibbons(); } catch (e) {}
+                    }, 60);
+                }).observe(editor, { childList: true, subtree: true });
+            } catch (eObs) {}
+
+            const STRIP = 16;
+            editor.addEventListener('click', function (e) {
+                const block = e.target && e.target.closest ? e.target.closest('.block') : null;
+                if (!block || !editor.contains(block)) return;
+                const r = block.getBoundingClientRect();
+                if (e.clientX > r.left + STRIP) return;
+                try {
+                    const sel = window.getSelection();
+                    if (sel && !sel.isCollapsed) return;
+                } catch (e2) {}
+                const mi = parseInt(block.getAttribute('data-model-index'), 10);
+                if (!isFinite(mi) || mi < 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                toggleMarkAtBlock(mi);
+            }, true);
+        }
+
         /** One delegated listener on the pane, so a redraw cannot leave stale ones behind. */
         function wireMarksPane() {
             const list = document.getElementById('marks-list');
@@ -967,7 +1093,52 @@
                     goToReadingBlock(bi);
                     renderMarks();
                 });
+                // Rename in place. Double-click rather than a button: renaming is the rare
+                // case -- a mark names itself from its text and that is usually right --
+                // so it should not cost a control on every row.
+                list.addEventListener('dblclick', function (e) {
+                    const row = e.target.closest ? e.target.closest('.mark-item') : null;
+                    if (!row || row.classList.contains('lost')) return;
+                    const i = parseInt(row.getAttribute('data-mark'), 10);
+                    if (!isFinite(i) || !_marks[i]) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const nameEl = row.querySelector('.mark-name');
+                    if (!nameEl) return;
+                    nameEl.setAttribute('contenteditable', 'plaintext-only');
+                    nameEl.focus();
+                    try {
+                        const r = document.createRange();
+                        r.selectNodeContents(nameEl);
+                        const s = window.getSelection();
+                        s.removeAllRanges(); s.addRange(r);
+                    } catch (e3) {}
+                    const commit = function (keep) {
+                        nameEl.removeAttribute('contenteditable');
+                        if (keep) {
+                            const v = (nameEl.textContent || '').replace(/\s+/g, ' ').trim();
+                            // Emptying the name asks for the text back, rather than leaving
+                            // a row with nothing written on it.
+                            if (v) { _marks[i].name = v; _marks[i].named = true; }
+                            else {
+                                const raws = markBlockRaws();
+                                _marks[i].name = markNameFromRaw(raws[_marks[i].block] || '');
+                                _marks[i].named = false;
+                            }
+                            persistMarks();
+                        }
+                        renderMarks();
+                    };
+                    nameEl.addEventListener('blur', function () { commit(true); }, { once: true });
+                    nameEl.addEventListener('keydown', function (ev) {
+                        if (ev.key === 'Enter') { ev.preventDefault(); nameEl.blur(); }
+                        else if (ev.key === 'Escape') { ev.preventDefault(); commit(false); }
+                        ev.stopPropagation();
+                    });
+                });
             }
+            try { wireMarkGutter(); } catch (eG) {}
+
             const add = document.getElementById('markAddBtn');
             if (add && !add.__tzWired) {
                 add.__tzWired = true;
@@ -1116,15 +1287,6 @@
         function captureReturnJump() {
             const bi = currentReadingBlockIndex();
             if (bi >= 0) _returnJumpBlock = bi;
-        }
-
-        function setPlaceMarker() {
-            _placeMarkerBlock = currentReadingBlockIndex();
-        }
-
-        function gotoPlaceMarker() {
-            if (!(_placeMarkerBlock >= 0)) return;
-            goToReadingBlock(_placeMarkerBlock);
         }
 
         function returnFromJump() {
@@ -1642,6 +1804,7 @@
             const total = Math.max(1, PageMap.count());
             range.max = String(total - 1);
             range.value = String(Math.max(0, Math.min(PageMap.current(), total - 1)));
+            try { paintScrubberTicks(); } catch (eTk) {}
         }
 
         function bindPageScrubber() {
@@ -3920,13 +4083,13 @@
                     if (e.key === 'M' || e.key === 'm') {
                         e.preventDefault();
                         e.stopPropagation();
-                        setPlaceMarker();
+                        toggleMarkAtBlock(currentReadingBlock());
                         return;
                     }
                     if (e.key === 'P' || e.key === 'p') {
                         e.preventDefault();
                         e.stopPropagation();
-                        gotoPlaceMarker();
+                        try { handleCommand('show_marks'); } catch (eSm) {}
                         return;
                     }
                     if (e.key === 'J' || e.key === 'j') {

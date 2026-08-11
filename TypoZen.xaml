@@ -454,8 +454,8 @@
                             <MenuItem x:Name="mFind" Header="_Find &amp; Replace..." InputGestureText="Ctrl+F"/>
                             <MenuItem x:Name="mGoToPage" Header="_Go to Page..." InputGestureText="Ctrl+G"/>
                             <Separator/>
-                            <MenuItem x:Name="mSetPlaceMark" Header="Set Place _Marker" InputGestureText="Ctrl+Shift+M"/>
-                            <MenuItem x:Name="mGoPlaceMark" Header="Go to Place Marker" InputGestureText="Ctrl+Shift+P"/>
+                            <MenuItem x:Name="mMarkToggle" Header="Bookmark This _Page" InputGestureText="Ctrl+Shift+M"/>
+                            <MenuItem x:Name="mMarksPane" Header="Show Book_marks" InputGestureText="Ctrl+Shift+P"/>
                             <MenuItem x:Name="mReturnJump" Header="_Return from Jump" InputGestureText="Ctrl+Shift+J"/>
                             <Separator/>
                             <MenuItem x:Name="mInsertLink" Header="Insert _Link" InputGestureText="Ctrl+K"/>
@@ -636,6 +636,15 @@
                          shades them whenever that state is not the default (1-Col, Scroll),
                          so "something is switched on here" is visible at a glance, the
                          same signal the Mode pillbox gives. -->
+                    <!-- Bookmarks. Labelled, not glyphed, for the reason the two buttons
+                         below are: no MDL2 glyph reads unambiguously at 14px without a
+                         caption, and this one has to say which state it is in. C# shades it
+                         when the page being read carries a mark, the same signal 2-Col and
+                         Pages give when they are off their default. -->
+                    <Button x:Name="btnMarkToggle" Style="{StaticResource ToolbarStateButton}"
+                            Content="Mark" FontSize="12" MinWidth="56" Margin="0,0,6,0"
+                            ToolTip="Bookmark this page (Ctrl+Shift+M) — lit when it is already marked"/>
+
                     <Button x:Name="btnColumnToggle" Style="{StaticResource ToolbarStateButton}"
                             Content="1-Col" FontSize="12" MinWidth="52" Margin="0,0,6,0"
                             ToolTip="Column layout — click to switch. 2 columns require Pagination"/>

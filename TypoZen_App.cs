@@ -346,7 +346,7 @@ namespace TypoZen
         private bool _zoomApplying; // suppress ZoomFactorChanged while we set ZoomFactor
         // Phase 3A view selectors
         private Border _grpMode;
-        private Button _btnColumnToggle, _btnScrollToggle;
+        private Button _btnColumnToggle, _btnScrollToggle, _btnMarkToggle;
         private readonly Dictionary<string, Button> _segments = new Dictionary<string, Button>();
         // Last state the page resolved. Cached only so a two-state button knows which
         // value to ask for next and so a column change can swap the window geometry.
@@ -813,8 +813,8 @@ namespace TypoZen
                 try { if (_webView != null) _webView.Focus(); } catch { }
                 SendMsg("cmd:goto_page");
             });
-            BindClick("mSetPlaceMark", (s, e) => SendMsg("cmd:set_place_marker"));
-            BindClick("mGoPlaceMark", (s, e) => SendMsg("cmd:goto_place_marker"));
+            BindClick("mMarkToggle", (s, e) => SendMsg("cmd:mark_toggle"));
+            BindClick("mMarksPane", (s, e) => SendMsg("cmd:show_marks"));
             BindClick("mReturnJump", (s, e) => SendMsg("cmd:return_jump"));
             BindClick("mInsertLink", (s, e) => SendMsg("fmt:link"));
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
@@ -956,6 +956,16 @@ namespace TypoZen
             BindSegment("btnModeReader", "mode", "reader");
             // Column and Scroll are single two-state buttons. They still hold no authority:
             // the click just asks for the other value and the page's resolver decides.
+            _btnMarkToggle = FindElement("btnMarkToggle") as Button;
+            if (_btnMarkToggle != null)
+            {
+                _btnMarkToggle.Click += (s, e) =>
+                {
+                    SendMsg("cmd:mark_toggle");
+                    try { if (_webView != null) _webView.Focus(); } catch { }
+                };
+            }
+
             _btnColumnToggle = FindElement("btnColumnToggle") as Button;
             if (_btnColumnToggle != null)
             {
@@ -1588,12 +1598,12 @@ namespace TypoZen
                 }
                 else if (e.Key == Key.M && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
                 {
-                    SendMsg("cmd:set_place_marker");
+                    SendMsg("cmd:mark_toggle");
                     e.Handled = true;
                 }
                 else if (e.Key == Key.P && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
                 {
-                    SendMsg("cmd:goto_place_marker");
+                    SendMsg("cmd:show_marks");
                     e.Handled = true;
                 }
                 else if (e.Key == Key.J && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
@@ -4049,6 +4059,19 @@ if (_btnColumnToggle != null)
                     {
                         try { RememberBookPosition(Path.GetFullPath(p), block); } catch { }
                     }
+                }
+            }
+            else if (msg.StartsWith("mark_state:"))
+            {
+                // "mark_state:<0|1>,<total>" -- whether the page being read carries a
+                // mark, and how many the document has. Shading the button is the same
+                // signal 2-Col and Pages give: lit means "not the default state".
+                string body = msg.Substring(11);
+                bool on = body.StartsWith("1");
+                if (_btnMarkToggle != null)
+                {
+                    _btnMarkToggle.Content = on ? "Marked" : "Mark";
+                    SetToolbarActive(_btnMarkToggle, on);
                 }
             }
             else if (msg.StartsWith("marks_set:"))
