@@ -124,7 +124,10 @@ catch {
 }
 
 Write-Host "[1/4] Checking dependencies..." -ForegroundColor Yellow
-$dlls = @("Microsoft.Web.WebView2.Core.dll", "Microsoft.Web.WebView2.Wpf.dll", "Microsoft.Web.WebView2.WinForms.dll", "WebView2Loader.dll")
+# The WinForms flavour only. The control is hosted in a WindowsFormsHost, nothing imports
+# Microsoft.Web.WebView2.Wpf, and neither Core nor WinForms references it -- it was carried
+# for its own sake. Keep in step with the <Reference> list in TypoZen.csproj.
+$dlls = @("Microsoft.Web.WebView2.Core.dll", "Microsoft.Web.WebView2.WinForms.dll", "WebView2Loader.dll")
 
 # The WebView2 DLLs normally sit next to this script. Only go looking in the sibling
 # 'Text Search' project for the ones that are actually missing -- the build used to
@@ -200,7 +203,6 @@ if (-not $compiled) {
     }
     
     [void]$refPaths.Add((Join-Path $appDir "Microsoft.Web.WebView2.Core.dll"))
-    [void]$refPaths.Add((Join-Path $appDir "Microsoft.Web.WebView2.Wpf.dll"))
     [void]$refPaths.Add((Join-Path $appDir "Microsoft.Web.WebView2.WinForms.dll"))
 
     try {

@@ -138,7 +138,7 @@ try {
     // Onto a short text document, scroll it, then straight back -- the switch happening
     // while a report from the text document is still pending.
     await app.eval((p) => postMsg('open_file_path:' + p),
-        path.join(appDir, 'Overall Goals for TypoZen.txt'));
+        path.join(appDir, 'tests', 'short-note.txt'));
     await sleep(5000);
     await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -181,7 +181,7 @@ try {
         await sleep(2200);
     });
     await app.eval((p) => postMsg('open_file_path:' + p),
-        path.join(appDir, 'Overall Goals for TypoZen.txt'));
+        path.join(appDir, 'tests', 'short-note.txt'));
     await sleep(5000);
 
     // Sample hard from the moment the open is asked for, so an early frame at the cover

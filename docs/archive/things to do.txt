@@ -1,0 +1,8 @@
+Epubs are currently fully justified. I want epubs be left justified by default, and add a Justified setting in the view
+Add a **menu** setting for side panel auto-hide, with the default being disabled
+Merge Editor Margins into the group with Line Spacing and Paragraph Spacing
+When saving tabs, save whether it's 1 or 2 col
+Toggle Source Mode should be removed from the menu, along with the keyboard shortcut and any unessential code
+Then tidy up the files in this directory, deleting useless ones as needed
+
+Warning: arrow keys don't work for editing in page mode. Need to think about options here. But do nothing for now.

@@ -39,17 +39,16 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
-    <!-- WebView2 DLLs ship beside this project (Build_TypoZen.ps1 also accepts a sibling Text Search folder as fallback). -->
+    <!-- WebView2 DLLs ship beside this project (Build_TypoZen.ps1 also accepts a sibling
+         Text Search folder as fallback). The WinForms flavour only: the control is hosted
+         in a WindowsFormsHost, so Microsoft.Web.WebView2.Wpf was never loaded. Keep this
+         list in step with $dlls in Build_TypoZen.ps1. -->
     <Reference Include="Microsoft.Web.WebView2.Core">
       <HintPath>.\Microsoft.Web.WebView2.Core.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.Web.WebView2.WinForms">
       <HintPath>.\Microsoft.Web.WebView2.WinForms.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="Microsoft.Web.WebView2.Wpf">
-      <HintPath>.\Microsoft.Web.WebView2.Wpf.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />

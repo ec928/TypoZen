@@ -1649,10 +1649,6 @@
             }
         };
 
-        function twoColGap() {
-            return PageGeometry._twoCol ? PAGE_TWO_COL_GAP : 60;
-        }
-
         function twoColPageWidth() {
             return PageGeometry.stride();
         }

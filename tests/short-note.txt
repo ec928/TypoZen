@@ -1,0 +1,33 @@
+Short note
+==========
+
+A small plain-text document, used by book-position-app.mjs as the thing a reader
+switches to and back from while a book is open.
+
+It is a .txt on purpose. Document type chooses the open mode, so this opens in
+Source, and the point of the test is that a book keeps its own reading position
+across a switch to a document that is not paginated at all.
+
+This file lives in tests/ on purpose too. It used to be "Overall Goals for
+TypoZen.txt" in the project root, which is prose about the project rather than a
+fixture -- and the suite broke the day that document was filed under docs/. A
+test should not reach out of tests/ for something a person is free to move.
+
+Nothing here is asserted on. What is needed is only:
+
+  - plain text, so the document opens in Source
+  - more than a dozen blocks, because the test scrolls to block 12
+  - short enough that it loads immediately, since the book is what is being timed
+
+Filler follows, to clear that block count with room to spare.
+
+One.
+Two.
+Three.
+Four.
+Five.
+Six.
+Seven.
+Eight.
+Nine.
+Ten.

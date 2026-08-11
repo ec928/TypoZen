@@ -23,6 +23,5 @@
   {"Name":"Everforest","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#2D353B","Tx":"#D3C6AA","Hi":"#A7C080"},
   {"Name":"Kanagawa","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#1F1F28","Tx":"#DCD7BA","Hi":"#7E9CD8"},
   {"Name":"Ayu Mirage","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#1F2430","Tx":"#CCCAC2","Hi":"#FFCC66"},
-  {"Name":"Ayu Light","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#FAFAFA","Tx":"#5C6773","Hi":"#D96C00"},
-  {"Name":"Gruvbox Light (Custom)","FN":"'Literata', 'Merriweather', serif","FS":18,"Bg":"#FBF1C7","Tx":"#3C3836","Hi":"#B57614","Custom":true}
+  {"Name":"Ayu Light","FN":"'Inter', 'Source Sans 3', sans-serif","FS":16,"Bg":"#FAFAFA","Tx":"#5C6773","Hi":"#D96C00"}
 ]
