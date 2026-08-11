@@ -251,6 +251,25 @@ async function main() {
         for (const cols of [1, 2]) {
             await page.evaluate((c) => handleCommand('view_set:columns:' + c), cols);
             await settled(page);
+
+            // Seek only once the page map has actually counted.
+            //
+            // settled() waits for the geometry to stop moving, which is not the same
+            // thing: the view can be perfectly still while PageMap.count() is still the
+            // seed estimate for a single range. Straight after a column switch that count
+            // can be tiny, and goto(0.6 * 1) is goto(0) -- which drops the reader at the
+            // front of the book and fails the guard below for a reason that has nothing
+            // to do with line spacing, the very thing this section is testing.
+            //
+            // Seen once in a full-gate run and not reproducible in isolation across three
+            // attempts, which is what a load-sensitive race looks like from the outside.
+            // A flaky gate is worse than a slow one here: this suite blocks the build.
+            await page.waitForFunction(
+                () => typeof PageMap !== 'undefined'
+                    && typeof PageMap.count === 'function'
+                    && PageMap.count() > 10,
+                { timeout: 20000, polling: 150 });
+            const pageCount = await page.evaluate(() => PageMap.count());
             await page.evaluate(() => { PageMap.goto(Math.floor(PageMap.count() * 0.6)); });
             await settled(page);
             const before = await page.evaluate(visibleBlocks);
@@ -262,7 +281,8 @@ async function main() {
             // thrown out of the book entirely.
             assert(before.length > 0 && before[0] > 100,
                 cols + '-col: the reader really is inside the book before the change (block ' +
-                (before[0] === undefined ? 'none' : before[0]) + ')');
+                (before[0] === undefined ? 'none' : before[0]) +
+                ', seeking 60% of ' + pageCount + ' pages)');
             await page.evaluate(() => handleCommand('set_line_spacing:2.0'));
             await settled(page);
             const after = await page.evaluate(visibleBlocks);
