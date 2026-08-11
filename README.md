@@ -223,6 +223,7 @@ Preferences live under `%LocalAppData%\TypoZen_Cache\`.
 
 | Setting | Default | Meaning |
 |--------|---------|---------|
+| **Autosave** (File menu) | **Off** | Saves a dirty document ~2s after typing stops. Only for a tab that **already has a file** — an unattended save must never raise a Save As dialog, so an untitled buffer stays untitled and is covered by session restore instead. A book is never written. Goes through the same save path as `Ctrl+S`, so the atomic write, per-tab line-ending fidelity and the overwrite-loss guard all apply |
 | **Remember unsaved documents between sessions** | **Off** | When on, dirty/untitled tab bodies are stored for restore. When off, nothing document-like is kept in the cache beyond what you explicitly save. |
 | **Keep recent files list** | On | File → Open Recent |
 | **Clear Recent Searches** | — | Drops the last-8 Search history and the restored Search-box text only |

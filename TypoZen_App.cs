@@ -846,6 +846,7 @@ namespace TypoZen
             BindClick("mParaLoose",   (s, e) => SetParaSpacing(3));
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
+            BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
             BindClick("mWordWrap", (s, e) =>
             {
                 // Disabled in the menu when wrap has no effect (Pages / Reader / epub).
@@ -3203,7 +3204,7 @@ namespace TypoZen
                     "{{\"state\":\"{0}\",\"width\":{1},\"height\":{2},\"left\":{3},\"top\":{4},\"zoom\":{5}," +
                     "\"chrome\":\"{6}\",\"wordWrap\":{7},\"statusBar\":{8}," +
                     "\"scrubber\":{21},\"lineSpacing\":{22},\"paraSpacing\":{23}," +
-                    "\"justified\":{24},\"sidebarAutoHide\":{25}," +
+                    "\"justified\":{24},\"sidebarAutoHide\":{25},\"autosave\":{26}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
                     "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20}}}",
@@ -3215,7 +3216,8 @@ namespace TypoZen
                     _col2Rect.HasValue ? _col2Rect.Value.Width : 0, _col2Rect.HasValue ? _col2Rect.Value.Height : 0, _col2Rect.HasValue ? _col2Rect.Value.Left : 0, _col2Rect.HasValue ? _col2Rect.Value.Top : 0,
                     _col1Rect.HasValue ? _col1Rect.Value.Width : 0, _col1Rect.HasValue ? _col1Rect.Value.Height : 0, _col1Rect.HasValue ? _col1Rect.Value.Left : 0, _col1Rect.HasValue ? _col1Rect.Value.Top : 0,
                     _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing,
-                    _justified ? "true" : "false", _sidebarAutoHide ? "true" : "false");
+                    _justified ? "true" : "false", _sidebarAutoHide ? "true" : "false",
+                    _autosave ? "true" : "false");
 
                 WriteStateFileAtomic(path, json);
             }
@@ -3339,6 +3341,8 @@ namespace TypoZen
                 var mJust = Regex.Match(json, @"\""justified\""\s*:\s*(true|false)");
                 if (mJust.Success) _justified = mJust.Groups[1].Value == "true";
                 var mSideAuto = Regex.Match(json, @"\""sidebarAutoHide\""\s*:\s*(true|false)");
+                var mAuto = Regex.Match(json, @"\""autosave\""\s*:\s*(true|false)");
+                if (mAuto.Success) _autosave = mAuto.Groups[1].Value == "true";
                 if (mSideAuto.Success) _sidebarAutoHide = mSideAuto.Groups[1].Value == "true";
                 var mBodies = Regex.Match(json, @"\""sessionBodies\""\s*:\s*(true|false)");
                 if (mBodies.Success) _sessionRestoreContent = mBodies.Groups[1].Value == "true";
@@ -4017,6 +4021,7 @@ if (_btnColumnToggle != null)
                     if (_lblReadingTime != null) _lblReadingTime.Text = parts[2] + " min read";
                     bool dirty = parts[3] == "true";
                     _isDirty = dirty;
+                    if (dirty) ArmAutosave();
                     // Not while a tab operation is in flight. Stats are debounced and the
                     // page is mid-swap, so this flag describes whichever document the page
                     // happens to hold -- not the tab this index now names. A book being
@@ -6030,6 +6035,67 @@ if (_btnColumnToggle != null)
             if (!_applyingRestoredSettings) SaveWindowState();
         }
 
+        /// <summary>
+        /// Save a dirty document a moment after typing stops. Off unless asked for.
+        ///
+        /// Off by default because it changes what a file on disk means: with it on, closing
+        /// without saving is no longer a way to discard an experiment. That is a choice
+        /// about the reader's own files and not one to make for them.
+        ///
+        /// Deliberately narrow. It runs only for a tab that already has a path, is dirty,
+        /// and is not a book -- so it can never raise a Save As dialog at rest, which is
+        /// what an unattended save must never do. An untitled buffer stays untitled and is
+        /// covered by session restore instead; a book cannot be written at all.
+        ///
+        /// It goes through SaveTabNow like every other save, so the atomic write, the
+        /// per-tab line-ending fidelity and the overwrite-loss guard all apply unchanged.
+        /// The guard can still speak up -- it fires only when a save would destroy a lot of
+        /// text, and that is worth interrupting for however the save was triggered.
+        /// </summary>
+        private bool _autosave;
+        private DispatcherTimer _autosaveTimer;
+        private const int AutosaveIdleMs = 2000;
+
+        private void SetAutosave(bool on)
+        {
+            _autosave = on;
+            SetMenuChecked("mAutosave", on);
+            if (!on && _autosaveTimer != null) _autosaveTimer.Stop();
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        /// <summary>Restart the idle clock. Typing pushes the save out, it does not stack.</summary>
+        private void ArmAutosave()
+        {
+            if (!_autosave) return;
+            if (_autosaveTimer == null)
+            {
+                _autosaveTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(AutosaveIdleMs)
+                };
+                _autosaveTimer.Tick += (s, e) => { _autosaveTimer.Stop(); AutosaveNow(); };
+            }
+            _autosaveTimer.Stop();
+            _autosaveTimer.Start();
+        }
+
+        private void AutosaveNow()
+        {
+            if (!_autosave) return;
+            if (_tabOpInProgress || _scriptBlockDepth > 0) { ArmAutosave(); return; }
+            if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return;
+            var tab = _tabs[_activeTabIndex];
+            if (tab == null || !tab.IsDirty) return;
+            if (string.IsNullOrEmpty(tab.FilePath)) return;      // never prompt for a path
+            if (IsBookTab(tab)) return;                          // a book is never written
+            // The buffer must be current, or autosave would write a stale copy over the
+            // file it is meant to be protecting. A failed pull means try again later.
+            if (!SyncActiveTabFromEditor()) { ArmAutosave(); return; }
+            if (!tab.IsDirty) return;
+            try { SaveTabNow(tab, false); } catch { }
+        }
+
         // A stale state file naming a fifth preset must not throw on startup.
         private static int Clamp4(int i) { return i < 0 ? 0 : (i > 3 ? 3 : i); }
 
@@ -6052,6 +6118,7 @@ if (_btnColumnToggle != null)
             {
                 SetChromeAutoHide(_chromeAutoHide);
                 SetSidebarAutoHide(_sidebarAutoHide);
+                SetAutosave(_autosave);
                 SetStatusBarVisible(_statusBarVisible);
                 SetScrubberVisible(_scrubberVisible);
                 SetMenuChecked("mSessionRestoreContent", _sessionRestoreContent);

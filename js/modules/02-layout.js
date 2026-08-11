@@ -874,6 +874,10 @@
         function paintScrubberTicks() {
             const host = document.getElementById('page-scrubber');
             if (!host) return;
+            // No marks, no work. This runs from updatePageScrubber, which runs on every page
+            // turn, and PageMap.ensure/count can force a measurement -- not something to do
+            // on behalf of a list that is empty.
+            if (!_marks.length) { host.style.removeProperty('--tick-image'); return; }
             let stops = [];
             try {
                 if (isPaginatedLayout() && typeof PageMap !== 'undefined' && PageMap.ensure

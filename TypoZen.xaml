@@ -433,6 +433,14 @@
                             <MenuItem x:Name="mExportHtml" Header="Export as _HTML..."/>
                             <MenuItem x:Name="mExportPdf" Header="_Print / Export PDF..." InputGestureText="Ctrl+P"/>
                             <Separator/>
+                            <!-- Off by default: with it on, closing without saving stops
+                                 being a way to discard an experiment, which is a decision
+                                 about the reader's own files. Only ever saves a document
+                                 that already has a path — an unattended save must never
+                                 raise a Save As dialog. -->
+                            <MenuItem x:Name="mAutosave" Header="_Autosave" IsCheckable="True" IsChecked="False"
+                                      ToolTip="Save a moment after typing stops. Only for documents that already have a file."/>
+                            <Separator/>
                             <MenuItem Header="Pri_vacy">
                                 <MenuItem x:Name="mSessionRestoreContent" Header="Remember _unsaved documents between sessions" IsCheckable="True" IsChecked="False"/>
                                 <MenuItem x:Name="mRecentEnabled" Header="Keep _recent files list" IsCheckable="True" IsChecked="True"/>

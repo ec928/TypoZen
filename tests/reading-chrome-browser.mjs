@@ -270,10 +270,28 @@ async function main() {
                     && PageMap.count() > 10,
                 { timeout: 20000, polling: 150 });
             const pageCount = await page.evaluate(() => PageMap.count());
-            await page.evaluate(() => { PageMap.goto(Math.floor(PageMap.count() * 0.6)); });
-            await settled(page);
-            const before = await page.evaluate(visibleBlocks);
-            const perPage = before.length;
+
+            // Seek, then check it landed, and seek again if it did not.
+            //
+            // Waiting for the page map to have counted was not enough on its own: it is
+            // ready here -- 384 pages -- and the view can still be at block 0 afterwards,
+            // roughly one run in three. goto is asynchronous against a layout that may be
+            // mounting a different range, so a single attempt is a race the suite loses
+            // occasionally and then reports as a spacing bug, which it is not.
+            //
+            // Bounded, and it still fails if the seek genuinely never lands, so this makes
+            // the precondition reliable rather than lenient. The underlying reason goto can
+            // be dropped is worth finding; it is not this suite's to diagnose.
+            let before = [], perPage = 0;
+            for (let attempt = 0; attempt < 4; attempt++) {
+                await page.evaluate(() => { PageMap.goto(Math.floor(PageMap.count() * 0.6)); });
+                await settled(page);
+                before = await page.evaluate(visibleBlocks);
+                perPage = before.length;
+                if (before.length > 0 && before[0] > 100) break;
+                info(cols + '-col: seek did not land (block ' +
+                    (before[0] === undefined ? 'none' : before[0]) + '), retrying');
+            }
             // Guard against the check passing for the wrong reason. An earlier version of
             // the deferred correction dragged the view back to the front of the book while
             // the previous iteration was still settling, so "before" and "after" agreed at
