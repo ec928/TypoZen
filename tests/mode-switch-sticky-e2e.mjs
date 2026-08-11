@@ -65,7 +65,11 @@ window.__tzTest = {
 })();
 `;
     const newMain = '<script>' + main[1] + '\n' + inject + '\n</script>';
-    return rawHtml.replace(main[0], newMain);
+    // A function replacement. With a string one, any $&, $` or $' inside the engine source
+    // being spliced in is read by String.replace as a reference to the match, and the bundle
+    // is silently rewritten into something that will not parse. The symptom is a syntax
+    // error at a line number in a generated fixture that corresponds to no source file.
+    return rawHtml.replace(main[0], () => newMain);
 }
 
 function lastStatusCaret() {

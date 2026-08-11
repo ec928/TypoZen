@@ -405,6 +405,19 @@
             // not their selection: it read "Mark this page" over highlighted words and
             // then highlighted them -- the same lie as before, wearing a different hat.
             try { document.addEventListener('selectionchange', refreshMarkState); } catch (eSel) {}
+            try { wireSelPop(); } catch (eSp) {}
+            // The popover follows the selection, but only once the reader has finished
+            // making it: raising it on every selectionchange makes it flicker across the
+            // text as the mouse drags.
+            try {
+                document.addEventListener('mouseup', function () {
+                    setTimeout(function () { try { showSelPop(); } catch (e) {} }, 10);
+                });
+                document.addEventListener('selectionchange', function () {
+                    const s = window.getSelection();
+                    if (!s || s.isCollapsed) { try { hideSelPop(); } catch (e) {} }
+                });
+            } catch (eSp2) {}
             // Preview scroll must update sticky from the viewport, or Preview→Source
             // restores an old caret far from what was on screen.
             if (mainContainer) {
@@ -653,6 +666,12 @@
                     // After an inline load_content: host already has the path; jump when laid out.
                     const resumeAt = parseInt(msg.substring(10), 10);
                     if (isFinite(resumeAt) && resumeAt > 0) scheduleResumeAtBlock(resumeAt);
+                }
+                else if (msg.startsWith("definition:")) {
+                    // "definition:<installed 0|1>	<word>	<text>"
+                    const parts = msg.substring(11).split('	');
+                    try { showDefinition(parts[1] || '', parts[2] || '', parts[0] === '1'); }
+                    catch (eDf) {}
                 }
                 else if (msg.startsWith("marks_load:")) {
                     // This document's stored marks. Deferred a beat: the host sends it in the

@@ -122,6 +122,15 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your *reading position*, which is automatic, written atomically as you read, and unaffected by any of this.
 
+### Looking a word up
+Select text and a popover appears beside it — **Highlight**, **Define**, **Find in document**. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
+
+**Nothing is bundled and nothing is downloaded.** A dictionary is a file you choose: `dictionary.tsv` (word, tab, definition) or `dictionary.json` (`{"word": "definition"}`), beside `TypoZen.exe` or in the cache folder. TSV first, because that is what a WordNet or Wiktionary export converts to in one line of script, and because a 40 MB JSON parse on startup would be felt. Lookups are answered by the **shell**, not the page: a dictionary worth having is tens of megabytes, and marshalling that across the bridge to sit in the document's memory would cost more than the feature.
+
+- A reader selects the word as it appears on the page, which is inflected more often than not, so a miss retries the obvious stems — `walking` → `walk`, `bodies` → `body`
+- With no dictionary installed it says so, and how to install one
+- **Occurrence count works with no dictionary at all** — "appears 2,135 times in this document" is often the question actually being asked, especially in a novel
+
 ### Themes & typography
 **25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customize Theme…** option lives).
 

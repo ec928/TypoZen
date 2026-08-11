@@ -2205,6 +2205,111 @@ namespace TypoZen
             return -1;
         }
 
+        // ---- Dictionary -----------------------------------------------------------
+        //
+        // Lookups are answered here rather than in the page because a dictionary worth
+        // having is tens of megabytes, and marshalling that across the WebView bridge to
+        // sit in the document's memory would cost more than the feature is worth. The page
+        // asks for one word and gets one answer.
+        //
+        // Nothing is bundled and nothing is downloaded -- consistent with an app that
+        // measures its own network traffic and finds it silent. A dictionary is a file the
+        // reader chooses: "dictionary.tsv" (word, tab, definition) or "dictionary.json"
+        // ({"word": "definition"}), beside the exe or in the cache folder. TSV first
+        // because it is what a WordNet or Wiktionary export converts to in one line of
+        // script, and because a 40 MB JSON parse on startup would be felt.
+        private Dictionary<string, string> _dictionary;
+        private bool _dictionaryChecked;
+
+        private void LoadDictionary()
+        {
+            if (_dictionaryChecked) return;
+            _dictionaryChecked = true;
+            foreach (string dir in new[] { CacheDir(), _appDir })
+            {
+                foreach (string name in new[] { "dictionary.tsv", "dictionary.json" })
+                {
+                    string path;
+                    try { path = Path.Combine(dir, name); } catch { continue; }
+                    if (!File.Exists(path)) continue;
+                    try
+                    {
+                        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        if (name.EndsWith(".tsv", StringComparison.OrdinalIgnoreCase))
+                        {
+                            foreach (string line in File.ReadLines(path))
+                            {
+                                int tab = line.IndexOf('	');
+                                if (tab <= 0) continue;
+                                string w = line.Substring(0, tab).Trim();
+                                if (w.Length == 0 || map.ContainsKey(w)) continue;
+                                map[w] = line.Substring(tab + 1).Trim();
+                            }
+                        }
+                        else
+                        {
+                            // Deliberately not a JSON parser: this is a flat string map, and
+                            // the app has no serializer dependency to reach for.
+                            string text = File.ReadAllText(path, Encoding.UTF8);
+                            // Verbatim string: the pattern is full of backslashes and doubling
+                            // every one of them is how the previous attempt at this line
+                            // failed to compile.
+                            foreach (Match m in Regex.Matches(text,
+                                @"""((?:[^""\\]|\\.)*)""\s*:\s*""((?:[^""\\]|\\.)*)"""))
+                            {
+                                string w = Regex.Unescape(m.Groups[1].Value).Trim();
+                                if (w.Length == 0 || map.ContainsKey(w)) continue;
+                                map[w] = Regex.Unescape(m.Groups[2].Value).Trim();
+                            }
+                        }
+                        if (map.Count > 0) { _dictionary = map; return; }
+                    }
+                    catch { }
+                }
+            }
+        }
+
+        /// <summary>One word in, one definition out. Empty when there is nothing to look in.</summary>
+        private void AnswerDefinition(string word)
+        {
+            LoadDictionary();
+            string def = "";
+            if (_dictionary != null && !string.IsNullOrEmpty(word))
+            {
+                if (!_dictionary.TryGetValue(word, out def))
+                {
+                    // A reader selects the word as it appears on the page, which is inflected
+                    // far more often than not. Trying the obvious reductions is the difference
+                    // between a dictionary that answers and one that shrugs at "walking".
+                    foreach (string stem in WordStems(word))
+                    {
+                        if (_dictionary.TryGetValue(stem, out def)) break;
+                    }
+                }
+            }
+            SendMsg("definition:" + (_dictionary != null ? "1" : "0") + "	" + word + "	" + (def ?? ""));
+        }
+
+        private static IEnumerable<string> WordStems(string w)
+        {
+            if (w.Length > 3 && w.EndsWith("s", StringComparison.OrdinalIgnoreCase))
+                yield return w.Substring(0, w.Length - 1);
+            if (w.Length > 4 && w.EndsWith("es", StringComparison.OrdinalIgnoreCase))
+                yield return w.Substring(0, w.Length - 2);
+            if (w.Length > 4 && w.EndsWith("ed", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return w.Substring(0, w.Length - 2);
+                yield return w.Substring(0, w.Length - 1);
+            }
+            if (w.Length > 5 && w.EndsWith("ing", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return w.Substring(0, w.Length - 3);
+                yield return w.Substring(0, w.Length - 3) + "e";
+            }
+            if (w.Length > 4 && w.EndsWith("ly", StringComparison.OrdinalIgnoreCase))
+                yield return w.Substring(0, w.Length - 2);
+        }
+
         // ---- Bookmarks ------------------------------------------------------------
         //
         // The host is a keyed blob store and deliberately nothing more. A mark is a block
@@ -4060,6 +4165,10 @@ if (_btnColumnToggle != null)
                         try { RememberBookPosition(Path.GetFullPath(p), block); } catch { }
                     }
                 }
+            }
+            else if (msg.StartsWith("define:"))
+            {
+                AnswerDefinition(msg.Substring(7).Trim());
             }
             else if (msg.StartsWith("mark_state:"))
             {

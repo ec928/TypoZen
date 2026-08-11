@@ -217,6 +217,17 @@
     </div>
 
     <!-- Document Find & Replace (editor/source only) -->
+    <!-- Selecting text raises this beside the selection: the gesture every reader uses,
+         and the thing that makes highlighting discoverable without the sidebar open. -->
+    <div id="selPop" hidden role="dialog" aria-label="Selected text">
+        <div class="selpop-actions">
+            <button type="button" id="selPopMark" class="selpop-btn"><span aria-hidden="true">▮</span> Highlight</button>
+            <button type="button" id="selPopDefine" class="selpop-btn">Define</button>
+            <button type="button" id="selPopFind" class="selpop-btn">Find in document</button>
+        </div>
+        <div id="selPopBody" class="selpop-body" hidden></div>
+    </div>
+
     <div id="findBar" role="search" aria-label="Find and Replace" tabindex="-1">
         <div class="find-row">
             <label for="findInput">Find</label>

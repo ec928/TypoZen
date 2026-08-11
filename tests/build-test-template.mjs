@@ -63,9 +63,18 @@ function main() {
         ENGINE_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     );
 
+    // Function replacements, not string ones.
+    //
+    // String.replace treats $&, $`, $' and $1 in a *string* replacement as references to
+    // the match, so any engine or stylesheet source containing one is spliced into the
+    // output wrong. That is not hypothetical: `word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`
+    // is how you escape a word for a regex, it appears in the engine, and it silently
+    // substituted the entire matched engine block into the middle of the bundle. The
+    // fixture came out corrupt and the only symptom was this script's own sanity check
+    // failing with "the largest inline script is not the engine bundle".
     const out = banner + template
-        .replace(LINK_TAG, '<style id="inlined-typozen-css">\n' + css + '\n</style>')
-        .replace(engineBlockRe, ENGINE_BEGIN + '\n<script>\n' + js + '\n</script>\n' + ENGINE_END);
+        .replace(LINK_TAG, () => '<style id="inlined-typozen-css">\n' + css + '\n</style>')
+        .replace(engineBlockRe, () => ENGINE_BEGIN + '\n<script>\n' + js + '\n</script>\n' + ENGINE_END);
 
     // The suites select the largest inline <script>; make sure that is the app.
     const scripts = [...out.matchAll(/<script>([\s\S]*?)<\/script>/gi)].map(m => m[1]);

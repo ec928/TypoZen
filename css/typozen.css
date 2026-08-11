@@ -1049,6 +1049,52 @@
             text-underline-offset: 2px;
         }
 
+        /* --- Selection popover ---------------------------------------------------
+           Anchored to the selection rather than parked in chrome: looking a word up
+           is something you do without leaving the sentence, which is the whole point
+           of it. Chrome metrics, not document metrics -- it is a menu surface. */
+        #selPop {
+            position: fixed;
+            z-index: 40;
+            max-width: 380px;
+            background: var(--surface, #27272A);
+            border: 1px solid var(--border, #3F3F46);
+            border-radius: 6px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+            font-family: var(--ui-font);
+            font-size: var(--ui-fs);
+            color: var(--tx, #F4F4F5);
+            zoom: calc(1 / var(--host-zoom, 1));
+        }
+        #selPop[hidden] { display: none; }
+        .selpop-actions { display: flex; gap: 2px; padding: 4px; }
+        .selpop-btn {
+            display: flex; align-items: center; gap: 5px;
+            background: none; border: 0; border-radius: 4px;
+            padding: 5px 9px; cursor: pointer;
+            font-family: var(--ui-font); font-size: var(--ui-fs);
+            color: var(--tx-muted, #A1A1AA); white-space: nowrap;
+        }
+        .selpop-btn:hover { background: rgba(128,128,128,0.18); color: var(--tx, #F4F4F5); }
+        .selpop-btn:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: -2px; }
+        #selPopMark span { color: var(--mark-ink, #E8A33D); font-size: 11px; }
+        .selpop-body {
+            border-top: 1px solid var(--border, #3F3F46);
+            padding: 8px 10px 10px;
+            max-height: 240px; overflow-y: auto;
+            font-size: var(--ui-fs-dense); line-height: 1.5;
+            color: var(--tx-muted, #A1A1AA);
+        }
+        .selpop-body[hidden] { display: none; }
+        .selpop-word { color: var(--tx, #F4F4F5); font-weight: 600; font-size: var(--ui-fs); }
+        .selpop-def { margin-top: 4px; color: var(--tx, #F4F4F5); }
+        .selpop-hint { margin-top: 6px; opacity: 0.75; }
+        .selpop-hint code {
+            font-family: 'Cascadia Mono', Consolas, monospace;
+            background: rgba(128,128,128,0.18); border-radius: 3px; padding: 0 3px;
+        }
+        .selpop-occ { margin-top: 6px; }
+
         /* Block Elements in Live Preview */
         .block {
             position: relative;

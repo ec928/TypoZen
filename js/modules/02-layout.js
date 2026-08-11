@@ -1389,6 +1389,186 @@
             } catch (e2) {}
         }
 
+        /* ---- Selection popover and dictionary lookup ---------------------------
+           Reading a novel and not being able to ask what a word means is a real gap,
+           and the gesture belongs beside the sentence rather than in a panel you have
+           to look away to. It carries Highlight too, which is what finally makes
+           annotating discoverable without the Marks pane open.
+
+           Definitions come from the host, not from here: a dictionary worth having is
+           tens of megabytes, and pushing that across the bridge to sit in the page
+           would cost more than the feature. */
+
+        let _selPopWord = '';
+
+        function hideSelPop() {
+            const el = document.getElementById('selPop');
+            if (el) { el.hidden = true; const b = document.getElementById('selPopBody'); if (b) b.hidden = true; }
+        }
+
+        /** The single word under a selection, if that is what it is. */
+        function selectedWord(text) {
+            const t = String(text || '').trim();
+            if (!t || t.length > 40) return '';
+            // Letters, apostrophes and hyphens: "well-being" and "don't" are words.
+            return /^[\p{L}][\p{L}'’-]*$/u.test(t) ? t.replace(/[’']s$/u, '') : '';
+        }
+
+        /** How often the selected word appears in this document -- always available. */
+        function occurrenceCount(word) {
+            if (!word) return 0;
+            let n = 0;
+            try {
+                // A function replacement, deliberately, where the idiomatic escape would be
+                // the string '\\$&'. Every tool that inlines this engine into an HTML fixture
+                // does it with String.replace, and a literal $& in the *source* is read there
+                // as "the matched text" -- which spliced the whole engine bundle into the
+                // middle of itself. The fixture came out corrupt and the only symptom was a
+                // sanity check failing in a different file.
+                const re = new RegExp('\\b' + word.replace(/[.*+?^${}()|[\]\\]/g,
+                    function (ch) { return '\\' + ch; }) + '\\b', 'giu');
+                const blocks = DocumentModel.blocks;
+                for (let i = 0; i < blocks.length; i++) {
+                    const m = String(blocks[i].raw || '').match(re);
+                    if (m) n += m.length;
+                }
+            } catch (e) { return 0; }
+            return n;
+        }
+
+        function showSelPop() {
+            const pop = document.getElementById('selPop');
+            if (!pop) return;
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || !sel.rangeCount) { hideSelPop(); return; }
+            const r = sel.getRangeAt(0);
+            const host = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+            if (!host || !editor || !editor.contains(host)) { hideSelPop(); return; }
+            const rect = r.getBoundingClientRect();
+            if (!rect || (!rect.width && !rect.height)) { hideSelPop(); return; }
+
+            _selPopWord = selectedWord(r.toString());
+            const define = document.getElementById('selPopDefine');
+            // Define is for a word. Offering it over a paragraph would be a button that
+            // cannot work, which is worse than one that is not there.
+            if (define) define.hidden = !_selPopWord;
+
+            const body = document.getElementById('selPopBody');
+            if (body) { body.hidden = true; body.innerHTML = ''; }
+            pop.hidden = false;
+            // Above the selection, or below when there is no room. Clamped to the window
+            // so a selection at the edge does not push it off screen.
+            const w = pop.offsetWidth || 240, h = pop.offsetHeight || 40;
+            let x = rect.left + rect.width / 2 - w / 2;
+            let y = rect.top - h - 8;
+            if (y < 4) y = rect.bottom + 8;
+            x = Math.max(6, Math.min(x, window.innerWidth - w - 6));
+            pop.style.left = Math.round(x) + 'px';
+            pop.style.top = Math.round(y) + 'px';
+        }
+
+        /** Render whatever the host found, or say plainly that there is nothing to look in. */
+        function showDefinition(word, definition, installed) {
+            const body = document.getElementById('selPopBody');
+            if (!body) return;
+            body.innerHTML = '';
+            const head = document.createElement('div');
+            head.className = 'selpop-word';
+            head.textContent = word;
+            body.appendChild(head);
+
+            if (definition) {
+                const d = document.createElement('div');
+                d.className = 'selpop-def';
+                d.textContent = definition;
+                body.appendChild(d);
+            } else if (!installed) {
+                // No dictionary is a setup state, not an error, so it says what to do.
+                const h = document.createElement('div');
+                h.className = 'selpop-hint';
+                h.innerHTML = 'No dictionary installed. Put a <code>dictionary.tsv</code> ' +
+                    '(word, tab, definition) or <code>dictionary.json</code> beside TypoZen.exe ' +
+                    'or in the cache folder, and lookups will use it. Nothing is downloaded.';
+                body.appendChild(h);
+            } else {
+                const h = document.createElement('div');
+                h.className = 'selpop-hint';
+                h.textContent = 'Not in the installed dictionary.';
+                body.appendChild(h);
+            }
+
+            // Always useful, dictionary or not: where else this word is in what you are
+            // reading. In a novel that is often the question actually being asked.
+            const n = occurrenceCount(word);
+            if (n > 0) {
+                const o = document.createElement('div');
+                o.className = 'selpop-occ';
+                o.textContent = n === 1
+                    ? 'Appears once in this document.'
+                    : 'Appears ' + n + ' times in this document.';
+                body.appendChild(o);
+            }
+            body.hidden = false;
+            showSelPopKeepPosition();
+        }
+
+        /** Re-clamp after the body grows, without moving it away from the selection. */
+        function showSelPopKeepPosition() {
+            const pop = document.getElementById('selPop');
+            if (!pop || pop.hidden) return;
+            const h = pop.offsetHeight || 40;
+            let y = parseFloat(pop.style.top) || 0;
+            if (y + h > window.innerHeight - 6) y = Math.max(6, window.innerHeight - h - 6);
+            pop.style.top = Math.round(y) + 'px';
+        }
+
+        function wireSelPop() {
+            const pop = document.getElementById('selPop');
+            if (!pop || pop.__tzWired) return;
+            pop.__tzWired = true;
+            // mousedown/preventDefault throughout: the popover taking focus would collapse
+            // the selection its buttons are about, which is the same trap the Marks pane
+            // button fell into.
+            pop.addEventListener('mousedown', function (e) { e.preventDefault(); });
+
+            const mark = document.getElementById('selPopMark');
+            if (mark) mark.addEventListener('click', function () {
+                try { annotateSelection(); } catch (e) {}
+                hideSelPop();
+            });
+            const find = document.getElementById('selPopFind');
+            if (find) find.addEventListener('click', function () {
+                const q = (window.getSelection() || '').toString().trim();
+                hideSelPop();
+                if (!q) return;
+                try {
+                    const sb = document.getElementById('sidebar');
+                    if (sb) sb.classList.remove('collapsed');
+                    postMsg('sidebar_state:1');
+                    if (typeof switchTab === 'function') switchTab('search');
+                    const input = document.getElementById('sidebarSearchInput');
+                    if (input) {
+                        input.value = q;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                } catch (e) {}
+            });
+            const define = document.getElementById('selPopDefine');
+            if (define) define.addEventListener('click', function () {
+                if (!_selPopWord) return;
+                try { postMsg('define:' + _selPopWord); } catch (e) {}
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !pop.hidden) hideSelPop();
+            }, true);
+            document.addEventListener('mousedown', function (e) {
+                if (pop.hidden) return;
+                if (e.target && e.target.closest && e.target.closest('#selPop')) return;
+                hideSelPop();
+            }, true);
+        }
+
         /** Marks -> one line for the host, which stores it against the document's path. */
         function serializeMarks(marks) {
             const out = [];
