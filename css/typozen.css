@@ -1057,7 +1057,16 @@
             position: fixed;
             z-index: 40;
             max-width: 380px;
-            background: var(--surface, #27272A);
+            /* Opaque, and the reason is worth writing down: --surface is a translucent
+               wash -- rgba(255,255,255,0.05) on a dark theme -- which is right for the
+               sidebar, because that sits on the page background and the wash lifts it.
+               This floats over the document, so a 5% wash left the text underneath showing
+               straight through and the popover unreadable. The page colour goes down
+               first, opaque, and the same wash is composited on top so it still reads as
+               a raised surface rather than a hole. The search-history dropdown reached the
+               same conclusion in the same place. */
+            background-color: var(--bg, #18181B);
+            background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
             border: 1px solid var(--border, #3F3F46);
             border-radius: 6px;
             box-shadow: 0 4px 14px rgba(0,0,0,0.35);

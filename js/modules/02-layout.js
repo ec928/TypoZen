@@ -1497,9 +1497,13 @@
                 // No dictionary is a setup state, not an error, so it says what to do.
                 const h = document.createElement('div');
                 h.className = 'selpop-hint';
-                h.innerHTML = 'No dictionary installed. Put a <code>dictionary.tsv</code> ' +
-                    '(word, tab, definition) or <code>dictionary.json</code> beside TypoZen.exe ' +
-                    'or in the cache folder, and lookups will use it. Nothing is downloaded.';
+                // A setup state, not an error, so it says what to do rather than what went
+                // wrong -- and names the script, because "supply a dictionary file" is not
+                // an instruction anyone can act on without one.
+                h.innerHTML = 'No dictionary installed. TypoZen bundles none and downloads ' +
+                    'nothing. Run <code>tools\\Make-Dictionary.ps1</code> against a WordNet ' +
+                    'download to build <code>dictionary.tsv</code>, or drop your own ' +
+                    '(word, tab, definition) beside TypoZen.exe or in the cache folder.';
                 body.appendChild(h);
             } else {
                 const h = document.createElement('div');

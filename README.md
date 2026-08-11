@@ -125,7 +125,12 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 ### Looking a word up
 Select text and a popover appears beside it — **Highlight**, **Define**, **Find in document**. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
 
-**Nothing is bundled and nothing is downloaded.** A dictionary is a file you choose: `dictionary.tsv` (word, tab, definition) or `dictionary.json` (`{"word": "definition"}`), beside `TypoZen.exe` or in the cache folder. TSV first, because that is what a WordNet or Wiktionary export converts to in one line of script, and because a 40 MB JSON parse on startup would be felt. Lookups are answered by the **shell**, not the page: a dictionary worth having is tens of megabytes, and marshalling that across the bridge to sit in the document's memory would cost more than the feature.
+**Nothing is bundled and nothing is downloaded.** A dictionary is a file you choose: `dictionary.tsv` (word, tab, definition) or `dictionary.json` (`{"word": "definition"}`), beside `TypoZen.exe` or in the cache folder. `tools\Make-Dictionary.ps1` builds one from a **WordNet** download — free, permissively licensed, ~150k entries, one file — so you supply the download and it does the parsing:
+
+```powershell
+.	ools\Make-Dictionary.ps1 -Source C:\wordnet\dict
+```
+ TSV first, because that is what a WordNet or Wiktionary export converts to in one line of script, and because a 40 MB JSON parse on startup would be felt. Lookups are answered by the **shell**, not the page: a dictionary worth having is tens of megabytes, and marshalling that across the bridge to sit in the document's memory would cost more than the feature.
 
 - A reader selects the word as it appears on the page, which is inflected more often than not, so a miss retries the obvious stems — `walking` → `walk`, `bodies` → `body`
 - With no dictionary installed it says so, and how to install one
