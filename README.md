@@ -527,6 +527,7 @@ Tests are split into four tiers depending on what they need to observe:
 - **jsdom** covers the document model, parse checks, and logic that doesn't depend on a layout engine.
 - **Browser** suites load `TypoZen_Template.html` in headless Chrome to assert real layout, geometry, and search performance.
 - **Application** suites use `puppeteer-core` to attach to `TypoZen.exe --debug` via the DevTools protocol, verifying WPF shell interactions and complex paginated layout behaviours.
+- The bookmark, annotation and privacy suites (`marks-surfaces-app`, `annotations-app`, `privacy-app`) are written against one recurring failure shape rather than against their features: **two things deciding one answer**. They assert that *pressing a control does what the control said it would*, and — for anything that claims to suppress a write — they run a **control** first, so a green result means the suppression did something rather than that the trace was never written.
 - Some of them also drive the **chrome from outside the process** through `tests/shell-ui.ps1`, which reports menus, tab chips and dialogs over UI Automation as JSON. That is the only tier that can see what is actually painted: the page knows nothing about tabs, and the session file is written from the same model the model tests read, so both agreed with each other while the tab strip disagreed with both — see `tab-strip-paint-app.mjs`.
 
 ### Debugging
