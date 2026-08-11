@@ -442,6 +442,15 @@
                                       ToolTip="Save a moment after typing stops. Only for documents that already have a file."/>
                             <Separator/>
                             <MenuItem Header="Pri_vacy">
+                                <!-- One switch instead of three: while it is on, nothing that
+                                     names a document, its contents, its position or its history
+                                     is written. View settings (window, theme, spacing) still are
+                                     — they describe the app, not the reader. Forward-looking:
+                                     it stops new writes and does not delete what is already
+                                     stored; Clear Stored Data is still how you do that. -->
+                                <MenuItem x:Name="mPrivacyMode" Header="_Privacy Mode" IsCheckable="True" IsChecked="False"
+                                          ToolTip="Write nothing that names a document: no session, no reading positions, no bookmarks, no recent files, no autosave"/>
+                                <Separator/>
                                 <MenuItem x:Name="mSessionRestoreContent" Header="Remember _unsaved documents between sessions" IsCheckable="True" IsChecked="False"/>
                                 <MenuItem x:Name="mRecentEnabled" Header="Keep _recent files list" IsCheckable="True" IsChecked="True"/>
                                 <Separator/>

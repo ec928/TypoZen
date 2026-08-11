@@ -847,6 +847,7 @@ namespace TypoZen
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
+            BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
             BindClick("mWordWrap", (s, e) =>
             {
                 // Disabled in the menu when wrap has no effect (Pages / Reader / epub).
@@ -2389,6 +2390,8 @@ namespace TypoZen
 
         private void RememberBookmarks(string docPath, string payload)
         {
+            // Marks made in privacy mode live for the session and are not written.
+            if (SuppressDocumentTraces()) return;
             if (string.IsNullOrEmpty(docPath)) return;
             LoadBookmarks();
             payload = payload ?? "";
@@ -2416,6 +2419,7 @@ namespace TypoZen
 
         private void RememberBookPosition(string bookPath, int block)
         {
+            if (SuppressDocumentTraces()) return;
             if (string.IsNullOrEmpty(bookPath) || block < 0) return;
             LoadBookPositions();
             int had;
@@ -2537,6 +2541,14 @@ namespace TypoZen
         private void PersistTabSession()
         {
             if (_restoringTabs) return;
+            // Privacy mode: the open documents are not written down, and any previous
+            // index goes with them -- otherwise closing would leave the last ordinary
+            // session on disk, looking current.
+            if (SuppressDocumentTraces())
+            {
+                try { File.Delete(TabSessionPath()); } catch { }
+                return;
+            }
             try
             {
                 EnsureAtLeastOneTab();
@@ -3087,6 +3099,7 @@ namespace TypoZen
         /// <summary>Push a path to the top of Open Recent (MRU). Missing files stay listed until opened.</summary>
         private void AddRecentFile(string path)
         {
+            if (SuppressDocumentTraces()) return;
             if (!_recentFilesEnabled) return;
             if (string.IsNullOrWhiteSpace(path)) return;
             try { path = Path.GetFullPath(path); } catch { return; }
@@ -3204,7 +3217,7 @@ namespace TypoZen
                     "{{\"state\":\"{0}\",\"width\":{1},\"height\":{2},\"left\":{3},\"top\":{4},\"zoom\":{5}," +
                     "\"chrome\":\"{6}\",\"wordWrap\":{7},\"statusBar\":{8}," +
                     "\"scrubber\":{21},\"lineSpacing\":{22},\"paraSpacing\":{23}," +
-                    "\"justified\":{24},\"sidebarAutoHide\":{25},\"autosave\":{26}," +
+                    "\"justified\":{24},\"sidebarAutoHide\":{25},\"autosave\":{26},\"privacyMode\":{27}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
                     "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20}}}",
@@ -3217,7 +3230,7 @@ namespace TypoZen
                     _col1Rect.HasValue ? _col1Rect.Value.Width : 0, _col1Rect.HasValue ? _col1Rect.Value.Height : 0, _col1Rect.HasValue ? _col1Rect.Value.Left : 0, _col1Rect.HasValue ? _col1Rect.Value.Top : 0,
                     _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing,
                     _justified ? "true" : "false", _sidebarAutoHide ? "true" : "false",
-                    _autosave ? "true" : "false");
+                    _autosave ? "true" : "false", _privacyMode ? "true" : "false");
 
                 WriteStateFileAtomic(path, json);
             }
@@ -3343,6 +3356,8 @@ namespace TypoZen
                 var mSideAuto = Regex.Match(json, @"\""sidebarAutoHide\""\s*:\s*(true|false)");
                 var mAuto = Regex.Match(json, @"\""autosave\""\s*:\s*(true|false)");
                 if (mAuto.Success) _autosave = mAuto.Groups[1].Value == "true";
+                var mPriv = Regex.Match(json, @"\""privacyMode\""\s*:\s*(true|false)");
+                if (mPriv.Success) _privacyMode = mPriv.Groups[1].Value == "true";
                 if (mSideAuto.Success) _sidebarAutoHide = mSideAuto.Groups[1].Value == "true";
                 var mBodies = Regex.Match(json, @"\""sessionBodies\""\s*:\s*(true|false)");
                 if (mBodies.Success) _sessionRestoreContent = mBodies.Groups[1].Value == "true";
@@ -4610,6 +4625,12 @@ if (_btnColumnToggle != null)
         {
             var prefs = LoadHostPrefs();
 
+            // Privacy mode keeps the view settings and drops everything that names a
+            // document. Written as a wipe of the merged result rather than as conditions on
+            // each assignment below, so a field added later is suppressed by default instead
+            // of leaking until someone remembers this exists.
+            bool priv = SuppressDocumentTraces();
+
             if (!string.IsNullOrEmpty(pageJson))
             {
                 int? ti = ExtractJsonInt(pageJson, "themeIndex");
@@ -4630,19 +4651,28 @@ if (_btnColumnToggle != null)
                 b = ExtractJsonBool(pageJson, "focusMode"); if (b.HasValue) prefs.FocusMode = b.Value;
                 b = ExtractJsonBool(pageJson, "typewriterMode"); if (b.HasValue) prefs.TypewriterMode = b.Value;
                 var hist = ExtractJsonStringArray(pageJson, "searchHistory");
-                if (hist != null) prefs.SearchHistory = hist;
+                if (hist != null && !priv) prefs.SearchHistory = hist;
                 s = ExtractJsonString(pageJson, "lastSearchQuery");
-                if (s != null) prefs.LastSearchQuery = s;
+                if (s != null && !priv) prefs.LastSearchQuery = s;
                 s = ExtractJsonString(pageJson, "sidebarTab");
-                if (s == "outline" || s == "search") prefs.SidebarTab = s;
+                if (s == "outline" || s == "search" || s == "marks") prefs.SidebarTab = s;
                 b = ExtractJsonBool(pageJson, "findMatchCase"); if (b.HasValue) prefs.FindMatchCase = b.Value;
                 b = ExtractJsonBool(pageJson, "findWholeWord"); if (b.HasValue) prefs.FindWholeWord = b.Value;
                 // lastContent from page is ignored (document text does not belong in settings).
             }
 
             // Host authority for path + theme name alignment with live UI.
-            if (!string.IsNullOrEmpty(_currentFilePath))
+            if (!string.IsNullOrEmpty(_currentFilePath) && !priv)
                 prefs.LastFilePath = _currentFilePath;
+            // Belt and braces: in privacy mode the fields that name a document are cleared
+            // on the way out, so a value merged in from an older file cannot survive.
+            if (priv)
+            {
+                prefs.LastFilePath = "";
+                prefs.LastContent = "";
+                prefs.LastSearchQuery = "";
+                prefs.SearchHistory = new List<string>();
+            }
             if (_currentThemeIndex >= 0 && _currentThemeIndex < _themesList.Count)
             {
                 prefs.ThemeIndex = _currentThemeIndex;
@@ -6082,7 +6112,7 @@ if (_btnColumnToggle != null)
 
         private void AutosaveNow()
         {
-            if (!_autosave) return;
+            if (!_autosave || SuppressDocumentTraces()) return;
             if (_tabOpInProgress || _scriptBlockDepth > 0) { ArmAutosave(); return; }
             if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return;
             var tab = _tabs[_activeTabIndex];
@@ -6098,6 +6128,50 @@ if (_btnColumnToggle != null)
 
         // A stale state file naming a fifth preset must not throw on startup.
         private static int Clamp4(int i) { return i < 0 ? 0 : (i > 3 ? 3 : i); }
+
+        /// <summary>
+        /// One switch that stops TypoZen writing down what you are reading or writing.
+        ///
+        /// The individual toggles each answer a narrow question, and a person who wants
+        /// privacy should not have to find all of them and know which files each governs.
+        /// This is that question asked once: while it is on, nothing that names a document,
+        /// its contents, its position or its history reaches disk.
+        ///
+        /// Suppressed: the tab session, reading positions, bookmarks and annotations, the
+        /// recent files list, autosave, and the document-identifying half of settings.json
+        /// -- last file, last content, search history, last query.
+        ///
+        /// Deliberately NOT suppressed: window size, theme, margins, spacing and the other
+        /// view settings. Those describe the application rather than the reader, and losing
+        /// them every launch would be a cost with no privacy in return. Written down here
+        /// because a privacy switch that quietly does less than its name is worse than one
+        /// that does less openly.
+        ///
+        /// Forward-looking only. Turning it on stops new writes; it does not delete what is
+        /// already stored, because bookmarks and annotations are the reader's own work and a
+        /// toggle that silently destroyed them would be indefensible. File > Privacy >
+        /// Clear Stored Data remains the deliberate way to remove what is already there.
+        /// </summary>
+        private bool _privacyMode;
+
+        private void SetPrivacyMode(bool on)
+        {
+            _privacyMode = on;
+            SetMenuChecked("mPrivacyMode", on);
+            // The switches it subsumes are disabled rather than merely overridden: a tick
+            // that does nothing is a lie about what the app will do.
+            foreach (string name in new[] { "mAutosave", "mSessionRestoreContent", "mRecentEnabled" })
+            {
+                var mi = FindElement(name) as MenuItem;
+                if (mi != null) mi.IsEnabled = !on;
+            }
+            if (on && _autosaveTimer != null) _autosaveTimer.Stop();
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        /// <summary>True when nothing that names a document may be written.</summary>
+        private bool SuppressDocumentTraces() { return _privacyMode; }
+
 
         private bool _wordWrap = true;
         private bool _statusBarVisible = true;
@@ -6118,6 +6192,7 @@ if (_btnColumnToggle != null)
             {
                 SetChromeAutoHide(_chromeAutoHide);
                 SetSidebarAutoHide(_sidebarAutoHide);
+                SetPrivacyMode(_privacyMode);
                 SetAutosave(_autosave);
                 SetStatusBarVisible(_statusBarVisible);
                 SetScrubberVisible(_scrubberVisible);
