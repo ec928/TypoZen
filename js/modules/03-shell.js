@@ -869,9 +869,19 @@
          */
         let _spacingSeekToken = 0;
 
-        function applySpacing(prop, value) {
+        /**
+         * @param {Object<string,string>} props one or more custom properties, applied
+         *   together. Together matters: the anchor is read before anything changes, and
+         *   reading it forces layout. Setting justification and hyphenation in two calls
+         *   would take the second anchor from a page the first change had already
+         *   re-broken, so the reader would be returned to where the half-applied state
+         *   happened to put them rather than to where they were reading.
+         */
+        function applySpacing(props) {
             const anchor = isPaginatedLayout() ? topLeftModelIndexTwoCol() : -1;
-            document.documentElement.style.setProperty(prop, value);
+            Object.keys(props).forEach(function (p) {
+                document.documentElement.style.setProperty(p, props[p]);
+            });
             if (!isPaginatedLayout()) return;
 
             // Twice, because once is not enough and measurably so. The first seek runs
@@ -965,14 +975,14 @@
             if (cmd.startsWith("set_line_spacing:")) {
                 const v = parseFloat(cmd.substring(17));
                 if (isFinite(v) && v > 0.5 && v < 4) {
-                    applySpacing('--lh', String(v));
+                    applySpacing({ '--lh': String(v) });
                 }
                 return;
             }
             if (cmd.startsWith("set_para_spacing:")) {
                 const v = parseFloat(cmd.substring(17));
                 if (isFinite(v) && v >= 0 && v < 200) {
-                    applySpacing('--para', v + 'px');
+                    applySpacing({ '--para': v + 'px' });
                 }
                 return;
             }
@@ -981,8 +991,18 @@
             // the property and then puts the reader back on the block they were reading.
             // #editor reads --tz-align, and so does every book rule that asked to justify
             // (applyBookStyles), so one property covers Markdown and books alike.
+            //
+            // Hyphenation is set with it, not beside it. On a screen they are one
+            // decision: the browser justifies by stretching word spaces and nothing else,
+            // so justified-without-hyphens is the rivers-of-white setting this feature
+            // defaults away from, and ragged-right-with-hyphens breaks words to close a
+            // gap that is not there. One switch, both properties, one re-anchor.
             if (cmd.startsWith("set_justify:")) {
-                applySpacing('--tz-align', cmd.substring(12) === '1' ? 'justify' : 'left');
+                const on = cmd.substring(12) === '1';
+                applySpacing({
+                    '--tz-align': on ? 'justify' : 'left',
+                    '--tz-hyphens': on ? 'auto' : 'manual'
+                });
                 return;
             }
             if (cmd.startsWith("view_set:")) {

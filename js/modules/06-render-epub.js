@@ -74,6 +74,7 @@
             _bookCssTexts = data.css || [];
             _bookEmDivisor = 1;
             try { applyBookStyles(_bookCssTexts, data.assetsBase || ''); } catch (eS) {}
+            try { applyBookLanguage(data.docs); } catch (eLang) {}
 
             DocumentModel.fromBookBlocks(split.blocks, toc);
             _contentCache = null;
@@ -950,11 +951,47 @@
          * (often black text on a dark theme = "empty" document) and Pages still on
          * (1/35 of a short note). The buffer was fine; the surface was not.
          */
+        /**
+         * The book's own language, on #editor, so hyphenation can work at all.
+         *
+         * `hyphens: auto` is silent without one -- not wrong, simply inert -- so a feature
+         * that looks switched on does nothing, which is the worst kind of failure to
+         * diagnose. The page declares lang="en" for Markdown; a book brings its own.
+         *
+         * Taken from the spine document's own <html lang> (or xml:lang), which is where a
+         * publisher actually puts it, and which DOMParser hands back already normalised.
+         * The first document that declares one wins: a book is overwhelmingly one
+         * language, and front matter is as likely to carry the declaration as a chapter.
+         * Hyphenating French text by English rules breaks words in places no French
+         * reader would accept, so a wrong answer here is worse than none -- if no
+         * document declares anything, the attribute is left off and the book inherits the
+         * page, which is the honest default rather than a guess.
+         */
+        function applyBookLanguage(docs) {
+            if (!editor) return;
+            let lang = '';
+            for (let i = 0; i < (docs ? docs.length : 0) && !lang; i++) {
+                try {
+                    const doc = new DOMParser().parseFromString(
+                        String(docs[i].html || ''), 'text/html');
+                    const root = doc && doc.documentElement;
+                    if (!root) continue;
+                    lang = (root.getAttribute('lang')
+                        || root.getAttribute('xml:lang') || '').trim();
+                } catch (e) {}
+            }
+            if (lang) editor.setAttribute('lang', lang);
+            else editor.removeAttribute('lang');
+        }
+
         function clearBookSession() {
             try {
                 const el = document.getElementById('book-styles');
                 if (el) el.textContent = '';
             } catch (e0) {}
+            // Back to the page's own language, or the next Markdown document would be
+            // hyphenated by the last book's rules.
+            try { if (editor) editor.removeAttribute('lang'); } catch (eLg) {}
             try {
                 if (editor) {
                     editor.style.fontSize = '';

@@ -460,6 +460,24 @@
                (applyBookStyles), so the publisher's rules keep their specificity and
                their centred and right-aligned rules are left exactly as written. */
             text-align: var(--tz-align, left);
+
+            /* Hyphenation follows justification, because on a screen the two are one
+               decision. A browser justifies by stretching word spaces and nothing else,
+               so an unhyphenated justified column opens rivers of white -- which is the
+               whole reason Justified defaults to off. With hyphens the same column sets
+               tightly, and the setting becomes a real choice rather than a compromise.
+               Ragged-right keeps `manual`: there is no gap to close, and a hyphen the
+               reader did not ask for is just a smaller version of the same imposition.
+
+               `hyphens` needs a language or it silently does nothing, which is the trap
+               here -- see the lang attribute set from the book's own <html> in
+               loadBookPayload, and lang="en" on the page for Markdown.
+
+               The limits stop the ugliest breaks: at least 6 characters in the word, and
+               never fewer than 3 either side of the hyphen. Chromium's default is 5/2/2,
+               which happily leaves "a-" hanging at a column edge. */
+            hyphens: var(--tz-hyphens, manual);
+            hyphenate-limit-chars: 6 3 3;
         }
         
         #editor.reader-mode {
