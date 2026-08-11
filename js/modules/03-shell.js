@@ -647,6 +647,15 @@
                     const resumeAt = parseInt(msg.substring(10), 10);
                     if (isFinite(resumeAt) && resumeAt > 0) scheduleResumeAtBlock(resumeAt);
                 }
+                else if (msg.startsWith("marks_load:")) {
+                    // This document's stored marks. Deferred a beat: the host sends it in the
+                    // same breath as the content, and resolving a fingerprint against a model
+                    // that has not been built yet would unresolve every one of them.
+                    const payload = msg.substring(11);
+                    setTimeout(function () {
+                        try { loadMarksPayload(payload); } catch (eMl) {}
+                    }, 0);
+                }
                 else if (msg.startsWith("external_find:")) {
                     // Phase 6 (ZenSeek): external_find:<url-encoded query>|match=N
                     applyExternalFind(msg.substring(14));
@@ -1406,6 +1415,10 @@
                         goToReadingBlock(_currentChapterBi);
                     }
                 } catch (eCh) {}
+            }
+            else if (cmd === "mark_toggle") {
+                try { toggleMarkAtBlock(currentReadingBlock()); } catch (eMk) {}
+                return;
             }
             else if (cmd === "set_place_marker") {
                 try { if (typeof setPlaceMarker === 'function') setPlaceMarker(); } catch (ePm) {}

@@ -30,3 +30,6 @@ typozen_books/
 
 # Scratch output from tests/tabs-content-e2e.py (includes a WebView2 profile).
 tests/_tab_e2e_out/
+
+# Written and removed by tests/bookmark-store-app.mjs; left behind only if it crashes.
+tests/_bookmark_fixture.md

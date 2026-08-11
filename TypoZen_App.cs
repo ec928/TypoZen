@@ -488,6 +488,7 @@ namespace TypoZen
         private string WindowStatePath() { return Path.Combine(CacheDir(), "window_state.json"); }
         private string TabSessionPath() { return Path.Combine(CacheDir(), "tabs_session.txt"); }
         private string BookPositionsPath() { return Path.Combine(CacheDir(), "book_positions.txt"); }
+        private string BookmarksPath() { return Path.Combine(CacheDir(), "bookmarks.txt"); }
         private string TabSessionBodiesDir() { return Path.Combine(CacheDir(), "session_bodies"); }
 
         public TypoZenWindow(LaunchRequest launch = null)
@@ -2192,6 +2193,109 @@ namespace TypoZen
             int at;
             if (!string.IsNullOrEmpty(bookPath) && _bookPositions.TryGetValue(bookPath, out at)) return at;
             return -1;
+        }
+
+        // ---- Bookmarks ------------------------------------------------------------
+        //
+        // The host is a keyed blob store and deliberately nothing more. A mark is a block
+        // index, a fingerprint of the text it was set on, and a name -- all of which are
+        // the page's business, because the page is what has a document model and knows how
+        // to resolve one against the other. Serialising here as well would be a second
+        // implementation of a format with one owner, and the two would drift.
+        //
+        // So one line per document, exactly the shape book_positions.txt already uses, and
+        // capped by document for the same reason: an unbounded file keyed by every path
+        // ever opened is a slow leak. Marks *within* a document are not capped -- a limit
+        // on how many places you may mark in a book is a limit on how carefully you are
+        // allowed to read it.
+        private const int MaxBookmarkDocs = 64;
+        private Dictionary<string, string> _bookmarks;
+
+        private void LoadBookmarks()
+        {
+            if (_bookmarks != null) return;
+            _bookmarks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                string path = BookmarksPath();
+                if (!File.Exists(path)) return;
+                foreach (string line in File.ReadAllLines(path))
+                {
+                    // "<path>\t<payload>" — path first here, unlike book_positions, because
+                    // the payload is the variable-length part and a split on the first tab
+                    // must not be able to land inside it.
+                    int tab = line.IndexOf('\t');
+                    if (tab <= 0) continue;
+                    string docPath = line.Substring(0, tab);
+                    string payload = line.Substring(tab + 1);
+                    if (docPath.Length == 0 || _bookmarks.ContainsKey(docPath)) continue;
+                    _bookmarks[docPath] = payload;
+                    if (_bookmarks.Count >= MaxBookmarkDocs) break;
+                }
+            }
+            catch { }
+        }
+
+        private void SaveBookmarks(string mostRecent)
+        {
+            try
+            {
+                LoadBookmarks();
+                var sb = new StringBuilder();
+                var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                // Most recently touched first, so the cap evicts the document left alone
+                // longest rather than whichever happens to hash first.
+                if (!string.IsNullOrEmpty(mostRecent) && _bookmarks.ContainsKey(mostRecent))
+                {
+                    sb.AppendLine(mostRecent + "\t" + _bookmarks[mostRecent]);
+                    written.Add(mostRecent);
+                }
+                foreach (var kv in _bookmarks)
+                {
+                    if (written.Count >= MaxBookmarkDocs) break;
+                    if (written.Contains(kv.Key)) continue;
+                    sb.AppendLine(kv.Key + "\t" + kv.Value);
+                    written.Add(kv.Key);
+                }
+                WriteStateFileAtomic(BookmarksPath(), sb.ToString());
+            }
+            catch { }
+        }
+
+        private string RememberedBookmarks(string docPath)
+        {
+            LoadBookmarks();
+            string payload;
+            if (!string.IsNullOrEmpty(docPath) && _bookmarks.TryGetValue(docPath, out payload))
+                return payload ?? "";
+            return "";
+        }
+
+        private void RememberBookmarks(string docPath, string payload)
+        {
+            if (string.IsNullOrEmpty(docPath)) return;
+            LoadBookmarks();
+            payload = payload ?? "";
+            // A newline would break the one-line-per-document format outright; the page
+            // does not send one, and this is the place that must not depend on that.
+            payload = payload.Replace("\r", "").Replace("\n", "");
+            string had;
+            if (_bookmarks.TryGetValue(docPath, out had) && had == payload) return;
+            if (payload.Length == 0) _bookmarks.Remove(docPath);
+            else _bookmarks[docPath] = payload;
+            SaveBookmarks(payload.Length == 0 ? null : docPath);
+        }
+
+        /// <summary>Hand a document's marks to the page, or an empty list if it has none.</summary>
+        private void SendBookmarksForCurrentDocument()
+        {
+            string p = _currentFilePath;
+            string payload = "";
+            if (!string.IsNullOrEmpty(p))
+            {
+                try { payload = RememberedBookmarks(Path.GetFullPath(p)); } catch { }
+            }
+            SendMsg("marks_load:" + payload);
         }
 
         private void RememberBookPosition(string bookPath, int block)
@@ -3945,6 +4049,21 @@ if (_btnColumnToggle != null)
                     {
                         try { RememberBookPosition(Path.GetFullPath(p), block); } catch { }
                     }
+                }
+            }
+            else if (msg.StartsWith("marks_set:"))
+            {
+                // The page owns the format and sends the whole list; the host keys it
+                // by path and writes it. Not while a tab operation is in flight, for the
+                // same reason book_position is not: a report armed by the document being
+                // left can arrive after _currentFilePath already points at the new one,
+                // which would file one document's marks against another's path.
+                if (_tabOpInProgress) return;
+                string p = _currentFilePath;
+                if (!string.IsNullOrEmpty(p))
+                {
+                    try { RememberBookmarks(Path.GetFullPath(p), msg.Substring(10)); }
+                    catch { }
                 }
             }
             else if (msg.StartsWith("view_state:"))
@@ -8215,6 +8334,7 @@ if (_btnColumnToggle != null)
             }
             if (resume > 0) SendMsg("resume_at:" + resume);
             RequestTabColumns(tab);
+            SendBookmarksForCurrentDocument();
             UpdateStatusDisplay();
             // Session/recent I/O off the open hot path — was adding disk latency on every click.
             if (!_restoringTabs)
@@ -8971,6 +9091,7 @@ if (_btnColumnToggle != null)
                 SendMsg("fetch_and_load_book:https://localapp/typozen_load/" + fileName
                     + (resumeAt > 0 ? "|at=" + resumeAt : ""));
                 RequestTabColumns(tab);
+                SendBookmarksForCurrentDocument();
 
                 Dispatcher.BeginInvoke(new Action(() =>
                 {

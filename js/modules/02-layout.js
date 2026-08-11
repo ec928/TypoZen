@@ -626,6 +626,214 @@
         let _placeMarkerBlock = -1;
         let _returnJumpBlock = -1;
 
+        /* ---- Bookmarks ---------------------------------------------------------
+           A bookmark is a promise that a place will still be there tomorrow, and a
+           block index alone cannot keep it. Indices are stable for a book -- the same
+           file yields the same spine and the same blocks -- but not for Markdown:
+           insert a paragraph near the top and every index below it shifts, so
+           yesterday's mark silently points at a different sentence. Silently is the
+           problem. A mark that has moved is worse than one that is missing, because
+           nothing tells the reader to distrust it.
+
+           So a mark carries the text it was set on as well as where it was. The index
+           is a hint, the fingerprint is the truth, and resolving one against the other
+           on open is what makes the promise good. This is a modest version of what
+           EPUB CFI exists to do, and annotations will need exactly the same anchor --
+           a highlight is a mark with a range, a note is a highlight with text. */
+
+        /** Enough text to identify a paragraph, not so much that an edit inside it breaks the match. */
+        const MARK_FP_CHARS = 80;
+        /** How far from the hint to look. See resolveMarkIndex for why it is bounded. */
+        const MARK_SEARCH_RADIUS = 400;
+        /** Field and record separators for the stored payload; not text a document contains. */
+        const MARK_FS = '\u001f';
+        const MARK_RS = '\u001e';
+
+        /**
+         * What the reader sees at a block, normalised for comparison.
+         *
+         * A book's block is the publisher's HTML and a Markdown block is its source, so
+         * both are reduced to their text, and case is dropped: neither changes which
+         * paragraph this is.
+         *
+         * Whitespace is removed outright rather than collapsed, which looks excessive and
+         * is not. Reducing markup to text does not agree with itself about spacing:
+         * textContent gives "the <i>Tower</i>, and" as "the Tower, and", while the regex
+         * fallback that runs where DOMParser is unavailable substitutes a space per tag
+         * and gives "the Tower , and". The same sentence would then fingerprint two ways
+         * depending on which path ran, and a mark set under one would not resolve under
+         * the other. Whitespace is not part of a paragraph's identity, so it is not part
+         * of its fingerprint -- which also makes a mark survive a publisher's inline
+         * markup being different from the one it was set on. Caught by
+         * bookmark-anchor-selftest, which is the only reason it is written down here.
+         */
+        function markFingerprint(raw) {
+            let s = String(raw == null ? '' : raw);
+            if (s.indexOf('<') >= 0 && typeof htmlFragmentToText === 'function') {
+                try { s = htmlFragmentToText(s); } catch (e) {}
+            }
+            return s.replace(/\s+/g, '').toLowerCase().slice(0, MARK_FP_CHARS);
+        }
+
+        /** A mark names itself from its text, so a new one is legible without being typed. */
+        function markNameFromRaw(raw) {
+            let s = String(raw == null ? '' : raw);
+            if (s.indexOf('<') >= 0 && typeof htmlFragmentToText === 'function') {
+                try { s = htmlFragmentToText(s); } catch (e) {}
+            }
+            s = s.replace(/^[#>\-*+\s]+/, '').replace(/\s+/g, ' ').trim();
+            if (s.length <= 48) return s;
+            // Cut at a word so the name does not end mid-syllable.
+            const cut = s.slice(0, 48);
+            const sp = cut.lastIndexOf(' ');
+            return (sp > 24 ? cut.slice(0, sp) : cut) + '…';
+        }
+
+        /**
+         * Where a mark actually is now, or -1 if its text is gone.
+         *
+         * Outward from the hint, nearest first, because the same sentence can legitimately
+         * appear twice and the one the reader meant is the one nearest where they left it.
+         * Forward is tried before backward at equal distance: text is far more often
+         * inserted above a mark than removed, so the block it moved to is usually later.
+         *
+         * Bounded rather than a whole-document scan. Fingerprinting a block means parsing
+         * its HTML, and a 45,000-block omnibus with a dozen marks would pay that half a
+         * million times on every open. 400 blocks either way covers any edit a person makes
+         * by hand; past that the honest answer is "I cannot find it", which the caller shows
+         * as unresolved rather than quietly pointing somewhere plausible and wrong.
+         */
+        function resolveMarkIndex(mark, raws, radius) {
+            const n = raws ? raws.length : 0;
+            const want = (mark && mark.fp) ? String(mark.fp) : '';
+            let hint = mark ? (mark.block | 0) : 0;
+            if (hint < 0) hint = 0;
+            // No fingerprint: a mark from a store written before this existed. Trust the
+            // index, which is all it has.
+            if (!want) return hint < n ? hint : -1;
+            if (hint < n && markFingerprint(raws[hint]) === want) return hint;
+            const r = radius > 0 ? radius : MARK_SEARCH_RADIUS;
+            for (let d = 1; d <= r; d++) {
+                const after = hint + d;
+                if (after < n && markFingerprint(raws[after]) === want) return after;
+                const before = hint - d;
+                if (before >= 0 && before < n && markFingerprint(raws[before]) === want) return before;
+            }
+            return -1;
+        }
+
+        /* The marks for the document currently open, in document order. Kept resolved:
+           every entry's .block is where its text is now, not where it was when stored. */
+        let _marks = [];
+
+        /** Raw text of every block, for fingerprinting. Cheap: the model already holds it. */
+        function markBlockRaws() {
+            try {
+                if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return [];
+                return DocumentModel.blocks.map(function (b) { return b ? b.raw : ''; });
+            } catch (e) { return []; }
+        }
+
+        /** Marks in the order a reader meets them, which is the only order worth showing. */
+        function sortMarks() {
+            _marks.sort(function (a, b) { return (a.block | 0) - (b.block | 0); });
+        }
+
+        /**
+         * Take the host's stored payload and work out where each mark is in THIS document.
+         *
+         * Resolution happens once, here, rather than every time the list is drawn: it costs
+         * a fingerprint per block examined, and the answer cannot change until the document
+         * does. A mark whose text has gone keeps its place in the list with block -1, so it
+         * can be shown as unresolved and removed deliberately rather than vanishing on open
+         * and taking the reader's note with it.
+         */
+        function loadMarksPayload(payload) {
+            _marks = parseMarks(payload);
+            const raws = markBlockRaws();
+            for (let i = 0; i < _marks.length; i++) {
+                _marks[i].block = resolveMarkIndex(_marks[i], raws);
+            }
+            sortMarks();
+            try { renderMarks(); } catch (e) {}
+        }
+
+        /** Hand the whole list back to the host, which keys it by the document's path. */
+        function persistMarks() {
+            try { postMsg('marks_set:' + serializeMarks(_marks)); } catch (e) {}
+        }
+
+        function markIndexAtBlock(block) {
+            for (let i = 0; i < _marks.length; i++) {
+                if (_marks[i].block === block) return i;
+            }
+            return -1;
+        }
+
+        /**
+         * Mark this block, or unmark it if it is already marked.
+         *
+         * One operation rather than add and delete, because the affordances are all
+         * toggles -- the gutter ribbon, the toolbar button and the shortcut are the same
+         * gesture in three places, and each shows which state it is in.
+         */
+        function toggleMarkAtBlock(block) {
+            if (!(block >= 0)) return false;
+            const at = markIndexAtBlock(block);
+            if (at >= 0) {
+                _marks.splice(at, 1);
+                persistMarks();
+                try { renderMarks(); } catch (e) {}
+                return false;
+            }
+            const raws = markBlockRaws();
+            const raw = (block < raws.length) ? raws[block] : '';
+            _marks.push({
+                block: block,
+                named: false,
+                fp: markFingerprint(raw),
+                name: markNameFromRaw(raw)
+            });
+            sortMarks();
+            persistMarks();
+            try { renderMarks(); } catch (e) {}
+            return true;
+        }
+
+        /** Placeholder until the Marks pane lands; keeps the store callable on its own. */
+        function renderMarks() { /* pane comes next */ }
+
+        /** Marks -> one line for the host, which stores it against the document's path. */
+        function serializeMarks(marks) {
+            const out = [];
+            for (let i = 0; i < (marks ? marks.length : 0); i++) {
+                const m = marks[i];
+                if (!m) continue;
+                const clean = function (s) {
+                    return String(s == null ? '' : s).split(MARK_FS).join(' ').split(MARK_RS).join(' ');
+                };
+                out.push([m.block | 0, m.named ? '1' : '0', clean(m.fp), clean(m.name)].join(MARK_FS));
+            }
+            return out.join(MARK_RS);
+        }
+
+        /** The host's line back into marks. Anything malformed is dropped, never guessed at. */
+        function parseMarks(payload) {
+            const out = [];
+            const s = String(payload == null ? '' : payload);
+            if (!s) return out;
+            const recs = s.split(MARK_RS);
+            for (let i = 0; i < recs.length; i++) {
+                if (!recs[i]) continue;
+                const f = recs[i].split(MARK_FS);
+                if (f.length < 4) continue;
+                const block = parseInt(f[0], 10);
+                if (!isFinite(block) || block < 0) continue;
+                out.push({ block: block, named: f[1] === '1', fp: f[2], name: f[3] });
+            }
+            return out;
+        }
+
         function normalizeSearchHistory(list) {
             const out = [];
             const seen = Object.create(null);
