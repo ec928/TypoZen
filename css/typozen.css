@@ -1099,8 +1099,22 @@
         .selpop-def { margin-top: 4px; color: var(--tx, #F4F4F5); }
         .selpop-hint { margin-top: 6px; opacity: 0.75; }
         /* Synonyms read as a list rather than as prose, so they are set apart from a
-           definition when both are shown. */
+           definition when both are shown. Each word is a control, because a synonym you
+           cannot look up is a dead end. */
         .selpop-syn { color: var(--mark-ink, #E8A33D); }
+        .selpop-synlink {
+            background: none; border: 0; padding: 0; cursor: pointer;
+            font: inherit; color: inherit;
+            border-bottom: 1px dotted currentColor;
+        }
+        .selpop-synlink:hover { color: var(--tx, #F4F4F5); border-bottom-style: solid; }
+        .selpop-synlink:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 2px; }
+        .selpop-back {
+            background: none; border: 0; cursor: pointer;
+            font: inherit; color: var(--tx-muted, #A1A1AA);
+            padding: 0 6px 0 0; margin: 0;
+        }
+        .selpop-back:hover { color: var(--tx, #F4F4F5); }
         .selpop-hint code {
             font-family: 'Cascadia Mono', Consolas, monospace;
             background: rgba(128,128,128,0.18); border-radius: 3px; padding: 0 3px;

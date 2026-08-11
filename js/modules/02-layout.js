@@ -1408,6 +1408,8 @@
         let _selPopAsked = 'define';
         /** View > Synonyms with Definitions -- show both for a single press. */
         let _synWithDefs = false;
+        /** Words looked up on the way here, so following a synonym can be walked back. */
+        let _lookupTrail = [];
 
         function hideSelPop() {
             const el = document.getElementById('selPop');
@@ -1463,6 +1465,7 @@
             if (!rect || (!rect.width && !rect.height)) { hideSelPop(); return; }
 
             _selPopWord = selectedWord(r.toString());
+            _lookupTrail = [];      // a new selection is a new walk, not a continuation
             const define = document.getElementById('selPopDefine');
             // Define is for a word. Offering it over a paragraph would be a button that
             // cannot work, which is worse than one that is not there.
@@ -1491,7 +1494,18 @@
             body.innerHTML = '';
             const head = document.createElement('div');
             head.className = 'selpop-word';
-            head.textContent = word;
+            if (_lookupTrail.length) {
+                // Following synonyms is a walk, and a walk needs a way back. Only shown
+                // once there is somewhere to go, so it is not a permanently dead control.
+                const back = document.createElement('button');
+                back.type = 'button';
+                back.className = 'selpop-back';
+                back.textContent = '‹';
+                back.title = 'Back to ' + _lookupTrail[_lookupTrail.length - 1];
+                back.setAttribute('data-back', '1');
+                head.appendChild(back);
+            }
+            head.appendChild(document.createTextNode(word));
             body.appendChild(head);
 
             // Only what was asked for, unless the option folds them together. Answering
@@ -1500,12 +1514,37 @@
             const wantSyn = _selPopAsked === 'synonyms' || _synWithDefs;
 
             if (wantSyn) {
-                const sy = document.createElement('div');
-                sy.className = synonyms ? 'selpop-def selpop-syn' : 'selpop-hint';
-                sy.textContent = synonyms ? synonyms
-                    : (installed ? 'No synonyms for this word.'
-                                 : 'No thesaurus installed — the same script writes one.');
-                body.appendChild(sy);
+                if (synonyms) {
+                    // One element per word, not one blob of text: a synonym you cannot look
+                    // up is a dead end, and following one is the whole point of a thesaurus.
+                    // Senses are separated by "; " and words within a sense by ", ".
+                    const sy = document.createElement('div');
+                    sy.className = 'selpop-def selpop-syn';
+                    const senses = String(synonyms).split(';');
+                    senses.forEach(function (sense, si) {
+                        if (si) sy.appendChild(document.createTextNode(' · '));
+                        sense.split(',').forEach(function (w, wi) {
+                            const t = w.trim();
+                            if (!t) return;
+                            if (wi) sy.appendChild(document.createTextNode(', '));
+                            const b = document.createElement('button');
+                            b.type = 'button';
+                            b.className = 'selpop-synlink';
+                            b.textContent = t;
+                            b.setAttribute('data-word', t);
+                            b.title = 'Look up ' + t;
+                            sy.appendChild(b);
+                        });
+                    });
+                    body.appendChild(sy);
+                } else {
+                    const sy = document.createElement('div');
+                    sy.className = 'selpop-hint';
+                    sy.textContent = installed
+                        ? 'No synonyms for this word.'
+                        : 'No thesaurus installed — the same script writes one.';
+                    body.appendChild(sy);
+                }
             }
 
             if (wantDef && definition) {
@@ -1588,6 +1627,32 @@
                     }
                 } catch (e) {}
             });
+            // Following a synonym, and walking back out again. Delegated to the body
+            // because it is rebuilt on every lookup, and mousedown-prevented for the same
+            // reason the buttons above are: taking focus would collapse the selection the
+            // popover is anchored to and close it mid-walk.
+            const body = document.getElementById('selPopBody');
+            if (body && !body.__tzWired) {
+                body.__tzWired = true;
+                body.addEventListener('mousedown', function (e) { e.preventDefault(); });
+                body.addEventListener('click', function (e) {
+                    const t = e.target;
+                    if (!t || !t.getAttribute) return;
+                    if (t.getAttribute('data-back')) {
+                        const prev = _lookupTrail.pop();
+                        if (!prev) return;
+                        _selPopWord = prev;
+                        try { postMsg('define:' + prev); } catch (err) {}
+                        return;
+                    }
+                    const w = t.getAttribute('data-word');
+                    if (!w) return;
+                    if (_selPopWord && _selPopWord !== w) _lookupTrail.push(_selPopWord);
+                    _selPopWord = w;
+                    try { postMsg('define:' + w); } catch (err) {}
+                });
+            }
+
             const ask = function (which) {
                 return function () {
                     if (!_selPopWord) return;
