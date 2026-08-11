@@ -522,7 +522,10 @@ async function main() {
                 const inp = document.getElementById('sidebarSearchInput');
                 inp.value = q;
                 inp.dispatchEvent(new Event('input', { bubbles: true }));
-                await sleep(1600);
+                // Wait for the result, not for a guess at the debounce. A fixed 1600ms
+                // here silently became too short when the sidebar debounce went to 2000,
+                // and the click below then landed on an empty list.
+                for (let w = 0; w < 100 && findState.matches.length === 0; w++) await sleep(100);
                 const items = document.querySelectorAll('#search-results-list .search-item');
                 const before = top();
                 items[0].click();          // the mouse, not findJumpTo()

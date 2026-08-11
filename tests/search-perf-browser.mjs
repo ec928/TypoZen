@@ -56,7 +56,11 @@ async function main() {
             const input = document.getElementById('sidebarSearchInput');
             input.value = 'scroll';
             input.dispatchEvent(new Event('input', { bubbles: true }));
-            await sleep(1500);
+            // Wait for the search to have run, not for a guess at how long it takes.
+            // This was `await sleep(1500)` against a debounce that later became 2000ms,
+            // so the read happened before the search did and the suite reported zero
+            // matches -- a red gate that looked like a search bug and was a stale sleep.
+            for (let w = 0; w < 100 && findState.matches.length === 0; w++) await sleep(100);
 
             const list = document.getElementById('search-results-list');
             const n = findState.matches.length;
