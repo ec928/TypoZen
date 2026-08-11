@@ -271,27 +271,22 @@ async function main() {
                 { timeout: 20000, polling: 150 });
             const pageCount = await page.evaluate(() => PageMap.count());
 
-            // Seek, then check it landed, and seek again if it did not.
+            // One seek, and it is expected to land.
             //
-            // Waiting for the page map to have counted was not enough on its own: it is
-            // ready here -- 384 pages -- and the view can still be at block 0 afterwards,
-            // roughly one run in three. goto is asynchronous against a layout that may be
-            // mounting a different range, so a single attempt is a race the suite loses
-            // occasionally and then reports as a spacing bug, which it is not.
-            //
-            // Bounded, and it still fails if the seek genuinely never lands, so this makes
-            // the precondition reliable rather than lenient. The underlying reason goto can
-            // be dropped is worth finding; it is not this suite's to diagnose.
-            let before = [], perPage = 0;
-            for (let attempt = 0; attempt < 4; attempt++) {
-                await page.evaluate(() => { PageMap.goto(Math.floor(PageMap.count() * 0.6)); });
-                await settled(page);
-                before = await page.evaluate(visibleBlocks);
-                perPage = before.length;
-                if (before.length > 0 && before[0] > 100) break;
-                info(cols + '-col: seek did not land (block ' +
-                    (before[0] === undefined ? 'none' : before[0]) + '), retrying');
-            }
+            // This used to retry, because it lost the race about one run in three: the map
+            // was ready -- 384 pages -- and the view still ended at block 0. The cause was
+            // in the product, not here. PageGeometry.go read _stride raw where every other
+            // caller uses the guarded accessor, so during a column switch, when the multicol
+            // has been asked for but not applied, the stride measured 0, the seek went to
+            // `i * 0` and it returned true. go() now refuses instead of seeking to zero, and
+            // goto retries on a false, so the retry that used to live here is gone -- if this
+            // fails again, something real has broken rather than the suite being unlucky.
+            const seekReported = await page.evaluate(
+                () => PageMap.goto(Math.floor(PageMap.count() * 0.6)));
+            await settled(page);
+            const before = await page.evaluate(visibleBlocks);
+            const perPage = before.length;
+            assert(seekReported !== false, cols + '-col: the seek reports that it happened');
             // Guard against the check passing for the wrong reason. An earlier version of
             // the deferred correction dragged the view back to the front of the book while
             // the previous iteration was still settling, so "before" and "after" agreed at

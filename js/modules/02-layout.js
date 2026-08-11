@@ -2681,6 +2681,24 @@
                 if (!editor || !isPaginatedLayout()) return false;
                 if (!(this._stride > 0)) this.relayout();
 
+                // Refuse rather than seek to zero.
+                //
+                // This read _stride raw where every other caller goes through stride(),
+                // which floors at 1. A relayout does not always produce a stride -- during
+                // a column switch the multicol has been asked for but not yet applied, so
+                // the measurement comes back 0 -- and then target = i * 0 = 0, the reader
+                // is put at the very front of the book, and this returned true. The caller
+                // believed the seek had happened.
+                //
+                // That is not a hypothetical: reading-chrome-browser lost this race about
+                // one run in three, seeking to 60% of a 384-page book and landing on block
+                // 0, and it was patched twice in the suite -- first by waiting for the page
+                // map to have counted, then by retrying the seek -- because the failure
+                // looked like a flaky test rather than a seek that had reported success
+                // without moving. Reporting false lets the caller retry, which is what the
+                // retry in that suite was standing in for.
+                if (!(this._stride > 0)) return false;
+
                 const s = this._stride;
                 const maxL = Math.max(0, this.localCount() - 1);
                 const i = Math.max(0, Math.min(localIndex | 0, maxL));
@@ -3382,6 +3400,12 @@
                     // is actually mounted rather than at an index belonging to another one.
                     return this.gotoLocal(Math.max(0, Math.min(loc.local, this.localCount() - 1)));
                 }
+                // A false here means the geometry was not ready, not that the page does not
+                // exist. One relayout and one retry, because the caller has no better
+                // information than we do and silently landing at the front of the book is
+                // the failure this replaced.
+                if (this.gotoLocal(loc.local) !== false) return true;
+                try { PageGeometry.relayout(); } catch (e) {}
                 return this.gotoLocal(loc.local);
             },
 
