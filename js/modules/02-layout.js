@@ -816,6 +816,7 @@
             if (!(block >= 0)) return false;
             const raws0 = markBlockRaws();
             block = markSnapToInk(block, raws0);
+            _markStateLast = null;   // the label must be recomputed, not remembered
             const at = markIndexAtBlock(block);
             if (at >= 0) {
                 _marks.splice(at, 1);
@@ -898,12 +899,72 @@
             host.style.setProperty('--tick-image', img);
         }
 
+        /**
+         * The block "Mark this page" would act on, right now.
+         *
+         * The single source of truth for both the action and every control that describes
+         * it. They were computed separately at first -- the button asked whether
+         * currentReadingBlock() was marked, while the toggle acted on that block *snapped
+         * to one with ink* -- and where the top of the viewport was a blank line the two
+         * answered about different blocks. The button then described one thing and did
+         * another.
+         */
+        function markTargetBlock() {
+            let here = -1;
+            try { here = currentReadingBlock(); } catch (e) { return -1; }
+            if (!(here >= 0)) return -1;
+            try { return markSnapToInk(here, markBlockRaws()); } catch (e2) { return here; }
+        }
+
         /** Tell the shell whether the page being read carries a mark, for the toolbar button. */
         function postMarkState() {
-            let here = -1;
-            try { here = currentReadingBlock(); } catch (e) {}
+            const here = markTargetBlock();
             const on = here >= 0 && markIndexAtBlock(here) >= 0;
+            if (on === _markStateLast) return;      // page turns must not spam the bridge
+            _markStateLast = on;
             try { postMsg('mark_state:' + (on ? '1' : '0') + ',' + _marks.length); } catch (e2) {}
+        }
+        let _markStateLast = null;
+
+        /**
+         * Follow the reader.
+         *
+         * Everything that describes "the page you are on" has to be recomputed when the
+         * page you are on changes, and nothing was: renderMarks ran when the list changed
+         * or the pane opened, so the toolbar kept saying Marked from wherever the last mark
+         * was set, however far away the reader had since gone. Clicking it then added a
+         * mark, because the button was stale and the action was not.
+         *
+         * Deliberately not a full renderMarks: that rebuilds every row, and this runs on
+         * scroll. Only the two things that depend on position are touched.
+         */
+        let _markStateTimer = null;
+        function refreshMarkState() {
+            if (_markStateTimer) return;
+            _markStateTimer = setTimeout(function () {
+                _markStateTimer = null;
+                const here = markTargetBlock();
+                const on = here >= 0 && markIndexAtBlock(here) >= 0;
+                try { postMarkState(); } catch (e) {}
+                const addBtn = document.getElementById('markAddBtn');
+                if (addBtn) {
+                    addBtn.classList.toggle('on', on);
+                    addBtn.lastElementChild.textContent = on ? 'Remove this mark' : 'Mark this page';
+                }
+                // The row the reader is nearest, without redrawing the list.
+                const rows = document.querySelectorAll('#marks-list .mark-item');
+                if (rows.length) {
+                    let nearest = -1;
+                    for (let i = 0; i < _marks.length; i++) {
+                        if (_marks[i].block >= 0 && _marks[i].block <= here) nearest = i;
+                    }
+                    if (nearest < 0) nearest = 0;
+                    for (let i = 0; i < rows.length; i++) {
+                        rows[i].classList.toggle('active',
+                            i === nearest && !rows[i].classList.contains('lost'));
+                    }
+                }
+            }, 120);
         }
 
         function renderMarks() {
@@ -916,8 +977,7 @@
             if (count) count.textContent = _marks.length + (_marks.length === 1 ? ' mark' : ' marks');
 
             const addBtn = document.getElementById('markAddBtn');
-            let here = -1;
-            try { here = currentReadingBlock(); } catch (e) {}
+            const here = markTargetBlock();
             if (addBtn) {
                 const on = here >= 0 && markIndexAtBlock(here) >= 0;
                 addBtn.classList.toggle('on', on);
@@ -1143,9 +1203,7 @@
             if (add && !add.__tzWired) {
                 add.__tzWired = true;
                 add.addEventListener('click', function () {
-                    let bi = -1;
-                    try { bi = currentReadingBlock(); } catch (e) {}
-                    toggleMarkAtBlock(bi);
+                    toggleMarkAtBlock(markTargetBlock());
                 });
             }
             const clear = document.getElementById('marksClearBtn');

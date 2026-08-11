@@ -399,6 +399,7 @@
             // markProgrammaticScroll window.
             if (mainContainer) mainContainer.addEventListener('scroll', noteUserMovement, { passive: true });
             if (mainContainer) mainContainer.addEventListener('scroll', reportBookPosition, { passive: true });
+            try { mainContainer.addEventListener('scroll', refreshMarkState, { passive: true }); } catch (eMs) {}
             // Preview scroll must update sticky from the viewport, or Preview→Source
             // restores an old caret far from what was on screen.
             if (mainContainer) {
@@ -413,6 +414,7 @@
             if (editor) {
                 editor.addEventListener('scroll', noteUserMovement, { passive: true });
                 editor.addEventListener('scroll', reportBookPosition, { passive: true });
+                try { editor.addEventListener('scroll', refreshMarkState, { passive: true }); } catch (eMs) {}
                 editor.addEventListener('scroll', function () {
                     try {
                         if (window.getProgScrollUntil && Date.now() <= window.getProgScrollUntil()) return;
@@ -1417,7 +1419,7 @@
                 } catch (eCh) {}
             }
             else if (cmd === "mark_toggle") {
-                try { toggleMarkAtBlock(currentReadingBlock()); } catch (eMk) {}
+                try { toggleMarkAtBlock(markTargetBlock()); } catch (eMk) {}
                 return;
             }
             else if (cmd === "show_marks") {
