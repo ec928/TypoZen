@@ -2661,7 +2661,25 @@
                 const s = this.stride();
                 // scrollWidth is the multicol overflow extent; with our lock it is ~ n * stride
                 // (or n*stride - gap for 2-col). ceil((sw-1)/s) matches PageMap's old contract.
-                return Math.max(1, Math.ceil((Math.max(editor.scrollWidth, s) - 1) / s));
+                const byContent = Math.max(1, Math.ceil((Math.max(editor.scrollWidth, s) - 1) / s));
+
+                // ...but never more pages than the reader can actually reach.
+                //
+                // Those are different numbers. Content extent says how far the text runs;
+                // maxScroll says how far the view can travel, and it is scrollWidth minus a
+                // viewport. Paging assigns scrollLeft = i * stride and clamps to maxScroll,
+                // so any page whose start lies beyond it is not a page you can turn to --
+                // the seek lands on the same pixels as the one before, localIndex reports
+                // the page you were already on, and stepLocal's safety net falls through to
+                // crossing into the next range. At the end of the document there is no next
+                // range, so the reader is simply stuck: "cannot get past page 164 of 166",
+                // which is exactly what page-window-app caught.
+                //
+                // In one column the two agree, which is why this survived so long. They
+                // part company where the stride covers two columns and a gap.
+                const reachable = Math.max(1,
+                    Math.floor(this.maxScroll() / s + 0.001) + 1);
+                return Math.min(byContent, reachable);
             },
 
             localIndex: function () {
