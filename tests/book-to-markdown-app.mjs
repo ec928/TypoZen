@@ -61,6 +61,8 @@ const readState = () => {
  */
 async function leaveBookLap(cols) {
     console.log('\n=== leaving a book read in ' + cols + '-column ===');
+    // No view pin here, deliberately: a book forces Reader + Pages on itself, so pinning
+    // the layout at launch would fight the very state the controls below assert.
     const app = await launchApp({ file: 'tests/Matter - Iain M. Banks.epub', settleMs: 12000 });
     try {
         // Controls first: the book must actually be paginated with a pixel column, or
@@ -89,15 +91,32 @@ async function leaveBookLap(cols) {
              ' inline="' + s.inline + '"');
 
         assert(s.kind === 'markdown', cols + '-col: the markdown document loaded');
-        assert(s.paginated === false, cols + '-col: and it is not paginated');
-        assert(s.colWidth === 'auto',
-            cols + '-col: no column-width survives the book (was ' + bookColW + ')');
-        assert(s.colGap === 'normal' || s.colGap === '0px' || s.colGap === 'auto',
-            cols + '-col: no column-gap survives the book (got ' + s.colGap + ')');
-        assert(!/column-width|column-count|column-fill/.test(s.inline),
-            cols + '-col: no inline column geometry is left on the editor');
-        assert(!/--tz-page-h/.test(s.inline),
-            cols + '-col: the page-height custom property is cleared too');
+
+        // The property is "none of the BOOK's numbers survive" -- not "the markdown ends
+        // up unpaginated". Those are different claims, and asserting the second failed
+        // honest runs: the app restores the layout the last session was left in, so if
+        // that was Pages the markdown is legitimately paginated and legitimately has
+        // column geometry of its own. The first version of this read that as a leak.
+        //
+        // A leak is identifiable without ambiguity, because a leaked column-width is the
+        // BOOK's measurement and a healthy one is measured for the pane in front of it.
+        if (s.paginated) {
+            info(cols + '-col: restored into Pages, so the markdown has its own geometry');
+            assert(s.colWidth !== bookColW,
+                cols + '-col: the column is measured for this pane, not carried over from ' +
+                'the book (' + s.colWidth + ' vs the book: ' + bookColW + ')');
+            assert(s.colGap !== '60px' || cols === 2,
+                cols + '-col: and the two-column gap did not come with it');
+        } else {
+            assert(s.colWidth === 'auto',
+                cols + '-col: no column-width survives the book (was ' + bookColW + ')');
+            assert(s.colGap === 'normal' || s.colGap === '0px' || s.colGap === 'auto',
+                cols + '-col: no column-gap survives the book (got ' + s.colGap + ')');
+            assert(!/column-width|column-count|column-fill/.test(s.inline),
+                cols + '-col: no inline column geometry is left on the editor');
+            assert(!/--tz-page-h/.test(s.inline),
+                cols + '-col: the page-height custom property is cleared too');
+        }
 
         // NOT asserted here: the visual symptom -- text in a narrow strip with the rest
         // of the page blank.

@@ -53,7 +53,9 @@ const selectWords = (needle, from, to) => {
     return { block: parseInt(el.getAttribute('data-model-index'), 10), text: r.toString() };
 };
 
-let app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 6000 });
+// view pinned: this suite drives selections and the Marks pane, both of which behave
+// differently in Pages, and the app opens in whatever layout it was last left in.
+let app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 6000, view: true });
 let made = null;
 try {
     await app.eval(() => { _marks = []; persistMarks(); switchTab('marks'); });
@@ -164,7 +166,12 @@ try {
         const had = _marks.map(keyOf);
 
         eval('window.__sel = ' + sel);
-        window.__sel('scroll marker', 26, 36);
+        // A long block, not a numbered marker row: selectWords needs a text node of at
+        // least to+2 characters, and "Line 3 of 4582 - scroll marker row 3" is 36. The
+        // offsets used to be 26..36 and silently selected NOTHING whenever the mounted
+        // window happened to start near the top of the document, so the button was
+        // pressed with no selection and the assertions blamed the button.
+        window.__sel('long wrapping paragraph', 10, 40);
         await sleep(400);
         // The real control, with the real mouse sequence -- not annotateSelection().
         const b = document.getElementById('selPopMark');
@@ -238,11 +245,14 @@ try {
 } finally { await app.close(); }
 
 console.log('\n=== and all of it comes back next launch ===');
-app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 7000 });
+app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 7000, view: true });
 try {
     const back = await app.eval(async (block) => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        goToModelBlock(block); await sleep(1400);
+        // Generous: the launch now pins the view first, which is several relayouts, and
+        // annotations repaint on a debounce after the block mounts. 1400ms read the
+        // highlight set before it was repainted.
+        goToModelBlock(block); await sleep(3000);
         const m = _marks[0];
         return {
             n: _marks.length,

@@ -76,7 +76,8 @@ async function waitForDevTools(timeoutMs) {
 
 /**
  * Launch TypoZen.exe --debug and attach.
- * @param {{file?:string, width?:number, height?:number, settleMs?:number}} options
+ * @param {{file?:string, width?:number, height?:number, settleMs?:number,
+ *          view?:true|{mode?:string,scroll?:string,columns?:number}}} options
  */
 export async function launchApp(options) {
     options = options || {};
@@ -125,6 +126,27 @@ export async function launchApp(options) {
     if (!page) throw new Error('Attached, but no page exposing handleCommand was found');
 
     await sleep(options.settleMs == null ? 2500 : options.settleMs);
+
+    // Pin the view, for suites that assume one.
+    //
+    // TypoZen restores whatever layout the last session was left in, so a suite that
+    // assumes scrolling 1-column passes or fails depending on what ran before it. That is
+    // not hypothetical: book-to-markdown and annotations both went from green to red
+    // between two runs on the same commit, because probe runs in between had left the app
+    // in 2-column Pages. A suite reading its predecessor's leftovers is a suite reporting
+    // on the wrong program.
+    //
+    // Opt in, not automatic: several suites test Pages deliberately and set the layout
+    // themselves, and book-position-app is ABOUT what survives a restart, so normalising
+    // for everyone would break the thing it measures.
+    if (options.view) {
+        const v = options.view === true
+            ? { mode: 'preview', scroll: 'scroll', columns: 1 }
+            : options.view;
+        if (v.mode) { await page.evaluate((m) => handleCommand('view_set:mode:' + m), v.mode); await sleep(1200); }
+        if (v.scroll) { await page.evaluate((x) => handleCommand('view_set:scroll:' + x), v.scroll); await sleep(1800); }
+        if (v.columns) { await page.evaluate((c) => handleCommand('view_set:columns:' + c), v.columns); await sleep(1800); }
+    }
 
     return {
         page: page,
