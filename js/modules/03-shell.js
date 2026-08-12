@@ -1044,10 +1044,6 @@
             // so justified-without-hyphens is the rivers-of-white setting this feature
             // defaults away from, and ragged-right-with-hyphens breaks words to close a
             // gap that is not there. One switch, both properties, one re-anchor.
-            if (cmd.startsWith("set_syn_with_defs:")) {
-                _synWithDefs = cmd.substring(18) === '1';
-                return;
-            }
             if (cmd.startsWith("set_justify:")) {
                 const on = cmd.substring(12) === '1';
                 applySpacing({

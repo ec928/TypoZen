@@ -845,7 +845,6 @@ namespace TypoZen
             BindClick("mParaRelaxed", (s, e) => SetParaSpacing(2));
             BindClick("mParaLoose",   (s, e) => SetParaSpacing(3));
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
-            BindClick("mSynWithDefs", (s, e) => SetSynWithDefs(!_synWithDefs));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
             BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
@@ -3260,7 +3259,7 @@ namespace TypoZen
                     "{{\"state\":\"{0}\",\"width\":{1},\"height\":{2},\"left\":{3},\"top\":{4},\"zoom\":{5}," +
                     "\"chrome\":\"{6}\",\"wordWrap\":{7},\"statusBar\":{8}," +
                     "\"scrubber\":{21},\"lineSpacing\":{22},\"paraSpacing\":{23}," +
-                    "\"justified\":{24},\"sidebarAutoHide\":{25},\"autosave\":{26},\"privacyMode\":{27},\"synWithDefs\":{28}," +
+                    "\"justified\":{24},\"sidebarAutoHide\":{25},\"autosave\":{26},\"privacyMode\":{27}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
                     "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20}}}",
@@ -3273,8 +3272,7 @@ namespace TypoZen
                     _col1Rect.HasValue ? _col1Rect.Value.Width : 0, _col1Rect.HasValue ? _col1Rect.Value.Height : 0, _col1Rect.HasValue ? _col1Rect.Value.Left : 0, _col1Rect.HasValue ? _col1Rect.Value.Top : 0,
                     _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing,
                     _justified ? "true" : "false", _sidebarAutoHide ? "true" : "false",
-                    _autosave ? "true" : "false", _privacyMode ? "true" : "false",
-                    _synWithDefs ? "true" : "false");
+                    _autosave ? "true" : "false", _privacyMode ? "true" : "false");
 
                 WriteStateFileAtomic(path, json);
             }
@@ -3402,8 +3400,6 @@ namespace TypoZen
                 if (mAuto.Success) _autosave = mAuto.Groups[1].Value == "true";
                 var mPriv = Regex.Match(json, @"\""privacyMode\""\s*:\s*(true|false)");
                 if (mPriv.Success) _privacyMode = mPriv.Groups[1].Value == "true";
-                var mSyn = Regex.Match(json, @"\""synWithDefs\""\s*:\s*(true|false)");
-                if (mSyn.Success) _synWithDefs = mSyn.Groups[1].Value == "true";
                 if (mSideAuto.Success) _sidebarAutoHide = mSideAuto.Groups[1].Value == "true";
                 var mBodies = Regex.Match(json, @"\""sessionBodies\""\s*:\s*(true|false)");
                 if (mBodies.Success) _sessionRestoreContent = mBodies.Groups[1].Value == "true";
@@ -6078,24 +6074,6 @@ if (_btnColumnToggle != null)
         /// </summary>
         private bool _justified;
 
-        /// <summary>
-        /// Whether a lookup shows synonyms beside the definition, or only on request.
-        ///
-        /// Off by default: "what does this mean" and "what else could I say" are different
-        /// questions, and a popover that always answers both answers neither well. On for
-        /// readers who always want the pair -- which is most people writing rather than
-        /// reading, so it is worth being a setting rather than a decision.
-        /// </summary>
-        private bool _synWithDefs;
-
-        private void SetSynWithDefs(bool on)
-        {
-            _synWithDefs = on;
-            SetMenuChecked("mSynWithDefs", on);
-            SendMsg("cmd:set_syn_with_defs:" + (on ? "1" : "0"));
-            if (!_applyingRestoredSettings) SaveWindowState();
-        }
-
         private void SetJustified(bool on)
         {
             _justified = on;
@@ -6304,7 +6282,6 @@ if (_btnColumnToggle != null)
                     SetLineSpacing(_lineSpacing);
                     SetParaSpacing(_paraSpacing);
                     SetJustified(_justified);
-                    SetSynWithDefs(_synWithDefs);
 
                     // The scrubber lives in the page, so its state is only real once the
                     // page exists. ApplyChromeVisibility above ran against no WebView and

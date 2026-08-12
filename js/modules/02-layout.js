@@ -1404,10 +1404,6 @@
            would cost more than the feature. */
 
         let _selPopWord = '';
-        /** Which question was asked: 'define' or 'synonyms'. One reply carries both. */
-        let _selPopAsked = 'define';
-        /** View > Synonyms with Definitions -- show both for a single press. */
-        let _synWithDefs = false;
         /** Words looked up on the way here, so following a synonym can be walked back. */
         let _lookupTrail = [];
 
@@ -1466,16 +1462,18 @@
 
             _selPopWord = selectedWord(r.toString());
             _lookupTrail = [];      // a new selection is a new walk, not a continuation
-            const define = document.getElementById('selPopDefine');
-            // Define is for a word. Offering it over a paragraph would be a button that
-            // cannot work, which is worse than one that is not there.
-            if (define) define.hidden = !_selPopWord;
-            const synB = document.getElementById('selPopSyn');
-            if (synB) synB.hidden = !_selPopWord;
 
             const body = document.getElementById('selPopBody');
             if (body) { body.hidden = true; body.innerHTML = ''; }
             pop.hidden = false;
+
+            // Selecting one word asks the question. Only for a word: a paragraph has no
+            // definition, and a lookup fired at every drag across a page would be a lot of
+            // work for an answer nobody wants. Highlight and Find still apply to any
+            // selection, which is why they are buttons and this is not.
+            if (_selPopWord) {
+                try { postMsg('define:' + _selPopWord); } catch (eAsk) {}
+            }
             // Above the selection, or below when there is no room. Clamped to the window
             // so a selection at the edge does not push it off screen.
             const w = pop.offsetWidth || 240, h = pop.offsetHeight || 40;
@@ -1492,6 +1490,7 @@
             const body = document.getElementById('selPopBody');
             if (!body) return;
             body.innerHTML = '';
+
             const head = document.createElement('div');
             head.className = 'selpop-word';
             if (_lookupTrail.length) {
@@ -1508,66 +1507,69 @@
             head.appendChild(document.createTextNode(word));
             body.appendChild(head);
 
-            // Only what was asked for, unless the option folds them together. Answering
-            // a question nobody asked is how a popover becomes a wall of text.
-            const wantDef = _selPopAsked === 'define' || _synWithDefs;
-            const wantSyn = _selPopAsked === 'synonyms' || _synWithDefs;
+            /* Definition, then synonyms, then where else the word appears. One answer, in
+               the order the question is usually asked.
 
-            if (wantSyn) {
-                if (synonyms) {
-                    // One element per word, not one blob of text: a synonym you cannot look
-                    // up is a dead end, and following one is the whole point of a thesaurus.
-                    // Senses are separated by "; " and words within a sense by ", ".
-                    const sy = document.createElement('div');
-                    sy.className = 'selpop-def selpop-syn';
-                    const senses = String(synonyms).split(';');
-                    senses.forEach(function (sense, si) {
-                        if (si) sy.appendChild(document.createTextNode(' · '));
-                        sense.split(',').forEach(function (w, wi) {
-                            const t = w.trim();
-                            if (!t) return;
-                            if (wi) sy.appendChild(document.createTextNode(', '));
-                            const b = document.createElement('button');
-                            b.type = 'button';
-                            b.className = 'selpop-synlink';
-                            b.textContent = t;
-                            b.setAttribute('data-word', t);
-                            b.title = 'Look up ' + t;
-                            sy.appendChild(b);
-                        });
-                    });
-                    body.appendChild(sy);
-                } else {
-                    const sy = document.createElement('div');
-                    sy.className = 'selpop-hint';
-                    sy.textContent = installed
-                        ? 'No synonyms for this word.'
-                        : 'No thesaurus installed — the same script writes one.';
-                    body.appendChild(sy);
-                }
-            }
+               This used to be two buttons and a setting to fold them together. Selecting a
+               word is the whole gesture: pressing something afterwards to find out what it
+               means is a step too many for something done mid-sentence, and a reader who
+               wants the definition almost always wants the near-words too. */
 
-            if (wantDef && definition) {
+            if (definition) {
                 const d = document.createElement('div');
                 d.className = 'selpop-def';
                 d.textContent = definition;
                 body.appendChild(d);
-            } else if (wantDef && !installed) {
-                // No dictionary is a setup state, not an error, so it says what to do.
+            } else {
                 const h = document.createElement('div');
                 h.className = 'selpop-hint';
-                // A setup state, not an error, so it says what to do rather than what went
-                // wrong -- and names the script, because "supply a dictionary file" is not
-                // an instruction anyone can act on without one.
-                h.innerHTML = 'No dictionary installed. TypoZen bundles none and downloads ' +
-                    'nothing. Run <code>tools\\Make-Dictionary.ps1</code> against a WordNet ' +
-                    'download to build <code>dictionary.tsv</code>, or drop your own ' +
-                    '(word, tab, definition) beside TypoZen.exe or in the cache folder.';
+                if (installed) {
+                    h.textContent = 'Not in the installed dictionary.';
+                } else {
+                    // A setup state, not an error, so it says what to do rather than what
+                    // went wrong -- and names the script, because "supply a dictionary
+                    // file" is not an instruction anyone can act on without one.
+                    h.innerHTML = 'No dictionary installed. TypoZen bundles none and ' +
+                        'downloads nothing. Run <code>tools\Make-Dictionary.ps1</code> ' +
+                        'against a WordNet download to build it.';
+                }
                 body.appendChild(h);
-            } else if (wantDef) {
+            }
+
+            if (synonyms) {
+                const label = document.createElement('div');
+                label.className = 'selpop-label';
+                label.textContent = 'Synonyms';
+                body.appendChild(label);
+
+                // One element per word, not one blob of text: a synonym you cannot look up
+                // is a dead end, and following one is the whole point of a thesaurus.
+                // Senses are separated by "; " and words within a sense by ", ".
+                const sy = document.createElement('div');
+                sy.className = 'selpop-def selpop-syn';
+                String(synonyms).split(';').forEach(function (sense, si) {
+                    if (si) sy.appendChild(document.createTextNode(' · '));
+                    sense.split(',').forEach(function (w, wi) {
+                        const t = w.trim();
+                        if (!t) return;
+                        if (wi) sy.appendChild(document.createTextNode(', '));
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = 'selpop-synlink';
+                        b.textContent = t;
+                        b.setAttribute('data-word', t);
+                        b.title = 'Look up ' + t;
+                        sy.appendChild(b);
+                    });
+                });
+                body.appendChild(sy);
+            } else if (installed) {
+                // Only worth saying when there is a thesaurus to have looked in. With
+                // nothing installed the dictionary hint above has already said so, and
+                // repeating it under every word would be noise.
                 const h = document.createElement('div');
                 h.className = 'selpop-hint';
-                h.textContent = 'Not in the installed dictionary.';
+                h.textContent = 'No synonyms for this word.';
                 body.appendChild(h);
             }
 
@@ -1579,9 +1581,10 @@
                 o.className = 'selpop-occ';
                 o.textContent = n === 1
                     ? 'Appears once in this document.'
-                    : 'Appears ' + n + ' times in this document.';
+                    : 'Appears ' + n.toLocaleString() + ' times in this document.';
                 body.appendChild(o);
             }
+
             body.hidden = false;
             showSelPopKeepPosition();
         }
@@ -1652,18 +1655,6 @@
                     try { postMsg('define:' + w); } catch (err) {}
                 });
             }
-
-            const ask = function (which) {
-                return function () {
-                    if (!_selPopWord) return;
-                    _selPopAsked = which;
-                    try { postMsg('define:' + _selPopWord); } catch (e) {}
-                };
-            };
-            const define = document.getElementById('selPopDefine');
-            if (define) define.addEventListener('click', ask('define'));
-            const synBtn = document.getElementById('selPopSyn');
-            if (synBtn) synBtn.addEventListener('click', ask('synonyms'));
 
             document.addEventListener('keydown', function (e) {
                 if (e.key === 'Escape' && !pop.hidden) hideSelPop();

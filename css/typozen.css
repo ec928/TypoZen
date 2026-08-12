@@ -1119,7 +1119,14 @@
             font-family: 'Cascadia Mono', Consolas, monospace;
             background: rgba(128,128,128,0.18); border-radius: 3px; padding: 0 3px;
         }
-        .selpop-occ { margin-top: 6px; }
+        .selpop-occ { margin-top: 8px; opacity: 0.8; }
+        /* A quiet rule between the definition and the words like it: the popover now
+           answers one question with three parts, and they need telling apart at a glance. */
+        .selpop-label {
+            margin-top: 9px; margin-bottom: 2px;
+            font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase;
+            opacity: 0.6;
+        }
 
         /* Block Elements in Live Preview */
         .block {

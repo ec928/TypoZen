@@ -123,7 +123,7 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your *reading position*, which is automatic, written atomically as you read, and unaffected by any of this.
 
 ### Looking a word up
-Select text and a popover appears beside it — **Highlight**, **Define**, **Find in document**. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
+Select text and a popover appears beside it — **Highlight** and **Find in document**, and for a single word the lookup itself. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
 
 **Nothing is bundled and nothing is downloaded.** A dictionary is a file you choose: `dictionary.tsv` (word, tab, definition) or `dictionary.json` (`{"word": "definition"}`), beside `TypoZen.exe` or in the cache folder. `tools\Make-Dictionary.ps1` builds one from a **WordNet** download — free, permissively licensed, ~150k entries, one file — so you supply the download and it does the parsing:
 
@@ -135,7 +135,8 @@ Select text and a popover appears beside it — **Highlight**, **Define**, **Fin
 - A reader selects the word as it appears on the page, which is inflected more often than not, so a miss retries the obvious stems — `walking` → `walk`, `bodies` → `body`
 - With no dictionary installed it says so, and how to install one
 - **Follow a synonym** to its own entry — each word is a control, and a back arrow appears once there is somewhere to return to. A synonym you cannot look up is a dead end, which is most of what a thesaurus is for
-- **Synonyms too.** WordNet is a thesaurus as well as a dictionary — a synset is a set of words that mean the same thing — so the same converter writes `thesaurus.tsv` from the same pass. The popover gains a **Synonyms** button, and **View → Synonyms with Definitions** (off) folds both into one press for people writing rather than reading. Two questions, answered separately by default: a popover that always answers both answers neither well
+- **Selecting a word is the whole gesture.** No button: the popover answers with the **definition**, the **synonyms** below it, and **how many times the word appears** in what you are reading. A phrase raises the popover but asks nothing — a paragraph has no definition, and a lookup on every drag across a page would be work for an answer nobody wants
+- **Synonyms** come from the same WordNet pass — a synset is a set of words that mean the same thing — written to `thesaurus.tsv` alongside the dictionary
 - **Occurrence count works with no dictionary at all** — "appears 2,135 times in this document" is often the question actually being asked, especially in a novel
 
 ### Themes & typography

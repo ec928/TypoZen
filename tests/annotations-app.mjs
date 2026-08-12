@@ -53,16 +53,6 @@ const selectWords = (needle, from, to) => {
     return { block: parseInt(el.getAttribute('data-model-index'), 10), text: r.toString() };
 };
 
-/** Press a popover button with the full mouse sequence a person produces. */
-const pressPopBtn = (id) => {
-    const b = document.getElementById(id);
-    const r = b.getBoundingClientRect();
-    const o = { bubbles: true, clientX: r.left + 5, clientY: r.top + 5 };
-    b.dispatchEvent(new MouseEvent('mousedown', o));
-    b.dispatchEvent(new MouseEvent('mouseup', o));
-    b.click();
-};
-
 let app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 6000 });
 let made = null;
 try {
@@ -99,21 +89,21 @@ try {
         'its background is opaque, so the document does not read through it');
     assert(/gradient/.test(look.img), 'while keeping the surface tint that lifts it');
 
-    console.log('\n=== Define answers, and the answer survives the click ===');
-    const define = await app.eval(async (press) => {
+    console.log('\n=== selecting a word answers, with nothing pressed ===');
+    const define = await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        eval('window.__press = ' + press);
-        window.__press('selPopDefine');
-        await sleep(1200);            // well past the 10ms timer that used to wipe it
+        // Nothing is pressed: the lookup now fires on the selection itself. The wait is
+        // still well past the 10ms mouseup timer that used to wipe the answer -- the same
+        // window, and now the only thing that could.
+        await sleep(1400);
         const pop = document.getElementById('selPop');
         const body = document.getElementById('selPopBody');
         // The whole body: a real WordNet entry runs to several hundred characters, and a
         // window of 120 cut off the occurrence line that follows it.
         return { open: !pop.hidden, shown: !body.hidden, text: (body.textContent || '') };
-    }, pressPopBtn.toString());
+    });
     info('body: ' + JSON.stringify(define.text.slice(0, 150)) + '…');
-    assert(define.open && define.shown,
-        'the result outlives the click that asked for it');
+    assert(define.open && define.shown, 'the answer appears and stays');
     assert(define.text.length > 20, 'and says something');
     assert(/Appears [\d,]+ times/.test(define.text) || /installed/.test(define.text),
         'occurrence count or the setup hint is there, dictionary or not');
