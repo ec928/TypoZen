@@ -541,6 +541,10 @@ Tests are split into four tiers depending on what they need to observe:
 - `book-to-markdown-app.mjs` guards the transition that put a Markdown document into a book's column: **leaving a book leaves nothing behind**, and **a pane that cannot be measured is refused rather than invented**. It deliberately does *not* assert the rendering — `column-width` is a preferred width, so a single leaked column stretches to fill the pane and looks perfectly healthy; two earlier versions of that assertion passed with the bug present. The geometry checks are strictly more sensitive, because the leak has to happen before it can fragment anything.
 - Some of them also drive the **chrome from outside the process** through `tests/shell-ui.ps1`, which reports menus, tab chips, dialogs and — via `-Command controls` — whether each toolbar control is actually enabled, over UI Automation as JSON. `format-availability-app.mjs` is the one that needs that last part: "greyed out" is a claim about the running window that no page-level suite can see. That is the only tier that can see what is actually painted: the page knows nothing about tabs, and the session file is written from the same model the model tests read, so both agreed with each other while the tab strip disagreed with both — see `tab-strip-paint-app.mjs`.
 
+### Known issues
+
+Open defects are recorded in [docs/known-issues.md](docs/known-issues.md) — each with what has been reproduced and what has been ruled out by measurement, not just the symptom. Anything marked pre-existing was run against the previous baseline tag and behaves identically there.
+
 ### Debugging
 
 A normal run writes no log and opens no port. To debug:
