@@ -94,13 +94,12 @@ scrollbar can only span what is currently laid out — about 28 pages of a 1400-
 ### Bookmarks
 Named places that survive the exit, in a **Marks** tab beside Outline and Search.
 
-Four ways to set one, because the single place marker this replaced went unused for being
-two shortcuts and nothing on screen:
+Three ways to set one, because the single place marker this replaced went unused for
+being two shortcuts and nothing on screen:
 
 | Where | What |
 |---|---|
 | **The gutter** | Hover a paragraph and a hollow ribbon appears in the margin beside it; click to fill it, click again to remove. Drawn with `::before` and hit-tested by coordinate — a real element inside a `.block` would end up in `data-raw` and therefore in your document |
-| **Toolbar** | **Mark** / **Marked**, shaded when the page you are on carries one — the same signal `2-Col` and `Pages` give when they are off their default |
 | **Marks pane** | **Mark this page**, which becomes **Remove this mark** |
 | **Keyboard** | `Ctrl+Shift+M` toggles, `Ctrl+Shift+P` opens the pane |
 

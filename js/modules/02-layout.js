@@ -816,7 +816,6 @@
             if (!(block >= 0)) return false;
             const raws0 = markBlockRaws();
             block = markSnapToInk(block, raws0);
-            _markStateLast = null;   // the label must be recomputed, not remembered
             const at = markIndexAtBlock(block);
             if (at >= 0) {
                 _marks.splice(at, 1);
@@ -941,16 +940,6 @@
                 : (on ? 'Remove this mark' : 'Mark this page');
         }
 
-        /** Tell the shell whether the page being read carries a mark, for the toolbar button. */
-        function postMarkState() {
-            const here = markTargetBlock();
-            const on = here >= 0 && markIndexAtBlock(here) >= 0;
-            if (on === _markStateLast) return;      // page turns must not spam the bridge
-            _markStateLast = on;
-            try { postMsg('mark_state:' + (on ? '1' : '0') + ',' + _marks.length); } catch (e2) {}
-        }
-        let _markStateLast = null;
-
         /**
          * Follow the reader.
          *
@@ -969,8 +958,6 @@
             _markStateTimer = setTimeout(function () {
                 _markStateTimer = null;
                 const here = markTargetBlock();
-                const on = here >= 0 && markIndexAtBlock(here) >= 0;
-                try { postMarkState(); } catch (e) {}
                 // The chapter label answers the same question -- "where am I now" -- and
                 // scanning the mounted blocks twice per scroll to ask it separately would be
                 // wasteful. One read, both answers.
@@ -998,7 +985,6 @@
             try { paintMarkRibbons(); } catch (e) {}
             try { paintAnnotations(); } catch (e) {}
             try { paintScrubberTicks(); } catch (e) {}
-            try { postMarkState(); } catch (e) {}
             const list = document.getElementById('marks-list');
             if (!list) return;
             const count = document.getElementById('marksCount');

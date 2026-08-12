@@ -346,7 +346,7 @@ namespace TypoZen
         private bool _zoomApplying; // suppress ZoomFactorChanged while we set ZoomFactor
         // Phase 3A view selectors
         private Border _grpMode;
-        private Button _btnColumnToggle, _btnScrollToggle, _btnMarkToggle;
+        private Button _btnColumnToggle, _btnScrollToggle;
         private readonly Dictionary<string, Button> _segments = new Dictionary<string, Button>();
         // Last state the page resolved. Cached only so a two-state button knows which
         // value to ask for next and so a column change can swap the window geometry.
@@ -958,16 +958,6 @@ namespace TypoZen
             BindSegment("btnModeReader", "mode", "reader");
             // Column and Scroll are single two-state buttons. They still hold no authority:
             // the click just asks for the other value and the page's resolver decides.
-            _btnMarkToggle = FindElement("btnMarkToggle") as Button;
-            if (_btnMarkToggle != null)
-            {
-                _btnMarkToggle.Click += (s, e) =>
-                {
-                    SendMsg("cmd:mark_toggle");
-                    try { if (_webView != null) _webView.Focus(); } catch { }
-                };
-            }
-
             _btnColumnToggle = FindElement("btnColumnToggle") as Button;
             if (_btnColumnToggle != null)
             {
@@ -4232,19 +4222,6 @@ if (_btnColumnToggle != null)
             else if (msg.StartsWith("define:"))
             {
                 AnswerDefinition(msg.Substring(7).Trim());
-            }
-            else if (msg.StartsWith("mark_state:"))
-            {
-                // "mark_state:<0|1>,<total>" -- whether the page being read carries a
-                // mark, and how many the document has. Shading the button is the same
-                // signal 2-Col and Pages give: lit means "not the default state".
-                string body = msg.Substring(11);
-                bool on = body.StartsWith("1");
-                if (_btnMarkToggle != null)
-                {
-                    _btnMarkToggle.Content = on ? "Marked" : "Mark";
-                    SetToolbarActive(_btnMarkToggle, on);
-                }
             }
             else if (msg.StartsWith("marks_set:"))
             {
