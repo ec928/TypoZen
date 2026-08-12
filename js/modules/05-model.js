@@ -986,6 +986,9 @@
                 seedHistoryAndCache();
                 window.__tzPreviewPainting = false;
                 try { updateOutline(); } catch (eO) {}
+            // Marks may have arrived before this document did; rescue any that had
+            // nothing to resolve against at the time.
+            try { resolveMarksAfterDocumentLoad(); } catch (eRm) {}
                 try { tzRequestPendingImages(editor); tzScheduleImageRescan(); } catch (eI) {}
                 
                 if (stickyWanted) {

@@ -226,19 +226,59 @@ try {
         switchTab('marks'); await sleep(400);
         const row = document.querySelector('#marks-list .mark-item');
         row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-        await sleep(250);
+
+        // WAIT for the field to become editable; do not sleep and hope.
+        //
+        // This was `await sleep(250)` followed by trusting document.activeElement, and it
+        // failed about one run in three: on a slower pass the caret had not landed yet, so
+        // the note was written into whatever happened to be focused -- the row, or the
+        // body -- and three assertions failed downstream, in this suite and in the restart
+        // lap after it. Twice diagnosed as a product bug before being recognised as this.
+        const isEditable = (n) => !!(n && n.getAttribute
+            && n.getAttribute('contenteditable') !== null);
+        let el = null;
+        for (let i = 0; i < 60 && !isEditable(el); i++) {
+            el = document.activeElement;
+            if (!isEditable(el)) await sleep(50);
+        }
+        const editable = isEditable(el);
+        // Reported rather than assumed: if it never became editable, the assertions below
+        // should say so instead of blaming the note.
+        if (!editable) {
+            return { note: null, name: _marks[0].name, editedClass: '(never editable)',
+                     wasEditable: false };
+        }
         // Whatever the handler put the caret in -- for a highlight that is the note line,
         // for a bookmark the name. Guessing at the selector instead is how the first
         // version of this edited a different element and reported a bug that was not there.
-        const el = document.activeElement;
-        const editable = el && el.getAttribute
-            && el.getAttribute('contenteditable') !== null;
         el.textContent = 'check this against the appendix';
-        el.blur(); await sleep(400);
+        el.blur();
+        // And wait for the model to take it, rather than assuming 400ms was enough.
+        for (let i = 0; i < 40 && _marks[0].note !== 'check this against the appendix'; i++) {
+            await sleep(50);
+        }
         return { note: _marks[0].note, name: _marks[0].name,
                  editedClass: el.className, wasEditable: editable };
     });
     info('edited .' + noted.editedClass + ' (editable: ' + noted.wasEditable + ')');
+
+    // Wait for the note to reach the STORE, not just the model.
+    //
+    // persistMarks() posts to the host, which writes bookmarks.txt; that crossing is
+    // asynchronous and nothing in the page can see the far side of it. The previous
+    // version happened to allow for it with a 400ms sleep after blur. Replacing that
+    // sleep with a poll on the model made the suite exit as soon as the note landed
+    // in memory -- about 50ms -- and the process was killed before the file was
+    // written, so the restart lap found a record with an empty note. The fix for a
+    // race is not a longer sleep, it is waiting for the thing that actually matters.
+    let stored = false;
+    for (let i = 0; i < 60 && !stored; i++) {
+        try { stored = fs.readFileSync(STORE, 'utf8').indexOf('check this against the appendix') >= 0; }
+        catch (e) { stored = false; }
+        if (!stored) await sleep(100);
+    }
+    assert(stored, 'the note reaches bookmarks.txt before the app is closed');
+
     assert(noted.wasEditable, 'double-click makes a field editable');
     assert(noted.note === 'check this against the appendix', 'the note is written');
     assert(noted.name === made.mark.name, 'and the quoted words are left alone');
@@ -252,7 +292,16 @@ try {
         // Generous: the launch now pins the view first, which is several relayouts, and
         // annotations repaint on a debounce after the block mounts. 1400ms read the
         // highlight set before it was repainted.
-        goToModelBlock(block); await sleep(3000);
+        goToModelBlock(block); await sleep(1200);
+        // A mark resolves against mounted blocks, so give resolution the chance rather
+        // than a fixed sleep: block stays -1 until its fingerprint finds its text.
+        for (let i = 0; i < 40 && (!_marks[0] || _marks[0].block < 0); i++) await sleep(100);
+        // And the repaint is debounced behind that.
+        for (let i = 0; i < 30; i++) {
+            const h = window.CSS && CSS.highlights && CSS.highlights.get('typozen-mark');
+            if (h && h.size > 0) break;
+            await sleep(100);
+        }
         const m = _marks[0];
         return {
             n: _marks.length,

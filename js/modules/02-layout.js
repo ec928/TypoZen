@@ -837,12 +837,71 @@
             // is wired on every document rather than when the tab is first shown.
             try { wireMarkGutter(); } catch (eG) {}
             _marks = parseMarks(payload);
-            const raws = markBlockRaws();
-            for (let i = 0; i < _marks.length; i++) {
-                _marks[i].block = resolveMarkIndex(_marks[i], raws);
-            }
+            resolveMarksAgainstModel(false);
             sortMarks();
             try { renderMarks(); } catch (e) {}
+
+            // If there was no document to resolve against, try again shortly.
+            //
+            // The payload and the document arrive as two independent messages and either
+            // can be first. When marks win the race, markBlockRaws() is empty, every mark
+            // resolves to -1, and nothing ever tried again -- so a reader's bookmarks came
+            // back struck through as lost on a document where all of them were present.
+            // Intermittent by nature, which is what made it look like test flake.
+            //
+            // Retried here rather than hooked onto a load path, because there are several
+            // and a large document does not take the same one as a small one. A few short
+            // attempts cost nothing and cover every ordering.
+            if (_marks.length && !markBlockRaws().length) {
+                let tries = 0;
+                const retry = function () {
+                    if (++tries > 12) return;
+                    if (!markBlockRaws().length) { setTimeout(retry, 150); return; }
+                    if (resolveMarksAgainstModel(true) > 0) {
+                        sortMarks();
+                        try { renderMarks(); } catch (e2) {}
+                    }
+                };
+                setTimeout(retry, 150);
+            }
+        }
+
+        /**
+         * Point every mark at the block its text is in.
+         *
+         * Extracted and made callable twice because it was only ever called once, from
+         * loadMarksPayload -- and the payload can arrive BEFORE the document. When it
+         * does, markBlockRaws() is empty, every mark resolves to -1, and there is nothing
+         * that ever tries again: the reader's bookmarks come back struck through as lost
+         * on a document where every one of them is still present. Intermittent, because
+         * it depends on which of the two messages the host gets to first.
+         *
+         * onlyUnresolved is what makes the second call safe. Re-resolving a mark that
+         * already found its block could move it if the same text appears twice; rescuing
+         * one that found nothing cannot make anything worse.
+         */
+        function resolveMarksAgainstModel(onlyUnresolved) {
+            const raws = markBlockRaws();
+            if (!raws || !raws.length) return 0;
+            let fixed = 0;
+            for (let i = 0; i < _marks.length; i++) {
+                if (onlyUnresolved && _marks[i].block >= 0) continue;
+                const was = _marks[i].block;
+                _marks[i].block = resolveMarkIndex(_marks[i], raws);
+                if (was < 0 && _marks[i].block >= 0) fixed++;
+            }
+            return fixed;
+        }
+
+        /** A document finished loading: rescue any mark that had nothing to resolve against. */
+        function resolveMarksAfterDocumentLoad() {
+            try {
+                if (!_marks || !_marks.length) return;
+                if (resolveMarksAgainstModel(true) > 0) {
+                    sortMarks();
+                    renderMarks();
+                }
+            } catch (e) {}
         }
 
         /** Hand the whole list back to the host, which keys it by the document's path. */
