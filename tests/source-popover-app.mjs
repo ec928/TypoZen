@@ -25,9 +25,21 @@ function assert(cond, msg) {
 }
 function info(msg) { console.log('  ..   ' + msg); }
 
+// Visible on screen, not merely flagged. `hidden` is an attribute; whether it hides
+// anything depends on the CSS, and here it did not.
+const VISIBLE = `window.isVisible = function (el) {
+    if (!el) return false;
+    if (!el.offsetParent && getComputedStyle(el).position !== 'fixed') return false;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+};`;
+
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 7000, view: true });
 try {
     console.log('=== Preview still behaves as it did ===');
+    await app.eval((src) => { eval(src); }, VISIBLE);
     const preview = await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         const b = [...document.querySelectorAll('#editor .block')]
@@ -43,13 +55,13 @@ try {
         await sleep(500);
         return {
             shown: !document.getElementById('selPop').hidden,
-            markHidden: document.getElementById('selPopMark').hidden,
-            lookupHidden: document.getElementById('selPopLookup').hidden,
+            markShows: isVisible(document.getElementById('selPopMark')),
+            lookupShows: isVisible(document.getElementById('selPopLookup')),
         };
     });
     assert(preview.shown, 'the popover still appears in Preview');
-    assert(preview.markHidden === false, 'and Highlight is still offered there');
-    assert(preview.lookupHidden === false, 'along with Look up');
+    assert(preview.markShows, 'and Highlight is still offered there');
+    assert(preview.lookupShows, 'along with Look up');
 
     console.log('\n=== Source now offers the two that make sense ===');
     const source = await app.eval(async () => {
@@ -70,9 +82,9 @@ try {
             mode: state.mode,
             selected: ta.value.slice(ta.selectionStart, ta.selectionEnd),
             shown: !pop.hidden,
-            markHidden: document.getElementById('selPopMark').hidden,
-            lookupHidden: document.getElementById('selPopLookup').hidden,
-            findHidden: document.getElementById('selPopFind').hidden,
+            markShows: isVisible(document.getElementById('selPopMark')),
+            lookupShows: isVisible(document.getElementById('selPopLookup')),
+            findShows: isVisible(document.getElementById('selPopFind')),
             onScreen: (() => { const r = pop.getBoundingClientRect();
                 return r.left >= 0 && r.top >= 0 &&
                        r.right <= window.innerWidth && r.bottom <= window.innerHeight; })(),
@@ -82,9 +94,13 @@ try {
     assert(source.mode === 'source', 'control: the app really is in Source');
     assert(source.selected === 'scroll', 'control: a word is selected in the textarea');
     assert(source.shown, 'the popover appears for a textarea selection');
-    assert(source.markHidden === true, 'Highlight is hidden — Source has no blocks to anchor to');
-    assert(source.lookupHidden === false, 'Look up is offered');
-    assert(source.findHidden === false, 'Find in document is offered');
+    // isVisible, not .hidden. Asserting the property is what let this ship broken: the
+    // attribute was set correctly all along and the button was on screen anyway, because
+    // .selpop-btn sets display: flex and an author rule beats the UA [hidden] rule.
+    assert(source.markShows === false,
+        'Highlight is not on screen — Source has no blocks to anchor to');
+    assert(source.lookupShows, 'Look up is offered');
+    assert(source.findShows, 'Find in document is offered');
     assert(source.onScreen, 'and it is positioned inside the window');
 
     console.log('\n=== and they act on the text that is selected ===');
@@ -121,6 +137,41 @@ try {
     assert(found.query === 'scroll', 'Find in document carries the selected word across');
     assert(found.tab === 'search' && found.paneOpen, 'and opens the Search pane on it');
     assert(found.matches > 0, 'with real results (' + found.matches + ')');
+    // --- The same defect hid a second thing, so it is asserted too.
+    //
+    // showSelPop has always done `lookup.hidden = !_selPopWord` -- Look up is for a word,
+    // because a paragraph has no definition. That never hid anything either, for the same
+    // reason, so Look up sat there over a whole-sentence selection offering to define it.
+    console.log('\n=== Look up is for a word, and now says so ===');
+    const phrase = await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        handleCommand('view_set:mode:preview');
+        await sleep(2200);
+        const b = [...document.querySelectorAll('#editor .block')]
+            .find(x => /scroll marker/.test(x.textContent || ''));
+        const tw = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); tw.nextNode();
+        const n = tw.currentNode;
+        // A whole run of words, not one.
+        const r = document.createRange(); r.setStart(n, 0); r.setEnd(n, Math.min(24, n.nodeValue.length));
+        const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        const box = r.getBoundingClientRect();
+        document.dispatchEvent(new MouseEvent('mouseup', {
+            bubbles: true, clientX: box.left + 2, clientY: box.top + 2 }));
+        await sleep(600);
+        return {
+            selected: r.toString(),
+            popShown: !document.getElementById('selPop').hidden,
+            lookupShows: isVisible(document.getElementById('selPopLookup')),
+            markShows: isVisible(document.getElementById('selPopMark')),
+        };
+    });
+    info('selected ' + JSON.stringify(phrase.selected));
+    assert(phrase.popShown, 'control: the popover is up for a multi-word selection');
+    assert(phrase.selected.trim().indexOf(' ') > 0, 'control: more than one word is selected');
+    assert(phrase.lookupShows === false,
+        'Look up is not offered for a phrase — a paragraph has no definition');
+    assert(phrase.markShows, 'but Highlight is, because a phrase is exactly what you highlight');
+
 } finally {
     await app.close();
 }

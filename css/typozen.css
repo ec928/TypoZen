@@ -1203,6 +1203,14 @@
             font-family: var(--ui-font); font-size: var(--ui-fs);
             color: var(--tx-muted, #A1A1AA); white-space: nowrap;
         }
+        /* `hidden` must actually hide.
+           The UA stylesheet's [hidden] { display: none } is beaten by ANY author rule
+           that sets display -- and .selpop-btn sets display: flex right above. So every
+           `btn.hidden = true` in the popover set an attribute and changed nothing on
+           screen: Highlight stayed visible in Source, where it has no block to anchor to,
+           and Look up stayed visible for a whole-paragraph selection, which has no
+           definition. Both were written as hiding and neither hid. */
+        .selpop-btn[hidden] { display: none; }
         .selpop-btn:hover { background: rgba(128,128,128,0.18); color: var(--tx, #F4F4F5); }
         .selpop-btn:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: -2px; }
         #selPopMark span { color: var(--mark-ink, #E8A33D); font-size: 11px; }
