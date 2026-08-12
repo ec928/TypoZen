@@ -154,6 +154,13 @@
                                aria-controls="search-results-list"
                                aria-autocomplete="list"
                                aria-haspopup="listbox" />
+                        <!-- Stop searching. Escape in the field has always done this; there
+                             was nothing on screen that said so. Immediately after the input
+                             on purpose: CSS hides it with :placeholder-shown + , so it is
+                             absent on an empty field with no state to keep in step. -->
+                        <button type="button" id="sidebarSearchClearBtn" class="sidebar-search-clear"
+                                aria-label="Clear search" tabindex="-1"
+                                title="Clear search (Esc)">&#xE711;</button>
                         <button type="button" id="sidebarSearchHistoryBtn" class="sidebar-search-hist-btn"
                                 aria-label="Recent searches" aria-haspopup="listbox" aria-expanded="false"
                                 title="Recent searches">&#xE70D;</button>

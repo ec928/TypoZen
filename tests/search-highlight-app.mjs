@@ -233,6 +233,75 @@ try {
         'control: a text result still travels from that same place (' +
         nowhere.afterText + ')');
 
+    // --- The clear button stops the search and leaves the pane alone.
+    //
+    // Escape in the field had always done this and nothing on screen said so, which is
+    // the same complaint as Alt+S. The two must stay one action: a control that claims to
+    // do what a key does and then does something slightly different is the defect this
+    // file carries the most comments about.
+    //
+    // The pane assertions are the point. Stopping a search and closing the pane are
+    // separate things here -- closing the pane has never stopped the search, deliberately
+    // -- so "the pane is still open, still on Search" is what stops this quietly becoming
+    // a close button.
+    console.log('\n########## the clear button ##########');
+    const cleared = await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        // Open the pane first. The layout loop above switches into 2-column, which
+        // resizes the window and leaves the sidebar collapsed -- so arriving here the
+        // pane is shut, and "it is still open afterwards" would have been true of a
+        // close button too.
+        const sb = document.getElementById('sidebar');
+        sb.classList.remove('collapsed');
+        postMsg('sidebar_state:1');
+        switchTab('search');
+        await sleep(700);
+        const input = document.getElementById('sidebarSearchInput');
+        const btn = document.getElementById('sidebarSearchClearBtn');
+        if (!btn) return { missing: true };
+        input.value = 'scroll';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(2600);
+        const shownWhileTyped = getComputedStyle(btn).opacity;
+        const busy = {
+            matches: findState.matches.length,
+            painted: (CSS.highlights.get('typozen-find') || { size: 0 }).size,
+            // Was the pane even open before the press? Without this, "still open"
+            // could be satisfied by a pane that was already shut.
+            paneOpen: !document.getElementById('sidebar').classList.contains('collapsed'),
+        };
+        btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        btn.click();
+        await sleep(1200);
+        const active = document.querySelector('.sidebar-tab.active');
+        return {
+            shownWhileTyped, busy,
+            hiddenWhenEmpty: getComputedStyle(btn).opacity,
+            value: input.value,
+            matches: findState.matches.length,
+            painted: (CSS.highlights.get('typozen-find') || { size: 0 }).size,
+            paneOpen: !document.getElementById('sidebar').classList.contains('collapsed'),
+            tab: active ? active.getAttribute('data-tab') : null,
+            focused: document.activeElement ? document.activeElement.id : null,
+        };
+    });
+    info(JSON.stringify(cleared));
+    assert(!cleared.missing, 'the clear button exists');
+    assert(cleared.busy.matches > 2000 && cleared.busy.painted > 0,
+        'control: a search was actually running (' + cleared.busy.matches + ' matches, ' +
+        cleared.busy.painted + ' painted)');
+    assert(cleared.shownWhileTyped === '1', 'it is visible while there is a query');
+    assert(cleared.value === '' && cleared.matches === 0 && cleared.painted === 0,
+        'pressing it empties the field and drops the matches and the highlights');
+    assert(cleared.hiddenWhenEmpty === '0',
+        'and it takes itself away when there is nothing left to clear');
+    assert(cleared.busy.paneOpen === true, 'control: the pane was open before the press');
+    assert(cleared.paneOpen === cleared.busy.paneOpen,
+        'the press does not change whether the pane is open — this is not a close button');
+    assert(cleared.tab === 'search', 'and stays on the Search tab');
+    assert(cleared.focused === 'sidebarSearchInput',
+        'the caret is left where the next query goes');
+
     console.log('\npassed=' + passed + ' failed=' + failed);
     if (failed) { console.error('\nSEARCH HIGHLIGHT FAILED'); process.exitCode = 1; }
     else console.log('\nSEARCH HIGHLIGHT PASSED');

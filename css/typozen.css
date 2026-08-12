@@ -422,7 +422,9 @@
             flex: 1;
             min-width: 0;
             width: 100%;
-            padding: 5px 26px 5px 8px;
+            /* Right padding clears BOTH buttons in the field: the clear × and the history
+               chevron, 22px each. */
+            padding: 5px 48px 5px 8px;
             border-radius: 4px;
             border: 1px solid var(--border, #3F3F46);
             background: var(--surface, rgba(255,255,255,0.05));
@@ -441,6 +443,39 @@
         .sidebar-search-combo:focus-within #sidebarSearchInput {
             border-color: var(--accent, #3B82F6);
         }
+        /* Stop searching, without closing the pane.
+           Escape in the field has always cleared the query and dropped the highlights.
+           Nothing said so, so the only people who could stop a search were the ones who
+           already knew how -- the same complaint as Alt+S. This is that action, visible.
+           It does NOT close the pane: the pane and the search are separate, and closing
+           one has never stopped the other. */
+        .sidebar-search-clear {
+            position: absolute;
+            right: 23px;
+            top: 1px;
+            bottom: 1px;
+            width: 22px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: var(--tx-muted, #A1A1AA);
+            font-family: var(--ui-icon-font);
+            font-size: 10px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 1;
+            transition: opacity 0.12s ease, color 0.12s ease;
+        }
+        .sidebar-search-clear:hover { color: var(--tx, #F4F4F5); }
+        /* Absent while there is nothing to clear, and driven by the field itself rather
+           than by a flag something has to remember to update. :placeholder-shown is true
+           exactly when the input is empty, and the button is its next sibling, so this
+           cannot fall out of step with the query the way a JS-maintained class would. */
+        #sidebarSearchInput:placeholder-shown + .sidebar-search-clear {
+            opacity: 0;
+            pointer-events: none;
+        }
+
         .sidebar-search-hist-btn {
             position: absolute;
             right: 1px;

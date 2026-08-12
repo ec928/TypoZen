@@ -1985,12 +1985,51 @@
             if (el && el.scrollIntoView) try { el.scrollIntoView({ block: 'nearest' }); } catch (eS) {}
         }
 
+        /**
+         * Stop searching: empty the field, drop the matches and the highlights.
+         *
+         * Extracted so the Escape key and the clear button are one implementation rather
+         * than two that have to be kept in agreement -- a control that says it does what
+         * a key does, and then does something slightly different, is the shape of defect
+         * this file has the most comments about.
+         *
+         * Note what it does NOT do: close the pane. The pane and the search are separate,
+         * closing the pane has never stopped the search, and that is deliberate.
+         */
+        function clearSidebarSearch() {
+            const input = document.getElementById('sidebarSearchInput');
+            if (!input) return;
+            try { cancelSidebarSearchIdle(); } catch (eC) {}
+            try { closeSearchHistoryMenu(); } catch (eM) {}
+            input.value = '';
+            runFind('', false, { navigate: false });
+            updateSidebarSearchCount();
+            updateSearchSidebar();
+            if (typeof commitSearchFocus === 'function') commitSearchFocus();
+        }
+
         function wireSidebarSearch() {
             const input = document.getElementById('sidebarSearchInput');
             if (!input || input.__tzWired) return;
             input.__tzWired = true;
             wireSearchOptionButtons();
             syncSearchHistoryButton();
+
+            const clearBtn = document.getElementById('sidebarSearchClearBtn');
+            if (clearBtn && !clearBtn.__tzWired) {
+                clearBtn.__tzWired = true;
+                // mousedown/preventDefault so pressing it does not blur the field first --
+                // the same trap the history button and the selection popover both hit.
+                clearBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+                clearBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    clearSidebarSearch();
+                    // Leave the caret where a new query would go. Clearing is nearly always
+                    // the first half of searching for something else.
+                    try { input.focus({ preventScroll: true }); } catch (eF) {}
+                });
+            }
 
             const histBtn = document.getElementById('sidebarSearchHistoryBtn');
             if (histBtn && !histBtn.__tzWired) {
@@ -2097,13 +2136,7 @@
                     focusSearchResults();
                 } else if (e.key === 'Escape') {
                     e.preventDefault();
-                    cancelSidebarSearchIdle();
-                    closeSearchHistoryMenu();
-                    input.value = '';
-                    runFind('', false, { navigate: false });
-                    updateSidebarSearchCount();
-                    updateSearchSidebar();
-                    if (typeof commitSearchFocus === 'function') commitSearchFocus();
+                    clearSidebarSearch();
                 }
             });
 
