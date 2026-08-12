@@ -44,6 +44,21 @@ try {
         await app.eval((c) => handleCommand('view_set:columns:' + c), cols);
         await sleep(2500);
 
+        // The fix that actually stops it: the editor is not user-scrollable in Pages, so
+        // Chromium has nothing to auto-scroll during a drag. Asserted as a property of
+        // the layout rather than through a simulated drag, because a test can only move
+        // scrollLeft programmatically -- and programmatic scrolling still works here,
+        // which is the whole point. Simulating the nudge (below) exercises the second
+        // line of defence, not this one.
+        const overflow = await app.eval(() => ({
+            x: getComputedStyle(document.getElementById('editor')).overflowX,
+            paginated: isPaginatedLayout(),
+        }));
+        info('editor overflow-x: ' + overflow.x);
+        assert(overflow.paginated, cols + '-col: control: the layout is paginated');
+        assert(overflow.x === 'hidden',
+            cols + '-col: the editor is not user-scrollable, so a drag cannot auto-scroll it');
+
         const r = await app.eval(async () => {
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
             const ed = document.getElementById('editor');

@@ -755,7 +755,21 @@
             column-count: auto;
             column-fill: auto;
             column-gap: 0;
-            overflow-x: auto;
+            /* hidden, not auto, and that is what stops a text selection running away
+               with the page.
+               Chromium auto-scrolls a USER-scrollable container when a selection drag
+               reaches its edge. Reaching left for the first word on a page therefore
+               dragged the whole column flow back to the start of the document, taking
+               the half-made selection with it -- which is why copying a phrase near the
+               left edge took several tries. `hidden` makes the element non-user-
+               scrollable, so the browser has nothing to auto-scroll, while leaving
+               scrollLeft fully writable from script.
+               Nothing is lost, because in this layout the reader never scrolls the
+               editor directly: every page turn is programmatic and already goes through
+               PageMap / PageGeometry -- the wheel handler preventDefaults and calls
+               PageMap.step, the keys do the same, and the scrubber calls goto. The
+               native scrollbar was hidden here anyway. */
+            overflow-x: hidden;
             overflow-y: hidden;
             width: 100%;
             max-width: 100%;
