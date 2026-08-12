@@ -1,24 +1,80 @@
-# A developer editor for TypoZen — options analysis
+# A developer editor for TypoZen — analysis, and the attempt
 
-**Status: analysis only.** Nothing here is built or started. The purpose is to make the
-choice legible, not to pre-empt it.
+**Status: attempted, parked.** The code-kind route in section 2b was built, it corrupted
+real files, and it is parked at tag `code-kind-parked`. Nothing was merged. This document
+now records the outcome as well as the options, because the outcome is the useful part.
 
-The request was: syntax highlighting for XAML / JSON / C# and similar, possibly some help
-with alignment, and a decision on whether that needs a new mode or whether Preview can be
-adapted.
+**The answer to the original question is: yes, it needs its own surface.**
 
-The short version: read-only is ruled out, so this is a question about **editing
-surfaces**, and there are exactly two credible ones — extend Preview with a code document
-kind, or replace the Source textarea with an overlay editor. Both can highlight; both can
-do bold keywords. What separates them is not syntax colouring at all, but whether a code
-file should behave like a TypoZen document (bookmarks, annotations, outline, Pages) or like
-a code window that happens to live here.
+The question was whether a developer editor needs a new mode like the ebook one, or
+whether Preview could be adapted. The first draft of this document said Preview "cannot be
+adapted for code files at all". That was right. It was then overturned — in a commit
+titled "Correct the summary: Preview CAN be adapted for code files" — not because of new
+evidence, but because read-only had been ruled out and the block-model route was the one
+that reused existing machinery. Reuse was the wrong thing to optimise for.
 
-Most of the cost sits where people do not expect: the **tokenisers**, not the colouring.
+## Why Preview cannot hold an editable code document
 
-(An earlier draft claimed Preview "cannot be adapted for code files at all". That was
-wrong, and §2b explains why — the `data-raw` invariant bites only because Markdown
-serialisation reads `innerHTML`.)
+Notepad++ is built on Scintilla, which **owns its text buffer**. Styling is a parallel
+array of per-character style bytes; editing is buffer arithmetic; the caret, selection and
+undo belong to the widget.
+
+Preview is `contenteditable`, so **the browser owns the buffer**. Every keystroke is the
+browser mutating a DOM tree, and the application's job is to work out afterwards what
+happened and rebuild text from it. For prose that is a reasonable trade. For code, where
+the exact bytes and the whitespace *are* the document, it is the wrong end of the problem.
+
+Four Markdown behaviours attack a code document, and they were found one corruption at a
+time rather than by reading the code first:
+
+| Behaviour | What it does to code |
+|---|---|
+| `coerceBlockRaw` | collapses a multi-line raw and **trims each part** — the indentation |
+| `blockHtmlToMarkdown` | runs the Markdown serialiser over token spans, every keystroke |
+| `expandAllFragmentedBlocks` | **splits the DOM** to undo soft breaks; token spans look like fragments |
+| reveal-on-focus | rewrites a block via `innerText`, which normalises whitespace away |
+
+The third is the one that shredded a real `.xaml`: one keystroke turned 9 blocks into 17
+and reduced line 1 to the bare word `UserControl`.
+
+## The precedent that was misread
+
+The epub kind was cited as proof that a third document kind is cheap. It is cheap for a
+reason that does not transfer: **Reader sets `contenteditable="false"`, so none of the
+edit machinery ever runs on it.** It gets to be "just another kind" precisely because it
+opted out of the hard part.
+
+`getMarkdownContent` already carried a guard returning a book *before*
+`expandAllFragmentedBlocks`, with a comment recording that the same function had damaged
+books and that "the model is the document, full stop". The evidence was in the file being
+cited, and it said the opposite of the claim being made from it.
+
+## What should be built instead
+
+An **overlay**: a real `<textarea>` with a painted, read-only layer behind it. The buffer
+is authoritative and the highlighting is decoration.
+
+- OS caret, undo, IME and selection come from the text control
+- Notepad-class on large files; horizontal scroll rather than wrapping
+- tab handling and auto-indent become straightforward
+- and decisively: **corruption is structurally impossible**, because the paint layer never
+  touches the text. That is why Notepad++ has no such failure mode and the block version
+  did.
+
+It is a fourth surface beside Source, Preview and Reader — not a variation of one.
+
+## What survives the attempt
+
+The **lexers** in `js/modules/08-code.js` at tag `code-kind-parked`: JSON, XML/XAML and a
+C-family fallback, line at a time with a carried state for block comments, plus a cached
+start state per line. They are surface-independent — an overlay would use them unchanged,
+and so would highlighting for fenced code inside Markdown, which needs no new surface at
+all because ranges painted with the Highlight API are not DOM and cannot be repaired into
+anything. `tests/code-kind-selftest.mjs` (18) covers them.
+
+Nothing else is worth carrying: the guards added to the Markdown paths only matter if a
+code kind exists, and on master they would be dead code defending against a document type
+that cannot arrive.
 
 ---
 
@@ -96,11 +152,14 @@ That rejection also invalidates a claim made earlier in this document. The colou
 ceiling in §3 is a property of **the Highlight API**, not of Preview — and once editing is
 the requirement, there is a way to have both. See Option 2b.
 
-### Option 2b — A `code` document kind in Preview, one block per line
+### ~~Option 2b — A `code` document kind in Preview~~ — **built, and it corrupted files**
 
 **Scope:** whole `.cs` / `.xaml` / `.json` files, **editable**, using the existing block
 model with an identity parser: a block *is* a line, `data-raw` *is* that line verbatim, and
 nothing is parsed as Markdown.
+
+**This section is wrong and is kept for the record.** The reasoning below is what led to
+the attempt; what it missed is at the top of this document.
 
 The `data-raw` invariant (§2a) is survivable here, and this is the key insight: the danger
 was ever only that Markdown **serialisation reads `innerHTML`**. A code kind whose edit path
