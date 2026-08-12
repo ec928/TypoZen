@@ -180,12 +180,43 @@
             color: var(--accent, #3B82F6);
             font-weight: 600;
         }
+        /* An image result names the image instead of quoting the markdown that makes it.
+           No <strong> inside it, deliberately: the match is somewhere in the asset path,
+           which is not text the reader can see on the page, so highlighting a fragment of
+           it would point at nothing. The badge says which image; the row still goes there. */
+        .search-badge {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 5px;
+            max-width: 100%;
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: var(--code-bg, rgba(128,128,128,0.15));
+            border: 1px solid var(--border, rgba(128,128,128,0.25));
+            font-family: 'Cascadia Mono', Consolas, monospace;
+            font-size: 0.92em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .search-badge-icon {
+            flex: 0 0 auto;
+            font-family: 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
+            font-size: 0.95em;
+            opacity: 0.75;
+        }
         .search-item.active .search-text,
         .search-item.active .search-line { color: var(--tx, #F4F4F5); }
         /* Hover is a neutral wash, deliberately not the accent. Hover and the selected row
            both used var(--accent-bg) -- the differing fallbacks never applied, because that
            variable is always set -- so they rendered identically and a hovered row looked
-           exactly as selected as the real one. Two rows appeared chosen at once. */
+           exactly as selected as the real one. Two rows appeared chosen at once.
+
+           That fix left the hierarchy inverted rather than fixed: --accent-bg was a grey
+           at 0.06 (no theme ever defined AccentBg), so hover at 0.16 was the STRONGER of
+           the two and the mouse made a row look more chosen than the chosen one. The
+           accent now reaches the selected row, so the two are separated by hue as well as
+           by weight -- which is what keeping two greys apart by alpha alone could not do. */
         .outline-item:hover, .search-item:hover {
             background-color: rgba(128, 128, 128, 0.16);
             color: var(--tx, #F4F4F5);
@@ -1174,7 +1205,10 @@
          * Backspace / Delete act on a discrete unit, and the tint is what shows its extent.
          */
         .block.focused {
-            background-color: var(--accent-bg, rgba(59,130,246,0.15));
+            /* --fill-quiet, not --accent-bg: this band is in the document, where the
+               accent already means "search match". Two washes of one hue in one surface,
+               meaning two different things, is not a hierarchy. */
+            background-color: var(--fill-quiet, rgba(128,128,128,0.10));
         }
 
         /* Focus Mode Styling */
@@ -1434,7 +1468,10 @@
             border-right: none;
         }
         .zen-table thead tr {
-            background-color: var(--accent-bg, rgba(59,130,246,0.15));
+            /* Neutral for the same reason as .block.focused: a table is document
+               content, and an accent header band would colour every table after a
+               choice made for something else. */
+            background-color: var(--fill-quiet, rgba(128,128,128,0.10));
             font-weight: 700;
         }
         .zen-table tbody tr:last-child td {
@@ -1444,6 +1481,8 @@
             background-color: var(--surface, rgba(255,255,255,0.03));
         }
         .zen-table tbody tr:hover {
-            background-color: var(--accent-bg, rgba(59,130,246,0.08));
+            /* Quieter than the header it sits under, and the same neutral hover language
+               the sidebar lists use. */
+            background-color: rgba(128, 128, 128, 0.10);
         }
     

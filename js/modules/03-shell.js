@@ -885,7 +885,45 @@
             root.setProperty('--surface', t.Surface || (isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)'));
             root.setProperty('--border', t.Border || (isLight ? 'rgba(0, 0, 0, 0.18)' : 'rgba(255, 255, 255, 0.18)'));
             root.setProperty('--tx-muted', t.TxMuted || (isLight ? 'rgba(0, 0, 0, 0.55)' : 'rgba(255, 255, 255, 0.55)'));
-            root.setProperty('--accent-bg', t.AccentBg || (isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)'));
+            // A quiet neutral fill, for surfaces that must NOT take the accent: the band
+            // under the focused block, and table chrome. Both sit in the document, where
+            // the accent already means "search match" -- tinting them would put two
+            // washes of one hue in one surface saying two different things. Neutral here
+            // is a choice, not a leftover: the focused band marks a block's extent, which
+            // is structure, not emphasis.
+            root.setProperty('--fill-quiet',
+                isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)');
+
+            // The selected row: the accent at the shell's own selection alpha, so a
+            // selected row in the sidebar and a selected button in the toolbar are the
+            // same colour rather than two guesses at one.
+            //
+            // No theme has ever defined AccentBg, so this fell through to a neutral grey
+            // for all 26 of them and the accent never reached a single filled surface,
+            // only strokes and text. That left the hierarchy inverted: hover is
+            // rgba(128,128,128,0.16) and selection was 0.06, so passing the mouse over a
+            // row made it look more chosen than the row that was.
+            //
+            // 0.282 is 0x48/255 -- SelectionFillAlpha in TypoZen_App.cs, which paints the
+            // Mode, Column and Scroll buttons. Not a number picked here: it is the
+            // smallest alpha at which all the themes clear a 1.25 contrast ratio against
+            // their own surface, and tests/theme-contrast-selftest.mjs holds it. That
+            // test also records that 0x28 (16%) was measured and rejected as too faint
+            // for every theme, which is exactly the value this first shipped with.
+            //
+            // Translucent, and that is the whole correction. The first version mixed the
+            // accent into --bg and painted the result opaque, which is wrong wherever the
+            // ground is not --bg: the sidebar sits on --surface, so a colour computed
+            // against the page background landed on it as a distinctly lighter, bluer
+            // patch instead of a tint of what was already there. An alpha composites with
+            // whatever it is actually on, which is why the shell uses one.
+            root.setProperty('--accent-bg', t.AccentBg || (function () {
+                if (!/^#[0-9a-f]{6}$/i.test(accent)) {
+                    return isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)';
+                }
+                const ch = (o) => parseInt(accent.substr(o, 2), 16);
+                return 'rgba(' + ch(1) + ',' + ch(3) + ',' + ch(5) + ',0.282)';
+            })());
             root.setProperty('--code-bg', t.CodeBg || 'rgba(128, 128, 128, 0.15)');
             root.setProperty('--quote-bg', t.QuoteBg || 'rgba(128, 128, 128, 0.08)');
         }

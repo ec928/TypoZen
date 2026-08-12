@@ -3488,7 +3488,17 @@ namespace TypoZen
             else _editorMode = "wysiwyg";
             RefreshEditingAvailability();
 
-if (_btnColumnToggle != null)
+            // A book has no Source and no Preview. There is no markdown behind it to
+            // show, and nothing to preview an edit of — offering both asked the reader to
+            // choose between two things that do not exist for this document, and choosing
+            // one is how the publisher's HTML ended up being rewritten as source.
+            //
+            // Pages goes with them: a book is always paginated, so Scroll is not a state
+            // it has either. That leaves the column count as the only view choice on the
+            // toolbar, which is the only one a book actually offers.
+            bool isBook = IsEpubPath(_currentFilePath);
+
+            if (_btnColumnToggle != null)
             {
                 // Shade a two-state button whenever it is NOT on its default, so the
                 // toolbar reads like the Mode pillbox: shading means "switched on".
@@ -3501,9 +3511,30 @@ if (_btnColumnToggle != null)
             {
                 _btnScrollToggle.Content = scroll == "pagination" ? "Pages" : "Scroll";
                 SetToolbarActive(_btnScrollToggle, scroll == "pagination");
-                SetControlLocked(_btnScrollToggle, scrollLocked);
+                SetControlLocked(_btnScrollToggle, scrollLocked || isBook);
             }
+
+            // The two dead segments are locked individually rather than the whole group,
+            // so Reader keeps its full-strength selected fill. "You are reading" is still
+            // worth saying, and dimming the group would have said it at 30%.
+            //
+            // The group itself stays enabled. This line used to force that unconditionally
+            // and that is exactly why Source and Preview stayed live on a book: it ran
+            // last and overrode whatever the resolver had asked for.
             if (_grpMode != null) { _grpMode.IsEnabled = true; _grpMode.Opacity = 1.0; }
+            Button segSource, segPreview;
+            if (_segments.TryGetValue("btnModeSource", out segSource))
+                SetControlLocked(segSource, isBook);
+            if (_segments.TryGetValue("btnModePreview", out segPreview))
+                SetControlLocked(segPreview, isBook);
+
+            // And put a book that is somehow not in Reader back into it. Disabling the
+            // controls stops it happening from here on; a session restored from before
+            // this change, or any route that does not pass through those buttons, can
+            // still arrive in the wrong place. The correction settles immediately because
+            // the next view_state has mode == reader and this stops firing.
+            if (isBook && !string.Equals(mode, "reader", StringComparison.OrdinalIgnoreCase))
+                SendMsg("cmd:view_set:mode:reader");
         }
 
         /// <summary>
@@ -3570,7 +3601,9 @@ if (_btnColumnToggle != null)
         // the same amount is the point, not a side effect.
         private const double LockedOpacity = 0.30;
 
-        private void SetControlLocked(Control c, bool locked)
+        // UIElement, not Control: IsEnabled and Opacity both live there, and the segment
+        // groups are Borders, which are Decorators rather than Controls.
+        private void SetControlLocked(UIElement c, bool locked)
         {
             if (c == null) return;
             c.IsEnabled = !locked;

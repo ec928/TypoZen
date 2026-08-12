@@ -223,6 +223,43 @@
             focusFindInput(false);
         };
 
+        /**
+         * The alt text and source of a line that is nothing but an image, or null.
+         *
+         * One definition, used twice and deliberately not duplicated: the search row
+         * decides how to draw the result with it, and revealModelMatch decides how to
+         * travel to it. Those two have to agree -- a row that says "this is an image"
+         * and a jump that tries to scroll to a character inside its URL is the pair of
+         * answers that produced the original defect.
+         *
+         * Image-only, not image-anywhere. `![alt](src)` alone on a line renders as an
+         * <img> and contributes no text to the page, so a match inside it has nothing on
+         * screen to reveal. An image inside a sentence leaves the sentence, and that is
+         * ordinary text with an ordinary position.
+         */
+        function imageOnlyLine(text) {
+            const m = /^!\[([^\]]*)\]\(\s*<?([^)\s>]*)/.exec(String(text == null ? '' : text).trim());
+            if (!m) return null;
+            return { alt: m[1] || '', src: m[2] || '' };
+        }
+
+        /** What to call an image in one row of a list: its alt text, else its file name. */
+        function imageBadgeLabel(img) {
+            if (!img) return 'image';
+            let label = String(img.alt || '').trim();
+            if (!label) {
+                const src = String(img.src || '');
+                // Strip the query/fragment first, or a cache-busted URL names itself "?v=2".
+                const clean = src.split(/[?#]/)[0];
+                label = clean.substring(clean.lastIndexOf('/') + 1);
+                try { label = decodeURIComponent(label); } catch (e) {}
+            }
+            if (!label) return 'image';
+            // A data: URI has no name worth printing -- it would be 40 characters of base64.
+            if (/^data:/i.test(img.src) && !String(img.alt || '').trim()) return 'embedded image';
+            return label.length > 34 ? label.slice(0, 33) + '…' : label;
+        }
+
         // How many result rows to add at a time. Rows are cheap, but a query matching
         // several thousand times should not build every row before showing the first.
         const SEARCH_RENDER_CHUNK = 150;
@@ -432,9 +469,24 @@
                 const after = haystack.substring(idx + qLen, end);
                 const trailing = end < b.end ? '…' : '';
 
-                const snippet = esc(leading + before) +
-                    '<strong>' + esc(hit) + '</strong>' +
-                    esc(after + trailing);
+                // A line that is nothing but an image is shown as what it is, rather than
+                // as the markdown that produces it. Searching "scroll" in this document
+                // matches inside an asset path -- large-scroll-mixed-assets/... -- and the
+                // row filled with raw syntax around a hit the reader cannot see anywhere
+                // on the page. The badge says which image without pretending the URL is
+                // prose. Only for image-ONLY lines: an image sitting inside a sentence
+                // still has real text worth quoting.
+                const img = imageOnlyLine(haystack.substring(b.start, b.end));
+                let snippet;
+                if (img) {
+                    snippet = '<span class="search-badge">' +
+                        '<span class="search-badge-icon" aria-hidden="true">\u{1F5BC}</span>' +
+                        esc(imageBadgeLabel(img)) + '</span>';
+                } else {
+                    snippet = esc(leading + before) +
+                        '<strong>' + esc(hit) + '</strong>' +
+                        esc(after + trailing);
+                }
 
                 const active = (i === findState.index) ? ' active' : '';
                 html += '<div class="search-item' + active + '" onclick="window.findJumpTo(' + i + '); try { this.closest(\'#search-results-list\').focus({preventScroll:true}); } catch(e) {}"' +
@@ -4151,6 +4203,12 @@
             if (active) {
                 // Paginated layout: mainContainer does not scroll; page turn already moved
                 // the view. Only nudge the scroll surface in continuous mode.
+                //
+                // NOTE: when the current match has no range of its own -- an image line
+                // has no text node -- currentRange is -1 and the `: 0` above seeks to a
+                // DIFFERENT match, the first one built, at the top of the document.
+                // Removing that fallback was tried and regressed search-highlight-app,
+                // so it stays; currentRange is -1 in more cases than that one.
                 if (!isPaginatedLayout()) scrollRangeIntoMain(active);
                 // Select the match only for the Ctrl+F bar, where Replace acts on the
                 // selection and the caret is expected to land in the text.
@@ -4236,6 +4294,23 @@
             try {
                 if (typeof rememberStickyLine === 'function') rememberStickyLine(matchLine);
             } catch (eSt) {}
+
+            // An image-only line: stay put.
+            //
+            // The match is inside the asset path -- searching "scroll" matches
+            // `![](large-scroll-mixed-assets/...)` -- and the line renders as an <img>, so
+            // there is no text on the page to travel to. Everything downstream assumes
+            // there is: the highlighter finds no range for it and its `: 0` fallback then
+            // seeks to a different match, the first one built, which is at the top of the
+            // document. Clicking the row threw the reader back to page one.
+            //
+            // Doing nothing is the right answer, not a placeholder for a better one. The
+            // sidebar row already says which image and what line it is on, the reader has
+            // not asked to leave where they are, and no scroll is better than a wrong one.
+            try {
+                const blk = DocumentModel.blocks && DocumentModel.blocks[blockIdx];
+                if (blk && imageOnlyLine(blk.raw)) return;
+            } catch (eImg) {}
 
             // Paginated views do not scroll mainContainer at all -- it is overflow-hidden
             // and the editor scrolls sideways -- so setting scrollTop here did nothing and
