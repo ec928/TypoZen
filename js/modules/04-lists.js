@@ -836,6 +836,12 @@
          */
         function coerceBlockRaw(raw) {
             raw = normalizeBlockRaw(raw);
+            // A code document's raw is a line of code, byte for byte.
+            //
+            // Everything below is Markdown housekeeping, and the collapse in particular
+            // trims each part -- which is exactly the leading indentation a code file is
+            // made of. Nothing here is a refinement for code; it is all damage.
+            if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'code') return raw;
             if (isMultilineBlockRaw(raw)) return raw;
             if (raw.indexOf('\n') < 0) return raw;
             // Collapse accidental multi-line in a single-line block to one line

@@ -1373,6 +1373,30 @@
                 return;
             }
 
+            // A code document's block is one LINE, painted with token spans.
+            //
+            // Before setBlockListIndentAttr, and before the empty-raw shortcut below:
+            // both are Markdown reasoning. The indent classes would read "    foo" as a
+            // nested list item, and the shortcut returns '' for a whitespace-only line --
+            // which in code is a line of indentation the reader is entitled to keep.
+            //
+            // Spans are safe here where they are forbidden in Markdown, because the
+            // danger was never elements: it was Markdown serialisation reading markup
+            // back out of the DOM. A code block's raw is rewritten from textContent,
+            // which strips markup, and renderCodeLine emits every character of the line
+            // exactly once so textContent reconstructs the raw byte for byte.
+            if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'code') {
+                let st = 0;
+                try {
+                    const bi = DocumentModel.modelIndexOfEl(block);
+                    if (bi >= 0 && typeof CodeStates !== 'undefined') st = CodeStates.stateAt(bi);
+                } catch (eSt) {}
+                block.innerHTML = (typeof renderCodeLine === 'function')
+                    ? renderCodeLine(raw, DocumentModel.language, st)
+                    : '';
+                return;
+            }
+
             setBlockListIndentAttr(block, raw);
 
             if (!raw.trim()) {

@@ -659,6 +659,39 @@
             hyphenate-limit-chars: 6 3 3;
         }
         
+        /* --- Code documents ------------------------------------------------------
+           A code block is one line, so whitespace is content: pre-wrap keeps leading
+           indentation and runs of spaces, which `normal` would collapse and take the
+           shape of the file with it. wrap rather than `pre` so a long line stays
+           reachable without a horizontal scrollbar the reader has to chase.
+
+           Colours are mixed from the theme's own text and accent rather than being a
+           fixed palette, for the reason --mark-ink is: a scheme that looks deliberate
+           on Gruvbox and arbitrary on Rose Pine is not a scheme. Only the hues differ
+           between light and dark; the roles do not. */
+        #editor.code-mode .block {
+            white-space: pre-wrap;
+            font-family: 'Cascadia Mono', Consolas, ui-monospace, monospace;
+            font-size: 0.92em;
+            line-height: 1.5;
+            tab-size: 4;
+        }
+        /* Comments recede, strings and numbers sit apart from the code, keywords lead.
+           font-weight and font-style are available here and are NOT available to the
+           Highlight API -- which is the whole reason a code block paints with elements
+           while search and bookmarks paint with ::highlight(). */
+        .tzc-comment {
+            color: color-mix(in srgb, var(--tx, #F4F4F5) 45%, transparent);
+            font-style: italic;
+        }
+        .tzc-keyword { color: var(--accent, #3B82F6); font-weight: 600; }
+        .tzc-string  { color: color-mix(in srgb, var(--accent, #3B82F6) 55%, var(--tx, #F4F4F5)); }
+        .tzc-number  { color: color-mix(in srgb, var(--accent, #3B82F6) 40%, var(--tx, #F4F4F5)); }
+        .tzc-type    { color: color-mix(in srgb, var(--accent, #3B82F6) 70%, var(--tx, #F4F4F5)); }
+        .tzc-fn      { color: var(--tx, #F4F4F5); font-weight: 600; }
+        .tzc-tag     { color: var(--accent, #3B82F6); font-weight: 600; }
+        .tzc-attr    { color: color-mix(in srgb, var(--accent, #3B82F6) 60%, var(--tx, #F4F4F5)); }
+
         #editor.reader-mode {
             cursor: default;
         }

@@ -204,7 +204,7 @@
             blockHeights: null,
 
             /**
-             * What a block's `raw` holds: 'markdown' or 'epub'.
+             * What a block's `raw` holds: 'markdown', 'epub' or 'code'.
              *
              * The model has always been "one canonical raw string per block, rendered to a
              * preview" -- nothing in that requires the raw to be Markdown. A book carries
@@ -219,6 +219,39 @@
             kind: 'markdown',
 
             isBook: function () { return this.kind === 'epub'; },
+            isCode: function () { return this.kind === 'code'; },
+
+            /** Which lexer paints this document. Set by fromCode. */
+            language: 'text',
+
+            /**
+             * Load a code file: one block per LINE, raw is that line byte for byte.
+             *
+             * The cheapest of the three kinds, because what a code document needs is not
+             * new machinery but the ABSENCE of Markdown's. toMarkdown() already joins raws
+             * with a newline, so for this kind it is the identity serialiser with nothing
+             * added -- which is the property that makes the whole idea safe.
+             *
+             * Blank lines are kept as empty blocks rather than dropped. In Markdown a blank
+             * line is a separator; in code it is content, and losing them would reformat a
+             * file just by opening it.
+             */
+            fromCode: function (text, language) {
+                const src = String(text == null ? '' : text)
+                    .replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                const lines = src.split('\n');
+                this.blocks = [];
+                this._nextId = 1;
+                this.kind = 'code';
+                this.language = language || 'text';
+                this.toc = [];
+                for (let i = 0; i < lines.length; i++) {
+                    this.blocks.push({ id: this._nextId++, raw: lines[i] });
+                }
+                if (!this.blocks.length) this.blocks.push({ id: this._nextId++, raw: '' });
+                this.blockHeights = null;
+                return this;
+            },
 
             /**
              * The visible text of a block, whatever its raw holds.
@@ -307,7 +340,11 @@
                 for (let i = 0; i < this.blocks.length; i++) {
                     lines.push(this.blocks[i].raw == null ? '' : String(this.blocks[i].raw));
                 }
-                while (lines.length > 1 && !String(lines[lines.length - 1]).trim()) {
+                // Markdown tolerates losing trailing blank lines; a code file does not.
+                // Popping them rewrites the file on save for anyone whose tooling cares
+                // about the final newline, which is most of them.
+                while (this.kind !== 'code' && lines.length > 1
+                       && !String(lines[lines.length - 1]).trim()) {
                     lines.pop();
                 }
                 return lines.join('\n');
@@ -879,10 +916,43 @@
          * S: full DOM, immediate paint.
          * M: full DOM, progressive paint (block-count gate only; never LARGE_DOC_CHARS).
          */
+        /**
+         * Load a code file into the same block editor Markdown uses.
+         *
+         * Not a new mode and not a new surface: it is Preview, with a document whose raw
+         * happens to be code. Everything the editor already does to blocks -- virtualise,
+         * measure, search, bookmark, annotate, paginate, theme -- works unchanged, which
+         * is the entire argument for doing it this way.
+         */
+        function loadCodeContent(text, language) {
+            _contentCache = null;
+            try { releaseDocumentStateForHost(); } catch (e0) {}
+            DocumentModel.fromCode(text, language);
+            try { if (typeof CodeStates !== 'undefined') CodeStates.invalidate(); } catch (eS) {}
+            try { DocumentModel.virtEnabled = DocumentModel.shouldVirtualize(); } catch (eV) {}
+            if (editor) {
+                editor.classList.add('code-mode');
+                // Every Markdown affordance is off for this kind: no reveal-on-focus
+                // rewriting a line to its "source", no list continuation, no smart
+                // anything. A code file that edits itself is worse than one with no
+                // highlighting at all.
+                editor.classList.remove('reader-mode', 'book-mode');
+            }
+            try { state.mode = 'wysiwyg'; state.viewMode = 'preview'; } catch (eM) {}
+            return DocumentModel.blocks.length;
+        }
+
+        /** Leaving a code document: drop the class the renderer keys off. */
+        function clearCodeMode() {
+            try { if (editor) editor.classList.remove('code-mode'); } catch (e) {}
+            try { if (typeof CodeStates !== 'undefined') CodeStates.invalidate(); } catch (e2) {}
+        }
+
         function loadMarkdownContent(markdown, opts) {
             opts = opts || {};
             _contentCache = null;
             try { releaseDocumentStateForHost(); } catch (e0) {}
+            try { clearCodeMode(); } catch (eCm) {}
             const text = markdown == null ? '' : String(markdown);
 
             // Column/pagination remounts used to call loadMarkdownContent(toMarkdown()) while
