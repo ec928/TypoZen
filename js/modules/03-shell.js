@@ -624,6 +624,11 @@
                         if (t) applyTheme(t);
                     } catch (e) {}
                 }
+                else if (msg.startsWith("doc_path:")) {
+                    // Which file is arriving. Only used to decide whether it is code;
+                    // the host owns the path for every other purpose.
+                    try { window.__tzDocPath = msg.substring(9); } catch (eDp) {}
+                }
                 else if (msg.startsWith("load_content:")) {
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.

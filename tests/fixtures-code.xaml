@@ -1,0 +1,8 @@
+<UserControl x:Class="Demo.Panel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+    <!-- A comment
+         spanning two lines -->
+    <Grid Margin="4,0,4,0">
+        <TextBlock Text="Hello &amp; goodbye" FontSize="14" />
+    </Grid>
+</UserControl>

@@ -30,6 +30,36 @@
          */
         function finishLoadContent(content, markDirty, forcePlain) {
             content = content == null ? '' : String(content);
+
+            // A code file takes the code kind, whatever the host thought about plain vs
+            // Preview. forcePlain is a SIZE decision about Markdown; this is a decision
+            // about what the document IS, and it wins.
+            //
+            // The path is consumed here and cleared, so it describes THIS content and
+            // nothing after it. It arrives as a separate message from the content, and a
+            // sticky value is two things deciding one answer: session restore and tab
+            // switches push content through here without announcing a path, so the last
+            // path announced went on classifying documents it had nothing to do with.
+            // Measured, not guessed -- opening a .xaml gave DocumentModel.kind 'code'
+            // holding 4,581 blocks of the Markdown tab that was restored after it.
+            //
+            // Clearing first also fails safe: a load with no path is Markdown, which is
+            // the behaviour that existed before any of this.
+            let docPath = '';
+            try {
+                docPath = window.__tzDocPath || '';
+                window.__tzDocPath = '';
+            } catch (ePath) {}
+            try {
+                const codeLang = (typeof codeLanguageForPath === 'function')
+                    ? codeLanguageForPath(docPath) : null;
+                if (codeLang) {
+                    window.__tzPaintGen = (window.__tzPaintGen || 0) + 1;
+                    loadCodeContent(content, codeLang);
+                    if (markDirty) state.lastSavedContent = '\0__session_unsaved__';
+                    return;
+                }
+            } catch (eCk) {}
             // Source-vs-Preview is the HOST's decision, made by document type
             // (.txt/.log/.csv). This used to add "or >= LARGE_DOC_CHARS", a second copy
             // of a size rule the host also had — so every markdown file over 16 KB was
@@ -939,6 +969,31 @@
                 editor.classList.remove('reader-mode', 'book-mode');
             }
             try { state.mode = 'wysiwyg'; state.viewMode = 'preview'; } catch (eM) {}
+
+            // Mount through the shared factory rather than a private loop. It stamps
+            // data-raw and data-model-index and calls renderBlockPreview, which is where
+            // the code branch lives -- so a code document is built by exactly the code
+            // that builds a Markdown one, and cannot drift away from it.
+            //
+            // The full mount, not the virtualised one, until the virt path is exercised
+            // for this kind: a wrong mount here would show as missing text, and quietly
+            // showing less of a file than it contains is the worst failure available.
+            if (editor) {
+                try {
+                    DocumentModel.virtEnabled = false;
+                    if (typeof unbindVirtScroll === 'function') unbindVirtScroll();
+                    editor.innerHTML = '';
+                    const frag = document.createDocumentFragment();
+                    for (let i = 0; i < DocumentModel.blocks.length; i++) {
+                        frag.appendChild(
+                            createPreviewBlockEl(DocumentModel.blocks[i].raw, false, i));
+                    }
+                    editor.appendChild(frag);
+                } catch (eMount) {}
+            }
+            try { DocumentModel.invalidateHeights(); } catch (eH) {}
+            try { updateStatsNow(); } catch (eSt) {}
+            try { updateOutline(); } catch (eO) {}
             return DocumentModel.blocks.length;
         }
 

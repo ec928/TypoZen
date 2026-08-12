@@ -6440,6 +6440,13 @@ namespace TypoZen
         private void LoadContentToEditor(string content, bool markDirty = false, string filePathHint = null)
         {
             content = content ?? "";
+            // Tell the page which file this is, before the content arrives.
+            //
+            // The page decides whether that makes it a code document, because the
+            // extension table lives in 08-code.js and a second copy here is how two lists
+            // that must agree stop agreeing. The host's only job is to say what the file
+            // is called.
+            try { SendMsg("doc_path:" + (filePathHint ?? "")); } catch { }
             try
             {
                 if (content.Length <= LoadContentInlineMaxChars)
