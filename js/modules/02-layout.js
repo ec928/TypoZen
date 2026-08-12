@@ -1551,18 +1551,64 @@
             return n;
         }
 
-        function showSelPop() {
+        /**
+         * The selected text, wherever the selection happens to live.
+         *
+         * Source is a <textarea>, and a textarea's selection is not a DOM Selection --
+         * window.getSelection() reports collapsed there. That is the whole reason the
+         * popover never appeared in Source: showSelPop asked the DOM and the DOM said
+         * nothing was selected. Nobody decided Source should not offer Look up; it fell
+         * out of an implementation detail.
+         */
+        function currentSelectionText() {
+            if (state.mode === 'source' && sourceEditor) {
+                const a = sourceEditor.selectionStart, b = sourceEditor.selectionEnd;
+                if (a == null || b == null || b <= a) return '';
+                return String(sourceEditor.value || '').slice(a, b);
+            }
+            const sel = window.getSelection();
+            return (sel && !sel.isCollapsed) ? sel.toString() : '';
+        }
+
+        /**
+         * Raise the popover.
+         *
+         * `anchor` is where to put it, and it is optional only because a DOM selection
+         * carries its own rectangle. A textarea selection does not: working one out means
+         * mirroring the textarea in a hidden div to measure the caret, which is a lot of
+         * machinery for a tooltip. The pointer is where the reader just finished dragging
+         * and is close enough to the words in question, so Source passes the mouse
+         * position and Preview keeps using the selection's own box.
+         */
+        function showSelPop(anchor) {
             const pop = document.getElementById('selPop');
             if (!pop) return;
-            const sel = window.getSelection();
-            if (!sel || sel.isCollapsed || !sel.rangeCount) { hideSelPop(); return; }
-            const r = sel.getRangeAt(0);
-            const host = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
-            if (!host || !editor || !editor.contains(host)) { hideSelPop(); return; }
-            const rect = r.getBoundingClientRect();
-            if (!rect || (!rect.width && !rect.height)) { hideSelPop(); return; }
 
-            _selPopWord = selectedWord(r.toString());
+            const inSource = state.mode === 'source';
+            let rect = anchor || null;
+            let text = '';
+
+            if (inSource) {
+                text = currentSelectionText();
+                if (!text.trim() || !rect) { hideSelPop(); return; }
+            } else {
+                const sel = window.getSelection();
+                if (!sel || sel.isCollapsed || !sel.rangeCount) { hideSelPop(); return; }
+                const r = sel.getRangeAt(0);
+                const host = r.startContainer.nodeType === 1
+                    ? r.startContainer : r.startContainer.parentElement;
+                if (!host || !editor || !editor.contains(host)) { hideSelPop(); return; }
+                rect = r.getBoundingClientRect();
+                if (!rect || (!rect.width && !rect.height)) { hideSelPop(); return; }
+                text = r.toString();
+            }
+
+            // Highlight is a block anchor, and Source has no blocks. Hidden rather than
+            // shown-and-inert, the same courtesy the format controls get on a book.
+            const markBtn = document.getElementById('selPopMark');
+            if (markBtn) markBtn.hidden = inSource;
+
+            _selPopWord = selectedWord(text);
             _lookupTrail = [];      // a new selection is a new walk, not a continuation
 
             const body = document.getElementById('selPopBody');
@@ -1740,7 +1786,9 @@
 
             const find = document.getElementById('selPopFind');
             if (find) find.addEventListener('click', function () {
-                const q = (window.getSelection() || '').toString().trim();
+                // Not window.getSelection(): in Source the selection lives on the
+                // textarea and the DOM reports nothing.
+                const q = currentSelectionText().trim();
                 hideSelPop();
                 if (!q) return;
                 try {

@@ -417,11 +417,23 @@
                     // "flashes for a split second" report, and the popover was erasing its
                     // own answer.
                     if (e.target && e.target.closest && e.target.closest('#selPop')) return;
-                    setTimeout(function () { try { showSelPop(); } catch (e2) {} }, 10);
+                    // The pointer is the anchor in Source, where the selection has no
+                    // rectangle of its own. Preview ignores it and uses the range's box.
+                    const at = { left: e.clientX, top: e.clientY, width: 0, height: 0,
+                                 bottom: e.clientY };
+                    setTimeout(function () { try { showSelPop(at); } catch (e2) {} }, 10);
                 });
                 document.addEventListener('selectionchange', function () {
-                    const s = window.getSelection();
-                    if (s && !s.isCollapsed) return;
+                    // In Source the DOM selection is ALWAYS collapsed -- the selection
+                    // lives on the textarea -- so this would hide the popover the instant
+                    // it appeared. Ask the surface that actually holds the selection.
+                    if (state.mode === 'source') {
+                        if (typeof currentSelectionText === 'function'
+                            && currentSelectionText().trim()) return;
+                    } else {
+                        const s = window.getSelection();
+                        if (s && !s.isCollapsed) return;
+                    }
                     // A shown result outlives the selection that asked for it. Clicking the
                     // button can collapse the selection, and hiding on that would be the
                     // same self-erasure by another route. Escape, a click outside, or a new
