@@ -876,7 +876,7 @@
         function serializeBlockDomToRaw(block) {
             if (!block) return '';
             try {
-                if (state.revealOnFocus) {
+                if (revealOnFocusActive()) {
                     return coerceBlockRaw(block.innerText || '');
                 }
                 // Always tree-walk (blockHtmlToMarkdown). Joining child innerText used to
@@ -918,7 +918,7 @@
         function getBlockRaw(block) {
             if (!block) return '';
             const focusedHere = isBlockFocused(block);
-            if (state.revealOnFocus && focusedHere) {
+            if (revealOnFocusActive() && focusedHere) {
                 return normalizeBlockRaw(block.innerText || block.getAttribute('data-raw') || '');
             }
             const raw = block.getAttribute('data-raw');
@@ -985,7 +985,7 @@
             block.setAttribute('data-raw', raw);
             try { block.removeAttribute('data-tz-dirty'); } catch (e0) {}
             setBlockListIndentAttr(block, raw);
-            if (state.revealOnFocus) block.innerText = raw;
+            if (revealOnFocusActive()) block.innerText = raw;
             else renderBlockPreview(block, raw);
             // Stage A dual-write: model tracks the same raw as the attribute.
             try {

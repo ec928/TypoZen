@@ -1949,6 +1949,23 @@
                 return DocumentModel.toPlainText();
             }
 
+            // A code document returns here for the same reason, and it is the same bug a
+            // third time.
+            //
+            // expandAllFragmentedBlocks() undoes soft breaks left by editing by splitting
+            // the DOM. A code block's content is its line wearing token spans, and those
+            // spans look exactly like the fragments it exists to unpick -- so one keystroke
+            // in a .xaml turned 9 blocks into 17 and left line 1 as the bare word
+            // "UserControl". Measured in the running app, one character at a time.
+            //
+            // The model is the document here, full stop, exactly as the note above says of
+            // a book: toMarkdown() joins the raws with newlines and for this kind that is
+            // the identity serialiser. There is nothing for a DOM repair to contribute and
+            // everything for it to destroy.
+            if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'code') {
+                return DocumentModel.toMarkdown();
+            }
+
             // Expand soft-breaks only when repairing (mutates DOM). Markdown only, now that
             // the book has already returned above.
             if (repairFragments !== false) {

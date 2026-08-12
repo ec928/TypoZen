@@ -1552,7 +1552,7 @@
             if (blockTexts.length === 1 && !blockTexts[0].includes('\n')) {
                 document.execCommand('insertText', false, blockTexts[0]);
                 if (active && active.classList && active.classList.contains('block')) {
-                    const raw0 = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
+                    const raw0 = revealOnFocusActive() ? active.innerText : blockHtmlToMarkdown(active);
                     active.setAttribute('data-raw', raw0);
                 }
                 updateStats();
@@ -1570,12 +1570,12 @@
                     const sel2 = window.getSelection();
                     if (sel2 && sel2.rangeCount > 0 && sel2.anchorNode && active.contains(sel2.anchorNode)) {
                         document.execCommand('insertText', false, blockTexts[0]);
-                        const raw0 = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
+                        const raw0 = revealOnFocusActive() ? active.innerText : blockHtmlToMarkdown(active);
                         active.setAttribute('data-raw', raw0);
                         renderBlockPreview(active, raw0);
                     } else {
                         active.innerText = (active.innerText || '') + blockTexts[0];
-                        const raw0 = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
+                        const raw0 = revealOnFocusActive() ? active.innerText : blockHtmlToMarkdown(active);
                         active.setAttribute('data-raw', raw0);
                         renderBlockPreview(active, raw0);
                     }
@@ -2747,8 +2747,8 @@
             // Sync current block raw from DOM after split
             let raw = block.getAttribute('data-raw');
             if (raw == null || raw === '') {
-                raw = state.revealOnFocus ? (block.innerText || '') : blockHtmlToMarkdown(block);
-            } else if (state.revealOnFocus) {
+                raw = revealOnFocusActive() ? (block.innerText || '') : blockHtmlToMarkdown(block);
+            } else if (revealOnFocusActive()) {
                 // Prefer remaining text after deleteContents
                 const left = String(block.innerText || '').replace(/\u00a0/g, ' ');
                 if (left.trim().length <= String(raw).trim().length) raw = left;
@@ -2870,6 +2870,25 @@
         }
 
         function blockHtmlToMarkdown(block) {
+            // A code block's DOM is its line wearing token spans. Its text IS its raw.
+            //
+            // Guarded HERE, at the root, and not at the callers -- there are ten of them
+            // across two files, and the odds of all ten being found and kept in step are
+            // poor. Anything that reads a block's DOM back into the model comes through
+            // this function, so this is the only place the rule has to hold.
+            //
+            // This is the bug that shredded a real .xaml: 08-code.js claimed a code
+            // block's raw was "only ever rewritten from textContent", which was simply
+            // untrue -- every keystroke ran the MARKDOWN serialiser over the spans, and
+            // each token came back as its own line. The claim was asserted from the
+            // design and never checked against the code, and the suite that passed 19/19
+            // drove setBlockRaw directly, stepping around the one path a keystroke takes.
+            //
+            // textContent, not innerText: innerText is what the layout renders, and it
+            // normalises whitespace. Leading indentation is the substance of a code file.
+            if (block && typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'code') {
+                return block.textContent == null ? '' : String(block.textContent);
+            }
             // Nest level is not in the DOM list structure — keep it from the block attribute / prior data-raw
             let indentLevel = 0;
             const attr = block && block.getAttribute('data-list-indent');

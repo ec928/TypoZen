@@ -250,6 +250,25 @@
             return viewStateOf('preview', 1, 'scroll');
         }
 
+        /**
+         * Is reveal-on-focus in force for the document on screen?
+         *
+         * False for a code document, always. Reveal rewrites a focused block to its
+         * "source" using innerText -- for a code line that is the same text, but
+         * innerText is what the LAYOUT renders and it normalises whitespace, so the
+         * leading indentation goes. It is also meaningless there: a code block already
+         * shows its source.
+         *
+         * The preference itself is untouched, so it survives a code document being open
+         * and comes back when a Markdown one is. Ten call sites read this instead of
+         * state.revealOnFocus directly; the only place that still reads the raw property
+         * is the toggle command that sets it.
+         */
+        function revealOnFocusActive() {
+            if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'code') return false;
+            return !!state.revealOnFocus;
+        }
+
         function getPageMarginPads() {
             // Real page margins (side padding), not max-width / line-length tricks.
             const m = state.margin || 'narrow';

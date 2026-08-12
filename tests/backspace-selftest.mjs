@@ -140,6 +140,10 @@ const setCaretAtOffset = __sca;
 const updateStats = __us;
 const updateOutline = __uo;
 let getBlockRaw = __gbr;
+// Reveal-on-focus is off for a code document, and these extracted functions ask.
+// Stubbed here because this sandbox runs them without DocumentModel: the suite is
+// about list backspace, and 'is reveal active' is not part of what it exercises.
+function revealOnFocusActive() { return !!state.revealOnFocus; }
 `;
 
 for (const n of fnList) {
