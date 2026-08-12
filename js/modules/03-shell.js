@@ -327,6 +327,66 @@
                 HistoryManager.commitEdit();
             });
 
+            /**
+             * Enter keeps the indentation of the line it left.
+             *
+             * Source is a plain textarea, so Enter puts the caret at column zero and every
+             * indented structure -- a code fence, a YAML block, a nested list, anything
+             * pasted from a file -- has to be re-indented by hand on every line. This is
+             * the "help with aligning" half of the developer-editor request, and it needs
+             * no new surface: it is a keystroke in the surface that already exists.
+             *
+             * A list line continues its MARKER as well as its indent, which is what
+             * Preview already does. An empty list item ends the list instead, because a
+             * reader pressing Enter twice means "I am finished", not "another bullet".
+             *
+             * Deliberately not touched: brackets and quotes. Auto-closing them is a matter
+             * of taste that turns hostile the moment it guesses wrong, and prose is full of
+             * apostrophes.
+             */
+            sourceEditor.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                if (window.isComposing || e.isComposing) return;
+                const start = sourceEditor.selectionStart;
+                const end = sourceEditor.selectionEnd;
+                if (start == null || start !== end) return;   // a selection: let Enter replace it
+                const full = sourceEditor.value;
+                let ls = start;
+                while (ls > 0 && full.charAt(ls - 1) !== '\n') ls--;
+                const line = full.substring(ls, start);
+                const indent = (/^[ \t]*/.exec(line) || [''])[0];
+
+                // A list item carries its marker too, so a list continues rather than
+                // collapsing to a bare indented line.
+                const m = /^([ \t]*)([-*+]|\d+[.)])(\s+)(.*)$/.exec(line);
+                let insert = '\n' + indent;
+                if (m) {
+                    if (!m[4].trim()) {
+                        // "- " with nothing after it: end the list, and take the empty
+                        // marker away rather than leaving a stray bullet behind.
+                        e.preventDefault();
+                        HistoryManager.beginEdit();
+                        sourceEditor.setRangeText('\n', ls, start, 'end');
+                        resizeSourceEditor();
+                        updateStats();
+                        HistoryManager.commitEdit();
+                        return;
+                    }
+                    const marker = /^\d/.test(m[2])
+                        ? (parseInt(m[2], 10) + 1) + m[2].slice(-1)   // 3. -> 4.
+                        : m[2];
+                    insert = '\n' + m[1] + marker + m[3];
+                }
+                if (insert === '\n') return;                  // nothing to carry: leave Enter alone
+
+                e.preventDefault();
+                HistoryManager.beginEdit();
+                sourceEditor.setRangeText(insert, start, end, 'end');
+                resizeSourceEditor();
+                updateStats();
+                HistoryManager.commitEdit();
+            });
+
             sourceEditor.addEventListener('paste', (e) => {
                 const dt = e.clipboardData || window.clipboardData;
                 const img = firstImageFile(dt);
