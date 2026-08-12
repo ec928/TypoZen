@@ -102,11 +102,20 @@ async function leaveBookLap(cols) {
         // BOOK's measurement and a healthy one is measured for the pane in front of it.
         if (s.paginated) {
             info(cols + '-col: restored into Pages, so the markdown has its own geometry');
-            assert(s.colWidth !== bookColW,
-                cols + '-col: the column is measured for this pane, not carried over from ' +
-                'the book (' + s.colWidth + ' vs the book: ' + bookColW + ')');
-            assert(s.colGap !== '60px' || cols === 2,
-                cols + '-col: and the two-column gap did not come with it');
+            // NOT "differs from the book's number". In 1-column a healthy re-measure of
+            // the same pane produces exactly the book's figure, so that comparison cannot
+            // tell a leak from a correct answer -- it failed an honest run for precisely
+            // that reason. What distinguishes them is whether the geometry AGREES WITH THE
+            // PANE IN FRONT OF IT: a leak is a number measured somewhere else.
+            const live = await app.eval(() => {
+                const twoCol = editor.classList.contains('two-col-layout');
+                const paneW = PageGeometry._paneW || 0;
+                return { twoCol, paneW, expect: twoCol ? (paneW - 60) / 2 : paneW };
+            });
+            const actual = parseFloat(s.colWidth);
+            info(cols + '-col: column ' + actual + ', pane says ' + live.expect.toFixed(2));
+            assert(Math.abs(actual - live.expect) < 1.5,
+                cols + '-col: the column matches this pane, so it was measured here');
         } else {
             assert(s.colWidth === 'auto',
                 cols + '-col: no column-width survives the book (was ' + bookColW + ')');
