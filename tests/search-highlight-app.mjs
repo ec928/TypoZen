@@ -93,7 +93,12 @@ try {
         const input = document.getElementById('sidebarSearchInput');
         input.value = 'scroll';
         input.dispatchEvent(new Event('input', { bubbles: true }));
-        await sleep(1500);
+        // Longer than SIDEBAR_SEARCH_DEBOUNCE_MS (2000), not shorter. At 1500 this read
+        // the result set mid-debounce and reported 0 or 199 matches instead of 2135,
+        // which failed "a wide result set" and then cascaded into every assertion that
+        // depends on there being matches -- intermittently, so it read as a real
+        // regression twice while nothing was wrong.
+        await sleep(2600);
         return { matches: findState.matches.length };
     });
     info('matches: ' + found.matches);
@@ -167,6 +172,66 @@ try {
         assert(line2 && t.currentText.indexOf('Line ' + line2 + ' of') === 0,
             L + ': after stepping the mark is still on the sidebar’s line');
     }
+
+    // --- A match with nothing rendered to travel to moves the view NOWHERE.
+    //
+    // Searching "scroll" matches inside `![](large-scroll-mixed-assets/...)`. That line
+    // paints an <img> and contributes no text node, so no range is built for it, and the
+    // highlighter's `ranges[currentRange >= 0 ? currentRange : 0]` fallback then seeks to
+    // a DIFFERENT match -- the first one built, at the top of the document. Clicking that
+    // row threw the reader back to page one. It was never failing to scroll; it was
+    // scrolling to the wrong hit.
+    //
+    // Asserted as "stays exactly where it was", not "goes somewhere sensible": there is no
+    // position in the text for it to go to, so doing nothing is the answer.
+    console.log('\n########## an image result travels nowhere ##########');
+    await app.eval((c) => handleCommand('view_set:columns:' + c), 1);
+    await sleep(1200);
+    await app.eval(() => handleCommand('view_set:scroll:scroll'));
+    await sleep(1800);
+
+    const nowhere = await app.eval(async () => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        const mc = document.getElementById('main-container');
+        const rows = document.querySelectorAll('#search-results-list .search-item');
+        // Which row is the image? Ask the same question the renderer asked, rather than
+        // hardcoding an index that a different fixture or match count would shift.
+        let imageRow = -1, textRow = -1;
+        for (let i = 0; i < Math.min(rows.length, 30); i++) {
+            const isImg = !!rows[i].querySelector('.search-badge');
+            if (isImg && imageRow < 0) imageRow = i;
+            if (!isImg && textRow < 0 && i > 8) textRow = i;
+        }
+        if (imageRow < 0) return { imageRow };
+        // Land somewhere real first. scrollTop cannot simply be assigned here -- the
+        // virtual spacers clamp it -- so travel there by clicking a text result.
+        rows[textRow].click();
+        await sleep(2000);
+        const parked = Math.round(mc.scrollTop);
+        rows[imageRow].click();
+        await sleep(2000);
+        const afterImage = Math.round(mc.scrollTop);
+        // And a text row from the same place still travels, so "nothing moved" is not
+        // just "nothing works any more".
+        rows[5].click();
+        await sleep(2000);
+        return {
+            imageRow, textRow, parked, afterImage,
+            badgeText: rows[imageRow].textContent.trim().slice(0, 40),
+            afterText: Math.round(mc.scrollTop),
+        };
+    });
+    info('image row ' + nowhere.imageRow + ': ' + JSON.stringify(nowhere.badgeText));
+    info('parked at ' + nowhere.parked + ' -> image ' + nowhere.afterImage +
+         ' -> text ' + nowhere.afterText);
+    assert(nowhere.imageRow >= 0, 'control: an image result is rendered as a badge');
+    assert(nowhere.parked > 0, 'control: a text result travelled somewhere to start from');
+    assert(nowhere.afterImage === nowhere.parked,
+        'clicking the image result leaves the view exactly where it was (' +
+        nowhere.parked + ' -> ' + nowhere.afterImage + ')');
+    assert(nowhere.afterText !== nowhere.parked,
+        'control: a text result still travels from that same place (' +
+        nowhere.afterText + ')');
 
     console.log('\npassed=' + passed + ' failed=' + failed);
     if (failed) { console.error('\nSEARCH HIGHLIGHT FAILED'); process.exitCode = 1; }

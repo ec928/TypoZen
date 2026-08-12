@@ -453,10 +453,44 @@
                     } catch (eSt2) {}
                 }, { passive: true });
 
+                // Selecting text near a page edge must not turn the page.
+                //
+                // Chromium auto-scrolls a scroll container when a selection drag reaches
+                // its edge -- ordinary browser behaviour, and #editor.page-mode is a
+                // horizontal scroll container. On its own that is a few pixels of nudge.
+                // The snap below then rounds it to the nearest page and COMMITS, so
+                // reaching for the first word on a page turned to the page before it and
+                // took the half-made selection with it. The browser starts it; we were
+                // finishing it.
+                //
+                // Suppressed for the duration of the drag, then put back where the drag
+                // began: the selection anchor is on that page, so that is the page the
+                // reader is working on. A plain click restores the page it was already on,
+                // which is a no-op.
+                let _selDragging = false;
+                let _selDragPage = -1;
+                editor.addEventListener('mousedown', function (e) {
+                    if (!isPaginatedLayout() || e.button !== 0) return;
+                    _selDragging = true;
+                    try { _selDragPage = PageGeometry.localIndex(); }
+                    catch (eLi) { _selDragPage = -1; }
+                });
+                document.addEventListener('mouseup', function () {
+                    if (!_selDragging) return;
+                    _selDragging = false;
+                    if (!isPaginatedLayout() || _selDragPage < 0) return;
+                    try {
+                        if (window.markProgrammaticScroll) window.markProgrammaticScroll(300);
+                        PageGeometry.go(_selDragPage);
+                        updatePageIndicator();
+                    } catch (eGo) {}
+                });
+
                 // Keep scrollLeft on a page boundary. PageGeometry owns the stride.
                 let _snapTimer = null;
                 editor.addEventListener('scroll', function () {
                     if (!isPaginatedLayout()) return;
+                    if (_selDragging) return;   // mid-selection: see above
                     if (window.getProgScrollUntil && Date.now() <= window.getProgScrollUntil()) return;
                     if (_snapTimer) clearTimeout(_snapTimer);
                     _snapTimer = setTimeout(function () {
