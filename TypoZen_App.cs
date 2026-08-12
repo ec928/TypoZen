@@ -4100,16 +4100,16 @@ namespace TypoZen
                     if (_lblWordCount != null)
                     {
                         _lblWordCount.Text = selWords > 0 || selChars > 0
-                            ? (selWords + " / " + parts[0] + " words")
-                            : (parts[0] + " words");
+                            ? (Grouped(selWords.ToString()) + " / " + Grouped(parts[0]) + " words")
+                            : (Grouped(parts[0]) + " words");
                     }
                     if (_lblCharCount != null)
                     {
                         _lblCharCount.Text = selWords > 0 || selChars > 0
-                            ? (selChars + " / " + parts[1] + " chars")
-                            : (parts[1] + " chars");
+                            ? (Grouped(selChars.ToString()) + " / " + Grouped(parts[1]) + " chars")
+                            : (Grouped(parts[1]) + " chars");
                     }
-                    if (_lblReadingTime != null) _lblReadingTime.Text = parts[2] + " min read";
+                    if (_lblReadingTime != null) _lblReadingTime.Text = Grouped(parts[2]) + " min read";
                     bool dirty = parts[3] == "true";
                     _isDirty = dirty;
                     if (dirty) ArmAutosave();
@@ -4132,6 +4132,10 @@ namespace TypoZen
                         string total = parts.Length >= 5 ? parts[4] : "0";
                         string caret = parts.Length >= 6 ? parts[5] : "?";
                         // Ln current / total — answers "what line am I on?"
+                        // Not Grouped(): a line number is a coordinate, not a count, and
+                        // the search sidebar prints the same number raw in its gutter.
+                        // Grouping here made one line read as "1,037" in the status bar
+                        // and "1037" three inches to the left.
                         _lblLineCount.Text = "Ln " + caret + "/" + total;
                     }
                     UpdateStatusDisplay();
@@ -6000,6 +6004,20 @@ namespace TypoZen
             return true;
         }
 
+        /// <summary>
+        /// Group a count with the local thousands separator: 40772 -> "40,772".
+        ///
+        /// The status bar's job is to be read at a glance, and "205842" is not read at a
+        /// glance -- it is counted. Anything that is not a plain integer is passed through
+        /// untouched, so a placeholder like "?" survives.
+        /// </summary>
+        private static string Grouped(string n)
+        {
+            long v;
+            if (long.TryParse((n ?? "").Trim(), out v)) return v.ToString("N0");
+            return n ?? "";
+        }
+
         private static bool IsEpubPath(string path)
         {
             if (string.IsNullOrEmpty(path)) return false;
@@ -7632,12 +7650,15 @@ namespace TypoZen
                     await Task.Delay(500);
                     string wc = _lblWordCount != null ? (_lblWordCount.Text ?? "") : "";
                     log.AppendLine("SELWORDS \"" + wc + "\"");
-                    var wcMatch = Regex.Match(wc, @"^(\d+) / (\d+) words$");
+                    // Counts are grouped for reading (40,772), so the separator has to be
+                    // allowed here and stripped before parsing. Today's fixture is four
+                    // words and \d+ would still match; it would start lying at a thousand.
+                    var wcMatch = Regex.Match(wc, @"^([\d,]+) / ([\d,]+) words$");
                     int selN = 0, totN = 0;
                     if (wcMatch.Success)
                     {
-                        int.TryParse(wcMatch.Groups[1].Value, out selN);
-                        int.TryParse(wcMatch.Groups[2].Value, out totN);
+                        int.TryParse(wcMatch.Groups[1].Value.Replace(",", ""), out selN);
+                        int.TryParse(wcMatch.Groups[2].Value.Replace(",", ""), out totN);
                     }
                     if (wcMatch.Success && selN > 0 && selN <= totN)
                         Pass("selection word count shows selected / total (" + wc + ")");

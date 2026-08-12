@@ -214,12 +214,13 @@ Bullet, ordered and task lists, with real nesting.
 - Inside a table, `Tab` moves between cells instead and grows the table at the end
 - **Backspace at column 0** walks a ladder: outdent one level → strip the marker (including ordered `1.` and task `- [ ]`) → merge with the previous block
 - `Enter` continues the list at the same indent and kind; ordered numbering follows the previous item *at that level*
+- **Headings are separated by space, not rules.** One hairline under `h1` only, mixed from the theme's own text colour rather than `--border` (which draws the sidebar edge and the scrollbar thumb — chrome furniture, and this lives inside the document). `h2` has none: solid-under-h1 plus dashed-under-h2 is the GitHub-markdown idiom, not a book one. Headings sit 1.25em from what precedes them and 0.3em from their own text, so a section reads as a section. No rule at all in Pages — `break-after: avoid` routinely puts a heading at the top of a column, which made the rule the second thing on the page and, across a two-column spread, two lines at different heights
 - Formatting controls grey themselves out whenever the document cannot take an edit — Reader mode, and every epub. They were live-looking and inert there; Word Wrap had greyed itself and said why for a long time, and the nine controls beside it had not. Greyed rather than hidden, so switching modes never shuffles buttons under the pointer
 - Formatting and toolbar list toggles preserve indent; un-listing clears it to level 0
 - Indentation is a property of the raw Markdown (leading spaces), rendered with `margin-left` rather than nested `<ul>` DOM — so Source round-trips exactly
 
 ### Live statistics
-The status bar updates continuously with word count, character count, estimated reading time (~200 wpm), total lines, **current line** (caret in Source/Preview — same document-line coordinate as Search result gutters after a jump), **current chapter** (click to jump to its start), zoom, and — when text is selected — **selected** word and character counts. Serialization is debounced so counters stay responsive on very large documents.
+The status bar updates continuously with word count, character count (both grouped — `40,772 words` is read, `40772` is counted; line numbers stay ungrouped, being coordinates the search gutter prints raw), estimated reading time (~200 wpm), total lines, **current line** (caret in Source/Preview — same document-line coordinate as Search result gutters after a jump), **current chapter** (click to jump to its start), zoom, and — when text is selected — **selected** word and character counts. Serialization is debounced so counters stay responsive on very large documents.
 
 ### Files & export
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)

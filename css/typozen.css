@@ -841,6 +841,11 @@
             break-after: avoid;
             break-inside: avoid;
         }
+        /* And no rule under a heading on a page. break-after: avoid keeps a heading with
+           its text, which routinely puts it at the top of a column -- so the rule became
+           the second thing on the page, and across a 2-column spread you got two
+           horizontal lines at different heights, which reads as a table. */
+        #editor.page-mode h1 { border-bottom: none; padding-bottom: 0; }
 
         /* Page numbers, bottom-right of each page. Pinned to the viewport rather than
            flowed into the columns: content inside the flow would occupy a column and shift
@@ -1238,12 +1243,38 @@
         h1, h2, h3, h4, h5, h6 {
             font-weight: 700;
             color: var(--tx, #F4F4F5);
-            margin-top: 14px;
-            margin-bottom: 6px;
+            /* Air above, tight below. A heading belongs to the text it introduces, not to
+               the section it ends, and that relationship is what makes a section read as
+               a section -- more than any rule does.
+               These were 14px and 6px. The largest paragraph-spacing preset is 12, so on
+               Loose a section head sat 14px from the section above it and 6px from its
+               own text: bound downward, but only just. Relative units so the gap tracks
+               the heading's own size, which is what keeps h1 and h4 looking like the same
+               decision at different scales. */
+            margin-top: 1.25em;
+            margin-bottom: 0.3em;
             line-height: 1.3;
         }
-        h1 { font-size: 2.2em; border-bottom: 1px solid var(--border, #3F3F46); padding-bottom: 8px; }
-        h2 { font-size: 1.7em; border-bottom: 1px dashed var(--border, #3F3F46); padding-bottom: 6px; }
+        /* A document that opens on a heading should not open on a gap. */
+        #editor .block:first-child h1, #editor .block:first-child h2,
+        #editor .block:first-child h3, #editor .block:first-child h4,
+        #editor .block:first-child h5, #editor .block:first-child h6 { margin-top: 0; }
+
+        h1 {
+            font-size: 2.2em;
+            /* Mixed from the text colour, not --border. That token draws the sidebar edge
+               and the scrollbar thumb: it is chrome furniture, and this rule lives inside
+               the document. Same reasoning that gave --mark-ink its own derivation rather
+               than borrowing the accent. */
+            border-bottom: 1px solid color-mix(in srgb, var(--tx, #F4F4F5) 14%, transparent);
+            padding-bottom: 0.25em;
+        }
+        /* h2 has no rule at all, deliberately.
+           Solid under h1 and dashed under h2 is the GitHub-markdown idiom -- a
+           documentation convention, not a book one -- and softening the dash would have
+           kept the idiom and only quietened it. One rule, at the document-title level,
+           with sections separated by space instead. */
+        h2 { font-size: 1.7em; }
         h3 { font-size: 1.4em; }
         h4 { font-size: 1.2em; }
         h5 { font-size: 1.05em; }
