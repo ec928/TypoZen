@@ -353,8 +353,10 @@
                         setTimeout(function () {
                             const el = elementForModelIndex(idx);
                             if (!el) return;
-                            currentActiveBlock = el;
-                            el.classList.add('focused');
+                            // The flash goes through the same door as everything else, so
+                            // it cannot leave a second block shaded when it fires after a
+                            // search reveal has already chosen one.
+                            setFocusedBlock(el);
                             setTimeout(function () {
                                 try { el.classList.remove('focused'); } catch (e) {}
                             }, 1200);

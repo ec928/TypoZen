@@ -972,8 +972,17 @@
                 } else {
                     mountVirtWindow(true);
                 }
-                currentActiveBlock = editor.querySelector('.block');
-                if (currentActiveBlock) currentActiveBlock.classList.add('focused');
+                // Seed the shaded block on a FRESH open only, for exactly the reason the
+                // scrollTop reset above is conditional: a mode-switch or restore is a
+                // rendering event, not a navigation. This used to run unconditionally and
+                // add the class directly, which did two wrong things at once -- it lit
+                // whatever happened to be at the top of the mounted window (not even block
+                // 0, once the mount is anchored elsewhere), and it left any block another
+                // path had already shaded still shaded. A search result on line 13 with
+                // "Section 1 of 140" glowing at the top of the document was this.
+                // setFocusedBlock is the only thing that keeps "at most one block is
+                // shaded" true, so it is the only thing that may add the class.
+                if (!stickyWanted) setFocusedBlock(editor.querySelector('.block'));
                 seedHistoryAndCache();
                 window.__tzPreviewPainting = false;
                 try { updateOutline(); } catch (eO) {}
@@ -1015,8 +1024,7 @@
                     for (let i = 0; i < blocks.length; i++) {
                         blocks[i].setAttribute('data-model-index', String(i));
                     }
-                    currentActiveBlock = blocks[0] || null;
-                    if (currentActiveBlock) currentActiveBlock.classList.add('focused');
+                    setFocusedBlock(blocks[0] || null);   // see above: one adder only
                 } catch (e) {
                     currentActiveBlock = editor.firstElementChild;
                 }

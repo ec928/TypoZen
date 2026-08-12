@@ -1568,7 +1568,9 @@
                 }
                 currentActiveBlock = newActive;
                 if (currentActiveBlock && currentActiveBlock.classList && editor.contains(currentActiveBlock)) {
-                    currentActiveBlock.classList.add('focused');
+                    // setFocusedBlock rather than classList.add: this path knew to unlight
+                    // the block it was leaving, but not any block some OTHER path had lit.
+                    setFocusedBlock(currentActiveBlock);
                     if (state.revealOnFocus) {
                         const raw = currentActiveBlock.getAttribute('data-raw') || '';
                         if (currentActiveBlock.innerText !== raw) currentActiveBlock.innerText = raw;
