@@ -78,37 +78,44 @@ token offsets onto DOM ranges, register one `Highlight` per token class.
 - **Ceiling:** colour only (§3). Does nothing for `.cs` files.
 - **Risk:** low. It is exactly the pattern the codebase already uses twice.
 
-### Option 2 — A `code` document kind, rendered like Reader
+### ~~Option 2 — A read-only `code` document kind~~ — **ruled out**
 
-**Scope:** whole `.cs` / `.xaml` / `.json` files, opened **read-only**.
+Rejected by the owner: *"I don't see any point in reading code if I can't modify it. No
+value."* A viewer is off the table, which removes the cheapest route to full styling and
+makes the remaining question purely about **editing surfaces**.
 
-Because nothing round-trips in a read-only surface, tokens *can* be wrapped in real
-elements — so this escapes the §3 ceiling entirely and gets bold keywords, italic comments,
-a line-number gutter, and folding later if wanted. It reuses the Reader precedent, which
-already carries foreign HTML verbatim and is understood.
+That rejection also invalidates a claim made earlier in this document. The colour-only
+ceiling in §3 is a property of **the Highlight API**, not of Preview — and once editing is
+the requirement, there is a way to have both. See Option 2b.
 
-- **Cost:** moderate-to-high — new kind, routing, renderer.
-- **Ceiling:** it is a **viewer**. You cannot type in it.
-- **Risk:** medium, and mostly in deciding what "read-only" means for a file the user opened
-  expecting to edit.
+### Option 2b — A `code` document kind in Preview, one block per line
 
-### Option 3 — Replace the Source textarea with a highlighted editing surface
+**Scope:** whole `.cs` / `.xaml` / `.json` files, **editable**, using the existing block
+model with an identity parser: a block *is* a line, `data-raw` *is* that line verbatim, and
+nothing is parsed as Markdown.
 
-The actual "developer mode". Two sub-approaches:
+The `data-raw` invariant (§2a) is survivable here, and this is the key insight: the danger
+was ever only that Markdown **serialisation reads `innerHTML`**. A code kind whose edit path
+derives `data-raw` from **`textContent`** cannot be corrupted by markup, because
+`textContent` strips it. So tokens *can* be real `<span>`s — which escapes the §3 ceiling
+and gets bold keywords and italic comments back.
 
-**3a. Overlay.** A styled `<pre>` painted behind a transparent `<textarea>`, scroll- and
-metric-synced. This is how Prism live editors and CodeMirror 5 worked. Keeps the textarea's
-IME, undo stack, selection and accessibility for free, and gets full styling because the
-paint layer is a real DOM tree.
-*Risk: the two layers must wrap identically — same font, same metrics, same padding — or the
-paint drifts from the text. Well-trodden, genuinely fiddly.*
+What comes free, because it is all block-based already:
 
-**3b. Full `contenteditable` code editor.** Maximum control, and you inherit every problem
-this codebase already documents about `contenteditable`: caret placement, undo, IME,
-paste normalisation.
+- **virtualisation** and the per-block height map (a 20,000-line file is 20,000 blocks; the
+  app already virtualises past ~2,000)
+- **search**, with its sidebar, gutter line numbers and highlight painting
+- **bookmarks and annotations** — marks anchor to blocks and would simply work
+- **the outline**, which for code could list classes and methods rather than headings
+- all 26 **themes**, spacing controls and the reading chrome
 
-- **Cost:** 3a moderate; 3b high.
-- **Ceiling:** none, but 3b is a project rather than a feature.
+- **Cost:** moderate. New kind, an identity parser/serialiser, and suppressing every
+  Markdown behaviour (list continuation, emphasis, heading detection) for this kind.
+- **Risk:** the known one — typing inside `<span>`s in `contenteditable`. Browsers split
+  spans and carry formatting onto the next character. The standard answer is to re-tokenise
+  and re-render **the edited line only** on each keystroke, which is cheap for one line.
+- **Cost it inherits:** a code file stops being Notepad-class. This codebase deliberately
+  routes `.txt`/`.log`/`.csv` to a textarea for that reason.
 
 ### Option 4 — Alignment aids only, no highlighting
 
@@ -160,12 +167,29 @@ the main argument for this ordering.
 
 ## 8. The question that actually decides it
 
-> **Do you want to read code in TypoZen, or write it?**
+Read-only is out, so the choice is between **two editable surfaces**:
 
-- **Read it** → Option 2. Cheaper, full styling, no `contenteditable` risk.
-- **Write it** → Option 3a. More expensive, colour-only unless the overlay does the painting
-  (it can), and the sync work is the real cost.
-- **Fenced code in Markdown** → Option 1, regardless of the answer above.
+| | **2b — code kind in Preview** | **3a — overlay on Source** |
+|---|---|---|
+| Editable | yes | yes |
+| Bold / italic tokens | yes (spans, via textContent serialisation) | yes (real DOM paint layer) |
+| Bookmarks, annotations, outline, page mode | **free — all block-based** | none; Source has no blocks |
+| Search | free, incl. sidebar gutter | works, via the existing source find path |
+| Very large files | virtualised, ~20k blocks for 20k lines | **native textarea, Notepad-class** |
+| IME, undo, accessibility | inherits `contenteditable`'s known problems | **free from the textarea** |
+| New surface to maintain | no — reuses the block model | yes |
+| Main risk | typing inside spans | keeping two layers metrically identical |
+
+**The decider is not syntax highlighting — both do it.** It is:
+
+> **Should a code file behave like a TypoZen document, or like a code window that happens to
+> live in TypoZen?**
+
+- **Like a TypoZen document** — bookmark a function, annotate a line, outline the methods,
+  read it in Pages → **2b**. Everything in the left column is already built; the work is the
+  identity parser and the lexers.
+- **Like a code window** — open a 40,000-line generated XAML file and have it stay instant,
+  with the OS text stack intact → **3a**.
 
 Worth noting what is *not* in question: TypoZen already has a virtualised block model, a
 theme system with 26 palettes, a per-block height map, and a proven zero-DOM highlight
