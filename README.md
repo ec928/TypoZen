@@ -103,6 +103,8 @@ being two shortcuts and nothing on screen:
 | **Marks pane** | **Mark this page**, which becomes **Remove this mark** |
 | **Keyboard** | `Ctrl+Shift+M` toggles, `Ctrl+Shift+P` opens the pane |
 
+- **Highlighting a selection opens the Marks pane on it.** A highlight is a faint wash over text you are already looking at, so pressing the button gave almost no evidence it had worked — and the list it joined was behind a collapsed sidebar and an unselected tab. Same move *Find in document* makes, through the same command the menu and `Ctrl+Shift+P` use
+
 - **Ordered by position, never by when they were made.** You read forwards; a list in creation order has to be translated every time you look at it. The mark you are nearest is highlighted
 - **Named from their own text**, so a new one is legible without being typed. Double-click to rename; empty the name to get the text back
 - **Ticks on the scrubber** show every mark across the whole book — five marks over 604 pages is a shape you read at a glance

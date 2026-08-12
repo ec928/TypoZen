@@ -144,6 +144,75 @@ try {
     assert(made.injected === 0, 'and nothing was inserted into the editor DOM');
     assert(made.painted === 1, 'it is painted as a custom highlight instead');
 
+    console.log('\n=== pressing Highlight shows you where the highlight went ===');
+    const revealed = await app.eval(async (sel) => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        // Put the sidebar back where a reader who is reading keeps it, and on a tab that
+        // is not Marks -- otherwise this proves nothing, because the pane was already
+        // open on the right tab before the button was pressed.
+        const sb = document.getElementById('sidebar');
+        switchTab('outline', true);
+        sb.classList.add('collapsed');
+        await sleep(400);
+        const before = {
+            collapsed: sb.classList.contains('collapsed'),
+            tab: (document.querySelector('.sidebar-tab.active') || {}).getAttribute
+                ? document.querySelector('.sidebar-tab.active').getAttribute('data-tab') : null,
+        };
+
+        const keyOf = (m) => m.block + ':' + m.s + ':' + m.e;
+        const had = _marks.map(keyOf);
+
+        eval('window.__sel = ' + sel);
+        window.__sel('scroll marker', 26, 36);
+        await sleep(400);
+        // The real control, with the real mouse sequence -- not annotateSelection().
+        const b = document.getElementById('selPopMark');
+        const br = b.getBoundingClientRect();
+        const o = { bubbles: true, clientX: br.left + 5, clientY: br.top + 5 };
+        b.dispatchEvent(new MouseEvent('mousedown', o));
+        b.dispatchEvent(new MouseEvent('mouseup', o));
+        b.click();
+        await sleep(900);
+        const activeTab = document.querySelector('.sidebar-tab.active');
+        const added = _marks.findIndex(m => had.indexOf(keyOf(m)) < 0);
+        const row = added >= 0
+            ? document.querySelector('#marks-list .mark-item[data-mark="' + added + '"]')
+            : null;
+        const out = {
+            before,
+            collapsed: sb.classList.contains('collapsed'),
+            tab: activeTab ? activeTab.getAttribute('data-tab') : null,
+            rows: document.querySelectorAll('#marks-list .mark-item').length,
+            popHidden: document.getElementById('selPop').hidden,
+            addedIndex: added,
+            rowIsListed: !!row,
+            countBefore: had.length,
+        };
+
+        // Put the document back the way the rest of the suite expects to find it, using
+        // the pane's own delete control rather than reaching into _marks -- the tests
+        // after this one work on _marks[0] and the run at the end asserts exactly one
+        // annotation survives a restart.
+        if (row) {
+            const del = row.querySelector('.mark-del');
+            if (del) { del.click(); await sleep(500); }
+        }
+        out.countAfter = _marks.length;
+        return out;
+    }, selectWords.toString());
+    info('sidebar ' + JSON.stringify(revealed.before) + ' -> collapsed=' +
+        revealed.collapsed + ' tab=' + revealed.tab + ' rows=' + revealed.rows);
+    assert(revealed.before.collapsed === true && revealed.before.tab !== 'marks',
+        'control: the sidebar started shut, on another tab');
+    assert(revealed.collapsed === false, 'pressing Highlight opens the sidebar');
+    assert(revealed.tab === 'marks', 'on the Marks tab');
+    assert(revealed.addedIndex >= 0 && revealed.rowIsListed,
+        'with the new highlight listed in the pane');
+    assert(revealed.popHidden === true, 'and the popover gets out of the way');
+    assert(revealed.countAfter === revealed.countBefore,
+        'housekeeping: the extra highlight was removed again');
+
     console.log('\n=== a note is the reader\'s, the quotation is not ===');
     const noted = await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));

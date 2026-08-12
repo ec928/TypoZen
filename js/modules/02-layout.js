@@ -1599,8 +1599,22 @@
 
             const mark = document.getElementById('selPopMark');
             if (mark) mark.addEventListener('click', function () {
-                try { annotateSelection(); } catch (e) {}
+                let made = false;
+                try { made = !!annotateSelection(); } catch (e) {}
                 hideSelPop();
+                // Show the reader where the highlight went. A highlight is a faint wash
+                // on text you are already looking at, so on its own the button gave no
+                // evidence it had done anything -- and the list it joined was behind a
+                // collapsed sidebar and an unselected tab. Same move Find in document
+                // makes below, and through the same command the menu and Ctrl+Shift+P
+                // use, so there is one implementation of "open the Marks pane".
+                //
+                // Only when a highlight was actually made: annotateSelection() returns
+                // false when there is no range to mark, and opening a pane to show a
+                // thing that does not exist is worse than doing nothing.
+                if (made) {
+                    try { handleCommand('show_marks'); } catch (e2) {}
+                }
             });
             const lookupBtn = document.getElementById('selPopLookup');
             if (lookupBtn) lookupBtn.addEventListener('click', function () {

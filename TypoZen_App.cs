@@ -3560,11 +3560,21 @@ if (_btnColumnToggle != null)
             b.FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal;
         }
 
+        // How far a control recedes when it cannot be pressed.
+        //
+        // 0.45 was chosen when two buttons used this and the reader met them one at a
+        // time. Reader mode greys nine at once, and nine faint controls in a row still
+        // read as a toolbar -- the group was legible enough to keep drawing the eye to
+        // something it could not use. One value, not one per control: "unavailable"
+        // should look the same everywhere, and the Column and Scroll buttons quieting by
+        // the same amount is the point, not a side effect.
+        private const double LockedOpacity = 0.30;
+
         private void SetControlLocked(Control c, bool locked)
         {
             if (c == null) return;
             c.IsEnabled = !locked;
-            c.Opacity = locked ? 0.45 : 1.0;   // spec: locked selectors reduce opacity
+            c.Opacity = locked ? LockedOpacity : 1.0;
         }
 
         private void SelectSegment(string name, bool on)
