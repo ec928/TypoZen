@@ -1033,6 +1033,17 @@
                     editor.classList.remove('page-mode', 'reader-mode');
                     // two-col without pagination is invalid for preview scroll — drop it
                     editor.classList.remove('two-col-layout');
+                    // Taking page-mode off with classList skips syncPaginationClass(), and
+                    // that is the only other place the inline column geometry is cleared.
+                    // So a book read in Pages handed the next Markdown tab its
+                    // column-width, column-gap, column-count and zeroed page padding --
+                    // live, on a document that is not paginated, with page-mode gone so
+                    // relayout() would never run again to correct it. The text was laid
+                    // out in the book's column and the rest of the pane stayed empty.
+                    //
+                    // PageGeometry.clear() is the one teardown; call it rather than
+                    // growing a second copy here.
+                    try { PageGeometry.clear(); } catch (ePG) {}
                     state.viewColumns = 1;
                     try { editor.scrollLeft = 0; } catch (eS) {}
                     try { editor.style.display = ''; } catch (eD) {}

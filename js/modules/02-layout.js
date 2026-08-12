@@ -2528,6 +2528,8 @@
                 editor.style.paddingLeft = '';
                 editor.style.paddingRight = '';
                 editor.style.boxSizing = '';
+                // relayout() sets this; clear() is its opposite and must undo all of it.
+                try { editor.style.removeProperty('--tz-page-h'); } catch (eVar) {}
                 editor.scrollLeft = 0;
             },
 
@@ -2601,7 +2603,24 @@
                 // getBoundingClientRect(), not clientWidth: clientWidth is rounded to an
                 // integer and rounding it back is the whole bug. Padding and border are set
                 // to zero above, so the border box and the content box are the same.
-                let paneW = Math.max(1, editor.getBoundingClientRect().width || editor.clientWidth);
+                //
+                // Refuse a pane we cannot measure, rather than inventing one. A hidden
+                // editor -- Source mode, or the gap in a tab switch where the outgoing
+                // document has been torn down -- measures 0, and Math.max(1, 0) turned
+                // "I cannot measure this" into a one-pixel column. One pixel is a
+                // perfectly valid-looking number: it is > 0, so _stride passed every
+                // later guard, and column-width: 1px went out to the layout, where a
+                // document sets one glyph per line. Returning 0 puts this back in the
+                // same shape as go(), which already refuses rather than seeking to zero.
+                // The previous column styles stay put; the ResizeObserver re-measures the
+                // moment the editor is on screen again.
+                const measured = editor.getBoundingClientRect().width || editor.clientWidth;
+                if (!(measured > 1)) {
+                    this._stride = 0;
+                    this._paneW = 0;
+                    return 0;
+                }
+                let paneW = measured;
                 setStyle('width', '100%');
                 setStyle('maxWidth', '100%');
                 const twoCol = editor.classList.contains('two-col-layout');

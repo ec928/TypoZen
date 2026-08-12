@@ -701,7 +701,10 @@
                     </Border>
                 </StackPanel>
 
-                <TextBlock x:Name="lblVersion" Grid.Column="4" Text="TypoZen v1.0" FontSize="10" Opacity="0.55" VerticalAlignment="Center"/>
+                <!-- Column 4 is deliberately empty. It held a permanent "TypoZen v1.0",
+                     which told the reader something they already knew, every second they
+                     used the app, in the densest strip on screen. Help -> About says it
+                     when it is asked. -->
             </Grid>
         </Border>
 

@@ -226,6 +226,44 @@ switch ($Command) {
         Out-Json @{ clicked = $name; how = $how; x = [int]$r.X; y = [int]$r.Y; w = [int]$r.Width }
     }
 
+    'controls' {
+        # Every toolbar control the shell is showing, with whether it can be pressed.
+        #
+        # "Greyed out" is a claim about the running window, and nothing could check it
+        # from outside the process: the page suites see the WebView, not the chrome.
+        # IsEnabled is what a screen reader reports and what a click will obey, so it is
+        # the honest thing to assert against -- opacity is only how it looks.
+        #
+        # Toolbar band only (above the status bar, below the tab strip), so the File/Edit
+        # menus and the caption buttons do not crowd the answer.
+        $win = $root.Current.BoundingRectangle
+        $out = @()
+        foreach ($typeName in @('Button', 'MenuItem')) {
+            foreach ($e in (Find-ByType $root $typeName)) {
+                $r = $e.Current.BoundingRectangle
+                if ($r.Width -le 0 -or $r.Height -le 0) { continue }
+                if ($r.Y -gt ($win.Y + $win.Height - 60)) { continue }
+                # AutomationId is x:Name from the XAML, so it is stable and ASCII. Name is
+                # the button's Content, which for this toolbar is a private-use MDL2
+                # glyph -- it does not survive the pipe to stdout, and one of them is a
+                # literal quote that broke the JSON outright. Reported, but flattened.
+                $id = $e.Current.AutomationId
+                $n = $e.Current.Name
+                if ($n) { $n = ($n -replace '[^\x20-\x7E]', '?') }
+                if (-not $id -and -not $n) { continue }
+                $out += @{
+                    id      = $id
+                    name    = $n
+                    type    = $typeName
+                    enabled = [bool]$e.Current.IsEnabled
+                    x       = [int]$r.X
+                    y       = [int]$r.Y
+                }
+            }
+        }
+        Out-Json @{ controls = $out; count = $out.Count }
+    }
+
     'status' {
         # The status bar, as the shell renders it. It carries the theme in use by name,
         # which is a far better handle than an index into a menu: the index and the menu

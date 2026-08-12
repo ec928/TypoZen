@@ -3486,7 +3486,7 @@ namespace TypoZen
             if (mode == "source") _editorMode = "source";
             else if (mode == "reader") _editorMode = "reader";
             else _editorMode = "wysiwyg";
-            RefreshWordWrapMenuAvailability();
+            RefreshEditingAvailability();
 
 if (_btnColumnToggle != null)
             {
@@ -4252,7 +4252,7 @@ if (_btnColumnToggle != null)
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
                         RenderViewSelectors(vMode, vCols, vScroll, cLock, sLock);
-                        RefreshWordWrapMenuAvailability();
+                        RefreshEditingAvailability();
                     }), DispatcherPriority.Normal);
                 }
             }
@@ -5374,8 +5374,6 @@ if (_btnColumnToggle != null)
                 if (lblReadingTime != null) lblReadingTime.Foreground = mutedTxBrush;
                 var lblZoom = FindElement("lblZoom") as TextBlock;
                 if (lblZoom != null) lblZoom.Foreground = mutedTxBrush;
-                var lblVersion = FindElement("lblVersion") as TextBlock;
-                if (lblVersion != null) lblVersion.Foreground = mutedTxBrush;
 
                 _tabActiveBg = chromeElevated;
                 _tabInactiveBg = Brushes.Transparent; // borderless labels on the strip
@@ -5936,7 +5934,7 @@ if (_btnColumnToggle != null)
             // stored so leaving Pages/Reader restores what the user chose.
             if (IsWordWrapApplicable())
                 SendMsg(on ? "cmd:wordwrap_on" : "cmd:wordwrap_off");
-            RefreshWordWrapMenuAvailability();
+            RefreshEditingAvailability();
             if (!_applyingRestoredSettings) SaveWindowState();
         }
 
@@ -5991,6 +5989,79 @@ if (_btnColumnToggle != null)
                 }
             }
             catch { }
+        }
+
+        /// <summary>True when the document can accept an edit at all.</summary>
+        /// <remarks>
+        /// Reader sets #editor to contenteditable="false", for a book and for Markdown
+        /// alike, so every formatting command is a no-op there. Source and Preview both
+        /// take edits, paginated or not — this is about the document, not the layout.
+        /// </remarks>
+        private bool IsDocumentEditable()
+        {
+            if (IsEpubPath(_currentFilePath)) return false;
+            if (string.Equals(_viewMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
+            if (string.Equals(_editorMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
+        }
+
+        // The format controls, and the Edit items that duplicate three of them. Menus are
+        // Controls too, so the three dropdowns lock the same way the buttons do.
+        private static readonly string[] FormatControls =
+        {
+            "btnBold", "btnItalic", "btnStrike", "btnCode",
+            "headingMenu", "btnQuote", "listMenu",
+            "btnLink", "tableMenu",
+            "mInsertLink", "mInsertTable", "mStrike",
+        };
+        private readonly Dictionary<string, object> _formatTips = new Dictionary<string, object>();
+
+        /// <summary>
+        /// Grey the formatting controls whenever the document cannot take an edit.
+        ///
+        /// They were live-looking and inert in Reader and on every epub: nine toolbar
+        /// controls plus three Edit items that do nothing, with no way to tell from
+        /// looking. Word Wrap already greys itself and says why (RefreshWordWrapMenu-
+        /// Availability); this is the same courtesy for the rest, using the same
+        /// SetControlLocked the Column and Scroll buttons use, so "unavailable" has one
+        /// appearance across the whole toolbar.
+        ///
+        /// Greyed rather than hidden, deliberately. Collapsing them would reflow the
+        /// centre group, so switching modes would shuffle buttons under the pointer and
+        /// the reader would lose track of what the app can do at all.
+        /// </summary>
+        private void RefreshFormatAvailability()
+        {
+            try
+            {
+                bool editable = IsDocumentEditable();
+                string why = IsEpubPath(_currentFilePath)
+                    ? "A book is read-only — formatting applies to documents you can edit"
+                    : "Reader is read-only — switch to Preview or Source to format text";
+                foreach (string name in FormatControls)
+                {
+                    var c = FindElement(name) as Control;
+                    if (c == null) continue;
+                    // Remember the control's own tooltip once, so restoring it does not
+                    // depend on this method having written the current one.
+                    if (!_formatTips.ContainsKey(name)) _formatTips[name] = c.ToolTip;
+                    SetControlLocked(c, !editable);
+                    c.ToolTip = editable ? _formatTips[name] : why;
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// One call for "the document or the view changed, so re-decide what is available".
+        ///
+        /// Both halves answer the same question and were drifting apart: Word Wrap knew it
+        /// did not apply to a book, and the nine format controls beside it did not.
+        /// </summary>
+        private void RefreshEditingAvailability()
+        {
+            RefreshWordWrapMenuAvailability();
+            RefreshFormatAvailability();
         }
 
         private void SetStatusBarVisible(bool on)
@@ -8634,7 +8705,7 @@ if (_btnColumnToggle != null)
             {
                 _currentFilePath = tab.FilePath;
                 _isDirty = false;
-                RefreshWordWrapMenuAvailability();
+                RefreshEditingAvailability();
                 Dispatcher.BeginInvoke(new Action(() => OpenBook(tab.FilePath, true)),
                     DispatcherPriority.Normal);
                 return;
@@ -8643,7 +8714,7 @@ if (_btnColumnToggle != null)
             _currentFilePath = tab.FilePath;
             MapDocumentFolder(_currentFilePath);   // images resolve per document
             _isDirty = tab.IsDirty;
-            RefreshWordWrapMenuAvailability();
+            RefreshEditingAvailability();
             // Teardown of book CSS/layout is handled inside loadMarkdownContent when
             // kind was epub (wasBook). Do not send leave_book_surface first — that raced
             // and could remount HTML as Markdown.
@@ -9391,7 +9462,7 @@ if (_btnColumnToggle != null)
                 tab.SourceEncoding = "Epub";
                 _currentFilePath = path;
                 _isDirty = false;
-                RefreshWordWrapMenuAvailability();
+                RefreshEditingAvailability();
 
                 RebuildTabStrip();
 
