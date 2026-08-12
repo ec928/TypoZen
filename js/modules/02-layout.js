@@ -3269,8 +3269,16 @@
             } catch (eT) {}
 
             try { PageGeometry.relayout(); } catch (eG) {}
-            const w = PageGeometry.stride();
-            PageChunks.setMeasured(c, Math.max(1, Math.ceil((editor.scrollWidth - 1) / w)));
+            // Ask PageGeometry, do not re-derive.
+            //
+            // This carried its own copy of ceil((scrollWidth - 1) / stride) -- the same
+            // formula PageGeometry.localCount used, and the same one that counted pages the
+            // reader cannot reach. Fixing it in one place therefore fixed the number a turn
+            // consults while leaving the number recorded for the range untouched, so the two
+            // disagreed by construction and the second was the one that survived into
+            // count(). One authority for "how many pages is this range", measured where the
+            // geometry is.
+            PageChunks.setMeasured(c, PageGeometry.localCount());
 
             if (!currentActiveBlock || !editor.contains(currentActiveBlock)) {
                 currentActiveBlock = editor.querySelector('.block');
