@@ -1467,13 +1467,16 @@
             if (body) { body.hidden = true; body.innerHTML = ''; }
             pop.hidden = false;
 
-            // Selecting one word asks the question. Only for a word: a paragraph has no
-            // definition, and a lookup fired at every drag across a page would be a lot of
-            // work for an answer nobody wants. Highlight and Find still apply to any
-            // selection, which is why they are buttons and this is not.
-            if (_selPopWord) {
-                try { postMsg('define:' + _selPopWord); } catch (eAsk) {}
-            }
+            // Offered, not fired.
+            //
+            // This looked the word up on selection for a while, on the reasoning that
+            // selecting a word is the whole gesture. It is not: a word is selected to copy
+            // it at least as often as to ask about it, and an unasked-for definition then
+            // sits over the text being worked with. So the button appears -- only for a
+            // single word, because a paragraph has no definition -- and the answer waits to
+            // be asked for.
+            const lookup = document.getElementById('selPopLookup');
+            if (lookup) lookup.hidden = !_selPopWord;
             // Above the selection, or below when there is no room. Clamped to the window
             // so a selection at the edge does not push it off screen.
             const w = pop.offsetWidth || 240, h = pop.offsetHeight || 40;
@@ -1613,6 +1616,12 @@
                 try { annotateSelection(); } catch (e) {}
                 hideSelPop();
             });
+            const lookupBtn = document.getElementById('selPopLookup');
+            if (lookupBtn) lookupBtn.addEventListener('click', function () {
+                if (!_selPopWord) return;
+                try { postMsg('define:' + _selPopWord); } catch (e) {}
+            });
+
             const find = document.getElementById('selPopFind');
             if (find) find.addEventListener('click', function () {
                 const q = (window.getSelection() || '').toString().trim();

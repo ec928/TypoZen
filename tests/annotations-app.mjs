@@ -92,9 +92,16 @@ try {
     console.log('\n=== selecting a word answers, with nothing pressed ===');
     const define = await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        // Nothing is pressed: the lookup now fires on the selection itself. The wait is
-        // still well past the 10ms mouseup timer that used to wipe the answer -- the same
-        // window, and now the only thing that could.
+        // Ask, with the full mouse sequence a person produces. Selecting a word does not
+        // look it up -- a word is selected to copy it at least as often as to ask about it
+        // -- so the answer has to be requested. The wait afterwards is well past the 10ms
+        // mouseup timer that used to wipe it.
+        const b = document.getElementById('selPopLookup');
+        const br = b.getBoundingClientRect();
+        const o = { bubbles: true, clientX: br.left + 5, clientY: br.top + 5 };
+        b.dispatchEvent(new MouseEvent('mousedown', o));
+        b.dispatchEvent(new MouseEvent('mouseup', o));
+        b.click();
         await sleep(1400);
         const pop = document.getElementById('selPop');
         const body = document.getElementById('selPopBody');

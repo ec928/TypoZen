@@ -135,7 +135,7 @@ Select text and a popover appears beside it — **Highlight** and **Find in docu
 - A reader selects the word as it appears on the page, which is inflected more often than not, so a miss retries the obvious stems — `walking` → `walk`, `bodies` → `body`
 - With no dictionary installed it says so, and how to install one
 - **Follow a synonym** to its own entry — each word is a control, and a back arrow appears once there is somewhere to return to. A synonym you cannot look up is a dead end, which is most of what a thesaurus is for
-- **Selecting a word is the whole gesture.** No button: the popover answers with the **definition**, the **synonyms** below it, and **how many times the word appears** in what you are reading. A phrase raises the popover but asks nothing — a paragraph has no definition, and a lookup on every drag across a page would be work for an answer nobody wants
+- **One button, one answer.** Press **Look up** and the popover gives the **definition**, the **synonyms** below it, and **how many times the word appears** in what you are reading — together, in that order. It is deliberately not automatic: a word is selected to *copy* it at least as often as to ask about it, and a definition that arrives uninvited sits on top of the text you were working with. Offered only for a single word, since a paragraph has no definition
 - **Synonyms** come from the same WordNet pass — a synset is a set of words that mean the same thing — written to `thesaurus.tsv` alongside the dictionary
 - **Occurrence count works with no dictionary at all** — "appears 2,135 times in this document" is often the question actually being asked, especially in a novel
 
