@@ -659,6 +659,40 @@
             hyphenate-limit-chars: 6 3 3;
         }
         
+        /* --- Fenced code -----------------------------------------------------------
+           Painted with the CSS Custom Highlight API, so these are ::highlight() rules
+           and NOT element styles. That is deliberate and load-bearing: a token wrapped
+           in a <span> inside a .block round-trips into data-raw, and Markdown's own DOM
+           repair splits such spans into separate lines -- see
+           docs/developer-editor-analysis.md, where that corrupted a real file.
+
+           The cost of painting instead of wrapping is the API's property ceiling. It
+           honours colour, background, text-decoration and shadow, and ignores
+           font-weight and font-style, so there are no bold keywords and no italic
+           comments here. Colour carries all of it.
+
+           Mixed from the theme's accent and text rather than a fixed palette, for the
+           reason --mark-ink is: a scheme that looks deliberate on Gruvbox and arbitrary
+           on Rose Pine is not a scheme. */
+        ::highlight(tzcode-comment) {
+            color: color-mix(in srgb, var(--tx, #F4F4F5) 45%, transparent);
+        }
+        ::highlight(tzcode-keyword) { color: var(--accent, #3B82F6); }
+        ::highlight(tzcode-tag)     { color: var(--accent, #3B82F6); }
+        ::highlight(tzcode-string)  {
+            color: color-mix(in srgb, var(--accent, #3B82F6) 55%, var(--tx, #F4F4F5));
+        }
+        ::highlight(tzcode-number)  {
+            color: color-mix(in srgb, var(--accent, #3B82F6) 40%, var(--tx, #F4F4F5));
+        }
+        ::highlight(tzcode-type)    {
+            color: color-mix(in srgb, var(--accent, #3B82F6) 70%, var(--tx, #F4F4F5));
+        }
+        ::highlight(tzcode-attr)    {
+            color: color-mix(in srgb, var(--accent, #3B82F6) 60%, var(--tx, #F4F4F5));
+        }
+        ::highlight(tzcode-fn)      { color: var(--tx, #F4F4F5); }
+
         #editor.reader-mode {
             cursor: default;
         }

@@ -8,6 +8,7 @@
     "04b-format.js",
     "05-model.js",
     "06-render-epub.js",
-    "07-stats-host.js"
+    "07-stats-host.js",
+    "08-code.js"
   ]
 }

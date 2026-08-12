@@ -1036,6 +1036,7 @@
         function renderMarks() {
             try { paintMarkRibbons(); } catch (e) {}
             try { paintAnnotations(); } catch (e) {}
+            try { if (typeof paintCodeFences === 'function') paintCodeFences(); } catch (e) {}
             try { paintScrubberTicks(); } catch (e) {}
             const list = document.getElementById('marks-list');
             if (!list) return;
@@ -1175,6 +1176,10 @@
                         pending = null;
                         try { paintMarkRibbons(); } catch (e) {}
                         try { paintAnnotations(); } catch (e) {}
+                        // Fenced code is painted from here too: blocks mount and unmount
+                        // under virtualisation, and a Highlight range over a detached node
+                        // paints nothing, so it has to be rebuilt on the same signal.
+                        try { if (typeof paintCodeFences === 'function') paintCodeFences(); } catch (e) {}
                     }, 60);
                 }).observe(editor, { childList: true, subtree: true });
             } catch (eObs) {}

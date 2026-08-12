@@ -63,7 +63,21 @@ is authoritative and the highlighting is decoration.
 
 It is a fourth surface beside Source, Preview and Reader — not a variation of one.
 
-## What survives the attempt
+## What survives the attempt — and shipped
+
+**Fenced code in Markdown is now highlighted**, which is Option 1 below and was always the
+low-risk one. It needs no new surface and no new document kind, and it is immune to all
+four behaviours in the table above for one reason: **Highlight ranges are not DOM**. They
+cannot be serialised, repaired, trimmed or split. `code-fence-app` asserts exactly that --
+zero elements injected, and the document byte-identical before and after painting, and
+again after typing beside a fence.
+
+The cost is the API's property ceiling: colour only, no bold keywords and no italic
+comments. For a fence that is the right trade, and it is the trade the whole-file attempt
+refused -- which is precisely why that one had to wrap elements, and precisely why it
+broke.
+
+## What else survives
 
 The **lexers** in `js/modules/08-code.js` at tag `code-kind-parked`: JSON, XML/XAML and a
 C-family fallback, line at a time with a carried state for block comments, plus a cached
