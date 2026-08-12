@@ -7,10 +7,18 @@ The request was: syntax highlighting for XAML / JSON / C# and similar, possibly 
 with alignment, and a decision on whether that needs a new mode or whether Preview can be
 adapted.
 
-The short version: **Preview can be adapted for code *fences* almost immediately, and
-cannot be adapted for code *files* at all.** Those are two different features that sound
-like one, and most of the cost sits in a place people do not expect — the tokenisers, not
-the colouring.
+The short version: read-only is ruled out, so this is a question about **editing
+surfaces**, and there are exactly two credible ones — extend Preview with a code document
+kind, or replace the Source textarea with an overlay editor. Both can highlight; both can
+do bold keywords. What separates them is not syntax colouring at all, but whether a code
+file should behave like a TypoZen document (bookmarks, annotations, outline, Pages) or like
+a code window that happens to live here.
+
+Most of the cost sits where people do not expect: the **tokenisers**, not the colouring.
+
+(An earlier draft claimed Preview "cannot be adapted for code files at all". That was
+wrong, and §2b explains why — the `data-raw` invariant bites only because Markdown
+serialisation reads `innerHTML`.)
 
 ---
 
