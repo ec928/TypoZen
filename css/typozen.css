@@ -1203,9 +1203,9 @@
             font-family: var(--ui-font); font-size: var(--ui-fs);
             color: var(--tx-muted, #A1A1AA); white-space: nowrap;
         }
-        /* --- Help modal (F1 / Help → Syntax & Shortcuts) ---------------------------
-           Theme-coloured panel instead of a WebView alert("localapp says…"). */
-        #helpModal.tz-help-overlay {
+        /* --- Help / About overlays (F1, Help → About) ------------------------------
+           Theme-coloured panels instead of alert / WinForms MessageBox. */
+        .tz-help-overlay {
             position: fixed;
             inset: 0;
             z-index: 100000;
@@ -1219,11 +1219,11 @@
             font-family: var(--ui-font, 'Inter', system-ui, sans-serif);
             color: var(--tx, #F4F4F5);
         }
-        #helpModal.tz-help-overlay.open {
+        .tz-help-overlay.open {
             display: flex;
         }
         /* Prefer .open over [hidden] so we do not fight the UA [hidden] rule. */
-        #helpModal.tz-help-overlay[hidden] {
+        .tz-help-overlay[hidden] {
             display: none !important;
         }
         .tz-help-panel {
@@ -1380,6 +1380,73 @@
         .tz-help-close:focus-visible {
             outline: 2px solid var(--accent, #3B82F6);
             outline-offset: 2px;
+        }
+
+        /* About reuses the help overlay shell; content is prose, not a shortcut table. */
+        .tz-about-panel {
+            width: min(480px, 100%);
+            max-height: min(78vh, 640px);
+        }
+        .tz-about-brand {
+            margin: 4px 0 4px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid color-mix(in srgb, var(--border, #3F3F46) 70%, transparent);
+        }
+        .tz-about-name {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--hi, var(--accent, #60A5FA));
+            line-height: 1.2;
+        }
+        .tz-about-tag {
+            margin: 6px 0 0;
+            font-size: 13px;
+            line-height: 1.45;
+            color: var(--tx-muted, #A1A1AA);
+        }
+        .tz-about-list {
+            margin: 0;
+            padding: 0 0 0 1.1em;
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--tx, #F4F4F5);
+        }
+        .tz-about-list li {
+            margin: 0 0 0.45em;
+            padding: 0;
+        }
+        .tz-about-list li:last-child {
+            margin-bottom: 0;
+        }
+        .tz-about-list strong {
+            font-weight: 600;
+            color: var(--tx, #F4F4F5);
+        }
+        .tz-about-foot-note {
+            margin: 16px 0 4px;
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--tx-muted, #A1A1AA);
+        }
+        .tz-about-foot-note code {
+            font-family: var(--mono-font, ui-monospace, 'Cascadia Mono', Consolas, monospace);
+            font-size: 11px;
+            padding: 1px 5px;
+            border-radius: 4px;
+            background: var(--surface, rgba(255, 255, 255, 0.06));
+            border: 1px solid color-mix(in srgb, var(--border, #3F3F46) 70%, transparent);
+        }
+        .tz-about-foot-note kbd {
+            display: inline-block;
+            font-family: var(--ui-font, system-ui, sans-serif);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 1px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border, #3F3F46);
+            background: var(--surface, rgba(255, 255, 255, 0.06));
+            color: var(--tx, #F4F4F5);
         }
 
         /* `hidden` must actually hide.

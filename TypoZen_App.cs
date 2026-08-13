@@ -889,32 +889,8 @@ namespace TypoZen
 
             BindClick("mHelpSyntax", (s, e) => SendMsg("cmd:help_syntax"));
             BindClick("mToggleDebug", (s, e) => SendMsg("cmd:toggle_debug_hud"));
-            BindClick("mAbout", (s, e) => WinForms.MessageBox.Show(
-                "TypoZen — WYSIWYG Markdown & Text Editor\n\n" +
-                "Writing\n" +
-                "• Dual mode: Live Preview (block WYSIWYG) and Source (raw Markdown)\n" +
-                "• Same theme font in both modes; mono only if you pick a (Mono) theme\n" +
-                "• Multi-block formatting: bold, italic, strikethrough (Ctrl+Shift+X), headings, lists\n" +
-                "• Find & Replace (Ctrl+F / Ctrl+H) with match case and whole word\n" +
-                "• Selection word/char counts in the status bar\n" +
-                "• Zoom: Ctrl++ / Ctrl+- / Ctrl+0, or Ctrl+scroll (WebView ZoomFactor)\n" +
-                "• Real page margins (narrow / regular / wide) — not line-length tricks\n" +
-                "• Focus Mode (F8), Typewriter scroll (F9), Fullscreen (F11)\n" +
-                "• Reveal Markdown on focus (F7), sidebar outline + local files\n\n" +
-                "Themes & session\n" +
-                "• Curated themes (including Mono group) + Themes → Customize…\n" +
-                "• Live theme preview; Save as New (built-ins never overwritten)\n" +
-                "• Session restore: theme, margins, mode, toggles, zoom, open tabs\n" +
-                "• Multi-tab restore across restarts (paths + unsaved buffers)\n" +
-                "• Ctrl+W close tab | Ctrl+Tab / Ctrl+Shift+Tab cycle tabs\n" +
-                "• File → Open Recent (MRU list)\n" +
-                "• Optional: remember unsaved tabs between sessions (off by default)\n\n" +
-                "Files & export\n" +
-                "• Open/Save Markdown & text (UTF-8; atomic save)\n" +
-                "• Export HTML, Print / PDF (Ctrl+P)\n" +
-                "• Click the file name in the status bar to show it in File Explorer\n\n" +
-                "See README.md in the app folder for shortcuts and details.",
-                "About TypoZen", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information));
+            // About is an in-page themed panel (same shell as F1 help), not a system MessageBox.
+            BindClick("mAbout", (s, e) => SendMsg("cmd:help_about"));
 
             // Formatting buttons
             BindClick("btnBold", (s, e) => SendMsg("fmt:bold"));

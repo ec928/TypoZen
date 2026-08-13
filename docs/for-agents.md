@@ -55,7 +55,7 @@ Implemented in:
 4. Up/Down with hits are owned by `bindReaderFindKeys` (capture). The page handler must **return** for those keys when hits exist so search wins.
 5. There is **no** `,` `.` `<` `>` search chord. Removed: collided with typing.
 
-Help: **F1** or **Help → Syntax & Shortcuts** opens an in-page themed modal (`#helpModal` in `TypoZen_Template.html`, `openHelpModal` in `03-shell.js`) — not a browser `alert`. Debug HUD: **Ctrl+Shift+D**.
+Help: **F1** / **Help → Syntax & Shortcuts** → `#helpModal`. **Help → About TypoZen** → `#aboutModal`. Both are themed in-page overlays (`openTzOverlay` in `03-shell.js`), not `alert` / MessageBox. Debug HUD: **Ctrl+Shift+D**.
 
 ## Search UX (related)
 

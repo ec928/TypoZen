@@ -1769,8 +1769,18 @@
                 openFindBar(null, true);
             }
             else if (cmd === "help_syntax") {
-                if (isHelpModalOpen()) closeHelpModal();
-                else openHelpModal();
+                if (isTzOverlayOpen('helpModal')) closeTzOverlay('helpModal');
+                else {
+                    closeTzOverlay('aboutModal');
+                    openTzOverlay('helpModal', 'helpClose', 'helpOk');
+                }
+            }
+            else if (cmd === "help_about") {
+                if (isTzOverlayOpen('aboutModal')) closeTzOverlay('aboutModal');
+                else {
+                    closeTzOverlay('helpModal');
+                    openTzOverlay('aboutModal', 'aboutClose', 'aboutOk');
+                }
             }
             else if (cmd === "toggle_debug_hud") {
                 if (typeof window.toggleDebugHUD === 'function') window.toggleDebugHUD();
@@ -1907,30 +1917,36 @@
             }
         }
 
-        /** F1 / Help → Syntax & Shortcuts — themed panel (not a WebView alert). */
-        function isHelpModalOpen() {
-            const m = document.getElementById('helpModal');
+        /**
+         * Themed help/about overlays (not browser alert / WinForms MessageBox).
+         * Shared shell: #helpModal, #aboutModal — class tz-help-overlay.
+         */
+        function isTzOverlayOpen(id) {
+            const m = document.getElementById(id);
             return !!(m && m.classList.contains('open') && !m.hasAttribute('hidden'));
         }
 
-        function openHelpModal() {
-            const modal = document.getElementById('helpModal');
+        function openTzOverlay(id, closeId, okId) {
+            const modal = document.getElementById(id);
             if (!modal) return;
             modal.hidden = false;
             modal.classList.add('open');
             const panel = modal.querySelector('.tz-help-panel');
-            const closeBtn = document.getElementById('helpClose') || document.getElementById('helpOk');
+            const closeBtn = (closeId && document.getElementById(closeId))
+                || (okId && document.getElementById(okId));
             try {
                 if (closeBtn) closeBtn.focus();
                 else if (panel) panel.focus();
             } catch (eF) {}
         }
 
-        function closeHelpModal() {
-            const modal = document.getElementById('helpModal');
+        function closeTzOverlay(id) {
+            const modal = document.getElementById(id);
             if (!modal) return;
+            const wasOpen = modal.classList.contains('open') || !modal.hasAttribute('hidden');
             modal.classList.remove('open');
             modal.hidden = true;
+            if (!wasOpen) return;
             try {
                 if (state.mode === 'source' && sourceEditor) sourceEditor.focus();
                 else if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
@@ -1938,30 +1954,50 @@
             } catch (eC) {}
         }
 
-        (function bindHelpModalOnce() {
-            const modal = document.getElementById('helpModal');
-            if (!modal || modal.__tzHelpBound) return;
-            modal.__tzHelpBound = true;
-            const closeBtn = document.getElementById('helpClose');
-            const okBtn = document.getElementById('helpOk');
-            if (closeBtn) closeBtn.addEventListener('click', function (e) {
-                e.preventDefault();
-                closeHelpModal();
-            });
-            if (okBtn) okBtn.addEventListener('click', function (e) {
-                e.preventDefault();
-                closeHelpModal();
-            });
-            modal.addEventListener('click', function (e) {
-                if (e.target === modal) closeHelpModal();
-            });
+        function closeAllTzOverlays() {
+            closeTzOverlay('helpModal');
+            closeTzOverlay('aboutModal');
+        }
+
+        // Back-compat names used by earlier help wiring / evals.
+        function isHelpModalOpen() { return isTzOverlayOpen('helpModal'); }
+        function openHelpModal() {
+            closeTzOverlay('aboutModal');
+            openTzOverlay('helpModal', 'helpClose', 'helpOk');
+        }
+        function closeHelpModal() { closeTzOverlay('helpModal'); }
+
+        (function bindTzOverlaysOnce() {
+            function wire(id, closeId, okId) {
+                const modal = document.getElementById(id);
+                if (!modal || modal.__tzOverlayBound) return;
+                modal.__tzOverlayBound = true;
+                function shut(e) {
+                    if (e) e.preventDefault();
+                    closeTzOverlay(id);
+                }
+                const closeBtn = closeId && document.getElementById(closeId);
+                const okBtn = okId && document.getElementById(okId);
+                if (closeBtn) closeBtn.addEventListener('click', shut);
+                if (okBtn) okBtn.addEventListener('click', shut);
+                modal.addEventListener('click', function (e) {
+                    if (e.target === modal) shut(e);
+                });
+            }
+            wire('helpModal', 'helpClose', 'helpOk');
+            wire('aboutModal', 'aboutClose', 'aboutOk');
             document.addEventListener('keydown', function (e) {
-                if (!isHelpModalOpen()) return;
-                // F1 is toggled by the host cmd:help_syntax path; Esc only here.
-                if (e.key === 'Escape') {
+                if (e.key !== 'Escape') return;
+                if (isTzOverlayOpen('aboutModal')) {
                     e.preventDefault();
                     e.stopPropagation();
-                    closeHelpModal();
+                    closeTzOverlay('aboutModal');
+                    return;
+                }
+                if (isTzOverlayOpen('helpModal')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeTzOverlay('helpModal');
                 }
             }, true);
         })();

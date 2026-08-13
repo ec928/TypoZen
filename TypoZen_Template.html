@@ -369,6 +369,61 @@
         </div>
     </div>
 
+    <!-- About (replaces WinForms MessageBox) -->
+    <div id="aboutModal" class="tz-help-overlay" hidden role="presentation">
+        <div class="tz-help-panel tz-about-panel" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" tabindex="-1">
+            <header class="tz-help-head">
+                <h2 id="aboutTitle">About TypoZen</h2>
+                <button type="button" id="aboutClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">✕</button>
+            </header>
+            <div class="tz-help-body tz-about-body">
+                <div class="tz-about-brand">
+                    <div class="tz-about-name">TypoZen</div>
+                    <p class="tz-about-tag">WYSIWYG Markdown &amp; text editor for Windows — and a calm epub reader.</p>
+                </div>
+                <section class="tz-help-sec">
+                    <h3>Writing</h3>
+                    <ul class="tz-about-list">
+                        <li><strong>Preview</strong>, <strong>Source</strong>, and <strong>Reader</strong> for the same document — switch without losing your place.</li>
+                        <li>Live block editing for Markdown: headings, lists, tables, tasks, emphasis, fenced code.</li>
+                        <li>Large files stay workable (virtualized Preview); plain text opens in Source.</li>
+                        <li>Multi-document tabs, outline + search sidebar, find &amp; replace, status counts.</li>
+                    </ul>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Reading</h3>
+                    <ul class="tz-about-list">
+                        <li>Open <strong>.epub</strong> books with the publisher’s HTML, TOC, images, and chapter position remembered.</li>
+                        <li>Paginated spreads, page scrubber, go-to-page, bookmarks, highlights, and notes.</li>
+                        <li>Books are never dirty and never saved over as Markdown.</li>
+                    </ul>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Look &amp; session</h3>
+                    <ul class="tz-about-list">
+                        <li>Curated themes (dark, light, mono) plus <strong>Customize Theme…</strong> — built-ins never overwritten.</li>
+                        <li>Real margins, line/paragraph spacing, justified text, chrome auto-hide for reading.</li>
+                        <li>Session restore for window, theme, layout, tabs; optional unsaved buffers; Privacy Mode when you want silence.</li>
+                    </ul>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Files</h3>
+                    <ul class="tz-about-list">
+                        <li>Open / Save Markdown &amp; text (UTF-8, atomic write). Export HTML; Print / PDF.</li>
+                        <li>Click the status-bar path to reveal the file in Explorer.</li>
+                    </ul>
+                </section>
+                <p class="tz-about-foot-note">
+                    <kbd>F1</kbd> opens Syntax &amp; Shortcuts. Full detail lives in <code>README.md</code> beside the app.
+                </p>
+            </div>
+            <footer class="tz-help-foot">
+                <span class="tz-help-hint">Esc to close</span>
+                <button type="button" id="aboutOk" class="tz-help-ok">Close</button>
+            </footer>
+        </div>
+    </div>
+
     <script>window.__tzBeforeMain = Math.round(performance.now());</script>
     <!-- TYPOZEN_ENGINE_BEGIN -->
     <!-- Classic scripts, fixed order — see js/modules/load-order.json. Shared globals. -->

@@ -703,8 +703,8 @@
 
                 <!-- Column 4 is deliberately empty. It held a permanent "TypoZen v1.0",
                      which told the reader something they already knew, every second they
-                     used the app, in the densest strip on screen. Help -> About says it
-                     when it is asked. -->
+                     used the app, in the densest strip on screen. Help → About is the
+                     place for product identity, when asked. -->
             </Grid>
         </Border>
 
