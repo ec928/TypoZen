@@ -28,11 +28,14 @@ Virtualized Preview keeps a per-block height map, estimated from the raw Markdow
 
 ### Reading PDFs, images, and media
 Open a **PDF**, **image** (png/jpg/webp/svg/…), or **media** file (mp4/webm/mp3/…) and TypoZen
-opens it **read-only** on a Chromium surface beside the editor (same tab strip). PDFs use
-Chromium’s PDF viewer; images fit the pane in a light shell; video and audio use the
-browser’s media controls. Format tools and Source/Preview are locked; the file is never
-marked dirty and never saved over. HEVC phone video needs the OS HEVC codec pack — same
-limits as Edge. See `docs/native-reader-plan.md`.
+opens it **read-only** on a Chromium surface beside the editor (same tab strip). There is no
+document scrubber on these tabs — that control belongs to paginated engine/book reading.
+
+- **PDF** — Chromium’s PDF viewer  
+- **Images** — fit-to-pane shell for a fast open; **right‑click → Magnify** (Edge) when you want zoom and pan  
+- **Video / audio** — browser media controls; **HEVC** phone video needs the OS HEVC codec pack (same limits as Edge)
+
+Format tools and Source/Preview are locked; the file is never marked dirty and never saved over. **Privacy Mode** (File menu) already applies: it stops writing session history, recent files, positions, and so on for any document — see [Session & privacy](#session--privacy). Native files are not unzipped into a named cache the way epubs are; book-only opaque extraction under Privacy Mode is described there too. Details for agents: `docs/native-reader-plan.md`.
 
 ### Reading epubs
 Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the

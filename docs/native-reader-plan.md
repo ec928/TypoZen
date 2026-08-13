@@ -203,9 +203,9 @@ Order is delivery risk, not separate architectures:
 | **C — PDF** | Direct navigate; tab switch md ↔ pdf | done |
 | **D — Image shell** | Themed fit-to-pane HTML (Chromium image chrome reverted) | done |
 | **E — Media shell** | `<video controls>` / `<audio controls>` | done |
-| **F — Chrome** | Mode lock, format grey, zoom target | done (scrubber hide deferred) |
-| **G — Session + Privacy** | Restore native tabs by path+kind | session done; Privacy staging deferred |
-| **H — Docs** | README + `for-agents.md` | done |
+| **F — Chrome** | Mode lock, format grey, zoom target | done. Scrubber is engine/book UI on the editor WebView — not shown while the native surface is up (no extra hide step). |
+| **G — Session + Privacy** | Restore native tabs by path+kind | session done. App **Privacy Mode** already exists (README); no separate native “opaque extract” path — files are served in place via `localview`, not unpacked like epubs. |
+| **H — Docs** | README, for-agents, About, F1 | done |
 
 Slices C–E should land close together so the classifier and shells aren’t PDF-shaped.
 
