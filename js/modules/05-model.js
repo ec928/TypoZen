@@ -45,6 +45,8 @@
                 window.__tzDeferredWysiwyg = content;
                 _contentCache = content;
                 const wasBookPlain = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
+                // Keep model in lockstep with the textarea so a stale previous document
+                // (e.g. welcome Markdown) cannot be searched while Source shows the file.
                 try { DocumentModel.fromMarkdown(content); } catch (eM) {}
                 if (wasBookPlain) {
                     try { leaveBookViewForMarkdown(); } catch (eL) { try { clearBookSession(); } catch (eC) {} }
@@ -64,11 +66,14 @@
                     } catch (eSel) {}
                 }
                 // Force Source mode so the user sees the full text immediately.
+                // Also apply view_set so host Mode chrome and state.mode stay aligned —
+                // otherwise Ctrl+F still searched the old model while Source showed the file.
                 try {
                     if (editor) editor.style.display = 'none';
                     if (sourceEditor) sourceEditor.style.display = 'block';
                     state.mode = 'source';
                     postMsg('mode_changed:source');
+                    try { if (typeof handleCommand === 'function') handleCommand('view_set:mode:source'); } catch (eVs) {}
                 } catch (e2) {}
                 try {
                     if (mainContainer) mainContainer.scrollTop = 0;

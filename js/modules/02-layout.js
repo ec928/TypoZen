@@ -3989,6 +3989,9 @@
         }
 
         function getFindOptions() {
+            // Canonical boxes are the Ctrl+F ones; sidebar buttons toggle those (see
+            // wireSearchOptionButtons). Keep aria-pressed in step before reading.
+            try { syncSearchOptionButtons(); } catch (eSync) {}
             const mc = document.getElementById('findMatchCase');
             const ww = document.getElementById('findWholeWord');
             return {
@@ -4103,13 +4106,40 @@
         }
 
         /**
+         * True when the Source textarea holds the live document for search/edit.
+         *
+         * Do NOT use offsetHeight/offsetParent: opening the Ctrl+F bar can collapse the
+         * textarea's layout box to 0 while its .value still has the full file. That made
+         * isSourceSurfaceActive false, so find/search used DocumentModel (wrong/stale
+         * buffer) → 0/0 with the match on screen. Closing Ctrl+F restored geometry and
+         * Alt+S suddenly worked — same bug, not two features fighting.
+         */
+        function isSourceSurfaceActive() {
+            if (state.mode === 'source') return true;
+            try {
+                if (!sourceEditor) return false;
+                const srcDisp = (sourceEditor.style && sourceEditor.style.display) || '';
+                if (srcDisp === 'none') return false;
+                if (!(sourceEditor.value || '').length) return false;
+                // Plain/HTML path: editor emptied and hidden, source filled.
+                if (editor) {
+                    const edDisp = (editor.style && editor.style.display) || '';
+                    if (edDisp === 'none') return true;
+                    if (!editor.querySelector || !editor.querySelector('.block')) return true;
+                }
+                if (document.activeElement === sourceEditor) return true;
+            } catch (e) {}
+            return false;
+        }
+
+        /**
          * Single search surface for count + navigation.
          * Source → textarea. Full Preview → rendered DOM text. Virtualized Preview → full
          * DocumentModel markdown (mounted DOM alone would miss off-screen hits).
          * Replace always rewrites full markdown via getMarkdownContent().
          */
         function getFindHaystack() {
-            if (state.mode === 'source') {
+            if (isSourceSurfaceActive()) {
                 return { haystack: sourceEditor ? sourceEditor.value : '', map: null, kind: 'source' };
             }
             // Search the model whenever there is one, not the mounted DOM.
@@ -4660,7 +4690,7 @@
 
             // navigate=false: update count/highlights only — do NOT move caret/scroll
             // (mode switch used to re-run find and yank you off the sticky line).
-            if (state.mode === 'source' || findState.kind === 'source') {
+            if (findState.kind === 'source' || state.mode === 'source' || isSourceSurfaceActive()) {
                 if (navigate && findState.index >= 0) {
                     const m = findState.matches[findState.index];
                     scrollSourceMatchIntoView(m.start, m.end, true);

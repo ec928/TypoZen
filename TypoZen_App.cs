@@ -9731,7 +9731,10 @@ namespace TypoZen
                                     MapDocumentFolder(path);
                                     LoadContentToEditor(content, false, path);
                                     if (forceEditorText || PreferSourceModeForPath(path))
+                                    {
                                         ApplyHostModeChrome("source");
+                                        try { SendMsg("cmd:view_set:mode:source"); } catch { }
+                                    }
                                     UpdateStatusDisplay();
                                     RebuildTabStrip();
                                 }
@@ -9742,7 +9745,10 @@ namespace TypoZen
                                 _isDirty = false;
                                 ApplyTabToEditor(_tabs[i]);
                                 if (forceEditorText || PreferSourceModeForPath(path))
+                                {
                                     ApplyHostModeChrome("source");
+                                    try { SendMsg("cmd:view_set:mode:source"); } catch { }
+                                }
                             }
                         }
                         finally { _tabOpInProgress = false; }
@@ -9791,7 +9797,10 @@ namespace TypoZen
                     tab.TrailingNewlines = trailing;
                     ApplyTabToEditor(tab);
                     if (forceEditorText || PreferSourceModeForPath(path))
+                    {
                         ApplyHostModeChrome("source");
+                        try { SendMsg("cmd:view_set:mode:source"); } catch { }
+                    }
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
                         try { AddRecentFile(path); } catch { }
