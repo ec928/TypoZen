@@ -10045,7 +10045,12 @@ namespace TypoZen
             string mediaStyle = isVideo
                 ? "video{max-width:100%;max-height:min(100%,calc(100% - 4rem));background:#000}"
                 : "audio{width:min(480px,90%)}";
-            // MediaError codes: 1=aborted 2=network 3=decode 4=src not supported
+            // Full element error is rare for HEVC: Edge often plays AAC audio and leaves a
+            // black frame without firing 'error'. Detect videoWidth/Height === 0 after load.
+            string hevcHint =
+                " <span class=\"hint\">Many phone recordings use <em>HEVC (H.265 / HVC1)</em>. " +
+                "Install <em>HEVC Video Extensions</em> from the Microsoft Store, " +
+                "or open the file in VLC / the Photos app.</span>";
             return
                 "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
                 "<style>" +
@@ -10059,7 +10064,7 @@ namespace TypoZen
                 "background:rgba(0,0,0,.12);border:1px solid rgba(128,128,128,.35);font-size:13px;line-height:1.45;text-align:left}" +
                 "#err.show{display:block}" +
                 "#err strong{display:block;margin-bottom:6px;font-size:14px}" +
-                ".hint{margin:8px 0 0;font-size:12px;opacity:.85;line-height:1.4}" +
+                ".hint{margin:8px 0 0;display:block;font-size:12px;opacity:.85;line-height:1.4}" +
                 "</style></head><body><div class=\"wrap\">" +
                 "<p class=\"title\">" + safeName + "</p>" +
                 "<" + tag + " id=\"m\" src=\"" + fileUrl + "\" controls controlslist=\"nodownload\"" +
@@ -10069,22 +10074,45 @@ namespace TypoZen
                 "(function(){" +
                 "var m=document.getElementById('m'),box=document.getElementById('err');" +
                 "if(!m||!box)return;" +
+                "var shown=false;" +
                 "function show(title,detail){" +
+                "if(shown)return;shown=true;" +
                 "box.innerHTML='<strong>'+title+'</strong>'+detail;" +
                 "box.className='show';" +
                 "}" +
                 "m.addEventListener('error',function(){" +
                 "var code=(m.error&&m.error.code)||0;" +
-                "var detail=" + (isVideo
-                    ? "'This file could not be played in TypoZen (same engine as Edge). '" +
+                (isVideo
+                    ? "show('Cannot play video'," +
+                      "'TypoZen uses the same engine as Edge. '" +
                       "+(code===4||code===3" +
-                      "?'Often the codec is missing — many phone recordings use HEVC (H.265 / HVC1).'" +
-                      ":'Check that the file is not corrupt and that a matching codec is installed.')+" +
-                      "' <span class=\"hint\">Install <em>HEVC Video Extensions</em> from the Microsoft Store, " +
-                      "or open the file in VLC / the Photos app.</span>'"
-                    : "'This audio file could not be played (codec or file not supported by Edge on this PC).'") + ";" +
-                "show('Cannot play media',detail);" +
+                      "?'The format or video codec is not available on this PC.'" +
+                      ":'The file could not be loaded.')+" +
+                      "'" + hevcHint.Replace("'", "\\'") + "');"
+                    : "show('Cannot play audio'," +
+                      "'This audio file is not supported by Edge on this PC (codec or corrupt file).');") +
                 "});" +
+                (isVideo
+                    ? "function checkPicture(){" +
+                      "if(shown)return;" +
+                      // readyState HAVE_CURRENT_DATA+ and still no decoded frame size
+                      "if(m.readyState<2)return;" +
+                      "var dur=m.duration;" +
+                      "if(!(dur>0)||!isFinite(dur))return;" +
+                      "if((m.videoWidth|0)>0&&(m.videoHeight|0)>0)return;" +
+                      "show('Video picture not available'," +
+                      "'Sound may still play, but there is no video frame. '" +
+                      "+'Usually the container demuxes while the video codec (often HEVC) is missing.'" +
+                      "+'" + hevcHint.Replace("'", "\\'") + "');" +
+                      "}" +
+                      "m.addEventListener('loadeddata',checkPicture);" +
+                      "m.addEventListener('canplay',checkPicture);" +
+                      "m.addEventListener('playing',function(){setTimeout(checkPicture,150);});" +
+                      "m.addEventListener('timeupdate',function onTu(){" +
+                      "if(m.currentTime>0.05){m.removeEventListener('timeupdate',onTu);checkPicture();}" +
+                      "});" +
+                      "setTimeout(checkPicture,800);"
+                    : "") +
                 "})();" +
                 "</script></body></html>";
         }
