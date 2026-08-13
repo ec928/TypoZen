@@ -1846,7 +1846,7 @@
             if (e.ctrlKey || e.metaKey || e.altKey) return;
             const t = e.target;
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-            if (t && t.closest && t.closest('#sidebar, #findBar, #tableModal')) return;
+            if (t && t.closest && t.closest('#sidebar, #findBar, #tableModal, #helpModal, #helpModal')) return;
 
             const hasSearchHits = !!(typeof findState !== 'undefined'
                 && findState.matches && findState.matches.length);
@@ -2012,7 +2012,7 @@
                 if (e.key !== 'Backspace' && e.key !== 'Delete') return;
                 if (e.defaultPrevented) return;
                 try {
-                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal')) return;
+                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal, #helpModal')) return;
                 } catch (err) {}
                 handleMultiBlockSelectionDelete(e);
             }, true);
@@ -2061,7 +2061,7 @@
                 if (e.defaultPrevented) return;
                 // Find bar / modals own Enter
                 try {
-                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal')) return;
+                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal, #helpModal')) return;
                 } catch (err) {}
 
                 e.preventDefault();
@@ -2089,7 +2089,7 @@
                 if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey) return;
                 if (e.defaultPrevented) return;
                 try {
-                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal')) return;
+                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal, #helpModal')) return;
                 } catch (err) {}
                 if (!getTableContext()) return;      // not in a table: leave Tab alone
                 if (tableTabNavigate(!!e.shiftKey)) {
@@ -2348,7 +2348,7 @@
                 if (e.key !== 'Backspace') return;
                 if (e.defaultPrevented) return;
                 try {
-                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal')) return;
+                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal, #helpModal')) return;
                 } catch (err) {}
 
                 const sel = window.getSelection();
@@ -2416,7 +2416,7 @@
                 window.__tzDeleteSeen = (window.__tzDeleteSeen || 0) + 1;
                 if (e.defaultPrevented) return;
                 try {
-                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal')) return;
+                    if (e.target && e.target.closest && e.target.closest('#findBar, #tableModal, #helpModal')) return;
                 } catch (err) {}
 
                 const sel = window.getSelection();

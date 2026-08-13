@@ -457,7 +457,7 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Close tab | `Ctrl+W` |
 | Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Open File / Edit / View / Themes / Help menu | `Alt+F` / `Alt+E` / `Alt+V` / `Alt+T` / `Alt+H` |
-| Help (syntax) | `F1` |
+| Help (syntax & shortcuts) | `F1` |
 | Reveal Markdown | `F7` |
 | Focus mode | `F8` |
 | Typewriter scroll | `F9` |

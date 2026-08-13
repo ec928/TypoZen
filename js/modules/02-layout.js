@@ -34,7 +34,7 @@
 
                 const t = e.target;
                 if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-                if (t && t.closest && t.closest('#sidebar, #findBar, #tableModal')) return;
+                if (t && t.closest && t.closest('#sidebar, #findBar, #tableModal, #helpModal')) return;
 
                 e.preventDefault();
                 e.stopPropagation();
@@ -4907,7 +4907,7 @@
                     if (e.key === 'F9') { e.preventDefault(); handleCommand('toggle_typewriter'); return; }
                 }
                 if (isFindBarOpen() && e.key === 'Enter' && e.target && e.target.closest && !e.target.closest('#findBar')) {
-                    if (e.target.closest && e.target.closest('#tableModal')) return;
+                    if (e.target.closest && e.target.closest('#tableModal, #helpModal')) return;
                     e.preventDefault();
                     e.stopPropagation();
                     findStep(e.shiftKey ? -1 : 1);

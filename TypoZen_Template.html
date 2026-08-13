@@ -288,6 +288,87 @@
         </div>
     </div>
 
+    <!-- Help: syntax + shortcuts (replaces browser alert) -->
+    <div id="helpModal" class="tz-help-overlay" hidden role="presentation">
+        <div class="tz-help-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle" tabindex="-1">
+            <header class="tz-help-head">
+                <h2 id="helpTitle">Syntax &amp; Shortcuts</h2>
+                <button type="button" id="helpClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">✕</button>
+            </header>
+            <div class="tz-help-body">
+                <section class="tz-help-sec">
+                    <h3>Markdown</h3>
+                    <table class="tz-help-table">
+                        <tbody>
+                            <tr><td><code># Heading</code> … <code>######</code></td><td>Headings 1–6</td></tr>
+                            <tr><td><code>**bold**</code> · <code>*italic*</code></td><td><kbd>Ctrl+B</kbd> · <kbd>Ctrl+I</kbd></td></tr>
+                            <tr><td><code>~~strike~~</code></td><td><kbd>Ctrl+Shift+X</kbd></td></tr>
+                            <tr><td><code>`inline`</code> · fenced <code>```lang</code></td><td>Code</td></tr>
+                            <tr><td><code>&gt; quote</code></td><td>Blockquote</td></tr>
+                            <tr><td><code>-</code> · <code>1.</code> · <code>- [ ]</code></td><td>Bullet · numbered · task</td></tr>
+                            <tr><td><code>[text](url)</code></td><td><kbd>Ctrl+K</kbd></td></tr>
+                            <tr><td>Table grid</td><td><kbd>Ctrl+T</kbd></td></tr>
+                            <tr><td>List indent / outdent</td><td><kbd>Tab</kbd> · <kbd>Shift+Tab</kbd></td></tr>
+                        </tbody>
+                    </table>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Find &amp; search</h3>
+                    <table class="tz-help-table">
+                        <tbody>
+                            <tr><td>Find · Replace</td><td><kbd>Ctrl+F</kbd> · <kbd>Ctrl+H</kbd></td></tr>
+                            <tr><td>Search sidebar</td><td><kbd>Alt+S</kbd></td></tr>
+                            <tr><td>Next · previous match</td><td><kbd>F3</kbd> · <kbd>Shift+F3</kbd></td></tr>
+                            <tr><td colspan="2" class="tz-help-note">With results: <kbd>↑</kbd>/<kbd>↓</kbd> step hits; on Pages, <kbd>←</kbd>/<kbd>→</kbd> turn the page. Without results, arrows keep their normal job (caret in Preview, page turn in Reader).</td></tr>
+                        </tbody>
+                    </table>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Pages &amp; position</h3>
+                    <table class="tz-help-table">
+                        <tbody>
+                            <tr><td>Turn page (any paginated view)</td><td><kbd>PageUp</kbd> · <kbd>PageDown</kbd> · wheel</td></tr>
+                            <tr><td>Turn page in Reader / book</td><td>Arrows · <kbd>Space</kbd> · <kbd>Shift+Space</kbd></td></tr>
+                            <tr><td>Go to page</td><td><kbd>Ctrl+G</kbd></td></tr>
+                            <tr><td>Bookmark · Marks pane</td><td><kbd>Ctrl+Shift+M</kbd> · <kbd>Ctrl+Shift+P</kbd></td></tr>
+                            <tr><td>Return from jump</td><td><kbd>Ctrl+Shift+J</kbd></td></tr>
+                        </tbody>
+                    </table>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Editing &amp; files</h3>
+                    <table class="tz-help-table">
+                        <tbody>
+                            <tr><td>New · Open · Save</td><td><kbd>Ctrl+N</kbd> · <kbd>Ctrl+O</kbd> · <kbd>Ctrl+S</kbd></td></tr>
+                            <tr><td>Save As</td><td><kbd>Ctrl+Shift+S</kbd></td></tr>
+                            <tr><td>Close tab · cycle tabs</td><td><kbd>Ctrl+W</kbd> · <kbd>Ctrl+Tab</kbd></td></tr>
+                            <tr><td>Print / PDF</td><td><kbd>Ctrl+P</kbd></td></tr>
+                            <tr><td>Undo · Redo</td><td><kbd>Ctrl+Z</kbd> · <kbd>Ctrl+Y</kbd></td></tr>
+                        </tbody>
+                    </table>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>View</h3>
+                    <table class="tz-help-table">
+                        <tbody>
+                            <tr><td>Source / Preview / Reader</td><td>Mode control on the toolbar</td></tr>
+                            <tr><td>Sidebar</td><td><kbd>Ctrl+\</kbd></td></tr>
+                            <tr><td>Reveal Markdown · Focus · Typewriter</td><td><kbd>F7</kbd> · <kbd>F8</kbd> · <kbd>F9</kbd></td></tr>
+                            <tr><td>Fullscreen</td><td><kbd>F11</kbd></td></tr>
+                            <tr><td>Zoom in · out · reset</td><td><kbd>Ctrl++</kbd> · <kbd>Ctrl+-</kbd> · <kbd>Ctrl+0</kbd> · Ctrl+scroll</td></tr>
+                            <tr><td>Menus (File · Edit · View · Themes · Help)</td><td><kbd>Alt+F</kbd> · <kbd>E</kbd> · <kbd>V</kbd> · <kbd>T</kbd> · <kbd>H</kbd></td></tr>
+                            <tr><td>This help · Debug HUD</td><td><kbd>F1</kbd> · <kbd>Ctrl+Shift+D</kbd></td></tr>
+                        </tbody>
+                    </table>
+                </section>
+            </div>
+            <footer class="tz-help-foot">
+                <span class="tz-help-hint">Esc to close</span>
+                <button type="button" id="helpOk" class="tz-help-ok">Close</button>
+            </footer>
+        </div>
+    </div>
+
     <script>window.__tzBeforeMain = Math.round(performance.now());</script>
     <!-- TYPOZEN_ENGINE_BEGIN -->
     <!-- Classic scripts, fixed order — see js/modules/load-order.json. Shared globals. -->

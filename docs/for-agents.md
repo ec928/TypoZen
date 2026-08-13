@@ -55,7 +55,7 @@ Implemented in:
 4. Up/Down with hits are owned by `bindReaderFindKeys` (capture). The page handler must **return** for those keys when hits exist so search wins.
 5. There is **no** `,` `.` `<` `>` search chord. Removed: collided with typing.
 
-Help for Markdown syntax: **F1**. Menu: **Alt+H** → Help. Debug HUD: **Ctrl+Shift+D** / Help → Toggle Debug HUD. There is no separate in-app “keyboard help” pane beyond README + this matrix.
+Help: **F1** or **Help → Syntax & Shortcuts** opens an in-page themed modal (`#helpModal` in `TypoZen_Template.html`, `openHelpModal` in `03-shell.js`) — not a browser `alert`. Debug HUD: **Ctrl+Shift+D**.
 
 ## Search UX (related)
 

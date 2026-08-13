@@ -1769,7 +1769,8 @@
                 openFindBar(null, true);
             }
             else if (cmd === "help_syntax") {
-                alert("TypoZen Markdown Syntax & Shortcuts:\n\n# Heading 1 to ###### Heading 6\n**Bold** (Ctrl+B) | *Italic* (Ctrl+I)\n~~Strikethrough~~ (Ctrl+Shift+X)\n`Inline Code` or ```Code block```\n> Blockquote\n- Bullet List | 1. Numbered List\n- [ ] Task checklist\n[Link Text](URL) (Ctrl+K)\n| Col 1 | Col 2 |\n| --- | --- | (Ctrl+T for Table)\n| Cell | Cell |\n\nEditor Shortcuts:\nCtrl+F Find  |  Ctrl+H Find/Replace\nCtrl+/: Source Mode\nAlt+\\: Sidebar\nCtrl++ Zoom In  |  Ctrl+- Zoom Out  |  Ctrl+0 Reset Zoom  |  Ctrl+scroll\nCtrl+W Close tab  |  Ctrl+Tab / Ctrl+Shift+Tab cycle tabs\nF1 Help  F7 Reveal  F8 Focus  F9 Typewriter  F11 Fullscreen");
+                if (isHelpModalOpen()) closeHelpModal();
+                else openHelpModal();
             }
             else if (cmd === "toggle_debug_hud") {
                 if (typeof window.toggleDebugHUD === 'function') window.toggleDebugHUD();
@@ -1905,6 +1906,65 @@
                 try { sourceEditor.focus(); } catch (e2) {}
             }
         }
+
+        /** F1 / Help → Syntax & Shortcuts — themed panel (not a WebView alert). */
+        function isHelpModalOpen() {
+            const m = document.getElementById('helpModal');
+            return !!(m && m.classList.contains('open') && !m.hasAttribute('hidden'));
+        }
+
+        function openHelpModal() {
+            const modal = document.getElementById('helpModal');
+            if (!modal) return;
+            modal.hidden = false;
+            modal.classList.add('open');
+            const panel = modal.querySelector('.tz-help-panel');
+            const closeBtn = document.getElementById('helpClose') || document.getElementById('helpOk');
+            try {
+                if (closeBtn) closeBtn.focus();
+                else if (panel) panel.focus();
+            } catch (eF) {}
+        }
+
+        function closeHelpModal() {
+            const modal = document.getElementById('helpModal');
+            if (!modal) return;
+            modal.classList.remove('open');
+            modal.hidden = true;
+            try {
+                if (state.mode === 'source' && sourceEditor) sourceEditor.focus();
+                else if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
+                else if (editor) editor.focus({ preventScroll: true });
+            } catch (eC) {}
+        }
+
+        (function bindHelpModalOnce() {
+            const modal = document.getElementById('helpModal');
+            if (!modal || modal.__tzHelpBound) return;
+            modal.__tzHelpBound = true;
+            const closeBtn = document.getElementById('helpClose');
+            const okBtn = document.getElementById('helpOk');
+            if (closeBtn) closeBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                closeHelpModal();
+            });
+            if (okBtn) okBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                closeHelpModal();
+            });
+            modal.addEventListener('click', function (e) {
+                if (e.target === modal) closeHelpModal();
+            });
+            document.addEventListener('keydown', function (e) {
+                if (!isHelpModalOpen()) return;
+                // F1 is toggled by the host cmd:help_syntax path; Esc only here.
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeHelpModal();
+                }
+            }, true);
+        })();
 
         /** Build GFM table markdown and insert (shared by picker + custom modal). */
         function insertMarkdownTable(cols, rows) {
