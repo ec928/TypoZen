@@ -40,14 +40,17 @@ does not happen, while the same function called by hand in the same state succee
 - layout (fails identically in all three)
 - the dispatch target (`#editor` and the focused element behave the same)
 
-**Not yet known:** what differs between the handler's call and a direct call in that
-state. `applyListIndentToSelection` begins with `getSelectedBlockIndices()` and returns
-`false` when that is empty, so the selection is the first thing to look at -- the undo
-path restores a caret, and the handler runs inside the keydown where the direct call did
-not.
+**Likely cause (addressed):** after undo, a **frozen format-selection snapshot** (or a
+fallback index of `0`) could name a non-list block while the caret was back on a list
+item. `applyListIndentToSelection` then found no list lines and returned `false`, but
+the Tab keydown still `preventDefault`ed (keep-focus path). A later direct call or a
+second Tab saw a live caret and worked.
 
-**Impact:** low. It needs an undo immediately before, and pressing Tab again works.
-Pre-existing: six of these failed at the baseline, four now.
+**Mitigation in code:** clear format freeze on undo/redo; prefer live selection for
+list indent; fall back to the caret / active block when the index set has no list line.
+
+**Impact:** low historically (second Tab worked). Re-check `editing-sweep-app` after the
+mitigation.
 
 ---
 

@@ -755,9 +755,6 @@
 
         /** Indent/outdent list lines for the current selection (safe reload path). */
         function applyListIndentToSelection(delta) {
-            const selectedIdx = getSelectedBlockIndices();
-            if (!selectedIdx || !selectedIdx.length) return false;
-
             // Model indices, checked against the model.
             //
             // getSelectedBlockIndices returns indices into the document; this used to bound
@@ -778,6 +775,23 @@
                 return b ? coerceBlockRaw(b.raw) : '';
             };
 
+            // Prefer live selection when the caret is in the editor. After undo, a frozen
+            // format snapshot (or getSelectedBlockIndices falling through to [0]) can name
+            // a non-list row while the caret is back on a list item: Tab then preventDefaults
+            // without indenting, while calling this function a moment later succeeds.
+            let selectedIdx = null;
+            try {
+                const sel = window.getSelection();
+                if (sel && sel.anchorNode && editor && editor.contains(sel.anchorNode)) {
+                    const live = indicesFromSelectionAnchorFocus();
+                    if (live && live.length) selectedIdx = live;
+                }
+            } catch (eL) {}
+            if (!selectedIdx || !selectedIdx.length) {
+                selectedIdx = getSelectedBlockIndices();
+            }
+            if (!selectedIdx || !selectedIdx.length) return false;
+
             const focusIndices = {};
             let any = false;
             for (let i = 0; i < selectedIdx.length; i++) {
@@ -785,6 +799,28 @@
                 if (idx >= 0 && idx < total && isListLine(rawAt(idx))) {
                     focusIndices[idx] = true;
                     any = true;
+                }
+            }
+            // Last resort: caret / active block after undo left selection empty or on [0].
+            if (!any) {
+                let bi = -1;
+                try {
+                    const sel = window.getSelection();
+                    if (sel && sel.anchorNode && editor.contains(sel.anchorNode)) {
+                        bi = formatBlockIndex(getAncestorBlock(sel.anchorNode));
+                    }
+                } catch (eC) { bi = -1; }
+                if (bi < 0 && typeof currentActiveBlock !== 'undefined' && currentActiveBlock
+                    && editor.contains(currentActiveBlock)) {
+                    bi = formatBlockIndex(currentActiveBlock);
+                }
+                if (bi >= 0 && bi < total && isListLine(rawAt(bi))) {
+                    focusIndices[bi] = true;
+                    any = true;
+                    try {
+                        _formatSelectionFrozen = false;
+                        _selectedFormatIndices = [bi];
+                    } catch (eF) {}
                 }
             }
             if (!any) return false;
@@ -2553,6 +2589,14 @@
                     this.redoStack.pop();
                 } finally {
                     this.isRestoring = false;
+                    // Undo reloads the DOM; a frozen format selection from before the undo
+                    // is no longer trustworthy (Tab-after-undo used those stale indices).
+                    try {
+                        _formatSelectionFrozen = false;
+                        _selectedFormatIndices = [];
+                        _selectedFormatRaws = {};
+                        _selectedFormatBlocks = [];
+                    } catch (eClr) {}
                 }
             },
 
@@ -2576,6 +2620,12 @@
                     } catch (e) {}
                 } finally {
                     this.isRestoring = false;
+                    try {
+                        _formatSelectionFrozen = false;
+                        _selectedFormatIndices = [];
+                        _selectedFormatRaws = {};
+                        _selectedFormatBlocks = [];
+                    } catch (eClr2) {}
                 }
             },
 
