@@ -1,19 +1,13 @@
 /**
- * Arrows move the caret where there is text to edit, and turn the page where there is not.
+ * Keyboard paging without a live search (the common path).
  *
- * Paginated Preview was readable but not writable: the page-turn handler claimed every
- * arrow key and called preventDefault, so the caret never moved. You could open a document
- * in Pages and not type in it, which is most of the way to Pages not being an editing mode.
+ * Product matrix (docs/for-agents.md): Preview arrows = caret; Reader arrows = page;
+ * PageUp/PageDown always page when paginated. Search mode (matches.length > 0) adds
+ * Up/Down = hits and Left/Right = page — not covered here.
  *
- * The split is on whether anything is editable under the cursor, which is a real signal
- * rather than a guess -- Reader sets #editor to contenteditable="false", for a book and for
- * a paginated Markdown document alike. So this suite asserts both halves, because fixing
- * the first by breaking the second would be a poor trade: arrows are the main gesture for
- * reading a novel.
- *
- * PageUp/PageDown are asserted in Preview too. They are the keyboard way to turn a page
- * while writing now that the arrows are the caret's, so they must not be caught by the
- * same guard.
+ * Paginated Preview used to claim every arrow (caret never moved). The split is on
+ * contenteditable: Reader sets #editor contenteditable=false. PageUp/PageDown must not
+ * be skipped just because Preview is editable.
  *
  *   RUN_APP_E2E=1 node tests/page-arrow-keys-app.mjs
  */

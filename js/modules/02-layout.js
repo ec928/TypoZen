@@ -13,16 +13,15 @@
         };
 
         /**
-         * Up and Down step through search results from the document itself.
+         * Up / Down step search hits while a query has results ("search mode").
          *
-         * Only while reading, and only when there is a result list to step through -- so an
-         * arrow key still scrolls a book that nobody has searched. The sidebar's result list
-         * has always used these keys; this is the same behaviour when the reader's eyes and
-         * focus are on the text instead of on the panel.
+         * Product rule (see README / docs/for-agents.md):
+         *   - Normal Preview: arrows move the caret.
+         *   - Search mode (findState has matches): Up/Down = prev/next hit.
+         *   - Reader (no caret): Up/Down page unless search mode claims them.
          *
-         * There used to be ',' '.' '<' '>' here as well. They are gone: they collided with
-         * ordinary typing whenever focus sat in any input, and an editor that sometimes
-         * eats a full stop is worse than one with fewer shortcuts.
+         * Never while focus is in a real INPUT/TEXTAREA (sidebar search, find bar).
+         * contenteditable #editor is allowed — that is where document search runs.
          */
         function bindReaderFindKeys() {
             if (!editor || editor.__tzReaderFindKeys) return;
@@ -30,29 +29,18 @@
             document.addEventListener('keydown', function (e) {
                 if (!findState.matches || !findState.matches.length) return;
                 if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+                if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+                if (state.mode === 'source') return;
 
-                // Never while something is being typed into, wherever the event came from.
                 const t = e.target;
-                const isInput = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
-                if (isInput) return;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+                if (t && t.closest && t.closest('#sidebar, #findBar, #tableModal')) return;
 
-                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                    if (state.mode === 'reader' || window.__tzExternalSearchActive) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        findStep(e.key === 'ArrowUp' ? -1 : 1);
-                        try { updateSidebarSearchCount(); } catch (err) {}
-                        try { focusEditorNoScroll(); } catch (err2) {}
-                    }
-                } else {
-                    if (window.__tzExternalSearchActive) {
-                        window.__tzExternalSearchActive = false;
-                    }
-                }
-            }, true);
-
-            document.addEventListener('mousedown', function() {
-                window.__tzExternalSearchActive = false;
+                e.preventDefault();
+                e.stopPropagation();
+                findStep(e.key === 'ArrowUp' ? -1 : 1);
+                try { updateSidebarSearchCount(); } catch (err) {}
+                try { focusEditorNoScroll(); } catch (err2) {}
             }, true);
         }
 

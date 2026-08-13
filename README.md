@@ -79,12 +79,15 @@ scrollbar can only span what is currently laid out — about 28 pages of a 1400-
 
 - **Click a page number** or press **`Ctrl+G`** to open a go-to-page prompt (leaf page number;
   in two-column mode that maps to the correct spread under the hood).
-- **Turning pages** splits on whether there is a caret to move. `PageUp` / `PageDown` and the
-  wheel always turn the page. **Arrows and `Space` turn it only where nothing is editable** —
-  Reader, and any book — because in **Pages** the arrows belong to the text. They used to be
-  claimed here in Preview too, so a paginated document could be read but not written in: every
-  arrow key was swallowed and the caret never moved. Reader sets `#editor` to
-  `contenteditable="false"`, which is what makes the distinction reliable rather than a guess.
+- **Turning pages** follows a fixed keyboard matrix (full detail in
+  [docs/for-agents.md](docs/for-agents.md)). `PageUp` / `PageDown` and the wheel always turn
+  the page in a paginated layout. **Without a live search**, arrows and `Space` turn the page
+  only where nothing is editable — **Reader** and any **book** — because in **Preview** the
+  arrows belong to the caret. **With search results**, Up/Down step hits everywhere except
+  Source, and Left/Right turn the page (so you can page through a document while hunting a
+  match without giving up hit navigation). Reader sets `#editor` to
+  `contenteditable="false"`, which is the reliable “no caret” signal rather than a mode-name
+  guess.
 - The status bar shows the **current chapter** from the book TOC or document outline, updated
   as you read. **Click the chapter label** to jump to that chapter's start.
 - **Bookmarks** — see below. Separately, jumping via search, outline, go-to-page, or chapter
@@ -182,7 +185,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
 - Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree. Both options (and which sidebar tab you last used — Outline vs Search) are **remembered** across restarts
 - **Recent searches** — the Search tab is a combo box: the last **8** committed queries (Enter, or a pick from the list) are kept **globally** (not per tab) in `settings.json`. Click the chevron or press ↓ on an empty box for the dropdown. Remove one with **×**, clear all from the menu footer or **File → Privacy → Clear Recent Searches**. **Alt+S** also restores the last text left in the Search box (selection still wins when you have one). Full **Clear Stored Data** still wipes history too
-- While reading, **Up and Down** step to the previous and next match with the sidebar shut and your eyes on the text — the same keys the results list has always used. Reader only, and only when a search has results, so an arrow still scrolls a book nobody has searched. **F3** / **Shift+F3** also step next/prev
+- **Search mode** (a live result list — sidebar need not stay open): **Up / Down** step previous / next match with eyes on the text; **Left / Right** turn the page when the layout is paginated. Without results, Up/Down are normal (caret in Preview, page turn in Reader). **F3** / **Shift+F3** also step next/prev. Same Up/Down behaviour the results list has always used
 - Table insert (`Ctrl+T`)
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps. Grouped in View with Line Spacing and Paragraph Spacing, because all three set the shape of the text block
@@ -440,9 +443,10 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Find | `Ctrl+F` |
 | Go to page (paginated) | `Ctrl+G` |
 | Search sidebar | `Alt+S` |
-| Previous / next search result (Reader) | `Up` / `Down`, or `F3` / `Shift+F3` |
+| Previous / next search result (when matches exist) | `Up` / `Down`, or `F3` / `Shift+F3` |
 | Turn the page (any paginated mode) | `PageUp` / `PageDown`, or the wheel |
-| Turn the page (Reader / a book only) | Arrows, or `Space` / `Shift+Space` |
+| Turn the page while search has matches | `Left` / `Right` (paginated); also `PageUp` / `PageDown` |
+| Turn the page (Reader / book, no search hits) | Arrows, or `Space` / `Shift+Space` |
 | Find & Replace | `Ctrl+H` |
 | Bookmark this page (toggle) | `Ctrl+Shift+M` |
 | Show bookmarks | `Ctrl+Shift+P` |
@@ -497,18 +501,19 @@ From the project folder:
 - `TypoZen_Themes.json` — themes
 - `fonts/` — bundled typefaces
 
-The engine is eight modules sharing one global scope (not ES modules), loaded in the order `js/modules/load-order.json` gives:
+The engine is nine modules sharing one global scope (not ES modules), loaded in the order `js/modules/load-order.json` gives:
 
 | Module | Concern |
 |--------|---------|
 | `01-core.js` | State, view selectors, margins, sticky line helpers |
-| `02-layout.js` | Find/search (incl. global search history), pagination, page windowing, column memory |
+| `02-layout.js` | Find/search (history, Up/Down hits), pagination, page windowing, column memory |
 | `03-shell.js` | `onload`, themes, host commands, table picker |
 | `04-lists.js` | List engine (indent, parse, Tab/Backspace ladder) |
 | `04b-format.js` | Inline format, clipboard, keyboard editing paths |
-| `05-model.js` | `DocumentModel`, virtualization, load/save of content |
+| `05-model.js` | `DocumentModel`, virtualization, page keyboard, load/save of content |
 | `06-render-epub.js` | Markdown render, epub load, book links/styles |
 | `07-stats-host.js` | Stats bar, outline, host sync, export |
+| `08-code.js` | Fence syntax highlight (Highlight API only — not a code editor) |
 
 Edit a module and reload — no bundler step for the app. Tests concat the same files via `tests/engine-source.mjs` / `tests/build-test-template.mjs`.
 
@@ -541,9 +546,14 @@ Tests are split into four tiers depending on what they need to observe:
 - `book-to-markdown-app.mjs` guards the transition that put a Markdown document into a book's column: **leaving a book leaves nothing behind**, and **a pane that cannot be measured is refused rather than invented**. It deliberately does *not* assert the rendering — `column-width` is a preferred width, so a single leaked column stretches to fill the pane and looks perfectly healthy; two earlier versions of that assertion passed with the bug present. The geometry checks are strictly more sensitive, because the leak has to happen before it can fragment anything.
 - Some of them also drive the **chrome from outside the process** through `tests/shell-ui.ps1`, which reports menus, tab chips, dialogs and — via `-Command controls` — whether each toolbar control is actually enabled, over UI Automation as JSON. `format-availability-app.mjs` is the one that needs that last part: "greyed out" is a claim about the running window that no page-level suite can see. That is the only tier that can see what is actually painted: the page knows nothing about tabs, and the session file is written from the same model the model tests read, so both agreed with each other while the tab strip disagreed with both — see `tab-strip-paint-app.mjs`.
 
-### Known issues
+### Known issues and agent notes
 
-Open defects are recorded in [docs/known-issues.md](docs/known-issues.md) — each with what has been reproduced and what has been ruled out by measurement, not just the symptom. Anything marked pre-existing was run against the previous baseline tag and behaves identically there.
+Open defects and deliberate limitations: [docs/known-issues.md](docs/known-issues.md) —
+reproduced and characterised only (not bare suite names).
+
+**Agents / other tools:** read [docs/for-agents.md](docs/for-agents.md) first — keyboard
+matrix, non-goals (no code editor revival, no inventing defects from suite noise), and
+where truth lives. Parked developer-editor work: [docs/developer-editor-analysis.md](docs/developer-editor-analysis.md).
 
 ### Debugging
 

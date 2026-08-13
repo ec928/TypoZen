@@ -1831,19 +1831,16 @@
         }, { passive: false, capture: true });
 
         /**
-         * Page / scroll keyboard navigation.
+         * Page / scroll keyboard navigation. Product rules (docs/for-agents.md, README):
          *
-         * CRITICAL: do NOT skip the whole handler when e.target.isContentEditable. #editor
-         * is contenteditable in Preview, and that guard made PageDown/PageUp never call
-         * PageMap.step — only the browser caret moved (or nothing happened at all under
-         * page-mode overflow:hidden). Real typing surfaces are INPUT/TEXTAREA and the
-         * find/sidebar fields, which return above.
+         *   Preview (caret real): arrows edit; PageUp/PageDown (and wheel) turn pages.
+         *   Search mode (live matches): Up/Down = hits (bindReaderFindKeys); Left/Right
+         *     and PageUp/PageDown turn pages when paginated.
+         *   Reader / book (no caret): Left/Up/PageUp and Right/Down/PageDown turn pages;
+         *     Space / Shift+Space too.
          *
-         * The keys are split on it instead. PageUp/PageDown turn the page wherever they
-         * are pressed; the arrows and Space only turn it where nothing is editable, which
-         * is Reader and a book. That distinction is trustworthy rather than assumed:
-         * Reader really does set #editor to contenteditable="false", so isContentEditable
-         * reports false there and true in Preview.
+         * Never skip PageUp/PageDown just because #editor is contenteditable — that made
+         * paging dead in Preview. Only INPUT/TEXTAREA and chrome fields bail out above.
          */
         document.addEventListener('keydown', function (e) {
             if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1851,44 +1848,41 @@
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
             if (t && t.closest && t.closest('#sidebar, #findBar, #tableModal')) return;
 
-            // --- Paginated (Pages / Reader page-advance): every turn goes through PageMap ---
+            const hasSearchHits = !!(typeof findState !== 'undefined'
+                && findState.matches && findState.matches.length);
+            // Reader sets contenteditable=false; Preview keeps a real caret.
+            const readerLike = !(t && t.isContentEditable);
+
+            // --- Paginated: PageMap owns page turns ---
             if (state.pageAdvance && typeof isPaginatedLayout === 'function' && isPaginatedLayout()
                 && typeof PageMap !== 'undefined' && PageMap.step) {
-                // Reader: Up/Down step search hits when a query is live (bindReaderFindKeys).
-                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown')
-                    && state.mode === 'reader'
-                    && typeof findState !== 'undefined'
-                    && findState.matches && findState.matches.length) {
+                // Up/Down with live hits → search step (other capture handler).
+                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && hasSearchHits) {
                     return;
                 }
 
                 let dir = 0;
-                // PageUp / PageDown always turn the page. They are not editing keys, and
-                // with the arrows handed back to the caret they are the keyboard way to
-                // turn a page while writing -- along with the wheel, the scrubber and
-                // Ctrl+G.
                 if (e.key === 'PageDown') dir = 1;
                 else if (e.key === 'PageUp') dir = -1;
-                // Everything else turns the page only where there is no caret to move.
-                //
-                // Reader sets #editor to contenteditable="false" -- for a book and for a
-                // paginated Markdown document alike -- so arrows page there exactly as
-                // they always have, which is the main reading gesture. In Preview the
-                // caret is real and the arrows belong to it: every one of them used to be
-                // swallowed by the preventDefault below, so Pages could be read in but not
-                // written in, which is most of the way to not being an editing mode at all.
-                else if (!(t && t.isContentEditable)) {
+                else if (hasSearchHits) {
+                    // Search mode: Left/Right page; Up/Down already returned above.
+                    if (e.key === 'ArrowRight') dir = 1;
+                    else if (e.key === 'ArrowLeft') dir = -1;
+                    else return;
+                } else if (readerLike) {
+                    // Reader / book: all arrows + Space page.
                     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') dir = 1;
                     else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') dir = -1;
                     else if (e.key === ' ') dir = e.shiftKey ? -1 : 1;
                     else return;
+                } else {
+                    // Preview editing: only PageUp/PageDown (and wheel elsewhere).
+                    return;
                 }
-                else return;
 
                 e.preventDefault();
                 e.stopPropagation();
                 const now = Date.now();
-                // Short debounce so key-repeat still advances; long enough to kill double-fire.
                 if (now - lastPageScrollTime < 90) return;
                 lastPageScrollTime = now;
                 PageMap.step(dir);
@@ -1899,9 +1893,7 @@
                 return;
             }
 
-            // --- Scroll Preview: PageUp/Down/Space must scroll #main-container ---
-            // Focus is usually in contenteditable #editor; the browser then only nudges
-            // the caret or a non-scrolling editor, so you could not leave the first screen.
+            // --- Scroll Preview: PageUp/Down scroll #main-container (not caret-only) ---
             if (!state.pageAdvance && state.mode !== 'source') {
                 const main = document.getElementById('main-container');
                 if (!main) return;
@@ -1909,11 +1901,14 @@
                     || t === main || t === document.body || t === document.documentElement;
                 if (!inDoc) return;
 
+                // Search mode: Up/Down still step hits (other handler); don't scroll.
+                if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && hasSearchHits) return;
+
                 let delta = 0;
                 if (e.key === 'PageDown') delta = 1;
                 else if (e.key === 'PageUp') delta = -1;
-                else if (e.key === ' ' && !e.shiftKey && !(t && t.isContentEditable)) delta = 1;
-                else if (e.key === ' ' && e.shiftKey && !(t && t.isContentEditable)) delta = -1;
+                else if (e.key === ' ' && !e.shiftKey && readerLike) delta = 1;
+                else if (e.key === ' ' && e.shiftKey && readerLike) delta = -1;
                 else return;
 
                 e.preventDefault();
