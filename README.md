@@ -28,9 +28,11 @@ Virtualized Preview keeps a per-block height map, estimated from the raw Markdow
 
 ### Reading PDFs, images, and media
 Open a **PDF**, **image** (png/jpg/webp/svg/…), or **media** file (mp4/webm/mp3/…) and TypoZen
-opens it **read-only** on a Chromium surface beside the editor (same tab strip). Format tools
-and Source/Preview are locked; the file is never marked dirty and never saved over. Video and
-audio use the browser’s default controls. See `docs/native-reader-plan.md`.
+opens it **read-only** on a Chromium surface beside the editor (same tab strip). PDFs and
+images use Chromium’s own viewer chrome (including image zoom). Video and audio use a thin
+shell with the browser’s media controls. Format tools and Source/Preview are locked; the
+file is never marked dirty and never saved over. HEVC phone video needs the OS HEVC codec
+pack — same limits as Edge. See `docs/native-reader-plan.md`.
 
 ### Reading epubs
 Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the
