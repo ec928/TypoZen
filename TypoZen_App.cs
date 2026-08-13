@@ -3657,9 +3657,9 @@ namespace TypoZen
                 || (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsNativeTab(_tabs[_activeTabIndex]));
             bool isNativeHtml = isNative && IsHtmlPath(_currentFilePath);
             bool readOnlyDoc = isBook || isNative;
-            // HTML rendered tab: Source stays available (see markup). PDF/image/media: all locked.
+            // HTML rendered: Source + Preview available (edit paths). PDF/image/media: locked.
             bool lockSource = readOnlyDoc && !isNativeHtml;
-            bool lockPreview = readOnlyDoc; // Preview is Markdown WYSIWYG, not HTML render
+            bool lockPreview = readOnlyDoc && !isNativeHtml;
 
             if (_btnColumnToggle != null)
             {
@@ -10073,7 +10073,7 @@ namespace TypoZen
 
         private void PaintNativeChrome(NativeRole role)
         {
-            // Reader-like chrome. HTML keeps Source enabled (Mode → Source shows markup).
+            // Reader-like chrome. HTML: Source + Preview unlock (edit paths); Reader = render.
             try
             {
                 SelectSegment("btnModeSource", false);
@@ -10087,10 +10087,11 @@ namespace TypoZen
             {
                 bool html = (role == NativeRole.Page);
                 Button segSource, segPreview;
+                // HTML: Source/Preview open the editor. PDF/image/media: all mode locked.
                 if (_segments.TryGetValue("btnModeSource", out segSource))
                     SetControlLocked(segSource, !html);
                 if (_segments.TryGetValue("btnModePreview", out segPreview))
-                    SetControlLocked(segPreview, true);
+                    SetControlLocked(segPreview, !html);
                 if (_btnColumnToggle != null) SetControlLocked(_btnColumnToggle, true);
                 if (_btnScrollToggle != null) SetControlLocked(_btnScrollToggle, true);
             }
@@ -10141,12 +10142,68 @@ namespace TypoZen
                     };
                 }
                 catch { }
+                // HTML "Reader" must be host read-only. Navigating TypoZen_Template.html (or any
+                // contenteditable page) left the document editable while the Mode pill said Reader.
+                try
+                {
+                    _nativeWebView.CoreWebView2.NavigationCompleted += (s, e) =>
+                    {
+                        try
+                        {
+                            if (!e.IsSuccess) return;
+                            if (!_nativeSurfaceVisible) return;
+                            if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return;
+                            var tab = _tabs[_activeTabIndex];
+                            if (tab == null || tab.NativeRole != NativeRole.Page) return;
+                            EnforceNativeHtmlReadOnly();
+                        }
+                        catch { }
+                    };
+                }
+                catch { }
                 ApplyZoomToWebView();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine("Native WebView init: " + ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Strip editing on a rendered HTML page so Reader means read-only. Source mode
+        /// is how the user edits markup.
+        /// </summary>
+        private async void EnforceNativeHtmlReadOnly()
+        {
+            try
+            {
+                if (_nativeWebView == null || _nativeWebView.CoreWebView2 == null) return;
+                const string js =
+                    @"(function(){
+                        try { document.designMode = 'off'; } catch (e0) {}
+                        try {
+                            var all = document.querySelectorAll('[contenteditable]');
+                            for (var i = 0; i < all.length; i++) {
+                                all[i].setAttribute('contenteditable', 'false');
+                                all[i].contentEditable = 'false';
+                            }
+                        } catch (e1) {}
+                        try {
+                            document.addEventListener('beforeinput', function (ev) {
+                                ev.preventDefault();
+                            }, true);
+                            document.addEventListener('keydown', function (ev) {
+                                if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+                                var k = ev.key;
+                                if (k === 'Backspace' || k === 'Delete' || k.length === 1)
+                                    ev.preventDefault();
+                            }, true);
+                        } catch (e2) {}
+                        return 'ok';
+                    })()";
+                await _nativeWebView.CoreWebView2.ExecuteScriptAsync(js);
+            }
+            catch { }
         }
 
         private void MapNativeFolder(string filePath)
@@ -10202,6 +10259,15 @@ namespace TypoZen
                     if (role == NativeRole.Pdf || role == NativeRole.Page)
                     {
                         _nativeWebView.CoreWebView2.Navigate(fileUrl);
+                        // NavigationCompleted also enforces; call again after settle for
+                        // pages that enable contenteditable late (e.g. TypoZen_Template.html).
+                        if (role == NativeRole.Page)
+                        {
+                            await Task.Delay(200);
+                            EnforceNativeHtmlReadOnly();
+                            await Task.Delay(400);
+                            EnforceNativeHtmlReadOnly();
+                        }
                     }
                     else if (role == NativeRole.Image)
                     {
