@@ -185,12 +185,13 @@
             // Leave a breadcrumb so Return from Jump can restore reading position.
             try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
             findState.index = index;
-            const takeFocus = isFindBarOpen();
-            if (state.mode === 'source' || findState.kind === 'source') {
+            const findBarOpen = isFindBarOpen();
+            if (state.mode === 'source' || findState.kind === 'source' || isSourceSurfaceActive()) {
                 const m = findState.matches[findState.index];
-                scrollSourceMatchIntoView(m.start, m.end, takeFocus);
+                // Always select + scroll the hit in Source so the list and the text agree.
+                scrollSourceMatchIntoView(m.start, m.end, true);
             } else if (findState.kind === 'model') {
-                revealModelMatch(findState.matches[findState.index], true, !takeFocus);
+                revealModelMatch(findState.matches[findState.index], true, !findBarOpen);
             } else {
                 const surface = getFindHaystack();
                 findState.ranges = rangesFromWysiwygMatches(findState.matches, surface.map);
@@ -208,7 +209,8 @@
                 }
             }
             updateFindCount();
-            focusFindInput(false);
+            // Only reclaim focus for Ctrl+F; sidebar jumps leave the caret on the match.
+            if (findBarOpen) focusFindInput(false);
         };
 
         /**
@@ -4688,12 +4690,15 @@
             _searchRenderedSig = '';
             _searchRenderedList = null;
 
-            // navigate=false: update count/highlights only — do NOT move caret/scroll
-            // (mode switch used to re-run find and yank you off the sticky line).
+            // Source: always select + scroll the current hit so 1/N is visible in the text
+            // (not only in the sidebar). Preview still uses CSS highlights; textarea cannot.
+            // navigate=false still used for Preview to avoid yanking scroll on mode switch.
             if (findState.kind === 'source' || state.mode === 'source' || isSourceSurfaceActive()) {
-                if (navigate && findState.index >= 0) {
+                if (findState.index >= 0) {
                     const m = findState.matches[findState.index];
-                    scrollSourceMatchIntoView(m.start, m.end, true);
+                    const findBarOpen = isFindBarOpen();
+                    // Keep typing in Ctrl+F when the bar is open; still set selection + scroll.
+                    scrollSourceMatchIntoView(m.start, m.end, !findBarOpen);
                 }
             } else if (findState.kind === 'model') {
                 if (findState.index >= 0) {
