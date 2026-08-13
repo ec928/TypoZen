@@ -26,22 +26,22 @@ TypoZen opens by document *type*, not size — Markdown of any size opens in Liv
 
 Virtualized Preview keeps a per-block height map, estimated from the raw Markdown and refined from real measurements as blocks mount, with **scroll anchoring** so correcting a height never moves the content under your cursor. `.txt` / `.log` / `.csv` open in Source, which is the Notepad-class path.
 
-### Reading PDFs, images, and media
-Open a **PDF**, **image** (png/jpg/webp/svg/…), or **media** file (mp4/webm/mp3/…) and TypoZen
-opens it **read-only** on a Chromium surface beside the editor (same tab strip). There is no
-document scrubber on these tabs — that control belongs to paginated engine/book reading.
+### Reading PDFs, web, images, and media
+Open these **read-only** on a Chromium surface (same tab strip). No document scrubber on these
+tabs — that control belongs to paginated engine/book reading.
 
-- **PDF** — Chromium’s PDF viewer  
-- **Images** — fit-to-pane shell for a fast open; **right‑click → Magnify** (Edge) when you want zoom and pan  
-- **Video / audio** — browser media controls; if Edge cannot decode the file (common for **HEVC / HVC1** phone video), the pane shows a clear error with a Store codec hint instead of a blank player
+| Type | Behaviour |
+|------|-----------|
+| **PDF** | Chromium PDF viewer |
+| **HTML** (`.html` / `.htm` / `.xhtml`) | **Rendered as a page** (default). Relative CSS/images resolve from the file’s folder |
+| **CSS / XML / XAML** | Opened in Chromium as **markup source** (syntax-coloured text / XML tree). **XAML is not a live WPF UI** — only the source |
+| **Images** | Fit-to-pane shell; **right‑click → Magnify** (Edge) for zoom/pan |
+| **Video / audio** | Browser controls; missing codecs (often **HEVC / HVC1**) show a clear error (audio-only black frame is explained too) |
 
 Format tools and Source/Preview are locked; the file is never marked dirty and never saved over.
 **Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native
-WebView; document tab → editor). **Privacy Mode** (File menu) already applies: it stops writing
-session history, recent files, positions, and so on for any document — see
-[Session & privacy](#session--privacy). Native files are not unzipped into a named cache the way
-epubs are; book-only opaque extraction under Privacy Mode is described there too. Details for
-agents: `docs/native-reader-plan.md`.
+WebView; document tab → editor). **Privacy Mode** (File menu) already applies — see
+[Session & privacy](#session--privacy). Details: `docs/native-reader-plan.md`.
 
 ### Reading epubs
 Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the

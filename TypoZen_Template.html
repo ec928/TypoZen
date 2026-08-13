@@ -366,10 +366,12 @@
                     <table class="tz-help-table">
                         <tbody>
                             <tr><td>Books</td><td><code>.epub</code> — Reader, scrubber, TOC</td></tr>
-                            <tr><td>PDF</td><td>Chromium PDF viewer, read-only tab</td></tr>
-                            <tr><td>Images</td><td>Fit-to-pane; right‑click → Magnify to zoom/pan</td></tr>
+                            <tr><td>PDF</td><td>Chromium PDF viewer</td></tr>
+                            <tr><td>HTML</td><td>Rendered page (default)</td></tr>
+                            <tr><td>CSS · XML · XAML</td><td>Markup source in Chromium (not live UI)</td></tr>
+                            <tr><td>Images</td><td>Fit-to-pane; right‑click → Magnify</td></tr>
                             <tr><td>Video · audio</td><td>Browser controls; codecs = Edge/OS</td></tr>
-                            <tr><td colspan="2" class="tz-help-note">PDF / image / media tabs never dirty and never save over the file. Mode and format tools stay locked while you read them.</td></tr>
+                            <tr><td colspan="2" class="tz-help-note">These tabs never dirty and never save over the file. Mode and format tools stay locked while you read them.</td></tr>
                         </tbody>
                     </table>
                 </section>
@@ -405,9 +407,10 @@
                     <h3>Reading</h3>
                     <ul class="tz-about-list">
                         <li><strong>.epub</strong> books with the publisher’s HTML, TOC, scrubber, bookmarks, and remembered position.</li>
-                        <li><strong>PDF</strong>, <strong>images</strong>, and <strong>video/audio</strong> open read-only on a Chromium surface (same tab strip). Never dirty, never saved over.</li>
-                        <li>Images fit the pane for speed; Edge’s right‑click <strong>Magnify</strong> still zooms and pans when you want it.</li>
-                        <li>Video uses the browser’s controls; if the codec is missing (often HEVC phone clips), a clear error is shown instead of a blank player.</li>
+                        <li><strong>PDF</strong>, <strong>HTML</strong> (rendered), <strong>CSS/XML/XAML</strong> (as markup), <strong>images</strong>, and <strong>video/audio</strong> open read-only on Chromium. Never dirty, never saved over.</li>
+                        <li>HTML is shown as a page by default. XAML is source only — not a running WPF window.</li>
+                        <li>Images fit the pane for speed; Edge’s right‑click <strong>Magnify</strong> zooms and pans when you want it.</li>
+                        <li>Video uses the browser’s controls; missing codecs (often HEVC) show a clear, high-contrast error.</li>
                     </ul>
                 </section>
                 <section class="tz-help-sec">

@@ -275,7 +275,11 @@ namespace TypoZen
             Pdf,
             Image,
             Video,
-            Audio
+            Audio,
+            /// <summary>HTML page — rendered by Chromium (default open policy).</summary>
+            Page,
+            /// <summary>CSS / XML / XAML etc. — shown as markup source, not a live UI.</summary>
+            Markup
         }
 
         /// <summary>In-memory document tab (one buffer per open file / untitled).</summary>
@@ -1839,6 +1843,13 @@ namespace TypoZen
                 return NativeRole.Video;
             if (ext == ".mp3" || ext == ".wav" || ext == ".ogg" || ext == ".m4a" || ext == ".flac")
                 return NativeRole.Audio;
+            // HTML: render as a page (default). Relative CSS/images resolve via localview folder map.
+            if (ext == ".html" || ext == ".htm" || ext == ".xhtml")
+                return NativeRole.Page;
+            // Markup Chromium can open as text/tree — not WPF; .xaml is source, not a live UI.
+            if (ext == ".css" || ext == ".xml" || ext == ".xsl" || ext == ".xslt"
+                || ext == ".xaml" || ext == ".svgz")
+                return NativeRole.Markup;
             return NativeRole.None;
         }
 
@@ -1858,6 +1869,8 @@ namespace TypoZen
                 case NativeRole.Image: return "Image";
                 case NativeRole.Video: return "Video";
                 case NativeRole.Audio: return "Audio";
+                case NativeRole.Page: return "HTML";
+                case NativeRole.Markup: return "Markup";
                 default: return "File";
             }
         }
@@ -9303,9 +9316,11 @@ namespace TypoZen
             {
                 dlg.Filter =
                     "Supported files|*.md;*.txt;*.markdown;*.epub;*.pdf;" +
+                    "*.html;*.htm;*.xhtml;*.css;*.xml;*.xaml;*.xsl;*.xslt;" +
                     "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.ico;*.svg;*.avif;*.jfif;" +
                     "*.mp4;*.webm;*.ogv;*.mov;*.mp3;*.wav;*.ogg;*.m4a;*.flac|" +
                     "Documents|*.md;*.txt;*.markdown;*.epub|" +
+                    "Web & markup|*.html;*.htm;*.xhtml;*.css;*.xml;*.xaml;*.xsl;*.xslt|" +
                     "PDF|*.pdf|" +
                     "Images|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.ico;*.svg;*.avif;*.jfif|" +
                     "Media|*.mp4;*.webm;*.ogv;*.mov;*.mp3;*.wav;*.ogg;*.m4a;*.flac|" +
@@ -9994,10 +10009,9 @@ namespace TypoZen
                         _currentThemeBg.R, _currentThemeBg.G, _currentThemeBg.B);
                     string fg = "#E4E4E7";
 
-                    // PDF: Chromium PDF viewer. Images: fit-to-pane shell (direct image
-                    // navigation was slow and only offered weak right-click magnify).
-                    // Video/audio: shell with media controls.
-                    if (role == NativeRole.Pdf)
+                    // PDF / HTML / CSS / XML / XAML: navigate the file URL (folder mapped so
+                    // relative assets on HTML resolve). Images: fit shell. Video/audio: media shell.
+                    if (role == NativeRole.Pdf || role == NativeRole.Page || role == NativeRole.Markup)
                     {
                         _nativeWebView.CoreWebView2.Navigate(fileUrl);
                     }

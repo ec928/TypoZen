@@ -64,7 +64,9 @@ Browser **default controls** (play, seek, volume, fullscreen where offered). No 
 
 **Out of scope v1:** Office (`.docx` …), arbitrary binary, “open unknown as hex,” editable PDF, PDF.js, host page-number scrubber for PDF, marks on PDF.
 
-**HTML:** `.html` / `.htm` as native navigate **or** open-as-text — **defer** to a follow-up (script trust). Not required for “images and media.”
+**HTML:** `.html` / `.htm` / `.xhtml` — **render by default** (`NativeRole.Page`, direct navigate). Relative assets via `localview` folder map. Scripts run as in Edge for a local file.
+
+**Markup:** `.css` / `.xml` / `.xaml` / `.xsl` / `.xslt` — direct navigate (`NativeRole.Markup`). Chromium shows source/tree; **XAML is not executed as WPF.**
 
 ---
 
