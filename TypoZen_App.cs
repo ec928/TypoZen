@@ -277,9 +277,7 @@ namespace TypoZen
             Video,
             Audio,
             /// <summary>HTML page — rendered by Chromium (default open policy).</summary>
-            Page,
-            /// <summary>CSS / XML / XAML etc. — shown as markup source, not a live UI.</summary>
-            Markup
+            Page
         }
 
         /// <summary>In-memory document tab (one buffer per open file / untitled).</summary>
@@ -1844,12 +1842,10 @@ namespace TypoZen
             if (ext == ".mp3" || ext == ".wav" || ext == ".ogg" || ext == ".m4a" || ext == ".flac")
                 return NativeRole.Audio;
             // HTML: render as a page (default). Relative CSS/images resolve via localview folder map.
+            // CSS / XML / XAML are ordinary text — open in the editor (Source), not a native
+            // "markup shell". A read-only <pre> is worse than Source and not a Chromium feature.
             if (ext == ".html" || ext == ".htm" || ext == ".xhtml")
                 return NativeRole.Page;
-            // Markup Chromium can open as text/tree — not WPF; .xaml is source, not a live UI.
-            if (ext == ".css" || ext == ".xml" || ext == ".xsl" || ext == ".xslt"
-                || ext == ".xaml" || ext == ".svgz")
-                return NativeRole.Markup;
             return NativeRole.None;
         }
 
@@ -1870,7 +1866,6 @@ namespace TypoZen
                 case NativeRole.Video: return "Video";
                 case NativeRole.Audio: return "Audio";
                 case NativeRole.Page: return "HTML";
-                case NativeRole.Markup: return "Markup";
                 default: return "File";
             }
         }
@@ -6578,18 +6573,34 @@ namespace TypoZen
         private const int LoadContentInlineMaxChars = 96 * 1024;
 
         /// <summary>
-        /// Push markdown into the editor without blocking. Plain/Source is chosen by
-        /// document type (.txt/.log/.csv), not by size — virtualized Preview handles
-        /// large markdown without building a full WYSIWYG DOM.
+        /// Extensions that belong in Source (Notepad-class), not Markdown Preview.
+        /// Includes .txt and code/markup that is not HTML-to-render.
+        /// </summary>
+        private static bool PreferSourceModeForPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            string ext = Path.GetExtension(path);
+            if (string.IsNullOrEmpty(ext)) return false;
+            ext = ext.ToLowerInvariant();
+            return ext == ".txt" || ext == ".log" || ext == ".csv"
+                || ext == ".css" || ext == ".xml" || ext == ".xaml"
+                || ext == ".xsl" || ext == ".xslt" || ext == ".json";
+        }
+
+        /// <summary>
+        /// Push content into the editor without blocking. Plain/Source is chosen by
+        /// document type (txt/log/csv/css/xml/xaml/…), not by size — virtualized Preview
+        /// handles large markdown without building a full WYSIWYG DOM.
         /// </summary>
         private void LoadContentToEditor(string content, bool markDirty = false, string filePathHint = null)
         {
             content = content ?? "";
+            bool plain = PreferSourceModeForPath(filePathHint);
             try
             {
                 if (content.Length <= LoadContentInlineMaxChars)
                 {
-                    SendMsg("load_content:" + content);
+                    SendMsg((plain ? "load_content_plain:" : "load_content:") + content);
                     if (markDirty) SendMsg("mark_dirty");
                     return;
                 }
@@ -6605,17 +6616,16 @@ namespace TypoZen
                 string fileName = "body_" + Guid.NewGuid().ToString("N") + ".md";
                 string file = Path.Combine(dir, fileName);
                 File.WriteAllText(file, content, new UTF8Encoding(false));
-                // Carry the plain/Preview decision with the message. This path used to
-                // just be 'fetch_and_load'. It was split so huge plain-text logs wouldn't
-                // spin CPU trying to find markdown logic that wasn't there.
-                SendMsg("fetch_and_load:" + "https://localapp/typozen_load/" + fileName);
+                // |plain=1 so huge logs / xaml open as Source without Markdown parse cost.
+                string url = "https://localapp/typozen_load/" + fileName + (plain ? "|plain=1" : "");
+                SendMsg("fetch_and_load:" + url);
                 if (markDirty) SendMsg("mark_dirty");
             }
             catch (Exception ex)
             {
                 try
                 {
-                    SendMsg("load_content_plain:" + content);
+                    SendMsg((plain ? "load_content_plain:" : "load_content:") + content);
                     if (markDirty) SendMsg("mark_dirty");
                 }
                 catch
@@ -9316,11 +9326,11 @@ namespace TypoZen
             {
                 dlg.Filter =
                     "Supported files|*.md;*.txt;*.markdown;*.epub;*.pdf;" +
-                    "*.html;*.htm;*.xhtml;*.css;*.xml;*.xaml;*.xsl;*.xslt;" +
+                    "*.html;*.htm;*.xhtml;*.css;*.xml;*.xaml;*.xsl;*.xslt;*.json;" +
                     "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.ico;*.svg;*.avif;*.jfif;" +
                     "*.mp4;*.webm;*.ogv;*.mov;*.mp3;*.wav;*.ogg;*.m4a;*.flac|" +
-                    "Documents|*.md;*.txt;*.markdown;*.epub|" +
-                    "Web & markup|*.html;*.htm;*.xhtml;*.css;*.xml;*.xaml;*.xsl;*.xslt|" +
+                    "Documents|*.md;*.txt;*.markdown;*.epub;*.css;*.xml;*.xaml;*.json|" +
+                    "HTML pages|*.html;*.htm;*.xhtml|" +
                     "PDF|*.pdf|" +
                     "Images|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.ico;*.svg;*.avif;*.jfif|" +
                     "Media|*.mp4;*.webm;*.ogv;*.mov;*.mp3;*.wav;*.ogg;*.m4a;*.flac|" +
@@ -10021,16 +10031,9 @@ namespace TypoZen
                     string fg = "#E4E4E7";
 
                     // PDF / HTML: navigate file URL (relative assets for HTML).
-                    // CSS / XML / XAML: do NOT navigate — Chromium often downloads .xaml
-                    // (and similar) instead of showing source; paint a text shell instead.
                     if (role == NativeRole.Pdf || role == NativeRole.Page)
                     {
                         _nativeWebView.CoreWebView2.Navigate(fileUrl);
-                    }
-                    else if (role == NativeRole.Markup)
-                    {
-                        _nativeWebView.CoreWebView2.NavigateToString(
-                            BuildNativeMarkupShellHtml(path, name, bg, fg));
                     }
                     else if (role == NativeRole.Image)
                     {
@@ -10062,60 +10065,6 @@ namespace TypoZen
                         "Open", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
                 }
             }), DispatcherPriority.Normal);
-        }
-
-        /// <summary>
-        /// Show CSS / XML / XAML as read-only source. Navigating those URLs often triggers
-        /// Chromium's download shelf instead of an in-page view (see .xaml).
-        /// </summary>
-        private static string BuildNativeMarkupShellHtml(
-            string path, string displayName, string bg, string fg)
-        {
-            string body = "";
-            string note = "";
-            try
-            {
-                const int maxChars = 2 * 1024 * 1024; // 2 MB text cap for the shell
-                string encName;
-                string text = ReadTextFileDetect(path, out encName);
-                if (text != null && text.Length > maxChars)
-                {
-                    text = text.Substring(0, maxChars);
-                    note = "Showing the first 2 MB of the file.";
-                }
-                body = System.Net.WebUtility.HtmlEncode(text ?? "");
-            }
-            catch (Exception ex)
-            {
-                body = System.Net.WebUtility.HtmlEncode("Could not read file: " + ex.Message);
-            }
-            string safeName = System.Net.WebUtility.HtmlEncode(displayName ?? "");
-            string noteHtml = string.IsNullOrEmpty(note)
-                ? ""
-                : "<p class=\"note\">" + System.Net.WebUtility.HtmlEncode(note) + "</p>";
-            // XAML is markup only — never a live WPF tree in WebView2.
-            string xamlNote = "";
-            try
-            {
-                if ((displayName ?? "").EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
-                    xamlNote = "<p class=\"note\">XAML is shown as source. Chromium cannot host a WPF UI.</p>";
-            }
-            catch { }
-            return
-                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
-                "<style>" +
-                "html,body{margin:0;height:100%;background:" + bg + ";color:" + fg + ";" +
-                "font-family:ui-monospace,'Cascadia Mono',Consolas,monospace;font-size:12.5px;}" +
-                "header{padding:10px 14px;border-bottom:1px solid rgba(128,128,128,.35);" +
-                "font-family:system-ui,Segoe UI,sans-serif;font-size:13px;opacity:.9}" +
-                ".note{margin:0;padding:8px 14px;font-family:system-ui,Segoe UI,sans-serif;" +
-                "font-size:12px;opacity:.75;border-bottom:1px solid rgba(128,128,128,.25)}" +
-                "pre{margin:0;padding:14px;white-space:pre;overflow:auto;height:calc(100% - 3rem);" +
-                "box-sizing:border-box;line-height:1.45}" +
-                "</style></head><body>" +
-                "<header>" + safeName + " — read-only markup</header>" +
-                xamlNote + noteHtml +
-                "<pre>" + body + "</pre></body></html>";
         }
 
         /// <summary>

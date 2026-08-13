@@ -696,12 +696,16 @@
                         if (t) applyTheme(t);
                     } catch (e) {}
                 }
+                else if (msg.startsWith("load_content_plain:")) {
+                    try { cancelPositionReport(); } catch (eCP) {}
+                    finishLoadContent(msg.substring(19), false, true);
+                }
                 else if (msg.startsWith("load_content:")) {
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
                     try { cancelPositionReport(); } catch (eCP) {}
                     const content = msg.substring(13);
-                    finishLoadContent(content, false);
+                    finishLoadContent(content, false, false);
                 }
                 else if (msg.startsWith("fetch_and_load_book:")) {
                     // This document is being replaced; a position report armed by the
@@ -748,14 +752,24 @@
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
                     try { cancelPositionReport(); } catch (eCP) {}
-                    // Optional trailing |at=<block> (same shape as fetch_and_load_book).
+                    // Optional trailing |at=<block> and/or |plain=1.
                     let spec = msg.substring(15);
                     let resumeAt = -1;
-                    const atPos = spec.indexOf('|at=');
-                    if (atPos >= 0) {
-                        resumeAt = parseInt(spec.substring(atPos + 4), 10);
-                        spec = spec.substring(0, atPos);
-                        if (!isFinite(resumeAt)) resumeAt = -1;
+                    let forcePlain = false;
+                    // Parse flags from the end: |at=N |plain=1 (order flexible).
+                    for (;;) {
+                        const atPos = spec.lastIndexOf('|at=');
+                        const plainPos = spec.lastIndexOf('|plain=');
+                        const cut = Math.max(atPos, plainPos);
+                        if (cut < 0) break;
+                        const flag = spec.substring(cut + 1);
+                        spec = spec.substring(0, cut);
+                        if (flag.indexOf('at=') === 0) {
+                            resumeAt = parseInt(flag.substring(3), 10);
+                            if (!isFinite(resumeAt)) resumeAt = -1;
+                        } else if (flag.indexOf('plain=') === 0) {
+                            forcePlain = flag.substring(6) === '1';
+                        } else break;
                     }
                     const url = spec;
                     window._isFetching = true;
@@ -766,7 +780,7 @@
                         })
                         .then(function (content) {
                             window._isFetching = false;
-                            finishLoadContent(content, false);
+                            finishLoadContent(content, false, forcePlain);
                             if (resumeAt > 0) scheduleResumeAtBlock(resumeAt);
                             try { postMsg('load_done'); } catch (e0) {}
                         })
