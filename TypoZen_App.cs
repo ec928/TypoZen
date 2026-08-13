@@ -3540,9 +3540,51 @@ namespace TypoZen
             _segments[name] = b;
             b.Click += (s, e) =>
             {
+                // HTML: rendered native page by default; Source mode is how you see markup
+                // (same Mode control as Markdown — no separate "View Source" command).
+                if (selector == "mode" && HandleHtmlModeSegmentClick(value))
+                    return;
                 SendMsg("cmd:view_set:" + selector + ":" + value);
                 try { if (_webView != null) _webView.Focus(); } catch { }
             };
+        }
+
+        /// <summary>
+        /// HTML tabs: Source = editable markup in the editor; Reader (and Preview) = rendered page.
+        /// Returns true if the click was fully handled (do not send view_set to the page).
+        /// </summary>
+        private bool HandleHtmlModeSegmentClick(string mode)
+        {
+            try
+            {
+                if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return false;
+                var tab = _tabs[_activeTabIndex];
+                if (tab == null || string.IsNullOrEmpty(tab.FilePath)) return false;
+                if (!IsHtmlPath(tab.FilePath)) return false;
+
+                if (IsNativeTab(tab) && tab.NativeRole == NativeRole.Page)
+                {
+                    if (mode == "source")
+                    {
+                        OpenAsEditorText(tab.FilePath);
+                        return true;
+                    }
+                    // Already on the rendered surface
+                    return true;
+                }
+
+                // Engine HTML (opened via Source): Reader/Preview return to rendered native view.
+                if (!IsNativeTab(tab) && !IsBookTab(tab)
+                    && (mode == "reader" || mode == "preview"))
+                {
+                    if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
+                        return true;
+                    OpenNative(tab.FilePath, forceLoad: true);
+                    return true;
+                }
+            }
+            catch { }
+            return false;
         }
 
         /// <summary>
@@ -3593,7 +3635,11 @@ namespace TypoZen
             bool isBook = IsEpubPath(_currentFilePath);
             bool isNative = IsNativePath(_currentFilePath)
                 || (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsNativeTab(_tabs[_activeTabIndex]));
+            bool isNativeHtml = isNative && IsHtmlPath(_currentFilePath);
             bool readOnlyDoc = isBook || isNative;
+            // HTML rendered tab: Source stays available (see markup). PDF/image/media: all locked.
+            bool lockSource = readOnlyDoc && !isNativeHtml;
+            bool lockPreview = readOnlyDoc; // Preview is Markdown WYSIWYG, not HTML render
 
             if (_btnColumnToggle != null)
             {
@@ -3621,9 +3667,9 @@ namespace TypoZen
             if (_grpMode != null) { _grpMode.IsEnabled = true; _grpMode.Opacity = 1.0; }
             Button segSource, segPreview;
             if (_segments.TryGetValue("btnModeSource", out segSource))
-                SetControlLocked(segSource, readOnlyDoc);
+                SetControlLocked(segSource, lockSource);
             if (_segments.TryGetValue("btnModePreview", out segPreview))
-                SetControlLocked(segPreview, readOnlyDoc);
+                SetControlLocked(segPreview, lockPreview);
 
             // And put a book that is somehow not in Reader back into it. Disabling the
             // controls stops it happening from here on; a session restored from before
@@ -6584,7 +6630,26 @@ namespace TypoZen
             ext = ext.ToLowerInvariant();
             return ext == ".txt" || ext == ".log" || ext == ".csv"
                 || ext == ".css" || ext == ".xml" || ext == ".xaml"
-                || ext == ".xsl" || ext == ".xslt" || ext == ".json";
+                || ext == ".xsl" || ext == ".xslt" || ext == ".json"
+                || ext == ".html" || ext == ".htm" || ext == ".xhtml";
+        }
+
+        private static bool IsHtmlPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            string ext = Path.GetExtension(path);
+            if (string.IsNullOrEmpty(ext)) return false;
+            ext = ext.ToLowerInvariant();
+            return ext == ".html" || ext == ".htm" || ext == ".xhtml";
+        }
+
+        /// <summary>
+        /// Load a file into the editor as text (Source), even if it would normally open
+        /// as a native HTML page. Used when the user presses the Mode → Source segment.
+        /// </summary>
+        private void OpenAsEditorText(string path)
+        {
+            LoadFileFromPath(path, forceEditorText: true);
         }
 
         /// <summary>
@@ -9444,7 +9509,7 @@ namespace TypoZen
         /// Open a file from any entry point (menu, Files list, Windows Explorer / CLI args).
         /// Dirty leave is fail-closed. Re-opening a dirty tab prompts before disk reload.
         /// </summary>
-        private void LoadFileFromPath(string path)
+        private void LoadFileFromPath(string path, bool forceEditorText = false)
         {
             try
             {
@@ -9475,11 +9540,14 @@ namespace TypoZen
                     return;
                 }
 
-                if (IsNativePath(path))
+                // HTML defaults to rendered native page; forceEditorText = View Source path.
+                if (!forceEditorText && IsNativePath(path))
                 {
                     OpenNative(path);
                     return;
                 }
+                // Opening HTML as text while a native tab for the same path exists: reuse
+                // is handled below by path match; we load as engine content.
 
                 string encodingName;
                 string content = ReadTextFileDetect(path, out encodingName);
@@ -9553,14 +9621,17 @@ namespace TypoZen
                         try
                         {
                             _activeTabIndex = i;
+                            // Convert native HTML → editor when opening as text (Mode Source).
+                            _tabs[i].Kind = DocKind.Engine;
+                            _tabs[i].NativeRole = NativeRole.None;
                             _tabs[i].SourceEncoding = encodingName;
                             _tabs[i].LineEnding = lineEnding;
                             _tabs[i].TrailingNewlines = trailing;
                             _currentFilePath = path;
-                            if (!wasDirty || diskDiffers)
+                            if (!wasDirty || diskDiffers || forceEditorText)
                             {
-                                // Reload from disk when clean, or when user chose discard.
-                                if (!wasDirty && !diskDiffers)
+                                // Reload from disk when clean, discard chosen, or converting native→text.
+                                if (!wasDirty && !diskDiffers && !forceEditorText)
                                 {
                                     _tabs[i].IsDirty = false;
                                     _isDirty = false;
@@ -9571,6 +9642,7 @@ namespace TypoZen
                                     _tabs[i].Content = content;
                                     _tabs[i].IsDirty = false;
                                     _isDirty = false;
+                                    ShowEditorSurface();
                                     MapDocumentFolder(path);
                                     LoadContentToEditor(content, false, path);
                                     UpdateStatusDisplay();
@@ -9906,7 +9978,7 @@ namespace TypoZen
 
         private void PaintNativeChrome(NativeRole role)
         {
-            // Reader-like: lit Reader segment, Source/Preview locked (RenderViewSelectors also).
+            // Reader-like chrome. HTML keeps Source enabled (Mode → Source shows markup).
             try
             {
                 SelectSegment("btnModeSource", false);
@@ -9918,9 +9990,10 @@ namespace TypoZen
             catch { }
             try
             {
+                bool html = (role == NativeRole.Page);
                 Button segSource, segPreview;
                 if (_segments.TryGetValue("btnModeSource", out segSource))
-                    SetControlLocked(segSource, true);
+                    SetControlLocked(segSource, !html);
                 if (_segments.TryGetValue("btnModePreview", out segPreview))
                     SetControlLocked(segPreview, true);
                 if (_btnColumnToggle != null) SetControlLocked(_btnColumnToggle, true);

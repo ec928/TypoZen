@@ -33,8 +33,8 @@ tabs — that control belongs to paginated engine/book reading.
 | Type | Behaviour |
 |------|-----------|
 | **PDF** | Chromium PDF viewer |
-| **HTML** (`.html` / `.htm` / `.xhtml`) | **Rendered as a page** (default). Relative CSS/images resolve from the file’s folder |
-| **CSS / XML / XAML / JSON** (and `.txt` / logs) | Normal **editor** document in **Source** — editable text, not a second “markup viewer” |
+| **HTML** (`.html` / `.htm` / `.xhtml`) | **Rendered** by default (like Reader). Click **Source** on the Mode control for editable markup; **Reader** / **Preview** return to the rendered page |
+| **CSS / XML / XAML / JSON** (and `.txt` / logs) | Normal **editor** document in **Source** |
 | **Images** | Fit-to-pane shell; **right‑click → Magnify** (Edge) for zoom/pan |
 | **Video / audio** | Browser controls; missing codecs (often **HEVC / HVC1**) show a clear error (audio-only black frame is explained too) |
 

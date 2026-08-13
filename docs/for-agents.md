@@ -8,7 +8,7 @@ Product truth lives here and in the README; `docs/archive/` is history.
 - **Windows prose editor + reader**: WPF shell + WebView2; Markdown/text in Preview/Source; epubs in Reader; PDF/images/media as native read-only tabs.
 - **Not a code editor.** A developer/code surface was attempted and **parked** (file corruption via contenteditable). See `docs/developer-editor-analysis.md`. Do not revive code-kind / fence-as-document editing unless the user explicitly reopens that work.
 - **Not ZenSeek.** CLI hooks (`--reader`, `--search`, …) exist for ZenSeek; do not merge the two apps.
-- **Native Reader:** PDF, HTML (render), images, media — read-only second WebView (`OpenNative` / `localview`). HTML default is **render**. CSS/XML/XAML/JSON open as **editor Source** (not a native shell). Images: fit shell + Edge Magnify. Print uses native WebView when native tab active. See `docs/native-reader-plan.md`.
+- **Native Reader:** PDF, HTML (render), images, media — second WebView. HTML: default render; **Mode → Source** opens the same file as editor Source (no separate View Source). Reader/Preview on HTML text returns to render. CSS/XML/XAML → editor Source. See `docs/native-reader-plan.md`.
 
 ## Where truth lives
 
