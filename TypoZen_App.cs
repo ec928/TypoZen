@@ -10060,11 +10060,15 @@ namespace TypoZen
                 mediaStyle +
                 ".wrap{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:36rem;text-align:center}" +
                 ".title{font-size:13px;opacity:.75;margin:0;word-break:break-all}" +
-                "#err{display:none;margin:0;padding:12px 14px;border-radius:8px;" +
-                "background:rgba(0,0,0,.12);border:1px solid rgba(128,128,128,.35);font-size:13px;line-height:1.45;text-align:left}" +
+                // High-contrast panel: theme text colour alone washes out on light themes
+                // when mixed with low-alpha fills (unreadable “Video picture not available”).
+                "#err{display:none;margin:0;padding:14px 16px;border-radius:8px;max-width:100%;" +
+                "background:#1e293b;color:#f8fafc;border:1px solid #334155;" +
+                "font-size:13px;line-height:1.5;text-align:left;box-shadow:0 4px 16px rgba(0,0,0,.2)}" +
                 "#err.show{display:block}" +
-                "#err strong{display:block;margin-bottom:6px;font-size:14px}" +
-                ".hint{margin:8px 0 0;display:block;font-size:12px;opacity:.85;line-height:1.4}" +
+                "#err strong{display:block;margin-bottom:8px;font-size:15px;font-weight:600;color:#fff}" +
+                "#err .hint{margin:10px 0 0;display:block;font-size:12px;line-height:1.45;color:#cbd5e1}" +
+                "#err em{font-style:normal;font-weight:600;color:#93c5fd}" +
                 "</style></head><body><div class=\"wrap\">" +
                 "<p class=\"title\">" + safeName + "</p>" +
                 "<" + tag + " id=\"m\" src=\"" + fileUrl + "\" controls controlslist=\"nodownload\"" +
