@@ -3551,10 +3551,9 @@ namespace TypoZen
 
         /// <summary>
         /// HTML is not Markdown. Mode means:
-        ///   Source  = editable markup (editor Source)
-        ///   Preview = same as Reader — true HTML render on the native WebView
-        ///   Reader  = true HTML render (read-only)
-        /// Markdown WYSIWYG of an .html file is not a preview of that page.
+        ///   Source  = editable markup (editor — the only edit path)
+        ///   Preview = not used for HTML (Markdown WYSIWYG of tags is a lie; left locked)
+        ///   Reader  = true HTML page, read-only
         /// Returns true if the click was fully handled.
         /// </summary>
         private bool HandleHtmlModeSegmentClick(string mode)
@@ -3566,6 +3565,12 @@ namespace TypoZen
                 if (tab == null || string.IsNullOrEmpty(tab.FilePath)) return false;
                 if (!IsHtmlPath(tab.FilePath)) return false;
 
+                if (mode == "preview")
+                {
+                    // Ignore — Preview stays locked for HTML (see PaintNativeChrome / tooltips).
+                    return true;
+                }
+
                 if (IsNativeTab(tab) && tab.NativeRole == NativeRole.Page)
                 {
                     if (mode == "source")
@@ -3573,31 +3578,16 @@ namespace TypoZen
                         OpenAsEditorText(tab.FilePath);
                         return true;
                     }
-                    // Preview or Reader: already on the real rendered page
-                    if (mode == "preview")
-                    {
-                        // Show Preview pill while staying on native render (same surface as Reader).
-                        ApplyHostModeChrome("preview");
-                        // Keep surface native; re-assert read-only
-                        try { EnforceNativeHtmlReadOnly(); } catch { }
-                    }
+                    // Reader: already on the rendered page
                     return true;
                 }
 
-                // Engine HTML (Source): Preview and Reader both open the real rendered page.
-                if (!IsNativeTab(tab) && !IsBookTab(tab)
-                    && (mode == "reader" || mode == "preview"))
+                // Engine HTML (Source): Reader opens the real rendered page.
+                if (!IsNativeTab(tab) && !IsBookTab(tab) && mode == "reader")
                 {
                     if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
                         return true;
                     OpenNative(tab.FilePath, forceLoad: true);
-                    if (mode == "preview")
-                    {
-                        Dispatcher.BeginInvoke(new Action(() =>
-                        {
-                            try { ApplyHostModeChrome("preview"); } catch { }
-                        }), DispatcherPriority.Background);
-                    }
                     return true;
                 }
             }
@@ -3654,10 +3644,12 @@ namespace TypoZen
             bool isNative = IsNativePath(_currentFilePath)
                 || (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsNativeTab(_tabs[_activeTabIndex]));
             bool isNativeHtml = isNative && IsHtmlPath(_currentFilePath);
+            bool isEngineHtml = !isNative && !isBook && IsHtmlPath(_currentFilePath);
             bool readOnlyDoc = isBook || isNative;
-            // HTML rendered: Source + Preview available (edit paths). PDF/image/media: locked.
-            bool lockSource = readOnlyDoc && !isNativeHtml;
-            bool lockPreview = readOnlyDoc && !isNativeHtml;
+            // HTML: Source always available; Preview always locked; Reader for render.
+            // PDF/image/media: Source+Preview locked.
+            bool lockSource = readOnlyDoc && !isNativeHtml && !isEngineHtml;
+            bool lockPreview = isNative || isBook || isEngineHtml || isNativeHtml;
 
             if (_btnColumnToggle != null)
             {
@@ -6322,14 +6314,17 @@ namespace TypoZen
                 bool html = IsHtmlPath(_currentFilePath);
                 bool book = IsEpubPath(_currentFilePath);
                 bool nativeNonHtml = ActiveTabIsNativeSurface() && !html;
-                // HTML: all three modes usable. PDF/media native: lock Source/Preview.
-                // Engine markdown/text: unlock Source/Preview.
                 Button segSource, segPreview;
                 if (_segments.TryGetValue("btnModeSource", out segSource))
                     SetControlLocked(segSource, book || nativeNonHtml);
+                // Preview = Markdown editor mode — never for HTML files.
                 if (_segments.TryGetValue("btnModePreview", out segPreview))
-                    SetControlLocked(segPreview, book || nativeNonHtml);
-                if (!book && !ActiveTabIsNativeSurface())
+                {
+                    SetControlLocked(segPreview, book || nativeNonHtml || html);
+                    if (html)
+                        try { segPreview.ToolTip = "Not used for HTML — use Source to edit markup, Reader to view the page."; } catch { }
+                }
+                if (!book && !ActiveTabIsNativeSurface() && !html)
                 {
                     if (_btnColumnToggle != null) SetControlLocked(_btnColumnToggle, false);
                     if (_btnScrollToggle != null) SetControlLocked(_btnScrollToggle, false);
@@ -10088,11 +10083,19 @@ namespace TypoZen
             {
                 bool html = (role == NativeRole.Page);
                 Button segSource, segPreview;
-                // HTML: Source/Preview open the editor. PDF/image/media: all mode locked.
+                // HTML: Source = edit markup; Preview locked (not Markdown WYSIWYG);
+                // Reader = this surface. PDF/image/media: all mode locked.
                 if (_segments.TryGetValue("btnModeSource", out segSource))
+                {
                     SetControlLocked(segSource, !html);
+                    if (html) try { segSource.ToolTip = "Edit HTML markup"; } catch { }
+                }
                 if (_segments.TryGetValue("btnModePreview", out segPreview))
-                    SetControlLocked(segPreview, !html);
+                {
+                    SetControlLocked(segPreview, true);
+                    if (html)
+                        try { segPreview.ToolTip = "Not used for HTML — Markdown Preview is not an HTML page. Use Source to edit, Reader to view."; } catch { }
+                }
                 if (_btnColumnToggle != null) SetControlLocked(_btnColumnToggle, true);
                 if (_btnScrollToggle != null) SetControlLocked(_btnScrollToggle, true);
             }
