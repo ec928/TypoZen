@@ -9952,6 +9952,17 @@ namespace TypoZen
                 try { _nativeWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true; } catch { }
                 try { _nativeWebView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true; } catch { }
                 try { _nativeWebView.ZoomFactorChanged += WebView_ZoomFactorChanged; } catch { }
+                // .xaml / some markup is treated as a download, not a document — cancel the
+                // shelf so we don't stack "Open file" bubbles over the wrong surface.
+                try
+                {
+                    _nativeWebView.CoreWebView2.DownloadStarting += (s, e) =>
+                    {
+                        try { e.Cancel = true; } catch { }
+                        try { e.Handled = true; } catch { }
+                    };
+                }
+                catch { }
                 ApplyZoomToWebView();
             }
             catch (Exception ex)
@@ -10009,11 +10020,17 @@ namespace TypoZen
                         _currentThemeBg.R, _currentThemeBg.G, _currentThemeBg.B);
                     string fg = "#E4E4E7";
 
-                    // PDF / HTML / CSS / XML / XAML: navigate the file URL (folder mapped so
-                    // relative assets on HTML resolve). Images: fit shell. Video/audio: media shell.
-                    if (role == NativeRole.Pdf || role == NativeRole.Page || role == NativeRole.Markup)
+                    // PDF / HTML: navigate file URL (relative assets for HTML).
+                    // CSS / XML / XAML: do NOT navigate — Chromium often downloads .xaml
+                    // (and similar) instead of showing source; paint a text shell instead.
+                    if (role == NativeRole.Pdf || role == NativeRole.Page)
                     {
                         _nativeWebView.CoreWebView2.Navigate(fileUrl);
+                    }
+                    else if (role == NativeRole.Markup)
+                    {
+                        _nativeWebView.CoreWebView2.NavigateToString(
+                            BuildNativeMarkupShellHtml(path, name, bg, fg));
                     }
                     else if (role == NativeRole.Image)
                     {
@@ -10045,6 +10062,60 @@ namespace TypoZen
                         "Open", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
                 }
             }), DispatcherPriority.Normal);
+        }
+
+        /// <summary>
+        /// Show CSS / XML / XAML as read-only source. Navigating those URLs often triggers
+        /// Chromium's download shelf instead of an in-page view (see .xaml).
+        /// </summary>
+        private static string BuildNativeMarkupShellHtml(
+            string path, string displayName, string bg, string fg)
+        {
+            string body = "";
+            string note = "";
+            try
+            {
+                const int maxChars = 2 * 1024 * 1024; // 2 MB text cap for the shell
+                string encName;
+                string text = ReadTextFileDetect(path, out encName);
+                if (text != null && text.Length > maxChars)
+                {
+                    text = text.Substring(0, maxChars);
+                    note = "Showing the first 2 MB of the file.";
+                }
+                body = System.Net.WebUtility.HtmlEncode(text ?? "");
+            }
+            catch (Exception ex)
+            {
+                body = System.Net.WebUtility.HtmlEncode("Could not read file: " + ex.Message);
+            }
+            string safeName = System.Net.WebUtility.HtmlEncode(displayName ?? "");
+            string noteHtml = string.IsNullOrEmpty(note)
+                ? ""
+                : "<p class=\"note\">" + System.Net.WebUtility.HtmlEncode(note) + "</p>";
+            // XAML is markup only — never a live WPF tree in WebView2.
+            string xamlNote = "";
+            try
+            {
+                if ((displayName ?? "").EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+                    xamlNote = "<p class=\"note\">XAML is shown as source. Chromium cannot host a WPF UI.</p>";
+            }
+            catch { }
+            return
+                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
+                "<style>" +
+                "html,body{margin:0;height:100%;background:" + bg + ";color:" + fg + ";" +
+                "font-family:ui-monospace,'Cascadia Mono',Consolas,monospace;font-size:12.5px;}" +
+                "header{padding:10px 14px;border-bottom:1px solid rgba(128,128,128,.35);" +
+                "font-family:system-ui,Segoe UI,sans-serif;font-size:13px;opacity:.9}" +
+                ".note{margin:0;padding:8px 14px;font-family:system-ui,Segoe UI,sans-serif;" +
+                "font-size:12px;opacity:.75;border-bottom:1px solid rgba(128,128,128,.25)}" +
+                "pre{margin:0;padding:14px;white-space:pre;overflow:auto;height:calc(100% - 3rem);" +
+                "box-sizing:border-box;line-height:1.45}" +
+                "</style></head><body>" +
+                "<header>" + safeName + " — read-only markup</header>" +
+                xamlNote + noteHtml +
+                "<pre>" + body + "</pre></body></html>";
         }
 
         /// <summary>
