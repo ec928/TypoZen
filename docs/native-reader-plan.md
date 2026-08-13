@@ -174,7 +174,7 @@ When active tab is **native** (or book):
 | Page scrubber | Hidden (not our `PageMap`) |
 | Columns / Pages toggles | Locked or no-op |
 | Zoom | Apply `ZoomFactor` to **visible** WebView |
-| Print | Native WebView print when native active |
+| Print | Native WebView when native tab active (`ExportPdf`); editor WebView otherwise |
 | F1 / About | Still work (editor host messages or WPF) |
 
 Do **not** invent a Mode segment “Viewer.” Product = reading.

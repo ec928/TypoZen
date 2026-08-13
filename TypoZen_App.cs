@@ -10163,8 +10163,28 @@ namespace TypoZen
             }
         }
 
+        /// <summary>
+        /// Print / Export PDF (Ctrl+P). Use the surface the user is looking at:
+        /// native WebView for PDF/image/media tabs, editor WebView otherwise.
+        /// Printing the hidden editor while a PDF is up looks like a broken Print.
+        /// </summary>
         private void ExportPdf()
         {
+            try
+            {
+                bool nativeActive = _nativeSurfaceVisible
+                    && _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    && IsNativeTab(_tabs[_activeTabIndex]);
+                if (nativeActive
+                    && _nativeWebView != null
+                    && _nativeWebView.CoreWebView2 != null)
+                {
+                    _nativeWebView.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
+                    return;
+                }
+            }
+            catch { }
+
             if (_webView != null && _webView.CoreWebView2 != null)
             {
                 _webView.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);

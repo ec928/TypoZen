@@ -35,7 +35,13 @@ document scrubber on these tabs — that control belongs to paginated engine/boo
 - **Images** — fit-to-pane shell for a fast open; **right‑click → Magnify** (Edge) when you want zoom and pan  
 - **Video / audio** — browser media controls; if Edge cannot decode the file (common for **HEVC / HVC1** phone video), the pane shows a clear error with a Store codec hint instead of a blank player
 
-Format tools and Source/Preview are locked; the file is never marked dirty and never saved over. **Privacy Mode** (File menu) already applies: it stops writing session history, recent files, positions, and so on for any document — see [Session & privacy](#session--privacy). Native files are not unzipped into a named cache the way epubs are; book-only opaque extraction under Privacy Mode is described there too. Details for agents: `docs/native-reader-plan.md`.
+Format tools and Source/Preview are locked; the file is never marked dirty and never saved over.
+**Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native
+WebView; document tab → editor). **Privacy Mode** (File menu) already applies: it stops writing
+session history, recent files, positions, and so on for any document — see
+[Session & privacy](#session--privacy). Native files are not unzipped into a named cache the way
+epubs are; book-only opaque extraction under Privacy Mode is described there too. Details for
+agents: `docs/native-reader-plan.md`.
 
 ### Reading epubs
 Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the
