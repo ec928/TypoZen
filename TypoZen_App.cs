@@ -10013,27 +10013,13 @@ namespace TypoZen
                     }
                     else if (role == NativeRole.Video)
                     {
-                        string html =
-                            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
-                            "<style>html,body{margin:0;height:100%;background:" + bg +
-                            ";display:flex;align-items:center;justify-content:center}" +
-                            "video{max-width:100%;max-height:100%}</style></head><body>" +
-                            "<video src=\"" + fileUrl + "\" controls controlslist=\"nodownload\" " +
-                            "playsinline></video></body></html>";
-                        _nativeWebView.CoreWebView2.NavigateToString(html);
+                        _nativeWebView.CoreWebView2.NavigateToString(
+                            BuildNativeMediaShellHtml(fileUrl, name, bg, fg, isVideo: true));
                     }
                     else if (role == NativeRole.Audio)
                     {
-                        string html =
-                            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
-                            "<style>html,body{margin:0;height:100%;background:" + bg +
-                            ";color:" + fg + ";display:flex;flex-direction:column;" +
-                            "align-items:center;justify-content:center;font-family:system-ui,sans-serif}" +
-                            "audio{width:min(480px,90%)}p{opacity:.7;font-size:13px}</style></head><body>" +
-                            "<p>" + System.Net.WebUtility.HtmlEncode(name) + "</p>" +
-                            "<audio src=\"" + fileUrl + "\" controls controlslist=\"nodownload\"></audio>" +
-                            "</body></html>";
-                        _nativeWebView.CoreWebView2.NavigateToString(html);
+                        _nativeWebView.CoreWebView2.NavigateToString(
+                            BuildNativeMediaShellHtml(fileUrl, name, bg, fg, isVideo: false));
                     }
                     _nativeNavigatedPath = path;
                     ShowNativeSurface();
@@ -10045,6 +10031,62 @@ namespace TypoZen
                         "Open", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
                 }
             }), DispatcherPriority.Normal);
+        }
+
+        /// <summary>
+        /// Minimal media page with browser controls and a clear message when the
+        /// OS/Edge cannot decode the file (common for phone HEVC / HVC1 video).
+        /// </summary>
+        private static string BuildNativeMediaShellHtml(
+            string fileUrl, string displayName, string bg, string fg, bool isVideo)
+        {
+            string safeName = System.Net.WebUtility.HtmlEncode(displayName ?? "");
+            string tag = isVideo ? "video" : "audio";
+            string mediaStyle = isVideo
+                ? "video{max-width:100%;max-height:min(100%,calc(100% - 4rem));background:#000}"
+                : "audio{width:min(480px,90%)}";
+            // MediaError codes: 1=aborted 2=network 3=decode 4=src not supported
+            return
+                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
+                "<style>" +
+                "html,body{margin:0;height:100%;background:" + bg + ";color:" + fg + ";" +
+                "display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+                "font-family:system-ui,Segoe UI,sans-serif;padding:16px;box-sizing:border-box}" +
+                mediaStyle +
+                ".wrap{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:36rem;text-align:center}" +
+                ".title{font-size:13px;opacity:.75;margin:0;word-break:break-all}" +
+                "#err{display:none;margin:0;padding:12px 14px;border-radius:8px;" +
+                "background:rgba(0,0,0,.12);border:1px solid rgba(128,128,128,.35);font-size:13px;line-height:1.45;text-align:left}" +
+                "#err.show{display:block}" +
+                "#err strong{display:block;margin-bottom:6px;font-size:14px}" +
+                ".hint{margin:8px 0 0;font-size:12px;opacity:.85;line-height:1.4}" +
+                "</style></head><body><div class=\"wrap\">" +
+                "<p class=\"title\">" + safeName + "</p>" +
+                "<" + tag + " id=\"m\" src=\"" + fileUrl + "\" controls controlslist=\"nodownload\"" +
+                (isVideo ? " playsinline" : "") + "></" + tag + ">" +
+                "<div id=\"err\" role=\"alert\"></div>" +
+                "</div><script>" +
+                "(function(){" +
+                "var m=document.getElementById('m'),box=document.getElementById('err');" +
+                "if(!m||!box)return;" +
+                "function show(title,detail){" +
+                "box.innerHTML='<strong>'+title+'</strong>'+detail;" +
+                "box.className='show';" +
+                "}" +
+                "m.addEventListener('error',function(){" +
+                "var code=(m.error&&m.error.code)||0;" +
+                "var detail=" + (isVideo
+                    ? "'This file could not be played in TypoZen (same engine as Edge). '" +
+                      "+(code===4||code===3" +
+                      "?'Often the codec is missing — many phone recordings use HEVC (H.265 / HVC1).'" +
+                      ":'Check that the file is not corrupt and that a matching codec is installed.')+" +
+                      "' <span class=\"hint\">Install <em>HEVC Video Extensions</em> from the Microsoft Store, " +
+                      "or open the file in VLC / the Photos app.</span>'"
+                    : "'This audio file could not be played (codec or file not supported by Edge on this PC).'") + ";" +
+                "show('Cannot play media',detail);" +
+                "});" +
+                "})();" +
+                "</script></body></html>";
         }
 
         private void EnqueuePendingOpen(string path)
