@@ -9994,12 +9994,22 @@ namespace TypoZen
                         _currentThemeBg.R, _currentThemeBg.G, _currentThemeBg.B);
                     string fg = "#E4E4E7";
 
-                    // PDF and images: navigate the file URL so Chromium's own viewer chrome
-                    // (zoom / pan for images, PDF toolbar) is used. Video/audio still need a
-                    // tiny HTML shell for reliable <video>/<audio controls>.
-                    if (role == NativeRole.Pdf || role == NativeRole.Image)
+                    // PDF: Chromium PDF viewer. Images: fit-to-pane shell (direct image
+                    // navigation was slow and only offered weak right-click magnify).
+                    // Video/audio: shell with media controls.
+                    if (role == NativeRole.Pdf)
                     {
                         _nativeWebView.CoreWebView2.Navigate(fileUrl);
+                    }
+                    else if (role == NativeRole.Image)
+                    {
+                        string html =
+                            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
+                            "<style>html,body{margin:0;height:100%;background:" + bg +
+                            ";display:flex;align-items:center;justify-content:center;overflow:auto}" +
+                            "img{max-width:100%;max-height:100%;object-fit:contain}</style></head><body>" +
+                            "<img src=\"" + fileUrl + "\" alt=\"\"/></body></html>";
+                        _nativeWebView.CoreWebView2.NavigateToString(html);
                     }
                     else if (role == NativeRole.Video)
                     {

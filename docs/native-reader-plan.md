@@ -45,7 +45,7 @@ Navigate to mapped URL; Chromium PDF viewer (search/zoom/pages inside the surfac
 |-----|------|
 | `.png` `.jpg` `.jpeg` `.gif` `.webp` `.bmp` `.ico` `.svg` `.avif` `.jfif` | `NativeRole.Image` |
 
-**Navigate strategy:** same as PDF — direct `Navigate` to the virtual-host file URL so Chromium’s built-in image viewer (zoom/pan) is used. No custom fit shell.
+**Navigate strategy:** themed fit-to-pane HTML shell (`NavigateToString` + centered `<img>`). Direct Chromium image-URL navigation was tried and reverted — slow open, weak right-click-only magnify.
 
 ### Media
 | Ext | Role |
@@ -89,8 +89,8 @@ Virtual host (preferred over raw `file://`):
 
 - Map folder (or Privacy-staged copy) → e.g. `https://localview/<escaped-name>`
 - PDF: navigate directly to that URL  
-- Image: same direct navigate as PDF (`https://localview/<file>`).  
-- Media: `NavigateToString` shell with `<video controls>` / `<audio controls>` referencing `https://localview/...`.
+- Image: `NavigateToString` fit shell referencing `https://localview/<file>`.  
+- Media: `NavigateToString` shell with `<video controls>` / `<audio controls>`.
 
 Reuse patterns from `localbooks` / `docfolder` mapping; clear or re-point mapping when the active native tab’s directory changes.
 
@@ -201,7 +201,7 @@ Order is delivery risk, not separate architectures:
 | **A — Skeleton** | `ClassifyNativeRole`, `IsNativeTab` / `IsReadOnlyTab`, open filter, refuse save, never dirty | done |
 | **B — Surface** | Second WebView, show/hide, `localview` mapping, shared `OpenNative` | done |
 | **C — PDF** | Direct navigate; tab switch md ↔ pdf | done |
-| **D — Image** | Direct navigate (Chromium image chrome) | done |
+| **D — Image shell** | Themed fit-to-pane HTML (Chromium image chrome reverted) | done |
 | **E — Media shell** | `<video controls>` / `<audio controls>` | done |
 | **F — Chrome** | Mode lock, format grey, zoom target | done (scrubber hide deferred) |
 | **G — Session + Privacy** | Restore native tabs by path+kind | session done; Privacy staging deferred |
