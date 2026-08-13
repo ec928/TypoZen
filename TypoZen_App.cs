@@ -3550,7 +3550,10 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// HTML tabs: Source = editable markup in the editor; Reader (and Preview) = rendered page.
+        /// HTML tabs use the same Mode control as Markdown:
+        ///   Source  = editable markup (editor Source)
+        ///   Preview = editable engine surface (not native; icon must not stay on Reader)
+        ///   Reader  = rendered page on the native WebView (read-only host chrome)
         /// Returns true if the click was fully handled (do not send view_set to the page).
         /// </summary>
         private bool HandleHtmlModeSegmentClick(string mode)
@@ -3569,13 +3572,30 @@ namespace TypoZen
                         OpenAsEditorText(tab.FilePath);
                         return true;
                     }
-                    // Already on the rendered surface
+                    if (mode == "preview")
+                    {
+                        // Editable "preview" path: editor, not the native surface.
+                        OpenAsEditorText(tab.FilePath);
+                        // After load lands as Source (plain), switch host+page to Preview.
+                        Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            try
+                            {
+                                ApplyHostModeChrome("preview");
+                                try { if (_webView != null) _webView.Focus(); } catch { }
+                                SendMsg("cmd:view_set:mode:preview");
+                            }
+                            catch { }
+                        }), DispatcherPriority.Background);
+                        return true;
+                    }
+                    // Reader (or re-click): stay on rendered native page
                     return true;
                 }
 
-                // Engine HTML (opened via Source): Reader/Preview return to rendered native view.
-                if (!IsNativeTab(tab) && !IsBookTab(tab)
-                    && (mode == "reader" || mode == "preview"))
+                // Engine HTML: only Reader returns to the rendered (read-only) page.
+                // Preview/Source stay in the editor so the Mode icon matches editability.
+                if (!IsNativeTab(tab) && !IsBookTab(tab) && mode == "reader")
                 {
                     if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
                         return true;
