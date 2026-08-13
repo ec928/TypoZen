@@ -899,6 +899,21 @@
             return false;
         }
 
+        /** True if this block is (or was stored as) a GFM table. */
+        function isTableBlock(block) {
+            if (!block) return false;
+            try {
+                if (block.querySelector && block.querySelector('table')) return true;
+            } catch (e) {}
+            try {
+                if (typeof parseTableMarkdown === 'function') {
+                    const r = block.getAttribute('data-raw') || '';
+                    if (r && parseTableMarkdown(r)) return true;
+                }
+            } catch (e2) {}
+            return false;
+        }
+
         /**
          * Serialize one block's live DOM to markdown storage form (no write).
          * Shared by input sync, flush, and focused getBlockRaw.
@@ -930,6 +945,12 @@
                 if (sel && sel.anchorNode) blk = getAncestorBlock(sel.anchorNode);
                 if (!blk) blk = currentActiveBlock;
                 if (!blk || !editor.contains(blk)) return;
+                // Tables: HTML→markdown rewrite is lossy (alignment, pipe spacing). A caret
+                // click is not an edit — do not commit a reformatted table over data-raw.
+                // Real typing sets data-tz-table-edit via the input path first.
+                if (isTableBlock(blk) && blk.getAttribute('data-tz-table-edit') !== '1') {
+                    return;
+                }
                 const raw = serializeBlockDomToRaw(blk);
                 blk.setAttribute('data-raw', raw);
                 setBlockListIndentAttr(blk, raw);
@@ -957,7 +978,14 @@
                 try { return normalizeBlockRaw(blockHtmlToMarkdown(block)); } catch (e) {}
             }
             // Focused: DOM is the live surface — always trust serialize (typing AND deletes).
+            // Exception: tables. Re-serializing the <table> DOM reformats pipes and drops
+            // column alignment, so a click looked like "Unsaved" until focus left and
+            // data-raw won again. Prefer data-raw until a real input marks the table.
             if (focusedHere) {
+                if (isTableBlock(block) && raw != null && raw !== ''
+                    && block.getAttribute('data-tz-table-edit') !== '1') {
+                    return normalizeBlockRaw(raw);
+                }
                 return normalizeBlockRaw(serializeBlockDomToRaw(block));
             }
             // Unfocused: data-raw is canonical.

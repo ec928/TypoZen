@@ -247,6 +247,12 @@ namespace TypoZen
         }
 
         private WebView2 _webView;
+        /// <summary>Second surface for PDF / image / media (Chromium-native read-only).</summary>
+        private WebView2 _nativeWebView;
+        private WinForms.Panel _webViewPanel;
+        private string _mappedNativeFolder;
+        private string _nativeNavigatedPath;
+        private bool _nativeSurfaceVisible;
         private System.Drawing.Color _currentThemeBg = System.Drawing.Color.FromArgb(30, 30, 30);
         private string _currentFilePath = null;
         private string _initialFileToOpen = null;
@@ -255,14 +261,33 @@ namespace TypoZen
         private bool _isDirty = false;
         private string _appDir;
 
+        /// <summary>How a tab is painted and whether it can be edited.</summary>
+        private enum DocKind
+        {
+            Engine = 0,  // Markdown / text — Preview / Source / Reader
+            Book = 1,    // .epub — engine HTML, Reader locked
+            Native = 2   // PDF / image / media — Chromium surface, Reader chrome
+        }
+
+        private enum NativeRole
+        {
+            None = 0,
+            Pdf,
+            Image,
+            Video,
+            Audio
+        }
+
         /// <summary>In-memory document tab (one buffer per open file / untitled).</summary>
         private sealed class DocTab
         {
             public int Id;
             public string FilePath;   // null = untitled
-            public string Content;   // last known markdown
+            public string Content;   // last known markdown (empty for Book / Native)
             public bool IsDirty;
             public string SourceEncoding; // encoding the file was read as (display only)
+            public DocKind Kind = DocKind.Engine;
+            public NativeRole NativeRole = NativeRole.None;
 
             // Byte-fidelity: the editor works in LF internally and its serializer drops
             // trailing blank lines, so without these an untouched file came back with
@@ -1777,9 +1802,64 @@ namespace TypoZen
         /// <summary>True when this tab is a read-only book (.epub). Never dirty, never save-prompt.</summary>
         private static bool IsBookTab(DocTab tab)
         {
-            return tab != null
-                && !string.IsNullOrEmpty(tab.FilePath)
+            if (tab == null) return false;
+            if (tab.Kind == DocKind.Book) return true;
+            return !string.IsNullOrEmpty(tab.FilePath)
                 && tab.FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsNativeTab(DocTab tab)
+        {
+            return tab != null && (tab.Kind == DocKind.Native || tab.NativeRole != NativeRole.None);
+        }
+
+        /// <summary>Book or native: never dirty, never save-over, Reader chrome.</summary>
+        private static bool IsReadOnlyTab(DocTab tab)
+        {
+            return IsBookTab(tab) || IsNativeTab(tab);
+        }
+
+        private static bool IsNativePath(string path)
+        {
+            return ClassifyNativeRole(path) != NativeRole.None;
+        }
+
+        private static NativeRole ClassifyNativeRole(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return NativeRole.None;
+            string ext = Path.GetExtension(path);
+            if (string.IsNullOrEmpty(ext)) return NativeRole.None;
+            ext = ext.ToLowerInvariant();
+            if (ext == ".pdf") return NativeRole.Pdf;
+            if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif"
+                || ext == ".webp" || ext == ".bmp" || ext == ".ico" || ext == ".svg"
+                || ext == ".avif" || ext == ".jfif")
+                return NativeRole.Image;
+            if (ext == ".mp4" || ext == ".webm" || ext == ".ogv" || ext == ".mov")
+                return NativeRole.Video;
+            if (ext == ".mp3" || ext == ".wav" || ext == ".ogg" || ext == ".m4a" || ext == ".flac")
+                return NativeRole.Audio;
+            return NativeRole.None;
+        }
+
+        private static DocKind ClassifyDocKind(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return DocKind.Engine;
+            if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)) return DocKind.Book;
+            if (ClassifyNativeRole(path) != NativeRole.None) return DocKind.Native;
+            return DocKind.Engine;
+        }
+
+        private static string NativeRoleLabel(NativeRole role)
+        {
+            switch (role)
+            {
+                case NativeRole.Pdf: return "PDF";
+                case NativeRole.Image: return "Image";
+                case NativeRole.Video: return "Video";
+                case NativeRole.Audio: return "Audio";
+                default: return "File";
+            }
         }
 
         private List<DocTab> GetDirtyTabs()
@@ -1788,10 +1868,8 @@ namespace TypoZen
             for (int i = 0; i < _tabs.Count; i++)
             {
                 if (_tabs[i] == null || !_tabs[i].IsDirty) continue;
-                // A book cannot be dirty: it is read-only and has no text behind it. Closing
-                // one was offering to save it, and answering Yes would have led straight to
-                // the export dialog for a document nobody had edited.
-                if (IsBookTab(_tabs[i]))
+                // Books and native files cannot be dirty: read-only, nothing to write back.
+                if (IsReadOnlyTab(_tabs[i]))
                 {
                     _tabs[i].IsDirty = false;
                     continue;
@@ -1945,8 +2023,20 @@ namespace TypoZen
             // Saving an epub therefore always means Save As, defaulting to a .md beside it.
             // In the reader architecture this is not a guard but the shape of the thing: an
             // epub document is read-only and writing it out is an export.
-            bool isBook = !string.IsNullOrEmpty(path)
-                && path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+            bool isBook = IsBookTab(tab)
+                || (!string.IsNullOrEmpty(path)
+                    && path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase));
+            bool isNative = IsNativeTab(tab) || IsNativePath(path);
+            // Native files have no engine text — Save is refuse, not "export as md".
+            if (isNative && !forceSaveAs)
+            {
+                WinForms.MessageBox.Show(
+                    "This file is opened for reading only." +
+                    Environment.NewLine + Environment.NewLine +
+                    "TypoZen does not overwrite PDF, images, or media.",
+                    "Read only", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                return false;
+            }
             if (isBook) forceSaveAs = true;
 
             if (forceSaveAs || string.IsNullOrEmpty(path))
@@ -1957,7 +2047,7 @@ namespace TypoZen
                     dlg.DefaultExt = "md";
                     dlg.Title = isBook ? "Export Book As" : "Save Document";
                     dlg.FileName = string.IsNullOrEmpty(tab.FilePath) ? "Untitled.md"
-                        : (isBook
+                        : (isBook || isNative
                             ? Path.GetFileNameWithoutExtension(tab.FilePath) + ".md"
                             : Path.GetFileName(tab.FilePath));
                     if (!string.IsNullOrEmpty(tab.FilePath))
@@ -1971,14 +2061,14 @@ namespace TypoZen
 
             try { path = Path.GetFullPath(path); } catch { }
 
-            // Belt and braces: whatever the dialog returned, text never goes into a book.
-            if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
+            // Belt and braces: never write engine text over a book or native file.
+            if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) || IsNativePath(path))
             {
                 WinForms.MessageBox.Show(
-                    "TypoZen will not write text over an .epub file." +
+                    "TypoZen will not write text over that file type." +
                     Environment.NewLine + Environment.NewLine +
                     "Choose a .md or .txt name instead.",
-                    "Export Book", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                    "Save", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
                 return false;
             }
 
@@ -2582,6 +2672,7 @@ namespace TypoZen
                         sb0.AppendLine("[tab " + i + "]");
                         sb0.AppendLine("path=" + (tab.FilePath ?? ""));
                         sb0.AppendLine("dirty=" + (tab.IsDirty ? "1" : "0"));
+                        sb0.AppendLine("kind=" + DocKindToken(tab));
                         sb0.AppendLine("le=" + ((tab.LineEnding == "\r\n") ? "crlf" : "lf"));
                         sb0.AppendLine("trail=" + EncodeTrailToken(tab.TrailingNewlines ?? ""));
                         sb0.AppendLine("resume=" + tab.ResumeBlock);
@@ -2629,10 +2720,13 @@ namespace TypoZen
                     sb.AppendLine("[tab " + i + "]");
                     sb.AppendLine("path=" + path);
                     sb.AppendLine("dirty=" + (dirty ? "1" : "0"));
+                    sb.AppendLine("kind=" + DocKindToken(tab));
                     sb.AppendLine("le=" + le);
                     sb.AppendLine("trail=" + trail);
                     sb.AppendLine("resume=" + tab.ResumeBlock);
                     sb.AppendLine("cols=" + tab.Columns);
+                    // Native / book: never store body (not engine text).
+                    if (IsReadOnlyTab(tab)) needBody = false;
                     if (needBody)
                     {
                         string bodyName = "t" + i + ".md";
@@ -2758,6 +2852,7 @@ namespace TypoZen
                     string le = "lf";
                     string trailTok = "lf";
                     string bodyName = "";
+                    string kindTok = "";
                     int resumeBlock = 0;
                     int cols = 0;
                     for (int i = start; i < lines.Length; i++)
@@ -2766,6 +2861,7 @@ namespace TypoZen
                         if (line.StartsWith("[tab ")) break;
                         if (line.StartsWith("path=")) tabPath = line.Substring(5);
                         else if (line.StartsWith("dirty=")) dirty = line.Substring(6) == "1";
+                        else if (line.StartsWith("kind=")) kindTok = line.Substring(5);
                         else if (line.StartsWith("le=")) le = line.Substring(3);
                         else if (line.StartsWith("trail=")) trailTok = line.Substring(6);
                         else if (line.StartsWith("resume=")) int.TryParse(line.Substring(7), out resumeBlock);
@@ -2785,6 +2881,20 @@ namespace TypoZen
                         // 0 and means "no choice recorded" -- not "one column".
                         Columns = (cols == 2) ? 2 : (cols == 1 ? 1 : 0)
                     };
+                    ApplyDocKindFromSession(tab, kindTok);
+
+                    // Book / native: path only — never ReadTextFileDetect (binary).
+                    if (IsReadOnlyTab(tab) || ClassifyDocKind(tab.FilePath) != DocKind.Engine)
+                    {
+                        if (string.IsNullOrEmpty(tab.FilePath) || !File.Exists(tab.FilePath))
+                            continue;
+                        tab.Kind = ClassifyDocKind(tab.FilePath);
+                        tab.NativeRole = ClassifyNativeRole(tab.FilePath);
+                        tab.Content = "";
+                        tab.IsDirty = false;
+                        restored.Add(tab);
+                        continue;
+                    }
 
                     string body = null;
                     if (!string.IsNullOrEmpty(bodyName))
@@ -3473,6 +3583,9 @@ namespace TypoZen
             // it has either. That leaves the column count as the only view choice on the
             // toolbar, which is the only one a book actually offers.
             bool isBook = IsEpubPath(_currentFilePath);
+            bool isNative = IsNativePath(_currentFilePath)
+                || (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsNativeTab(_tabs[_activeTabIndex]));
+            bool readOnlyDoc = isBook || isNative;
 
             if (_btnColumnToggle != null)
             {
@@ -3481,13 +3594,13 @@ namespace TypoZen
                 // 1-Col and Scroll are the defaults, so 2-Col and Pages are the lit states.
                 _btnColumnToggle.Content = columns == 2 ? "2-Col" : "1-Col";
                 SetToolbarActive(_btnColumnToggle, columns == 2);
-                SetControlLocked(_btnColumnToggle, columnsLocked);
+                SetControlLocked(_btnColumnToggle, columnsLocked || isNative);
             }
             if (_btnScrollToggle != null)
             {
                 _btnScrollToggle.Content = scroll == "pagination" ? "Pages" : "Scroll";
                 SetToolbarActive(_btnScrollToggle, scroll == "pagination");
-                SetControlLocked(_btnScrollToggle, scrollLocked || isBook);
+                SetControlLocked(_btnScrollToggle, scrollLocked || readOnlyDoc);
             }
 
             // The two dead segments are locked individually rather than the whole group,
@@ -3500,15 +3613,16 @@ namespace TypoZen
             if (_grpMode != null) { _grpMode.IsEnabled = true; _grpMode.Opacity = 1.0; }
             Button segSource, segPreview;
             if (_segments.TryGetValue("btnModeSource", out segSource))
-                SetControlLocked(segSource, isBook);
+                SetControlLocked(segSource, readOnlyDoc);
             if (_segments.TryGetValue("btnModePreview", out segPreview))
-                SetControlLocked(segPreview, isBook);
+                SetControlLocked(segPreview, readOnlyDoc);
 
             // And put a book that is somehow not in Reader back into it. Disabling the
             // controls stops it happening from here on; a session restored from before
             // this change, or any route that does not pass through those buttons, can
             // still arrive in the wrong place. The correction settles immediately because
             // the next view_state has mode == reader and this stops firing.
+            // Native tabs do not use the engine mode machine — chrome only (see ShowNativeSurface).
             if (isBook && !string.Equals(mode, "reader", StringComparison.OrdinalIgnoreCase))
                 SendMsg("cmd:view_set:mode:reader");
         }
@@ -3608,7 +3722,9 @@ namespace TypoZen
         {
             try
             {
-                if (_webView != null)
+                if (_nativeSurfaceVisible && _nativeWebView != null)
+                    _nativeWebView.ZoomFactor = _zoomFactor;
+                else if (_webView != null)
                     _webView.ZoomFactor = _zoomFactor;
             }
             catch { }
@@ -3715,11 +3831,18 @@ namespace TypoZen
 
             var host = new WindowsFormsHost();
             host.Background = this.Background;
+            // One WinForms panel holds editor + native reader WebViews (same bounds; one visible).
+            _webViewPanel = new WinForms.Panel();
+            _webViewPanel.Dock = WinForms.DockStyle.Fill;
+            _webViewPanel.BackColor = _currentThemeBg;
+
             _webView = new WebView2();
             _webView.BackColor = _currentThemeBg;
             try { _webView.DefaultBackgroundColor = _currentThemeBg; } catch {}
             _webView.Dock = WinForms.DockStyle.Fill;
-            host.Child = _webView;
+            _webViewPanel.Controls.Add(_webView);
+
+            host.Child = _webViewPanel;
             border.Child = host;
 
             string userDataDir = CacheDir();
@@ -4097,8 +4220,8 @@ namespace TypoZen
                         && _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
                     {
                         var statsTab = _tabs[_activeTabIndex];
-                        // A book is never dirty, whatever the page says while it loads.
-                        if (IsBookTab(statsTab)) dirty = false;
+                        // Books and native tabs are never dirty.
+                        if (IsReadOnlyTab(statsTab)) dirty = false;
                         bool wasDirty = statsTab.IsDirty;
                         statsTab.IsDirty = dirty;
                         if (wasDirty != dirty) RebuildTabStrip();
@@ -5968,7 +6091,9 @@ namespace TypoZen
         /// </summary>
         private bool IsWordWrapApplicable()
         {
-            if (IsEpubPath(_currentFilePath)) return false;
+            if (IsEpubPath(_currentFilePath) || IsNativePath(_currentFilePath)) return false;
+            if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsReadOnlyTab(_tabs[_activeTabIndex]))
+                return false;
             if (string.Equals(_viewMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
             if (string.Equals(_editorMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
             // Source always wraps via the textarea path.
@@ -5998,6 +6123,33 @@ namespace TypoZen
         {
             if (string.IsNullOrEmpty(path)) return false;
             return path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string DocKindToken(DocTab tab)
+        {
+            if (tab == null) return "engine";
+            if (IsNativeTab(tab) || tab.Kind == DocKind.Native) return "native";
+            if (IsBookTab(tab) || tab.Kind == DocKind.Book) return "book";
+            return "engine";
+        }
+
+        private static void ApplyDocKindFromSession(DocTab tab, string kindTok)
+        {
+            if (tab == null) return;
+            if (string.Equals(kindTok, "native", StringComparison.OrdinalIgnoreCase))
+            {
+                tab.Kind = DocKind.Native;
+                tab.NativeRole = ClassifyNativeRole(tab.FilePath);
+                return;
+            }
+            if (string.Equals(kindTok, "book", StringComparison.OrdinalIgnoreCase))
+            {
+                tab.Kind = DocKind.Book;
+                return;
+            }
+            // Infer from path when older sessions omit kind=
+            tab.Kind = ClassifyDocKind(tab.FilePath);
+            tab.NativeRole = ClassifyNativeRole(tab.FilePath);
         }
 
         private void RefreshWordWrapMenuAvailability()
@@ -6036,7 +6188,9 @@ namespace TypoZen
         /// </remarks>
         private bool IsDocumentEditable()
         {
-            if (IsEpubPath(_currentFilePath)) return false;
+            if (IsEpubPath(_currentFilePath) || IsNativePath(_currentFilePath)) return false;
+            if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsReadOnlyTab(_tabs[_activeTabIndex]))
+                return false;
             if (string.Equals(_viewMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
             if (string.Equals(_editorMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
             return true;
@@ -6074,7 +6228,9 @@ namespace TypoZen
                 bool editable = IsDocumentEditable();
                 string why = IsEpubPath(_currentFilePath)
                     ? "A book is read-only — formatting applies to documents you can edit"
-                    : "Reader is read-only — switch to Preview or Source to format text";
+                    : (IsNativePath(_currentFilePath) || (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsNativeTab(_tabs[_activeTabIndex])))
+                        ? "This file is read-only — open a Markdown or text document to format"
+                        : "Reader is read-only — switch to Preview or Source to format text";
                 foreach (string name in FormatControls)
                 {
                     var c = FindElement(name) as Control;
@@ -6246,7 +6402,7 @@ namespace TypoZen
             var tab = _tabs[_activeTabIndex];
             if (tab == null || !tab.IsDirty) return;
             if (string.IsNullOrEmpty(tab.FilePath)) return;      // never prompt for a path
-            if (IsBookTab(tab)) return;                          // a book is never written
+            if (IsReadOnlyTab(tab)) return;                      // book / native never written
             // The buffer must be current, or autosave would write a stale copy over the
             // file it is meant to be protecting. A failed pull means try again later.
             if (!SyncActiveTabFromEditor()) { ArmAutosave(); return; }
@@ -6716,10 +6872,13 @@ namespace TypoZen
             bool activeIsBook = IsBookTab(activeTab)
                 || (!string.IsNullOrEmpty(_currentFilePath)
                     && _currentFilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase));
-            if (activeIsBook)
+            bool activeIsNative = IsNativeTab(activeTab)
+                || IsNativePath(_currentFilePath)
+                || IsNativePath(activeTab.FilePath);
+            if (activeIsBook || activeIsNative)
             {
                 if (!string.IsNullOrEmpty(_currentFilePath)) activeTab.FilePath = _currentFilePath;
-                activeTab.Content = "";      // never the book's markup: it is not the tab's to hold
+                activeTab.Content = "";      // never the book's/native markup
                 activeTab.IsDirty = false;
                 _isDirty = false;
                 return true;
@@ -8743,6 +8902,9 @@ namespace TypoZen
             if (!string.IsNullOrEmpty(tab.FilePath)
                 && tab.FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
             {
+                tab.Kind = DocKind.Book;
+                tab.NativeRole = NativeRole.None;
+                ShowEditorSurface();
                 _currentFilePath = tab.FilePath;
                 _isDirty = false;
                 RefreshEditingAvailability();
@@ -8751,6 +8913,25 @@ namespace TypoZen
                 return;
             }
 
+            // PDF / image / media — Chromium native surface, not DocumentModel.
+            if (IsNativeTab(tab) || IsNativePath(tab.FilePath))
+            {
+                tab.Kind = DocKind.Native;
+                if (tab.NativeRole == NativeRole.None)
+                    tab.NativeRole = ClassifyNativeRole(tab.FilePath);
+                tab.Content = "";
+                tab.IsDirty = false;
+                _currentFilePath = tab.FilePath;
+                _isDirty = false;
+                RefreshEditingAvailability();
+                Dispatcher.BeginInvoke(new Action(() => OpenNative(tab.FilePath, true)),
+                    DispatcherPriority.Normal);
+                return;
+            }
+
+            tab.Kind = DocKind.Engine;
+            tab.NativeRole = NativeRole.None;
+            ShowEditorSurface();
             _currentFilePath = tab.FilePath;
             MapDocumentFolder(_currentFilePath);   // images resolve per document
             _isDirty = tab.IsDirty;
@@ -9057,8 +9238,8 @@ namespace TypoZen
             }
 
             var tab = _tabs[index];
-            // Books are read-only. Never offer Save on close (host sync used to mark them dirty).
-            if (IsBookTab(tab))
+            // Books and native files are read-only. Never offer Save on close.
+            if (IsReadOnlyTab(tab))
             {
                 tab.IsDirty = false;
                 if (index == _activeTabIndex) _isDirty = false;
@@ -9120,8 +9301,16 @@ namespace TypoZen
         {
             using (var dlg = new WinForms.OpenFileDialog())
             {
-                dlg.Filter = "Markdown, Text & Epub Files|*.md;*.txt;*.markdown;*.epub|All Files|*.*";
-                dlg.Title = "Open Document";
+                dlg.Filter =
+                    "Supported files|*.md;*.txt;*.markdown;*.epub;*.pdf;" +
+                    "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.ico;*.svg;*.avif;*.jfif;" +
+                    "*.mp4;*.webm;*.ogv;*.mov;*.mp3;*.wav;*.ogg;*.m4a;*.flac|" +
+                    "Documents|*.md;*.txt;*.markdown;*.epub|" +
+                    "PDF|*.pdf|" +
+                    "Images|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.ico;*.svg;*.avif;*.jfif|" +
+                    "Media|*.mp4;*.webm;*.ogv;*.mov;*.mp3;*.wav;*.ogg;*.m4a;*.flac|" +
+                    "All Files|*.*";
+                dlg.Title = "Open";
                 if (_currentFilePath != null) dlg.InitialDirectory = Path.GetDirectoryName(_currentFilePath);
                 else dlg.InitialDirectory = _appDir;
 
@@ -9258,6 +9447,12 @@ namespace TypoZen
                 if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase))
                 {
                     OpenBook(path);
+                    return;
+                }
+
+                if (IsNativePath(path))
+                {
+                    OpenNative(path);
                     return;
                 }
 
@@ -9403,6 +9598,8 @@ namespace TypoZen
                     tab.FilePath = path;
                     tab.Content = content;
                     tab.IsDirty = false;
+                    tab.Kind = DocKind.Engine;
+                    tab.NativeRole = NativeRole.None;
                     tab.SourceEncoding = encodingName;
                     tab.LineEnding = lineEnding;
                     tab.TrailingNewlines = trailing;
@@ -9499,7 +9696,10 @@ namespace TypoZen
                 tab.FilePath = path;
                 tab.Content = "";
                 tab.IsDirty = false;
+                tab.Kind = DocKind.Book;
+                tab.NativeRole = NativeRole.None;
                 tab.SourceEncoding = "Epub";
+                ShowEditorSurface();
                 _currentFilePath = path;
                 _isDirty = false;
                 RefreshEditingAvailability();
@@ -9552,6 +9752,297 @@ namespace TypoZen
             DrainPendingOpen();
         }
 
+        /// <summary>
+        /// Open a PDF / image / media file on the native Chromium surface (read-only).
+        /// See docs/native-reader-plan.md.
+        /// </summary>
+        private void OpenNative(string path, bool forceLoad = false)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
+                path = Path.GetFullPath(path);
+                NativeRole role = ClassifyNativeRole(path);
+                if (role == NativeRole.None) return;
+
+                int existing = -1;
+                for (int i = 0; i < _tabs.Count; i++)
+                {
+                    if (!string.IsNullOrEmpty(_tabs[i].FilePath) &&
+                        string.Equals(Path.GetFullPath(_tabs[i].FilePath), path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existing = i;
+                        break;
+                    }
+                }
+
+                if (!forceLoad && existing >= 0 && existing == _activeTabIndex
+                    && string.Equals(_nativeNavigatedPath, path, StringComparison.OrdinalIgnoreCase)
+                    && _nativeSurfaceVisible)
+                {
+                    return;
+                }
+
+                if (existing < 0 || existing != _activeTabIndex)
+                {
+                    if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
+                    {
+                        NotifyEditorSyncFailedForTabOp();
+                        return;
+                    }
+                }
+
+                _tabOpInProgress = true;
+                try
+                {
+                    DocTab tab;
+                    if (existing >= 0)
+                    {
+                        tab = _tabs[existing];
+                        _activeTabIndex = existing;
+                    }
+                    else if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                        && IsReusableEmptyUntitled(_tabs[_activeTabIndex]))
+                    {
+                        tab = _tabs[_activeTabIndex];
+                    }
+                    else
+                    {
+                        tab = new DocTab { Id = _nextTabId++ };
+                        _tabs.Add(tab);
+                        _activeTabIndex = _tabs.Count - 1;
+                    }
+
+                    tab.FilePath = path;
+                    tab.Content = "";
+                    tab.IsDirty = false;
+                    tab.Kind = DocKind.Native;
+                    tab.NativeRole = role;
+                    tab.SourceEncoding = NativeRoleLabel(role);
+                    _currentFilePath = path;
+                    _isDirty = false;
+
+                    ShowNativeSurface();
+                    NavigateNative(path, role);
+                    PaintNativeChrome(role);
+                    RefreshEditingAvailability();
+                    RebuildTabStrip();
+                    UpdateStatusDisplay();
+
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try { AddRecentFile(path); } catch { }
+                        try { PersistTabSession(); } catch { }
+                    }), DispatcherPriority.Background);
+                }
+                finally { _tabOpInProgress = false; }
+                DrainPendingOpen();
+            }
+            catch (Exception ex)
+            {
+                _tabOpInProgress = false;
+                WinForms.MessageBox.Show("Could not open file: " + ex.Message,
+                    "Open", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                DrainPendingOpen();
+            }
+        }
+
+        private void ShowEditorSurface()
+        {
+            _nativeSurfaceVisible = false;
+            try
+            {
+                if (_webView != null)
+                {
+                    _webView.Visible = true;
+                    _webView.BringToFront();
+                }
+                if (_nativeWebView != null) _nativeWebView.Visible = false;
+            }
+            catch { }
+            try { ApplyZoomToWebView(); } catch { }
+        }
+
+        private void ShowNativeSurface()
+        {
+            _nativeSurfaceVisible = true;
+            try
+            {
+                if (_webView != null) _webView.Visible = false;
+                if (_nativeWebView != null)
+                {
+                    _nativeWebView.Visible = true;
+                    _nativeWebView.BringToFront();
+                }
+            }
+            catch { }
+            try { ApplyZoomToWebView(); } catch { }
+        }
+
+        private void PaintNativeChrome(NativeRole role)
+        {
+            // Reader-like: lit Reader segment, Source/Preview locked (RenderViewSelectors also).
+            try
+            {
+                SelectSegment("btnModeSource", false);
+                SelectSegment("btnModePreview", false);
+                SelectSegment("btnModeReader", true);
+                _editorMode = "reader";
+                _viewMode = "reader";
+            }
+            catch { }
+            try
+            {
+                Button segSource, segPreview;
+                if (_segments.TryGetValue("btnModeSource", out segSource))
+                    SetControlLocked(segSource, true);
+                if (_segments.TryGetValue("btnModePreview", out segPreview))
+                    SetControlLocked(segPreview, true);
+                if (_btnColumnToggle != null) SetControlLocked(_btnColumnToggle, true);
+                if (_btnScrollToggle != null) SetControlLocked(_btnScrollToggle, true);
+            }
+            catch { }
+            try
+            {
+                if (_lblChapter != null) _lblChapter.Text = NativeRoleLabel(role);
+                if (_lblWordCount != null) _lblWordCount.Text = "";
+                if (_lblLineCount != null) _lblLineCount.Text = "";
+                if (_lblCharCount != null) _lblCharCount.Text = "";
+                if (_lblReadingTime != null) _lblReadingTime.Text = "";
+            }
+            catch { }
+        }
+
+        private async void EnsureNativeWebViewAsync()
+        {
+            if (_nativeWebView != null && _nativeWebView.CoreWebView2 != null) return;
+            if (_webViewPanel == null || _webView == null) return;
+            try
+            {
+                if (_nativeWebView == null)
+                {
+                    _nativeWebView = new WebView2();
+                    _nativeWebView.BackColor = _currentThemeBg;
+                    try { _nativeWebView.DefaultBackgroundColor = _currentThemeBg; } catch { }
+                    _nativeWebView.Dock = WinForms.DockStyle.Fill;
+                    _nativeWebView.Visible = false;
+                    _webViewPanel.Controls.Add(_nativeWebView);
+                }
+                string userDataDir = CacheDir();
+                Task<CoreWebView2Environment> envTask = _envTask;
+                if (envTask == null)
+                    envTask = CoreWebView2Environment.CreateAsync(null, userDataDir, BuildWebView2Options());
+                var env = await envTask;
+                await _nativeWebView.EnsureCoreWebView2Async(env);
+                try { _nativeWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true; } catch { }
+                try { _nativeWebView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true; } catch { }
+                try { _nativeWebView.ZoomFactorChanged += WebView_ZoomFactorChanged; } catch { }
+                ApplyZoomToWebView();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Native WebView init: " + ex.Message);
+            }
+        }
+
+        private void MapNativeFolder(string filePath)
+        {
+            try
+            {
+                if (_nativeWebView == null || _nativeWebView.CoreWebView2 == null) return;
+                string dir = null;
+                if (!string.IsNullOrEmpty(filePath))
+                {
+                    try { dir = Path.GetDirectoryName(Path.GetFullPath(filePath)); } catch { dir = null; }
+                }
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+                if (string.Equals(dir, _mappedNativeFolder, StringComparison.OrdinalIgnoreCase)) return;
+                try { _nativeWebView.CoreWebView2.ClearVirtualHostNameToFolderMapping("localview"); } catch { }
+                _nativeWebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "localview", dir, CoreWebView2HostResourceAccessKind.Allow);
+                _mappedNativeFolder = dir;
+            }
+            catch { }
+        }
+
+        private void NavigateNative(string path, NativeRole role)
+        {
+            // Fire-and-forget ensure + navigate (OpenNative is sync for tab model).
+            Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                try
+                {
+                    EnsureNativeWebViewAsync();
+                    // Wait briefly for CoreWebView2
+                    for (int i = 0; i < 40; i++)
+                    {
+                        if (_nativeWebView != null && _nativeWebView.CoreWebView2 != null) break;
+                        await Task.Delay(50);
+                    }
+                    if (_nativeWebView == null || _nativeWebView.CoreWebView2 == null)
+                    {
+                        WinForms.MessageBox.Show("Could not start the reader surface.",
+                            "Open", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                        return;
+                    }
+                    MapNativeFolder(path);
+                    string name = Path.GetFileName(path);
+                    // Virtual host is the file's directory; URL is just the file name.
+                    string fileUrl = "https://localview/" + Uri.EscapeDataString(name);
+
+                    string bg = string.Format("#{0:X2}{1:X2}{2:X2}",
+                        _currentThemeBg.R, _currentThemeBg.G, _currentThemeBg.B);
+                    string fg = "#E4E4E7";
+
+                    if (role == NativeRole.Pdf)
+                    {
+                        _nativeWebView.CoreWebView2.Navigate(fileUrl);
+                    }
+                    else if (role == NativeRole.Image)
+                    {
+                        string html =
+                            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
+                            "<style>html,body{margin:0;height:100%;background:" + bg +
+                            ";display:flex;align-items:center;justify-content:center;overflow:auto}" +
+                            "img{max-width:100%;max-height:100%;object-fit:contain}</style></head><body>" +
+                            "<img src=\"" + fileUrl + "\" alt=\"\"/></body></html>";
+                        _nativeWebView.CoreWebView2.NavigateToString(html);
+                    }
+                    else if (role == NativeRole.Video)
+                    {
+                        string html =
+                            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
+                            "<style>html,body{margin:0;height:100%;background:" + bg +
+                            ";display:flex;align-items:center;justify-content:center}" +
+                            "video{max-width:100%;max-height:100%}</style></head><body>" +
+                            "<video src=\"" + fileUrl + "\" controls controlslist=\"nodownload\" " +
+                            "playsinline></video></body></html>";
+                        _nativeWebView.CoreWebView2.NavigateToString(html);
+                    }
+                    else if (role == NativeRole.Audio)
+                    {
+                        string html =
+                            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
+                            "<style>html,body{margin:0;height:100%;background:" + bg +
+                            ";color:" + fg + ";display:flex;flex-direction:column;" +
+                            "align-items:center;justify-content:center;font-family:system-ui,sans-serif}" +
+                            "audio{width:min(480px,90%)}p{opacity:.7;font-size:13px}</style></head><body>" +
+                            "<p>" + System.Net.WebUtility.HtmlEncode(name) + "</p>" +
+                            "<audio src=\"" + fileUrl + "\" controls controlslist=\"nodownload\"></audio>" +
+                            "</body></html>";
+                        _nativeWebView.CoreWebView2.NavigateToString(html);
+                    }
+                    _nativeNavigatedPath = path;
+                    ShowNativeSurface();
+                    try { _nativeWebView.Focus(); } catch { }
+                }
+                catch (Exception ex)
+                {
+                    WinForms.MessageBox.Show("Could not display file: " + ex.Message,
+                        "Open", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                }
+            }), DispatcherPriority.Normal);
+        }
 
         private void EnqueuePendingOpen(string path)
         {

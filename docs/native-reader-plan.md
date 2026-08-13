@@ -1,6 +1,6 @@
 # Native Reader — Chromium-backed files (implementation plan)
 
-**Status:** planned, not built.  
+**Status:** v1 implemented (host dual WebView + classify + open/session/save guards).  
 **Product home:** read-only **reading**, same family as Reader mode and epub — not a third product called “Viewer,” and not the editable Preview/Source path.
 
 This plan covers **all** formats Chromium will paint for us in v1: **PDF, images, and media** under one tab kind and one surface. Do not ship PDF-only plumbing that hard-codes `.pdf` into every branch.
@@ -196,16 +196,16 @@ Same cap (`MaxSessionTabs`) and privacy rules as today.
 
 Order is delivery risk, not separate architectures:
 
-| Slice | Deliverable |
-|-------|-------------|
-| **A — Skeleton** | `ClassifyPath`, `IsNativeTab` / `IsReadOnlyTab`, open filter, refuse save, never dirty; unsupported message for non-classified binaries |
-| **B — Surface** | Second WebView, show/hide, `localview` mapping, shared `OpenNative` |
-| **C — PDF** | Direct navigate; tab switch md ↔ pdf |
-| **D — Image shell** | Themed centered image HTML |
-| **E — Media shell** | `<video controls>` / `<audio controls>` |
-| **F — Chrome** | Mode lock, format grey, scrubber hide, zoom/print target |
-| **G — Session + Privacy** | Restore native tabs; optional stage under Privacy Mode |
-| **H — Docs** | README + `for-agents.md`; mention codecs are Edge’s |
+| Slice | Deliverable | v1 |
+|-------|-------------|-----|
+| **A — Skeleton** | `ClassifyNativeRole`, `IsNativeTab` / `IsReadOnlyTab`, open filter, refuse save, never dirty | done |
+| **B — Surface** | Second WebView, show/hide, `localview` mapping, shared `OpenNative` | done |
+| **C — PDF** | Direct navigate; tab switch md ↔ pdf | done |
+| **D — Image shell** | Themed centered image HTML | done |
+| **E — Media shell** | `<video controls>` / `<audio controls>` | done |
+| **F — Chrome** | Mode lock, format grey, zoom target | done (scrubber hide deferred) |
+| **G — Session + Privacy** | Restore native tabs by path+kind | session done; Privacy staging deferred |
+| **H — Docs** | README + `for-agents.md` | done |
 
 Slices C–E should land close together so the classifier and shells aren’t PDF-shaped.
 

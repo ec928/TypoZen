@@ -1314,6 +1314,7 @@
                 let rows = table.querySelectorAll('tr');
                 if (!rows.length) return '';
                 let matrix = [];
+                let aligns = [];
                 for (let ri = 0; ri < rows.length; ri++) {
                     let cells = rows[ri].querySelectorAll('th, td');
                     let row = [];
@@ -1324,9 +1325,29 @@
                         // correctly shaped grid of blanks.
                         let cellMd = Array.from(cells[ci].childNodes).map(walkNode).join('');
                         row.push(cellMd.trim().replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' '));
+                        if (ri === 0) {
+                            let a = '';
+                            try {
+                                const st = (cells[ci].style && cells[ci].style.textAlign) || '';
+                                const at = (cells[ci].getAttribute('align') || '').toLowerCase();
+                                const v = (st || at || '').toLowerCase();
+                                if (v === 'center' || v === 'right' || v === 'left') a = v;
+                            } catch (eA) {}
+                            aligns[ci] = a;
+                        }
                     }
                     matrix.push(row);
                 }
+                // Prefer alignment from stored markdown (DOM often has no align attrs).
+                try {
+                    const blk = table.closest ? table.closest('.block') : null;
+                    const stored = blk && typeof parseTableMarkdown === 'function'
+                        ? parseTableMarkdown(blk.getAttribute('data-raw') || '')
+                        : null;
+                    if (stored && stored.align && stored.align.length) {
+                        aligns = stored.align.slice();
+                    }
+                } catch (eS) {}
                 let colCount = 0;
                 for (let r = 0; r < matrix.length; r++) {
                     if (matrix[r].length > colCount) colCount = matrix[r].length;
@@ -1334,10 +1355,16 @@
                 for (let r = 0; r < matrix.length; r++) {
                     while (matrix[r].length < colCount) matrix[r].push('');
                 }
+                while (aligns.length < colCount) aligns.push('');
                 let lines = [];
                 lines.push('| ' + matrix[0].join(' | ') + ' |');
-                // Always add separator after first row
-                lines.push('| ' + matrix[0].map(function() { return '---'; }).join(' | ') + ' |');
+                lines.push('| ' + aligns.slice(0, colCount).map(function (a) {
+                    if (typeof tableAlignToSep === 'function') return tableAlignToSep(a);
+                    if (a === 'center') return ':---:';
+                    if (a === 'right') return '---:';
+                    if (a === 'left') return ':---';
+                    return '---';
+                }).join(' | ') + ' |');
                 for (let r = 1; r < matrix.length; r++) {
                     lines.push('| ' + matrix[r].join(' | ') + ' |');
                 }
@@ -2123,6 +2150,14 @@
                 if (state.mode === 'source') return;
                 // Phase 1: every browser edit (type, delete, spellcheck, cut) updates data-raw.
                 try {
+                    let blk = null;
+                    try {
+                        const sel = window.getSelection();
+                        if (sel && sel.anchorNode) blk = getAncestorBlock(sel.anchorNode);
+                    } catch (eB) {}
+                    if (blk && typeof isTableBlock === 'function' && isTableBlock(blk)) {
+                        try { blk.setAttribute('data-tz-table-edit', '1'); } catch (eT) {}
+                    }
                     flushActiveBlockToRaw();
                     updateStats();
                 } catch (err) {}
@@ -2135,11 +2170,18 @@
             try {
                 const blk = e && e.target ? getAncestorBlock(e.target) : null;
                 if (!blk || !editor.contains(blk)) return;
+                // Tables: only commit after a real edit (see input → data-tz-table-edit).
+                // Otherwise a caret visit rewrote the markdown and flashed Unsaved.
+                if (typeof isTableBlock === 'function' && isTableBlock(blk)
+                    && blk.getAttribute('data-tz-table-edit') !== '1') {
+                    return;
+                }
                 const raw = serializeBlockDomToRaw(blk);
                 blk.setAttribute('data-raw', raw);
                 setBlockListIndentAttr(blk, raw);
                 try { touchLastGoodDocRawAtBlock(blk, raw); } catch (e2) {}
                 try { blk.setAttribute('data-tz-dirty', '1'); } catch (e3) {}
+                try { blk.removeAttribute('data-tz-table-edit'); } catch (e4) {}
                 _contentCache = null;
             } catch (err) {}
         }, true);

@@ -1655,6 +1655,7 @@
 
             HistoryManager.beginEdit();
             const next = tableOp(ctx.model, op, ctx.rowIndex, ctx.colIndex, value);
+            try { ctx.block.setAttribute('data-tz-table-edit', '1'); } catch (eT) {}
             writeBlockRaw(ctx.block, formatTableMarkdown(next));
 
             // Land the caret where the edit happened, so you can keep typing
