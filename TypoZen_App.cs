@@ -4591,8 +4591,25 @@ namespace TypoZen
                 // current before the refresh runs. RenderViewSelectors sets it too, from
                 // view_state:, but a mode change is reported by both and whichever
                 // arrives first must leave the same answer behind.
-                _editorMode = msg.Substring(13);
-                Dispatcher.BeginInvoke(new Action(RefreshWordWrapMenuAvailability),
+                string m = msg.Substring(13);
+                if (string.IsNullOrEmpty(m)) m = "wysiwyg";
+                _editorMode = m;
+                // Keep Mode pillbox and _viewMode aligned (load_content_plain only posted
+                // mode_changed without a view_state, so Source lit Reader after HTML→Source).
+                if (string.Equals(m, "source", StringComparison.OrdinalIgnoreCase))
+                    _viewMode = "source";
+                else if (string.Equals(m, "reader", StringComparison.OrdinalIgnoreCase))
+                    _viewMode = "reader";
+                else
+                    _viewMode = "preview";
+                try
+                {
+                    SelectSegment("btnModeSource", _viewMode == "source");
+                    SelectSegment("btnModePreview", _viewMode == "preview");
+                    SelectSegment("btnModeReader", _viewMode == "reader");
+                }
+                catch { }
+                Dispatcher.BeginInvoke(new Action(RefreshEditingAvailability),
                     DispatcherPriority.Normal);
             }
             else if (msg.StartsWith("margin_changed:"))
@@ -6143,9 +6160,19 @@ namespace TypoZen
         /// page axis is horizontal, so unwrap was overridden in CSS (and used to look like
         /// a corrupt book). Grey the menu item out instead of leaving a live-looking tick.
         /// </summary>
+        /// <summary>True when the active tab is on the native WebView surface (not editor Source).</summary>
+        private bool ActiveTabIsNativeSurface()
+        {
+            if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsNativeTab(_tabs[_activeTabIndex]))
+                return true;
+            // Path alone is not enough: HTML may be editor Source while still ending in .html.
+            return _nativeSurfaceVisible && IsNativePath(_currentFilePath);
+        }
+
         private bool IsWordWrapApplicable()
         {
-            if (IsEpubPath(_currentFilePath) || IsNativePath(_currentFilePath)) return false;
+            if (IsEpubPath(_currentFilePath)) return false;
+            if (ActiveTabIsNativeSurface()) return false;
             if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsReadOnlyTab(_tabs[_activeTabIndex]))
                 return false;
             if (string.Equals(_viewMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
@@ -6242,12 +6269,54 @@ namespace TypoZen
         /// </remarks>
         private bool IsDocumentEditable()
         {
-            if (IsEpubPath(_currentFilePath) || IsNativePath(_currentFilePath)) return false;
+            if (IsEpubPath(_currentFilePath)) return false;
+            if (ActiveTabIsNativeSurface()) return false;
             if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsReadOnlyTab(_tabs[_activeTabIndex]))
                 return false;
             if (string.Equals(_viewMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
             if (string.Equals(_editorMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
             return true;
+        }
+
+        /// <summary>
+        /// Sync Mode pillbox + host mode fields after leaving native HTML for Source
+        /// (or returning to render). Does not rely on the page's view_state echo.
+        /// </summary>
+        private void ApplyHostModeChrome(string mode)
+        {
+            if (string.IsNullOrEmpty(mode)) mode = "preview";
+            mode = mode.ToLowerInvariant();
+            _viewMode = mode;
+            if (mode == "source") _editorMode = "source";
+            else if (mode == "reader") _editorMode = "reader";
+            else { _viewMode = "preview"; _editorMode = "wysiwyg"; mode = "preview"; }
+
+            try
+            {
+                SelectSegment("btnModeSource", mode == "source");
+                SelectSegment("btnModePreview", mode == "preview");
+                SelectSegment("btnModeReader", mode == "reader");
+            }
+            catch { }
+
+            // Engine document: unlock Source/Preview (RenderViewSelectors may refine).
+            try
+            {
+                bool engine = !ActiveTabIsNativeSurface() && !IsEpubPath(_currentFilePath);
+                Button segSource, segPreview;
+                if (_segments.TryGetValue("btnModeSource", out segSource))
+                    SetControlLocked(segSource, !engine && !(IsHtmlPath(_currentFilePath) && ActiveTabIsNativeSurface()));
+                if (_segments.TryGetValue("btnModePreview", out segPreview))
+                    SetControlLocked(segPreview, !engine);
+                if (engine)
+                {
+                    if (_btnColumnToggle != null) SetControlLocked(_btnColumnToggle, false);
+                    if (_btnScrollToggle != null) SetControlLocked(_btnScrollToggle, false);
+                }
+            }
+            catch { }
+
+            RefreshEditingAvailability();
         }
 
         // The format controls, and the Edit items that duplicate three of them. Menus are
@@ -9645,6 +9714,8 @@ namespace TypoZen
                                     ShowEditorSurface();
                                     MapDocumentFolder(path);
                                     LoadContentToEditor(content, false, path);
+                                    if (forceEditorText || PreferSourceModeForPath(path))
+                                        ApplyHostModeChrome("source");
                                     UpdateStatusDisplay();
                                     RebuildTabStrip();
                                 }
@@ -9654,6 +9725,8 @@ namespace TypoZen
                                 _tabs[i].IsDirty = false;
                                 _isDirty = false;
                                 ApplyTabToEditor(_tabs[i]);
+                                if (forceEditorText || PreferSourceModeForPath(path))
+                                    ApplyHostModeChrome("source");
                             }
                         }
                         finally { _tabOpInProgress = false; }
@@ -9701,6 +9774,8 @@ namespace TypoZen
                     tab.LineEnding = lineEnding;
                     tab.TrailingNewlines = trailing;
                     ApplyTabToEditor(tab);
+                    if (forceEditorText || PreferSourceModeForPath(path))
+                        ApplyHostModeChrome("source");
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
                         try { AddRecentFile(path); } catch { }
