@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-block-hover="edge">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -144,38 +144,43 @@
                  next/prev instead of being typed, so Alt+S focuses this input and Enter
                  (or 3s idle) hands focus to the results list below. -->
             <div id="tab-search" class="tab-pane">
-                <div class="sidebar-search-row">
-                    <!-- &#xE721; is Segoe MDL2 Assets "Search", the shell's own icon set -->
-                    <span class="sidebar-search-icon" aria-hidden="true">&#xE721;</span>
-                    <!-- Editable combo: type a query, or open the last 8 (global) searches. -->
-                    <div class="sidebar-search-combo">
-                        <input id="sidebarSearchInput" type="text" placeholder="Search…"
-                               autocomplete="off" spellcheck="false" aria-label="Search document"
-                               aria-controls="search-results-list"
-                               aria-autocomplete="list"
-                               aria-haspopup="listbox" />
-                        <!-- Stop searching. Escape in the field has always done this; there
-                             was nothing on screen that said so. Immediately after the input
-                             on purpose: CSS hides it with :placeholder-shown + , so it is
-                             absent on an empty field with no state to keep in step. -->
-                        <button type="button" id="sidebarSearchClearBtn" class="sidebar-search-clear"
-                                aria-label="Clear search" tabindex="-1"
-                                title="Clear search (Esc)">&#xE711;</button>
-                        <button type="button" id="sidebarSearchHistoryBtn" class="sidebar-search-hist-btn"
-                                aria-label="Recent searches" aria-haspopup="listbox" aria-expanded="false"
-                                title="Recent searches">&#xE70D;</button>
-                        <div id="sidebarSearchHistoryMenu" class="sidebar-search-hist-menu" hidden
-                             role="listbox" aria-label="Recent searches"></div>
+                <!-- Two rows: full-width field, then options + count. Keeps the query
+                     usable if the sidebar shrinks; Aa/ab/count no longer steal field width. -->
+                <div class="sidebar-search-block">
+                    <div class="sidebar-search-row sidebar-search-row-query">
+                        <!-- &#xE721; is Segoe MDL2 Assets "Search", the shell's own icon set -->
+                        <span class="sidebar-search-icon" aria-hidden="true">&#xE721;</span>
+                        <!-- Editable combo: type a query, or open the last 8 (global) searches. -->
+                        <div class="sidebar-search-combo">
+                            <input id="sidebarSearchInput" type="text" placeholder="Search…"
+                                   autocomplete="off" spellcheck="false" aria-label="Search document"
+                                   aria-controls="search-results-list"
+                                   aria-autocomplete="list"
+                                   aria-haspopup="listbox" />
+                            <!-- Stop searching. Escape in the field has always done this; there
+                                 was nothing on screen that said so. Immediately after the input
+                                 on purpose: CSS hides it with :placeholder-shown + , so it is
+                                 absent on an empty field with no state to keep in step. -->
+                            <button type="button" id="sidebarSearchClearBtn" class="sidebar-search-clear"
+                                    aria-label="Clear search" tabindex="-1"
+                                    title="Clear search (Esc)">&#xE711;</button>
+                            <button type="button" id="sidebarSearchHistoryBtn" class="sidebar-search-hist-btn"
+                                    aria-label="Recent searches" aria-haspopup="listbox" aria-expanded="false"
+                                    title="Recent searches">&#xE70D;</button>
+                            <div id="sidebarSearchHistoryMenu" class="sidebar-search-hist-menu" hidden
+                                 role="listbox" aria-label="Recent searches"></div>
+                        </div>
                     </div>
-                    <!-- Match case / whole word, sharing state with the Ctrl+F bar's
-                         checkboxes so the two views of one search cannot disagree. Two
-                         glyphs rather than two labelled checkboxes: the row is 300px wide
-                         and already carries an icon, a field and a counter. -->
-                    <button type="button" id="sidebarMatchCase" class="search-opt"
-                            aria-pressed="false" title="Match case">Aa</button>
-                    <button type="button" id="sidebarWholeWord" class="search-opt"
-                            aria-pressed="false" title="Match whole word">ab</button>
-                    <span id="sidebarSearchCount">0/0</span>
+                    <div class="sidebar-search-row sidebar-search-row-opts">
+                        <!-- Match case / whole word, sharing state with the Ctrl+F bar. -->
+                        <div class="sidebar-search-opts" role="group" aria-label="Search options">
+                            <button type="button" id="sidebarMatchCase" class="search-opt"
+                                    aria-pressed="false" title="Match case">Aa</button>
+                            <button type="button" id="sidebarWholeWord" class="search-opt"
+                                    aria-pressed="false" title="Match whole word">ab</button>
+                        </div>
+                        <span id="sidebarSearchCount">0/0</span>
+                    </div>
                 </div>
                 <div id="search-results-list" tabindex="0" role="listbox" aria-label="Search results">
                     <div class="search-item" style="opacity:0.5;">No results...</div>

@@ -103,14 +103,16 @@ async function main() {
             'the match it stepped to is the one marked as current (' + onScreen.marked + ')');
 
         console.log('\n=== an arrow is an arrow everywhere else ===');
+        // Product rule (README): with live search hits, Up/Down step matches in Preview
+        // as well as Reader — only Source / INPUT / TEXTAREA keep arrows for the caret.
         await page.evaluate(() => handleCommand('view_set:mode:preview'));
         await settled(page);
         const before = await page.evaluate(() => findState.index);
         await pressOnEditor(page, 'ArrowDown');
         await settled(page);
         const after = await page.evaluate(() => findState.index);
-        assert(after === before,
-            'Down moves the caret, not the match, in an editable mode (' +
+        assert(after === before + 1,
+            'Down steps the next match in Preview search mode (' +
             before + ' -> ' + after + ')');
 
         // The reason the punctuation keys were removed: they were shortcuts everywhere, so

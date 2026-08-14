@@ -181,9 +181,12 @@
 
             // words, chars, readTime, isDirty, totalLines, caretLine [, selWords, selChars]
             postMsg(`stats:${words},${chars},${readTime},${isDirty},${lines},${caretLine},${selWords},${selChars}`);
-            // Debounced — do not write full prefs on every keystroke
-            // Skip prefs write storm right after loading a large file.
-            if (chars < LARGE_DOC_CHARS) scheduleSavePreferences();
+            // Prefs only after a real edit. Stats also runs on selection/navigation;
+            // scheduling save_prefs there rewrote settings.json (and lastContent when
+            // enabled) on every page turn. Theme/mode/margin/search already call
+            // scheduleSavePreferences on their own paths.
+            const editedRecently = (Date.now() - (window.__tzLastUserEditAt || 0)) < 2000;
+            if (editedRecently && chars < LARGE_DOC_CHARS) scheduleSavePreferences();
             // Keep outline fresh after edits (cheap enough for typical docs)
             if (!isRestoring && state.mode === 'wysiwyg') {
                 if (!updateStats._outlineTimer) {
@@ -537,10 +540,17 @@
 
         window.switchTab = function(tab, noFocus) {
             if (tab !== 'outline' && tab !== 'search' && tab !== 'marks') tab = 'outline';
-            // Marks are resolved on load, not on every draw, so opening the pane is just a
-            // redraw -- but it has to happen, or the tab shows whatever was there when the
-            // document before it was open.
+            // Marks list: re-resolve only if something still looks lost (avoids
+            // fingerprinting the whole book on every tab click). renderMarks already
+            // paints ribbons + scrubber ticks — no second repaintMarkSurface.
             if (tab === 'marks') {
+                try {
+                    if (typeof anyMarkUnresolved === 'function' && anyMarkUnresolved()
+                        && typeof resolveMarksAgainstModel === 'function') {
+                        resolveMarksAgainstModel(false);
+                        if (typeof sortMarks === 'function') sortMarks();
+                    }
+                } catch (eRe) {}
                 try { wireMarksPane(); renderMarks(); } catch (eMk) {}
             }
             // Reaching Search with the mouse must wire it up too. This used to happen only

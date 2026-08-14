@@ -915,6 +915,40 @@
         }
 
         /**
+         * One edit flag for every block type.
+         *
+         * data-raw is canonical until a real edit (input / composition / explicit mark).
+         * A caret click alone must not re-serialize DOM → markdown: that round-trip is
+         * lossy for tables, quotes, fences, lists, emphasis style, etc., and used to
+         * flip Saved → Unsaved with no typing. Type-specific guards (table-edit,
+         * quote-edit) collapsed into this.
+         */
+        const BLOCK_EDITED_ATTR = 'data-tz-edited';
+
+        function markBlockEdited(block) {
+            if (!block) return;
+            try { block.setAttribute(BLOCK_EDITED_ATTR, '1'); } catch (e) {}
+        }
+
+        function blockWasEdited(block) {
+            if (!block) return false;
+            try {
+                if (block.getAttribute(BLOCK_EDITED_ATTR) === '1') return true;
+                // Legacy in-session flags from the table/quote-only era
+                if (block.getAttribute('data-tz-table-edit') === '1') return true;
+                if (block.getAttribute('data-tz-quote-edit') === '1') return true;
+            } catch (e) {}
+            return false;
+        }
+
+        function clearBlockEdited(block) {
+            if (!block) return;
+            try { block.removeAttribute(BLOCK_EDITED_ATTR); } catch (e) {}
+            try { block.removeAttribute('data-tz-table-edit'); } catch (e2) {}
+            try { block.removeAttribute('data-tz-quote-edit'); } catch (e3) {}
+        }
+
+        /**
          * Serialize one block's live DOM to markdown storage form (no write).
          * Shared by input sync, flush, and focused getBlockRaw.
          */
@@ -933,8 +967,10 @@
         }
 
         /**
-         * Phase 1 invariant: write live DOM → data-raw for the active/focused block.
-         * Call before host serialize, mode switch to Source, or any leave-Preview path.
+         * Phase 1 invariant: write live DOM → data-raw for the active/focused block
+         * only after a real edit. Caret-only visits leave data-raw alone.
+         * Call before host serialize, mode switch to Source, or any leave-Preview path
+         * (no-op when nothing was edited — stored raw is already correct).
          */
         function flushActiveBlockToRaw() {
             if (state.mode === 'source') return;
@@ -945,12 +981,7 @@
                 if (sel && sel.anchorNode) blk = getAncestorBlock(sel.anchorNode);
                 if (!blk) blk = currentActiveBlock;
                 if (!blk || !editor.contains(blk)) return;
-                // Tables: HTML→markdown rewrite is lossy (alignment, pipe spacing). A caret
-                // click is not an edit — do not commit a reformatted table over data-raw.
-                // Real typing sets data-tz-table-edit via the input path first.
-                if (isTableBlock(blk) && blk.getAttribute('data-tz-table-edit') !== '1') {
-                    return;
-                }
+                if (!blockWasEdited(blk)) return;
                 const raw = serializeBlockDomToRaw(blk);
                 blk.setAttribute('data-raw', raw);
                 setBlockListIndentAttr(blk, raw);
@@ -963,8 +994,8 @@
 
         /**
          * Read markdown for a block.
-         * Canonical rule (Phase 1): unfocused → data-raw; focused → live DOM serialize.
-         * No "longer wins" length heuristic (that undid deletions on save).
+         * Unfocused → data-raw. Focused without edit → data-raw (click is not a rewrite).
+         * Focused after edit → live DOM serialize. No "longer wins" length heuristic.
          */
         function getBlockRaw(block) {
             if (!block) return '';
@@ -977,19 +1008,14 @@
             if (raw != null && raw !== '' && countMdImages(raw) > block.querySelectorAll('img').length) {
                 try { return normalizeBlockRaw(blockHtmlToMarkdown(block)); } catch (e) {}
             }
-            // Focused: DOM is the live surface — always trust serialize (typing AND deletes).
-            // Exception: tables. Re-serializing the <table> DOM reformats pipes and drops
-            // column alignment, so a click looked like "Unsaved" until focus left and
-            // data-raw won again. Prefer data-raw until a real input marks the table.
-            if (focusedHere) {
-                if (isTableBlock(block) && raw != null && raw !== ''
-                    && block.getAttribute('data-tz-table-edit') !== '1') {
-                    return normalizeBlockRaw(raw);
-                }
+            // Focused + real edit: DOM is the live surface.
+            // Focused + caret only (or unfocused): data-raw is canonical.
+            if (focusedHere && blockWasEdited(block)) {
                 return normalizeBlockRaw(serializeBlockDomToRaw(block));
             }
-            // Unfocused: data-raw is canonical.
             if (raw != null && raw !== '') return normalizeBlockRaw(raw);
+            // No stored raw yet (brand-new empty block): take the DOM.
+            if (focusedHere) return normalizeBlockRaw(serializeBlockDomToRaw(block));
             const fromDom = String(block.innerText || '').replace(/\u00a0/g, ' ');
             if (fromDom.trim()) return normalizeBlockRaw(fromDom);
             if (raw != null) return normalizeBlockRaw(raw);

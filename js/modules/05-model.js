@@ -91,6 +91,10 @@
                 _lastGoodDocRaws = [];
                 _lastCaretLine = 1;
                 currentActiveBlock = null;
+                try {
+                    if (typeof invalidateSearchForDocumentChange === 'function')
+                        invalidateSearchForDocumentChange();
+                } catch (eInv) {}
                 setTimeout(function () { try { updateStatsNow(); } catch (eS) {} }, 0);
                 return;
             }
@@ -118,6 +122,10 @@
             }
             try { if (typeof syncModeSurface === 'function') syncModeSurface(); } catch (eSurf2) {}
             try { postViewState(currentViewState()); } catch (ePv2) {}
+            try {
+                if (typeof invalidateSearchForDocumentChange === 'function')
+                    invalidateSearchForDocumentChange();
+            } catch (eInv2) {}
             updateStatsNow();
         }
 
@@ -930,6 +938,13 @@
                 // (e.g. failed load / partial state).
                 try { clearBookSession(); } catch (eClear2) {}
             }
+            // Markdown is editable in Preview. Defend against a stuck reader-mode /
+            // contenteditable=false from a previous book tab (leaveBook used to set
+            // editable before flipping mode, so ApplyTabView could skip the fix).
+            try {
+                if (typeof setEditorEditable === 'function' && state.mode === 'wysiwyg')
+                    setEditorEditable(true);
+            } catch (eEdMd) {}
             // Drop any correction left by a book: this document is Markdown and the theme's
             // size is already its size.
             try { normaliseBookTextSize(); } catch (eF) {}
@@ -955,10 +970,13 @@
                 (typeof HistoryManager !== 'undefined') && HistoryManager.isRestoring;
 
             function seedHistoryAndCache() {
-                // Do NOT reset _stickyLineCache / _lastCaretLine when loading for a mode
-                // switch — that wiped line 16 → 1 before restore could run.
+                // Do NOT reset sticky/caret when loading for a mode switch — that wiped
+                // line 16 → 1 before restore could run. On a fresh document load, DO reset:
+                // otherwise sticky still says ~500 while the view is at the cover until
+                // resume lands (and forever if resume is skipped).
                 if (!stickyWanted) {
                     _lastCaretLine = 1;
+                    try { rememberStickyLine(1); } catch (eStk) { _stickyLineCache = 1; }
                 }
                 if (typeof HistoryManager !== 'undefined' && !restoringAtStart
                     && !HistoryManager.isRestoring) {
@@ -2156,6 +2174,12 @@
         editor.addEventListener('compositionend', function onEditorCompositionEnd() {
             window.isComposing = false;
             try {
+                let blk = null;
+                try {
+                    const sel = window.getSelection();
+                    if (sel && sel.anchorNode) blk = getAncestorBlock(sel.anchorNode);
+                } catch (eB) {}
+                if (blk && typeof markBlockEdited === 'function') markBlockEdited(blk);
                 flushActiveBlockToRaw();
                 if (typeof HistoryManager !== 'undefined') HistoryManager.snapshot();
                 updateStats();
@@ -2165,32 +2189,29 @@
         editor.addEventListener('input', function onEditorInputSync(e) {
                 if (window.isComposing || (e && e.isComposing)) return;
                 if (state.mode === 'source') return;
-                // Phase 1: every browser edit (type, delete, spellcheck, cut) updates data-raw.
+                // Real edit: mark the block, then commit DOM → data-raw. Caret clicks
+                // never set the flag, so they never rewrite storage (see markBlockEdited).
                 try {
                     let blk = null;
                     try {
                         const sel = window.getSelection();
                         if (sel && sel.anchorNode) blk = getAncestorBlock(sel.anchorNode);
                     } catch (eB) {}
-                    if (blk && typeof isTableBlock === 'function' && isTableBlock(blk)) {
-                        try { blk.setAttribute('data-tz-table-edit', '1'); } catch (eT) {}
-                    }
+                    if (blk && typeof markBlockEdited === 'function') markBlockEdited(blk);
                     flushActiveBlockToRaw();
                     updateStats();
                 } catch (err) {}
             });
 
-        // Leaving a block: commit data-raw so unfocused reads stay canonical.
+        // Leaving a block: commit only if it was actually edited.
         editor.addEventListener('focusout', function onEditorFocusOutFlush(e) {
             if (state.mode === 'source') return;
             if (window.isComposing) return;
             try {
                 const blk = e && e.target ? getAncestorBlock(e.target) : null;
                 if (!blk || !editor.contains(blk)) return;
-                // Tables: only commit after a real edit (see input → data-tz-table-edit).
-                // Otherwise a caret visit rewrote the markdown and flashed Unsaved.
-                if (typeof isTableBlock === 'function' && isTableBlock(blk)
-                    && blk.getAttribute('data-tz-table-edit') !== '1') {
+                if (typeof blockWasEdited === 'function' && !blockWasEdited(blk)) {
+                    if (typeof clearBlockEdited === 'function') clearBlockEdited(blk);
                     return;
                 }
                 const raw = serializeBlockDomToRaw(blk);
@@ -2198,7 +2219,8 @@
                 setBlockListIndentAttr(blk, raw);
                 try { touchLastGoodDocRawAtBlock(blk, raw); } catch (e2) {}
                 try { blk.setAttribute('data-tz-dirty', '1'); } catch (e3) {}
-                try { blk.removeAttribute('data-tz-table-edit'); } catch (e4) {}
+                try { DocumentModel.syncElToModel(blk); } catch (e4) {}
+                if (typeof clearBlockEdited === 'function') clearBlockEdited(blk);
                 _contentCache = null;
             } catch (err) {}
         }, true);

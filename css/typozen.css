@@ -54,7 +54,7 @@
 
         /* Sidebar */
         #sidebar {
-            width: 300px;
+            width: 280px;
             background-color: var(--surface, #27272A);
             border-right: 1px solid var(--border, #3F3F46);
             display: flex;
@@ -72,7 +72,7 @@
             zoom: calc(1 / var(--host-zoom, 1));
         }
         #sidebar.collapsed {
-            margin-left: -300px;
+            margin-left: -280px;
         }
 
         .sidebar-header {
@@ -180,30 +180,42 @@
             color: var(--accent, #3B82F6);
             font-weight: 600;
         }
-        /* An image result names the image instead of quoting the markdown that makes it.
-           No <strong> inside it, deliberately: the match is somewhere in the asset path,
-           which is not text the reader can see on the page, so highlighting a fragment of
-           it would point at nothing. The badge says which image; the row still goes there. */
+        /* Image-only hit: badge names the file; row is a normal clickable result
+           (jumps to the image block — no text-range highlight). */
         .search-badge {
             display: inline-flex;
             align-items: baseline;
             gap: 5px;
             max-width: 100%;
-            padding: 1px 6px;
+            padding: 2px 8px;
             border-radius: 4px;
-            background: var(--code-bg, rgba(128,128,128,0.15));
-            border: 1px solid var(--border, rgba(128,128,128,0.25));
+            background: color-mix(in srgb, var(--accent, #3B82F6) 12%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent, #3B82F6) 35%, var(--border, #3F3F46));
+            color: var(--tx, #F4F4F5);
             font-family: 'Cascadia Mono', Consolas, monospace;
             font-size: 0.92em;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            transition: background-color 0.12s ease, border-color 0.12s ease;
         }
         .search-badge-icon {
             flex: 0 0 auto;
             font-family: 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
             font-size: 0.95em;
-            opacity: 0.75;
+            opacity: 0.9;
+        }
+        .search-item-image {
+            cursor: pointer;
+        }
+        .search-item-image:hover .search-badge {
+            background: color-mix(in srgb, var(--accent, #3B82F6) 22%, transparent);
+            border-color: var(--accent, #3B82F6);
+        }
+        .search-item-image.active .search-badge {
+            background: color-mix(in srgb, var(--accent, #3B82F6) 28%, transparent);
+            border-color: var(--accent, #3B82F6);
+            font-weight: 600;
         }
         .search-item.active .search-text,
         .search-item.active .search-line { color: var(--tx, #F4F4F5); }
@@ -235,6 +247,8 @@
                "current search match" in the sidebar. */
             --mark-ink: color-mix(in srgb, #E8A33D 72%, var(--tx, #F4F4F5));
             --mark-bg: color-mix(in srgb, #E8A33D 16%, transparent);
+            --mark-focus-bg: color-mix(in srgb, #E8A33D 30%, transparent);
+            --mark-annot-bg: color-mix(in srgb, #E8A33D 24%, transparent);
         }
         #sidebar { --mark: var(--mark-ink); }
         .mark-add {
@@ -264,7 +278,11 @@
             transition: background-color 0.12s ease, color 0.12s ease;
         }
         .mark-item:hover { background-color: rgba(128, 128, 128, 0.16); color: var(--tx, #F4F4F5); }
-        .mark-item.active { background: var(--accent-bg, rgba(59,130,246,0.15)); }
+        /* Active mark uses mark amber (not search accent) so list ↔ page share one language. */
+        .mark-item.active {
+            background: var(--mark-bg, rgba(232, 163, 61, 0.16));
+            box-shadow: inset 3px 0 0 0 var(--mark-ink, #E8A33D);
+        }
         .mark-item.active .mark-name { color: var(--tx, #F4F4F5); font-weight: 600; }
         .mark-item .mark-rib { color: var(--mark); font-size: 11px; }
         .mark-body { min-width: 0; }
@@ -301,37 +319,50 @@
         }
         .mark-clear:hover { color: var(--tx, #F4F4F5); text-decoration: underline; }
 
-        /* --- The gutter ribbon ---------------------------------------------------
-           Drawn with ::before rather than a real element, and clicked by coordinate.
-           A .block is a projection of one model row and its content round-trips to
-           data-raw on every edit; putting a child inside it would put a ribbon into
-           the document the moment anything serialised. A pseudo-element cannot be
-           serialised and cannot be typed into.
+        /* --- Bookmarks on the page ---------------------------------------------
+           Idle: inset amber edge (the look you liked).
+           Jump: same edge + soft wash — do not use a thicker/different bar. */
 
-           It sits in the block's own left padding, so nothing reflows when a mark
-           appears -- the space is already there. */
+        #editor .block { position: relative; }
+
+        /* Hover-to-add ribbon only (unmarked). */
         #editor .block::before {
             content: '▮';
             position: absolute;
-            left: -6px;
-            top: 0.15em;
-            width: 14px;
+            left: 2px;
+            top: 0.2em;
+            width: 12px;
             text-align: center;
-            font-size: 0.72em;
-            line-height: 1.6;
+            font-size: 0.7em;
+            line-height: 1.4;
             color: var(--mark-ink, #E8A33D);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.12s ease;
+            z-index: 1;
         }
-        #editor .block { position: relative; }
-        /* Hovering offers one. Not in Source, which has no blocks, and not while a
-           selection is being dragged across the text. */
-        #editor .block:hover::before { opacity: 0.3; }
-        #editor .block.tz-marked::before { opacity: 1; }
-        #editor .block.tz-marked:hover::before { opacity: 0.75; }
-        /* The strip that takes the click. Only as wide as the ribbon, so it cannot
-           steal a click meant for the first character of a line. */
+        /* Hover ▮ only for "Mark hint only". Wash/edge must not show it. */
+        html[data-block-hover="hint"] #editor:not(.reader-mode):not(.book-mode) .block:not(.tz-marked):hover::before {
+            opacity: 0.4;
+        }
+        html:not([data-block-hover="hint"]) #editor .block:not(.tz-marked):hover::before {
+            opacity: 0 !important;
+        }
+        #editor .block.tz-marked::before { opacity: 0 !important; }
+
+        /* Idle mark edge — leave this alone. */
+        #editor .block.tz-marked {
+            box-shadow: inset 3px 0 0 0 var(--mark-ink, #E8A33D);
+        }
+
+        /* Jump flash: wash only; edge must match idle (3px), not a solid 4px bar. */
+        #editor .block.tz-mark-focus {
+            background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
+            border-radius: 2px;
+            box-shadow: inset 3px 0 0 0 var(--mark-ink, #E8A33D);
+            transition: background-color 0.3s ease;
+        }
+
         #editor.tz-marks-live .block { cursor: text; }
 
         .outline-h1 { font-weight: 700; color: var(--tx, #F4F4F5); }
@@ -361,24 +392,42 @@
             font-weight: 600;
         }
 
-        /* Search pane query box — the Search tab's own input, not the Ctrl+F find bar.
-           Chrome metrics throughout: Segoe UI at 13px and a 4px radius, matching the
-           menu rows rather than the document. */
+        /* Search pane — not the Ctrl+F find bar.
+           Two rows: (1) icon + field full width, (2) Aa/ab left + match count right.
+           Keeps the query usable when the sidebar is narrow. */
+        .sidebar-search-block {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin: 1px 4px 8px 4px;
+            flex-shrink: 0;
+        }
         .sidebar-search-row {
             display: flex;
             align-items: center;
-            gap: 6px;
-            margin: 1px 4px 8px 4px;   /* line up with the row margins below */
-            flex-shrink: 0;
+            min-width: 0;
         }
-        /* Match case / whole word. Small enough to sit in the search row without pushing
-           the field around: two glyphs, pressed state carried by the accent, and the same
-           4px radius as every other control here. */
+        .sidebar-search-row-query {
+            gap: 6px;
+        }
+        .sidebar-search-row-opts {
+            justify-content: space-between;
+            gap: 8px;
+            padding: 0 1px;
+        }
+        /* Aa | ab: tight pair — they are related toggles, not separate tool groups. */
+        .sidebar-search-opts {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            flex: 0 0 auto;
+        }
+        /* Match case / whole word: two glyphs, pressed state via accent. */
         .search-opt {
             flex: 0 0 auto;
-            min-width: 22px;
+            min-width: 20px;
             height: 20px;
-            padding: 0 4px;
+            padding: 0 3px;
             border: 1px solid transparent;
             border-radius: 4px;
             background: transparent;
@@ -422,9 +471,8 @@
             flex: 1;
             min-width: 0;
             width: 100%;
-            /* Right padding clears BOTH buttons in the field: the clear × and the history
-               chevron, 22px each. */
-            padding: 5px 48px 5px 8px;
+            /* Right padding clears clear × + history chevron (18px each). */
+            padding: 5px 40px 5px 8px;
             border-radius: 4px;
             border: 1px solid var(--border, #3F3F46);
             background: var(--surface, rgba(255,255,255,0.05));
@@ -451,10 +499,10 @@
            one has never stopped the other. */
         .sidebar-search-clear {
             position: absolute;
-            right: 23px;
+            right: 19px;
             top: 1px;
             bottom: 1px;
-            width: 22px;
+            width: 18px;
             padding: 0;
             border: none;
             background: transparent;
@@ -481,7 +529,7 @@
             right: 1px;
             top: 1px;
             bottom: 1px;
-            width: 22px;
+            width: 18px;
             padding: 0;
             border: none;
             border-radius: 0 3px 3px 0;
@@ -588,6 +636,8 @@
             color: var(--tx-muted, #A1A1AA);
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
+            flex: 0 0 auto;
+            line-height: 20px;
         }
         /* Focus lives on the list while , . < > drive next/prev, so make that visible. */
         #search-results-list:focus {
@@ -990,7 +1040,11 @@
         #page-scrubber-range::-webkit-slider-runnable-track {
             height: 3px;
             border-radius: 2px;
-            background: var(--bd, #3F3F46);
+            /* Quiet reading chrome: theme text at low alpha, not --accent. */
+            background: color-mix(in srgb, var(--tx, #888888) 16%, transparent);
+        }
+        #page-scrubber:hover #page-scrubber-range::-webkit-slider-runnable-track {
+            background: color-mix(in srgb, var(--tx, #888888) 28%, transparent);
         }
         #page-scrubber-range::-webkit-slider-thumb {
             -webkit-appearance: none;
@@ -1161,10 +1215,10 @@
            rather than wrapped -- a <mark> element inside a .block would round-trip
            into data-raw and become part of the document. */
         ::highlight(typozen-mark) {
-            background-color: var(--mark-bg, rgba(232, 163, 61, 0.16));
+            background-color: var(--mark-annot-bg, rgba(232, 163, 61, 0.24));
             text-decoration: underline;
             text-decoration-color: var(--mark-ink, #E8A33D);
-            text-decoration-thickness: 1px;
+            text-decoration-thickness: 2px;
             text-underline-offset: 2px;
         }
 
@@ -1534,23 +1588,43 @@
             padding-top: 0;
             padding-bottom: 0;
         }
+        /*
+         * Block hover (mouse under cursor) — View > Block Hover.
+         * html[data-block-hover=none|wash|edge|hint]
+         * Reader/book: always off (reading surface).
+         * Default wash = previous behaviour.
+         */
         .block:hover {
+            background-color: transparent;
+        }
+        html[data-block-hover="wash"] #editor:not(.reader-mode):not(.book-mode) .block:hover {
             background-color: rgba(128, 128, 128, 0.12);
         }
+        /* Thin cool edge — not mark amber (bookmarks stay amber). */
+        html[data-block-hover="edge"] #editor:not(.reader-mode):not(.book-mode) .block:hover {
+            box-shadow: inset 2px 0 0 0 color-mix(in srgb, var(--accent, #3B82F6) 45%, transparent);
+        }
+        /* hint: no wash; only the ▮ ribbon (see ::before rules below). */
+
         /**
-         * Active line: tint only, no left bar.
-         *
-         * The bar was a third simultaneous cue for the same fact (caret, tint, bar) and it
-         * collided with blockquote, which is also an accent-coloured left border one pixel
-         * wider — so an ordinary focused line read as a quotation. The tint stays because
-         * it carries information the caret does not: this is a block editor, so Enter /
-         * Backspace / Delete act on a discrete unit, and the tint is what shows its extent.
+         * Active/caret block (keyboard focus) — quiet, separate from hover.
+         * Reader / book: off.
          */
         .block.focused {
-            /* --fill-quiet, not --accent-bg: this band is in the document, where the
-               accent already means "search match". Two washes of one hue in one surface,
-               meaning two different things, is not a hierarchy. */
             background-color: var(--fill-quiet, rgba(128,128,128,0.10));
+        }
+        #editor.reader-mode .block.focused,
+        #editor.book-mode .block.focused {
+            background-color: transparent;
+        }
+        #editor.reader-mode .block:hover,
+        #editor.book-mode .block:hover {
+            background-color: transparent !important;
+            box-shadow: none !important;
+        }
+        /* Jump wash wins over any residual focus tint. */
+        #editor .block.tz-mark-focus.focused {
+            background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
         }
 
         /* Focus Mode Styling */

@@ -920,16 +920,27 @@
                         active = getAncestorBlock(sel.anchorNode) || active;
                     }
 
-                    // Virt without a caret in the editor: report the line at viewport center
-                    // (first mounted block would read as window-start, e.g. 4474/4532 at bottom).
-                    if (state.mode === 'wysiwyg' && !selInEditor && typeof _lastCaretLine !== 'undefined' && _lastCaretLine >= 1) {
-                        return Math.min(_lastCaretLine, total);
+                    // No live caret in the editor (typical while paging/reading): report the
+                    // line on screen. Returning a stale _lastCaretLine left status at "Ln 1"
+                    // forever after load while sticky/content sat mid-document.
+                    if (!selInEditor) {
+                        try {
+                            if (typeof hardLineFromPreviewViewport === 'function') {
+                                const view = hardLineFromPreviewViewport() | 0;
+                                if (view >= 1) return Math.min(view, total);
+                            }
+                        } catch (eV) {}
+                        if (typeof DocumentModel !== 'undefined' && DocumentModel.virtEnabled
+                            && DocumentModel.blocks && DocumentModel.blocks.length) {
+                            try {
+                                const idx = modelIndexAtViewportCenter();
+                                return Math.min(Math.max(1, modelBlockStartLine(idx)), total);
+                            } catch (eVirt) {}
+                        }
+                        const frozen = Math.max(1, _stickyLineCache | 0, _lastCaretLine | 0);
+                        return Math.min(frozen, total);
                     }
-                    if (typeof DocumentModel !== 'undefined' && DocumentModel.virtEnabled
-                        && DocumentModel.blocks && DocumentModel.blocks.length && !selInEditor) {
-                        const idx = modelIndexAtViewportCenter();
-                        caret = modelBlockStartLine(idx);
-                    } else if (!active || !editor || !editor.contains(active)) {
+                    if (!active || !editor || !editor.contains(active)) {
                         return 1;
                     } else {
                         let within = 0;
@@ -1146,6 +1157,9 @@
             }
         }
 
+        /** Debounce status Ln updates while paging (full stats are not free on large docs). */
+        let _stickyStatsTimer = null;
+
         /** Keep sticky cache aligned with the visible page while scrolling Preview. */
         function rememberStickyFromPreviewScroll() {
             if (state.mode === 'source') return;
@@ -1156,7 +1170,24 @@
                 if (showingSearch && !window.__tzExternalSearchActive) return;
 
                 const line = hardLineFromPreviewViewport();
-                if (line >= 1) rememberStickyLine(line);
+                if (line >= 1) {
+                    rememberStickyLine(line);
+                    // Status Ln used to lag forever at 1 while sticky tracked the page.
+                    if ((_lastCaretLine | 0) !== (line | 0)) {
+                        _lastCaretLine = line;
+                        if (_stickyStatsTimer) {
+                            try { clearTimeout(_stickyStatsTimer); } catch (eT) {}
+                        }
+                        _stickyStatsTimer = setTimeout(function () {
+                            _stickyStatsTimer = null;
+                            try {
+                                const live = (typeof hardLineFromPreviewViewport === 'function')
+                                    ? (hardLineFromPreviewViewport() | 0) : (line | 0);
+                                if (live >= 1) updateStatsNow({ forceCaretLine: live });
+                            } catch (eS) {}
+                        }, 280);
+                    }
+                }
             } catch (e) {}
         }
 

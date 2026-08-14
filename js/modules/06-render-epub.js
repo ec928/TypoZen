@@ -91,6 +91,8 @@
             // A book is read-only and paginated: that is what it is, not a preference.
             // Going through the same commands a reader would use keeps one code path.
             state.mode = 'reader';
+            state.viewMode = 'reader';
+            state.viewScroll = 'pagination';
             setEditorEditable(false);
 
             // Reader is pages only. Setting the mode without the pagination it implies left
@@ -108,11 +110,30 @@
                 try { postMsg('sync_page_advance:1'); } catch (eP) {}
             }
             editor.classList.add('page-mode');
+            editor.classList.add('reader-mode');
             PageMap.invalidate();
-            state.viewMode = 'reader';
-            state.viewScroll = 'pagination';
 
-            try { applyEditorChromeForMode(); } catch (eC) {}
+            // MUST show #editor and hide #source-editor BEFORE mounting.
+            //
+            // Coming from a Source-mode tab, syncModeSurface left editor at display:none
+            // and the textarea visible. loadBookPayload used to fill the hidden editor
+            // and never flip the surfaces -- so the old Source document stayed on screen
+            // ("wrong book" / hash-looking garbage / 9/19 pages) until a 2-col switch
+            // called remountBookSurface, which did show the editor. Measure also needs a
+            // visible box: layout at width 0 poisons PageChunks.
+            try {
+                if (typeof syncModeSurface === 'function') syncModeSurface();
+                else {
+                    if (editor) editor.style.display = '';
+                    if (sourceEditor) sourceEditor.style.display = 'none';
+                    applyEditorChromeForMode();
+                }
+            } catch (eSurf) {
+                try { if (editor) editor.style.display = ''; } catch (eE) {}
+                try { if (sourceEditor) sourceEditor.style.display = 'none'; } catch (eS) {}
+                try { applyEditorChromeForMode(); } catch (eC0) {}
+            }
+
             // Tell the shell, or the toolbar keeps showing Preview while the document is
             // in Reader -- the selectors are driven by what the page reports, not by what
             // it happens to be doing.
@@ -161,6 +182,16 @@
             try { updateOutline(); } catch (eO) {}
             try { updateStatsNow(); } catch (eSt) {}
             try { HistoryManager.clear(); } catch (eH) {}
+            // Marks often arrive while the previous document is still in the model (host
+            // sends marks_load with fetch_and_load_book). Markdown re-resolves at the end
+            // of finishLoadContent; books never did, so every mark stayed "lost" for the
+            // whole session even though the paragraphs were still in the epub.
+            try { resolveMarksAfterDocumentLoad(); } catch (eMk) {}
+            // Search results belonged to the previous tab/document — re-run or clear.
+            try {
+                if (typeof invalidateSearchForDocumentChange === 'function')
+                    invalidateSearchForDocumentChange();
+            } catch (eInv) {}
 
             const ms = (typeof performance !== 'undefined')
                 ? Math.round(performance.now() - t0) : 0;
@@ -412,13 +443,25 @@
             if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks.length) return;
             const bi = Math.max(0, Math.min(idx | 0, DocumentModel.blocks.length - 1));
             try {
+                const line = modelBlockStartLine(bi);
                 if (isPaginatedLayout()) {
                     goToPageHoldingBlock(bi);
+                    _readingAnchor = bi;
+                    rememberStickyLine(line);
+                    // Paginated path does not go through restoreStickyDocumentLine, so
+                    // status Ln stayed at 1 after resume/tab return. Force it.
+                    try { updateStatsNow({ forceCaretLine: line }); } catch (eSt) {}
                 } else {
-                    restoreStickyDocumentLine(modelBlockStartLine(bi));
+                    restoreStickyDocumentLine(line);
+                    _readingAnchor = bi;
                 }
-                _readingAnchor = bi;
-                rememberStickyLine(modelBlockStartLine(bi));
+                // Align search 1/N to the reading region without yanking the view.
+                try {
+                    if (typeof syncSearchIndexToLocation === 'function'
+                        && !window.__tzExternalSearchActive) {
+                        syncSearchIndexToLocation();
+                    }
+                } catch (eSync) {}
             } catch (e) {
                 window.showDebugTelemetry('goToModelBlock: ' + e.message);
             }
@@ -1015,49 +1058,59 @@
         }
 
         /**
-         * Leave Reader + Pages that a book forced on, and restore a normal markdown surface.
+         * Leave Reader + Pages that a book forced on so a markdown/txt tab can paint.
          * Only call when leaving an epub for a non-book document (not for sticky mode-switch).
+         *
+         * Does NOT own the destination mode. Host ApplyTabView (per-tab bag) does.
+         * Forcing Preview here wiped Source that the host had already requested when a
+         * large file finished loading *after* view_set:mode:source (book → Source tab).
          */
         function leaveBookViewForMarkdown() {
             clearBookSession();
             try {
-                state.mode = 'wysiwyg';
-                state.viewMode = 'preview';
-                state.viewScroll = 'scroll';
-                // Keep column count if the user had 2-col; still force scroll not pages.
+                // Strip book layout always. Drop forced Pages; Preview/Source decide scroll.
                 if (state.pageAdvance) {
                     state.pageAdvance = false;
                     try { postMsg('sync_page_advance:0'); } catch (eP) {}
                 }
                 if (editor) {
                     editor.classList.remove('page-mode', 'reader-mode');
-                    // two-col without pagination is invalid for preview scroll — drop it
+                    // two-col without pagination is invalid for preview scroll
                     editor.classList.remove('two-col-layout');
-                    // Taking page-mode off with classList skips syncPaginationClass(), and
-                    // that is the only other place the inline column geometry is cleared.
-                    // So a book read in Pages handed the next Markdown tab its
-                    // column-width, column-gap, column-count and zeroed page padding --
-                    // live, on a document that is not paginated, with page-mode gone so
-                    // relayout() would never run again to correct it. The text was laid
-                    // out in the book's column and the rest of the pane stayed empty.
-                    //
-                    // PageGeometry.clear() is the one teardown; call it rather than
-                    // growing a second copy here.
                     try { PageGeometry.clear(); } catch (ePG) {}
-                    state.viewColumns = 1;
                     try { editor.scrollLeft = 0; } catch (eS) {}
-                    try { editor.style.display = ''; } catch (eD) {}
-                }
-                if (sourceEditor) {
-                    try { sourceEditor.style.display = 'none'; } catch (eSrc) {}
                 }
                 try { PageMap.invalidate(); } catch (eM) {}
                 try { if (typeof PageChunks !== 'undefined') PageChunks.invalidate(); } catch (eC) {}
                 try { currentTwoColPage = 0; } catch (eT) {}
-                try { setEditorEditable(true); } catch (eE) {}
-                try { applyEditorChromeForMode(); } catch (eCh) {}
+
+                // Destination mode FIRST, then editability. Calling setEditorEditable while
+                // state.mode was still 'reader' left contenteditable=false and re-applied
+                // .reader-mode after we stripped it — Preview chrome, dead typing.
+                if (state.mode === 'reader') {
+                    state.mode = 'wysiwyg';
+                    state.viewMode = 'preview';
+                    state.viewScroll = 'scroll';
+                    state.viewColumns = 1;
+                    try { postMsg('mode_changed:wysiwyg'); } catch (eMode) {}
+                }
+                try {
+                    // Markdown/txt: Preview edits; Source uses the textarea; never Reader.
+                    setEditorEditable(state.mode === 'wysiwyg');
+                } catch (eE) {}
+
+                try {
+                    if (typeof syncModeSurface === 'function') syncModeSurface();
+                    else {
+                        const src = state.mode === 'source';
+                        if (editor) editor.style.display = src ? 'none' : '';
+                        if (sourceEditor) sourceEditor.style.display = src ? 'block' : 'none';
+                        applyEditorChromeForMode();
+                    }
+                } catch (eSurf) {
+                    try { applyEditorChromeForMode(); } catch (eCh) {}
+                }
                 try { updatePageIndicator(); } catch (eI) {}
-                try { postMsg('mode_changed:wysiwyg'); } catch (eMode) {}
                 try { postViewState(currentViewState()); } catch (eV) {}
             } catch (e) {
                 try { window.showDebugTelemetry('leaveBookViewForMarkdown: ' + e.message); } catch (e2) {}
@@ -1655,7 +1708,8 @@
 
             HistoryManager.beginEdit();
             const next = tableOp(ctx.model, op, ctx.rowIndex, ctx.colIndex, value);
-            try { ctx.block.setAttribute('data-tz-table-edit', '1'); } catch (eT) {}
+            // writeBlockRaw is the storage truth; no edit-flag needed for serialize
+            // (data-raw already matches). Flag only for contenteditable input paths.
             writeBlockRaw(ctx.block, formatTableMarkdown(next));
 
             // Land the caret where the edit happened, so you can keep typing

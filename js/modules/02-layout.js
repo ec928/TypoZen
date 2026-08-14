@@ -206,6 +206,15 @@
                         sel.removeAllRanges();
                         sel.addRange(r.cloneRange());
                     } catch (e) {}
+                    // Same arrival flash as marks / model search.
+                    try {
+                        let n = r.startContainer;
+                        if (n && n.nodeType === 3) n = n.parentElement;
+                        const blk = n && n.closest ? n.closest('.block') : null;
+                        const mi = (blk && typeof DocumentModel !== 'undefined')
+                            ? DocumentModel.modelIndexOfEl(blk) : -1;
+                        if (mi >= 0) flashMarkFocus(mi);
+                    } catch (eFl) {}
                 }
             }
             updateFindCount();
@@ -228,9 +237,33 @@
          * ordinary text with an ordinary position.
          */
         function imageOnlyLine(text) {
-            const m = /^!\[([^\]]*)\]\(\s*<?([^)\s>]*)/.exec(String(text == null ? '' : text).trim());
+            // Allow optional title, angle-bracket URL, trailing CR from Windows files.
+            const m = /^!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)\s*$/
+                .exec(String(text == null ? '' : text).trim());
             if (!m) return null;
             return { alt: m[1] || '', src: m[2] || '' };
+        }
+
+        /** True when this model match lives on an image-only block (no on-screen text). */
+        function matchIsImageOnly(match, blockIdx) {
+            try {
+                if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return false;
+                const bi = (blockIdx >= 0) ? (blockIdx | 0) : -1;
+                if (bi >= 0 && bi < DocumentModel.blocks.length) {
+                    if (imageOnlyLine(DocumentModel.blocks[bi].raw)) return true;
+                }
+                // Fallback: the hard line containing the match offset (same basis as the list).
+                if (match && match.start != null && typeof documentLineForModelOffset === 'function') {
+                    const line = documentLineForModelOffset(match.start);
+                    const loc = (typeof modelLocationFromDocumentLine === 'function')
+                        ? modelLocationFromDocumentLine(line) : null;
+                    if (loc && loc.blockIndex >= 0 && DocumentModel.blocks[loc.blockIndex]
+                        && imageOnlyLine(DocumentModel.blocks[loc.blockIndex].raw)) {
+                        return true;
+                    }
+                }
+            } catch (e) {}
+            return false;
         }
 
         /** What to call an image in one row of a list: its alt text, else its file name. */
@@ -468,7 +501,9 @@
                 // still has real text worth quoting.
                 const img = imageOnlyLine(haystack.substring(b.start, b.end));
                 let snippet;
+                let rowExtra = '';
                 if (img) {
+                    rowExtra = ' search-item-image';
                     snippet = '<span class="search-badge">' +
                         '<span class="search-badge-icon" aria-hidden="true">\u{1F5BC}</span>' +
                         esc(imageBadgeLabel(img)) + '</span>';
@@ -479,8 +514,12 @@
                 }
 
                 const active = (i === findState.index) ? ' active' : '';
-                html += '<div class="search-item' + active + '" onclick="window.findJumpTo(' + i + '); try { this.closest(\'#search-results-list\').focus({preventScroll:true}); } catch(e) {}"' +
-                    ' title="Line ' + lines[i] + ' — match ' + (i + 1) + ' of ' + findState.matches.length + '">' +
+                const tip = img
+                    ? ('Line ' + lines[i] + ' — image (match in path) — click to jump · '
+                        + (i + 1) + ' of ' + findState.matches.length)
+                    : ('Line ' + lines[i] + ' — match ' + (i + 1) + ' of ' + findState.matches.length);
+                html += '<div class="search-item' + rowExtra + active + '" onclick="window.findJumpTo(' + i + '); try { this.closest(\'#search-results-list\').focus({preventScroll:true}); } catch(e) {}"' +
+                    ' title="' + tip.replace(/"/g, '&quot;') + '">' +
                     '<span class="search-line">' + lines[i] + '</span>' +
                     '<span class="search-text">' + snippet + '</span></div>';
             }
@@ -766,21 +805,23 @@
         /**
          * Where a mark actually is now, or -1 if its text is gone.
          *
-         * Outward from the hint, nearest first, because the same sentence can legitimately
-         * appear twice and the one the reader meant is the one nearest where they left it.
-         * Forward is tried before backward at equal distance: text is far more often
-         * inserted above a mark than removed, so the block it moved to is usually later.
+         * Nearest match to the hint wins when the same sentence appears twice. Forward is
+         * preferred at equal distance: text is more often inserted above a mark than
+         * removed. Hint comes from the stored block, or from mark.hint when a previous
+         * resolve already marked it lost (block -1) — without that, search restarts at 0
+         * and a ±400 radius cannot see a mark left mid-book.
          *
-         * Bounded rather than a whole-document scan. Fingerprinting a block means parsing
-         * its HTML, and a 45,000-block omnibus with a dozen marks would pay that half a
-         * million times on every open. 400 blocks either way covers any edit a person makes
-         * by hand; past that the honest answer is "I cannot find it", which the caller shows
-         * as unresolved rather than quietly pointing somewhere plausible and wrong.
+         * The local radius is tried first (cheap for a small edit). On a miss, one full
+         * pass over the document: an epub re-split or a bad early resolve against the
+         * previous tab used to leave every mark "lost" while the paragraph still existed
+         * a few thousand blocks away. A dozen marks on a 45k-block book is one scan per
+         * mark at worst; resolveMarksAgainstModel builds a map and pays once for all.
          */
         function resolveMarkIndex(mark, raws, radius) {
             const n = raws ? raws.length : 0;
             const want = (mark && mark.fp) ? String(mark.fp) : '';
             let hint = mark ? (mark.block | 0) : 0;
+            if (hint < 0 && mark && (mark.hint | 0) >= 0) hint = mark.hint | 0;
             if (hint < 0) hint = 0;
             // No fingerprint: a mark from a store written before this existed. Trust the
             // index, which is all it has.
@@ -793,7 +834,17 @@
                 const before = hint - d;
                 if (before >= 0 && before < n && markFingerprint(raws[before]) === want) return before;
             }
-            return -1;
+            // Full pass: pick the occurrence nearest the hint (forward on a tie).
+            let best = -1, bestDist = n + 1;
+            for (let i = 0; i < n; i++) {
+                if (markFingerprint(raws[i]) !== want) continue;
+                const dist = Math.abs(i - hint);
+                if (dist < bestDist || (dist === bestDist && i >= hint && best < hint)) {
+                    best = i;
+                    bestDist = dist;
+                }
+            }
+            return best;
         }
 
         /* The marks for the document currently open, in document order. Kept resolved:
@@ -831,67 +882,134 @@
             sortMarks();
             try { renderMarks(); } catch (e) {}
 
-            // If there was no document to resolve against, try again shortly.
+            // Payload and document are independent messages; either can win the race.
             //
-            // The payload and the document arrive as two independent messages and either
-            // can be first. When marks win the race, markBlockRaws() is empty, every mark
-            // resolves to -1, and nothing ever tried again -- so a reader's bookmarks came
-            // back struck through as lost on a document where all of them were present.
-            // Intermittent by nature, which is what made it look like test flake.
-            //
-            // Retried here rather than hooked onto a load path, because there are several
-            // and a large document does not take the same one as a small one. A few short
-            // attempts cost nothing and cover every ordering.
-            if (_marks.length && !markBlockRaws().length) {
+            // Watch only until the model appears and its length is stable, re-resolving
+            // when the length changes (wrong tab still mounted → real book arrives).
+            // Do NOT re-fingerprint the whole book every 150ms while marks stay lost on a
+            // stable model — that was O(blocks × poll) for no gain; book/markdown load
+            // already calls resolveMarksAfterDocumentLoad.
+            if (_marks.length) {
                 let tries = 0;
-                const retry = function () {
-                    if (++tries > 12) return;
-                    if (!markBlockRaws().length) { setTimeout(retry, 150); return; }
-                    if (resolveMarksAgainstModel(true) > 0) {
+                let lastLen = -1;
+                let stableTicks = 0;
+                const tick = function () {
+                    if (++tries > 40) return;
+                    const n = markBlockRaws().length;
+                    if (!n) {
+                        setTimeout(tick, 150);
+                        return;
+                    }
+                    if (n !== lastLen) {
+                        lastLen = n;
+                        stableTicks = 0;
+                        resolveMarksAgainstModel(false);
                         sortMarks();
                         try { renderMarks(); } catch (e2) {}
+                        setTimeout(tick, 150);
+                        return;
                     }
+                    // Same length twice in a row → model settled; stop even if some marks
+                    // remain unresolved (text really gone).
+                    stableTicks++;
+                    if (stableTicks < 2) setTimeout(tick, 150);
                 };
-                setTimeout(retry, 150);
+                const n0 = markBlockRaws().length;
+                let anyLost = false;
+                for (let i = 0; i < _marks.length; i++) {
+                    if (!(_marks[i].block >= 0)) { anyLost = true; break; }
+                }
+                if (!n0 || anyLost) setTimeout(tick, 150);
             }
         }
 
         /**
          * Point every mark at the block its text is in.
          *
-         * Extracted and made callable twice because it was only ever called once, from
-         * loadMarksPayload -- and the payload can arrive BEFORE the document. When it
-         * does, markBlockRaws() is empty, every mark resolves to -1, and there is nothing
-         * that ever tries again: the reader's bookmarks come back struck through as lost
-         * on a document where every one of them is still present. Intermittent, because
-         * it depends on which of the two messages the host gets to first.
+         * One fingerprint pass over the document builds a map, then each mark is the
+         * nearest hit to its hint. A per-mark radius walk used to re-parse HTML for every
+         * candidate and still miss anything outside ±400 of a destroyed (-1) hint — which
+         * is how five mid-book marks on Matter came back all "text no longer here" while
+         * every paragraph was still in the file.
          *
-         * onlyUnresolved is what makes the second call safe. Re-resolving a mark that
-         * already found its block could move it if the same text appears twice; rescuing
-         * one that found nothing cannot make anything worse.
+         * onlyUnresolved: rescue path that will not move a mark that already found a
+         * block (same text twice). Full re-resolve (false) is for a document that just
+         * finished loading: the previous answer may have been against the wrong model.
          */
         function resolveMarksAgainstModel(onlyUnresolved) {
             const raws = markBlockRaws();
             if (!raws || !raws.length) return 0;
+            const byFp = Object.create(null);
+            for (let i = 0; i < raws.length; i++) {
+                const fp = markFingerprint(raws[i]);
+                if (!fp) continue;
+                if (!byFp[fp]) byFp[fp] = [];
+                byFp[fp].push(i);
+            }
             let fixed = 0;
             for (let i = 0; i < _marks.length; i++) {
-                if (onlyUnresolved && _marks[i].block >= 0) continue;
-                const was = _marks[i].block;
-                _marks[i].block = resolveMarkIndex(_marks[i], raws);
-                if (was < 0 && _marks[i].block >= 0) fixed++;
+                const m = _marks[i];
+                if (onlyUnresolved && m.block >= 0) continue;
+                const was = m.block;
+                if (was >= 0) m.hint = was;
+                else if (!((m.hint | 0) >= 0) && (was | 0) < 0) {
+                    // nothing to seed; resolveMarkIndex / map still search by fingerprint
+                }
+                const want = m.fp ? String(m.fp) : '';
+                let next = -1;
+                if (!want) {
+                    const h = (was >= 0) ? was : ((m.hint | 0) >= 0 ? (m.hint | 0) : 0);
+                    next = h < raws.length ? h : -1;
+                } else {
+                    const hits = byFp[want];
+                    if (hits && hits.length) {
+                        let hint = was | 0;
+                        if (hint < 0 && (m.hint | 0) >= 0) hint = m.hint | 0;
+                        if (hint < 0) hint = 0;
+                        next = hits[0];
+                        let bestDist = Math.abs(hits[0] - hint);
+                        for (let h = 1; h < hits.length; h++) {
+                            const dist = Math.abs(hits[h] - hint);
+                            if (dist < bestDist ||
+                                (dist === bestDist && hits[h] >= hint && next < hint)) {
+                                next = hits[h];
+                                bestDist = dist;
+                            }
+                        }
+                    }
+                }
+                m.block = next;
+                if (next >= 0) m.hint = next;
+                if (was < 0 && next >= 0) fixed++;
+                else if (was >= 0 && next >= 0 && was !== next) fixed++;
             }
             return fixed;
         }
 
-        /** A document finished loading: rescue any mark that had nothing to resolve against. */
+        /**
+         * A document finished loading: re-resolve every mark against THIS model.
+         *
+         * Must run for books as well as Markdown. Marks often arrive while the previous
+         * tab's model is still mounted (host sends marks_load in the same breath as
+         * fetch_and_load_book); a resolve then marks everything lost, and without this
+         * they stay lost for the whole session.
+         */
         function resolveMarksAfterDocumentLoad() {
             try {
                 if (!_marks || !_marks.length) return;
-                if (resolveMarksAgainstModel(true) > 0) {
-                    sortMarks();
-                    renderMarks();
-                }
+                resolveMarksAgainstModel(false);
+                sortMarks();
+                try { renderMarks(); } catch (eR) {}
             } catch (e) {}
+        }
+
+        /** True if any mark still has no block (Marks tab can skip a full fingerprint pass). */
+        function anyMarkUnresolved() {
+            if (!_marks || !_marks.length) return false;
+            for (let i = 0; i < _marks.length; i++) {
+                if (!(_marks[i].block >= 0)) return true;
+            }
+            return false;
         }
 
         /** Hand the whole list back to the host, which keys it by the document's path. */
@@ -970,7 +1088,22 @@
          * Five marks over 604 pages is a shape you read at a glance; five rows in a list
          * is not. Drawn as a background gradient on the track rather than as elements, so
          * there is nothing to keep in step with the thumb and nothing to clean up.
+         *
+         * Positions come from PageMap.pageOfBlock, which measures the mounted range and
+         * interpolates unmounted ones. They still drift as page-count estimates refine
+         * (same budget as the scrubber thumb itself) — but they no longer all collapse
+         * onto chunk boundaries, which is what made the track look like a deliberate lie.
          */
+        let _scrubTickTimer = null;
+        /** Coalesce mark ticks across rapid page turns (same visual, less style churn). */
+        function schedulePaintScrubberTicks() {
+            if (_scrubTickTimer) return;
+            _scrubTickTimer = setTimeout(function () {
+                _scrubTickTimer = null;
+                try { paintScrubberTicks(); } catch (e) {}
+            }, 48);
+        }
+
         function paintScrubberTicks() {
             const host = document.getElementById('page-scrubber');
             if (!host) return;
@@ -983,24 +1116,108 @@
                 if (isPaginatedLayout() && typeof PageMap !== 'undefined' && PageMap.ensure
                     && PageMap.ensure() && PageMap.pageOfBlock) {
                     const total = Math.max(1, PageMap.count());
+                    const den = Math.max(1, total - 1);
                     for (let i = 0; i < _marks.length; i++) {
                         if (!(_marks[i].block >= 0)) continue;
                         const p = PageMap.pageOfBlock(_marks[i].block);
                         if (!(p >= 0)) continue;
-                        const pct = Math.max(0, Math.min(100, (p / Math.max(1, total - 1)) * 100));
+                        const pct = Math.max(0, Math.min(100, (p / den) * 100));
                         stops.push(pct);
                     }
                 }
             } catch (e) { stops = []; }
             if (!stops.length) { host.style.removeProperty('--tick-image'); return; }
+            // Dedup exact-pixel stacks so two marks on the same estimated page stay one
+            // sliver rather than painting the same gradient twice (no visual change, less
+            // CSS noise when many marks land in one unmeasured range).
+            stops.sort(function (a, b) { return a - b; });
+            const uniq = [];
+            for (let s = 0; s < stops.length; s++) {
+                if (!uniq.length || Math.abs(uniq[uniq.length - 1] - stops[s]) > 0.15) {
+                    uniq.push(stops[s]);
+                }
+            }
             const c = 'var(--mark-ink, #E8A33D)';
-            const img = stops.map(function (pct) {
-                // A 2px sliver at each mark. calc keeps the sliver a fixed width at any
-                // scrubber length rather than a percentage that grows with the window.
+            const img = uniq.map(function (pct) {
                 return 'linear-gradient(' + c + ', ' + c + ') no-repeat calc(' + pct +
-                    '% - 1px) 50% / 2px 11px';
+                    '% - 1.5px) calc(50% + 2px) / 3px 12px';
             }).join(', ');
             host.style.setProperty('--tick-image', img);
+        }
+
+        /**
+         * Brief amber wash on a model block after a jump (marks list, search hit, etc.).
+         * Same paint as mark jump: .tz-mark-focus, then clear. Marked blocks keep their
+         * inset edge; plain search targets go back to unmarked.
+         * Clears stray .focused on reader so gray band cannot disagree with the flash
+         * (common in 2-col: focus on one column, target on the other).
+         */
+        let _markFocusTimer = null;
+        let _markFocusGen = 0;
+        function flashMarkFocus(bi) {
+            bi = bi | 0;
+            if (bi < 0 || !editor) return;
+            const gen = ++_markFocusGen;
+            let tries = 0;
+            const readingSurface = function () {
+                try {
+                    if (editor.classList.contains('reader-mode')
+                        || editor.classList.contains('book-mode')) return true;
+                    if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
+                        return true;
+                } catch (eR) {}
+                return false;
+            };
+            const apply = function () {
+                if (gen !== _markFocusGen) return;
+                try {
+                    const prev = editor.querySelectorAll('.block.tz-mark-focus');
+                    for (let i = 0; i < prev.length; i++) prev[i].classList.remove('tz-mark-focus');
+                    const el = editor.querySelector('.block[data-model-index="' + bi + '"]');
+                    if (!el) {
+                        if (++tries < 12) setTimeout(apply, 90);
+                        return;
+                    }
+                    if (readingSurface()) {
+                        // No gray band at all while reading.
+                        const lit = editor.querySelectorAll('.block.focused');
+                        for (let j = 0; j < lit.length; j++) lit[j].classList.remove('focused');
+                    } else if (typeof setFocusedBlock === 'function') {
+                        // Preview: caret band and mark target must be the same block.
+                        try { setFocusedBlock(el); } catch (eF) {}
+                    }
+                    el.classList.add('tz-mark-focus');
+                    if (_markFocusTimer) {
+                        try { clearTimeout(_markFocusTimer); } catch (eT) {}
+                    }
+                    _markFocusTimer = setTimeout(function () {
+                        _markFocusTimer = null;
+                        if (gen !== _markFocusGen) return;
+                        try { el.classList.remove('tz-mark-focus'); } catch (eR) {}
+                    }, 1200);
+                } catch (e) {}
+            };
+            apply();
+            setTimeout(apply, 220);
+            setTimeout(apply, 550);
+        }
+
+        /**
+         * Keep status "Ln N" and sticky aligned after a programmatic jump (search / mark).
+         * A following stats pass often re-reads caret as 1 and overwrites the status bar.
+         */
+        function pinStatusLineAfterJump(line1Based) {
+            const line = Math.max(1, line1Based | 0);
+            try { if (typeof rememberStickyLine === 'function') rememberStickyLine(line); } catch (e0) {}
+            try { if (typeof _lastCaretLine !== 'undefined') _lastCaretLine = line; } catch (e1) {}
+            try { updateStatsNow({ forceCaretLine: line }); } catch (e2) {}
+            setTimeout(function () {
+                try {
+                    if (typeof rememberStickyLine === 'function') rememberStickyLine(line);
+                    if (typeof _lastCaretLine !== 'undefined') _lastCaretLine = line;
+                    updateStatsNow({ forceCaretLine: line });
+                } catch (e3) {}
+            }, 180);
         }
 
         /**
@@ -1018,6 +1235,76 @@
             try { here = currentReadingBlock(); } catch (e) { return -1; }
             if (!(here >= 0)) return -1;
             try { return markSnapToInk(here, markBlockRaws()); } catch (e2) { return here; }
+        }
+
+        /**
+         * Which mark row should show .active.
+         *
+         * Old rule: last mark with block <= reading top-left. In 2-col that is the left
+         * column's "here", so a mark on the right of the same spread (amber edge on
+         * screen) stayed deselected while an earlier mark lit in the list — p152 on
+         * page, p45 active; p323 on page, p241 active.
+         *
+         * New rule:
+         *   1) Mark the user just jumped to (pin), while still on that spread
+         *   2) Any mark whose block is currently visible — closest to reading block
+         *   3) Else last mark at or before reading block (original)
+         */
+        let _pinnedMarkIndex = -1;
+        function markBlockVisibleOnScreen(blockIndex) {
+            if (!(blockIndex >= 0) || !editor) return false;
+            try {
+                const el = (typeof elementForModelIndex === 'function')
+                    ? elementForModelIndex(blockIndex)
+                    : editor.querySelector('.block[data-model-index="' + blockIndex + '"]');
+                if (!el) return false;
+                const host = (typeof isPaginatedLayout === 'function' && isPaginatedLayout())
+                    ? editor : (mainContainer || editor);
+                const hr = host.getBoundingClientRect();
+                const r = el.getBoundingClientRect();
+                if (r.width === 0 && r.height === 0) return false;
+                // Any overlap with the reading surface (left or right column).
+                if (r.bottom <= hr.top + 1 || r.top >= hr.bottom - 1) return false;
+                if (r.right <= hr.left + 1 || r.left >= hr.right - 1) return false;
+                return true;
+            } catch (e) { return false; }
+        }
+        function nearestMarkIndex(here) {
+            if (!_marks.length) return -1;
+            // 1) Pin from list click / jump, while still on that spread (or close).
+            if (_pinnedMarkIndex >= 0 && _pinnedMarkIndex < _marks.length) {
+                const pb = _marks[_pinnedMarkIndex].block;
+                if (pb >= 0) {
+                    if (markBlockVisibleOnScreen(pb)) return _pinnedMarkIndex;
+                    if (here >= 0 && Math.abs(pb - here) <= 80) return _pinnedMarkIndex;
+                }
+                _pinnedMarkIndex = -1;
+            }
+            // 2) Marks currently on screen — prefer closest to reading position.
+            let bestVis = -1;
+            let bestDist = 1e15;
+            for (let i = 0; i < _marks.length; i++) {
+                const b = _marks[i].block;
+                if (!(b >= 0)) continue;
+                if (!markBlockVisibleOnScreen(b)) continue;
+                const d = (here >= 0) ? Math.abs(b - here) : i;
+                if (d < bestDist) { bestDist = d; bestVis = i; }
+            }
+            if (bestVis >= 0) return bestVis;
+            // 3) Last mark at or before here (document-order progress).
+            let nearest = -1;
+            if (here >= 0) {
+                for (let i = 0; i < _marks.length; i++) {
+                    const b = _marks[i].block;
+                    if (b >= 0 && b <= here) nearest = i;
+                }
+            }
+            if (nearest >= 0) return nearest;
+            // 4) First resolved mark.
+            for (let i = 0; i < _marks.length; i++) {
+                if (_marks[i].block >= 0) return i;
+            }
+            return 0;
         }
 
         /**
@@ -1066,14 +1353,10 @@
                     if (typeof postChapterLabel === 'function') postChapterLabel(here);
                 } catch (eCh) {}
                 updateMarkButton();
-                // The row the reader is nearest, without redrawing the list.
+                // The row that matches what's on screen / nearest — without full rebuild.
                 const rows = document.querySelectorAll('#marks-list .mark-item');
                 if (rows.length) {
-                    let nearest = -1;
-                    for (let i = 0; i < _marks.length; i++) {
-                        if (_marks[i].block >= 0 && _marks[i].block <= here) nearest = i;
-                    }
-                    if (nearest < 0) nearest = 0;
+                    const nearest = nearestMarkIndex(here);
                     for (let i = 0; i < rows.length; i++) {
                         rows[i].classList.toggle('active',
                             i === nearest && !rows[i].classList.contains('lost'));
@@ -1104,13 +1387,8 @@
                 return;
             }
 
-            // The nearest mark at or before where the reader is; the first one otherwise.
-            let nearest = -1;
-            for (let i = 0; i < _marks.length; i++) {
-                const b = _marks[i].block;
-                if (b >= 0 && b <= here) nearest = i;
-            }
-            if (nearest < 0) nearest = 0;
+            // Prefer mark visible on this spread (2-col right column), not only "last before top-left".
+            const nearest = nearestMarkIndex(here);
 
             const frag = document.createDocumentFragment();
             for (let i = 0; i < _marks.length; i++) {
@@ -1283,7 +1561,9 @@
                     // Same courtesy search and the outline give: leave a breadcrumb so
                     // Ctrl+Shift+J comes back to where the reader was.
                     try { captureReturnJump(); } catch (e2) {}
+                    _pinnedMarkIndex = i; // list ↔ page agree after jump (2-col especially)
                     goToReadingBlock(bi);
+                    try { flashMarkFocus(bi); } catch (eF) {}
                     renderMarks();
                 });
                 // Rename in place. Double-click rather than a button: renaming is the rare
@@ -1849,7 +2129,13 @@
                 const clean = function (s) {
                     return String(s == null ? '' : s).split(MARK_FS).join(' ').split(MARK_RS).join(' ');
                 };
-                out.push([m.block | 0, m.named ? '1' : '0', clean(m.fp), clean(m.name),
+                // Never write -1 into the store. parseMarks used to drop those rows, and
+                // even when they survived, the next open had no position hint — so a mark
+                // that failed one resolve was unrecoverable mid-book. Prefer the live
+                // block, then the last good hint, then 0 (fingerprint still finds it).
+                let bi = m.block | 0;
+                if (bi < 0) bi = ((m.hint | 0) >= 0) ? (m.hint | 0) : 0;
+                out.push([bi, m.named ? '1' : '0', clean(m.fp), clean(m.name),
                           (m.s == null ? '' : m.s | 0), (m.e == null ? '' : m.e | 0),
                           clean(m.note)].join(MARK_FS));
             }
@@ -1867,14 +2153,18 @@
                 const f = recs[i].split(MARK_FS);
                 if (f.length < 4) continue;
                 const block = parseInt(f[0], 10);
-                if (!isFinite(block) || block < 0) continue;
-                const rec = { block: block, named: f[1] === '1', fp: f[2], name: f[3],
-                              note: f.length > 6 ? f[6] : '' };
+                if (!isFinite(block) || block < -1) continue;
+                // -1 with a fingerprint: still a mark, just unresolved — keep it so the
+                // next document resolve can find the text. -1 with no fp is nothing.
+                if (block < 0 && !f[2]) continue;
+                const rec = { block: block < 0 ? -1 : block, named: f[1] === '1', fp: f[2],
+                              name: f[3], note: f.length > 6 ? f[6] : '',
+                              hint: block >= 0 ? block : -1 };
                 // Fields added after the first release: a record without them is a
                 // plain bookmark, which is what parseMarks tolerating a short record
                 // was for.
-                const s = parseInt(f[4], 10), e = parseInt(f[5], 10);
-                if (isFinite(s) && isFinite(e) && e > s) { rec.s = s; rec.e = e; }
+                const s0 = parseInt(f[4], 10), e0 = parseInt(f[5], 10);
+                if (isFinite(s0) && isFinite(e0) && e0 > s0) { rec.s = s0; rec.e = e0; }
                 out.push(rec);
             }
             return out;
@@ -1967,6 +2257,15 @@
                 } else return false;
                 if (typeof _readingAnchor !== 'undefined') _readingAnchor = bi;
                 try { if (typeof postChapterLabel === 'function') postChapterLabel(); } catch (eC) {}
+                // Preview: put caret/focus back in the document so typing works after a
+                // Marks-list click (focus was on the sidebar).
+                try {
+                    if (state.mode === 'wysiwyg' && editor
+                        && !(typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')) {
+                        if (typeof setEditorEditable === 'function') setEditorEditable(true);
+                        editor.focus({ preventScroll: true });
+                    }
+                } catch (eF) {}
                 return true;
             } catch (eG) {
                 return false;
@@ -2119,6 +2418,46 @@
             updateSidebarSearchCount();
             updateSearchSidebar();
             if (typeof commitSearchFocus === 'function') commitSearchFocus();
+        }
+
+        /**
+         * Document changed (tab switch / open / new): search *history* stays global, but
+         * match lists and highlights are for the previous document and must not linger.
+         * Keep the query string if any; re-run against the document now on screen so
+         * counts and results are true for this tab (or empty when nothing matches).
+         */
+        function invalidateSearchForDocumentChange() {
+            try {
+                clearFindHighlights();
+                const side = document.getElementById('sidebarSearchInput');
+                const findIn = document.getElementById('findInput');
+                const sideQ = side ? String(side.value || '').trim() : '';
+                const barQ = findIn ? String(findIn.value || '').trim() : '';
+                const q = sideQ || barQ || '';
+                if (q) {
+                    // Prefer the sidebar field as the live query when both differ.
+                    if (side && !sideQ && barQ) side.value = barQ;
+                    runFind(q, true, { navigate: false });
+                    // Point 1/N at the match nearest the reading position (sticky), not
+                    // always match 0 at the top of the document.
+                    try {
+                        if (typeof syncSearchIndexToLocation === 'function'
+                            && !window.__tzExternalSearchActive) {
+                            syncSearchIndexToLocation();
+                        }
+                    } catch (eSync) {}
+                } else {
+                    findState.query = '';
+                    findState.matches = [];
+                    findState.ranges = [];
+                    findState.currentRange = -1;
+                    findState.index = -1;
+                    runFind('', false, { navigate: false });
+                }
+                try { updateSidebarSearchCount(); } catch (eC) {}
+                try { updateFindCount(); } catch (eF) {}
+                try { updateSearchSidebar(); } catch (eS) {}
+            } catch (e) {}
         }
 
         function wireSidebarSearch() {
@@ -2526,7 +2865,7 @@
             const total = Math.max(1, PageMap.count());
             range.max = String(total - 1);
             range.value = String(Math.max(0, Math.min(PageMap.current(), total - 1)));
-            try { paintScrubberTicks(); } catch (eTk) {}
+            try { schedulePaintScrubberTicks(); } catch (eTk) {}
         }
 
         function bindPageScrubber() {
@@ -3655,10 +3994,15 @@
             /**
              * Which page a model block sits on.
              *
-             * Measured when its range is the one on screen, which is the case that matters:
-             * every anchoring decision is about content the reader is looking at. For a
-             * block in a range that has not been laid out the page can only be the range's
-             * start -- an honest lower bound rather than a fabricated offset within it.
+             * Measured when its range is the one on screen. For a block in a range that is
+             * not laid out, place it proportionally inside that range's page budget
+             * (height-weighted when the model has heights, otherwise by block index).
+             *
+             * The old answer was "always the range start" — an honest lower bound for a
+             * single anchor, and a disaster for the scrubber: every mark in an unvisited
+             * chapter stacked on one tick at the chapter head, so the track looked like a
+             * map of the book and was not. Estimates still move as ranges are measured
+             * (see PageChunks), but marks no longer pretend to share one page.
              */
             pageOfBlock: function (bi) {
                 if (!pageWindowingActive()) {
@@ -3668,9 +4012,30 @@
                 PageChunks.ensure(DocumentModel.blocks.length);
                 const c = PageChunks.chunkOfBlock(bi);
                 const base = PageChunks.prefixPages(c);
-                if (c !== PageChunks.mounted) return base;
-                const p = twoColPageOfElement(elementForModelIndex(bi));
-                return (p == null) ? this.current() : base + p;
+                if (c === PageChunks.mounted) {
+                    const p = twoColPageOfElement(elementForModelIndex(bi));
+                    return (p == null) ? this.current() : base + p;
+                }
+                const first = PageChunks.firstBlockOfChunk(c);
+                const nBlocks = Math.max(1, PageChunks.blocksInChunk(c));
+                const nPages = Math.max(1, (PageChunks.counts && PageChunks.counts[c]) || 1);
+                let frac = Math.max(0, Math.min(0.9999,
+                    (Math.max(0, (bi | 0) - first)) / nBlocks));
+                // Prefer height mass when the model has it: a 30-line fence is not one row.
+                try {
+                    if (typeof DocumentModel !== 'undefined' && DocumentModel.prefixHeight) {
+                        const end = first + nBlocks;
+                        const y0 = DocumentModel.prefixHeight(first);
+                        const span = DocumentModel.prefixHeight(end) - y0;
+                        if (span > 0) {
+                            const y = DocumentModel.prefixHeight(
+                                Math.min(Math.max(bi | 0, first), end - 1)) - y0;
+                            frac = Math.max(0, Math.min(0.9999, y / span));
+                        }
+                    }
+                } catch (eH) { /* keep block-index frac */ }
+                const local = Math.min(nPages - 1, Math.floor(frac * nPages));
+                return base + local;
             },
 
             goto: function (n) {
@@ -3784,9 +4149,9 @@
                     ? PageChunks.prefixPages(PageChunks.mounted) + l
                     : l;
                 updatePageIndicator();
-                // In-range turns do not remount; still refresh mark paint after seek
-                // (annotation ranges can die if text nodes were rewritten under us).
-                try { repaintMarkSurface(); } catch (eMk) {}
+                // No mark repaint here: same mounted DOM, ribbons/ticks still valid.
+                // Remount paths (mountPageChunk, text normalise, goToPage after mount)
+                // call repaintMarkSurface when nodes are actually replaced.
                 return true;
             },
 
@@ -4459,18 +4824,19 @@
             findState.ranges = ranges;
             findState.currentRange = currentRange;
             applyWysiwygHighlights();
-            // Scroll to and select the CURRENT match, not the first one on screen. With
-            // only one range built these were the same thing; they are not any more.
-            const active = ranges[currentRange >= 0 ? currentRange : 0];
+            // Scroll to the CURRENT match only. When currentRange is -1 the match has no
+            // text node (image path hit, markup-only query). Falling back to ranges[0]
+            // yanked the view to the first mounted hit (often top of doc). Only use the
+            // first range when we never identified a target block at all.
+            let active = null;
+            if (currentRange >= 0 && ranges[currentRange]) {
+                active = ranges[currentRange];
+            } else if (currentRange < 0 && curBlock < 0 && ranges.length) {
+                active = ranges[0];
+            }
             if (active) {
                 // Paginated layout: mainContainer does not scroll; page turn already moved
                 // the view. Only nudge the scroll surface in continuous mode.
-                //
-                // NOTE: when the current match has no range of its own -- an image line
-                // has no text node -- currentRange is -1 and the `: 0` above seeks to a
-                // DIFFERENT match, the first one built, at the top of the document.
-                // Removing that fallback was tried and regressed search-highlight-app,
-                // so it stays; currentRange is -1 in more cases than that one.
                 if (!isPaginatedLayout()) scrollRangeIntoMain(active);
                 // Select the match only for the Ctrl+F bar, where Replace acts on the
                 // selection and the caret is expected to land in the text.
@@ -4514,7 +4880,19 @@
                 }
             } catch (e) {}
             if (el && el.classList) {
-                try { el.classList.add('focused'); } catch (e2) {}
+                // Reader/epub: track active block for logic, but do not paint .focused
+                // (gray wash fights bookmarks and differs left vs right column).
+                let paint = true;
+                try {
+                    if (editor && (editor.classList.contains('reader-mode')
+                        || editor.classList.contains('book-mode'))) paint = false;
+                    else if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
+                        paint = false;
+                } catch (eP) {}
+                try {
+                    if (paint) el.classList.add('focused');
+                    else el.classList.remove('focused');
+                } catch (e2) {}
                 currentActiveBlock = el;
             }
         }
@@ -4557,21 +4935,42 @@
                 if (typeof rememberStickyLine === 'function') rememberStickyLine(matchLine);
             } catch (eSt) {}
 
-            // An image-only line: stay put.
+            // Image-only block: match is in the markdown path, not visible text.
+            // Never call highlightModelMatchInMountedDom — when currentRange is -1 it used
+            // to scroll to ranges[0] (first mounted text hit) and yank the view to the top.
             //
-            // The match is inside the asset path -- searching "scroll" matches
-            // `![](large-scroll-mixed-assets/...)` -- and the line renders as an <img>, so
-            // there is no text on the page to travel to. Everything downstream assumes
-            // there is: the highlighter finds no range for it and its `: 0` fallback then
-            // seeks to a different match, the first one built, which is at the top of the
-            // document. Clicking the row threw the reader back to page one.
-            //
-            // Doing nothing is the right answer, not a placeholder for a better one. The
-            // sidebar row already says which image and what line it is on, the reader has
-            // not asked to leave where they are, and no scroll is better than a wrong one.
+            // Prefer ensureModelBlockVisible(blockIdx), not goToModelBlock (which runs
+            // syncSearchIndexToLocation and can re-point find at a nearby text "scroll").
             try {
-                const blk = DocumentModel.blocks && DocumentModel.blocks[blockIdx];
-                if (blk && imageOnlyLine(blk.raw)) return;
+                if (matchIsImageOnly(match, blockIdx)) {
+                    if (window.markProgrammaticScroll) window.markProgrammaticScroll(800);
+                    if (isPaginatedLayout()) {
+                        if (typeof goToPageHoldingBlock === 'function') {
+                            goToPageHoldingBlock(blockIdx);
+                        }
+                    } else if (typeof ensureModelBlockVisible === 'function') {
+                        ensureModelBlockVisible(blockIdx, { topPad: 48 });
+                        // Image intrinsic size often arrives late; settle once more.
+                        requestAnimationFrame(function () {
+                            try { ensureModelBlockVisible(blockIdx, { topPad: 48 }); } catch (e2) {}
+                        });
+                    } else if (typeof restoreStickyDocumentLine === 'function') {
+                        restoreStickyDocumentLine(matchLine, true);
+                    }
+                    try {
+                        if (typeof _readingAnchor !== 'undefined') _readingAnchor = blockIdx;
+                    } catch (eA) {}
+                    const elImg = (typeof elementForModelIndex === 'function')
+                        ? elementForModelIndex(blockIdx) : null;
+                    if (elImg) {
+                        try { setFocusedBlock(elImg); } catch (eF) { currentActiveBlock = elImg; }
+                    }
+                    try { pinStatusLineAfterJump(matchLine); } catch (eStI) {}
+                    if (navigate) {
+                        try { flashMarkFocus(blockIdx); } catch (eFl) {}
+                    }
+                    return;
+                }
             } catch (eImg) {}
 
             // Paginated views do not scroll mainContainer at all -- it is overflow-hidden
@@ -4590,7 +4989,10 @@
                 };
                 paintPage();
                 requestAnimationFrame(function () { setTimeout(paintPage, 120); });
-                try { updateStatsNow({ forceCaretLine: matchLine }); } catch (eStP) {}
+                try { pinStatusLineAfterJump(matchLine); } catch (eStP) {}
+                if (navigate) {
+                    try { flashMarkFocus(blockIdx); } catch (eFl) {}
+                }
                 return;
             }
 
@@ -4612,7 +5014,10 @@
                 };
                 paintScroll();
                 requestAnimationFrame(function () { setTimeout(paintScroll, 80); });
-                try { updateStatsNow({ forceCaretLine: matchLine }); } catch (eSt0) {}
+                try { pinStatusLineAfterJump(matchLine); } catch (eSt0) {}
+                if (navigate) {
+                    try { flashMarkFocus(blockIdx); } catch (eFl) {}
+                }
                 return;
             } catch (eScr) {}
             // Suppress refreshFindAfterVirtMount re-entry while we intentionally remount
@@ -4633,8 +5038,10 @@
                     }
                 } catch (eV) {}
             }
-            // Status Ln must use model index (not mounted-window ordinal)
-            try { updateStatsNow(); } catch (eSt) {}
+            try { pinStatusLineAfterJump(matchLine); } catch (eSt) {}
+            if (navigate) {
+                try { flashMarkFocus(blockIdx); } catch (eFl) {}
+            }
         }
 
         /** After virt remount (user scroll), re-highlight current match if its block is mounted. */
@@ -4697,8 +5104,15 @@
             try {
                 if (!findState.matches || findState.matches.length === 0) return;
 
-                // Get the user's current line (already a 1-based document line number)
+                // Prefer sticky / viewport reading line over a poisoned caret (Ln 1 while
+                // the page is mid-document). Only trust caret when it agrees with sticky.
                 let targetLine = (_stickyLineCache | 0) || 1;
+                try {
+                    if (typeof hardLineFromPreviewViewport === 'function' && state.mode !== 'source') {
+                        const view = hardLineFromPreviewViewport() | 0;
+                        if (view > 1) targetLine = Math.max(targetLine, view);
+                    }
+                } catch (eV) {}
                 try {
                     if (state.mode === 'wysiwyg' && typeof getCaretLineNumber === 'function') {
                         const caretLine = getCaretLineNumber();
@@ -4708,10 +5122,13 @@
                     }
                 } catch (e) {}
 
-                // For source mode, compute line from cursor position
+                // Source: use sticky when selection is poisoned at line 1 after chrome steal.
                 if (state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) {
                     const pos = sourceEditor.selectionStart || 0;
-                    targetLine = sourceEditor.value.substring(0, pos).split(/\r?\n/).length;
+                    const live = sourceEditor.value.substring(0, pos).split(/\r?\n/).length;
+                    if (!(live <= 1 && targetLine > 1 && pos === 0)) {
+                        targetLine = live;
+                    }
                 }
 
                 // Find the first match whose document line is >= targetLine
@@ -4787,14 +5204,13 @@
             _searchRenderedSig = '';
             _searchRenderedList = null;
 
-            // Source: always select + scroll the current hit so 1/N is visible in the text
-            // (not only in the sidebar). Preview still uses CSS highlights; textarea cannot.
-            // navigate=false still used for Preview to avoid yanking scroll on mode switch.
+            // navigate=false: update count/highlights only — do NOT move caret/scroll.
+            // Source used to always scroll even on recount; mode switch / tab restore then
+            // yanked Source to match 0 while sticky still said ~500.
             if (findState.kind === 'source' || state.mode === 'source' || isSourceSurfaceActive()) {
-                if (findState.index >= 0) {
+                if (navigate && findState.index >= 0) {
                     const m = findState.matches[findState.index];
                     const findBarOpen = isFindBarOpen();
-                    // Keep typing in Ctrl+F when the bar is open; still set selection + scroll.
                     scrollSourceMatchIntoView(m.start, m.end, !findBarOpen);
                 }
             } else if (findState.kind === 'model') {

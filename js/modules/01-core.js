@@ -217,6 +217,15 @@
                 // no page-mode class, and therefore no columns at all.
                 syncPaginationClass();
                 applyEditorChromeForMode();
+                // Always re-sync editability. toggle_mode is skipped when already on the
+                // target mode, which left contenteditable=false after book→Preview if
+                // leaveBook had set editable against the old reader mode.
+                try {
+                    if (typeof setEditorEditable === 'function') {
+                        if (state.mode === 'wysiwyg') setEditorEditable(true);
+                        else setEditorEditable(false);
+                    }
+                } catch (eEd) {}
             } finally {
                 _applyingViewState = false;
             }

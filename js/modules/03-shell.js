@@ -906,6 +906,10 @@
                         sourceEditor.value = state.lastSavedContent;
                         requestAnimationFrame(resizeSourceEditor);
                     }
+                    try {
+                        if (typeof invalidateSearchForDocumentChange === 'function')
+                            invalidateSearchForDocumentChange();
+                    } catch (eInv) {}
                     updateStatsNow();
                 }
                 else if (msg.startsWith("request_save:")) {
@@ -1189,6 +1193,14 @@
                 if (isFinite(v) && v > 0.5 && v < 4) {
                     applySpacing({ '--lh': String(v) });
                 }
+                return;
+            }
+            // Preview mouse-over block cue: none | wash | edge | hint
+            if (cmd.startsWith("set_block_hover:")) {
+                const mode = String(cmd.substring(16) || 'wash').toLowerCase();
+                const ok = (mode === 'none' || mode === 'wash' || mode === 'edge' || mode === 'hint')
+                    ? mode : 'wash';
+                try { document.documentElement.setAttribute('data-block-hover', ok); } catch (eH) {}
                 return;
             }
             if (cmd.startsWith("set_para_spacing:")) {
@@ -1552,6 +1564,13 @@
                     : '') || sideQ || findState.query || '';
                 if (liveQ) {
                     runFind(liveQ, true, { navigate: false });
+                    // Keep 1/N near the reading position (do not leave match 0 after mode switch).
+                    try {
+                        if (typeof syncSearchIndexToLocation === 'function'
+                            && !window.__tzExternalSearchActive) {
+                            syncSearchIndexToLocation();
+                        }
+                    } catch (eSyncM) {}
                     if (isFindBarOpen()) focusFindInput();
                 } else {
                     clearFindHighlights();

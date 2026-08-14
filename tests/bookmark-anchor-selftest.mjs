@@ -194,21 +194,40 @@ console.log('\n=== a mark from before fingerprints existed ===');
         'and is dropped if that index is off the end');
 }
 
-console.log('\n=== the search is bounded ===');
+console.log('\n=== a large shift is still found (full pass after the radius) ===');
 {
-    // Moved further than the radius: not found, and -- the point of the bound -- not
-    // fingerprinting the whole document to find that out.
+    // Radius covers ordinary hand edits. An epub re-split or a destroyed hint (-1 after
+    // a bad early resolve against the previous tab) can put the paragraph thousands of
+    // blocks from the stored index; reporting "lost" while the text is still in the book
+    // is worse than one linear pass. resolveMarksAgainstModel maps once for all marks.
     const raws = doc(2000);
     const m = markAt(raws, 10);
     const edited = doc(900, 'inserted').concat(raws);
-    let seen = 0;
-    const counting = new Proxy(edited, {
-        get(t, k) { if (typeof k === 'string' && /^\d+$/.test(k)) seen++; return t[k]; }
-    });
-    const at = api.resolveMarkIndex(m, counting);
-    info('moved 900 blocks with a 400 radius: resolved ' + at + ', read ' + seen + ' blocks');
-    assert(at === -1, 'beyond the radius it reports unresolved');
-    assert(seen < 1100, 'without scanning the whole document (' + seen + ' reads)');
+    const at = api.resolveMarkIndex(m, edited);
+    info('moved 900 blocks: resolved ' + at);
+    assert(at === 910, 'beyond the radius the full pass still finds the paragraph (910)');
+    assert(api.markFingerprint(edited[at]) === m.fp, 'and it is the same paragraph');
+}
+
+console.log('\n=== a lost mark keeps a hint and still finds its text ===');
+{
+    const raws = doc(500);
+    const m = markAt(raws, 300);
+    // Same state as after a resolve against the wrong document: block cleared, hint kept.
+    const lost = { block: -1, hint: 300, fp: m.fp, name: m.name };
+    assert(api.resolveMarkIndex(lost, raws) === 300,
+        'block -1 with a mid-book hint still resolves (not stuck searching from 0)');
+    const noHint = { block: -1, fp: m.fp, name: m.name };
+    assert(api.resolveMarkIndex(noHint, raws) === 300,
+        'and a full pass finds it even with no hint at all');
+}
+
+console.log('\n=== serialize keeps a position when the live block is lost ===');
+{
+    const marks = [{ block: -1, hint: 1740, named: false, fp: 'oramen', name: 'Oramen' }];
+    const back = api.parseMarks(api.serializeMarks(marks));
+    assert(back.length === 1 && back[0].block === 1740,
+        'the store gets the last good index, not -1 (which used to be dropped on load)');
 }
 
 console.log('\npassed=' + passed + ' failed=' + failed);

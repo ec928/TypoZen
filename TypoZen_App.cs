@@ -304,13 +304,16 @@ namespace TypoZen
             public int ResumeBlock = 0;
 
             /// <summary>
-            /// 1 or 2 columns for THIS tab; 0 = never chosen, so the window's own setting
-            /// stands. A layout is a property of what is being read, not of the window: a
-            /// novel wants a two-column spread and the notes file in the next tab does
-            /// not, and having one tab's choice follow you into the other is the whole
-            /// reason this is per-tab rather than one more field in window_state.json.
+            /// 1 or 2 columns for THIS tab; 0 = never chosen (apply path defaults only).
             /// </summary>
             public int Columns = 0;
+
+            /// <summary>
+            /// Mode for THIS tab: "source", "preview", "reader", or "" = never chosen
+            /// (path defaults: PreferSourceMode → source; books always Reader).
+            /// Part of the same bag as Columns — one leave/enter rule, not global chrome.
+            /// </summary>
+            public string ViewMode = "";
 
             public string LineEnding = "\n";      // "\n" or "\r\n", from the file as loaded
             public string TrailingNewlines = "\n"; // exact run of newlines the file ended with
@@ -876,6 +879,10 @@ namespace TypoZen
             BindClick("mParaNormal",  (s, e) => SetParaSpacing(1));
             BindClick("mParaRelaxed", (s, e) => SetParaSpacing(2));
             BindClick("mParaLoose",   (s, e) => SetParaSpacing(3));
+            BindClick("mHoverNone", (s, e) => SetBlockHover(0));
+            BindClick("mHoverWash", (s, e) => SetBlockHover(1));
+            BindClick("mHoverEdge", (s, e) => SetBlockHover(2));
+            BindClick("mHoverHint", (s, e) => SetBlockHover(3));
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
@@ -971,7 +978,13 @@ namespace TypoZen
             {
                 _btnColumnToggle.Click += (s, e) =>
                 {
-                    SendMsg("cmd:view_set:columns:" + (_viewColumns == 2 ? "1" : "2"));
+                    // Intentional layout change for the active tab — the only place that
+                    // writes tab.Columns during a normal session (session restore is the other).
+                    int next = (_viewColumns == 2) ? 1 : 2;
+                    if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                        && !_viewColumnsLocked)
+                        _tabs[_activeTabIndex].Columns = next;
+                    SendMsg("cmd:view_set:columns:" + next);
                     try { if (_webView != null) _webView.Focus(); } catch { }
                 };
             }
@@ -2690,6 +2703,7 @@ namespace TypoZen
                         sb0.AppendLine("trail=" + EncodeTrailToken(tab.TrailingNewlines ?? ""));
                         sb0.AppendLine("resume=" + tab.ResumeBlock);
                         sb0.AppendLine("cols=" + tab.Columns);
+                        sb0.AppendLine("mode=" + (tab.ViewMode ?? ""));
                         sb0.AppendLine("body=");
                         sb0.AppendLine();
                     }
@@ -2738,6 +2752,7 @@ namespace TypoZen
                     sb.AppendLine("trail=" + trail);
                     sb.AppendLine("resume=" + tab.ResumeBlock);
                     sb.AppendLine("cols=" + tab.Columns);
+                    sb.AppendLine("mode=" + (tab.ViewMode ?? ""));
                     // Native / book: never store body (not engine text).
                     if (IsReadOnlyTab(tab)) needBody = false;
                     if (needBody)
@@ -2866,6 +2881,7 @@ namespace TypoZen
                     string trailTok = "lf";
                     string bodyName = "";
                     string kindTok = "";
+                    string modeTok = "";
                     int resumeBlock = 0;
                     int cols = 0;
                     for (int i = start; i < lines.Length; i++)
@@ -2879,6 +2895,7 @@ namespace TypoZen
                         else if (line.StartsWith("trail=")) trailTok = line.Substring(6);
                         else if (line.StartsWith("resume=")) int.TryParse(line.Substring(7), out resumeBlock);
                         else if (line.StartsWith("cols=")) int.TryParse(line.Substring(5), out cols);
+                        else if (line.StartsWith("mode=")) modeTok = line.Substring(5).Trim();
                         else if (line.StartsWith("body=")) bodyName = line.Substring(5);
                     }
 
@@ -2892,7 +2909,8 @@ namespace TypoZen
                         ResumeBlock = resumeBlock,
                         // A session written before this field existed says nothing, which is
                         // 0 and means "no choice recorded" -- not "one column".
-                        Columns = (cols == 2) ? 2 : (cols == 1 ? 1 : 0)
+                        Columns = (cols == 2) ? 2 : (cols == 1 ? 1 : 0),
+                        ViewMode = NormalizeTabViewMode(modeTok)
                     };
                     ApplyDocKindFromSession(tab, kindTok);
 
@@ -3374,6 +3392,7 @@ namespace TypoZen
                     "\"chrome\":\"{6}\",\"wordWrap\":{7},\"statusBar\":{8}," +
                     "\"scrubber\":{21},\"lineSpacing\":{22},\"paraSpacing\":{23}," +
                     "\"justified\":{24},\"sidebarAutoHide\":{25},\"autosave\":{26},\"privacyMode\":{27}," +
+                    "\"blockHover\":{28}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
                     "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20}}}",
@@ -3386,7 +3405,8 @@ namespace TypoZen
                     _col1Rect.HasValue ? _col1Rect.Value.Width : 0, _col1Rect.HasValue ? _col1Rect.Value.Height : 0, _col1Rect.HasValue ? _col1Rect.Value.Left : 0, _col1Rect.HasValue ? _col1Rect.Value.Top : 0,
                     _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing,
                     _justified ? "true" : "false", _sidebarAutoHide ? "true" : "false",
-                    _autosave ? "true" : "false", _privacyMode ? "true" : "false");
+                    _autosave ? "true" : "false", _privacyMode ? "true" : "false",
+                    _blockHover);
 
                 WriteStateFileAtomic(path, json);
             }
@@ -3507,6 +3527,8 @@ namespace TypoZen
                 if (mLine.Success) _lineSpacing = Clamp4(int.Parse(mLine.Groups[1].Value));
                 var mPara = Regex.Match(json, @"\""paraSpacing\""\s*:\s*(\d+)");
                 if (mPara.Success) _paraSpacing = Clamp4(int.Parse(mPara.Groups[1].Value));
+                var mHover = Regex.Match(json, @"\""blockHover\""\s*:\s*(\d+)");
+                if (mHover.Success) _blockHover = ClampBlockHover(int.Parse(mHover.Groups[1].Value));
                 var mJust = Regex.Match(json, @"\""justified\""\s*:\s*(true|false)");
                 if (mJust.Success) _justified = mJust.Groups[1].Value == "true";
                 var mSideAuto = Regex.Match(json, @"\""sidebarAutoHide\""\s*:\s*(true|false)");
@@ -3574,6 +3596,17 @@ namespace TypoZen
                 // (same Mode control as Markdown — no separate "View Source" command).
                 if (selector == "mode" && HandleHtmlModeSegmentClick(value))
                     return;
+                // Intentional view change for THIS tab (same bag as columns).
+                if (selector == "mode"
+                    && _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    && _tabs[_activeTabIndex] != null
+                    && !IsBookTab(_tabs[_activeTabIndex])
+                    && !IsNativeTab(_tabs[_activeTabIndex]))
+                {
+                    string m = NormalizeTabViewMode(value);
+                    if (!string.IsNullOrEmpty(m))
+                        _tabs[_activeTabIndex].ViewMode = m;
+                }
                 SendMsg("cmd:view_set:" + selector + ":" + value);
                 try { if (_webView != null) _webView.Focus(); } catch { }
             };
@@ -3649,12 +3682,18 @@ namespace TypoZen
             _viewScrollLocked = scrollLocked;
             _isPageAdvanceMode = (scroll == "pagination");
 
-            // Record the layout against the tab showing it, but only while the reader
-            // could have chosen it. Source locks columns to 1 -- a textarea cannot flow
-            // into them -- so writing that 1 back would quietly forget a book's spread
-            // the moment someone glanced at the raw Markdown.
-            if (!columnsLocked && _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
-                _tabs[_activeTabIndex].Columns = (columns == 2) ? 2 : 1;
+            // tab.Columns is NOT written here.
+            //
+            // view_state is "what the page is showing right now". After opening a book the
+            // first paint is always 1-col until RequestTabColumns runs; writing that 1 back
+            // erased the tab's remembered 2-col. Source→book was the worst case: columns
+            // commands while Source is active are ignored (locked to 1), the book mounts
+            // as 1-col, this echo stored 1, and load_done re-applied 1. Preview→book often
+            // already had a free column state so the race was less visible.
+            //
+            // One rule: tab.Columns is only set by (1) session restore cols=, (2) the user
+            // clicking the column control. RequestTabColumns / view_state only *apply* or
+            // *paint* — they never overwrite memory.
 
             // Keep legacy mode chrome in step for Word Wrap / toolbars that still read it.
             if (mode == "source") _editorMode = "source";
@@ -4599,6 +4638,24 @@ namespace TypoZen
             {
                 // Large staged open / book open finished — apply ZenSeek jump/highlight.
                 ScheduleApplyPendingLaunch();
+                // Re-apply THIS tab's view bag + position after content is really on the page.
+                // Column remount must run before resume, or we land at the top again.
+                try
+                {
+                    int idx = _activeTabIndex;
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        try
+                        {
+                            if (idx < 0 || idx >= _tabs.Count || idx != _activeTabIndex) return;
+                            var t = _tabs[idx];
+                            ApplyTabView(t);
+                            RequestTabResume(t);
+                        }
+                        catch { }
+                    }), DispatcherPriority.Loaded);
+                }
+                catch { }
             }
             else if (msg.StartsWith("load_failed:"))
             {
@@ -6014,7 +6071,7 @@ namespace TypoZen
         /// sidebar temporarily unless the user pinned it open with the toolbar/menu toggle.
         /// Hysteresis: thin strip to *open*; full sidebar width to *stay* once open (edge
         /// hover sticky via _leftHover, or pinned via _sidebarOpen). Match case / Whole word
-        /// sit on the right of the 300px bar — a 280px stay band closed under those buttons.
+        /// sit on the right of the 280px bar — stay band must cover those buttons.
         /// </summary>
         internal bool ShouldRevealSidebar(double x, double y)
         {
@@ -6116,9 +6173,9 @@ namespace TypoZen
         private const int LeftHotZonePx = 10;
         /// <summary>
         /// While edge-open (or while _leftHover), keep the left band live across the full
-        /// sidebar (#sidebar is 300px) plus slack so the search option buttons stay usable.
+        /// sidebar (#sidebar is 280px) plus slack so the search option buttons stay usable.
         /// </summary>
-        private const int LeftStayPx = 360;
+        private const int LeftStayPx = 340;
         private const int LeftReachPx = 24;
 
         /// <summary>The reading scrubber, which lives in the page.</summary>
@@ -6476,6 +6533,18 @@ namespace TypoZen
 
         private int _lineSpacing = 1;
         private int _paraSpacing = 1;
+        /// <summary>Preview mouse-over block cue: 0=none 1=wash 2=edge 3=hint. Default edge.</summary>
+        private int _blockHover = 2;
+        private static readonly string[] BlockHoverKeys = { "none", "wash", "edge", "hint" };
+        private static readonly string[] BlockHoverItems =
+            { "mHoverNone", "mHoverWash", "mHoverEdge", "mHoverHint" };
+
+        private static int ClampBlockHover(int index)
+        {
+            if (index < 0) return 0;
+            if (index > 3) return 3;
+            return index;
+        }
 
         /// <summary>Height of a line of body text, as a multiple of the font size.</summary>
         private void SetLineSpacing(int index)
@@ -6496,6 +6565,16 @@ namespace TypoZen
                 SetMenuChecked(ParaSpacingItems[i], i == _paraSpacing);
             SendMsg("cmd:set_para_spacing:" + ParaSpacingPresets[_paraSpacing].ToString(
                 System.Globalization.CultureInfo.InvariantCulture));
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        /// <summary>How Preview paints the block under the mouse (not bookmarks).</summary>
+        private void SetBlockHover(int index)
+        {
+            _blockHover = ClampBlockHover(index);
+            for (int i = 0; i < BlockHoverItems.Length; i++)
+                SetMenuChecked(BlockHoverItems[i], i == _blockHover);
+            SendMsg("cmd:set_block_hover:" + BlockHoverKeys[_blockHover]);
             if (!_applyingRestoredSettings) SaveWindowState();
         }
 
@@ -6720,6 +6799,7 @@ namespace TypoZen
                     SetWordWrap(_wordWrap);
                     SetLineSpacing(_lineSpacing);
                     SetParaSpacing(_paraSpacing);
+                    SetBlockHover(_blockHover);
                     SetJustified(_justified);
 
                     // The scrubber lives in the page, so its state is only real once the
@@ -6801,7 +6881,7 @@ namespace TypoZen
         /// document type (txt/log/csv/css/xml/xaml/…), not by size — virtualized Preview
         /// handles large markdown without building a full WYSIWYG DOM.
         /// </summary>
-        private void LoadContentToEditor(string content, bool markDirty = false, string filePathHint = null)
+        private void LoadContentToEditor(string content, bool markDirty = false, string filePathHint = null, int resumeAt = 0)
         {
             content = content ?? "";
             bool plain = PreferSourceModeForPath(filePathHint);
@@ -6811,6 +6891,7 @@ namespace TypoZen
                 {
                     SendMsg((plain ? "load_content_plain:" : "load_content:") + content);
                     if (markDirty) SendMsg("mark_dirty");
+                    // Inline loads resume via RequestTabResume after ApplyTabView.
                     return;
                 }
 
@@ -6826,7 +6907,10 @@ namespace TypoZen
                 string file = Path.Combine(dir, fileName);
                 File.WriteAllText(file, content, new UTF8Encoding(false));
                 // |plain=1 so huge logs / xaml open as Source without Markdown parse cost.
+                // |at=N lands first paint near the remembered block (same as books).
                 string url = "https://localapp/typozen_load/" + fileName + (plain ? "|plain=1" : "");
+                if (resumeAt > 0 && !plain)
+                    url += "|at=" + resumeAt;
                 SendMsg("fetch_and_load:" + url);
                 if (markDirty) SendMsg("mark_dirty");
             }
@@ -8493,10 +8577,10 @@ namespace TypoZen
                     if (leftHit && !leftMiss && leftOvershoot)
                         Pass("sidebar reveal band is the extreme left strip");
                     else Fail("sidebar reveal geometry wrong (hit=" + leftHit + " miss=" + leftMiss + " overshoot=" + leftOvershoot + ")");
-                    // Stay band must cover the 300px sidebar (search options live near its right).
+                    // Stay band must cover the 280px sidebar (search options live near its right).
                     _leftHover = true;
-                    bool stayOnOptions = ShouldRevealSidebar(320, ActualHeight / 2);
-                    bool stayPastBar = ShouldRevealSidebar(400, ActualHeight / 2);
+                    bool stayOnOptions = ShouldRevealSidebar(300, ActualHeight / 2);
+                    bool stayPastBar = ShouldRevealSidebar(380, ActualHeight / 2);
                     _leftHover = false;
                     if (stayOnOptions && !stayPastBar)
                         Pass("sidebar stay band covers the full bar including search options");
@@ -9204,6 +9288,9 @@ namespace TypoZen
                 _isDirty = false;
                 InvalidateEnginePageLoad();
                 RefreshEditingAvailability();
+                // Strip updates now; OpenBook is deferred and would leave the strip on the
+                // previous tab until the book finished extracting.
+                RebuildTabStrip();
                 Dispatcher.BeginInvoke(new Action(() => OpenBook(tab.FilePath, true)),
                     DispatcherPriority.Normal);
                 return;
@@ -9237,6 +9324,16 @@ namespace TypoZen
             // kind was epub (wasBook). Do not send leave_book_surface first — that raced
             // and could remount HTML as Markdown.
             string content = tab.Content ?? "";
+            // Path-keyed store fills ResumeBlock before load so staged |at= can land first paint.
+            if (tab.ResumeBlock <= 0 && !string.IsNullOrEmpty(tab.FilePath))
+            {
+                try
+                {
+                    int fromPath = RememberedBookPosition(Path.GetFullPath(tab.FilePath));
+                    if (fromPath > 0) tab.ResumeBlock = fromPath;
+                }
+                catch { }
+            }
             // Skip full remount when the page already holds this tab's buffer (A→B→A).
             bool alreadyLoaded = EngineTabAlreadyOnPage(tab, content);
             if (!alreadyLoaded)
@@ -9244,29 +9341,13 @@ namespace TypoZen
                 if (string.IsNullOrEmpty(content) && string.IsNullOrEmpty(tab.FilePath) && !tab.IsDirty)
                     SendMsg("new_document");
                 else
-                    LoadContentToEditor(content, tab.IsDirty, tab.FilePath);
+                    LoadContentToEditor(content, tab.IsDirty, tab.FilePath, tab.ResumeBlock);
                 RememberEnginePageLoad(tab, content);
             }
 
-            // Source-class paths: host Mode must match plain load (page posts mode_changed
-            // too; this covers races). After content so layout is not applied to an empty
-            // unmeasured editor. Markdown stays Preview by default.
-            if (PreferSourceModeForPath(tab.FilePath))
-            {
-                ApplyHostModeChrome("source");
-                try { SendMsg("cmd:view_set:mode:source"); } catch { }
-            }
-
-            // Come back to where this tab was left. The tab's own figure first; the
-            // path-keyed store is the fallback for a tab restored from a session written
-            // before this field existed, or a file being opened fresh.
-            int resume = tab.ResumeBlock;
-            if (resume <= 0 && !string.IsNullOrEmpty(tab.FilePath))
-            {
-                try { resume = RememberedBookPosition(Path.GetFullPath(tab.FilePath)); } catch { }
-            }
-            if (resume > 0) SendMsg("resume_at:" + resume);
-            RequestTabColumns(tab);
+            // Mode + columns first (column remount moves the view). Then position last.
+            ApplyTabView(tab);
+            RequestTabResume(tab);
             SendBookmarksForCurrentDocument();
             UpdateStatusDisplay();
             // Session/recent I/O off the open hot path — was adding disk latency on every click.
@@ -9295,13 +9376,116 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Put the tab's own column layout back, if it ever had one.
+        /// ONE rule for per-tab view state (mode + columns):
+        ///   leave tab → SnapshotActiveTabView (write bag from live free choices)
+        ///   enter tab → ApplyTabView (read bag onto the page after content is up)
         ///
-        /// Through view_set rather than set_column_mode, for the same reason the restored
-        /// window setting goes that way: the raw command applies columns and nothing else,
-        /// which leaves 2 columns marked as Scroll -- a state the resolver forbids, because
-        /// two columns need a bottom boundary to flow into. Nothing is sent for a tab that
-        /// has never reported a layout, so a brand new tab simply keeps what is on screen.
+        /// view_state paint never writes the bag. Path defaults only fill empty fields.
+        /// </summary>
+        private static string NormalizeTabViewMode(string mode)
+        {
+            if (string.IsNullOrEmpty(mode)) return "";
+            mode = mode.Trim().ToLowerInvariant();
+            if (mode == "wysiwyg") mode = "preview";
+            if (mode == "source" || mode == "preview" || mode == "reader") return mode;
+            return "";
+        }
+
+        private void SnapshotActiveTabView()
+        {
+            if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return;
+            var tab = _tabs[_activeTabIndex];
+            if (tab == null || IsNativeTab(tab)) return;
+
+            // Books are always Reader in the product; do not store Source/Preview against them.
+            if (IsBookTab(tab))
+            {
+                tab.ViewMode = "reader";
+                if (!_viewColumnsLocked)
+                    tab.Columns = (_viewColumns == 2) ? 2 : 1;
+            }
+            else
+            {
+                string m = NormalizeTabViewMode(_viewMode);
+                if (!string.IsNullOrEmpty(m))
+                    tab.ViewMode = m;
+
+                // Source forces 1-col — that is not a column preference for this tab.
+                if (!_viewColumnsLocked)
+                    tab.Columns = (_viewColumns == 2) ? 2 : 1;
+            }
+
+            // Position: one integer (model block). book_position is debounced 1.2s, so a
+            // quick tab switch never updated ResumeBlock — and clean leave skips the full
+            // content pull. Cheap script; no document body.
+            // Prefer live viewport block, then anchor, then sticky line → block (status used
+            // to show Ln 1 while sticky held the real place).
+            try
+            {
+                string r = ExecuteScriptBlocking(
+                    "(function(){ try {" +
+                    "  if (typeof currentReadingBlock === 'function') {" +
+                    "    var b = currentReadingBlock();" +
+                    "    if (b >= 0) return String(b);" +
+                    "  }" +
+                    "  if (typeof _readingAnchor === 'number' && _readingAnchor >= 0)" +
+                    "    return String(_readingAnchor|0);" +
+                    "  if (typeof _stickyLineCache === 'number' && _stickyLineCache > 1" +
+                    "      && typeof modelLocationFromDocumentLine === 'function') {" +
+                    "    try {" +
+                    "      var loc = modelLocationFromDocumentLine(_stickyLineCache);" +
+                    "      if (loc && loc.blockIndex >= 0) return String(loc.blockIndex|0);" +
+                    "    } catch (eL) {}" +
+                    "  }" +
+                    "  return '0';" +
+                    "} catch(e) { return '0'; } })()",
+                    400);
+                int bi;
+                if (int.TryParse(r, out bi) && bi > 0)
+                    tab.ResumeBlock = bi;
+            }
+            catch { }
+        }
+
+        /// <summary>Apply this tab's mode + columns to the page (does not write the bag).</summary>
+        private void ApplyTabView(DocTab tab)
+        {
+            if (tab == null) return;
+            if (IsNativeTab(tab)) return;
+
+            if (IsBookTab(tab))
+            {
+                // Mode is forced by loadBookPayload; only columns are free.
+                RequestTabColumns(tab);
+                return;
+            }
+
+            string mode = NormalizeTabViewMode(tab.ViewMode);
+            if (string.IsNullOrEmpty(mode) && PreferSourceModeForPath(tab.FilePath))
+                mode = "source";
+            if (string.IsNullOrEmpty(mode))
+                mode = "preview";
+
+            try
+            {
+                ApplyHostModeChrome(mode);
+                SendMsg("cmd:view_set:mode:" + mode);
+            }
+            catch { }
+
+            RequestTabColumns(tab);
+        }
+
+        /// <summary>Jump to the tab's ResumeBlock after view apply (remount may have moved us).</summary>
+        private void RequestTabResume(DocTab tab)
+        {
+            if (tab == null || tab.ResumeBlock <= 0) return;
+            try { SendMsg("resume_at:" + tab.ResumeBlock); } catch { }
+        }
+
+        /// <summary>
+        /// Apply the tab's remembered column layout to the page (does not write tab.Columns).
+        /// Books: call after load_done / Reader. While Source is active the page ignores it.
         /// </summary>
         private void RequestTabColumns(DocTab tab)
         {
@@ -9501,6 +9685,8 @@ namespace TypoZen
                 return;
             }
             Program.PerfMark("tab switch: state pulled");
+            // One rule: bag the tab we leave before pointing at another.
+            SnapshotActiveTabView();
             _tabOpInProgress = true;
             try
             {
@@ -9520,6 +9706,7 @@ namespace TypoZen
                 NotifyEditorSyncFailedForTabOp();
                 return;
             }
+            SnapshotActiveTabView();
             _tabOpInProgress = true;
             try
             {
