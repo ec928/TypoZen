@@ -2,9 +2,34 @@
 
 Baseline inventory of **user-visible** residual risk for the current tree.
 
-- **Open defect-class items:** none as of this baseline (page-map precision is a product
-  limit below, not a bug backlog).
+- **Open defect-class items:** one — a page the count names cannot always be seeked to
+  (below). Distinct from the approximate-total product limit it sits next to.
 - Suite-only failures belong in the harness, not here. See `docs/for-agents.md`.
+
+---
+
+## Open
+
+### A page `count()` names cannot always be seeked to
+
+**Reproduced:** `page-count-truth-app`, `page-scrubber-app`, both on
+`tests/large-scroll-mixed.md`, in 1-col and at baseline `aca2dde` — not a regression from
+the gutter/marks work.
+
+- `PageMap.goto(267)` lands on 261. The suite samples 12 pages across 268 and misses one.
+- The scrubber: 1 seek in 4 adrift, worst case 4 pages; and the last page reads 3125 of
+  3128 once the total is re-measured.
+
+**Why it is filed as a defect and not as the limit below.** An approximate *total* is a
+documented trade: the reader sees "about 600 pages" and nothing breaks. This is different
+— the UI names page 267, the reader asks for page 267, and the application goes somewhere
+else. A number you cannot act on is worse than a number you know is rough.
+
+**Not attempted.** The fix is in `PageChunks` estimation, and making an estimated range
+seekable to the page rather than to the range is a real piece of pagination work, not a
+tuning constant. Decide whether that is worth doing before touching it; the alternative —
+relaxing the suites to tolerate the drift — is a product decision to stop promising this,
+and should be taken deliberately rather than by editing an assertion.
 
 ---
 

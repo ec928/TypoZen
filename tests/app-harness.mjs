@@ -154,7 +154,12 @@ export async function launchApp(options) {
 
     const browser = await puppeteer.connect({
         browserURL: 'http://127.0.0.1:' + PORT,
-        defaultViewport: null           // the WPF window decides the viewport, not us
+        defaultViewport: null,          // the WPF window decides the viewport, not us
+        // puppeteer's default protocolTimeout is 180s, and a single evaluate() against the
+        // twelve-book Xeelee omnibus (45,390 blocks) can outlast it. When it does, the run
+        // dies with ProtocolError mid-suite -- which looks like the application hanging and
+        // is the harness giving up on a call the application was still answering.
+        protocolTimeout: 600000
     });
 
     // The app's document is the only page; DevTools may also list workers.
