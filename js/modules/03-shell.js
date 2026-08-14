@@ -262,8 +262,11 @@
             tzMark('(page) prefs read from localStorage');
             loadMarkdownContent(initialContent, { replaceBook: true });
             tzMark('(page) initial content rendered');
-            state.lastSavedContent = getMarkdownContent(false);
-            tzMark('(page) markdown round-tripped');
+            try {
+                state.lastSavedContent = (typeof DocumentModel !== 'undefined')
+                    ? DocumentModel.toMarkdown() : initialContent;
+            } catch (eLs) { state.lastSavedContent = initialContent; }
+            tzMark('(page) baseline set');
 
             applySavedPrefs(savedPrefs);
             tzMark('(page) prefs applied (theme/fonts)');
@@ -893,8 +896,12 @@
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
                     try { cancelPositionReport(); } catch (eCP) {}
-                    loadMarkdownContent("# Untitled Document\n\nStart typing here...", { replaceBook: true });
-                    state.lastSavedContent = getMarkdownContent(false);
+                    const untitled = "# Untitled Document\n\nStart typing here...";
+                    loadMarkdownContent(untitled, { replaceBook: true });
+                    try {
+                        state.lastSavedContent = (typeof DocumentModel !== 'undefined')
+                            ? DocumentModel.toMarkdown() : untitled;
+                    } catch (eU) { state.lastSavedContent = untitled; }
                     if (state.mode === 'source') {
                         sourceEditor.value = state.lastSavedContent;
                         requestAnimationFrame(resizeSourceEditor);

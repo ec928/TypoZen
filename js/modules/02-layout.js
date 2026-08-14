@@ -5056,7 +5056,12 @@
                 }
                 if (savedPrefs.lastContent && savedPrefs.lastContent.trim() !== '') {
                     loadMarkdownContent(savedPrefs.lastContent);
-                    state.lastSavedContent = getMarkdownContent(false);
+                    try {
+                        state.lastSavedContent = (typeof DocumentModel !== 'undefined')
+                            ? DocumentModel.toMarkdown() : savedPrefs.lastContent;
+                    } catch (eLs) {
+                        state.lastSavedContent = savedPrefs.lastContent;
+                    }
                 }
                 if (savedPrefs.sidebarCollapsed) {
                     sidebar.classList.add('collapsed');
@@ -5089,22 +5094,25 @@
                     try { if (typeof switchTab === 'function') switchTab(savedPrefs.sidebarTab, true); } catch (eSt) {}
                 }
 
+                // One surface+chrome path so host Mode pills match #editor vs Source.
                 if (savedPrefs.mode === 'source') {
                     const currentWysiwyg = getMarkdownContent();
                     if (currentWysiwyg && currentWysiwyg.trim() !== '') {
                         sourceEditor.value = currentWysiwyg;
                     }
                     state.mode = 'source';
-                    editor.style.display = 'none';
-                    sourceEditor.style.display = 'block';
                     postMsg("mode_changed:source");
-                    requestAnimationFrame(resizeSourceEditor);
+                } else if (savedPrefs.mode === 'reader') {
+                    state.mode = 'reader';
+                    try { setEditorEditable(false); } catch (eEd) {}
+                    postMsg("mode_changed:reader");
                 } else {
                     state.mode = 'wysiwyg';
-                    editor.style.display = 'block';
-                    sourceEditor.style.display = 'none';
+                    try { setEditorEditable(true); } catch (eEd2) {}
                     postMsg("mode_changed:wysiwyg");
                 }
+                try { syncModeSurface(); } catch (eSurf) {}
+                try { postViewState(currentViewState()); } catch (eVs) {}
                 postViewFlags();
                 postSidebarState();   // shade the toolbar button to match the restored state
                 updateStatsNow();

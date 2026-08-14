@@ -69,17 +69,15 @@
                 // Also apply view_set so host Mode chrome and state.mode stay aligned —
                 // otherwise Ctrl+F still searched the old model while Source showed the file.
                 try {
-                    if (editor) editor.style.display = 'none';
-                    if (sourceEditor) sourceEditor.style.display = 'block';
                     state.mode = 'source';
+                    try { if (typeof syncModeSurface === 'function') syncModeSurface(); } catch (eSurf) {}
                     postMsg('mode_changed:source');
+                    try { postViewState(currentViewState()); } catch (ePv) {}
                     try { if (typeof handleCommand === 'function') handleCommand('view_set:mode:source'); } catch (eVs) {}
                 } catch (e2) {}
                 try {
                     if (mainContainer) mainContainer.scrollTop = 0;
                 } catch (eScr) {}
-                // Viewport-tall textarea after layout
-                try { requestAnimationFrame(resizeSourceEditor); } catch (e1) {}
                 state.lastSavedContent = markDirty ? '\0__session_unsaved__' : content;
                 // Seed undo baseline immediately so typing before a deferred timer cannot
                 // leave the stack without a "loaded file" frame.
@@ -102,18 +100,24 @@
             loadMarkdownContent(content, { replaceBook: true });
             tzRequestPendingImages(editor);
             tzScheduleImageRescan();
-            try {
-                state.lastSavedContent = getMarkdownContent(false);
-            } catch (e) {
-                state.lastSavedContent = content;
-            }
+            // Baseline from the model after mount (matches later dirty checks) without
+            // a full DOM walk via getMarkdownContent. Raw host string alone caused false
+            // Unsaved when markdown round-trip differed only by trailing newlines.
             if (markDirty) {
                 state.lastSavedContent = '\0__session_unsaved__';
+            } else {
+                try {
+                    state.lastSavedContent = (typeof DocumentModel !== 'undefined')
+                        ? DocumentModel.toMarkdown() : content;
+                } catch (e) {
+                    state.lastSavedContent = content;
+                }
             }
             if (state.mode === 'source' && sourceEditor) {
                 sourceEditor.value = content;
-                requestAnimationFrame(resizeSourceEditor);
             }
+            try { if (typeof syncModeSurface === 'function') syncModeSurface(); } catch (eSurf2) {}
+            try { postViewState(currentViewState()); } catch (ePv2) {}
             updateStatsNow();
         }
 
@@ -382,7 +386,14 @@
             shouldVirtualize: function () {
                 if (isPaginatedLayout()) return false;
                 const nBlocks = this.blocks.length;
-                const nChars = this.toMarkdown().length;
+                // Sum raw lengths only — avoid joining a full toMarkdown() string just
+                // to decide virt (open + column remounts used to pay O(n) join cost).
+                let nChars = 0;
+                for (let i = 0; i < nBlocks; i++) {
+                    const r = this.blocks[i] && this.blocks[i].raw;
+                    nChars += (r == null ? 0 : String(r).length);
+                    if (i) nChars += 1; // join('\n') separator
+                }
                 const minB = typeof VIRT_MIN_BLOCKS === 'number' ? VIRT_MIN_BLOCKS : 2000;
                 const minC = typeof VIRT_MIN_CHARS === 'number' ? VIRT_MIN_CHARS : 120000;
                 return nBlocks >= minB || nChars >= minC;

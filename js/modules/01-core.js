@@ -259,6 +259,28 @@
         }
 
         /**
+         * Keep #editor / #source-editor visibility aligned with state.mode.
+         * Half-applied mode switches left Source lit on the shell while Preview DOM
+         * stayed visible (or the reverse).
+         */
+        function syncModeSurface() {
+            const isSource = state.mode === 'source';
+            try {
+                if (editor) editor.style.display = isSource ? 'none' : 'block';
+            } catch (eE) {}
+            try {
+                if (sourceEditor) sourceEditor.style.display = isSource ? 'block' : 'none';
+            } catch (eS) {}
+            try {
+                state.viewMode = viewModeFromInternal(state.mode);
+            } catch (eV) {}
+            try { applyEditorChromeForMode(); } catch (eC) {}
+            if (isSource) {
+                try { requestAnimationFrame(resizeSourceEditor); } catch (eR) {}
+            }
+        }
+
+        /**
          * Layout chrome so Source and Preview put the vertical scrollbar in the same place
          * (far right of #main-container). Preview scrolls #main-container; Source scrolls
          * the textarea — so we zero the wrapper's right padding in Source and pad the

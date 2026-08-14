@@ -2892,16 +2892,41 @@ namespace TypoZen
                     ApplyDocKindFromSession(tab, kindTok);
 
                     // Book / native: path only — never ReadTextFileDetect (binary).
-                    if (IsReadOnlyTab(tab) || ClassifyDocKind(tab.FilePath) != DocKind.Engine)
+                    //
+                    // HTML is path-classified as Native (default open = rendered page), but a
+                    // session can still record kind=engine when the user was in Mode → Source
+                    // (markup). Honor that so restore reloads markup as editor Source rather
+                    // than forcing Native and leaving Mode chrome wrong.
+                    bool sessionEngine = string.Equals(kindTok, "engine", StringComparison.OrdinalIgnoreCase);
+                    bool pathBook = !string.IsNullOrEmpty(tab.FilePath)
+                        && tab.FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+                    bool pathNativeDefault = !sessionEngine
+                        && !pathBook
+                        && ClassifyDocKind(tab.FilePath) != DocKind.Engine;
+                    if (pathBook || pathNativeDefault || tab.Kind == DocKind.Book
+                        || (tab.Kind == DocKind.Native && !sessionEngine))
                     {
                         if (string.IsNullOrEmpty(tab.FilePath) || !File.Exists(tab.FilePath))
                             continue;
-                        tab.Kind = ClassifyDocKind(tab.FilePath);
-                        tab.NativeRole = ClassifyNativeRole(tab.FilePath);
-                        tab.Content = "";
-                        tab.IsDirty = false;
-                        restored.Add(tab);
-                        continue;
+                        if (sessionEngine && IsHtmlPath(tab.FilePath))
+                        {
+                            tab.Kind = DocKind.Engine;
+                            tab.NativeRole = NativeRole.None;
+                        }
+                        else
+                        {
+                            tab.Kind = pathBook ? DocKind.Book : ClassifyDocKind(tab.FilePath);
+                            tab.NativeRole = pathBook ? NativeRole.None : ClassifyNativeRole(tab.FilePath);
+                            tab.Content = "";
+                            tab.IsDirty = false;
+                            restored.Add(tab);
+                            continue;
+                        }
+                    }
+                    else if (sessionEngine)
+                    {
+                        tab.Kind = DocKind.Engine;
+                        tab.NativeRole = NativeRole.None;
                     }
 
                     string body = null;
@@ -4451,6 +4476,16 @@ namespace TypoZen
             else if (msg.StartsWith("view_state:"))
             {
                 // "view_state:<mode>,<columns>,<scroll>,<columnsLocked>,<scrollLocked>"
+                //
+                // Paint synchronously. mode_changed: updates Mode pills on this same
+                // message thread. When view_state was deferred via BeginInvoke, a later
+                // mode_changed could run first and then a stale view_state repainted
+                // Source over a live WYSIWYG surface ("fake Source" on cold start).
+                //
+                // While a native tab is active the editor WebView still posts prefs
+                // echoes; those must not overwrite PaintNativeChrome (Reader).
+                if (ShouldIgnoreEditorModeChrome())
+                    return;
                 string[] p = msg.Substring(11).Split(',');
                 if (p.Length >= 5)
                 {
@@ -4459,11 +4494,12 @@ namespace TypoZen
                     string vScroll = p[2];
                     bool cLock = p[3] == "1";
                     bool sLock = p[4] == "1";
-                    Dispatcher.BeginInvoke(new Action(() =>
+                    try
                     {
                         RenderViewSelectors(vMode, vCols, vScroll, cLock, sLock);
                         RefreshEditingAvailability();
-                    }), DispatcherPriority.Normal);
+                    }
+                    catch { }
                 }
             }
             else if (msg.StartsWith("sidebar_state:"))
@@ -4601,6 +4637,11 @@ namespace TypoZen
                 // current before the refresh runs. RenderViewSelectors sets it too, from
                 // view_state:, but a mode change is reported by both and whichever
                 // arrives first must leave the same answer behind.
+                //
+                // Native HTML/PDF/media: ignore the hidden editor's mode (prefs often
+                // restore "source") so Source does not light over Reader chrome.
+                if (ShouldIgnoreEditorModeChrome())
+                    return;
                 string m = msg.Substring(13);
                 if (string.IsNullOrEmpty(m)) m = "wysiwyg";
                 _editorMode = m;
@@ -6286,6 +6327,19 @@ namespace TypoZen
             if (string.Equals(_viewMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
             if (string.Equals(_editorMode, "reader", StringComparison.OrdinalIgnoreCase)) return false;
             return true;
+        }
+
+        /// <summary>
+        /// True when Mode pills must follow the native surface (Reader for HTML/PDF/…)
+        /// rather than the hidden editor WebView's mode_changed / view_state.
+        /// </summary>
+        private bool ShouldIgnoreEditorModeChrome()
+        {
+            if (_nativeSurfaceVisible) return true;
+            if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                && IsNativeTab(_tabs[_activeTabIndex]))
+                return true;
+            return false;
         }
 
         /// <summary>
@@ -9117,6 +9171,15 @@ namespace TypoZen
                 SendMsg("new_document");
             else
                 LoadContentToEditor(content, tab.IsDirty, tab.FilePath);
+
+            // Source-class paths: host Mode must match plain load (page posts mode_changed
+            // too; this covers races). After content so layout is not applied to an empty
+            // unmeasured editor. Markdown stays Preview by default.
+            if (PreferSourceModeForPath(tab.FilePath))
+            {
+                ApplyHostModeChrome("source");
+                try { SendMsg("cmd:view_set:mode:source"); } catch { }
+            }
 
             // Come back to where this tab was left. The tab's own figure first; the
             // path-keyed store is the fallback for a tab restored from a session written
