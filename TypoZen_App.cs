@@ -255,6 +255,11 @@ namespace TypoZen
         private bool _nativeSurfaceVisible;
         private System.Drawing.Color _currentThemeBg = System.Drawing.Color.FromArgb(30, 30, 30);
         private string _currentFilePath = null;
+        // Last engine document pushed into the page (tab switch skip-remount).
+        private int _loadedEngineTabId = -1;
+        private string _loadedEnginePath = "";
+        private int _loadedEngineContentLen = -1;
+        private int _loadedEngineContentHash = 0;
         private string _initialFileToOpen = null;
         private LaunchRequest _pendingLaunch;
         private int _launchHintPasses = 0;
@@ -6854,6 +6859,52 @@ namespace TypoZen
             return !_tabs[_activeTabIndex].IsDirty;
         }
 
+        private static int ContentFingerprint(string content)
+        {
+            if (string.IsNullOrEmpty(content)) return 0;
+            // Cheap stable-enough key: length + ends (not a crypto hash).
+            int h = content.Length;
+            h = (h * 31) + content[0];
+            h = (h * 31) + content[content.Length - 1];
+            if (content.Length > 64)
+                h = (h * 31) + content[content.Length / 2];
+            return h;
+        }
+
+        private bool EngineTabAlreadyOnPage(DocTab tab, string content)
+        {
+            if (tab == null) return false;
+            if (tab.Id != _loadedEngineTabId) return false;
+            if (!string.Equals(tab.FilePath ?? "", _loadedEnginePath ?? "", StringComparison.Ordinal))
+                return false;
+            content = content ?? "";
+            if (content.Length != _loadedEngineContentLen) return false;
+            if (ContentFingerprint(content) != _loadedEngineContentHash) return false;
+            return true;
+        }
+
+        private void RememberEnginePageLoad(DocTab tab, string content)
+        {
+            if (tab == null)
+            {
+                _loadedEngineTabId = -1;
+                return;
+            }
+            content = content ?? "";
+            _loadedEngineTabId = tab.Id;
+            _loadedEnginePath = tab.FilePath ?? "";
+            _loadedEngineContentLen = content.Length;
+            _loadedEngineContentHash = ContentFingerprint(content);
+        }
+
+        private void InvalidateEnginePageLoad()
+        {
+            _loadedEngineTabId = -1;
+            _loadedEnginePath = "";
+            _loadedEngineContentLen = -1;
+            _loadedEngineContentHash = 0;
+        }
+
         /// <summary>
         /// Single host entry for undo/redo. Debounces so ThreadPreprocess + Window.KeyDown
         /// (or double menu) cannot fire two steps for one physical Ctrl+Z.
@@ -7113,18 +7164,13 @@ namespace TypoZen
 
             if (timeoutMs < 0) timeoutMs = DocStateFetchTimeoutMs;
 
-            // A clean tab gets a short budget rather than the full one.
-            //
-            // allowStaleIfClean already says "if this cannot be fetched and the tab looks
-            // clean, carry on with what we have" -- but it only said so after the fetch had
-            // spent its whole budget. A large document that is still painting does not answer
-            // scripts, so every tab switch away from one cost two three-second timeouts and
-            // then proceeded with the stale copy anyway. Six seconds to reach the same
-            // decision. The fresh pull is still attempted, and a dirty tab still gets the
-            // full budget, because there the answer actually matters.
+            // Clean leave: keep the last in-memory buffer and skip the WebView round trip.
+            // Typing sets _isDirty / tab.IsDirty immediately (msg "typing"), so this does
+            // not drop unsaved work. Dirty tabs still pull the full body below.
             if (allowStaleIfClean && ActiveTabLooksClean())
             {
-                timeoutMs = Math.Min(timeoutMs, 400);
+                if (!string.IsNullOrEmpty(_currentFilePath)) activeTab.FilePath = _currentFilePath;
+                return true;
             }
 
             // If already inside a blocking script, do not nest — treat as stale/fail.
@@ -9134,6 +9180,7 @@ namespace TypoZen
                 ShowEditorSurface();
                 _currentFilePath = tab.FilePath;
                 _isDirty = false;
+                InvalidateEnginePageLoad();
                 RefreshEditingAvailability();
                 Dispatcher.BeginInvoke(new Action(() => OpenBook(tab.FilePath, true)),
                     DispatcherPriority.Normal);
@@ -9150,6 +9197,7 @@ namespace TypoZen
                 tab.IsDirty = false;
                 _currentFilePath = tab.FilePath;
                 _isDirty = false;
+                InvalidateEnginePageLoad();
                 RefreshEditingAvailability();
                 Dispatcher.BeginInvoke(new Action(() => OpenNative(tab.FilePath, true)),
                     DispatcherPriority.Normal);
@@ -9167,10 +9215,16 @@ namespace TypoZen
             // kind was epub (wasBook). Do not send leave_book_surface first — that raced
             // and could remount HTML as Markdown.
             string content = tab.Content ?? "";
-            if (string.IsNullOrEmpty(content) && string.IsNullOrEmpty(tab.FilePath) && !tab.IsDirty)
-                SendMsg("new_document");
-            else
-                LoadContentToEditor(content, tab.IsDirty, tab.FilePath);
+            // Skip full remount when the page already holds this tab's buffer (A→B→A).
+            bool alreadyLoaded = EngineTabAlreadyOnPage(tab, content);
+            if (!alreadyLoaded)
+            {
+                if (string.IsNullOrEmpty(content) && string.IsNullOrEmpty(tab.FilePath) && !tab.IsDirty)
+                    SendMsg("new_document");
+                else
+                    LoadContentToEditor(content, tab.IsDirty, tab.FilePath);
+                RememberEnginePageLoad(tab, content);
+            }
 
             // Source-class paths: host Mode must match plain load (page posts mode_changed
             // too; this covers races). After content so layout is not applied to an empty

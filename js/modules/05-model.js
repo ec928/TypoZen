@@ -898,6 +898,7 @@
         function loadMarkdownContent(markdown, opts) {
             opts = opts || {};
             _contentCache = null;
+            try { if (typeof clearWarmPageChunk === 'function') clearWarmPageChunk(); } catch (eW) {}
             try { releaseDocumentStateForHost(); } catch (e0) {}
             const text = markdown == null ? '' : String(markdown);
 

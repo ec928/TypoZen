@@ -3449,12 +3449,18 @@
          * indicator, a page turn, the block a column switch anchors on -- is derived from
          * it, so it has to come from the layout rather than from arithmetic about it.
          */
-        function mountPageChunk(c) {
-            if (!editor || !pageWindowingActive()) return false;
+        // Off-DOM chunk built on idle so a boundary turn can attach instead of building 800
+        // blocks on the critical path. Invalidated whenever the document is replaced.
+        let _warmPageChunk = null; // { index, nBlocks, frag }
+
+        function clearWarmPageChunk() {
+            _warmPageChunk = null;
+        }
+
+        function buildPageChunkFragment(c) {
             const n = DocumentModel.blocks.length;
             PageChunks.ensure(n);
             c = Math.max(0, Math.min(c | 0, PageChunks.counts.length - 1));
-
             const start = PageChunks.firstBlockOfChunk(c);
             const end = Math.min(n, start + PageChunks.size);
             const frag = document.createDocumentFragment();
@@ -3465,36 +3471,92 @@
                 if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
                 frag.appendChild(el);
             }
-            editor.innerHTML = '';
-            editor.appendChild(frag);
-            PageChunks.mounted = c;
-            try {
-                const who = (new Error().stack || '').split(String.fromCharCode(10))[2] || '';
-                window.showDebugTelemetry('mountPageChunk ' + c + ' blocks ' + start + '..' +
-                    (end - 1) + ' <- ' + who.trim().slice(0, 90));
-            } catch (eT) {}
+            return { index: c, nBlocks: n, frag: frag, start: start, end: end };
+        }
 
+        /** Build neighbour chunk off-DOM after a turn (idle). No dual live mount. */
+        function scheduleWarmAdjacentPageChunks() {
+            if (!pageWindowingActive() || !editor) return;
+            const mounted = PageChunks.mounted;
+            if (!(mounted >= 0)) return;
+            const nChunks = PageChunks.counts ? PageChunks.counts.length : 0;
+            if (nChunks <= 1) return;
+            const next = mounted + 1;
+            const prev = mounted - 1;
+            const target = (next < nChunks) ? next : ((prev >= 0) ? prev : -1);
+            if (target < 0) return;
+            if (_warmPageChunk && _warmPageChunk.index === target
+                && _warmPageChunk.nBlocks === DocumentModel.blocks.length) return;
+            const run = function () {
+                try {
+                    if (!pageWindowingActive()) return;
+                    if (PageChunks.mounted !== mounted) return; // reader moved on
+                    _warmPageChunk = buildPageChunkFragment(target);
+                } catch (eW) { _warmPageChunk = null; }
+            };
+            if (typeof requestIdleCallback === 'function') {
+                try { requestIdleCallback(run, { timeout: 400 }); return; } catch (eI) {}
+            }
+            setTimeout(run, 0);
+        }
+
+        function mountPageChunk(c) {
+            if (!editor || !pageWindowingActive()) return false;
+            const n = DocumentModel.blocks.length;
+            PageChunks.ensure(n);
+            c = Math.max(0, Math.min(c | 0, PageChunks.counts.length - 1));
+
+            let start;
+            let end;
+            // Reuse idle-built fragment when it matches this chunk and document size.
+            if (_warmPageChunk && _warmPageChunk.index === c
+                && _warmPageChunk.nBlocks === n && _warmPageChunk.frag) {
+                start = _warmPageChunk.start;
+                end = _warmPageChunk.end;
+                editor.innerHTML = '';
+                editor.appendChild(_warmPageChunk.frag);
+                _warmPageChunk = null;
+            } else {
+                const built = buildPageChunkFragment(c);
+                start = built.start;
+                end = built.end;
+                editor.innerHTML = '';
+                editor.appendChild(built.frag);
+                if (_warmPageChunk && _warmPageChunk.index === c) _warmPageChunk = null;
+            }
+            PageChunks.mounted = c;
+            if (window.__tzDebugLog) {
+                try {
+                    window.showDebugTelemetry('mountPageChunk ' + c + ' blocks ' + start + '..' +
+                        (end - 1));
+                } catch (eT) {}
+            }
+
+            // One relayout after attach (was two — second only repeated measure work).
             try { PageGeometry.relayout(); } catch (eG) {}
-            // Ask PageGeometry, do not re-derive.
-            //
-            // This carried its own copy of ceil((scrollWidth - 1) / stride) -- the same
-            // formula PageGeometry.localCount used, and the same one that counted pages the
-            // reader cannot reach. Fixing it in one place therefore fixed the number a turn
-            // consults while leaving the number recorded for the range untouched, so the two
-            // disagreed by construction and the second was the one that survived into
-            // count(). One authority for "how many pages is this range", measured where the
-            // geometry is.
             PageChunks.setMeasured(c, PageGeometry.localCount());
 
             if (!currentActiveBlock || !editor.contains(currentActiveBlock)) {
                 currentActiveBlock = editor.querySelector('.block');
             }
             try { repaintFindHighlights(); } catch (eF) {}
+            // Book text-size normalise off the turn path — it was full reflow on every boundary.
             try {
-                if (typeof scheduleNormaliseBookTextSize === 'function') scheduleNormaliseBookTextSize();
-                else if (typeof normaliseBookTextSize === 'function') normaliseBookTextSize();
-            } catch (eN) {}
-            try { PageGeometry.relayout(); } catch (eG2) {}
+                if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') {
+                    const norm = function () {
+                        try {
+                            if (typeof scheduleNormaliseBookTextSize === 'function')
+                                scheduleNormaliseBookTextSize();
+                            else if (typeof normaliseBookTextSize === 'function')
+                                normaliseBookTextSize();
+                        } catch (eN) {}
+                    };
+                    if (typeof requestAnimationFrame === 'function')
+                        requestAnimationFrame(function () { setTimeout(norm, 0); });
+                    else setTimeout(norm, 0);
+                }
+            } catch (eN2) {}
+            scheduleWarmAdjacentPageChunks();
             return true;
         }
 
@@ -3663,7 +3725,11 @@
                     // range's first or last page -- which is precisely where you came from.
                     ok = this.stepLocal(dir < 0 ? -1 : 1);
                 }
-                if (ok) { const t = topLeftModelIndexTwoCol(); if (t >= 0) _readingAnchor = t; }
+                if (ok) {
+                    const t = topLeftModelIndexTwoCol();
+                    if (t >= 0) _readingAnchor = t;
+                    try { scheduleWarmAdjacentPageChunks(); } catch (eW) {}
+                }
                 return ok;
             },
 
