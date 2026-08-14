@@ -16,7 +16,7 @@ Product truth lives here and in the README; `docs/archive/` is history.
 |----------|-----|
 | `README.md` | User-facing product behaviour (current) |
 | `docs/for-agents.md` | This file — constraints, keyboard matrix, non-goals |
-| `docs/known-issues.md` | Open defects **reproduced and characterised** only |
+| `docs/known-issues.md` | Product limits + fixed/mitigated notes (not a dump of suite noise) |
 | `docs/developer-editor-analysis.md` | Parked code-editor attempt |
 | `docs/archive/` | Historical plans and decision records — not current contracts |
 
@@ -64,15 +64,20 @@ Help: **F1** / **Help → Syntax & Shortcuts** → `#helpModal`. **Help → Abou
 - Match case / whole word shared between Ctrl+F and sidebar (`Alt+S`).
 - Recent searches: last **8**, **global** (not per tab), in `settings.json`.
 - **F3** / **Shift+F3** also step next/prev.
-- Highlighter fallback `: 0` — if a match has no range, the view can land on a **different** match (often top of doc). Not data loss. See `docs/known-issues.md`.
+- **Image-only lines** (query hits asset path): jump via block navigation; do **not** text-highlight or fall back to another match. Sidebar badge is clickable.
+- **Highlighter:** only scroll when `currentRange` names this match. Never `ranges[0]` as a substitute target.
+- Search and Marks jumps share **`flashMarkFocus`**. Status Ln after jump: pin sticky / prefer sticky when focus is outside the editor.
 
 ## Layout / view rules agents hit often
 
 - **Word Wrap**: applies in Source and **scroll** Preview only. On Pages, Reader, or epub the menu item is **disabled** (no fake tick); preference is stored and returns when wrap applies.
 - **Sticky mode switch** (Preview ↔ Source ↔ Reader): keep the same hard document line for status **and** scroll; re-capture after expand. Tests: `mode-switch-line-selftest`, `mode-switch-sticky-e2e`.
-- **Page counts** are approximate until ranges are measured (`PageChunks.estimateChunkPages`). Tolerated; suites allow for it.
+- **Page counts** are approximate until ranges are measured (`PageChunks.estimateChunkPages`). Product limit, not a defect. Suites allow for it.
+- **View → Block Hover:** `none` / `wash` / `edge` (default) / `hint`. Bookmark ▮ only in **hint**. Off in Reader/epub.
+- **Marks list active row:** prefer marks visible on the spread (2-col), then list-click pin, then last-before reading block.
+- **Leave book → Preview:** set destination mode, then `setEditorEditable(true)`; `applyViewState` re-syncs editability.
 - **Multi-block Delete** in Preview goes through the **model** (freeze + reload), not browser multi-range delete alone.
-- **Tab after undo** (list indent): clear format-selection freeze on undo/redo; prefer live caret for list Tab (`04-lists.js`). Was a real defect; mitigated — re-check `editing-sweep-app` if touching list Tab.
+- **Tab after undo** (list indent): clear format-selection freeze on undo/redo; prefer live caret for list Tab (`04-lists.js`). Mitigated — re-check `editing-sweep-app` if touching list Tab.
 
 ## Module map (edit without rebuilding C#)
 

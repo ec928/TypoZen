@@ -4824,20 +4824,16 @@
             findState.ranges = ranges;
             findState.currentRange = currentRange;
             applyWysiwygHighlights();
-            // Scroll to the CURRENT match only. When currentRange is -1 the match has no
-            // text node (image path hit, markup-only query). Falling back to ranges[0]
-            // yanked the view to the first mounted hit (often top of doc). Only use the
-            // first range when we never identified a target block at all.
-            let active = null;
-            if (currentRange >= 0 && ranges[currentRange]) {
-                active = ranges[currentRange];
-            } else if (currentRange < 0 && curBlock < 0 && ranges.length) {
-                active = ranges[0];
-            }
+            // Scroll only when this match has its own range. Never fall back to ranges[0]:
+            // that jumped the reader to a different hit (often the top of the document)
+            // for image-path matches and other no-text-node cases. Navigation without a
+            // range is the caller's job (revealModelMatch / ensureModelBlockVisible).
+            const active = (currentRange >= 0 && ranges[currentRange])
+                ? ranges[currentRange] : null;
             if (active) {
                 // Paginated layout: mainContainer does not scroll; page turn already moved
                 // the view. Only nudge the scroll surface in continuous mode.
-                if (!isPaginatedLayout()) scrollRangeIntoMain(active);
+                if (!isPaginatedLayout() && navigate) scrollRangeIntoMain(active);
                 // Select the match only for the Ctrl+F bar, where Replace acts on the
                 // selection and the caret is expected to land in the text.
                 //

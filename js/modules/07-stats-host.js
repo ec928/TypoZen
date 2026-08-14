@@ -147,6 +147,20 @@
                 try { caretLine = getCaretLineNumber(content); } catch (eC) { caretLine = 1; }
                 if (caretLine < 1) caretLine = 1;
                 if (caretLine > lines) caretLine = lines;
+                // After search/mark jump, focus often sits on the sidebar. getCaretLineNumber
+                // then returns 1 and the status bar lied (Ln 1 while sticky was mid-doc).
+                try {
+                    const sticky = (typeof _stickyLineCache !== 'undefined')
+                        ? (_stickyLineCache | 0) : 0;
+                    if (caretLine <= 1 && sticky > 12) {
+                        const ae = document.activeElement;
+                        const inEd = !!(editor && ae
+                            && (ae === editor || editor.contains(ae)));
+                        const inSrc = !!(typeof sourceEditor !== 'undefined' && sourceEditor
+                            && ae === sourceEditor);
+                        if (!inEd && !inSrc) caretLine = Math.min(sticky, lines);
+                    }
+                } catch (ePin) {}
             }
             _lastCaretLine = caretLine;
             // Only refresh sticky cache while the user is still focused in the editor.
