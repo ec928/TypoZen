@@ -88,19 +88,26 @@ try {
     await app.eval(() => handleCommand('toggle_search_sidebar'));
     await sleep(600);
 
-    const found = await app.eval(async () => {
+    const found = await app.eval(async (q) => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         const input = document.getElementById('sidebarSearchInput');
-        input.value = 'scroll';
+        input.value = q;
         input.dispatchEvent(new Event('input', { bubbles: true }));
-        // Longer than SIDEBAR_SEARCH_DEBOUNCE_MS (2000), not shorter. At 1500 this read
-        // the result set mid-debounce and reported 0 or 199 matches instead of 2135,
-        // which failed "a wide result set" and then cascaded into every assertion that
-        // depends on there being matches -- intermittently, so it read as a real
-        // regression twice while nothing was wrong.
-        await sleep(2600);
+        // Wait for the search to have run, not for a number of milliseconds.
+        //
+        // This used to sleep 2600 against SIDEBAR_SEARCH_DEBOUNCE_MS of 2000 -- 600ms of
+        // headroom for the debounce to fire AND runFind to cross 4582 lines. On a loaded
+        // machine that is not enough, and the read lands mid-debounce: 0 matches, which
+        // then cascades into every assertion below it. It had already been re-tuned once
+        // (1500 -> 2600) for exactly this, which is the tell that the number was never
+        // the fix. Poll the state the assertions actually depend on instead.
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+            if (findState.query === q && findState.matches.length > 0) break;
+            await sleep(150);
+        }
         return { matches: findState.matches.length };
-    });
+    }, 'scroll');
     info('matches: ' + found.matches);
     assert(found.matches > 2000, 'a wide result set (' + found.matches + ')');
 
@@ -173,18 +180,22 @@ try {
             L + ': after stepping the mark is still on the sidebar’s line');
     }
 
-    // --- A match with nothing rendered to travel to moves the view NOWHERE.
+    // --- A match with no text node travels to its IMAGE, and never to another match.
     //
     // Searching "scroll" matches inside `![](large-scroll-mixed-assets/...)`. That line
     // paints an <img> and contributes no text node, so no range is built for it, and the
-    // highlighter's `ranges[currentRange >= 0 ? currentRange : 0]` fallback then seeks to
+    // highlighter's old `ranges[currentRange >= 0 ? currentRange : 0]` fallback seeked to
     // a DIFFERENT match -- the first one built, at the top of the document. Clicking that
     // row threw the reader back to page one. It was never failing to scroll; it was
     // scrolling to the wrong hit.
     //
-    // Asserted as "stays exactly where it was", not "goes somewhere sensible": there is no
-    // position in the text for it to go to, so doing nothing is the answer.
-    console.log('\n########## an image result travels nowhere ##########');
+    // This suite used to assert "stays exactly where it was", because the first fix was to
+    // do nothing at all. The product moved on: the row is a real result with a real place
+    // in the document, so it navigates by block instead of by text range (see
+    // docs/for-agents.md, "Image-only lines", and the clickable badge in the sidebar). The
+    // assertion follows -- land on the image's own block. What must never happen is the
+    // original fault, landing on somebody else's match.
+    console.log('\n########## an image result travels to its image ##########');
     await app.eval((c) => handleCommand('view_set:columns:' + c), 1);
     await sleep(1200);
     await app.eval(() => handleCommand('view_set:scroll:scroll'));
@@ -211,12 +222,32 @@ try {
         rows[imageRow].click();
         await sleep(2000);
         const afterImage = Math.round(mc.scrollTop);
-        // And a text row from the same place still travels, so "nothing moved" is not
-        // just "nothing works any more".
+
+        // Where was it supposed to go? The block holding this match, asked of the model
+        // rather than assumed -- and whether that block is the image line at all.
+        const mi = findState.matches[findState.index];
+        const line = documentLineForModelOffset(mi.start);
+        const loc = modelLocationFromDocumentLine(line);
+        const wantBlock = loc ? loc.blockIndex : -1;
+        const wantRaw = (wantBlock >= 0 && DocumentModel.blocks[wantBlock])
+            ? DocumentModel.blocks[wantBlock].raw : '';
+        const el = (typeof elementForModelIndex === 'function')
+            ? elementForModelIndex(wantBlock) : null;
+        let onScreen = false;
+        if (el) {
+            const r = el.getBoundingClientRect();
+            const h = mc.getBoundingClientRect();
+            onScreen = r.bottom > h.top && r.top < h.bottom;
+        }
+
+        // And a text row from the same place still travels somewhere else, so "it went to
+        // the image" is not just "every click lands in the same spot".
         rows[5].click();
         await sleep(2000);
         return {
-            imageRow, textRow, parked, afterImage,
+            imageRow, textRow, parked, afterImage, wantBlock, onScreen,
+            isImageLine: /^!\[[^\]]*\]\(/.test(String(wantRaw).trim()),
+            anchor: (typeof _readingAnchor !== 'undefined') ? _readingAnchor : -1,
             badgeText: rows[imageRow].textContent.trim().slice(0, 40),
             afterText: Math.round(mc.scrollTop),
         };
@@ -224,13 +255,20 @@ try {
     info('image row ' + nowhere.imageRow + ': ' + JSON.stringify(nowhere.badgeText));
     info('parked at ' + nowhere.parked + ' -> image ' + nowhere.afterImage +
          ' -> text ' + nowhere.afterText);
+    info('image lives at block ' + nowhere.wantBlock + ', anchor ' + nowhere.anchor +
+         ', on screen ' + nowhere.onScreen);
     assert(nowhere.imageRow >= 0, 'control: an image result is rendered as a badge');
     assert(nowhere.parked > 0, 'control: a text result travelled somewhere to start from');
-    assert(nowhere.afterImage === nowhere.parked,
-        'clicking the image result leaves the view exactly where it was (' +
-        nowhere.parked + ' -> ' + nowhere.afterImage + ')');
-    assert(nowhere.afterText !== nowhere.parked,
-        'control: a text result still travels from that same place (' +
+    assert(nowhere.isImageLine,
+        'control: the row really is an image-only line, not ordinary text');
+    assert(nowhere.onScreen,
+        'clicking the image result brings its own block into view (block ' +
+        nowhere.wantBlock + ')');
+    assert(nowhere.anchor === nowhere.wantBlock,
+        'and the reading anchor is that block, not another match (' +
+        nowhere.anchor + ' vs ' + nowhere.wantBlock + ')');
+    assert(nowhere.afterText !== nowhere.afterImage,
+        'control: a text result still travels somewhere else from there (' +
         nowhere.afterText + ')');
 
     // --- The clear button stops the search and leaves the pane alone.

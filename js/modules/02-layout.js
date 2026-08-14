@@ -563,6 +563,31 @@
         function focusSidebarSearchInput(selectAll) {
             const input = document.getElementById('sidebarSearchInput');
             if (!input) return;
+
+            // Show the box before trying to put the caret in it.
+            //
+            // You cannot focus a display:none element: the call succeeds, focus stays on
+            // <body>, and the function that exists to put the caret in the search box has
+            // silently done nothing. That is the state after an external ZenSeek search
+            // (--search) on a book, where the sidebar is still collapsed and the Search
+            // pane is not the active tab -- so the next thing typed went into the document
+            // instead of the query. Alt+S never hit it only because toggle_search_sidebar
+            // happens to open the pane first; nothing said the helper depended on that.
+            //
+            // noFocus on switchTab: it focuses the input on a 10ms timer of its own, which
+            // would race the reassert loop below. One owner of the caret, this one.
+            try {
+                if (sidebar && sidebar.classList.contains('collapsed')) {
+                    sidebar.classList.remove('collapsed');
+                    if (typeof postSidebarState === 'function') postSidebarState();
+                }
+                const pane = document.getElementById('tab-search');
+                if (!(pane && pane.classList.contains('active'))
+                    && typeof switchTab === 'function') {
+                    switchTab('search', true);
+                }
+            } catch (ePane) {}
+
             const grab = () => {
                 try {
                     input.focus({ preventScroll: true });

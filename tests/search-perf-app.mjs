@@ -34,14 +34,22 @@ try {
     await app.eval(() => handleCommand('toggle_search_sidebar'));
     await sleep(600);
 
-    const found = await app.eval(async () => {
+    const found = await app.eval(async (q) => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         const input = document.getElementById('sidebarSearchInput');
-        input.value = 'scroll';
+        input.value = q;
         input.dispatchEvent(new Event('input', { bubbles: true }));
-        await sleep(1200);
+        // Wait for the search to have run. This slept 1200ms against a 2000ms debounce
+        // (SIDEBAR_SEARCH_DEBOUNCE_MS), so it read the result set before the search had
+        // started and could never see a match -- every assertion below it then failed on
+        // an empty list, which reads exactly like a search regression and was not one.
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+            if (findState.query === q && findState.matches.length > 0) break;
+            await sleep(150);
+        }
         return { matches: findState.matches.length, rows: document.getElementById('search-results-list').children.length };
-    });
+    }, 'scroll');
     info('matches: ' + found.matches + ', rows painted: ' + found.rows);
     assert(found.matches > 2000, 'the fixture produces a wide result set (' + found.matches + ')');
 
