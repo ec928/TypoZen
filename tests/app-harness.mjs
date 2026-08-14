@@ -155,11 +155,13 @@ export async function launchApp(options) {
     const browser = await puppeteer.connect({
         browserURL: 'http://127.0.0.1:' + PORT,
         defaultViewport: null,          // the WPF window decides the viewport, not us
-        // puppeteer's default protocolTimeout is 180s, and a single evaluate() against the
-        // twelve-book Xeelee omnibus (45,390 blocks) can outlast it. When it does, the run
-        // dies with ProtocolError mid-suite -- which looks like the application hanging and
-        // is the harness giving up on a call the application was still answering.
-        protocolTimeout: 600000
+        // Left at puppeteer's 180s default on purpose. It was raised to 600s to get
+        // epub-open-app past a ProtocolError, on the assumption that the omnibus was
+        // merely slow. It is not merely slow: goToModelBlock() into the middle of the
+        // 45,390-block Xeelee omnibus does not finish, and all a longer timeout bought
+        // was a ten-minute wait for the same failure. A timeout that fires is a timeout
+        // doing its job -- see docs/known-issues.md.
+        protocolTimeout: 180000
     });
 
     // The app's document is the only page; DevTools may also list workers.
