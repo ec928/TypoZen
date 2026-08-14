@@ -3814,10 +3814,18 @@
          * that is merely stale looks perfectly stable while it does. These delays keep
          * checking well past that, at a cost of a handful of measurements.
          */
-        const COLUMN_SETTLE_DELAYS_MS = [0, 16, 50, 100, 200, 350, 550, 800, 1100, 1500];
+        // Fewer passes than the old 10×/1.5s chain: enough for multicol reflow to settle,
+        // without re-anchoring for a full second and a half after every column switch.
+        // A new schedule cancels prior ones so stacked switches do not fight.
+        const COLUMN_SETTLE_DELAYS_MS = [0, 50, 150, 400];
+        let _columnSettleGen = 0;
         function scheduleColumnSettle(fn) {
+            const gen = ++_columnSettleGen;
             COLUMN_SETTLE_DELAYS_MS.forEach(function (d) {
-                setTimeout(function () { try { fn(); } catch (e) {} }, d);
+                setTimeout(function () {
+                    if (gen !== _columnSettleGen) return;
+                    try { fn(); } catch (e) {}
+                }, d);
             });
         }
 
@@ -4230,6 +4238,9 @@
                     return { haystack: DocumentModel.toPlainText(), map: null, kind: 'model' };
                 }
                 try { DocumentModel.syncMountedToModel(); } catch (eS) {}
+                try {
+                    if (typeof flushActiveBlockToRaw === 'function') flushActiveBlockToRaw();
+                } catch (eF) {}
                 let md = '';
                 try { md = DocumentModel.toMarkdown(); } catch (eT) {
                     try { md = getMarkdownContent(false, { flushActive: true }); } catch (eG) { md = ''; }
@@ -4804,9 +4815,9 @@
                 runFind(q, false, { navigate: true });
                 return;
             }
-            // Always replace against markdown so Source/Live stay consistent
+            // Same surface as Find (model/source), not a separate DOM serialize.
             const opts = getFindOptions();
-            const hay = getMarkdownContent();
+            const hay = (getFindHaystack().haystack) || '';
             const matches = findAllIndices(hay, q, opts);
             if (!matches.length) {
                 runFind(q, false, { navigate: false });
@@ -4829,7 +4840,7 @@
             const rep = repEl ? repEl.value : '';
             if (!q) return;
             const opts = getFindOptions();
-            const hay = getMarkdownContent();
+            const hay = (getFindHaystack().haystack) || '';
             const matches = findAllIndices(hay, q, opts);
             if (!matches.length) {
                 setFindStatus('No results');

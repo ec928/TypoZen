@@ -98,7 +98,20 @@
                 content = sourceEditor.value || '';
                 _contentCache = content;
             } else if (content == null) {
-                content = getMarkdownContent(false);
+                // Prefer model join over DOM walk (same markdown for normal Preview docs).
+                try {
+                    if (typeof flushActiveBlockToRaw === 'function') flushActiveBlockToRaw();
+                } catch (eF) {}
+                try {
+                    if (typeof DocumentModel !== 'undefined' && DocumentModel.kind !== 'epub'
+                        && DocumentModel.blocks && DocumentModel.blocks.length) {
+                        content = DocumentModel.toMarkdown();
+                    } else {
+                        content = getMarkdownContent(false);
+                    }
+                } catch (eM) {
+                    content = getMarkdownContent(false);
+                }
                 _contentCache = content;
             }
             const chars = content.length;
@@ -195,9 +208,55 @@
          * Pure read only — expandAllFragmentedBlocks on multi‑thousand-line docs freezes
          * the UI and makes the host's blocking pull time out ("Could not reach editor").
          */
+        /**
+         * Dirty bit only — no full document body. Used on tab leave so a false host
+         * dirty (or Source compare) does not force a multi‑MB bridge pull.
+         * Fail closed ('1') if anything is unclear.
+         */
+        function getDocumentDirtyFlag() {
+            try {
+                if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
+                    return '0';
+                if (state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) {
+                    return ((sourceEditor.value || '') !== (state.lastSavedContent || '')) ? '1' : '0';
+                }
+                try {
+                    if (typeof flushActiveBlockToRaw === 'function') flushActiveBlockToRaw();
+                } catch (eF) {}
+                let md = '';
+                try {
+                    if (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
+                        md = DocumentModel.toMarkdown();
+                    else
+                        md = getMarkdownContent(false, { flushActive: false });
+                } catch (eM) {
+                    return '1';
+                }
+                return (md !== (state.lastSavedContent || '')) ? '1' : '0';
+            } catch (e) {
+                return '1';
+            }
+        }
+
         function getDocumentStateTagged() {
             // Always flush active before host pull (Save / close / tab leave).
-            const content = getMarkdownContent(false, { flushActive: true });
+            // Prefer model join when possible (faster than full DOM serialize).
+            let content;
+            try {
+                if (typeof flushActiveBlockToRaw === 'function') flushActiveBlockToRaw();
+            } catch (eF) {}
+            try {
+                if (state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) {
+                    content = sourceEditor.value || '';
+                } else if (typeof DocumentModel !== 'undefined' && DocumentModel.kind !== 'epub'
+                    && DocumentModel.blocks && DocumentModel.blocks.length) {
+                    content = DocumentModel.toMarkdown();
+                } else {
+                    content = getMarkdownContent(false, { flushActive: false });
+                }
+            } catch (e) {
+                content = getMarkdownContent(false, { flushActive: true });
+            }
             _contentCache = content;
             // Books are read-only: never report dirty. Comparing to lastSavedContent used
             // to flip dirty on every tab leave and the close dialog offered to "save" an .epub.

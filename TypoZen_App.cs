@@ -7179,6 +7179,28 @@ namespace TypoZen
                 if (allowStaleIfClean && ActiveTabLooksClean()) return true;
                 return false;
             }
+
+            // Cheap dirty probe before a full body pull. Host may still say dirty after
+            // undo-to-saved or a lagging flag; page Source compare / model join is enough
+            // to clear that without marshalling multi‑MB markdown.
+            try
+            {
+                string flag = ExecuteScriptBlocking(
+                    "(function(){ try {" +
+                    "  if (typeof getDocumentDirtyFlag === 'function') return getDocumentDirtyFlag();" +
+                    "  return '1';" +
+                    "} catch(e) { return '1'; } })()",
+                    Math.Min(Math.Max(timeoutMs, 200), 800));
+                if (flag == "0")
+                {
+                    activeTab.IsDirty = false;
+                    _isDirty = false;
+                    if (!string.IsNullOrEmpty(_currentFilePath)) activeTab.FilePath = _currentFilePath;
+                    return true;
+                }
+            }
+            catch { /* fall through to full pull */ }
+
             string tagged = FetchDocumentStateBlocking(timeoutMs);
             if (tagged == null)
             {
