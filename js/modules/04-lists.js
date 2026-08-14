@@ -928,6 +928,11 @@
         function markBlockEdited(block) {
             if (!block) return;
             try { block.setAttribute(BLOCK_EDITED_ATTR, '1'); } catch (e) {}
+            // A block's text is about to change, so the bookmark fingerprint cache built
+            // from the old raws is no longer the document. Cheap: it only drops a reference.
+            try {
+                if (typeof invalidateMarkCaches === 'function') invalidateMarkCaches();
+            } catch (eM) {}
         }
 
         function blockWasEdited(block) {
@@ -1066,6 +1071,11 @@
 
         function writeBlockRaw(block, raw) {
             raw = coerceBlockRaw(raw);
+            // Same reason as markBlockEdited: this rewrites a block's text, so the
+            // fingerprints cached for bookmark resolution describe the previous document.
+            try {
+                if (typeof invalidateMarkCaches === 'function') invalidateMarkCaches();
+            } catch (eM) {}
             block.setAttribute('data-raw', raw);
             try { block.removeAttribute('data-tz-dirty'); } catch (e0) {}
             setBlockListIndentAttr(block, raw);

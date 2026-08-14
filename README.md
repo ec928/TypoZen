@@ -119,7 +119,7 @@ being two shortcuts and nothing on screen:
 
 | Where | What |
 |---|---|
-| **The gutter** | Hover a paragraph and a hollow ribbon appears in the margin beside it; click to fill it, click again to remove. Drawn with `::before` and hit-tested by coordinate — a real element inside a `.block` would end up in `data-raw` and therefore in your document |
+| **The gutter** | A 3px amber rail in the left margin, and hovering a paragraph previews what clicking will do: faint rail on an unmarked one (*click adds*), the existing rail dimmed on a marked one (*click removes*). One shape, one colour, four intensities — the gutter is a toggle button that explains itself. Drawn with `::before` and hit-tested by coordinate — a real element inside a `.block` would end up in `data-raw` and therefore in your document. **View → Block Hover** turns the preview off; a bookmark you have set is always drawn |
 | **Marks pane** | **Mark this page**, which becomes **Remove this mark** |
 | **Keyboard** | `Ctrl+Shift+M` toggles, `Ctrl+Shift+P` opens the pane |
 
@@ -130,7 +130,7 @@ being two shortcuts and nothing on screen:
 - **Ordered by position, never by when they were made.** You read forwards; a list in creation order has to be translated every time you look at it. The mark you are nearest is highlighted
 - **Named from their own text**, so a new one is legible without being typed. Double-click to rename; empty the name to get the text back
 - **Ticks on the scrubber** show every mark across the whole book — five marks over 604 pages is a shape you read at a glance
-- **They survive the document being edited.** A mark stores the text it was set on as well as where it was: the index is a hint, the fingerprint is the truth, and they are resolved against each other on open. Insert a paragraph above a mark and it follows its own sentence rather than staying on a number. Searched outward from the hint, nearest first, bounded at 400 blocks — fingerprinting means parsing a block's HTML, and a 45,000-block omnibus would otherwise pay that half a million times per open
+- **They survive the document being edited.** A mark stores the text it was set on as well as where it was: the index is a hint, the fingerprint is the truth, and they are resolved against each other once the document has settled. Insert a paragraph above a mark and it follows its own sentence rather than staying on a number. The match is whole-document, because an epub re-split can move a paragraph thousands of blocks and "your bookmark is gone" while the sentence is still in the book is the one answer a bookmark may never give. Affordable because one pass over the text builds an index for *every* mark at once, and that index is cached per document — fingerprinting means parsing a block's HTML, and the 45,390-block Xeelee omnibus would otherwise pay for that again on every resolve
 - **A mark whose text is gone is shown struck through**, not deleted. It is yours; dropping it silently on open is how a feature loses work
 - Marks land on a block that renders something — a blank line is a block, and one marked there would have no fingerprint and so no anchor at all
 - Stored in `bookmarks.txt` in the cache, keyed by path, last **64** documents; marks *within* a document are not capped. Your file never grows metadata because you read it, at the honest cost that marks do not travel with it
@@ -206,6 +206,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
 - Table insert (`Ctrl+T`)
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps. Grouped in View with Line Spacing and Paragraph Spacing, because all three set the shape of the text block
+- **Block Hover** (View) — whether hovering a paragraph previews its bookmark in the gutter. **On** by default. Turning it off removes the preview only: bookmarks you have set are always drawn. There is deliberately no wash or edge under the pointer — hovering a paragraph does one thing, which is arm the gutter, so the gutter is the only thing that answers
 - **Justified** (View) — **off by default, including for books.** Every test book asks for it — *Xeelee* on 96 rules, *Matter* on 7 — and those declarations are rewritten to read this switch rather than dropped, so they keep their selectors and the publisher's *centred* and *right-aligned* rules are untouched
 - **Hyphenation follows justification**, because on a screen they are one decision. A browser justifies by stretching word spaces and nothing else, so justified-without-hyphens is what opens rivers of white down a narrow column; ragged-right-with-hyphens breaks words to close a gap that isn't there. Limits are `6 3 3` — six characters in the word, three either side of the break — against Chromium's default `5 2 2`, which will leave `a-` hanging at a column edge. `hyphens: auto` is **inert without a language**, so a book's own `<html lang>` is carried onto `#editor` and cleared when the book closes; hyphenating French by English rules is worse than not hyphenating, so a book that declares nothing inherits the page rather than being guessed at
 - **Word Wrap** (View) — applies in **Source** and **scroll Preview** only. On **Pages**, **Reader**, or an **epub**, the menu item is **disabled** (no fake tick); the stored preference returns when wrap can apply again
@@ -225,7 +226,7 @@ Full multi-document editing, with the tab strip living in the title bar.
 - **Scroll arrows** appear only when the strip overflows, and the active tab is always scrolled into view
 - **Per-tab unsaved indicator**, tracked independently of every other tab
 - **Per-tab file fidelity** — each tab remembers its file's line-ending style (LF / CRLF) and whether it ended with a trailing newline, so saving one document never quietly rewrites the whole file's line endings
-- **Per-tab column layout** — 1-Col or 2-Col belongs to the document, not the window: a novel wants a two-column spread and the notes file in the next tab does not. Recorded per tab and restored with the session. Source locks columns to 1, so the layout is only written down while the choice was actually available — glancing at raw Markdown does not forget a book's spread
+- **Per-tab view** — 1-Col / 2-Col **and** Source / Preview belong to the document, not the window: a novel wants a two-column spread and the notes file in the next tab does not. Both are recorded per tab and restored with the session. Only a deliberate choice is written down — the toolbar column button, the Mode buttons, or the session file. What the page happens to be painting mid-load never is, because a book's first paint is one column until its layout arrives and storing that would forget the spread
 - **Fail-closed switching** — if the editor's content cannot be synced back to the tab, the switch or new-tab operation is *refused* rather than proceeding and risking unsaved edits
 - **Session restore** reopens your tabs on next launch (bodies only if you've enabled unsaved-document restore under File → Privacy)
 
@@ -480,7 +481,7 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Typewriter scroll | `F9` |
 | Fullscreen | `F11` |
 
-**Menus (no default shortcut):** Themes → Customize Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Auto-hide, Side Panel Auto-hide · File → Privacy
+**Menus (no default shortcut):** Themes → Customize Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → Auto-hide, Side Panel Auto-hide · File → Privacy
 
 Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
 

@@ -8,7 +8,9 @@
  * than missing: the reader trusts it.
  *
  * resolveMarkIndex is therefore a pure function of (mark, blocks) and is tested as one,
- * exhaustively, rather than by clicking around a running editor.
+ * exhaustively, rather than by clicking around a running editor. It is a thin wrapper over
+ * resolveMarksAgainstRaws -- the same matcher the application runs -- so these assertions
+ * guard the live code path and not a second copy of it that could be tuned separately.
  *
  * node tests/bookmark-anchor-selftest.mjs
  */
@@ -35,9 +37,10 @@ function extractFunction(name) {
     throw new Error('unclosed function ' + name);
 }
 
-const names = ['markFingerprint', 'markNameFromRaw', 'resolveMarkIndex', 'markSnapToInk',
-               'serializeMarks', 'parseMarks', 'htmlFragmentToText'];
-let src = 'const MARK_FP_CHARS = 80, MARK_SEARCH_RADIUS = 400;\n' +
+const names = ['markFingerprint', 'markNameFromRaw', 'buildMarkFingerprintIndex',
+               'nearestOccurrence', 'resolveMarksAgainstRaws', 'resolveMarkIndex',
+               'markSnapToInk', 'serializeMarks', 'parseMarks', 'htmlFragmentToText'];
+let src = 'const MARK_FP_CHARS = 80;\n' +
           "const MARK_FS = '\\u001f', MARK_RS = '\\u001e';\n";
 for (const n of names) src += extractFunction(n) + '\n';
 src += 'return {' + names.join(',') + '};';
@@ -194,12 +197,12 @@ console.log('\n=== a mark from before fingerprints existed ===');
         'and is dropped if that index is off the end');
 }
 
-console.log('\n=== a large shift is still found (full pass after the radius) ===');
+console.log('\n=== a large shift is still found (whole-document match) ===');
 {
-    // Radius covers ordinary hand edits. An epub re-split or a destroyed hint (-1 after
-    // a bad early resolve against the previous tab) can put the paragraph thousands of
-    // blocks from the stored index; reporting "lost" while the text is still in the book
-    // is worse than one linear pass. resolveMarksAgainstModel maps once for all marks.
+    // An epub re-split, or a destroyed hint, can put the paragraph thousands of blocks
+    // from the stored index. Reporting "lost" while the text is still in the book is the
+    // one answer a bookmark may never give, so the match is whole-document: the index is
+    // built once for every mark, which is what makes that affordable.
     const raws = doc(2000);
     const m = markAt(raws, 10);
     const edited = doc(900, 'inserted').concat(raws);
@@ -228,6 +231,36 @@ console.log('\n=== serialize keeps a position when the live block is lost ===');
     const back = api.parseMarks(api.serializeMarks(marks));
     assert(back.length === 1 && back[0].block === 1740,
         'the store gets the last good index, not -1 (which used to be dropped on load)');
+}
+
+console.log('\n=== the batch path is the same matcher, one index for every mark ===');
+{
+    // This is what the application actually calls: one fingerprint index shared by every
+    // mark, rather than a walk per mark. It must agree with the single-mark answer, or the
+    // suite above is guarding a path nobody runs.
+    const raws = doc(3000);
+    const at = [5, 900, 1500, 2999];
+    const marks = at.map(i => markAt(raws, i));
+    const gone = { block: 12, fp: api.markFingerprint('a paragraph this document never had'),
+                   name: 'gone' };
+    marks.push(gone);
+
+    const edited = doc(40, 'inserted').concat(raws);
+    const idx = api.buildMarkFingerprintIndex(edited);
+    const changed = api.resolveMarksAgainstRaws(marks, null, { index: idx });
+
+    info('four marks shifted by forty, one whose text is gone; changed=' + changed);
+    assert(at.every((orig, k) => marks[k].block === orig + 40),
+        'every mark follows its own paragraph down the document');
+    assert(marks[4].block === -1, 'and the one whose text is gone is unresolved, not guessed');
+    assert(at.every((orig, k) => api.resolveMarkIndex(markAt(raws, orig), edited) === orig + 40),
+        'the single-mark wrapper gives the same answers as the batch');
+
+    // onlyUnresolved is the rescue pass: it must not move a mark that already found a block,
+    // because the same sentence can legitimately appear twice.
+    const settled = [{ block: 100, hint: 100, fp: api.markFingerprint(raws[0]), name: 'x' }];
+    api.resolveMarksAgainstRaws(settled, raws, { onlyUnresolved: true });
+    assert(settled[0].block === 100, 'a rescue pass leaves an already-resolved mark alone');
 }
 
 console.log('\npassed=' + passed + ' failed=' + failed);

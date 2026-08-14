@@ -728,8 +728,8 @@
 
         /** Enough text to identify a paragraph, not so much that an edit inside it breaks the match. */
         const MARK_FP_CHARS = 80;
-        /** How far from the hint to look. See resolveMarkIndex for why it is bounded. */
-        const MARK_SEARCH_RADIUS = 400;
+        /** How long the amber arrival wash sits on a jumped-to block. */
+        const MARK_FLASH_MS = 900;
         /** Field and record separators for the stored payload; not text a document contains. */
         const MARK_FS = '\u001f';
         const MARK_RS = '\u001e';
@@ -802,61 +802,165 @@
             return (sp > 24 ? cut.slice(0, sp) : cut) + '…';
         }
 
-        /**
-         * Where a mark actually is now, or -1 if its text is gone.
-         *
-         * Nearest match to the hint wins when the same sentence appears twice. Forward is
-         * preferred at equal distance: text is more often inserted above a mark than
-         * removed. Hint comes from the stored block, or from mark.hint when a previous
-         * resolve already marked it lost (block -1) — without that, search restarts at 0
-         * and a ±400 radius cannot see a mark left mid-book.
-         *
-         * The local radius is tried first (cheap for a small edit). On a miss, one full
-         * pass over the document: an epub re-split or a bad early resolve against the
-         * previous tab used to leave every mark "lost" while the paragraph still existed
-         * a few thousand blocks away. A dozen marks on a 45k-block book is one scan per
-         * mark at worst; resolveMarksAgainstModel builds a map and pays once for all.
-         */
-        function resolveMarkIndex(mark, raws, radius) {
+        /** text → every block index holding that text, plus the block count it was built for. */
+        function buildMarkFingerprintIndex(raws) {
             const n = raws ? raws.length : 0;
-            const want = (mark && mark.fp) ? String(mark.fp) : '';
-            let hint = mark ? (mark.block | 0) : 0;
-            if (hint < 0 && mark && (mark.hint | 0) >= 0) hint = mark.hint | 0;
-            if (hint < 0) hint = 0;
-            // No fingerprint: a mark from a store written before this existed. Trust the
-            // index, which is all it has.
-            if (!want) return hint < n ? hint : -1;
-            if (hint < n && markFingerprint(raws[hint]) === want) return hint;
-            const r = radius > 0 ? radius : MARK_SEARCH_RADIUS;
-            for (let d = 1; d <= r; d++) {
-                const after = hint + d;
-                if (after < n && markFingerprint(raws[after]) === want) return after;
-                const before = hint - d;
-                if (before >= 0 && before < n && markFingerprint(raws[before]) === want) return before;
-            }
-            // Full pass: pick the occurrence nearest the hint (forward on a tie).
-            let best = -1, bestDist = n + 1;
+            const byFp = Object.create(null);
             for (let i = 0; i < n; i++) {
-                if (markFingerprint(raws[i]) !== want) continue;
-                const dist = Math.abs(i - hint);
-                if (dist < bestDist || (dist === bestDist && i >= hint && best < hint)) {
-                    best = i;
-                    bestDist = dist;
+                const fp = markFingerprint(raws[i]);
+                if (!fp) continue;
+                if (!byFp[fp]) byFp[fp] = [];
+                byFp[fp].push(i);
+            }
+            return { n: n, byFp: byFp };
+        }
+
+        /** The occurrence nearest `hint`; forward wins a tie. */
+        function nearestOccurrence(hits, hint) {
+            if (!hits || !hits.length) return -1;
+            let best = hits[0];
+            let bestDist = Math.abs(best - hint);
+            for (let i = 1; i < hits.length; i++) {
+                const d = Math.abs(hits[i] - hint);
+                if (d < bestDist || (d === bestDist && hits[i] >= hint && best < hint)) {
+                    best = hits[i];
+                    bestDist = d;
                 }
             }
             return best;
+        }
+
+        /**
+         * Point every mark in `marks` at the block its text is in. Pure: no model, no DOM.
+         *
+         * One fingerprint pass builds an index from text to the blocks holding it, then each
+         * mark takes the occurrence nearest its hint — forward on a tie, because text is far
+         * more often inserted above a mark than removed.
+         *
+         * Whole-document rather than a bounded radius around the hint: an epub re-split can
+         * move a paragraph thousands of blocks, and "your bookmark is gone" while the
+         * sentence is still in the book is the one answer a bookmark may never give. What
+         * makes that affordable is that the index is built once for ALL marks instead of
+         * walking outward per mark — and markFingerprintIndex caches it so a document pays
+         * for it once rather than once per resolve.
+         *
+         *   opts.index           prebuilt { n, byFp }; otherwise built from raws
+         *   opts.onlyUnresolved  rescue pass — never move a mark that already found a block
+         *
+         * Returns how many marks changed block.
+         */
+        function resolveMarksAgainstRaws(marks, raws, opts) {
+            const idx = (opts && opts.index) ? opts.index : buildMarkFingerprintIndex(raws);
+            const n = idx.n;
+            if (!n || !marks || !marks.length) return 0;
+            const onlyUnresolved = !!(opts && opts.onlyUnresolved);
+            let changed = 0;
+            for (let i = 0; i < marks.length; i++) {
+                const m = marks[i];
+                const was = m.block | 0;
+                if (onlyUnresolved && was >= 0) continue;
+
+                // The hint is the last index this mark was actually seen at. Kept current
+                // while it is resolved, so a resolve that finds nothing still has somewhere
+                // sensible to start from -- and so the store has a position to write down
+                // instead of -1, which used to make one failed resolve unrecoverable.
+                if (was >= 0) m.hint = was;
+                let hint = was;
+                if (hint < 0) hint = ((m.hint | 0) >= 0) ? (m.hint | 0) : 0;
+
+                const want = m.fp ? String(m.fp) : '';
+                // No fingerprint: a mark stored before they existed. The index is all it has.
+                const next = want ? nearestOccurrence(idx.byFp[want], hint)
+                                  : (hint < n ? hint : -1);
+                m.block = next;
+                if (next >= 0) m.hint = next;
+                if (next !== was) changed++;
+            }
+            return changed;
+        }
+
+        /**
+         * Where one mark is now, or -1 if its text is gone.
+         *
+         * A thin wrapper over resolveMarksAgainstRaws rather than a second implementation:
+         * this is the surface tests/bookmark-anchor-selftest.mjs drives, and that suite is
+         * the entire safety net for "a bookmark survives the document being edited". Two
+         * copies of the matcher tuned separately is exactly how a mark starts resolving one
+         * way in the app and another way in the test that is supposed to be guarding it.
+         */
+        function resolveMarkIndex(mark, raws) {
+            const one = {
+                block: mark ? (mark.block | 0) : 0,
+                hint: (mark && (mark.hint | 0) >= 0) ? (mark.hint | 0) : -1,
+                fp: (mark && mark.fp) ? String(mark.fp) : ''
+            };
+            resolveMarksAgainstRaws([one], raws);
+            return one.block;
         }
 
         /* The marks for the document currently open, in document order. Kept resolved:
            every entry's .block is where its text is now, not where it was when stored. */
         let _marks = [];
 
-        /** Raw text of every block, for fingerprinting. Cheap: the model already holds it. */
+        /* One raw-text array and one fingerprint index per document.
+           A book block is the publisher's HTML, so a fingerprint costs an HTML parse -- and
+           the twelve-book Xeelee omnibus is 45,390 blocks. Marks resolve more than once
+           during a single open (payload and document are independent messages, and the
+           settle watcher confirms afterwards), and markTargetBlock wants the raws on every
+           scroll tick. Recomputing either from scratch each time was the whole cost.
+
+           Valid until the blocks change, which is two things: a different document (the
+           length/kind stamp catches it, and load paths invalidate outright), and an edit
+           (invalidateMarkCaches, from the edit funnels in 04-lists.js). Handed out shared
+           rather than copied -- every caller reads. */
+        let _markRawsCache = null;
+        let _markFpIndexCache = null;
+        let _markCacheLen = -1;
+        let _markCacheKind = '';
+
+        function invalidateMarkCaches() {
+            _markRawsCache = null;
+            _markFpIndexCache = null;
+            _markCacheLen = -1;
+            _markCacheKind = '';
+        }
+
+        /** How many blocks the model holds, without copying anything out of it. */
+        function modelBlockCount() {
+            try {
+                return (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
+                    ? DocumentModel.blocks.length : 0;
+            } catch (e) { return 0; }
+        }
+
+        /** Raw text of every block, for fingerprinting. Cached; treat as read-only. */
         function markBlockRaws() {
+            let n, kind;
             try {
                 if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return [];
-                return DocumentModel.blocks.map(function (b) { return b ? b.raw : ''; });
+                n = DocumentModel.blocks.length;
+                kind = String(DocumentModel.kind || '');
             } catch (e) { return []; }
+            if (_markRawsCache && _markCacheLen === n && _markCacheKind === kind) {
+                return _markRawsCache;
+            }
+            let raws;
+            try {
+                raws = DocumentModel.blocks.map(function (b) { return b ? b.raw : ''; });
+            } catch (e) { return []; }
+            _markRawsCache = raws;
+            _markFpIndexCache = null;
+            _markCacheLen = n;
+            _markCacheKind = kind;
+            return raws;
+        }
+
+        /** The fingerprint index for the document on screen, built at most once per document. */
+        function markFingerprintIndex() {
+            const raws = markBlockRaws();
+            if (!raws.length) return { n: 0, byFp: Object.create(null) };
+            if (!_markFpIndexCache) _markFpIndexCache = buildMarkFingerprintIndex(raws);
+            return _markFpIndexCache;
         }
 
         /** Marks in the order a reader meets them, which is the only order worth showing. */
@@ -878,125 +982,89 @@
             // is wired on every document rather than when the tab is first shown.
             try { wireMarkGutter(); } catch (eG) {}
             _marks = parseMarks(payload);
-            resolveMarksAgainstModel(false);
             sortMarks();
             try { renderMarks(); } catch (e) {}
 
-            // Payload and document are independent messages; either can win the race.
+            // Deliberately NOT resolved here.
             //
-            // Watch only until the model appears and its length is stable, re-resolving
-            // when the length changes (wrong tab still mounted → real book arrives).
-            // Do NOT re-fingerprint the whole book every 150ms while marks stay lost on a
-            // stable model — that was O(blocks × poll) for no gain; book/markdown load
-            // already calls resolveMarksAfterDocumentLoad.
-            if (_marks.length) {
-                let tries = 0;
-                let lastLen = -1;
-                let stableTicks = 0;
-                const tick = function () {
-                    if (++tries > 40) return;
-                    const n = markBlockRaws().length;
-                    if (!n) {
-                        setTimeout(tick, 150);
-                        return;
-                    }
-                    if (n !== lastLen) {
-                        lastLen = n;
-                        stableTicks = 0;
-                        resolveMarksAgainstModel(false);
-                        sortMarks();
-                        try { renderMarks(); } catch (e2) {}
-                        setTimeout(tick, 150);
-                        return;
-                    }
-                    // Same length twice in a row → model settled; stop even if some marks
-                    // remain unresolved (text really gone).
-                    stableTicks++;
-                    if (stableTicks < 2) setTimeout(tick, 150);
-                };
-                const n0 = markBlockRaws().length;
-                let anyLost = false;
-                for (let i = 0; i < _marks.length; i++) {
-                    if (!(_marks[i].block >= 0)) { anyLost = true; break; }
-                }
-                if (!n0 || anyLost) setTimeout(tick, 150);
-            }
+            // The payload and the document are independent messages and either can win, so
+            // "whatever model is mounted right now" is very often the PREVIOUS tab's -- the
+            // host sends marks_load in the same breath as fetch_and_load_book. Resolving
+            // against it marked every mark lost, and worse, wrote that document's index
+            // into mark.hint, which serializeMarks then persists: a bookmark could come
+            // back next session pointing at a position it never had.
+            //
+            // Until the document settles the marks show at their stored index, which is the
+            // last place they were actually seen and so right far more often than it is
+            // wrong. resolveMarksAfterDocumentLoad does the real work; the watcher below is
+            // the safety net for the ordering where that has already been and gone.
+            if (_marks.length) armMarkSettleWatch();
         }
 
         /**
-         * Point every mark at the block its text is in.
+         * Resolve once the model has stopped changing shape.
          *
-         * One fingerprint pass over the document builds a map, then each mark is the
-         * nearest hit to its hint. A per-mark radius walk used to re-parse HTML for every
-         * candidate and still miss anything outside ±400 of a destroyed (-1) hint — which
-         * is how five mid-book marks on Matter came back all "text no longer here" while
-         * every paragraph was still in the file.
+         * For the ordering where the document finished loading before the marks arrived, so
+         * resolveMarksAfterDocumentLoad already ran against an empty list. Waits for the
+         * block count to hold steady across two ticks rather than resolving against the
+         * first model it happens to see, which is how marks got matched to the wrong tab.
+         */
+        let _markSettleTimer = null;
+        function armMarkSettleWatch() {
+            if (_markSettleTimer) { try { clearTimeout(_markSettleTimer); } catch (eC) {} }
+            let tries = 0;
+            // Seeded, not -1: when the document was already up and stable before the marks
+            // arrived (an ordinary tab switch), there is no reason to spend a tick learning
+            // a count we can read right now.
+            let lastLen = modelBlockCount();
+            let stable = 0;
+            const tick = function () {
+                _markSettleTimer = null;
+                if (++tries > 40) return;
+                const n = modelBlockCount();
+                if (!n || n !== lastLen) {
+                    lastLen = n;
+                    stable = 0;
+                    _markSettleTimer = setTimeout(tick, 150);
+                    return;
+                }
+                if (++stable < 2) {
+                    _markSettleTimer = setTimeout(tick, 150);
+                    return;
+                }
+                resolveMarksAfterDocumentLoad();
+            };
+            _markSettleTimer = setTimeout(tick, 150);
+        }
+
+        /**
+         * Point every mark at the block its text is in, in THIS document.
          *
-         * onlyUnresolved: rescue path that will not move a mark that already found a
-         * block (same text twice). Full re-resolve (false) is for a document that just
-         * finished loading: the previous answer may have been against the wrong model.
+         * onlyUnresolved: rescue path that will not move a mark which already found a block
+         * (the same sentence can legitimately appear twice). A full re-resolve is for a
+         * document that has just finished loading and settled.
          */
         function resolveMarksAgainstModel(onlyUnresolved) {
-            const raws = markBlockRaws();
-            if (!raws || !raws.length) return 0;
-            const byFp = Object.create(null);
-            for (let i = 0; i < raws.length; i++) {
-                const fp = markFingerprint(raws[i]);
-                if (!fp) continue;
-                if (!byFp[fp]) byFp[fp] = [];
-                byFp[fp].push(i);
-            }
-            let fixed = 0;
-            for (let i = 0; i < _marks.length; i++) {
-                const m = _marks[i];
-                if (onlyUnresolved && m.block >= 0) continue;
-                const was = m.block;
-                if (was >= 0) m.hint = was;
-                else if (!((m.hint | 0) >= 0) && (was | 0) < 0) {
-                    // nothing to seed; resolveMarkIndex / map still search by fingerprint
-                }
-                const want = m.fp ? String(m.fp) : '';
-                let next = -1;
-                if (!want) {
-                    const h = (was >= 0) ? was : ((m.hint | 0) >= 0 ? (m.hint | 0) : 0);
-                    next = h < raws.length ? h : -1;
-                } else {
-                    const hits = byFp[want];
-                    if (hits && hits.length) {
-                        let hint = was | 0;
-                        if (hint < 0 && (m.hint | 0) >= 0) hint = m.hint | 0;
-                        if (hint < 0) hint = 0;
-                        next = hits[0];
-                        let bestDist = Math.abs(hits[0] - hint);
-                        for (let h = 1; h < hits.length; h++) {
-                            const dist = Math.abs(hits[h] - hint);
-                            if (dist < bestDist ||
-                                (dist === bestDist && hits[h] >= hint && next < hint)) {
-                                next = hits[h];
-                                bestDist = dist;
-                            }
-                        }
-                    }
-                }
-                m.block = next;
-                if (next >= 0) m.hint = next;
-                if (was < 0 && next >= 0) fixed++;
-                else if (was >= 0 && next >= 0 && was !== next) fixed++;
-            }
-            return fixed;
+            const idx = markFingerprintIndex();
+            if (!idx.n) return 0;
+            return resolveMarksAgainstRaws(_marks, null, {
+                index: idx,
+                onlyUnresolved: !!onlyUnresolved
+            });
         }
 
         /**
-         * A document finished loading: re-resolve every mark against THIS model.
+         * A document finished loading and settled: resolve every mark against THIS model.
          *
-         * Must run for books as well as Markdown. Marks often arrive while the previous
-         * tab's model is still mounted (host sends marks_load in the same breath as
-         * fetch_and_load_book); a resolve then marks everything lost, and without this
-         * they stay lost for the whole session.
+         * The one place a full re-resolve is correct, and the only place allowed to write
+         * mark.hint, because it is the only moment we know which document we are looking
+         * at. Must run for books as well as Markdown -- books never called it, so marks
+         * that failed one early resolve stayed lost for the whole session.
          */
         function resolveMarksAfterDocumentLoad() {
             try {
                 if (!_marks || !_marks.length) return;
+                if (!modelBlockCount()) return;
                 resolveMarksAgainstModel(false);
                 sortMarks();
                 try { renderMarks(); } catch (eR) {}
@@ -1152,54 +1220,79 @@
          * Clears stray .focused on reader so gray band cannot disagree with the flash
          * (common in 2-col: focus on one column, target on the other).
          */
+        /** A reading surface has no caret, so it must never show the caret band. */
+        function isReadingSurface() {
+            try {
+                if (editor && (editor.classList.contains('reader-mode')
+                    || editor.classList.contains('book-mode'))) return true;
+                if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
+                    return true;
+            } catch (eR) {}
+            return false;
+        }
+
         let _markFocusTimer = null;
         let _markFocusGen = 0;
         function flashMarkFocus(bi) {
             bi = bi | 0;
             if (bi < 0 || !editor) return;
             const gen = ++_markFocusGen;
+            if (_markFocusTimer) {
+                try { clearTimeout(_markFocusTimer); } catch (eT) {}
+                _markFocusTimer = null;
+            }
+            try {
+                const prev = editor.querySelectorAll('.block.tz-mark-focus');
+                for (let i = 0; i < prev.length; i++) prev[i].classList.remove('tz-mark-focus');
+            } catch (eC) {}
+
             let tries = 0;
-            const readingSurface = function () {
-                try {
-                    if (editor.classList.contains('reader-mode')
-                        || editor.classList.contains('book-mode')) return true;
-                    if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
-                        return true;
-                } catch (eR) {}
-                return false;
-            };
-            const apply = function () {
-                if (gen !== _markFocusGen) return;
-                try {
-                    const prev = editor.querySelectorAll('.block.tz-mark-focus');
-                    for (let i = 0; i < prev.length; i++) prev[i].classList.remove('tz-mark-focus');
-                    const el = editor.querySelector('.block[data-model-index="' + bi + '"]');
-                    if (!el) {
-                        if (++tries < 12) setTimeout(apply, 90);
-                        return;
-                    }
-                    if (readingSurface()) {
-                        // No gray band at all while reading.
+            const paint = function (el) {
+                if (isReadingSurface()) {
+                    // No gray caret band at all while reading: it disagrees with the flash,
+                    // and in a two-column spread it lands in the other column.
+                    try {
                         const lit = editor.querySelectorAll('.block.focused');
                         for (let j = 0; j < lit.length; j++) lit[j].classList.remove('focused');
-                    } else if (typeof setFocusedBlock === 'function') {
-                        // Preview: caret band and mark target must be the same block.
-                        try { setFocusedBlock(el); } catch (eF) {}
-                    }
-                    el.classList.add('tz-mark-focus');
-                    if (_markFocusTimer) {
-                        try { clearTimeout(_markFocusTimer); } catch (eT) {}
-                    }
-                    _markFocusTimer = setTimeout(function () {
-                        _markFocusTimer = null;
-                        if (gen !== _markFocusGen) return;
-                        try { el.classList.remove('tz-mark-focus'); } catch (eR) {}
-                    }, 1200);
-                } catch (e) {}
+                    } catch (eL) {}
+                } else if (typeof setFocusedBlock === 'function') {
+                    // Preview: caret band and flash target must be the same block.
+                    try { setFocusedBlock(el); } catch (eF) {}
+                }
+                try { el.classList.add('tz-mark-focus'); } catch (eA) {}
+            };
+
+            const apply = function () {
+                if (gen !== _markFocusGen) return;
+                let el = null;
+                try { el = editor.querySelector('.block[data-model-index="' + bi + '"]'); } catch (eQ) {}
+                if (!el) {
+                    // Still mounting (virt window, page turn, book remount).
+                    if (++tries < 12) setTimeout(apply, 90);
+                    return;
+                }
+                paint(el);
+                // The clock starts at first paint and is never restarted, so the wash lasts
+                // exactly MARK_FLASH_MS however long the block took to arrive.
+                _markFocusTimer = setTimeout(function () {
+                    _markFocusTimer = null;
+                    if (gen !== _markFocusGen) return;
+                    try {
+                        const now = editor.querySelector('.block.tz-mark-focus');
+                        if (now) now.classList.remove('tz-mark-focus');
+                    } catch (eR) {}
+                }, MARK_FLASH_MS);
+                // One confirm: a remount between here and there can replace the element
+                // and take the class with it. Does not restart the clock.
+                setTimeout(function () {
+                    if (gen !== _markFocusGen) return;
+                    try {
+                        const live = editor.querySelector('.block[data-model-index="' + bi + '"]');
+                        if (live && !live.classList.contains('tz-mark-focus')) paint(live);
+                    } catch (eV) {}
+                }, 260);
             };
             apply();
-            setTimeout(apply, 220);
-            setTimeout(apply, 550);
         }
 
         /**
@@ -1250,17 +1343,28 @@
          *   2) Any mark whose block is currently visible — closest to reading block
          *   3) Else last mark at or before reading block (original)
          */
-        let _pinnedMarkIndex = -1;
-        function markBlockVisibleOnScreen(blockIndex) {
+        /* Pinned by BLOCK, not by list position: sortMarks reorders _marks, so an index
+           pinned before a resolve named a different mark afterwards. */
+        let _pinnedMarkBlock = -1;
+
+        /** The reading surface's box. Read once per sweep — it is a forced layout read. */
+        function markSurfaceRect() {
+            try {
+                const host = (typeof isPaginatedLayout === 'function' && isPaginatedLayout())
+                    ? editor : (mainContainer || editor);
+                return host ? host.getBoundingClientRect() : null;
+            } catch (e) { return null; }
+        }
+
+        function markBlockVisibleOnScreen(blockIndex, hostRect) {
             if (!(blockIndex >= 0) || !editor) return false;
+            const hr = hostRect || markSurfaceRect();
+            if (!hr) return false;
             try {
                 const el = (typeof elementForModelIndex === 'function')
                     ? elementForModelIndex(blockIndex)
                     : editor.querySelector('.block[data-model-index="' + blockIndex + '"]');
                 if (!el) return false;
-                const host = (typeof isPaginatedLayout === 'function' && isPaginatedLayout())
-                    ? editor : (mainContainer || editor);
-                const hr = host.getBoundingClientRect();
                 const r = el.getBoundingClientRect();
                 if (r.width === 0 && r.height === 0) return false;
                 // Any overlap with the reading surface (left or right column).
@@ -1271,14 +1375,19 @@
         }
         function nearestMarkIndex(here) {
             if (!_marks.length) return -1;
+            // One host rect for the whole sweep; this runs on the scroll path.
+            const hr = markSurfaceRect();
             // 1) Pin from list click / jump, while still on that spread (or close).
-            if (_pinnedMarkIndex >= 0 && _pinnedMarkIndex < _marks.length) {
-                const pb = _marks[_pinnedMarkIndex].block;
-                if (pb >= 0) {
-                    if (markBlockVisibleOnScreen(pb)) return _pinnedMarkIndex;
-                    if (here >= 0 && Math.abs(pb - here) <= 80) return _pinnedMarkIndex;
+            if (_pinnedMarkBlock >= 0) {
+                let pinnedRow = -1;
+                for (let i = 0; i < _marks.length; i++) {
+                    if (_marks[i].block === _pinnedMarkBlock) { pinnedRow = i; break; }
                 }
-                _pinnedMarkIndex = -1;
+                if (pinnedRow >= 0) {
+                    if (markBlockVisibleOnScreen(_pinnedMarkBlock, hr)) return pinnedRow;
+                    if (here >= 0 && Math.abs(_pinnedMarkBlock - here) <= 80) return pinnedRow;
+                }
+                _pinnedMarkBlock = -1;
             }
             // 2) Marks currently on screen — prefer closest to reading position.
             let bestVis = -1;
@@ -1286,7 +1395,7 @@
             for (let i = 0; i < _marks.length; i++) {
                 const b = _marks[i].block;
                 if (!(b >= 0)) continue;
-                if (!markBlockVisibleOnScreen(b)) continue;
+                if (!markBlockVisibleOnScreen(b, hr)) continue;
                 const d = (here >= 0) ? Math.abs(b - here) : i;
                 if (d < bestDist) { bestDist = d; bestVis = i; }
             }
@@ -1369,7 +1478,9 @@
             try { paintMarkRibbons(); } catch (e) {}
             try { paintAnnotations(); } catch (e) {}
             try { if (typeof paintCodeFences === 'function') paintCodeFences(); } catch (e) {}
-            try { paintScrubberTicks(); } catch (e) {}
+            // Coalesced, same as the page indicator's: renderMarks runs on every resolve
+            // and every list change, and the ticks only need to be right once per frame.
+            try { schedulePaintScrubberTicks(); } catch (e) {}
             const list = document.getElementById('marks-list');
             if (!list) return;
             const count = document.getElementById('marksCount');
@@ -1561,7 +1672,7 @@
                     // Same courtesy search and the outline give: leave a breadcrumb so
                     // Ctrl+Shift+J comes back to where the reader was.
                     try { captureReturnJump(); } catch (e2) {}
-                    _pinnedMarkIndex = i; // list ↔ page agree after jump (2-col especially)
+                    _pinnedMarkBlock = bi; // list ↔ page agree after jump (2-col especially)
                     goToReadingBlock(bi);
                     try { flashMarkFocus(bi); } catch (eF) {}
                     renderMarks();

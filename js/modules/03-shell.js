@@ -274,6 +274,11 @@
             isRestoring = false;
 
             sourceEditor.addEventListener('input', () => {
+                // Same edit stamp the Preview editor sets. Source typing is editing too:
+                // without this the stats path's "was there a real edit" gate never fires
+                // here, so the crash-recovery copy of the document went stale the moment
+                // you switched to Source.
+                window.__tzLastUserEditAt = Date.now();
                 rememberStickyFromSourceIfFocused();
                 resizeSourceEditor();
                 try { DocumentModel.fromMarkdown(sourceEditor.value); } catch (eM) {}
@@ -1195,11 +1200,11 @@
                 }
                 return;
             }
-            // Preview mouse-over block cue: none | wash | edge | hint
+            // Whether hovering a paragraph offers its bookmark gutter: off | gutter.
+            // Never affects an existing bookmark — only the hover preview (see typozen.css).
             if (cmd.startsWith("set_block_hover:")) {
-                const mode = String(cmd.substring(16) || 'wash').toLowerCase();
-                const ok = (mode === 'none' || mode === 'wash' || mode === 'edge' || mode === 'hint')
-                    ? mode : 'wash';
+                const mode = String(cmd.substring(16) || 'gutter').toLowerCase();
+                const ok = (mode === 'off') ? 'off' : 'gutter';
                 try { document.documentElement.setAttribute('data-block-hover', ok); } catch (eH) {}
                 return;
             }

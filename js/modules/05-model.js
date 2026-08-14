@@ -95,6 +95,11 @@
                     if (typeof invalidateSearchForDocumentChange === 'function')
                         invalidateSearchForDocumentChange();
                 } catch (eInv) {}
+                // Different document: bookmark fingerprints cached for the old one are not
+                // this one, and block count alone cannot always tell them apart.
+                try {
+                    if (typeof invalidateMarkCaches === 'function') invalidateMarkCaches();
+                } catch (eMk) {}
                 setTimeout(function () { try { updateStatsNow(); } catch (eS) {} }, 0);
                 return;
             }
@@ -126,6 +131,11 @@
                 if (typeof invalidateSearchForDocumentChange === 'function')
                     invalidateSearchForDocumentChange();
             } catch (eInv2) {}
+            // Fingerprints must be rebuilt against the document that just mounted, before
+            // resolveMarksAfterDocumentLoad reads them.
+            try {
+                if (typeof invalidateMarkCaches === 'function') invalidateMarkCaches();
+            } catch (eMk2) {}
             updateStatsNow();
         }
 

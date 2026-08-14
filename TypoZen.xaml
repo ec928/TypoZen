@@ -500,13 +500,14 @@
                                 <MenuItem x:Name="mParaRelaxed" Header="_Relaxed" IsCheckable="True"/>
                                 <MenuItem x:Name="mParaLoose" Header="_Loose" IsCheckable="True"/>
                             </MenuItem>
-                            <!-- Mouse-over block cue in Preview (not bookmarks; those stay amber). -->
+                            <!-- Whether hovering a paragraph offers its bookmark gutter.
+                                 Bookmarks themselves are always drawn; this is only the
+                                 hover preview of adding or removing one. -->
                             <MenuItem Header="Block _Hover">
-                                <MenuItem x:Name="mHoverNone" Header="_Off" IsCheckable="True"/>
-                                <MenuItem x:Name="mHoverWash" Header="_Soft wash" IsCheckable="True"/>
-                                <MenuItem x:Name="mHoverEdge" Header="_Left edge" IsCheckable="True" IsChecked="True"/>
-                                <MenuItem x:Name="mHoverHint" Header="_Mark hint only" IsCheckable="True"
-                                          ToolTip="Only the faint bookmark ribbon; no fill."/>
+                                <MenuItem x:Name="mHoverOff" Header="_Off" IsCheckable="True"
+                                          ToolTip="No hover cue. Existing bookmarks still show."/>
+                                <MenuItem x:Name="mHoverGutter" Header="Bookmark _gutter" IsCheckable="True" IsChecked="True"
+                                          ToolTip="Hovering a paragraph shows the bookmark it would add, or dims the one it would remove."/>
                             </MenuItem>
                             <!-- Margins belong with Line and Paragraph Spacing: all three set the
                                  shape of the text block, and only the reader's eye tells them apart. -->

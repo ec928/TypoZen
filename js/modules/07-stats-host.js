@@ -554,14 +554,16 @@
 
         window.switchTab = function(tab, noFocus) {
             if (tab !== 'outline' && tab !== 'search' && tab !== 'marks') tab = 'outline';
-            // Marks list: re-resolve only if something still looks lost (avoids
-            // fingerprinting the whole book on every tab click). renderMarks already
-            // paints ribbons + scrubber ticks — no second repaintMarkSurface.
+            // Marks list: try to rescue anything still lost, and only then. A rescue pass
+            // (onlyUnresolved) rather than a full re-resolve — opening a pane is not a
+            // reason to move a mark that already found its block, and the same sentence
+            // can legitimately appear twice. renderMarks already paints ribbons + scrubber
+            // ticks, so there is no second repaintMarkSurface.
             if (tab === 'marks') {
                 try {
                     if (typeof anyMarkUnresolved === 'function' && anyMarkUnresolved()
                         && typeof resolveMarksAgainstModel === 'function') {
-                        resolveMarksAgainstModel(false);
+                        resolveMarksAgainstModel(true);
                         if (typeof sortMarks === 'function') sortMarks();
                     }
                 } catch (eRe) {}

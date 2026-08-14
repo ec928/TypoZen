@@ -54,11 +54,24 @@ Clear format freeze on undo/redo; list Tab prefers live selection.
 
 ---
 
+### Hover paint erased bookmarks — **fixed**
+
+The hover cue and the bookmark were both drawn as an inset left `box-shadow`, and the
+hover rule was written more specifically, so mousing over a bookmarked paragraph in
+Preview swapped its amber edge for the accent one. In Reader the "hover off" rules used
+`box-shadow: none !important` / `background-color: transparent !important`, which erased
+the bookmark rail *and* the arrival wash on whichever paragraph the pointer rested over.
+
+**Now:** the gutter is a single `::before` rail owned by bookmarks, four opacities, and
+there is no block-body hover cue at all. Nothing in that lane uses `!important`.
+
+---
+
 ## Preferences (not bugs)
 
-- **View → Block Hover:** `none` / `wash` / `edge` (default) / `hint`. Bookmark ▮ hover
-  only in **Mark hint only**. Off in Reader/epub.
-- Search and Marks jumps share **`flashMarkFocus`** (brief amber wash).
+- **View → Block Hover:** `off` / `gutter` (default). Controls the hover *preview* only —
+  a bookmark that exists is always drawn, in Reader as well as Preview.
+- Search and Marks jumps share **`flashMarkFocus`** (brief amber wash, `MARK_FLASH_MS`).
 
 ---
 

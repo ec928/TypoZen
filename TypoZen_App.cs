@@ -879,10 +879,8 @@ namespace TypoZen
             BindClick("mParaNormal",  (s, e) => SetParaSpacing(1));
             BindClick("mParaRelaxed", (s, e) => SetParaSpacing(2));
             BindClick("mParaLoose",   (s, e) => SetParaSpacing(3));
-            BindClick("mHoverNone", (s, e) => SetBlockHover(0));
-            BindClick("mHoverWash", (s, e) => SetBlockHover(1));
-            BindClick("mHoverEdge", (s, e) => SetBlockHover(2));
-            BindClick("mHoverHint", (s, e) => SetBlockHover(3));
+            BindClick("mHoverOff",    (s, e) => SetBlockHover(0));
+            BindClick("mHoverGutter", (s, e) => SetBlockHover(1));
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
@@ -6533,17 +6531,22 @@ namespace TypoZen
 
         private int _lineSpacing = 1;
         private int _paraSpacing = 1;
-        /// <summary>Preview mouse-over block cue: 0=none 1=wash 2=edge 3=hint. Default edge.</summary>
-        private int _blockHover = 2;
-        private static readonly string[] BlockHoverKeys = { "none", "wash", "edge", "hint" };
-        private static readonly string[] BlockHoverItems =
-            { "mHoverNone", "mHoverWash", "mHoverEdge", "mHoverHint" };
+        /// <summary>
+        /// Whether hovering a paragraph offers its bookmark gutter: 0=off, 1=gutter.
+        /// Default on. This is only the hover preview — a bookmark is always drawn.
+        /// </summary>
+        private int _blockHover = 1;
+        private static readonly string[] BlockHoverKeys = { "off", "gutter" };
+        private static readonly string[] BlockHoverItems = { "mHoverOff", "mHoverGutter" };
 
+        /// <summary>
+        /// Also the migration from the four-way version of this setting
+        /// (0=none 1=wash 2=edge 3=hint): anything that drew something becomes the
+        /// gutter, and only an explicit "off" stays off.
+        /// </summary>
         private static int ClampBlockHover(int index)
         {
-            if (index < 0) return 0;
-            if (index > 3) return 3;
-            return index;
+            return (index <= 0) ? 0 : 1;
         }
 
         /// <summary>Height of a line of body text, as a multiple of the font size.</summary>
@@ -6568,7 +6571,11 @@ namespace TypoZen
             if (!_applyingRestoredSettings) SaveWindowState();
         }
 
-        /// <summary>How Preview paints the block under the mouse (not bookmarks).</summary>
+        /// <summary>
+        /// Whether hovering a paragraph previews its bookmark. Not a paint style for the
+        /// block: the page has one hover cue and it lives in the gutter, so this is on or
+        /// off. A bookmark that exists is always drawn, whatever this says.
+        /// </summary>
         private void SetBlockHover(int index)
         {
             _blockHover = ClampBlockHover(index);
@@ -9377,10 +9384,15 @@ namespace TypoZen
 
         /// <summary>
         /// ONE rule for per-tab view state (mode + columns):
-        ///   leave tab → SnapshotActiveTabView (write bag from live free choices)
-        ///   enter tab → ApplyTabView (read bag onto the page after content is up)
+        ///   the reader chooses  → the click handler writes the bag (column toggle,
+        ///                         Mode segment) — and session restore fills it on load
+        ///   enter tab           → ApplyTabView (read bag onto the page after content is up)
+        ///   leave tab           → SnapshotActiveTabView records POSITION only
         ///
-        /// view_state paint never writes the bag. Path defaults only fill empty fields.
+        /// Nothing derived from paint state (_viewMode / _viewColumns / view_state) ever
+        /// writes the bag: during a mount the page reports what it has managed to draw so
+        /// far, not what the tab is for. Path defaults only fill empty fields, in
+        /// ApplyTabView, without being stored.
         /// </summary>
         private static string NormalizeTabViewMode(string mode)
         {
@@ -9397,23 +9409,22 @@ namespace TypoZen
             var tab = _tabs[_activeTabIndex];
             if (tab == null || IsNativeTab(tab)) return;
 
-            // Books are always Reader in the product; do not store Source/Preview against them.
-            if (IsBookTab(tab))
-            {
-                tab.ViewMode = "reader";
-                if (!_viewColumnsLocked)
-                    tab.Columns = (_viewColumns == 2) ? 2 : 1;
-            }
-            else
-            {
-                string m = NormalizeTabViewMode(_viewMode);
-                if (!string.IsNullOrEmpty(m))
-                    tab.ViewMode = m;
-
-                // Source forces 1-col — that is not a column preference for this tab.
-                if (!_viewColumnsLocked)
-                    tab.Columns = (_viewColumns == 2) ? 2 : 1;
-            }
+            // Mode and columns are NOT written here.
+            //
+            // _viewMode / _viewColumns are paint state -- "what the page is showing right
+            // now" -- and the whole reason ApplyViewState stopped writing the bag is that
+            // paint state lies during a mount: a book's first paint is 1-col until
+            // RequestTabColumns runs. Leaving a tab through this path mid-mount put that
+            // 1 straight back into tab.Columns and erased the spread, which is the same
+            // defect by a different door.
+            //
+            // The bag only needs writing when the reader makes a choice, and every such
+            // route already writes it: the column toggle button, the Mode segment click
+            // (view_set handler), and session restore. Books are forced to Reader by
+            // loadBookPayload, so there is nothing to record for them either.
+            //
+            // Position is different: it is not a choice, it is where they got to, and
+            // nothing else captures it in time for a quick switch. So that stays.
 
             // Position: one integer (model block). book_position is debounced 1.2s, so a
             // quick tab switch never updated ResumeBlock — and clean leave skips the full

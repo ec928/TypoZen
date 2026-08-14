@@ -319,47 +319,61 @@
         }
         .mark-clear:hover { color: var(--tx, #F4F4F5); text-decoration: underline; }
 
-        /* --- Bookmarks on the page ---------------------------------------------
-           Idle: inset amber edge (the look you liked).
-           Jump: same edge + soft wash — do not use a thicker/different bar. */
+        /* --- Bookmarks: one rail in the gutter, four states ----------------------
+
+           The gutter lane belongs to bookmarks and to nothing else. Every previous
+           attempt to put a second meaning in it -- a hover edge, a focus bar -- ended
+           up fighting the bookmark for the same three pixels, and the transient cue
+           always won because it was written more specifically. So: one shape, one
+           colour, four opacities, and hover previews what clicking will do.
+
+               idle, unmarked      nothing
+               hover, unmarked     30%   click adds one
+               marked              100%  bookmarked
+               hover, marked       65%   click removes it
+
+           A pseudo-element rather than an inset box-shadow. Three reasons: box-shadow
+           follows the block's 6px border-radius and tapers a 3px rail to a leaf shape
+           at both ends; opacity is the whole design and a shadow cannot carry four
+           states cleanly; and leaving box-shadow unused means no future hover rule can
+           collide with this one again. Still unserialisable -- a real element inside a
+           .block would round-trip into data-raw and become part of the document. */
 
         #editor .block { position: relative; }
 
-        /* Hover-to-add ribbon only (unmarked). */
         #editor .block::before {
-            content: '▮';
+            content: '';
             position: absolute;
-            left: 2px;
-            top: 0.2em;
-            width: 12px;
-            text-align: center;
-            font-size: 0.7em;
-            line-height: 1.4;
-            color: var(--mark-ink, #E8A33D);
+            left: 4px;
+            top: 1px;
+            bottom: 1px;
+            width: 3px;
+            border-radius: 2px;
+            background: var(--mark-ink, #E8A33D);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.12s ease;
             z-index: 1;
         }
-        /* Hover ▮ only for "Mark hint only". Wash/edge must not show it. */
-        html[data-block-hover="hint"] #editor:not(.reader-mode):not(.book-mode) .block:not(.tz-marked):hover::before {
-            opacity: 0.4;
+        /* The three lit states. :not(.tz-marked) on the first is not decoration — without
+           it the unmarked-hover rule also matches a bookmarked block, and the only thing
+           stopping it winning is that the marked-hover rule below happens to be one class
+           more specific. State rules should be mutually exclusive by their selectors, not
+           by the order they were written in. */
+        html[data-block-hover="gutter"] #editor .block:not(.tz-marked):hover::before {
+            opacity: 0.30;   /* click adds one */
         }
-        html:not([data-block-hover="hint"]) #editor .block:not(.tz-marked):hover::before {
-            opacity: 0 !important;
+        #editor .block.tz-marked::before {
+            opacity: 1;      /* bookmarked */
         }
-        #editor .block.tz-marked::before { opacity: 0 !important; }
+        html[data-block-hover="gutter"] #editor .block.tz-marked:hover::before {
+            opacity: 0.65;   /* click removes it */
+        }
 
-        /* Idle mark edge — leave this alone. */
-        #editor .block.tz-marked {
-            box-shadow: inset 3px 0 0 0 var(--mark-ink, #E8A33D);
-        }
-
-        /* Jump flash: wash only; edge must match idle (3px), not a solid 4px bar. */
+        /* Arrival wash after a jump (mark or search). The block body, not the gutter --
+           a bookmarked target keeps its rail at full strength underneath. */
         #editor .block.tz-mark-focus {
             background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
-            border-radius: 2px;
-            box-shadow: inset 3px 0 0 0 var(--mark-ink, #E8A33D);
             transition: background-color 0.3s ease;
         }
 
@@ -1589,26 +1603,36 @@
             padding-bottom: 0;
         }
         /*
-         * Block hover (mouse under cursor) — View > Block Hover.
-         * html[data-block-hover=none|wash|edge|hint]
-         * Reader/book: always off (reading surface).
-         * Default wash = previous behaviour.
+         * There is deliberately no block-body hover cue.
+         *
+         * Hovering a paragraph does exactly one thing -- it arms the bookmark gutter --
+         * so the gutter is the only thing that answers (see the rail rules above). A
+         * background that follows the pointer around is noise on a surface built for
+         * reading, and the two versions that existed both collided with something: the
+         * wash fought the caret band, and the accent-coloured left edge was a thinner
+         * copy of blockquote's border, which is the exact mistake the focus bar below
+         * was removed for.
+         *
+         * Nothing here uses !important. The reader-mode rules that did were killing the
+         * bookmark rail and the arrival wash along with the hover paint, because a
+         * blanket "box-shadow: none" cannot tell a transient cue from the reader's own
+         * mark. Turning a cue off means not drawing it, not erasing the layer.
          */
-        .block:hover {
-            background-color: transparent;
-        }
-        html[data-block-hover="wash"] #editor:not(.reader-mode):not(.book-mode) .block:hover {
-            background-color: rgba(128, 128, 128, 0.12);
-        }
-        /* Thin cool edge — not mark amber (bookmarks stay amber). */
-        html[data-block-hover="edge"] #editor:not(.reader-mode):not(.book-mode) .block:hover {
-            box-shadow: inset 2px 0 0 0 color-mix(in srgb, var(--accent, #3B82F6) 45%, transparent);
-        }
-        /* hint: no wash; only the ▮ ribbon (see ::before rules below). */
 
         /**
-         * Active/caret block (keyboard focus) — quiet, separate from hover.
-         * Reader / book: off.
+         * Active/caret block (keyboard focus).
+         *
+         * Tint only, no left bar. The bar was a third simultaneous cue for the same fact
+         * (caret, tint, bar) and it collided with blockquote, which is also an
+         * accent-coloured left border one pixel wider — so an ordinary focused line read
+         * as a quotation. The tint stays because it carries what the caret does not:
+         * this is a block editor, so Enter / Backspace / Delete act on a discrete unit,
+         * and the tint is what shows its extent.
+         *
+         * --fill-quiet, not --accent-bg: this band is in the document, where the accent
+         * already means "search match".
+         *
+         * Reader / book: off. There is no caret to have a block.
          */
         .block.focused {
             background-color: var(--fill-quiet, rgba(128,128,128,0.10));
@@ -1617,12 +1641,7 @@
         #editor.book-mode .block.focused {
             background-color: transparent;
         }
-        #editor.reader-mode .block:hover,
-        #editor.book-mode .block:hover {
-            background-color: transparent !important;
-            box-shadow: none !important;
-        }
-        /* Jump wash wins over any residual focus tint. */
+        /* Arrival wash wins over any residual focus tint. */
         #editor .block.tz-mark-focus.focused {
             background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
         }

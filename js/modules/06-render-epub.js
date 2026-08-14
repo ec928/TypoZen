@@ -186,6 +186,12 @@
             // sends marks_load with fetch_and_load_book). Markdown re-resolves at the end
             // of finishLoadContent; books never did, so every mark stayed "lost" for the
             // whole session even though the paragraphs were still in the epub.
+            //
+            // Drop the fingerprint cache first: it was built from the previous document's
+            // blocks, and this is the point at which the book is the model.
+            try {
+                if (typeof invalidateMarkCaches === 'function') invalidateMarkCaches();
+            } catch (eMkC) {}
             try { resolveMarksAfterDocumentLoad(); } catch (eMk) {}
             // Search results belonged to the previous tab/document — re-run or clear.
             try {
