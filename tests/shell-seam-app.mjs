@@ -18,7 +18,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { launchApp } from './app-harness.mjs';
+import { launchApp, profileFile } from './app-harness.mjs';
 import { settledApp, sleep } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,18 +50,20 @@ function ui(cmd, arg) {
 const FIXTURE = path.join(__dirname, 'large-scroll-mixed.md');
 const fixtureWas = fs.readFileSync(FIXTURE);
 
-// The same promise, for the reader's settings.
+// The same promise, for settings.
 //
-// This suite changes the theme on purpose and puts it back afterwards, and the theme it
-// picks is persisted the moment it is applied -- to the real profile, not a sandbox. So a
-// restore that does not land leaves someone's editor in a theme they never chose. It has
-// happened: the driver clicks at screen coordinates, a menu that was open in another
-// window took the click, the restore silently did nothing, and the run ended with
-// Catppuccin Mocha written into settings.json over the reader's Gruvbox Serif.
-// Asserting the restore is not enough on its own -- a failed assertion still leaves the
-// damage behind -- so the file is put back as well.
-const SETTINGS = process.env.LOCALAPPDATA
-    ? path.join(process.env.LOCALAPPDATA, 'TypoZen_Cache', 'settings.json') : null;
+// This suite changes the theme on purpose and puts it back afterwards, and the theme is
+// persisted the moment it is applied. That used to land in the reader's own profile, and
+// a restore that did not land left someone's editor in a theme they never chose: the
+// driver clicks at screen coordinates, a menu open in another window took the click, the
+// restore silently did nothing, and the run ended with Catppuccin Mocha written over a
+// Gruvbox Serif that belonged to a person.
+//
+// The profile is now a throwaway directory per suite (app-harness profileFile), so that
+// particular damage is no longer possible. The restore and its assertion stay: this suite
+// is about the seam between the WPF menu and the page, and "the theme went back" is part
+// of what that seam is supposed to do.
+const SETTINGS = profileFile('settings.json');
 const settingsWas = (SETTINGS && fs.existsSync(SETTINGS)) ? fs.readFileSync(SETTINGS) : null;
 
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
@@ -133,6 +135,16 @@ try {
     // thing that receives the click -- and tab *switching* is already covered through the
     // shell's own messages by tab-position-app and no-false-dirty-app. What is not covered
     // anywhere else is that the strip reflects the tabs the application believes it has.
+    //
+    // The second document is opened here rather than assumed. This suite launches with one
+    // file, so "the strip shows more than one" only ever passed because the profile it
+    // inherited had other tabs in it -- an assertion about the reader's last session, not
+    // about the strip. With a throwaway profile there is nothing to inherit, which is the
+    // point; a suite that needs two tabs has to open two.
+    await app.eval((p) => postMsg('open_file_path:' + p),
+        path.join(__dirname, 'short-note.txt'));
+    await sleep(2500);
+
     const tabs = ui('tabs');
     const names = Array.from(new Set((tabs.tabs || []).map(t => t.name)));
     info(names.length + ' distinct titles: ' + JSON.stringify(names.slice(0, 5)));

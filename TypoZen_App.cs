@@ -99,10 +99,24 @@ namespace TypoZen
             catch { }
         }
 
-        /// <summary>Profile folder for a normal (non-e2e) run, matching CacheDir().</summary>
+        /// <summary>
+        /// Profile folder for a normal run, matching CacheDir().
+        ///
+        /// TYPOZEN_PROFILE_DIR moves the whole profile somewhere else. Deliberately
+        /// separate from TYPOZEN_TAB_E2E: that one also disables session restore and the
+        /// single-instance server, which is right for the tab-content harness and wrong
+        /// for the *-app suites, several of which exist precisely to test that a session
+        /// comes back. This changes where the profile lives and nothing else.
+        /// </summary>
+        internal static string ProfileDirOverride()
+        {
+            string dir = Environment.GetEnvironmentVariable("TYPOZEN_PROFILE_DIR");
+            return string.IsNullOrWhiteSpace(dir) ? null : dir.Trim();
+        }
+
         private static string DefaultCacheDir()
         {
-            return Path.Combine(
+            return ProfileDirOverride() ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "TypoZen_Cache");
         }
@@ -474,10 +488,21 @@ namespace TypoZen
         private readonly bool _e2eMode;
         private readonly string _e2eDir;
 
-        /// <summary>Profile folder: WebView2 user data, settings.json, window_state.json.</summary>
+        /// <summary>
+        /// Profile folder: WebView2 user data, settings.json, window_state.json, and the
+        /// bookmark / book-position / tab-session stores.
+        ///
+        /// TYPOZEN_PROFILE_DIR (see Program.ProfileDirOverride) points this at a throwaway
+        /// directory. The *-app suites set it per run, because without it every one of them
+        /// read and wrote the reader's own profile: bookmark assertions depended on which
+        /// suite had run before, and a test run left its fixtures in the reader's real
+        /// bookmarks.txt and book_positions.txt.
+        /// </summary>
         private string CacheDir()
         {
             if (_e2eMode) return Path.Combine(_e2eDir, "profile");
+            string over = Program.ProfileDirOverride();
+            if (over != null) return over;
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "TypoZen_Cache");

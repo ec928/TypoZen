@@ -28,7 +28,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { launchApp, sleep } from './app-harness.mjs';
+import { launchApp, sleep, profileFile } from './app-harness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -40,7 +40,7 @@ function assert(cond, msg) {
 }
 function info(msg) { console.log('  ..   ' + msg); }
 
-const SESSION = path.join(process.env.LOCALAPPDATA || '', 'TypoZen_Cache', 'tabs_session.txt');
+const SESSION = profileFile('tabs_session.txt');
 
 // The real profile's session store. Put it back whatever happens.
 let restoreSession = null;

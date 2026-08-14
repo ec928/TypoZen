@@ -12,7 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { launchApp, sleep } from './app-harness.mjs';
+import { launchApp, sleep, profileFile } from './app-harness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -24,10 +24,11 @@ function assert(cond, msg) {
 }
 function info(msg) { console.log('  ..   ' + msg); }
 
-const STORE = path.join(process.env.LOCALAPPDATA || '', 'TypoZen_Cache', 'bookmarks.txt');
+const STORE = profileFile('bookmarks.txt');
 const DOC = path.join(appDir, 'tests', '_bookmark_fixture.md');
 
-// The real profile's store; put it back whatever happens.
+// The store lives in this suite's throwaway profile, so there is nothing of the reader's
+// to protect; the fixture document is in the repo, though, and that does get removed.
 let restore = null;
 try { restore = fs.readFileSync(STORE, 'utf8'); } catch (e) {}
 function putBack() {

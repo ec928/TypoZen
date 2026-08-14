@@ -25,6 +25,7 @@
  */
 import { spawn, execSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
@@ -35,6 +36,45 @@ const PORT = 9333;                 // must match Program.RemoteDebugPort
 const EXE = path.join(appDir, 'TypoZen.exe');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * A throwaway profile for THIS suite, via TYPOZEN_PROFILE_DIR.
+ *
+ * Every suite used to read and write the reader's own %LOCALAPPDATA%\TypoZen_Cache, which
+ * is wrong twice over. It made suites depend on each other -- bookmark-store asserts the
+ * store holds exactly one line, so it passed or failed on whether bookmark-pane or
+ * book-position had run first, and both directions were observed on the same commit. And
+ * it meant running the tests left fixture bookmarks and fixture reading positions in the
+ * reader's real profile, which is not something a test run is allowed to do.
+ *
+ * One directory per node process, so a suite that relaunches the app (session restore,
+ * "it comes back on the next launch") still sees its own previous session -- that is the
+ * thing those suites measure -- while the next suite starts from nothing.
+ *
+ * Not TYPOZEN_TAB_E2E: that also disables session restore and the single-instance server,
+ * which several of these suites are specifically about.
+ */
+export const profileDir = path.join(os.tmpdir(), 'typozen-e2e-' + process.pid);
+
+/** A file inside this suite's throwaway profile (bookmarks.txt, book_positions.txt, …). */
+export function profileFile(name) {
+    return path.join(profileDir, name);
+}
+
+let _profileReady = false;
+function ensureProfile() {
+    if (_profileReady) return;
+    try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch (e) { }
+    fs.mkdirSync(profileDir, { recursive: true });
+    _profileReady = true;
+    const sweep = () => { try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch (e) { } };
+    process.on('exit', sweep);
+}
+
+// At import, not at first launch: several suites seed the profile before starting the app
+// (privacy-app writes window_state.json to prove the flags are honoured), and they cannot
+// write into a directory that does not exist yet.
+ensureProfile();
 
 /**
  * Is a TypoZen already running that we did not start?
@@ -103,7 +143,13 @@ export async function launchApp(options) {
     // Extra command-line arguments, for the shapes ZenSeek launches with (--search, --line).
     if (options.args) for (const a of options.args) args.push(a);
 
-    const child = spawn(EXE, args, { cwd: appDir, detached: false, stdio: 'ignore' });
+    ensureProfile();
+    const child = spawn(EXE, args, {
+        cwd: appDir,
+        detached: false,
+        stdio: 'ignore',
+        env: Object.assign({}, process.env, { TYPOZEN_PROFILE_DIR: profileDir })
+    });
     await waitForDevTools(45000);
 
     const browser = await puppeteer.connect({

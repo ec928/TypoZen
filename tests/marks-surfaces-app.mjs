@@ -16,7 +16,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { launchApp, sleep } from './app-harness.mjs';
+import { launchApp, sleep, profileFile } from './app-harness.mjs';
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -25,7 +25,7 @@ function assert(cond, msg) {
 }
 function info(msg) { console.log('  ..   ' + msg); }
 
-const STORE = path.join(process.env.LOCALAPPDATA || '', 'TypoZen_Cache', 'bookmarks.txt');
+const STORE = profileFile('bookmarks.txt');
 let restore = null;
 try { restore = fs.readFileSync(STORE, 'utf8'); } catch (e) {}
 function putBack() {

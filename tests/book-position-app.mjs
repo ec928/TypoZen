@@ -10,7 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { launchApp } from './app-harness.mjs';
+import { launchApp, profileFile } from './app-harness.mjs';
 import { settledApp, sleep } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -37,7 +37,7 @@ const bookPath = path.join(appDir, 'tests', book);
 // Start from nothing remembered, so "it opened at the right place" cannot be an accident
 // of a previous run. The store is the real profile's, so it is put back afterwards -- a test has no
 // business discarding where someone was up to in their own books.
-const STORE = path.join(process.env.LOCALAPPDATA || '', 'TypoZen_Cache', 'book_positions.txt');
+const STORE = profileFile('book_positions.txt');
 let restoreStore = null;
 try { restoreStore = fs.readFileSync(STORE, 'utf8'); } catch (e) {}
 try { fs.unlinkSync(STORE); } catch (e) {}

@@ -108,6 +108,7 @@ Shell / host: `TypoZen_App.cs`, `TypoZen.xaml`, `EpubReader.cs`, `TypoZen_Launch
 $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + real TypoZen.exe
 ```
 
+- **`*-app.mjs` run against a throwaway profile**, one directory per suite (`TYPOZEN_PROFILE_DIR`, set by `app-harness.mjs`; use `profileFile('bookmarks.txt')`, never `%LOCALAPPDATA%`). Suites used to share the reader's real profile, which made them order-dependent — `bookmark-store` and `book-position` passed or failed on what had run before them — and left fixture bookmarks and reading positions in the reader's own data. A suite needing two tabs must **open** two; it can no longer inherit them from someone's last session.
 - `page-arrow-keys-app.mjs` — Preview: arrows = caret, PageDown pages; Reader: arrows page. Does **not** fully cover search-mode Left/Right.
 - Prefer characterising failures over deleting suites. Skip only when the environment truly cannot run (missing fixture / no display) — document why.
 

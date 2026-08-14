@@ -11,7 +11,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { launchApp, sleep } from './app-harness.mjs';
+import { launchApp, sleep, profileFile } from './app-harness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -23,7 +23,7 @@ function assert(cond, msg) {
 }
 function info(msg) { console.log('  ..   ' + msg); }
 
-const STORE = path.join(process.env.LOCALAPPDATA || '', 'TypoZen_Cache', 'bookmarks.txt');
+const STORE = profileFile('bookmarks.txt');
 let restore = null;
 try { restore = fs.readFileSync(STORE, 'utf8'); } catch (e) {}
 function putBack() {

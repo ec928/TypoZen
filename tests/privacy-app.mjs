@@ -18,11 +18,11 @@ import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { launchApp, sleep } from './app-harness.mjs';
+import { launchApp, sleep, profileDir } from './app-harness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
-const CACHE = path.join(process.env.LOCALAPPDATA || '', 'TypoZen_Cache');
+const CACHE = profileDir;
 const STATE = path.join(CACHE, 'window_state.json');
 const BOOKS = path.join(appDir, 'typozen_books');
 const DOC = path.join(appDir, 'tests', '_privacy_fixture.md');

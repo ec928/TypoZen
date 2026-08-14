@@ -10,7 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { launchApp } from './app-harness.mjs';
+import { launchApp, profileFile } from './app-harness.mjs';
 import { settledApp, sleep } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,7 +36,7 @@ const wherePage = () => {
 };
 
 // The session store is the real profile's; put it back afterwards.
-const SESSION = path.join(process.env.LOCALAPPDATA || '', 'TypoZen_Cache', 'tabs_session.txt');
+const SESSION = profileFile('tabs_session.txt');
 let restoreSession = null;
 try { restoreSession = fs.readFileSync(SESSION, 'utf8'); } catch (e) {}
 function putSessionBack() {
