@@ -1196,6 +1196,17 @@
         }
 
         /**
+         * Ribbons + annotation highlights for the mounted surface only.
+         * Page-window remounts replace every .block (and kill CSS Highlight ranges on
+         * detached nodes). Relying only on the MutationObserver left marks invisible
+         * until the next renderMarks() (e.g. clicking a mark in the list).
+         */
+        function repaintMarkSurface() {
+            try { paintMarkRibbons(); } catch (eR) {}
+            try { paintAnnotations(); } catch (eA) {}
+        }
+
+        /**
          * A click in the ribbon strip marks the block; a click in the text does not.
          *
          * The strip is the block's own left padding, which is empty. Hit-testing by
@@ -3540,7 +3551,10 @@
                 currentActiveBlock = editor.querySelector('.block');
             }
             try { repaintFindHighlights(); } catch (eF) {}
+            // Remount wiped .tz-marked and Highlight ranges — put them back now.
+            try { repaintMarkSurface(); } catch (eMk) {}
             // Book text-size normalise off the turn path — it was full reflow on every boundary.
+            // After it rewrites text nodes, annotation ranges must be rebuilt again.
             try {
                 if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') {
                     const norm = function () {
@@ -3550,6 +3564,7 @@
                             else if (typeof normaliseBookTextSize === 'function')
                                 normaliseBookTextSize();
                         } catch (eN) {}
+                        try { repaintMarkSurface(); } catch (eMk2) {}
                     };
                     if (typeof requestAnimationFrame === 'function')
                         requestAnimationFrame(function () { setTimeout(norm, 0); });
@@ -3769,6 +3784,9 @@
                     ? PageChunks.prefixPages(PageChunks.mounted) + l
                     : l;
                 updatePageIndicator();
+                // In-range turns do not remount; still refresh mark paint after seek
+                // (annotation ranges can die if text nodes were rewritten under us).
+                try { repaintMarkSurface(); } catch (eMk) {}
                 return true;
             },
 
@@ -3932,6 +3950,7 @@
                 // Ranges are over live DOM; remount/page turn/column switch invalidates them.
                 // mountPageChunk already repaints, but goToPage without a remount does not.
                 try { repaintFindHighlights(); } catch (eF0) {}
+                try { repaintMarkSurface(); } catch (eMk0) {}
 
                 // One late correction only. Book text normalise rewrites font-size and
                 // changes scrollWidth for hundreds of ms; re-entering the full 40-frame wait
@@ -3961,6 +3980,7 @@
                             PageMap.goto(want2);
                         }
                         try { repaintFindHighlights(); } catch (eF1) {}
+                        try { repaintMarkSurface(); } catch (eMk1) {}
                     } catch (eR) {}
                 }, 280);
             });
