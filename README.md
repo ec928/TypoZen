@@ -96,6 +96,14 @@ scrollbar can only span what is currently laid out — about 28 pages of a 1400-
 
 - **Click a page number** or press **`Ctrl+G`** to open a go-to-page prompt (leaf page number;
   in two-column mode that maps to the correct spread under the hood).
+- **The total is marked `~` while it is still being learned** — `43 / ~264`. Only ranges you
+  have actually reached are measured; the rest are inferred, so the total is an estimate
+  until the whole document has been laid out, and it says so rather than printing a guess as
+  a fact. The page you are **on** is always exact: you are looking at it. Three rules keep
+  the estimate honest — it only ever **grows**, so a page number you have been shown is never
+  taken away; measured ranges are exact, so it converges on the truth as you read; and
+  **dragging the scrubber fully right goes to the end of the document**, which is the last
+  block and needs no estimate at all
 - **Turning pages** follows a fixed keyboard matrix (full detail in
   [docs/for-agents.md](docs/for-agents.md)). `PageUp` / `PageDown` and the wheel always turn
   the page in a paginated layout. **Without a live search**, arrows and `Space` turn the page
@@ -376,7 +384,12 @@ block into one multi-column flow. `PageChunks` splits the document into fixed bl
 lays out **one range at a time**, and keeps a per-range page count — cumulative sums give the
 global page number, exactly as `blockHeights` + `prefixHeight()` give the global scroll offset.
 
-- Unmeasured ranges are estimated from pages-per-block and refined as they are laid out.
+- Unmeasured ranges are estimated from pages-per-block and refined as they are laid out —
+  but only **upward**. Refining an unmeasured range downward removed pages the reader had
+  already been shown, and the act of seeking was what removed them: seeking mounts a range,
+  mounting measures it, measuring shrank the total. Ask for page 267 of 268, land on 261.
+- Because part of the total can be a guess, the UI marks it (`pageTotalIsApproximate`)
+  rather than presenting an estimate as an exact figure.
 - **Blocks are the anchor, not page numbers.** Page numbers move as estimates are refined;
   block indices do not, and the column round trip already depends on that.
 - The range on screen is measured exactly, never trusted from its estimate.
