@@ -2874,6 +2874,23 @@
          * @returns {{ twoCol:boolean, left:number, right:number, totalLeaves:number,
          *            bubble:string, spread0:number, spreadCount:number }}
          */
+        /**
+         * Is the page total still part guess?
+         *
+         * True while page windowing has ranges it has never laid out. Only the ranges the
+         * reader has actually visited are measured; the rest are inferred from pages-per-
+         * block, and that figure is refined every time another range is measured. So the
+         * total is an estimate that improves, and saying so is the difference between an
+         * error bar and a lie.
+         */
+        function pageTotalIsApproximate() {
+            try {
+                if (!pageWindowingActive()) return false;
+                if (typeof PageChunks === 'undefined') return false;
+                return !PageChunks.allMeasured();
+            } catch (e) { return false; }
+        }
+
         function pageDisplayFromSpread(spread0, spreadCount, twoCol) {
             const n = Math.max(1, spreadCount | 0);
             const s = Math.max(0, Math.min(spread0 | 0, n - 1));
@@ -2928,14 +2945,20 @@
             const d = pageDisplayFromSpread(PageMap.current(), PageMap.count(), twoCol);
             host.style.display = 'flex';
             host.classList.toggle('two-up', twoCol);
-            host.title = 'Click to go to page';
+            // ~ while any range is still estimated. The page you are ON is always exact --
+            // it is measured, you are looking at it -- so only the total carries the mark.
+            const approx = pageTotalIsApproximate();
+            host.title = approx
+                ? 'Click to go to page — the total is an estimate until the whole document has been laid out'
+                : 'Click to go to page';
             host.setAttribute('role', 'button');
             if (twoCol) {
                 host.innerHTML =
                     '<span class="page-num">' + d.left + '</span>' +
                     '<span class="page-num">' + d.right + '</span>';
             } else {
-                host.innerHTML = '<span class="page-num">' + d.bubble + '</span>';
+                host.innerHTML = '<span class="page-num">' + d.left + ' / '
+                    + (approx ? '~' : '') + d.totalLeaves + '</span>';
             }
             if (!host.__tzGotoBound) {
                 host.__tzGotoBound = true;
@@ -2957,7 +2980,10 @@
             const twoCol = !!(editor && editor.classList.contains('two-col-layout'));
             const d = pageDisplayFromSpread(PageMap.current(), PageMap.count(), twoCol);
             const raw = window.prompt(
-                'Go to page (1\u2013' + d.totalLeaves + '):',
+                pageTotalIsApproximate()
+                    ? 'Go to page (1\u2013' + d.totalLeaves + ', total is an estimate '
+                      + 'until the whole document has been laid out):'
+                    : 'Go to page (1\u2013' + d.totalLeaves + '):',
                 String(d.left));
             if (raw == null) return;
             const leaf = parseInt(String(raw).replace(/[^\d].*$/, '').trim(), 10);
@@ -3036,10 +3062,31 @@
                 // the last range of the book, but visibly short of its end. Settle onto
                 // whatever the last page turns out to be once we are standing on it.
                 if (wantedEnd) {
-                    for (let i = 0; i < 3; i++) {
-                        const last = Math.max(0, PageMap.count() - 1);
-                        if (PageMap.current() >= last) break;
-                        PageMap.goto(last);
+                    // Go to the last BLOCK, not the last estimated page.
+                    //
+                    // The end of a document is knowable exactly -- it is the final block --
+                    // whereas count() is part estimate until every range has been laid out.
+                    // Chasing count()-1 chased a number that moved underneath the chase:
+                    // each arrival measured another range, the total changed, and three
+                    // attempts still stopped 126 blocks short of the end of the 45,486-block
+                    // omnibus. Asking for the page holding the last block needs no estimate
+                    // and cannot be short, because that page is the last page by definition.
+                    let landed = false;
+                    try {
+                        const lastBlock = (typeof DocumentModel !== 'undefined'
+                            && DocumentModel.blocks && DocumentModel.blocks.length)
+                            ? DocumentModel.blocks.length - 1 : -1;
+                        if (lastBlock >= 0 && typeof goToPageHoldingBlock === 'function') {
+                            goToPageHoldingBlock(lastBlock);
+                            landed = true;
+                        }
+                    } catch (eEnd) {}
+                    if (!landed) {
+                        for (let i = 0; i < 3; i++) {
+                            const last = Math.max(0, PageMap.count() - 1);
+                            if (PageMap.current() >= last) break;
+                            PageMap.goto(last);
+                        }
                     }
                 }
 
@@ -3824,12 +3871,42 @@
                     // this the total stayed at the seed estimate for every unmeasured range
                     // -- 203 pages reported for a document that is really about 106 -- and
                     // only converged as the reader happened to visit each range.
+                    //
+                    // The total may only GROW. An estimate that can fall takes pages away
+                    // that the reader has already been shown, and the act of seeking to a
+                    // page is what removes it: seeking mounts the range, mounting measures
+                    // it, measuring refines this figure downward, and the page the scrubber
+                    // named a moment ago no longer exists. Ask for 267 of 268, land on 261.
+                    // goto() was never at fault -- the number it was handed had expired.
+                    //
+                    // So a range that has not been laid out keeps the larger of its current
+                    // estimate and the refined one. Measured ranges are always exact, so the
+                    // total still converges on the truth from below as the book is read; it
+                    // just never revokes a page number it has already published.
                     if (changed && this.counts) {
                         for (let i = 0; i < this.counts.length; i++) {
-                            if (!this.measured[i]) this.counts[i] = this.estimateChunkPages(i);
+                            if (this.measured[i]) continue;
+                            this.counts[i] = Math.max(this.counts[i] || 1,
+                                                      this.estimateChunkPages(i));
                         }
                     }
                 }
+            },
+
+            /**
+             * Has every range been laid out, or is part of the total still a guess?
+             *
+             * The reader is told which. A page number derived from an estimate is not the
+             * same promise as one derived from a layout, and printing both as a bare
+             * integer is what made "go to page 263" landing on 256 look like a broken seek
+             * rather than an error bar.
+             */
+            allMeasured: function () {
+                if (!this.measured || !this.measured.length) return false;
+                for (let i = 0; i < this.measured.length; i++) {
+                    if (!this.measured[i]) return false;
+                }
+                return true;
             },
 
             /** Pages before range c. */

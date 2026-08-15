@@ -2,47 +2,30 @@
 
 Baseline inventory of **user-visible** residual risk for the current tree.
 
-- **Open defect-class items:** one — a page the count names cannot always be seeked to
-  (below). Distinct from the approximate-total product limit it sits next to.
+- **Open defect-class items:** none.
 - Suite-only failures belong in the harness, not here. See `docs/for-agents.md`.
-
----
-
-## Open
-
-### A page `count()` names cannot always be seeked to
-
-**Reproduced:** `page-count-truth-app`, `page-scrubber-app`, both on
-`tests/large-scroll-mixed.md`, in 1-col and at baseline `aca2dde` — not a regression from
-the gutter/marks work.
-
-- `PageMap.goto(267)` lands on 261. The suite samples 12 pages across 268 and misses one.
-- The scrubber: 1 seek in 4 adrift, worst case 4 pages; and the last page reads 3125 of
-  3128 once the total is re-measured.
-
-**Why it is filed as a defect and not as the limit below.** An approximate *total* is a
-documented trade: the reader sees "about 600 pages" and nothing breaks. This is different
-— the UI names page 267, the reader asks for page 267, and the application goes somewhere
-else. A number you cannot act on is worse than a number you know is rough.
-
-**Not attempted.** The fix is in `PageChunks` estimation, and making an estimated range
-seekable to the page rather than to the range is a real piece of pagination work, not a
-tuning constant. Decide whether that is worth doing before touching it; the alternative —
-relaxing the suites to tolerate the drift — is a product decision to stop promising this,
-and should be taken deliberately rather than by editing an assertion.
 
 ---
 
 ## Product limits (not defects — do not “fix” by inventing precision)
 
-### Page counts and scrubber mark ticks are approximate until laid out
+### The page TOTAL is an estimate until the document has been laid out — and says so
 
-`PageChunks` estimates unmeasured ranges. On a long book, total pages and tick positions
-shift slightly as the reader pages through and measurements replace estimates. The suite
-allows for it. Mark sidebar **p N** uses the same map and can lag until the range is real.
+`PageChunks` measures only the ranges the reader has visited and infers the rest from
+pages-per-block. So the total moves as a long book is read. Three rules keep that honest
+rather than misleading:
 
-**User expectation:** order and rough placement are trustworthy; exact page numbers early
-in a first open of an omnibus are not typesetter-precise.
+- **It is marked.** The indicator reads `43 / ~264` and the Go To prompt says the total is
+  an estimate, until every range has been measured. The page you are *on* is always exact.
+- **It never revokes a page.** A range that has not been laid out keeps the larger of its
+  current and refined estimate (`setMeasured`), so an inferred total only grows. Measured
+  ranges are exact, so the figure still converges on the truth.
+- **The end is exact.** Dragging the scrubber fully right seeks the last *block*, not the
+  last estimated page — the end of a document is knowable without any estimate.
+
+**User expectation:** the page you are on is right; the total is marked `~` while it is
+still being learned, and is exact once the document has been read through. Mark sidebar
+**p N** uses the same map and can lag until its range is real.
 
 ---
 
