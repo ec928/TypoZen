@@ -34,11 +34,13 @@ tests/_tab_e2e_out/
 # Written and removed by tests/bookmark-store-app.mjs; left behind only if it crashes.
 tests/_bookmark_fixture.md
 
-# WordNet, downloaded by hand and converted by tools/Make-Dictionary.ps1. 90 MB of source
-# corpus that is not this project's to redistribute -- Princeton's licence requires the
-# terms to travel with it, and the built dictionary.tsv lives in the cache anyway.
+# WordNet source corpus, downloaded by hand and converted by tools/Make-Dictionary.ps1.
+# ~90 MB of raw database files, needed only to regenerate the dictionary; not tracked.
 WordNet-3.0/
 wn3.1.dict/
 WNdb-*/
-dictionary.tsv
+
+# dictionary.tsv and thesaurus.tsv ARE tracked: they ship with the app so lookup works on
+# first launch. They are derived from WordNet, whose licence permits redistribution with
+# the notice attached -- see WORDNET-LICENSE.txt.
 dictionary.json
