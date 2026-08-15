@@ -24,8 +24,10 @@
     directory.
 
 .PARAMETER Out
-    Where to write dictionary.tsv. Defaults to the TypoZen cache folder, which is one of
-    the two places TypoZen looks (the other is beside TypoZen.exe).
+    Where to write dictionary.tsv. Defaults to the TypoZen folder itself, beside
+    TypoZen.exe, so the result is visible where you ran the script rather than buried in
+    an AppData cache. TypoZen also reads from its cache folder, and prefers that copy, so
+    a file placed there still overrides this one.
 
 .PARAMETER MaxSenses
     How many senses to keep per word. WordNet gives "run" over fifty; a popover beside a
@@ -37,8 +39,10 @@
 [CmdletBinding()]
 param(
     [string]$Source = ".\dict",
-    [string]$Out = (Join-Path $env:LOCALAPPDATA "TypoZen_Cache\dictionary.tsv"),
-    [string]$ThesaurusOut = (Join-Path $env:LOCALAPPDATA "TypoZen_Cache\thesaurus.tsv"),
+    # Beside TypoZen.exe (the script lives in .\tools), not in an AppData cache folder:
+    # output you cannot find is output you cannot check or replace.
+    [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) "dictionary.tsv"),
+    [string]$ThesaurusOut = (Join-Path (Split-Path $PSScriptRoot -Parent) "thesaurus.tsv"),
     [int]$MaxSenses = 3
 )
 

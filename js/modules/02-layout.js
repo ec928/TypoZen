@@ -2097,9 +2097,10 @@
                     // A setup state, not an error, so it says what to do rather than what
                     // went wrong -- and names the script, because "supply a dictionary
                     // file" is not an instruction anyone can act on without one.
-                    h.innerHTML = 'No dictionary installed. TypoZen bundles none and ' +
-                        'downloads nothing. Run <code>tools\Make-Dictionary.ps1</code> ' +
-                        'against a WordNet download to build it.';
+                    h.innerHTML = 'No dictionary found. TypoZen ships one as ' +
+                        '<code>dictionary.tsv</code> beside the executable, so this ' +
+                        'usually means the file was moved or deleted. Rebuild it with ' +
+                        '<code>tools\\Make-Dictionary.ps1</code> against a WordNet download.';
                 }
                 body.appendChild(h);
             }

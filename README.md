@@ -160,15 +160,20 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 ### Looking a word up
 Select text and a popover appears beside it — **Highlight** and **Find in document**, and for a single word the lookup itself. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
 
-**Nothing is bundled and nothing is downloaded.** A dictionary is a file you choose: `dictionary.tsv` (word, tab, definition) or `dictionary.json` (`{"word": "definition"}`), beside `TypoZen.exe` or in the cache folder. `tools\Make-Dictionary.ps1` builds one from a **WordNet** download — free, permissively licensed, ~150k entries, one file — so you supply the download and it does the parsing:
+**A dictionary and thesaurus are included, and nothing is downloaded.** `dictionary.tsv` and `thesaurus.tsv` ship beside `TypoZen.exe` — roughly 150k entries derived from **WordNet 3.1**, which is free and permissively licensed. Lookups and synonyms work on first launch, with no setup and no network access. See [WORDNET-LICENSE.txt](WORDNET-LICENSE.txt) for the attribution WordNet requires.
+
+**You can replace them if you want to.** TypoZen reads `dictionary.tsv` (word, tab, definition) or `dictionary.json` (`{"word": "definition"}`), and looks in two places: its cache folder first, then beside the executable. So dropping your own file in the cache folder overrides the bundled one without touching the install — that is the only reason the cache is checked at all.
+
+Most people will never need this, and that is fine. If you do want to rebuild from a WordNet download of your own, `tools\Make-Dictionary.ps1` does the parsing and writes both files beside `TypoZen.exe`:
 
 ```powershell
-.	ools\Make-Dictionary.ps1 -Source C:\wordnet\dict
+.\tools\Make-Dictionary.ps1 -Source C:\wordnet\dict
 ```
- TSV first, because that is what a WordNet or Wiktionary export converts to in one line of script, and because a 40 MB JSON parse on startup would be felt. Lookups are answered by the **shell**, not the page: a dictionary worth having is tens of megabytes, and marshalling that across the bridge to sit in the document's memory would cost more than the feature.
+
+TSV first, because that is what a WordNet or Wiktionary export converts to in one line of script, and because a 40 MB JSON parse on startup would be felt. Lookups are answered by the **shell**, not the page: a dictionary worth having is tens of megabytes, and marshalling that across the bridge to sit in the document's memory would cost more than the feature.
 
 - A reader selects the word as it appears on the page, which is inflected more often than not, so a miss retries the obvious stems — `walking` → `walk`, `bodies` → `body`
-- With no dictionary installed it says so, and how to install one
+- If the dictionary file is missing — moved or deleted — it says so, and how to rebuild it
 - **Follow a synonym** to its own entry — each word is a control, and a back arrow appears once there is somewhere to return to. A synonym you cannot look up is a dead end, which is most of what a thesaurus is for
 - **One button, one answer.** Press **Look up** and the popover gives the **definition**, the **synonyms** below it, and **how many times the word appears** in what you are reading — together, in that order. It is deliberately not automatic: a word is selected to *copy* it at least as often as to ask about it, and a definition that arrives uninvited sits on top of the text you were working with. Offered only for a single word, since a paragraph has no definition
 - **Synonyms** come from the same WordNet pass — a synset is a set of words that mean the same thing — written to `thesaurus.tsv` alongside the dictionary
