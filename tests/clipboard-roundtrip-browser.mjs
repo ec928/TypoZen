@@ -144,6 +144,21 @@ async function main() {
         // characters of a 205,842-character file on the clipboard -- 1% -- with nothing to
         // say so. Copy is no more allowed to be a projection of the document than saving is.
         console.log('\n=== select all copies the document, not the window ===');
+        // A BIG document, loaded here on purpose.
+        //
+        // The document above is seven lines, so every block is mounted and this assertion
+        // would hold however broken the copy path was -- a test that cannot fail is worse
+        // than no test, because it reads as cover. The fault needs a DOM that is a window:
+        // virtualisation engages around 2000 blocks.
+        await page.evaluate(() => {
+            const big = [];
+            for (let i = 0; i < 3000; i++) {
+                big.push('Paragraph ' + i + ' with enough words in it to occupy a line or so.');
+            }
+            loadMarkdownContent(big.join('\n\n'));
+        });
+        await sleep(2500);
+
         const all = await page.evaluate(() => {
             const ed = document.getElementById('editor');
             const range = document.createRange();
@@ -161,9 +176,18 @@ async function main() {
         });
         info(all.mounted + ' of ' + all.modelBlocks + ' blocks mounted (virt ' + all.virt +
              '); select-all copied ' + all.copied + ' of ' + all.whole + ' chars');
+        // The premise first: if the DOM holds everything, the assertion below proves nothing.
+        assert(all.virt && all.mounted < all.modelBlocks,
+            'the document is virtualised, so the DOM really is a window (' +
+            all.mounted + ' of ' + all.modelBlocks + ')');
         assert(all.copied === all.whole,
             'select all copies every character of the document (' +
             all.copied + ' of ' + all.whole + ')');
+
+        // And the same question of the save path, which is the one with a file at stake.
+        const saved = await page.evaluate(() => getMarkdownContent(false).length);
+        assert(saved === all.whole,
+            'and what would be saved is the whole document too (' + saved + ')');
 
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) { console.error('\nCLIPBOARD ROUND TRIP FAILED'); process.exitCode = 1; return; }

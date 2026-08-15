@@ -1,5 +1,5 @@
 /**
- * Turning pages must never skip text.
+ * Turning pages, and scrolling, must never skip text.
  *
  * Every other pagination suite asks whether a turn MOVES: page-window-app counts stalls,
  * page-count-truth-app checks that a page the map names can be reached, page-arrow-keys
@@ -28,6 +28,13 @@
  * blocks across three range boundaries (7, 1 and 8), 18px lost 8 across one. The default
  * 16px was the WORSE case, so testing only the reported 18px would have understated it,
  * and testing only the default would have called a 1-block loss noise.
+ *
+ * The scroll walk runs FIRST, from the clean virtualised state. Run after the paging
+ * section it inherits the page-windowed DOM -- 800 blocks mounted, virt off, a scroll
+ * surface two steps long -- and proves nothing about the path it is named for. The premise
+ * assertions ("the DOM really is a window") exist so that can never pass silently: a
+ * coverage test on a fully mounted document cannot fail, and a test that cannot fail is
+ * worse than no test because it reads as cover.
  *
  *   RUN_APP_E2E=1 node tests/page-coverage-app.mjs
  */
@@ -67,6 +74,60 @@ try {
     await sleep(5000);
     await app.eval(() => handleCommand('view_set:mode:preview'));
     await sleep(1200);
+    // --- The same question of scrolling, which is the other way a reader travels.
+    //
+    // Virtualised Preview mounts a window around the viewport, so scrolling has exactly the
+    // shape of fault that paging had: a bound computed one way, content extending further,
+    // and the shortfall never painted. It is clean today (374 steps, 0 gaps, reaching the
+    // last block) and this is here so it stays that way.
+    console.log('\n=== scrolling never skips a block ===');
+
+    const scrolled = await app.eval(async (visSrc) => {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        const visible = new Function('return (' + visSrc + ')')();
+        const mc = document.getElementById('main-container');
+        mc.scrollTop = 0;
+        await sleep(800);
+        const step = Math.max(80, Math.floor(mc.clientHeight * 0.8));
+        const seen = [];
+        let guard = 0;
+        while (mc.scrollTop + mc.clientHeight < mc.scrollHeight - 2 && guard++ < 500) {
+            const v = visible();
+            seen.push(v.length ? { min: Math.min(...v), max: Math.max(...v) } : { min: -1, max: -1 });
+            mc.scrollTop = mc.scrollTop + step;
+            await sleep(110);
+        }
+        const v = visible();
+        seen.push(v.length ? { min: Math.min(...v), max: Math.max(...v) } : { min: -1, max: -1 });
+
+        const gaps = [];
+        for (let i = 1; i < seen.length; i++) {
+            const p = seen[i - 1], c = seen[i];
+            if (p.max < 0 || c.min < 0) continue;
+            if (c.min > p.max + 1) {
+                gaps.push({ step: i, lastShown: p.max, nextShown: c.min,
+                            missing: c.min - p.max - 1 });
+            }
+        }
+        return { steps: seen.length, gaps, reached: seen[seen.length - 1].max,
+                 total: DocumentModel.blocks.length, virt: !!DocumentModel.virtEnabled,
+                 mounted: document.getElementById('editor').querySelectorAll('.block').length };
+    }, visibleBlocksSrc.toString());
+
+    info(scrolled.steps + ' scroll steps, reaching block ' + scrolled.reached + ' of ' +
+         scrolled.total + '; ' + scrolled.mounted + ' mounted (virt ' + scrolled.virt + '); ' +
+         scrolled.gaps.length + ' gap(s)' +
+         (scrolled.gaps.length ? ' — ' + JSON.stringify(scrolled.gaps.slice(0, 4)) : ''));
+    assert(scrolled.virt && scrolled.mounted < scrolled.total,
+        'the document is virtualised, so the DOM is a window and this can fail (' +
+        scrolled.mounted + ' of ' + scrolled.total + ')');
+    assert(scrolled.reached >= scrolled.total - 3,
+        'scrolling reaches the end of the document (' + scrolled.reached + ' of ' +
+        scrolled.total + ')');
+    assert(scrolled.gaps.length === 0,
+        'scrolling never skips a block (' +
+        (scrolled.gaps.length ? scrolled.gaps.reduce((s, g) => s + g.missing, 0) + ' skipped' : '0') + ')');
+
     await app.eval(() => handleCommand('view_set:scroll:pagination'));
     await sleep(2200);
 
