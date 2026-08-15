@@ -3416,18 +3416,38 @@
                 //
                 // In one column the two agree, which is why this survived so long. They
                 // part company where the stride covers two columns and a gap.
-                const reachable = Math.max(1,
-                    Math.floor(this.maxScroll() / s + 0.001) + 1);
-                return Math.min(byContent, reachable);
+                //
+                // That reasoning was right about the symptom and wrong about the cure. The
+                // page whose start lies past maxScroll is still a page of TEXT -- go() ends
+                // it at maxScroll precisely so its tail shows flush to the right edge --
+                // and dropping it from the count means nobody ever asks for it. The view
+                // then stops at the last whole boundary and everything between there and
+                // the end of the content is never painted at all: reading a .txt in
+                // 2-column Pages lost blocks 792-799 crossing every 800-block range
+                // boundary, silently, with no sign to the reader that a paragraph had gone.
+                //
+                // So the count is the content, and localIndex() below is what keeps the
+                // reader from being stranded on it.
+                return byContent;
             },
 
             localIndex: function () {
                 if (!editor || !isPaginatedLayout()) return 0;
                 const s = this.stride();
-                return Math.max(0, Math.min(
-                    this.localCount() - 1,
-                    Math.round((editor.scrollLeft || 0) / s)
-                ));
+                const sl = editor.scrollLeft || 0;
+                const n = this.localCount();
+                // Parked at the end of the scroll range IS the last page.
+                //
+                // The final page of a range is usually partial, so its start sits beyond
+                // maxScroll and go() clamps there. Rounding scrollLeft/stride then names
+                // the page before it, the map and the view disagree about whether the range
+                // is exhausted, and stepLocal reads a turn onto that page as "did not move"
+                // -- which is the stranding the count clamp above was trying to prevent.
+                // Answering from the scroll position instead keeps both honest: the tail
+                // gets a page of its own, and the turn after it crosses into the next range.
+                const max = this.maxScroll();
+                if (n > 1 && max > 0 && sl >= max - 1) return n - 1;
+                return Math.max(0, Math.min(n - 1, Math.round(sl / s)));
             },
 
             /**

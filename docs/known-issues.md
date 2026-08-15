@@ -62,6 +62,29 @@ Clear format freeze on undo/redo; list Tab prefers live selection.
 
 ---
 
+### Turning a page silently skipped text — **fixed**
+
+The worst defect found in this tree. Reading any long document in **Pages** mode, text was
+lost at every 800-block range boundary, with nothing on screen to say a paragraph had gone.
+
+A range's last page is usually partial, so its start offset (`index x stride`) lies past the
+furthest the view can scroll. `PageGeometry.localCount()` treated that as "not a page you can
+turn to" and dropped it — but `go()` had already been fixed to end that page at `maxScroll`
+so its tail shows flush right. The page was reachable; nothing was ever allowed to ask for
+it. The view stopped at the last whole boundary and everything from there to the end of the
+range was never painted.
+
+Measured on `tests/large-scroll-mixed.md`, 2-column, over 200 spreads: **16px lost 16 blocks
+across three boundaries** (7, 1 and 8); 18px lost 8 across one. The default font size was the
+worse case, so this was not an exotic configuration.
+
+**Now:** the count is the content, and `localIndex()` answers from the scroll position — being
+parked at `maxScroll` *is* the last page. That keeps the reader from being stranded on it,
+which is what the dropped-page clamp had been guarding against. Guarded by
+`page-coverage-app`, which walks spreads and asserts no gap in the blocks actually painted.
+
+---
+
 ### Hover paint erased bookmarks — **fixed**
 
 The hover cue and the bookmark were both drawn as an inset left `box-shadow`, and the
