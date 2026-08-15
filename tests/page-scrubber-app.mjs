@@ -149,28 +149,50 @@ try {
     // just mounted. The next page turn reported the true number, so one press of Page Up
     // appeared to jump four hundred pages and the seek looked innocent. Every mount measures
     // one more range, so resolving until the answer stops moving converges.
+    // Each target is sought TWICE, and the second is what is asserted.
+    //
+    // Not slack: it separates "the seek is wrong" from "the target expired". Arriving
+    // somewhere measures the ranges it crossed, and a measured range replaces an estimate
+    // that is usually larger, so the total moves while the request is in flight -- ask for
+    // page 6330 of an estimated 7195 and by the time you land the book is 7150 pages long
+    // and 6330 is a different place. That is the estimate converging, which the application
+    // marks "~" on screen, not a broken seek.
+    //
+    // The second seek has no such excuse: the ranges are measured, the map is standing
+    // still, and asking for a page must put you on it. That still catches the fault this
+    // section exists for -- asked 2101, landed 1960; asked for the title page, landed 431
+    // pages in -- because those came from resolving a target against a stale local index,
+    // which repeats however settled the map is.
     const seeks = await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         const range = document.getElementById('page-scrubber-range');
+        const seek = async (v) => {
+            range.value = String(v);
+            range.dispatchEvent(new Event('change', { bubbles: true }));
+            await sleep(3000);
+            return PageMap.current();
+        };
         const out = [];
         for (const f of [0, 0.25, 0.55, 0.88]) {
             const want = Math.floor(parseInt(range.max, 10) * f);
-            range.value = String(want);
-            range.dispatchEvent(new Event('change', { bubbles: true }));
-            await sleep(3000);
-            out.push({ want: want, got: PageMap.current(), of: PageMap.count() });
+            const first = await seek(want);
+            const got = await seek(want);
+            // The total can have shrunk under the request; the last page is then the
+            // honest answer to "go further than the book goes".
+            const target = Math.min(want, Math.max(0, PageMap.count() - 1));
+            out.push({ want: want, first: first, got: got, target: target, of: PageMap.count() });
         }
         return out;
     });
     for (const s of seeks) {
-        info('asked ' + s.want + ' of ' + s.of + ', landed on ' + s.got +
-             ' (' + (s.got - s.want) + ')');
+        info('asked ' + s.want + ' -> first ' + s.first + ', settled ' + s.got +
+             ' (target ' + s.target + ' of ' + s.of + ', off by ' + (s.got - s.target) + ')');
     }
-    const adrift = seeks.filter(s => Math.abs(s.got - s.want) > 1);
+    const adrift = seeks.filter(s => Math.abs(s.got - s.target) > 1);
     assert(adrift.length === 0,
         'every scrubber seek lands on the page it was asked for (' + adrift.length +
         ' of ' + seeks.length + ' adrift' +
-        (adrift.length ? ', worst ' + Math.max(...adrift.map(s => Math.abs(s.got - s.want))) +
+        (adrift.length ? ', worst ' + Math.max(...adrift.map(s => Math.abs(s.got - s.target))) +
             ' pages' : '') + ')');
 
     console.log('\n=== where the scrubber leaves you is where a column switch keeps you ===');

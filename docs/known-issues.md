@@ -17,9 +17,13 @@ rather than misleading:
 
 - **It is marked.** The indicator reads `43 / ~264` and the Go To prompt says the total is
   an estimate, until every range has been measured. The page you are *on* is always exact.
-- **It never revokes a page.** A range that has not been laid out keeps the larger of its
-  current and refined estimate (`setMeasured`), so an inferred total only grows. Measured
-  ranges are exact, so the figure still converges on the truth.
+- **It converges, in both directions.** Unmeasured ranges follow the refined pages-per-block
+  as measurements come in, up or down. Making that a ratchet — "never take away a page the
+  reader has been shown" — was tried and reverted: an estimate that cannot fall never
+  converges, so every range the reader had not visited stayed at the seed (800 × 0.06 = 48
+  pages) while the measured ones read 20, the total sat at more than double the document,
+  and a column switch could not correct it. A figure that is honestly wrong both ways and
+  settles beats one that is wrong in a flattering direction forever.
 - **The end is exact.** Dragging the scrubber fully right seeks the last *block*, not the
   last estimated page — the end of a document is knowable without any estimate.
 

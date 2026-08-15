@@ -2118,7 +2118,18 @@
                     holder.setAttribute('data-source', 'typozen');
                     holder.appendChild(sel.getRangeAt(0).cloneContents());
                     e.clipboardData.setData('text/plain', text);
-                    e.clipboardData.setData('text/html', holder.outerHTML); // keep rich paste working
+                    // The HTML flavour is cloneContents() of the live range, so it can only
+                    // ever carry what is mounted. On a select-all over a virtualised or
+                    // windowed document the plain text is now the WHOLE document (see
+                    // selectionIsWholeVirtualDocument) while this would still be the window
+                    // -- so offering it would hand a rich target 1% and call it formatting.
+                    // Omit it and let every target fall back to the complete text; the
+                    // content is Markdown, which loses nothing by travelling as text.
+                    const partialHtml = (typeof selectionIsWholeVirtualDocument === 'function')
+                        && selectionIsWholeVirtualDocument(sel.getRangeAt(0));
+                    if (!partialHtml) {
+                        e.clipboardData.setData('text/html', holder.outerHTML); // rich paste
+                    }
                     e.preventDefault();
                 } catch (err) {}
             });

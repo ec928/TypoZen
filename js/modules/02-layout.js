@@ -3445,8 +3445,15 @@
                 // -- which is the stranding the count clamp above was trying to prevent.
                 // Answering from the scroll position instead keeps both honest: the tail
                 // gets a page of its own, and the turn after it crosses into the next range.
+                //
+                // Guarded by "the last page actually overhangs" -- (n-1)*stride > maxScroll
+                // -- and not by scroll position alone. Being at maxScroll is ordinary when
+                // the last page starts within it, and claiming the last page then reports a
+                // number from the wrong layout: a 2-col -> 1-col -> 2-col round trip came
+                // back saying page 48 of a 21-page map, with the right content under it,
+                // because the geometry is briefly inconsistent while columns are changing.
                 const max = this.maxScroll();
-                if (n > 1 && max > 0 && sl >= max - 1) return n - 1;
+                if (n > 1 && max > 0 && sl >= max - 1 && (n - 1) * s > max) return n - 1;
                 return Math.max(0, Math.min(n - 1, Math.round(sl / s)));
             },
 
@@ -3892,22 +3899,23 @@
                     // -- 203 pages reported for a document that is really about 106 -- and
                     // only converged as the reader happened to visit each range.
                     //
-                    // The total may only GROW. An estimate that can fall takes pages away
-                    // that the reader has already been shown, and the act of seeking to a
-                    // page is what removes it: seeking mounts the range, mounting measures
-                    // it, measuring refines this figure downward, and the page the scrubber
-                    // named a moment ago no longer exists. Ask for 267 of 268, land on 261.
-                    // goto() was never at fault -- the number it was handed had expired.
+                    // Both directions. This was briefly a ratchet -- unmeasured ranges could
+                    // only grow -- on the reasoning that an estimate which falls takes away
+                    // a page the reader has already been shown. True, and not worth the
+                    // price: an estimate that cannot come down never converges. Every range
+                    // the reader has not visited stays at the seed (800 x 0.06 = 48 pages)
+                    // while the measured ones say 20, so the total reads more than double
+                    // the document and stays there, and a column switch cannot correct it.
+                    // Measured [20,20,48,48] against a refined 0.025 pages per block.
                     //
-                    // So a range that has not been laid out keeps the larger of its current
-                    // estimate and the refined one. Measured ranges are always exact, so the
-                    // total still converges on the truth from below as the book is read; it
-                    // just never revokes a page number it has already published.
+                    // A total that is honestly wrong in both directions and converges beats
+                    // one that is wrong in a flattering direction forever. What makes that
+                    // acceptable is saying so: pageTotalIsApproximate marks the figure "~"
+                    // until every range is real, which is the actual fix for "the page I was
+                    // shown stopped existing" -- it was never a promise we could keep.
                     if (changed && this.counts) {
                         for (let i = 0; i < this.counts.length; i++) {
-                            if (this.measured[i]) continue;
-                            this.counts[i] = Math.max(this.counts[i] || 1,
-                                                      this.estimateChunkPages(i));
+                            if (!this.measured[i]) this.counts[i] = this.estimateChunkPages(i);
                         }
                     }
                 }

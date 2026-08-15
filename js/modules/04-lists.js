@@ -126,10 +126,39 @@
          * four lines into Notepad pasted them double-spaced. Walk the selected blocks and
          * join with single newlines instead.
          */
+        /**
+         * Is this "select everything", over a document the DOM only partly holds?
+         *
+         * Ctrl+A selects the editor's CONTENTS (`selectNodeContents(editor)`), and under
+         * virtualisation or page windowing those contents are a window onto the document,
+         * not the document: 54 blocks of 3767 on the scroll fixture. Anything that then
+         * walks the mounted blocks is copying a projection -- measured at 2,797 characters
+         * of a 205,842-character file, 1%, onto the clipboard with nothing to say so.
+         *
+         * The same projection-for-document mistake getMarkdownContent() is guarded against,
+         * where its comment reads "saving would have written the window and discarded the
+         * rest of the file". The model is the document; ask it.
+         */
+        function selectionIsWholeVirtualDocument(range) {
+            try {
+                if (!editor || !range || typeof DocumentModel === 'undefined') return false;
+                const partial = !!DocumentModel.virtEnabled
+                    || (typeof pageWindowingActive === 'function' && pageWindowingActive());
+                if (!partial) return false;
+                return range.startContainer === editor && range.endContainer === editor
+                    && range.startOffset === 0
+                    && range.endOffset === editor.childNodes.length;
+            } catch (e) { return false; }
+        }
+
         function selectionToPlainText() {
             const sel = window.getSelection();
             if (!sel || !sel.rangeCount || sel.isCollapsed) return '';
             const range = sel.getRangeAt(0);
+            if (selectionIsWholeVirtualDocument(range)) {
+                try { DocumentModel.syncMountedToModel(); } catch (eS) {}
+                return DocumentModel.toMarkdown();
+            }
             const blocks = Array.prototype.slice.call(editor.querySelectorAll('.block'));
             const lines = [];
             for (let i = 0; i < blocks.length; i++) {

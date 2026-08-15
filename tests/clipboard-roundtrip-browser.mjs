@@ -137,6 +137,34 @@ async function main() {
             'nothing that was in the document before has gone (' +
             JSON.stringify(removed.slice(0, 3)) + ')');
 
+        // --- Select all, on a document the DOM only partly holds.
+        //
+        // Ctrl+A selects the editor's CONTENTS, and under virtualisation those contents are
+        // a window onto the document, not the document. Walking the mounted blocks put 2,797
+        // characters of a 205,842-character file on the clipboard -- 1% -- with nothing to
+        // say so. Copy is no more allowed to be a projection of the document than saving is.
+        console.log('\n=== select all copies the document, not the window ===');
+        const all = await page.evaluate(() => {
+            const ed = document.getElementById('editor');
+            const range = document.createRange();
+            range.selectNodeContents(ed);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return {
+                virt: !!DocumentModel.virtEnabled,
+                mounted: ed.querySelectorAll('.block').length,
+                modelBlocks: DocumentModel.blocks.length,
+                copied: selectionToPlainText().length,
+                whole: DocumentModel.toMarkdown().length
+            };
+        });
+        info(all.mounted + ' of ' + all.modelBlocks + ' blocks mounted (virt ' + all.virt +
+             '); select-all copied ' + all.copied + ' of ' + all.whole + ' chars');
+        assert(all.copied === all.whole,
+            'select all copies every character of the document (' +
+            all.copied + ' of ' + all.whole + ')');
+
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) { console.error('\nCLIPBOARD ROUND TRIP FAILED'); process.exitCode = 1; return; }
         console.log('\nCLIPBOARD ROUND TRIP PASSED');

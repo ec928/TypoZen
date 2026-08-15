@@ -10862,8 +10862,63 @@ namespace TypoZen
 
             if (_webView != null && _webView.CoreWebView2 != null)
             {
+                // Refuse rather than print a fraction of the document.
+                //
+                // Chromium prints the DOM, and under virtualisation or page windowing the
+                // DOM is a window onto the document rather than the document: measured at
+                // 54 blocks of 3767 while scrolling a 205,842-character file. Printing it
+                // produced a PDF of about one per cent, looking entirely plausible, with
+                // nothing to say the rest was missing -- the same projection-for-document
+                // mistake that saving and copying are both guarded against.
+                //
+                // Stopped rather than papered over. Mounting the whole document to print it
+                // is exactly the work windowing exists to avoid, and on a 45,486-block
+                // omnibus is not obviously survivable; a partial PDF, meanwhile, is an
+                // artefact the reader keeps and may send to someone.
+                string partial = EditorDomPartialForPrint();
+                if (!string.IsNullOrEmpty(partial))
+                {
+                    WinForms.MessageBox.Show(
+                        "This document is too large to print directly.\n\n" +
+                        "TypoZen lays out long documents a piece at a time, so only " +
+                        partial + " paragraphs are in the page right now. Printing would " +
+                        "produce a PDF containing just that piece, with nothing to show " +
+                        "the rest was missing.\n\n" +
+                        "Save the file and print it from another application instead.",
+                        "Cannot print the whole document",
+                        WinForms.MessageBoxButtons.OK,
+                        WinForms.MessageBoxIcon.Warning);
+                    return;
+                }
                 _webView.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
             }
+        }
+
+        /// <summary>
+        /// "" when the page holds the whole document and may be printed; otherwise
+        /// "mounted of total", for the message. Fails open: an unanswered page prints, so a
+        /// broken probe can never make Print silently stop working.
+        /// </summary>
+        private string EditorDomPartialForPrint()
+        {
+            try
+            {
+                string r = ExecuteScriptBlocking(
+                    "(function(){ try {" +
+                    "  if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return '';" +
+                    "  var ed = document.getElementById('editor');" +
+                    "  if (!ed) return '';" +
+                    "  var total = DocumentModel.blocks.length;" +
+                    "  var mounted = ed.querySelectorAll('.block').length;" +
+                    "  var windowed = (DocumentModel.virtEnabled === true)" +
+                    "    || (typeof pageWindowingActive === 'function' && pageWindowingActive());" +
+                    "  if (!windowed || mounted >= total) return '';" +
+                    "  return mounted + ' of ' + total;" +
+                    "} catch (e) { return ''; } })()",
+                    900);
+                return string.IsNullOrWhiteSpace(r) ? "" : r.Trim();
+            }
+            catch { return ""; }
         }
 
         private void ToggleFullscreen()
