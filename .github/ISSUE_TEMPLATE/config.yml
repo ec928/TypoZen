@@ -1,0 +1,6 @@
+﻿blank_issues_enabled: true
+contact_links:
+  - name: Questions, ideas and general discussion
+    url: https://github.com/ec928/TypoZen/discussions
+    about: For "how do I...", suggestions, or anything open-ended. Bug reports and
+      confirmed feature requests belong in an issue; everything else is welcome here.
