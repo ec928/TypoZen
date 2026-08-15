@@ -1,0 +1,66 @@
+name: Bug report
+description: Something crashes, renders wrongly, or loses content
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the problem involves a specific document, a short excerpt that reproduces it is far more
+        useful than the whole file — and avoids sharing anything you'd rather keep private.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+      placeholder: Turning the page mid-document dropped the last paragraph of the previous page.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      options:
+        - Editing / formatting
+        - Page turns / pagination
+        - EPUB reading
+        - Copy / print / export
+        - Themes and appearance
+        - Startup or crash
+        - Something else
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: dataloss
+    attributes:
+      label: Severity
+      options:
+        - label: This lost or corrupted document content
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Press Win+R, type `winver`, and paste what it shows.
+      placeholder: e.g. Windows 11 Pro 24H2 (build 26100.1742)
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, a short sample document, or any error text shown.
