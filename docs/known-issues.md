@@ -66,6 +66,29 @@ Clear format freeze on undo/redo; list Tab prefers live selection.
 
 ---
 
+### Select All copied the window, not the document — **fixed**
+
+`Ctrl+A` selects the editor's *contents*, and under virtualisation those are a window: 54
+blocks of 3767. `selectionToPlainText` walked the mounted blocks, so Select All + Copy put
+**2,797 characters of a 205,842-character document** on the clipboard — one per cent,
+silently. **Now:** a whole-editor selection over a partial DOM is answered from
+`DocumentModel`. The `text/html` flavour is omitted in that case rather than fixed, so no
+rich target can take the window while the plain text carries the document.
+
+### Print produced a fraction of the document — **now refused**
+
+Chromium prints the DOM, so `Ctrl+P` on a long document made a PDF of roughly what was on
+screen, with nothing to indicate the rest was missing. Worse than a skipped paragraph: it is
+an artefact you keep and may send on. **Now:** Print stops and explains, rather than mounting
+the whole document (which is the work windowing exists to avoid). Fails open — an unanswered
+probe prints, so a broken check cannot silently disable Print.
+
+**Cut is not affected.** Measured against the running application: `Ctrl+A` then `Ctrl+X`
+leaves the model holding all 3767 blocks and all 205,842 characters. The view blanks and the
+clipboard gets the window; the document survives and a later save writes the whole file.
+
+---
+
 ### Turning a page silently skipped text — **fixed**
 
 The worst defect found in this tree. Reading any long document in **Pages** mode, text was

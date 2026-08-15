@@ -40,7 +40,11 @@ tabs — that control belongs to paginated engine/book reading.
 
 Format tools and Source/Preview are locked; the file is never marked dirty and never saved over.
 **Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native
-WebView; document tab → editor). **Privacy Mode** (File menu) already applies — see
+WebView; document tab → editor). **It refuses on a document too large to lay out whole**,
+rather than print part of one: TypoZen renders long documents a piece at a time, the print
+engine can only take what is on the page, and a PDF containing a fifth of a document with
+nothing to say so is worse than no PDF — you keep it, and you may send it to someone. Save
+the file and print it elsewhere. **Privacy Mode** (File menu) already applies — see
 [Session & privacy](#session--privacy). Details: `docs/native-reader-plan.md`.
 
 ### Reading epubs
@@ -259,7 +263,11 @@ The status bar updates continuously with word count, character count (both group
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
 - **Atomic document save** — write to a temp file, flush, then replace the target
 - **Standalone HTML export** — self-contained, with the active theme's styles embedded
-- Print / Export PDF (`Ctrl+P`) — Chromium print UI
+- **Select All copies the whole document**, not the part of it currently laid out. On a long
+  file only a window of paragraphs exists in the page at a time, and copying what was on
+  screen put one per cent of a 205,842-character document on the clipboard with nothing to
+  say so
+- Print / Export PDF (`Ctrl+P`) — Chromium print UI; refuses rather than truncate a document too large to lay out whole (see [Reading PDFs, web, images, and media](#reading-pdfs-web-images-and-media))
 - CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path` (see Phase 6 under Outstanding work)
 
 ### Session & privacy
