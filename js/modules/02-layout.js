@@ -1539,7 +1539,7 @@
                 const rib = document.createElement('span');
                 rib.className = 'mark-rib';
                 rib.setAttribute('aria-hidden', 'true');
-                rib.textContent = '';
+                rib.textContent = '▮';
 
                 const body = document.createElement('span');
                 body.className = 'mark-body';

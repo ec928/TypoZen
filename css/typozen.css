@@ -264,14 +264,6 @@
         .mark-add:hover { background: rgba(128, 128, 128, 0.2); }
         .mark-add:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 1px; }
         .mark-add .mark-rib { color: var(--mark); font-size: 12px; }
-        .mark-rib:empty {
-            display: inline-block;
-            width: 3px;
-            height: 12px;
-            background-color: currentColor;
-            border-radius: 3px 0 0 3px;
-            vertical-align: -1px;
-        }
         /* Already marked: the button says so rather than silently doing the opposite. */
         .mark-add.on { color: var(--mark); background: var(--mark-bg); border-color: var(--mark); }
 
@@ -356,7 +348,7 @@
             top: 1px;
             bottom: 1px;
             width: 3px;
-            border-radius: 3px 0 0 3px;
+            border-radius: 2px;
             background: var(--mark-ink, #E8A33D);
             opacity: 0;
             pointer-events: none;
