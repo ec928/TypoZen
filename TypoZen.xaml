@@ -524,7 +524,7 @@
                                     <MenuItem x:Name="mParaRelaxed" Header="_Relaxed" IsCheckable="True"/>
                                     <MenuItem x:Name="mParaLoose" Header="_Loose" IsCheckable="True"/>
                                 </MenuItem>
-                                <MenuItem Header="_Editor Margins">
+                                <MenuItem Header="_Margins">
                                     <MenuItem x:Name="mMarginNarrow" Header="_Narrow Margins" IsCheckable="True"/>
                                     <MenuItem x:Name="mMarginRegular" Header="_Regular Margins" IsCheckable="True" IsChecked="True"/>
                                     <MenuItem x:Name="mMarginWide" Header="_Wide Margins" IsCheckable="True"/>

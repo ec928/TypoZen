@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -5270,7 +5270,7 @@ namespace TypoZen
 
                     var customize = new TextBlock 
                     { 
-                        Text = "Customize Theme...", 
+                        Text = "Customise Theme...", 
                         FontWeight = FontWeights.SemiBold, 
                         TextAlignment = TextAlignment.Center,
                         Padding = new Thickness(0, 8, 0, 8),
@@ -5414,13 +5414,13 @@ namespace TypoZen
             string name = (t.Name ?? "").Trim();
             if (string.IsNullOrEmpty(name))
             {
-                WinForms.MessageBox.Show("Please enter a theme name.", "Customize Theme",
+                WinForms.MessageBox.Show("Please enter a theme name.", "Customise Theme",
                     WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                 return false;
             }
             if (!IsValidHexColor(t.Bg) || !IsValidHexColor(t.Tx) || !IsValidHexColor(t.Hi))
             {
-                WinForms.MessageBox.Show("Colors must be #RRGGBB hex values.", "Customize Theme",
+                WinForms.MessageBox.Show("Colors must be #RRGGBB hex values.", "Customise Theme",
                     WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
                 return false;
             }
@@ -5463,7 +5463,7 @@ namespace TypoZen
             }
             catch (Exception ex)
             {
-                WinForms.MessageBox.Show("Could not save theme:\n" + ex.Message, "Customize Theme",
+                WinForms.MessageBox.Show("Could not save theme:\n" + ex.Message, "Customise Theme",
                     WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                 return false;
             }
@@ -5517,7 +5517,7 @@ namespace TypoZen
             {
                 WinForms.MessageBox.Show(
                     "\"" + victim.Name + "\" is a built-in theme and cannot be deleted.\n\n"
-                    + "Only themes you created with Customize Theme can be removed.",
+                    + "Only themes you created with Customise Theme can be removed.",
                     "Delete Theme", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                 return false;
             }
@@ -11180,7 +11180,7 @@ namespace TypoZen
         public string Tx;
         public string Hi;
         /// <summary>
-        /// True for themes the user saved via Customize Theme. Serialized so it survives
+        /// True for themes the user saved via Customise Theme. Serialized so it survives
         /// a restart. Built-in themes have no such marker and are protected from deletion.
         /// </summary>
         public bool Custom;
@@ -11317,7 +11317,7 @@ namespace TypoZen
             // Light once its fallback was changed from Georgia to Literata -- matched
             // nothing and fell back to index 0. That was not merely a wrong label: the
             // dialog previews from the selection and BuildTheme() saves from it, so opening
-            // Customize Theme on such a theme and pressing Save silently rewrote its font
+            // Customise Theme on such a theme and pressing Save silently rewrote its font
             // to Inter. A default that quietly discards the value it failed to read is
             // worse than no default.
             //
@@ -11357,7 +11357,7 @@ namespace TypoZen
             _resetHi = hi;
             _resetFontIndex = selectedFont;
 
-            Title = "Customize Theme";
+            Title = "Customise Theme";
             Width = 460;
             MinHeight = 480;
             SizeToContent = SizeToContent.Height;

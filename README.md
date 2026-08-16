@@ -125,14 +125,14 @@ TSV first, because that is what a WordNet or Wiktionary export converts to in on
 
 ### Themes & typography
 
-**25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customize Theme…** option lives).
+**25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customise Theme…** option lives).
 
 | Column | Themes |
 | --- | --- |
 | **Dark** | Ayu Mirage, Catppuccin Mocha, Everforest, GitHub Dark Classic, Gruvbox, Gruvbox Serif, Kanagawa, Material Oceanic, Material Palenight, One Dark, Rosé Pine, Solarized Dark, Tomorrow Night, VSCode Dark+ |
 | **Light** | Ayu Light, Catppuccin Latte, Gruvbox Light, One Light, Rosé Pine Dawn, Solarized Light, VSCode Light+ |
 | **Mono** | Dracula, Monokai, Nord, Tokyo Night |
-| **Custom Themes** | Custom saved themes, plus **Customize Theme...** |
+| **Custom Themes** | Custom saved themes, plus **Customise Theme...** |
 
 **All set `FS` to 16** (base size for document and book normalisation). Palettes are reduced to three colours for the shell + page; they are not full syntax-highlight schemes.
 
@@ -150,7 +150,7 @@ Avoid the Mono column (Dracula, Nord, Tokyo Night, Monokai) for immersion; fine 
 
 - **Fonts ship with the app** in `fonts/` (except system mono). No network font fetch. `local()` first so an installed copy wins. (WebView2 itself still does Microsoft traffic — see [Network behaviour](#network-behaviour).)
 - **Deep recursive theming** — menus, toolbar, sidebar and status bar take the same brushes as the page.
-- **Themes → Customize Theme…** — live preview, **Save as New** (built-ins never overwritten), Reset, Cancel.
+- **Themes → Customise Theme…** — live preview, **Save as New** (built-ins never overwritten), Reset, Cancel.
 
 Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
 
@@ -424,7 +424,7 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Typewriter scroll | `F9` |
 | Fullscreen | `F11` |
 
-**Menus (no default shortcut):** Themes → Customize Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → Auto-hide, Side Panel Auto-hide · File → Privacy
+**Menus (no default shortcut):** Themes → Customise Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → Auto-hide, Side Panel Auto-hide · File → Privacy
 
 Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
 
