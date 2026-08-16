@@ -264,14 +264,7 @@
         .mark-add:hover { background: rgba(128, 128, 128, 0.2); }
         .mark-add:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 1px; }
         .mark-add .mark-rib { color: var(--mark); font-size: 12px; }
-        .mark-rib:empty {
-            display: inline-block;
-            width: 10px;
-            height: 16px;
-            border-radius: 6px;
-            box-shadow: inset 3px 0 0 0 currentColor;
-            vertical-align: -2px;
-        }
+
         /* Already marked: the button says so rather than silently doing the opposite. */
         .mark-add.on { color: var(--mark); background: var(--mark-bg); border-color: var(--mark); }
 
