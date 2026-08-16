@@ -5268,8 +5268,18 @@ namespace TypoZen
                             colMono.Children.Add(cmi);
                     }
 
-                    var customize = new MenuItem { Header = "Customize Theme...", FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
-                    customize.Click += (s, ev) => { 
+                    var customize = new TextBlock 
+                    { 
+                        Text = "Customize Theme...", 
+                        FontWeight = FontWeights.SemiBold, 
+                        TextAlignment = TextAlignment.Center,
+                        Padding = new Thickness(0, 8, 0, 8),
+                        Background = Brushes.Transparent,
+                        Cursor = Cursors.Hand
+                    };
+                    customize.MouseEnter += (s, ev) => customize.Background = new SolidColorBrush(Color.FromArgb(20, 128, 128, 128));
+                    customize.MouseLeave += (s, ev) => customize.Background = Brushes.Transparent;
+                    customize.MouseDown += (s, ev) => { 
                         menu.IsSubmenuOpen = false; 
                         OpenThemeCustomize(); 
                     };
