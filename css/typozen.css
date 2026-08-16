@@ -264,6 +264,14 @@
         .mark-add:hover { background: rgba(128, 128, 128, 0.2); }
         .mark-add:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 1px; }
         .mark-add .mark-rib { color: var(--mark); font-size: 12px; }
+        .mark-rib:empty {
+            display: inline-block;
+            width: 10px;
+            height: 16px;
+            border-radius: 6px;
+            box-shadow: inset 3px 0 0 0 currentColor;
+            vertical-align: -2px;
+        }
         /* Already marked: the button says so rather than silently doing the opposite. */
         .mark-add.on { color: var(--mark); background: var(--mark-bg); border-color: var(--mark); }
 
@@ -333,10 +341,11 @@
                hover, marked       65%   click removes it
 
            A pseudo-element rather than an inset box-shadow. Three reasons: box-shadow
-           follows the block's 6px border-radius and tapers a 3px rail to a leaf shape
-           at both ends; opacity is the whole design and a shadow cannot carry four
-           states cleanly; and leaving box-shadow unused means no future hover rule can
-           collide with this one again. Still unserialisable -- a real element inside a
+           on the block itself would prevent any future hover rule from using shadows,
+           and a shadow cannot carry four opacity states without redefining its color.
+           To achieve the "leaf shape" (tapering curled ends) that an inset shadow 
+           provides, we apply the shadow to this pseudo-element instead, giving it 
+           the block's 6px radius. Still unserialisable -- a real element inside a
            .block would round-trip into data-raw and become part of the document. */
 
         #editor .block { position: relative; }
@@ -344,12 +353,12 @@
         #editor .block::before {
             content: '';
             position: absolute;
-            left: 4px;
-            top: 1px;
-            bottom: 1px;
-            width: 3px;
-            border-radius: 2px;
-            background: var(--mark-ink, #E8A33D);
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 10px;
+            border-radius: 6px;
+            box-shadow: inset 3px 0 0 0 var(--mark-ink, #E8A33D);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.12s ease;
