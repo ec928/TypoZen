@@ -9,17 +9,20 @@ Works well with **`.md`**, **`.txt`**, and related text files.
 ## Highlights
 
 ### Dual-mode editing
+
 - **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, emphasis)
 - **Source Mode** — raw Markdown/text in a growing textarea (one scrollbar with the outer pane, never nested)
 - Switch with the **Mode** control on the toolbar (Source / Preview / Reader); the lit segment is the **current** mode
-- **Sticky mode switching** — the same hard line stays put for both the status readout *and* the scroll position when you toggle
+- **Sticky mode switching** — the same hard line stays put for both the status readout _and_ the scroll position when you toggle
 - Source uses the **active theme font** (pick a **(Mono)** theme if you want monospaced source and preview)
+- **Reveal markdown on focus** can be enabled to automatically show markdown details while still in preview WYSIWYG mode
 
 ### Large documents
-TypoZen opens by document *type*, not size — Markdown of any size opens in Live Preview, and the engine picks its own strategy:
+
+TypoZen opens by document _type_, not size — Markdown of any size opens in Live Preview, and the engine picks its own strategy:
 
 | Band | Strategy |
-|------|----------|
+| --- | --- |
 | **S** — small | Full DOM, immediate paint |
 | **M** — medium | Full DOM, progressive paint in `requestAnimationFrame` batches (≥ ~800 blocks; windowed creation ≥ ~1500) |
 | **L / XL** — large | **Virtualized Preview** — only viewport ± overscan is mounted (≥ ~2000 blocks or ~120 KB) |
@@ -27,127 +30,67 @@ TypoZen opens by document *type*, not size — Markdown of any size opens in Liv
 Virtualized Preview keeps a per-block height map, estimated from the raw Markdown and refined from real measurements as blocks mount, with **scroll anchoring** so correcting a height never moves the content under your cursor. `.txt` / `.log` / `.csv` open in Source, which is the Notepad-class path.
 
 ### Reading PDFs, web, images, and media
-Open these **read-only** on a Chromium surface (same tab strip). No document scrubber on these
-tabs — that control belongs to paginated engine/book reading.
+
+Open these **read-only** on a Chromium surface (same tab strip). No document scrubber on these tabs — that control belongs to paginated engine/book reading.
 
 | Type | Behaviour |
-|------|-----------|
+| --- | --- |
 | **PDF** | Chromium PDF viewer |
 | **HTML** (`.html` / `.htm` / `.xhtml`) | **Source** = edit markup. **Reader** = real page (read-only). **Preview** is off for HTML — it is Markdown WYSIWYG, not an HTML editor |
 | **CSS / XML / XAML / JSON** (and `.txt` / logs) | Normal **editor** document in **Source** |
 | **Images** | Fit-to-pane shell; **right‑click → Magnify** (Edge) for zoom/pan |
 | **Video / audio** | Browser controls; missing codecs (often **HEVC / HVC1**) show a clear error (audio-only black frame is explained too) |
 
-Format tools and Source/Preview are locked; the file is never marked dirty and never saved over.
-**Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native
-WebView; document tab → editor). **It refuses on a document too large to lay out whole**,
-rather than print part of one: TypoZen renders long documents a piece at a time, the print
-engine can only take what is on the page, and a PDF containing a fifth of a document with
-nothing to say so is worse than no PDF — you keep it, and you may send it to someone. Save
-the file and print it elsewhere. **Privacy Mode** (File menu) already applies — see
-[Session & privacy](#session--privacy). Details: `docs/native-reader-plan.md`.
+Format tools and Source/Preview are locked; the file is never marked dirty and never saved over. **Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native WebView; document tab → editor). **It refuses on a document too large to lay out whole**, rather than print part of one: TypoZen renders long documents a piece at a time, the print engine can only take what is on the page, and a PDF containing a fifth of a document with nothing to say so is worse than no PDF — you keep it, and you may send it to someone. Save the file and print it elsewhere. **Privacy Mode** (File menu) already applies — see [Session & privacy](#session--privacy). Details: `docs/native-reader-plan.md`.
 
 ### Reading epubs
-Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the
-book's own table of contents in the outline.
 
-- A book's blocks carry the **publisher's own HTML**, not a Markdown conversion. Converting
-  *Blindsight* to Markdown dropped 6/6 images, 162/162 links, 170/170 list items and 210/210
-  footnote references, and broke 16 of 17 headings. Carrying the HTML has no conversion step
-  and therefore nothing to lose.
-- The book's stylesheets are applied, scoped to the editor, with four corrections: `rem`
-  becomes `em` (a book sized in `rem` is rooted at the application and the reader's font-size
-  control cannot touch it), the book's own `page-break-before: always` becomes
-  `break-before: column` (a paged-media break is ignored by a multi-column layout),
-  `text-align: justify` becomes `text-align: var(--tz-align, left)` so **View → Justified**
-  owns it (see Writing tools), and `preserveAspectRatio="none"` is stripped from cover
-  wrappers.
-- **Body text renders at the size the theme asks for.** Publishers size against a device
-  default they cannot see — *Xeelee* asks for `0.88em` on its body classes, *Matter* for
-  `1.33333em`. The correction divides the **declarations in the book's own stylesheet** by the
-  measured factor and leaves `#editor` at exactly `--fs`, so text the publisher left unstyled
-  is right without anything being done to it, `0.88em ÷ 0.88` is `1em` and right too, and a
-  `1.5em` heading becomes `1.7em` — still half again the body, which is the proportion the
-  publisher was expressing. Scaling the *container* instead, which is what this did first,
-  is exact only for text wearing the class and wrong in the other direction for everything
-  else: about one *Xeelee* paragraph in ten. Now 96.9% of its characters and 99.2% of
-  *Matter*'s land on the theme size exactly.
-- The factor is measured from the element that **directly owns each text node**, weighted by
-  characters, and refined as more of the book mounts. Each of those was a bug in turn:
-  measuring the block's first child read a container that inherits the theme size and hands
-  it back, so *Matter* was declared correct while 99.2% of its text painted a third too
-  large; counting elements rather than characters lets a drop cap outvote a chapter; and
-  locking the factor on first sight took it from whatever range happened to be mounted, which
-  on a resumed book is usually front matter — two launches of the same book measured 0.66 and
-  0.74 for a factor that should be 0.75.
-- **A plate gets the page it sits on.** A cover, frontispiece or part title — a picture with
-  no text beside it — is sized to the page box, not to `vh`. `vh` is the *window*, which
-  includes the tab strip, toolbar and status bar, so the old bound stopped a cover a quarter
-  of a page short and shrank *Matter*'s below its own resolution (a 510×680 file painted at
-  391×521). Covers are small files (294×500 to 510×739), so filling the page upscales the
-  smaller ones — presence over sharpness, chosen deliberately, because a cover is furniture
-  you glance at rather than text you read. A picture under 400px natural is not a plate: the
-  *Matter* "About the Author" portrait is 230×233 and alone in its block, and filling a page
-  with it at 3× was not an improvement.
-- Chapters start a new page, images and internal links work, and the reading position is
-  remembered per book across sessions.
+Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the book's own table of contents in the outline.
+
+- A book's blocks carry the **publisher's own HTML**, not a Markdown conversion. Converting _Blindsight_ to Markdown dropped 6/6 images, 162/162 links, 170/170 list items and 210/210 footnote references, and broke 16 of 17 headings. Carrying the HTML has no conversion step and therefore nothing to lose.
+- The book's stylesheets are applied, scoped to the editor, with four corrections: `rem` becomes `em` (a book sized in `rem` is rooted at the application and the reader's font-size control cannot touch it), the book's own `page-break-before: always` becomes `break-before: column` (a paged-media break is ignored by a multi-column layout), `text-align: justify` becomes `text-align: var(--tz-align, left)` so **View → Justified** owns it (see Writing tools), and `preserveAspectRatio="none"` is stripped from cover wrappers.
+- **Body text renders at the size the theme asks for.** Publishers size against a device default they cannot see — _Xeelee_ asks for `0.88em` on its body classes, _Matter_ for `1.33333em`. The correction divides the **declarations in the book's own stylesheet** by the measured factor and leaves `#editor` at exactly `--fs`, so text the publisher left unstyled is right without anything being done to it, `0.88em ÷ 0.88` is `1em` and right too, and a `1.5em` heading becomes `1.7em` — still half again the body, which is the proportion the publisher was expressing. Scaling the _container_ instead, which is what this did first, is exact only for text wearing the class and wrong in the other direction for everything else: about one _Xeelee_ paragraph in ten. Now 96.9% of its characters and 99.2% of _Matter_'s land on the theme size exactly.
+- The factor is measured from the element that **directly owns each text node**, weighted by characters, and refined as more of the book mounts. Each of those was a bug in turn: measuring the block's first child read a container that inherits the theme size and hands it back, so _Matter_ was declared correct while 99.2% of its text painted a third too large; counting elements rather than characters lets a drop cap outvote a chapter; and locking the factor on first sight took it from whatever range happened to be mounted, which on a resumed book is usually front matter — two launches of the same book measured 0.66 and 0.74 for a factor that should be 0.75.
+- **A plate gets the page it sits on.** A cover, frontispiece or part title — a picture with no text beside it — is sized to the page box, not to `vh`. `vh` is the _window_, which includes the tab strip, toolbar and status bar, so the old bound stopped a cover a quarter of a page short and shrank _Matter_'s below its own resolution (a 510×680 file painted at 391×521). Covers are small files (294×500 to 510×739), so filling the page upscales the smaller ones — presence over sharpness, chosen deliberately, because a cover is furniture you glance at rather than text you read. A picture under 400px natural is not a plate: the _Matter_ "About the Author" portrait is 230×233 and alone in its block, and filling a page with it at 3× was not an improvement.
+- Chapters start a new page, images and internal links work, and the reading position is remembered per book across sessions.
 - A book is never dirty, never saved over, and Save As refuses any path ending `.epub`.
 
 ### Position in a long document
-In a paginated layout the foot of the page carries page numbers and a **scrubber that spans
-the whole book**. It addresses pages rather than scroll offset, because the editor's own
-scrollbar can only span what is currently laid out — about 28 pages of a 1400-page novel.
 
-- **Click a page number** or press **`Ctrl+G`** to open a go-to-page prompt (leaf page number;
-  in two-column mode that maps to the correct spread under the hood).
-- **The total is marked `~` while it is still being learned** — `43 / ~264`. Only ranges you
-  have actually reached are measured; the rest are inferred, so the total is an estimate
-  until the whole document has been laid out, and it says so rather than printing a guess as
-  a fact. The page you are **on** is always exact: you are looking at it. Three rules keep
-  the estimate honest — it only ever **grows**, so a page number you have been shown is never
-  taken away; measured ranges are exact, so it converges on the truth as you read; and
-  **dragging the scrubber fully right goes to the end of the document**, which is the last
-  block and needs no estimate at all
-- **Turning pages** follows a fixed keyboard matrix (full detail in
-  [docs/for-agents.md](docs/for-agents.md)). `PageUp` / `PageDown` and the wheel always turn
-  the page in a paginated layout. **Without a live search**, arrows and `Space` turn the page
-  only where nothing is editable — **Reader** and any **book** — because in **Preview** the
-  arrows belong to the caret. **With search results**, Up/Down step hits everywhere except
-  Source, and Left/Right turn the page (so you can page through a document while hunting a
-  match without giving up hit navigation). Reader sets `#editor` to
-  `contenteditable="false"`, which is the reliable “no caret” signal rather than a mode-name
-  guess.
-- The status bar shows the **current chapter** from the book TOC or document outline, updated
-  as you read. **Click the chapter label** to jump to that chapter's start.
-- **Bookmarks** — see below. Separately, jumping via search, outline, go-to-page, or chapter
-  click leaves a **return breadcrumb** — **Return from Jump** (`Ctrl+Shift+J`) goes back to
-  where you were reading. The breadcrumb is automatic rather than chosen, and session-local.
+In a paginated layout the foot of the page carries page numbers and a **scrubber that spans the whole book**. It addresses pages rather than scroll offset, because the editor's own scrollbar can only span what is currently laid out — about 28 pages of a 1400-page novel.
+
+- **Click a page number** or press **`Ctrl+G`** to open a go-to-page prompt (leaf page number; in two-column mode that maps to the correct spread under the hood).
+- **The total is marked `~` while it is still being learned** — `43 / ~264`. Only ranges you have actually reached are measured; the rest are inferred, so the total is an estimate until the whole document has been laid out, and it says so rather than printing a guess as a fact. The page you are **on** is always exact: you are looking at it. Three rules keep the estimate honest — it only ever **grows**, so a page number you have been shown is never taken away; measured ranges are exact, so it converges on the truth as you read; and **dragging the scrubber fully right goes to the end of the document**, which is the last block and needs no estimate at all
+- **Turning pages** follows a fixed keyboard matrix (full detail in [docs/for-agents.md](docs/for-agents.md)). `PageUp` / `PageDown` and the wheel always turn the page in a paginated layout. **Without a live search**, arrows and `Space` turn the page only where nothing is editable — **Reader** and any **book** — because in **Preview** the arrows belong to the caret. **With search results**, Up/Down step hits everywhere except Source, and Left/Right turn the page (so you can page through a document while hunting a match without giving up hit navigation). Reader sets `#editor` to `contenteditable="false"`, which is the reliable “no caret” signal rather than a mode-name guess.
+- The status bar shows the **current chapter** from the book TOC or document outline, updated as you read. **Click the chapter label** to jump to that chapter's start.
+- **Bookmarks** — see below. Separately, jumping via search, outline, go-to-page, or chapter click leaves a **return breadcrumb** — **Return from Jump** (`Ctrl+Shift+J`) goes back to where you were reading. The breadcrumb is automatic rather than chosen, and session-local.
 
 ### Bookmarks
+
 Named places that survive the exit, in a **Marks** tab beside Outline and Search.
 
-Three ways to set one, because the single place marker this replaced went unused for
-being two shortcuts and nothing on screen:
+Three ways to set one, because the single place marker this replaced went unused for being two shortcuts and nothing on screen:
 
 | Where | What |
-|---|---|
-| **The gutter** | A 3px amber rail in the left margin, and hovering a paragraph previews what clicking will do: faint rail on an unmarked one (*click adds*), the existing rail dimmed on a marked one (*click removes*). One shape, one colour, four intensities — the gutter is a toggle button that explains itself. Drawn with `::before` and hit-tested by coordinate — a real element inside a `.block` would end up in `data-raw` and therefore in your document. **View → Block Hover** turns the preview off; a bookmark you have set is always drawn |
+| --- | --- |
+| **The gutter** | A 3px amber rail in the left margin, and hovering a paragraph previews what clicking will do: faint rail on an unmarked one (_click adds_), the existing rail dimmed on a marked one (_click removes_). One shape, one colour, four intensities — the gutter is a toggle button that explains itself. Drawn with `::before` and hit-tested by coordinate — a real element inside a `.block` would end up in `data-raw` and therefore in your document. **View → Block Hover** turns the preview off; a bookmark you have set is always drawn |
 | **Marks pane** | **Mark this page**, which becomes **Remove this mark** |
 | **Keyboard** | `Ctrl+Shift+M` toggles, `Ctrl+Shift+P` opens the pane |
 
 - **Enter keeps your indentation in Source.** A textarea drops the caret to column zero, so every indented structure — a fence, a YAML block, a nested list — had to be re-indented by hand on every line. A list carries its marker too (`3.` becomes `4.`), and Enter on an empty bullet ends the list and removes the stray marker. Brackets and quotes are deliberately left alone: auto-closing them turns hostile the moment it guesses wrong, and prose is full of apostrophes
 - **Look up and Find in document work in Source too.** They did not, and nobody had decided that: a textarea selection is not a DOM Selection, so the popover check for "is this inside the editor" failed and it never appeared. **Highlight stays out of Source** — it anchors to a block and Source has none, so it is hidden rather than shown-and-inert
-- **Highlighting a selection opens the Marks pane on it.** A highlight is a faint wash over text you are already looking at, so pressing the button gave almost no evidence it had worked — and the list it joined was behind a collapsed sidebar and an unselected tab. Same move *Find in document* makes, through the same command the menu and `Ctrl+Shift+P` use
+- **Highlighting a selection opens the Marks pane on it.** A highlight is a faint wash over text you are already looking at, so pressing the button gave almost no evidence it had worked — and the list it joined was behind a collapsed sidebar and an unselected tab. Same move _Find in document_ makes, through the same command the menu and `Ctrl+Shift+P` use
 
 - **Ordered by position, never by when they were made.** You read forwards; a list in creation order has to be translated every time you look at it. The mark you are nearest is highlighted
 - **Named from their own text**, so a new one is legible without being typed. Double-click to rename; empty the name to get the text back
 - **Ticks on the scrubber** show every mark across the whole book — five marks over 604 pages is a shape you read at a glance
-- **They survive the document being edited.** A mark stores the text it was set on as well as where it was: the index is a hint, the fingerprint is the truth, and they are resolved against each other once the document has settled. Insert a paragraph above a mark and it follows its own sentence rather than staying on a number. The match is whole-document, because an epub re-split can move a paragraph thousands of blocks and "your bookmark is gone" while the sentence is still in the book is the one answer a bookmark may never give. Affordable because one pass over the text builds an index for *every* mark at once, and that index is cached per document — fingerprinting means parsing a block's HTML, and the 45,390-block Xeelee omnibus would otherwise pay for that again on every resolve
+- **They survive the document being edited.** A mark stores the text it was set on as well as where it was: the index is a hint, the fingerprint is the truth, and they are resolved against each other once the document has settled. Insert a paragraph above a mark and it follows its own sentence rather than staying on a number. The match is whole-document, because an epub re-split can move a paragraph thousands of blocks and "your bookmark is gone" while the sentence is still in the book is the one answer a bookmark may never give. Affordable because one pass over the text builds an index for _every_ mark at once, and that index is cached per document — fingerprinting means parsing a block's HTML, and the 45,390-block Xeelee omnibus would otherwise pay for that again on every resolve
 - **A mark whose text is gone is shown struck through**, not deleted. It is yours; dropping it silently on open is how a feature loses work
 - Marks land on a block that renders something — a blank line is a block, and one marked there would have no fingerprint and so no anchor at all
-- Stored in `bookmarks.txt` in the cache, keyed by path, last **64** documents; marks *within* a document are not capped. Your file never grows metadata because you read it, at the honest cost that marks do not travel with it
+- Stored in `bookmarks.txt` in the cache, keyed by path, last **64** documents; marks _within_ a document are not capped. Your file never grows metadata because you read it, at the honest cost that marks do not travel with it
 
 ### Annotations
+
 Select text and the Mark button becomes **Highlight selection**. A highlight is a bookmark with a range, and a note is a highlight with text attached — which is why bookmarks were built first: the anchoring is the whole problem, and this reuses it unchanged.
 
 - Painted with the **CSS Custom Highlight API**, the same mechanism search uses for its matches. Not a `<mark>` element: a `.block` round-trips into `data-raw`, so anything wrapped round the words would become part of your document
@@ -155,9 +98,10 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 - Highlighting the same range twice removes it, the same toggle the gutter and the button use
 - Stored beside bookmarks, with the same fingerprint anchor, so a highlight follows its sentence when the document is edited above it
 
-> **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your *reading position*, which is automatic, written atomically as you read, and unaffected by any of this.
+> **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your _reading position_, which is automatic, written atomically as you read, and unaffected by any of this.
 
 ### Looking a word up
+
 Select text and a popover appears beside it — **Highlight** and **Find in document**, and for a single word the lookup itself. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
 
 **A dictionary and thesaurus are included, and nothing is downloaded.** `dictionary.tsv` and `thesaurus.tsv` ship beside `TypoZen.exe` — roughly 150k entries derived from **WordNet 3.1**, which is free and permissively licensed. Lookups and synonyms work on first launch, with no setup and no network access. See [WORDNET-LICENSE.txt](WORDNET-LICENSE.txt) for the attribution WordNet requires.
@@ -175,15 +119,16 @@ TSV first, because that is what a WordNet or Wiktionary export converts to in on
 - A reader selects the word as it appears on the page, which is inflected more often than not, so a miss retries the obvious stems — `walking` → `walk`, `bodies` → `body`
 - If the dictionary file is missing — moved or deleted — it says so, and how to rebuild it
 - **Follow a synonym** to its own entry — each word is a control, and a back arrow appears once there is somewhere to return to. A synonym you cannot look up is a dead end, which is most of what a thesaurus is for
-- **One button, one answer.** Press **Look up** and the popover gives the **definition**, the **synonyms** below it, and **how many times the word appears** in what you are reading — together, in that order. It is deliberately not automatic: a word is selected to *copy* it at least as often as to ask about it, and a definition that arrives uninvited sits on top of the text you were working with. Offered only for a single word, since a paragraph has no definition
+- **One button, one answer.** Press **Look up** and the popover gives the **definition**, the **synonyms** below it, and **how many times the word appears** in what you are reading — together, in that order. It is deliberately not automatic: a word is selected to _copy_ it at least as often as to ask about it, and a definition that arrives uninvited sits on top of the text you were working with. Offered only for a single word, since a paragraph has no definition
 - **Synonyms** come from the same WordNet pass — a synset is a set of words that mean the same thing — written to `thesaurus.tsv` alongside the dictionary
 - **Occurrence count works with no dictionary at all** — "appears 2,135 times in this document" is often the question actually being asked, especially in a novel
 
 ### Themes & typography
+
 **25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customize Theme…** option lives).
 
 | Column | Themes |
-|--------|--------|
+| --- | --- |
 | **Dark** | Ayu Mirage, Catppuccin Mocha, Everforest, GitHub Dark Classic, Gruvbox, Gruvbox Serif, Kanagawa, Material Oceanic, Material Palenight, One Dark, Rosé Pine, Solarized Dark, Tomorrow Night, VSCode Dark+ |
 | **Light** | Ayu Light, Catppuccin Latte, Gruvbox Light, One Light, Rosé Pine Dawn, Solarized Light, VSCode Light+ |
 | **Mono** | Dracula, Monokai, Nord, Tokyo Night |
@@ -196,7 +141,7 @@ Font stacks are TypoZen’s pairing: reading-oriented entries lean **Literata** 
 **For epub / long reading** prefer serif + soft paper or low-glare dark over Mono/IDE themes:
 
 | Situation | Themes |
-|-----------|--------|
+| --- | --- |
 | Daytime novel | **Rosé Pine Dawn**, **Solarized Light**, **Gruvbox Light** |
 | Night, still bookish | **Rosé Pine**, **Gruvbox Serif** |
 | Night, soft green | **Everforest** |
@@ -216,6 +161,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
 > Earlier versions pulled these from Google Fonts via a `<link>` in `<head>`. That was a render-blocking network round trip on every cold start of a local editor, and because Google's CSS omits `local()`, it shadowed already-installed copies and re-downloaded them. Bundling removed both problems.
 
 ### Writing tools
+
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
 - Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree. Both options (and which sidebar tab you last used — Outline vs Search) are **remembered** across restarts
 - **Recent searches** — the Search tab is a combo box: the last **8** committed queries (Enter, or a pick from the list) are kept **globally** (not per tab) in `settings.json`. Click the chevron or press ↓ on an empty box for the dropdown. Remove one with **×**, clear all from the menu footer or **File → Privacy → Clear Recent Searches**. **Alt+S** also restores the last text left in the Search box (selection still wins when you have one). Full **Clear Stored Data** still wipes history too
@@ -224,7 +170,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps. Grouped in View with Line Spacing and Paragraph Spacing, because all three set the shape of the text block
 - **Block Hover** (View) — whether hovering a paragraph previews its bookmark in the gutter. **On** by default. Turning it off removes the preview only: bookmarks you have set are always drawn. There is deliberately no wash or edge under the pointer — hovering a paragraph does one thing, which is arm the gutter, so the gutter is the only thing that answers
-- **Justified** (View) — **off by default, including for books.** Every test book asks for it — *Xeelee* on 96 rules, *Matter* on 7 — and those declarations are rewritten to read this switch rather than dropped, so they keep their selectors and the publisher's *centred* and *right-aligned* rules are untouched
+- **Justified** (View) — **off by default, including for books.** Every test book asks for it — _Xeelee_ on 96 rules, _Matter_ on 7 — and those declarations are rewritten to read this switch rather than dropped, so they keep their selectors and the publisher's _centred_ and _right-aligned_ rules are untouched
 - **Hyphenation follows justification**, because on a screen they are one decision. A browser justifies by stretching word spaces and nothing else, so justified-without-hyphens is what opens rivers of white down a narrow column; ragged-right-with-hyphens breaks words to close a gap that isn't there. Limits are `6 3 3` — six characters in the word, three either side of the break — against Chromium's default `5 2 2`, which will leave `a-` hanging at a column edge. `hyphens: auto` is **inert without a language**, so a book's own `<html lang>` is carried onto `#editor` and cleared when the book closes; hyphenating French by English rules is worse than not hyphenating, so a book that declares nothing inherits the page rather than being guessed at
 - **Word Wrap** (View) — applies in **Source** and **scroll Preview** only. On **Pages**, **Reader**, or an **epub**, the menu item is **disabled** (no fake tick); the stored preference returns when wrap can apply again
 - Sidebar (`Ctrl+\`): live outline (headings, or a book's own TOC) and the Search pane
@@ -236,6 +182,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
 - **Alt+F / E / V / T / H** open the matching top-level menu from the keyboard (including while the editor has focus); **Alt+S** is Search, not a menu letter
 
 ### Tabs
+
 Full multi-document editing, with the tab strip living in the title bar.
 
 - **New** with the `+` button or `Ctrl+N`; close with the tab's own button or `Ctrl+W`
@@ -244,44 +191,44 @@ Full multi-document editing, with the tab strip living in the title bar.
 - **Per-tab unsaved indicator**, tracked independently of every other tab
 - **Per-tab file fidelity** — each tab remembers its file's line-ending style (LF / CRLF) and whether it ended with a trailing newline, so saving one document never quietly rewrites the whole file's line endings
 - **Per-tab view** — 1-Col / 2-Col **and** Source / Preview belong to the document, not the window: a novel wants a two-column spread and the notes file in the next tab does not. Both are recorded per tab and restored with the session. Only a deliberate choice is written down — the toolbar column button, the Mode buttons, or the session file. What the page happens to be painting mid-load never is, because a book's first paint is one column until its layout arrives and storing that would forget the spread
-- **Fail-closed switching** — if the editor's content cannot be synced back to the tab, the switch or new-tab operation is *refused* rather than proceeding and risking unsaved edits
+- **Fail-closed switching** — if the editor's content cannot be synced back to the tab, the switch or new-tab operation is _refused_ rather than proceeding and risking unsaved edits
 - **Session restore** reopens your tabs on next launch (bodies only if you've enabled unsaved-document restore under File → Privacy)
 
 ### Lists
+
 Bullet, ordered and task lists, with real nesting.
 
 - **`Tab` / `Shift+Tab`** indent and outdent list lines — 2 spaces per level, maximum depth 6, spaces only (tabs are normalised on parse)
 - Inside a table, `Tab` moves between cells instead and grows the table at the end
 - **Backspace at column 0** walks a ladder: outdent one level → strip the marker (including ordered `1.` and task `- [ ]`) → merge with the previous block
-- `Enter` continues the list at the same indent and kind; ordered numbering follows the previous item *at that level*
+- `Enter` continues the list at the same indent and kind; ordered numbering follows the previous item _at that level_
 - **Headings are separated by space, not rules.** One hairline under `h1` only, mixed from the theme's own text colour rather than `--border` (which draws the sidebar edge and the scrollbar thumb — chrome furniture, and this lives inside the document). `h2` has none: solid-under-h1 plus dashed-under-h2 is the GitHub-markdown idiom, not a book one. Headings sit 1.25em from what precedes them and 0.3em from their own text, so a section reads as a section. No rule at all in Pages — `break-after: avoid` routinely puts a heading at the top of a column, which made the rule the second thing on the page and, across a two-column spread, two lines at different heights
-- **Fenced code is syntax highlighted** — ` ```json `, ` ```xml `/` ```xaml `, and a C-family lexer covering ` ```cs `, ` ```js `, ` ```ts `, Java, Go, Rust and similar. A fence with no language, or one that is not recognised, is left plain rather than guessed at.
-  Painted with the **CSS Custom Highlight API**, not by wrapping tokens in elements. That is not an implementation detail: a `<span>` inside a `.block` round-trips into `data-raw`, and Markdown's own DOM repair splits such spans into separate lines — which corrupted a real file when a whole-document code mode was attempted (see `docs/developer-editor-analysis.md`). Ranges are not DOM, so nothing can serialise, repair or split them. The trade is the API's property ceiling: colour only, no bold keywords or italic comments
+- **Fenced code is syntax highlighted** — ` ```json `, ` ```xml `/` ```xaml `, and a C-family lexer covering ` ```cs `, ` ```js `, ` ```ts `, Java, Go, Rust and similar. A fence with no language, or one that is not recognised, is left plain rather than guessed at. Painted with the **CSS Custom Highlight API**, not by wrapping tokens in elements. That is not an implementation detail: a `<span>` inside a `.block` round-trips into `data-raw`, and Markdown's own DOM repair splits such spans into separate lines — which corrupted a real file when a whole-document code mode was attempted (see `docs/developer-editor-analysis.md`). Ranges are not DOM, so nothing can serialise, repair or split them. The trade is the API's property ceiling: colour only, no bold keywords or italic comments
 - Formatting controls grey themselves out whenever the document cannot take an edit — Reader mode, and every epub. They were live-looking and inert there; Word Wrap had greyed itself and said why for a long time, and the nine controls beside it had not. Greyed rather than hidden, so switching modes never shuffles buttons under the pointer
 - Formatting and toolbar list toggles preserve indent; un-listing clears it to level 0
 - Indentation is a property of the raw Markdown (leading spaces), rendered with `margin-left` rather than nested `<ul>` DOM — so Source round-trips exactly
 
 ### Live statistics
+
 The status bar updates continuously with word count, character count (both grouped — `40,772 words` is read, `40772` is counted; line numbers stay ungrouped, being coordinates the search gutter prints raw), estimated reading time (~200 wpm), total lines, **current line** (caret in Source/Preview — same document-line coordinate as Search result gutters after a jump), **current chapter** (click to jump to its start), zoom, and — when text is selected — **selected** word and character counts. Serialization is debounced so counters stay responsive on very large documents.
 
 ### Files & export
+
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
 - **Atomic document save** — write to a temp file, flush, then replace the target
 - **Standalone HTML export** — self-contained, with the active theme's styles embedded
-- **Select All copies the whole document**, not the part of it currently laid out. On a long
-  file only a window of paragraphs exists in the page at a time, and copying what was on
-  screen put one per cent of a 205,842-character document on the clipboard with nothing to
-  say so
+- **Select All copies the whole document**, not the part of it currently laid out. On a long file only a window of paragraphs exists in the page at a time, and copying what was on screen put one per cent of a 205,842-character document on the clipboard with nothing to say so
 - Print / Export PDF (`Ctrl+P`) — Chromium print UI; refuses rather than truncate a document too large to lay out whole (see [Reading PDFs, web, images, and media](#reading-pdfs-web-images-and-media))
 - CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path` (see Phase 6 under Outstanding work)
 
 ### Session & privacy
+
 Preferences live under `%LocalAppData%\TypoZen_Cache\`.
 
 | Setting | Default | Meaning |
-|--------|---------|---------|
+| --- | --- | --- |
 | **Privacy Mode** | **Off** | One switch: while on, **nothing that names a document, its contents, its position or its history is written**. Suppresses the tab session, reading positions, bookmarks and annotations, recent files, autosave, and the document-identifying half of `settings.json` (last file, last content, search history, last query). The three switches it subsumes are **disabled** in the menu rather than silently overridden. **Not** suppressed: window size, theme, margins, spacing — those describe the app, not the reader, and losing them every launch would cost you something for no privacy in return. **Forward-looking**: it stops new writes, it does not delete what is already stored — bookmarks and annotations are your work, and a toggle that destroyed them silently would be indefensible. Use **Clear Stored Data** for that |
-| **Privacy Mode — books** | — | A book must be unzipped to be read, and extraction is keyed by a *readable* name (`Matter_-_Iain_M_Banks_68aa4804`), so the folder's existence alone says what you opened. Privacy Mode therefore **changes the destination** rather than sweeping afterwards: extraction goes to an opaquely-named directory under `%TEMP%`, deleted when the window closes and swept on a later launch if a crash prevented that. Books are served from their own virtual host (`localbooks`) so image URLs resolve from either root. The cost is re-extraction each session; within a session reopening stays fast |
+| **Privacy Mode — books** | — | A book must be unzipped to be read, and extraction is keyed by a _readable_ name (`Matter_-_Iain_M_Banks_68aa4804`), so the folder's existence alone says what you opened. Privacy Mode therefore **changes the destination** rather than sweeping afterwards: extraction goes to an opaquely-named directory under `%TEMP%`, deleted when the window closes and swept on a later launch if a crash prevented that. Books are served from their own virtual host (`localbooks`) so image URLs resolve from either root. The cost is re-extraction each session; within a session reopening stays fast |
 | **Autosave** (File menu) | **Off** | Saves a dirty document ~2s after typing stops. Only for a tab that **already has a file** — an unattended save must never raise a Save As dialog, so an untitled buffer stays untitled and is covered by session restore instead. A book is never written. Goes through the same save path as `Ctrl+S`, so the atomic write, per-tab line-ending fidelity and the overwrite-loss guard all apply |
 | **Remember unsaved documents between sessions** | **Off** | When on, dirty/untitled tab bodies are stored for restore. When off, nothing document-like is kept in the cache beyond what you explicitly save. |
 | **Keep recent files list** | On | File → Open Recent |
@@ -308,6 +255,7 @@ The endpoint is **not identified**. It does not appear in the Windows DNS cache 
 Removing it entirely requires something outside the app — a firewall rule on `msedgewebview2.exe`, which is the shared runtime binary and would also block remote images, or machine-level Edge policy. Neither is applied.
 
 ### Developer & Diagnostic Tools
+
 TypoZen includes built-in tools to help diagnose layout and focus issues:
 
 - **Developer Debug HUD (`Ctrl+Shift+D`)**: Toggle a real-time, on-screen HUD (also accessible via `Help -> Toggle Debug HUD`). It overlays current focus state, exact layout metrics (pagination, scroll position, page width), and search state. When toggled off, it has zero performance overhead.
@@ -322,7 +270,7 @@ TypoZen is a **native shell around a browser engine**. The WPF side owns the win
 ### Stack
 
 | Layer | Shell (native) | Document surface (web) |
-|-------|----------------|------------------------|
+| --- | --- | --- |
 | Runtime | .NET Framework 4.7.2 — `TypoZen.exe`, `WinExe` | same process |
 | UI | **WPF** — `TypoZen.xaml`, loaded at runtime via `XamlReader.Load` | `TypoZen_Template.html` — HTML + CSS |
 | Controls | Title-bar tabs, menus, sidebar, status bar | `contenteditable` div; **vanilla JS, no framework** |
@@ -337,6 +285,7 @@ Because the XAML, HTML template and theme JSON are all loaded at runtime, the sh
 > Sibling project **ZenSeek** uses the same content approach — WebView2 rendering a generated HTML document against a shared-shape theme JSON — but hosts it from a PowerShell script with a WinForms reader window rather than a compiled WPF shell.
 
 ### Document model
+
 `DocumentModel` holds one canonical raw Markdown string per block and is the **authority for save, tab sync and host serialization** — the DOM is a projection of it, not a peer.
 
 In Live Preview each line also carries a rendered form, so the two must never disagree. The invariants that keep them honest:
@@ -346,7 +295,7 @@ In Live Preview each line also carries a rendered form, so the two must never di
 - **No length heuristics.** Truth is never decided by "whichever copy is longer" — that rule silently reverted deletions on save, and it is gone.
 - **Model indices, not DOM ordinals.** Under virtualization the first mounted block is not block 0, so formatting, undo, find and caret restore all resolve through model indices.
 - **A whole-document mutation reads the model, not the mounted DOM.** `mutateDocumentMarkdown` snapshots every block, mutates, and reloads the document from the result — so snapshotting `editor.querySelectorAll('.block')` meant rebuilding a virtualized document from the ~99 blocks on screen. Its indices are model indices throughout: what the mutator sees, what `opts.focusIndices` means, and what `_selectedFormatRaws` was already keyed by. Those three agreed only while the mounted window started at block 0, which is why a list indent deep in a document silently did nothing — a bounds check in the caller was the only thing keeping the call away from it.
-- **A model splice renumbers the mounted DOM.** `data-model-index` is not decoration: `syncMountedToModel()` writes each mounted element's `data-raw` back into the slot its attribute names. Inserting or removing a block shifts every row after it, so the attributes on already-mounted elements must move too — `insertBlockAfterIndex` / `removeBlockAt` / `removeBlockRange` call `shiftMountedModelIndices` for exactly that. Leave them stale and the next remount copies the DOM's content into the *wrong* rows: a mid-document paste destroyed the line after the caret this way, and a cross-block delete lost an untouched line.
+- **A model splice renumbers the mounted DOM.** `data-model-index` is not decoration: `syncMountedToModel()` writes each mounted element's `data-raw` back into the slot its attribute names. Inserting or removing a block shifts every row after it, so the attributes on already-mounted elements must move too — `insertBlockAfterIndex` / `removeBlockAt` / `removeBlockRange` call `shiftMountedModelIndices` for exactly that. Leave them stale and the next remount copies the DOM's content into the _wrong_ rows: a mid-document paste destroyed the line after the caret this way, and a cross-block delete lost an untouched line.
 - **A structural edit splices the height map, it does not discard it.** `invalidateHeights()` throws away every measurement taken so far, so the next `prefixHeight()` for a distant row is rebuilt from estimates and the viewport pin moves with the error — 1562px per pasted block on a 3769-block document. `spliceHeights` keeps every untouched row's real height.
 - **An element returned by `createBlock` may already be detached.** Under virtualization it remounts, which replaces every mounted element. Chain off the model index and re-resolve, never off the returned node.
 - **Ordinary notes are never virtualized.** Virtualization is for large documents only; normal writing gets the full WYSIWYG DOM.
@@ -354,13 +303,10 @@ In Live Preview each line also carries a rendered form, so the two must never di
 
 ### Books
 
-A book is a second **document kind**, not a second document model. `DocumentModel.kind` is
-`'markdown'` or `'epub'`, and everything downstream branches on it rather than on a separate
-code path: search, the outline, the word count, page windowing and the column round trip are
-the same code for both.
+A book is a second **document kind**, not a second document model. `DocumentModel.kind` is `'markdown'` or `'epub'`, and everything downstream branches on it rather than on a separate code path: search, the outline, the word count, page windowing and the column round trip are the same code for both.
 
 | Piece | Where | Does |
-|---|---|---|
+| --- | --- | --- |
 | `EpubReader.cs` | shell | Unzips to a cache folder, reads `container.xml` → OPF → spine, returns one JSON payload: title, author, assets base, stylesheets, TOC, documents. **No HTML processing at all.** |
 | `loadBookPayload()` | page | Splits each spine document into blocks, builds the TOC, applies the book's CSS, mounts |
 | `bookBlocksFromDocs()` | page | One block per top-level element of each `<body>`; also returns each block's owning document directory |
@@ -369,71 +315,41 @@ the same code for both.
 
 Two things about that last row, because both were wrong first:
 
-- **An image href is relative to its own spine document, not to the book root.** One test book
-  keeps documents in `OEBPS/Text/` and images in `OEBPS/Images/`, so its covers are
-  `../Images/…`; the other is flat at the archive root and resolved correctly under a shared
-  base by accident. A single assets base works for exactly one of them.
-- **A cover is usually not an `<img>`.** Both test books wrap it in
-  `<svg><image xlink:href="…"></svg>`, which no `img` rule and no `src` rewrite touches.
+- **An image href is relative to its own spine document, not to the book root.** One test book keeps documents in `OEBPS/Text/` and images in `OEBPS/Images/`, so its covers are `../Images/…`; the other is flat at the archive root and resolved correctly under a shared base by accident. A single assets base works for exactly one of them.
+- **A cover is usually not an `<img>`.** Both test books wrap it in `<svg><image xlink:href="…"></svg>`, which no `img` rule and no `src` rewrite touches.
 
-Two things make reopening a book cheap. `EpubReader` caches the assembled payload beside
-the extracted assets against the same stamp, so a reopen is a file read rather than a
-re-read and re-escape of every spine document. And `SyncActiveTabFromEditor` skips a book
-entirely: it is read-only, never dirty, never saved, and reloaded from the file rather than
-from `Content`, so pulling it was marshalling the whole book across the WebView bridge on
-every tab switch — 1,043,141 characters, which the page produces in 2 ms and the bridge
-takes six seconds to hand over.
+Two things make reopening a book cheap. `EpubReader` caches the assembled payload beside the extracted assets against the same stamp, so a reopen is a file read rather than a re-read and re-escape of every spine document. And `SyncActiveTabFromEditor` skips a book entirely: it is read-only, never dirty, never saved, and reloaded from the file rather than from `Content`, so pulling it was marshalling the whole book across the WebView bridge on every tab switch — 1,043,141 characters, which the page produces in 2 ms and the bridge takes six seconds to hand over.
 
-A book's block `raw` is the publisher's markup, so `renderBlockPreview` sets it as HTML and
-returns before any of the Markdown renderer runs. The editor refuses to become editable while
-a book is open, `GetDirtyTabs()` skips `.epub` tabs, and `ReadTextFileDetect` returns empty
-for one — a book cannot be edited, marked dirty, or saved over.
+A book's block `raw` is the publisher's markup, so `renderBlockPreview` sets it as HTML and returns before any of the Markdown renderer runs. The editor refuses to become editable while a book is open, `GetDirtyTabs()` skips `.epub` tabs, and `ReadTextFileDetect` returns empty for one — a book cannot be edited, marked dirty, or saved over.
 
 ### Page windowing
 
-Pagination lays out the whole document, because the browser can only fragment content it has
-already laid out. That is correct and it is why an unwindowed 40,656-block omnibus put every
-block into one multi-column flow. `PageChunks` splits the document into fixed block ranges,
-lays out **one range at a time**, and keeps a per-range page count — cumulative sums give the
-global page number, exactly as `blockHeights` + `prefixHeight()` give the global scroll offset.
+Pagination lays out the whole document, because the browser can only fragment content it has already laid out. That is correct and it is why an unwindowed 40,656-block omnibus put every block into one multi-column flow. `PageChunks` splits the document into fixed block ranges, lays out **one range at a time**, and keeps a per-range page count — cumulative sums give the global page number, exactly as `blockHeights` + `prefixHeight()` give the global scroll offset.
 
-- Unmeasured ranges are estimated from pages-per-block and refined as they are laid out —
-  but only **upward**. Refining an unmeasured range downward removed pages the reader had
-  already been shown, and the act of seeking was what removed them: seeking mounts a range,
-  mounting measures it, measuring shrank the total. Ask for page 267 of 268, land on 261.
-- Because part of the total can be a guess, the UI marks it (`pageTotalIsApproximate`)
-  rather than presenting an estimate as an exact figure.
-- **Blocks are the anchor, not page numbers.** Page numbers move as estimates are refined;
-  block indices do not, and the column round trip already depends on that.
+- Unmeasured ranges are estimated from pages-per-block and refined as they are laid out — but only **upward**. Refining an unmeasured range downward removed pages the reader had already been shown, and the act of seeking was what removed them: seeking mounts a range, mounting measures it, measuring shrank the total. Ask for page 267 of 268, land on 261.
+- Because part of the total can be a guess, the UI marks it (`pageTotalIsApproximate`) rather than presenting an estimate as an exact figure.
+- **Blocks are the anchor, not page numbers.** Page numbers move as estimates are refined; block indices do not, and the column round trip already depends on that.
 - The range on screen is measured exactly, never trusted from its estimate.
-- A structural edit **splices** the map rather than discarding it, the same rule as the height
-  map.
+- A structural edit **splices** the map rather than discarding it, the same rule as the height map.
 
-`PageChunks.size` is 800 blocks. It was 400, tuned on a Markdown fixture; measured on two real
-novels, the cost that matters is the page turn that crosses a range boundary and has to lay
-out the next one:
+`PageChunks.size` is 800 blocks. It was 400, tuned on a Markdown fixture; measured on two real novels, the cost that matters is the page turn that crosses a range boundary and has to lay out the next one:
 
 | Range size | In-range turn | Boundary crossing | Pages per range |
-|---|---|---|---|
-| 200 | 1 ms | 18 / 20 ms | 7 / 16 |
-| **800** | **2 ms** | **74 / 84 ms** | **28 / 62** |
-| 1600 | 3 ms | 201 / 172 ms | 55 / 124 |
+| ---------- | ------------- | ----------------- | --------------- |
+| 200        | 1 ms          | 18 / 20 ms        | 7 / 16          |
+| **800**    | **2 ms**      | **74 / 84 ms**    | **28 / 62**     |
+| 1600       | 3 ms          | 201 / 172 ms      | 55 / 124        |
 
-Amortised over the pages between crossings it is flat at every size, so the choice is the
-worst case a reader feels against how much of the book is laid out at once — which is also
-how far the editor's own scrollbar reaches.
+Amortised over the pages between crossings it is flat at every size, so the choice is the worst case a reader feels against how much of the book is laid out at once — which is also how far the editor's own scrollbar reaches.
 
-**The scrubber exists because that scrollbar cannot reach the ends.** It addresses pages;
-`PageMap.goto()` already mounts the range a page falls in, so seeking anywhere is the same
-operation as turning a page. It seeks on release rather than on every input event, because a
-drag would otherwise mount a range per pixel of travel.
+**The scrubber exists because that scrollbar cannot reach the ends.** It addresses pages; `PageMap.goto()` already mounts the range a page falls in, so seeking anywhere is the same operation as turning a page. It seeks on release rather than on every input event, because a drag would otherwise mount a range per pixel of travel.
 
 ### Thresholds
 
 Live constants in `TypoZen_Template.html`. Changing them changes which strategy a document gets, so they are listed here rather than left to be rediscovered:
 
 | Constant | Default | Role |
-|----------|---------|------|
+| --- | --- | --- |
 | `VIRT_MIN_BLOCKS` | 2 000 | Virtualize at or above this block count |
 | `VIRT_MIN_CHARS` | 120 000 | Virtualize at or above ~120 KB |
 | `PROGRESSIVE_PAINT_BLOCKS` | 800 | M-band: full mount, deferred HTML paint |
@@ -451,7 +367,7 @@ Live constants in `TypoZen_Template.html`. Changing them changes which strategy 
 Which path a Preview load takes:
 
 | Condition | Path |
-|-----------|------|
+| --- | --- |
 | blocks ≥ 2 000 **or** chars ≥ 120 KB | **Virtualized** — progressive never runs |
 | 1 500 ≤ blocks < 2 000 | Progressive paint **+ windowed creation** |
 | 800 ≤ blocks < 1 500 | Progressive paint, full DOM |
@@ -460,6 +376,7 @@ Which path a Preview load takes:
 Two rules worth keeping: don't gate progressive paint on a character count (it belongs to block count), and don't lower the virtualization floor toward 16 KB without a deliberate product decision — ordinary notes are meant to stay full WYSIWYG.
 
 ### Editor engine
+
 Standalone vanilla JavaScript — no framework.
 
 - **Custom snapshot undo/redo** (`HistoryManager`) rather than the fragile `contenteditable` undo stack, with byte- and step-capped history
@@ -477,13 +394,13 @@ The reasoning behind these decisions — including the failure modes that motiva
 ## Keyboard shortcuts
 
 | Action | Shortcut |
-|--------|----------|
+| --- | --- |
 | New | `Ctrl+N` |
 | Open | `Ctrl+O` |
 | Save | `Ctrl+S` |
 | Save As | `Ctrl+Shift+S` |
 | Print / Export PDF | `Ctrl+P` |
-| Toggle Sidebar | `Ctrl+\` |
+| Sidebar (Outline/Search) | `Alt+\` |
 | Find | `Ctrl+F` |
 | Go to page (paginated) | `Ctrl+G` |
 | Search sidebar | `Alt+S` |
@@ -528,7 +445,7 @@ From the project folder:
 **Compiled sources.** Three files, and the CodeDom path finds them by globbing **`*.cs` in the project folder** — so anything with that extension dropped beside them is compiled too. A throwaway experiment goes somewhere else, or gets another extension.
 
 | Source | Holds |
-|--------|-------|
+| --- | --- |
 | `TypoZen_App.cs` | `Program` (entry point, single-instance pipe, CLI), `TypoZenWindow` (the whole shell: tabs, session, menus, themes, file I/O, host↔page bridge), `ThemeInfo`, `ThemeCustomizeWindow` |
 | `EpubReader.cs` | `EpubReader` — unzip, `container.xml` → OPF → spine, and the cached JSON payload. No HTML processing (see [Books](#books)) |
 | `TypoZen_Launch.cs` | `LaunchRequest` — how a document was asked for: path plus ZenSeek's `--reader` / `--search` / `--line` / `--match-index` hints |
@@ -548,7 +465,7 @@ From the project folder:
 The engine is nine modules sharing one global scope (not ES modules), loaded in the order `js/modules/load-order.json` gives:
 
 | Module | Concern |
-|--------|---------|
+| --- | --- |
 | `01-core.js` | State, view selectors, margins, sticky line helpers |
 | `02-layout.js` | Find/search (history, Up/Down hits), pagination, page windowing, column memory |
 | `03-shell.js` | `onload`, themes, host commands, table picker |
@@ -577,7 +494,7 @@ $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + the suites driving the real T
 Tests are split into four tiers depending on what they need to observe:
 
 | Tier | Naming | Runs by default | Sees |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | jsdom | `*-selftest.mjs`, `*-e2e.mjs` | yes | model, string and DOM-structure logic |
 | browser | `*-browser.mjs` | yes | real layout, via headless Chrome |
 | application | `*-app.mjs` | `RUN_APP_E2E=1` | the shipped `.exe` — WPF shell, real window |
@@ -586,18 +503,15 @@ Tests are split into four tiers depending on what they need to observe:
 - **jsdom** covers the document model, parse checks, and logic that doesn't depend on a layout engine.
 - **Browser** suites load `TypoZen_Template.html` in headless Chrome to assert real layout, geometry, and search performance.
 - **Application** suites use `puppeteer-core` to attach to `TypoZen.exe --debug` via the DevTools protocol, verifying WPF shell interactions and complex paginated layout behaviours.
-- The bookmark, annotation and privacy suites (`marks-surfaces-app`, `annotations-app`, `privacy-app`) are written against one recurring failure shape rather than against their features: **two things deciding one answer**. They assert that *pressing a control does what the control said it would*, and — for anything that claims to suppress a write — they run a **control** first, so a green result means the suppression did something rather than that the trace was never written.
-- `book-to-markdown-app.mjs` guards the transition that put a Markdown document into a book's column: **leaving a book leaves nothing behind**, and **a pane that cannot be measured is refused rather than invented**. It deliberately does *not* assert the rendering — `column-width` is a preferred width, so a single leaked column stretches to fill the pane and looks perfectly healthy; two earlier versions of that assertion passed with the bug present. The geometry checks are strictly more sensitive, because the leak has to happen before it can fragment anything.
+- The bookmark, annotation and privacy suites (`marks-surfaces-app`, `annotations-app`, `privacy-app`) are written against one recurring failure shape rather than against their features: **two things deciding one answer**. They assert that _pressing a control does what the control said it would_, and — for anything that claims to suppress a write — they run a **control** first, so a green result means the suppression did something rather than that the trace was never written.
+- `book-to-markdown-app.mjs` guards the transition that put a Markdown document into a book's column: **leaving a book leaves nothing behind**, and **a pane that cannot be measured is refused rather than invented**. It deliberately does _not_ assert the rendering — `column-width` is a preferred width, so a single leaked column stretches to fill the pane and looks perfectly healthy; two earlier versions of that assertion passed with the bug present. The geometry checks are strictly more sensitive, because the leak has to happen before it can fragment anything.
 - Some of them also drive the **chrome from outside the process** through `tests/shell-ui.ps1`, which reports menus, tab chips, dialogs and — via `-Command controls` — whether each toolbar control is actually enabled, over UI Automation as JSON. `format-availability-app.mjs` is the one that needs that last part: "greyed out" is a claim about the running window that no page-level suite can see. That is the only tier that can see what is actually painted: the page knows nothing about tabs, and the session file is written from the same model the model tests read, so both agreed with each other while the tab strip disagreed with both — see `tab-strip-paint-app.mjs`.
 
 ### Known issues and agent notes
 
-Open defects and deliberate limitations: [docs/known-issues.md](docs/known-issues.md) —
-reproduced and characterised only (not bare suite names).
+Open defects and deliberate limitations: [docs/known-issues.md](docs/known-issues.md) — reproduced and characterised only (not bare suite names).
 
-**Agents / other tools:** read [docs/for-agents.md](docs/for-agents.md) first — keyboard
-matrix, non-goals (no code editor revival, no inventing defects from suite noise), and
-where truth lives. Parked developer-editor work: [docs/developer-editor-analysis.md](docs/developer-editor-analysis.md).
+**Agents / other tools:** read [docs/for-agents.md](docs/for-agents.md) first — keyboard matrix, non-goals (no code editor revival, no inventing defects from suite noise), and where truth lives. Parked developer-editor work: [docs/developer-editor-analysis.md](docs/developer-editor-analysis.md).
 
 ### Debugging
 
@@ -619,7 +533,7 @@ $env:TYPOZEN_PERF = '1'        # this shell only — never set it persistently
 Get-Content "$env:LOCALAPPDATA\TypoZen_Cache\perf.log"
 ```
 
-Marks are milliseconds from entry to `Main`; the log is appended, so delete it between runs. 
+Marks are milliseconds from entry to `Main`; the log is appended, so delete it between runs.
 
 ---
 
@@ -631,4 +545,4 @@ Marks are milliseconds from entry to `Main`; the log is appended, so delete it b
 
 ---
 
-*Built with zen and focus for writers, developers, and Markdown enthusiasts.*
+_Built with zen and focus for writers, developers, and Markdown enthusiasts._

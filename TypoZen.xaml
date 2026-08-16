@@ -480,74 +480,81 @@
                             <MenuItem x:Name="mStrike" Header="Strike_through" InputGestureText="Ctrl+Shift+X"/>
                         </MenuItem>
                         <MenuItem Header="_View">
-                            <MenuItem x:Name="mToggleSidebar" Header="Toggle _Sidebar (Outline/Search)" InputGestureText="Alt+\"/>
-                            <MenuItem x:Name="mSearchSidebar" Header="Search Side_bar" InputGestureText="Alt+S"/>
+                            <MenuItem Header="_Sidebar (Alt+\)">
+                                <MenuItem x:Name="mSidebarOutline" Header="_Outline"/>
+                                <MenuItem x:Name="mSidebarSearch" Header="_Search" InputGestureText="Alt+S"/>
+                                <MenuItem x:Name="mSidebarMarks" Header="_Marks"/>
+                            </MenuItem>
                             <Separator/>
-                            <MenuItem x:Name="mToggleReveal" Header="_Reveal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
+
+                            <MenuItem x:Name="mScrubberToggle" Header="Scr_ubber" IsCheckable="True" IsChecked="True"/>
+                            <MenuItem x:Name="mStatusBarToggle" Header="Status _Bar" IsCheckable="True" IsChecked="True"/>
+                            <MenuItem x:Name="mChromeAutoHide" Header="Auto-hide UI (_Zen)" IsCheckable="True"/>
+                            <MenuItem x:Name="mSidebarAutoHide" Header="Side Panel Auto-_hide" IsCheckable="True" IsChecked="False"/>
+                            <Separator/>
+
                             <MenuItem x:Name="mToggleFocus" Header="_Focus Mode" InputGestureText="F8" IsCheckable="True"/>
                             <MenuItem x:Name="mToggleTypewriter" Header="_Typewriter Scrolling" InputGestureText="F9" IsCheckable="True"/>
-                            <MenuItem x:Name="mWordWrap" Header="_Word Wrap" IsCheckable="True" IsChecked="True"/>
+                            <MenuItem x:Name="mToggleReveal" Header="_Reveal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
+                            <MenuItem Header="_Font Appearance">
+                                <MenuItem Header="_Type">
+                                    <MenuItem x:Name="mFontTheme" Header="_Theme" IsCheckable="True" IsChecked="True"/>
+                                    <MenuItem x:Name="mFontSerif" Header="_Serif" IsCheckable="True"/>
+                                    <MenuItem x:Name="mFontSans" Header="S_ans-Serif" IsCheckable="True"/>
+                                </MenuItem>
+                                <MenuItem Header="Si_ze">
+                                    <MenuItem x:Name="mSizeExtraSmall" Header="E_xtra Small" IsCheckable="True"/>
+                                    <MenuItem x:Name="mSizeSmall" Header="_Small" IsCheckable="True"/>
+                                    <MenuItem x:Name="mSizeNormal" Header="_Normal" IsCheckable="True" IsChecked="True"/>
+                                    <MenuItem x:Name="mSizeLarge" Header="_Large" IsCheckable="True"/>
+                                    <MenuItem x:Name="mSizeExtraLarge" Header="E_xtra Large" IsCheckable="True"/>
+                                </MenuItem>
+                                <MenuItem x:Name="mFontCustom" Header="_Custom..." IsCheckable="True"/>
+                            </MenuItem>
+                            <MenuItem Header="S_pacing &amp; Margins">
+                                <MenuItem Header="_Line Spacing">
+                                    <MenuItem x:Name="mLineTight" Header="_Tight" IsCheckable="True"/>
+                                    <MenuItem x:Name="mLineNormal" Header="_Normal" IsCheckable="True" IsChecked="True"/>
+                                    <MenuItem x:Name="mLineRelaxed" Header="_Relaxed" IsCheckable="True"/>
+                                    <MenuItem x:Name="mLineLoose" Header="_Loose" IsCheckable="True"/>
+                                </MenuItem>
+                                <MenuItem Header="_Paragraph Spacing">
+                                    <MenuItem x:Name="mParaTight" Header="_Tight" IsCheckable="True"/>
+                                    <MenuItem x:Name="mParaNormal" Header="_Normal" IsCheckable="True" IsChecked="True"/>
+                                    <MenuItem x:Name="mParaRelaxed" Header="_Relaxed" IsCheckable="True"/>
+                                    <MenuItem x:Name="mParaLoose" Header="_Loose" IsCheckable="True"/>
+                                </MenuItem>
+                                <MenuItem Header="_Editor Margins">
+                                    <MenuItem x:Name="mMarginNarrow" Header="_Narrow Margins" IsCheckable="True"/>
+                                    <MenuItem x:Name="mMarginRegular" Header="_Regular Margins" IsCheckable="True" IsChecked="True"/>
+                                    <MenuItem x:Name="mMarginWide" Header="_Wide Margins" IsCheckable="True"/>
+                                </MenuItem>
+                            </MenuItem>
                             <Separator/>
-                            <MenuItem Header="_Line Spacing">
-                                <MenuItem x:Name="mLineTight" Header="_Tight" IsCheckable="True"/>
-                                <MenuItem x:Name="mLineNormal" Header="_Normal" IsCheckable="True" IsChecked="True"/>
-                                <MenuItem x:Name="mLineRelaxed" Header="_Relaxed" IsCheckable="True"/>
-                                <MenuItem x:Name="mLineLoose" Header="_Loose" IsCheckable="True"/>
-                            </MenuItem>
-                            <MenuItem Header="_Paragraph Spacing">
-                                <MenuItem x:Name="mParaTight" Header="_Tight" IsCheckable="True"/>
-                                <MenuItem x:Name="mParaNormal" Header="_Normal" IsCheckable="True" IsChecked="True"/>
-                                <MenuItem x:Name="mParaRelaxed" Header="_Relaxed" IsCheckable="True"/>
-                                <MenuItem x:Name="mParaLoose" Header="_Loose" IsCheckable="True"/>
-                            </MenuItem>
+
                             <!-- Whether hovering a paragraph offers its bookmark gutter.
                                  Bookmarks themselves are always drawn; this is only the
                                  hover preview of adding or removing one. -->
-                            <MenuItem Header="Block _Hover">
-                                <MenuItem x:Name="mHoverOff" Header="_Off" IsCheckable="True"
-                                          ToolTip="No hover cue. Existing bookmarks still show."/>
-                                <MenuItem x:Name="mHoverGutter" Header="Bookmark _gutter" IsCheckable="True" IsChecked="True"
-                                          ToolTip="Hovering a paragraph shows the bookmark it would add, or dims the one it would remove."/>
-                            </MenuItem>
-                            <!-- Margins belong with Line and Paragraph Spacing: all three set the
-                                 shape of the text block, and only the reader's eye tells them apart. -->
-                            <MenuItem Header="_Editor Margins">
-                                <MenuItem x:Name="mMarginNarrow" Header="_Narrow Margins" IsCheckable="True"/>
-                                <MenuItem x:Name="mMarginRegular" Header="_Regular Margins" IsCheckable="True" IsChecked="True"/>
-                                <MenuItem x:Name="mMarginWide" Header="_Wide Margins" IsCheckable="True"/>
-                            </MenuItem>
-                            <!-- Off by default. A browser justifies by stretching word spaces only,
-                                 with no hyphenation and no fixed measure, so a book set justified
-                                 opens rivers of white in a narrow column. A publisher's own
-                                 justification is rewritten to read the same switch. -->
+                            <MenuItem x:Name="mHoverGutter" Header="Bookmark _Gutter Hover" IsCheckable="True" IsChecked="True" ToolTip="Hovering a paragraph shows the bookmark it would add, or dims the one it would remove."/>
                             <MenuItem x:Name="mJustify" Header="_Justified" IsCheckable="True" IsChecked="False"/>
+                            <MenuItem x:Name="mWordWrap" Header="_Word Wrap" IsCheckable="True" IsChecked="True"/>
                             <Separator/>
-                            <!-- Auto-hide clears chrome for reading: command bar, tab chips, status bar
-                                 and scrubber. A slim caption stays. Pointer to the top (or Alt) brings
-                                 the menu back; pointer to the bottom brings the scrubber back.
-                                 Scrubber / status bar can still be held off by hand. The menu itself
-                                 is not a toggle — it is always discoverable from the top edge. -->
-                            <MenuItem x:Name="mChromeAutoHide" Header="_Auto-hide" IsCheckable="True"/>
-                            <!-- Separate from chrome auto-hide, and off by default: the left-edge
-                                 reveal fires on any pointer travel to x < 10, which a reader who
-                                 keeps the sidebar shut experiences as the panel flying out on its
-                                 own. Opt in. -->
-                            <MenuItem x:Name="mSidebarAutoHide" Header="Side Panel Auto-_hide" IsCheckable="True" IsChecked="False"/>
-                            <MenuItem x:Name="mScrubberToggle" Header="Scr_ubber" IsCheckable="True" IsChecked="True"/>
-                            <MenuItem x:Name="mStatusBarToggle" Header="Status _Bar" IsCheckable="True" IsChecked="True"/>
+
+                            <MenuItem Header="_Zoom">
+                                <MenuItem x:Name="mZoomIn" Header="Zoom _In" InputGestureText="Ctrl++"/>
+                                <MenuItem x:Name="mZoomOut" Header="Zoom _Out" InputGestureText="Ctrl+-"/>
+                                <MenuItem x:Name="mZoomReset" Header="_Reset Zoom" InputGestureText="Ctrl+0"/>
+                            </MenuItem>
+                            <MenuItem x:Name="mFullscreen" Header="_Fullscreen" InputGestureText="F11"/>
                             <Separator/>
-                            <MenuItem x:Name="mZoomIn" Header="Zoom _In" InputGestureText="Ctrl++"/>
-                            <MenuItem x:Name="mZoomOut" Header="Zoom _Out" InputGestureText="Ctrl+-"/>
-                            <MenuItem x:Name="mZoomReset" Header="_Reset Zoom" InputGestureText="Ctrl+0"/>
-                            <Separator/>
-                            <MenuItem x:Name="mFullscreen" Header="Toggle _Fullscreen" InputGestureText="F11"/>
+                            <MenuItem x:Name="mResetView" Header="_Reset View Settings"/>
                         </MenuItem>
                         <MenuItem x:Name="mThemesMenu" Header="_Themes">
                             <!-- Dynamically populated from Themes JSON -->
                         </MenuItem>
                         <MenuItem Header="_Help">
                             <MenuItem x:Name="mHelpSyntax" Header="Syntax &amp; _Shortcuts" InputGestureText="F1"/>
-                            <MenuItem x:Name="mToggleDebug" Header="Toggle _Debug HUD" InputGestureText="Ctrl+Shift+D"/>
+                            <MenuItem x:Name="mToggleDebug" Header="_Debug HUD" InputGestureText="Ctrl+Shift+D"/>
                             <Separator/>
                             <MenuItem x:Name="mAbout" Header="_About TypoZen"/>
                         </MenuItem>

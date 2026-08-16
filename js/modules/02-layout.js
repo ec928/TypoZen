@@ -5118,18 +5118,10 @@
                 }
             } catch (e) {}
             if (el && el.classList) {
-                // Reader/epub: track active block for logic, but do not paint .focused
-                // (gray wash fights bookmarks and differs left vs right column).
-                let paint = true;
+                // We must add .focused so Focus Mode (F8) can keep this block opaque.
+                // The gray wash is already suppressed by CSS in reader/book mode via transparent bg.
                 try {
-                    if (editor && (editor.classList.contains('reader-mode')
-                        || editor.classList.contains('book-mode'))) paint = false;
-                    else if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
-                        paint = false;
-                } catch (eP) {}
-                try {
-                    if (paint) el.classList.add('focused');
-                    else el.classList.remove('focused');
+                    el.classList.add('focused');
                 } catch (e2) {}
                 currentActiveBlock = el;
             }

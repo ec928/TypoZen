@@ -134,6 +134,8 @@ namespace TypoZen
             {
                 DebugLogEnabled = true;
             }
+
+
             string initialFile = launch.FilePath;
 
             // Automated tests may run multiple processes against throwaway profiles.
@@ -573,6 +575,21 @@ namespace TypoZen
             PurgePendingWebStorage(); // must precede WebView2: it locks the store
             Program.PerfMark("storage purged");
             LoadXamlLayout();
+            
+            var menuDropAlignmentField = typeof(System.Windows.SystemParameters).GetField("_menuDropAlignment", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Action setAlignmentValue = () =>
+            {
+                if (System.Windows.SystemParameters.MenuDropAlignment && menuDropAlignmentField != null)
+                {
+                    menuDropAlignmentField.SetValue(null, false);
+                }
+            };
+            setAlignmentValue();
+            System.Windows.SystemParameters.StaticPropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == "MenuDropAlignment")
+                    setAlignmentValue();
+            };
             Program.PerfMark("XAML loaded");
             this.Loaded += (s, e) => { Program.PerfMark("window Loaded"); InitializeWebViewAsync(); };
             this.Closed += (s, e) => StopSingleInstanceOpenServer();
@@ -880,8 +897,9 @@ namespace TypoZen
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
             BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
 
-            BindClick("mToggleSidebar", (s, e) => SendMsg("cmd:toggle_sidebar"));
-            BindClick("mSearchSidebar", (s, e) => SendMsg("cmd:toggle_search_sidebar"));
+            BindClick("mSidebarOutline", (s, e) => SendMsg("cmd:show_outline"));
+            BindClick("mSidebarSearch", (s, e) => SendMsg("cmd:show_search"));
+            BindClick("mSidebarMarks", (s, e) => SendMsg("cmd:show_marks"));
             BindClick("mToggleReveal", (s, e) => SendMsg("cmd:toggle_reveal"));
             BindClick("mToggleFocus", (s, e) => SendMsg("cmd:toggle_focus"));
             BindClick("mToggleTypewriter", (s, e) => SendMsg("cmd:toggle_typewriter"));
@@ -904,8 +922,42 @@ namespace TypoZen
             BindClick("mParaNormal",  (s, e) => SetParaSpacing(1));
             BindClick("mParaRelaxed", (s, e) => SetParaSpacing(2));
             BindClick("mParaLoose",   (s, e) => SetParaSpacing(3));
-            BindClick("mHoverOff",    (s, e) => SetBlockHover(0));
-            BindClick("mHoverGutter", (s, e) => SetBlockHover(1));
+            BindClick("mHoverGutter", (s, e) => SetBlockHover(_blockHover == 1 ? 0 : 1));
+            BindClick("mResetView", (s, e) => ResetViewSettings());
+            BindClick("mFontTheme",  (s, e) => SetFontType(0));
+            BindClick("mFontSerif",  (s, e) => SetFontType(1));
+            BindClick("mFontSans",   (s, e) => SetFontType(2));
+            BindClick("mFontCustom", (s, e) => 
+            {
+                string seed = _customFontFamily;
+                if (string.IsNullOrWhiteSpace(seed))
+                {
+                    if (_fontType == 0 && _currentThemeIndex >= 0 && _currentThemeIndex < _themesList.Count)
+                        seed = _themesList[_currentThemeIndex].FN;
+                    else if (_fontType == 1) seed = "Georgia, serif";
+                    else if (_fontType == 2) seed = "'Segoe UI', sans-serif";
+                }
+
+                var dlg = new CustomFontWindow(seed, FontPresets, this.Background, this.Foreground);
+                dlg.Owner = this;
+                if (dlg.ShowDialog() == true)
+                {
+                    _customFontFamily = dlg.SelectedFontFamily;
+                    SetFontType(3);
+                }
+                else
+                {
+                    for (int i = 0; i < FontTypeItems.Length; i++)
+                        SetMenuChecked(FontTypeItems[i], i == _fontType);
+                }
+            });
+
+            BindClick("mSizeExtraSmall", (s, e) => SetFontSizeOverride(0));
+            BindClick("mSizeSmall",      (s, e) => SetFontSizeOverride(1));
+            BindClick("mSizeNormal",     (s, e) => SetFontSizeOverride(2));
+            BindClick("mSizeLarge",      (s, e) => SetFontSizeOverride(3));
+            BindClick("mSizeExtraLarge", (s, e) => SetFontSizeOverride(4));
+
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
@@ -3415,7 +3467,7 @@ namespace TypoZen
                     "\"chrome\":\"{6}\",\"wordWrap\":{7},\"statusBar\":{8}," +
                     "\"scrubber\":{21},\"lineSpacing\":{22},\"paraSpacing\":{23}," +
                     "\"justified\":{24},\"sidebarAutoHide\":{25},\"autosave\":{26},\"privacyMode\":{27}," +
-                    "\"blockHover\":{28}," +
+                    "\"blockHover\":{28},\"fontType\":{29},\"fontFamily\":\"{30}\",\"fontSize\":{31}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
                     "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20}}}",
@@ -3429,7 +3481,7 @@ namespace TypoZen
                     _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing,
                     _justified ? "true" : "false", _sidebarAutoHide ? "true" : "false",
                     _autosave ? "true" : "false", _privacyMode ? "true" : "false",
-                    _blockHover);
+                    _blockHover, _fontType, _customFontFamily.Replace("\"", "\\\""), _fontSize);
 
                 WriteStateFileAtomic(path, json);
             }
@@ -3552,6 +3604,12 @@ namespace TypoZen
                 if (mPara.Success) _paraSpacing = Clamp4(int.Parse(mPara.Groups[1].Value));
                 var mHover = Regex.Match(json, @"\""blockHover\""\s*:\s*(\d+)");
                 if (mHover.Success) _blockHover = ClampBlockHover(int.Parse(mHover.Groups[1].Value));
+                var mFT = Regex.Match(json, @"\""fontType\""\s*:\s*(\d+)");
+                if (mFT.Success) _fontType = Math.Max(0, Math.Min(3, int.Parse(mFT.Groups[1].Value)));
+                var mFF = Regex.Match(json, @"\""fontFamily\""\s*:\s*\""([^\""]*)\""");
+                if (mFF.Success) _customFontFamily = mFF.Groups[1].Value;
+                var mFS = Regex.Match(json, @"\""fontSize\""\s*:\s*(\d+)");
+                if (mFS.Success) _fontSize = Math.Max(0, Math.Min(4, int.Parse(mFS.Groups[1].Value)));
                 var mJust = Regex.Match(json, @"\""justified\""\s*:\s*(true|false)");
                 if (mJust.Success) _justified = mJust.Groups[1].Value == "true";
                 var mSideAuto = Regex.Match(json, @"\""sidebarAutoHide\""\s*:\s*(true|false)");
@@ -5210,26 +5268,36 @@ namespace TypoZen
                             colMono.Children.Add(cmi);
                     }
 
-                    colMono.Children.Add(new Border { Height = 1, Background = Brushes.Gray, Opacity = 0.3, Margin = new Thickness(12, 6, 12, 6) });
-                    var customize = new MenuItem { Header = "Customize Theme...", FontWeight = FontWeights.SemiBold };
+                    var customize = new MenuItem { Header = "Customize Theme...", FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
                     customize.Click += (s, ev) => { 
                         menu.IsSubmenuOpen = false; 
                         OpenThemeCustomize(); 
                     };
-                    colMono.Children.Add(customize);
 
                     var grid = new Grid();
+                    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                    grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
                     grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                     grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                     grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-                    Grid.SetColumn(colDark, 0);
-                    Grid.SetColumn(colLight, 1);
-                    Grid.SetColumn(colMono, 2);
+                    Grid.SetColumn(colDark, 0); Grid.SetRow(colDark, 0);
+                    Grid.SetColumn(colLight, 1); Grid.SetRow(colLight, 0);
+                    Grid.SetColumn(colMono, 2); Grid.SetRow(colMono, 0);
 
                     grid.Children.Add(colDark);
                     grid.Children.Add(colLight);
                     grid.Children.Add(colMono);
+                    
+                    var bottomPanel = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+                    bottomPanel.Children.Add(new Border { Height = 1, Background = Brushes.Gray, Opacity = 0.3, Margin = new Thickness(12, 0, 12, 6) });
+                    bottomPanel.Children.Add(customize);
+
+                    Grid.SetRow(bottomPanel, 1);
+                    Grid.SetColumn(bottomPanel, 0);
+                    Grid.SetColumnSpan(bottomPanel, 3);
+                    grid.Children.Add(bottomPanel);
                     
                     var containerMi = new MenuItem { Header = grid, StaysOpenOnClick = true };
                     
@@ -5277,7 +5345,7 @@ namespace TypoZen
                 };
 
             int restoreIdx = _currentThemeIndex;
-            var dlg = new ThemeCustomizeWindow(seed, FontPresets);
+            var dlg = new ThemeCustomizeWindow(seed, FontPresets, this.Background, this.Foreground);
             dlg.Owner = this;
             dlg.PreviewRequested += (t) => PreviewTheme(t);
             dlg.SaveAsNewRequested += (t) =>
@@ -6279,6 +6347,35 @@ namespace TypoZen
             _chromeHideAfter = DateTime.MaxValue;
         }
 
+        private void ResetViewSettings()
+        {
+            SetParaSpacing(1);
+            SetLineSpacing(1);
+            SetBlockHover(1);
+            SetFontType(0);
+            SetFontSizeOverride(2);
+            SetJustified(false);
+            SetWordWrap(true);
+            SendMsg("cmd:set_margin_regular");
+            SetZoom(1.0);
+            
+            SetChromeAutoHide(false);
+            SetSidebarAutoHide(false);
+            SetStatusBarVisible(true);
+            SetScrubberVisible(true);
+            
+            var mFocus = (MenuItem)FindElement("mToggleFocus");
+            if (mFocus != null && mFocus.IsChecked) SendMsg("cmd:toggle_focus");
+            
+            var mType = (MenuItem)FindElement("mToggleTypewriter");
+            if (mType != null && mType.IsChecked) SendMsg("cmd:toggle_typewriter");
+            
+            var mReveal = (MenuItem)FindElement("mToggleReveal");
+            if (mReveal != null && mReveal.IsChecked) SendMsg("cmd:toggle_reveal");
+            
+            SaveWindowState();
+        }
+
         private void SetWordWrap(bool on)
         {
             _wordWrap = on;
@@ -6562,7 +6659,14 @@ namespace TypoZen
         /// </summary>
         private int _blockHover = 1;
         private static readonly string[] BlockHoverKeys = { "off", "gutter" };
-        private static readonly string[] BlockHoverItems = { "mHoverOff", "mHoverGutter" };
+
+
+        private int _fontType = 0; // 0=Theme, 1=Serif, 2=Sans, 3=Custom
+        private string _customFontFamily = "";
+        private int _fontSize = 2; // 0=XS, 1=S, 2=Normal, 3=L, 4=XL
+        
+        private static readonly string[] FontTypeItems = { "mFontTheme", "mFontSerif", "mFontSans", "mFontCustom" };
+        private static readonly string[] FontSizeItems = { "mSizeExtraSmall", "mSizeSmall", "mSizeNormal", "mSizeLarge", "mSizeExtraLarge" };
 
         /// <summary>
         /// Also the migration from the four-way version of this setting
@@ -6604,9 +6708,46 @@ namespace TypoZen
         private void SetBlockHover(int index)
         {
             _blockHover = ClampBlockHover(index);
-            for (int i = 0; i < BlockHoverItems.Length; i++)
-                SetMenuChecked(BlockHoverItems[i], i == _blockHover);
+            SetMenuChecked("mHoverGutter", _blockHover == 1);
             SendMsg("cmd:set_block_hover:" + BlockHoverKeys[_blockHover]);
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        private void SetFontType(int index)
+        {
+            _fontType = index;
+            if (_fontType > 3) _fontType = 3;
+            if (_fontType < 0) _fontType = 0;
+            for (int i = 0; i < FontTypeItems.Length; i++)
+                SetMenuChecked(FontTypeItems[i], i == _fontType);
+
+            string family = "";
+            if (_fontType == 1) family = "Georgia, serif";
+            else if (_fontType == 2) family = "'Segoe UI', sans-serif";
+            else if (_fontType == 3) family = _customFontFamily;
+
+            var customMenuItem = this.FindName("mFontCustom") as System.Windows.Controls.MenuItem;
+            if (customMenuItem != null)
+            {
+                if (_fontType == 3 && !string.IsNullOrWhiteSpace(_customFontFamily))
+                    customMenuItem.Header = "Custom: " + _customFontFamily;
+                else
+                    customMenuItem.Header = "_Custom...";
+            }
+
+            SendMsg("cmd:set_font_family:" + family);
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        private void SetFontSizeOverride(int index)
+        {
+            _fontSize = index;
+            if (_fontSize > 4) _fontSize = 4;
+            if (_fontSize < 0) _fontSize = 0;
+            for (int i = 0; i < FontSizeItems.Length; i++)
+                SetMenuChecked(FontSizeItems[i], i == _fontSize);
+
+            SendMsg("cmd:set_font_size:" + _fontSize);
             if (!_applyingRestoredSettings) SaveWindowState();
         }
 
@@ -6833,6 +6974,8 @@ namespace TypoZen
                     SetParaSpacing(_paraSpacing);
                     SetBlockHover(_blockHover);
                     SetJustified(_justified);
+                    SetFontType(_fontType);
+                    SetFontSizeOverride(_fontSize);
 
                     // The scrubber lives in the page, so its state is only real once the
                     // page exists. ApplyChromeVisibility above ran against no WebView and
@@ -11033,6 +11176,84 @@ namespace TypoZen
         public bool Custom;
     }
 
+    public class CustomFontWindow : Window
+    {
+        public string SelectedFontFamily { get; private set; }
+        private readonly ComboBox _cmbFont;
+        private readonly string[][] _fontPresets;
+
+        private static string LeadingFamily(string fn)
+        {
+            string s = (fn ?? "").Split(',')[0].Trim().Trim('\'', '"').Trim();
+            return s.Length > 0 ? s : "Custom";
+        }
+
+        public CustomFontWindow(string seedFamily, string[][] fontPresets, System.Windows.Media.Brush bg, System.Windows.Media.Brush fg)
+        {
+            _fontPresets = fontPresets ?? new string[0][];
+            SelectedFontFamily = seedFamily;
+
+            Title = "Custom Font";
+            Width = 350;
+            MinHeight = 180;
+            SizeToContent = SizeToContent.Height;
+            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            ResizeMode = ResizeMode.NoResize;
+            Background = bg;
+            Foreground = fg;
+
+            var root = new StackPanel { Margin = new Thickness(20) };
+            
+            var lbl = new TextBlock { Text = "Select Font Family", Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold };
+            root.Children.Add(lbl);
+
+            _cmbFont = new ComboBox { Height = 28, Margin = new Thickness(0, 0, 0, 20) };
+            int selectedIndex = -1;
+            string seedLeading = LeadingFamily(seedFamily);
+            for (int i = 0; i < _fontPresets.Length; i++)
+            {
+                _cmbFont.Items.Add(new ComboBoxItem { Content = _fontPresets[i][0], FontFamily = new System.Windows.Media.FontFamily(_fontPresets[i][1]) });
+                if (string.Equals(seedLeading, LeadingFamily(_fontPresets[i][1]), StringComparison.OrdinalIgnoreCase))
+                    selectedIndex = i;
+            }
+
+            if (selectedIndex < 0 && string.IsNullOrWhiteSpace(seedFamily) && _fontPresets.Length > 0)
+            {
+                selectedIndex = 0;
+            }
+            else if (selectedIndex < 0 && !string.IsNullOrWhiteSpace(seedFamily))
+            {
+                _cmbFont.Items.Add(new ComboBoxItem { Content = seedLeading, FontFamily = new System.Windows.Media.FontFamily(seedFamily) });
+                selectedIndex = _cmbFont.Items.Count - 1;
+            }
+
+            if (_cmbFont.Items.Count > 0 && selectedIndex >= 0)
+                _cmbFont.SelectedIndex = selectedIndex;
+
+            root.Children.Add(_cmbFont);
+
+            var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            
+            var btnCancel = new Button { Content = "Cancel", Width = 80, Height = 30, Margin = new Thickness(0, 0, 10, 0) };
+            btnCancel.Click += (s, e) => { DialogResult = false; Close(); };
+            btnPanel.Children.Add(btnCancel);
+
+            var btnOk = new Button { Content = "Apply", Width = 80, Height = 30, IsDefault = true };
+            btnOk.Click += (s, e) => {
+                if (_cmbFont.SelectedIndex >= 0 && _cmbFont.SelectedIndex < _fontPresets.Length)
+                    SelectedFontFamily = _fontPresets[_cmbFont.SelectedIndex][1];
+                else if (_cmbFont.SelectedIndex >= _fontPresets.Length && !string.IsNullOrWhiteSpace(seedFamily))
+                    SelectedFontFamily = seedFamily;
+                DialogResult = true;
+                Close();
+            };
+            btnPanel.Children.Add(btnOk);
+
+            root.Children.Add(btnPanel);
+            Content = root;
+        }
+    }
+
     /// <summary>
     /// Basic theme editor: name, colors, font preset. Live preview; Save as New only (no built-in overwrite).
     /// </summary>
@@ -11067,7 +11288,7 @@ namespace TypoZen
             return s.Length > 0 ? s : "Custom";
         }
 
-        public ThemeCustomizeWindow(ThemeInfo seed, string[][] fontPresets)
+        public ThemeCustomizeWindow(ThemeInfo seed, string[][] fontPresets, System.Windows.Media.Brush appBg, System.Windows.Media.Brush appFg)
         {
             _fontPresets = fontPresets ?? new string[0][];
             string name = seed != null && seed.Name != null ? seed.Name : "My Theme";
@@ -11132,8 +11353,8 @@ namespace TypoZen
             SizeToContent = SizeToContent.Height;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ResizeMode = ResizeMode.NoResize;
-            Background = new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x24));
-            Foreground = new SolidColorBrush(Colors.WhiteSmoke);
+            Background = appBg;
+            Foreground = appFg;
 
             var root = new Grid { Margin = new Thickness(16, 16, 16, 20) };
             for (int r = 0; r < 12; r++)

@@ -1234,6 +1234,42 @@
                 });
                 return;
             }
+            if (cmd.startsWith("set_font_family:")) {
+                const family = cmd.substring(16);
+                let style = document.getElementById("tz-font-family-override");
+                if (!style) {
+                    style = document.createElement("style");
+                    style.id = "tz-font-family-override";
+                    document.head.appendChild(style);
+                }
+                if (family) {
+                    style.textContent = `body, #editor { font-family: ${family} !important; }`;
+                } else {
+                    style.textContent = "";
+                }
+                applySpacing({}); 
+                return;
+            }
+            if (cmd.startsWith("set_font_size:")) {
+                const sizeIndex = parseInt(cmd.substring(14));
+                let sizes = ['12px', '14px', '', '18px', '22px'];
+                let size = sizes[sizeIndex] || '';
+                
+                let style = document.getElementById("tz-font-size-override");
+                if (!style) {
+                    style = document.createElement("style");
+                    style.id = "tz-font-size-override";
+                    document.head.appendChild(style);
+                }
+                if (size) {
+                    style.textContent = `:root { --base-font-size: ${size} !important; } #editor { font-size: var(--base-font-size) !important; }`;
+                } else {
+                    style.textContent = "";
+                }
+                applySpacing({}); 
+                return;
+            }
+
             if (cmd.startsWith("view_set:")) {
                 // "view_set:<selector>:<value>" from one of the segmented controls.
                 const bits = cmd.substring(9).split(':');
@@ -1654,6 +1690,24 @@
                     postMsg('sidebar_state:1');
                     if (typeof switchTab === 'function') switchTab('marks');
                 } catch (eSm) {}
+                return;
+            }
+            else if (cmd === "show_outline") {
+                try {
+                    const sb = document.getElementById('sidebar');
+                    if (sb) sb.classList.remove('collapsed');
+                    postMsg('sidebar_state:1');
+                    if (typeof switchTab === 'function') switchTab('outline');
+                } catch (eSo) {}
+                return;
+            }
+            else if (cmd === "show_search") {
+                try {
+                    const sb = document.getElementById('sidebar');
+                    if (sb) sb.classList.remove('collapsed');
+                    postMsg('sidebar_state:1');
+                    if (typeof switchTab === 'function') switchTab('search');
+                } catch (eSs) {}
                 return;
             }
             else if (cmd === "return_jump") {
