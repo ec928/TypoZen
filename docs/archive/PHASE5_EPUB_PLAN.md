@@ -149,7 +149,7 @@ still looks like TypoZen rather than like 2003.
 
 ## Tests, per step
 
-Written against real books in `C:\Users\chan_\OneDrive\Books`, not synthetic fixtures — the
+Written against a real EPUB library rather than synthetic fixtures — the
 whole reason the current extractor looks adequate in isolation is that nobody ran it against
 *Blindsight* and counted.
 

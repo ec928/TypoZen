@@ -8522,7 +8522,12 @@ namespace TypoZen
                 // Rendering an <img> proves nothing: alt="" plus a failed load collapses to
                 // nothing visible, which looks identical to "the image was never inserted".
                 {
-                    string realDoc = @"C:\Users\chan_\OneDrive\Apps\0-Development\TypoZen\tests\gfdgfdhb.md";
+                    // Opt-in performance probe. Drop a substantial real document at
+                    // tests\perf-probe.md to time the open and reopen paths against
+                    // something representative; skipped entirely when absent, which is
+                    // the normal case. Located relative to the app so it works on any
+                    // machine rather than only the one it was written on.
+                    string realDoc = Path.Combine(_appDir, "tests", "perf-probe.md");
                     if (File.Exists(realDoc))
                     {
                         var swOpen = System.Diagnostics.Stopwatch.StartNew();
@@ -8615,8 +8620,9 @@ namespace TypoZen
                         // Ask the network stack why. fetch() surfaces the real error where
                         // an <img> just silently gives up.
                         await _webView.CoreWebView2.ExecuteScriptAsync(
-                            "window.__probe = 'pending';" +
-                            "fetch('https://docfolder/gfdgfdhb-assets/image-20260729-012243.png')" +
+                            "var probeImg = document.querySelector('#editor img');" +
+                            "window.__probe = probeImg ? 'pending' : 'no image in document';" +
+                            "if (probeImg) fetch(probeImg.src)" +
                             "  .then(function(r){ window.__probe = 'status ' + r.status; })" +
                             "  .catch(function(e){ window.__probe = 'error ' + e; });");
                         await Task.Delay(1500);
