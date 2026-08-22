@@ -44,7 +44,20 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.2";
+        internal const string AppVersion = "0.2.3";
+
+        /// <summary>
+        /// Where "Report a problem or suggest a feature" in About goes.
+        /// </summary>
+        /// <remarks>
+        /// /issues/new/choose rather than /issues: the repo has bug_report and
+        /// feature_request templates plus a Discussions contact link, so the chooser asks
+        /// the reader which they have and routes the open-ended ones away from the tracker.
+        /// Held here and not in the page on purpose -- the page asks for "feedback" and
+        /// gets this address, so no document rendered in the editor can talk the shell into
+        /// opening something else.
+        /// </remarks>
+        internal const string IssuesUrl = "https://github.com/ec928/TypoZen/issues/new/choose";
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool AllowSetForegroundWindow(uint dwProcessId);
@@ -4341,6 +4354,27 @@ namespace TypoZen
             if (msg == "zoom:reset")
             {
                 SetZoom(1.0);
+                return;
+            }
+
+            // About -> "Report a problem or suggest a feature". Most readers arrive through
+            // a Releases zip and never see the repository, so a feedback route that lives
+            // only on GitHub is one nobody uses.
+            if (msg == "feedback")
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = Program.IssuesUrl,
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception ex)
+                {
+                    // A machine with no browser association must not take the editor down.
+                    System.Diagnostics.Debug.WriteLine("feedback link: " + ex.Message);
+                }
                 return;
             }
 

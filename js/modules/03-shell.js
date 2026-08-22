@@ -2077,6 +2077,25 @@
             }
             wire('helpModal', 'helpClose', 'helpOk');
             wire('aboutModal', 'aboutClose', 'aboutOk');
+
+            // About -> "Report a problem or suggest a feature".
+            //
+            // A fixed command, deliberately not 'open_url:<href>'. A host handler that
+            // launches whatever URL the page hands it is a hole: everything rendered in
+            // this page is document content, and the shell is one postMessage away. The
+            // host holds the address; the page can only ask for that one thing.
+            //
+            // The overlay stays open behind the browser: closing it would leave the
+            // reader looking at the editor with no sign anything happened if the browser
+            // takes a moment to come up.
+            (function () {
+                const fb = document.getElementById('aboutFeedback');
+                if (!fb || fb.__tzBound) return;
+                fb.__tzBound = true;
+                fb.addEventListener('click', function () {
+                    try { postMsg('feedback'); } catch (e) {}
+                });
+            })();
             document.addEventListener('keydown', function (e) {
                 if (e.key !== 'Escape') return;
                 if (isTzOverlayOpen('aboutModal')) {

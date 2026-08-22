@@ -444,6 +444,11 @@
                 </p>
             </div>
             <footer class="tz-help-foot">
+                <!-- In the pinned footer, not the body: the About body scrolls, and a
+                     feedback route nobody scrolls to is a feedback route nobody uses.
+                     Posts a fixed command; the host owns the URL. -->
+                <button type="button" id="aboutFeedback" class="tz-help-link"
+                        title="Opens the issue tracker in your browser">Report a problem or suggest a feature</button>
                 <span class="tz-help-hint">Esc to close</span>
                 <button type="button" id="aboutOk" class="tz-help-ok">Close</button>
             </footer>
