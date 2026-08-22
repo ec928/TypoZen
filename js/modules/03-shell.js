@@ -2053,18 +2053,10 @@
             } catch (eC) {}
         }
 
-        function closeAllTzOverlays() {
-            closeTzOverlay('helpModal');
-            closeTzOverlay('aboutModal');
-        }
-
-        // Back-compat names used by earlier help wiring / evals.
-        function isHelpModalOpen() { return isTzOverlayOpen('helpModal'); }
-        function openHelpModal() {
-            closeTzOverlay('aboutModal');
-            openTzOverlay('helpModal', 'helpClose', 'helpOk');
-        }
-        function closeHelpModal() { closeTzOverlay('helpModal'); }
+        // Removed: closeAllTzOverlays, and the isHelpModalOpen / openHelpModal /
+        // closeHelpModal back-compat wrappers. The wiring and evals they were kept for
+        // are gone -- nothing in the engine, the host, the template or the suites named
+        // any of them. openTzOverlay / closeTzOverlay / isTzOverlayOpen are the interface.
 
         (function bindTzOverlaysOnce() {
             function wire(id, closeId, okId) {

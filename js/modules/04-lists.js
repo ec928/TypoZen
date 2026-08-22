@@ -928,20 +928,9 @@
             return false;
         }
 
-        /** True if this block is (or was stored as) a GFM table. */
-        function isTableBlock(block) {
-            if (!block) return false;
-            try {
-                if (block.querySelector && block.querySelector('table')) return true;
-            } catch (e) {}
-            try {
-                if (typeof parseTableMarkdown === 'function') {
-                    const r = block.getAttribute('data-raw') || '';
-                    if (r && parseTableMarkdown(r)) return true;
-                }
-            } catch (e2) {}
-            return false;
-        }
+        // Removed: isTableBlock. Nothing called it -- the places that ask whether a block
+        // is a table ask the narrower question they actually need (serialisation checks
+        // for a <table> child, the epub renderer walks one it already has).
 
         /**
          * One edit flag for every block type.

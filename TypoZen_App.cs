@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.1";
+        internal const string AppVersion = "0.2.2";
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool AllowSetForegroundWindow(uint dwProcessId);
@@ -3368,7 +3368,14 @@ namespace TypoZen
                 {
                     try { Directory.Delete(store, true); } catch { }
                 }
-                File.Delete(flag);
+                // Only once the store is actually gone. Clear Stored Data tells the reader
+                // "saved web storage is removed the next time TypoZen starts", and the
+                // delete above can fail -- the profile is locked by a still-closing
+                // browser process, or a file is held. Dropping the flag anyway retired a
+                // promise that was never kept, silently, and nothing would retry it.
+                // Keeping it means the next launch tries again, which is the whole point
+                // of deferring the delete to startup.
+                if (!Directory.Exists(store)) File.Delete(flag);
             }
             catch { }
         }
@@ -4350,7 +4357,19 @@ namespace TypoZen
                         prefsJson = File.ReadAllText(prefsPath, Encoding.UTF8);
                         var pathMatch = Regex.Match(prefsJson, @"\""lastFilePath\""\s*:\s*\""((?:\\.|[^\""])*)\""");
                         if (pathMatch.Success)
-                            lastFilePath = pathMatch.Groups[1].Value.Replace("\\\\", "\\").Replace("\\\"", "\"");
+                        {
+                            // JsonUnescape, like every other reader here. This was the one
+                            // site still undoing the escaping with two chained Replace
+                            // calls. That form was *correct*, but only by accident: it
+                            // handles \\ and \" and nothing else, and the reason nothing
+                            // else turns up is that Windows rejects every other character
+                            // JsonEscape emits an escape for -- tab, newline, and the
+                            // control range -- in a path. So the field's own validity was
+                            // load-bearing. Routed through the shared helper instead, both
+                            // so the assumption stops being load-bearing and so there is
+                            // one unescaper to be right rather than two.
+                            lastFilePath = JsonUnescape(pathMatch.Groups[1].Value);
+                        }
                     }
                     catch {}
                 }
