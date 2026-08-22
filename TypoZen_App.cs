@@ -20,10 +20,32 @@ using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Web.WebView2.Core;
 using WinForms = System.Windows.Forms;
 
+// Assembly identity, so Explorer -> Properties -> Details reports a real version rather
+// than 0.0.0.0. Derived from Program.AppVersion rather than repeated: a const string plus
+// a literal is a compile-time constant, which is all an attribute argument has to be, so
+// there is exactly one place to edit and the resource cannot drift from the About modal.
+[assembly: System.Reflection.AssemblyTitle("TypoZen")]
+[assembly: System.Reflection.AssemblyProduct("TypoZen")]
+[assembly: System.Reflection.AssemblyDescription("WYSIWYG Markdown and text editor for Windows")]
+[assembly: System.Reflection.AssemblyVersion(TypoZen.Program.AppVersion + ".0")]
+[assembly: System.Reflection.AssemblyFileVersion(TypoZen.Program.AppVersion + ".0")]
+[assembly: System.Reflection.AssemblyInformationalVersion(TypoZen.Program.AppVersion)]
+
 namespace TypoZen
 {
     public class Program
     {
+        /// <summary>
+        /// The app's version, and the only place it is written down.
+        /// </summary>
+        /// <remarks>
+        /// Three digits, no "v" -- the tag carries that (v0.2.0, v0.1.0). The assembly
+        /// attributes above build their values from this, and the About modal is stamped
+        /// with it when the template is prepared for navigation, so a bump here reaches
+        /// the file properties and the UI together. Nothing else may hold a copy.
+        /// </remarks>
+        internal const string AppVersion = "0.2.1";
+
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool AllowSetForegroundWindow(uint dwProcessId);
 
@@ -807,6 +829,7 @@ namespace TypoZen
                 using (var stream = new FileStream(xamlPath, FileMode.Open, FileAccess.Read))
                 {
                     var window = (Window)XamlReader.Load(stream);
+                    Program.PerfMark("   xaml: XamlReader.Load");
                     this.Title = window.Title;
                     this.Width = window.Width;
                     this.Height = window.Height;
@@ -823,6 +846,7 @@ namespace TypoZen
                         }
                     }
                     catch {}
+                    Program.PerfMark("   xaml: icon");
 
                     var scope = NameScope.GetNameScope(window);
                     if (scope != null)
@@ -834,7 +858,9 @@ namespace TypoZen
                     window.Content = null;
                     this.Content = content;
                     ApplyNotepadTitleChrome();
+                    Program.PerfMark("   xaml: title chrome");
                     RestoreWindowState();
+                    Program.PerfMark("   xaml: window state restored");
                 }
             }
             catch (Exception ex)
@@ -869,6 +895,7 @@ namespace TypoZen
             _mRecentMenu = FindElement("mRecentMenu") as MenuItem;
             LoadRecentFiles();
             RebuildRecentFilesMenu();
+            Program.PerfMark("   xaml: recent files menu");
             BindClick("mSave", (s, e) => SaveFile());
             BindClick("mSaveAs", (s, e) => SaveFileAs());
             BindClick("mExportHtml", (s, e) => SendMsg("export_html"));
@@ -1140,6 +1167,7 @@ namespace TypoZen
                 }
             }
             catch {}
+            Program.PerfMark("   xaml: themes populated");
         }
 
         /// <summary>
@@ -3657,8 +3685,41 @@ namespace TypoZen
                 UpdateZoomLabel();
             }
             finally { _zoomApplying = false; }
-            // Persist without waiting for close — cheap and matches "remember my zoom"
-            try { SaveWindowState(); } catch { }
+            // Persist without waiting for close — matches "remember my zoom". Coalesced
+            // because zoom arrives one notch at a time; see SaveWindowStateDebounced.
+            SaveWindowStateDebounced();
+        }
+
+        private DispatcherTimer _windowStateSaveTimer;
+
+        /// <summary>
+        /// Fold a burst of window-state writes into one, a beat after the last change.
+        /// </summary>
+        /// <remarks>
+        /// The state file is small but the write is not free: it is a create-temp,
+        /// write, File.Replace sequence on the UI thread, measured at ~3.7 ms. Zoom
+        /// arrives one wheel notch at a time and every notch used to pay it, so a single
+        /// Ctrl+wheel gesture across twenty notches spent ~75 ms writing twenty copies of
+        /// a file that only the last one describes. Nothing waits for the close -- the
+        /// point of writing zoom eagerly -- it just stops writing once per notch. Closing
+        /// calls SaveWindowState directly, so a pending coalesce cannot be lost.
+        /// </remarks>
+        private void SaveWindowStateDebounced()
+        {
+            if (_windowStateSaveTimer == null)
+            {
+                _windowStateSaveTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(400)
+                };
+                _windowStateSaveTimer.Tick += (s, e) =>
+                {
+                    _windowStateSaveTimer.Stop();
+                    try { SaveWindowState(); } catch { }
+                };
+            }
+            _windowStateSaveTimer.Stop();
+            _windowStateSaveTimer.Start();
         }
 
         /// <summary>
@@ -3978,7 +4039,9 @@ namespace TypoZen
                 if (Math.Abs(z - _zoomFactor) < 0.001) return;
                 _zoomFactor = z;
                 UpdateZoomLabel();
-                try { SaveWindowState(); } catch { }
+                // Native Ctrl+wheel: one event per notch, so this is the burst that
+                // SaveWindowStateDebounced exists for.
+                SaveWindowStateDebounced();
             }
             catch { }
         }
@@ -4185,8 +4248,30 @@ namespace TypoZen
                             html,
                             @"href=""(css/typozen\.css)(?:\?[^""]*)?""",
                             "href=\"$1?v=" + v + "\"");
+                        // About modal: the version comes from Program.AppVersion, so the
+                        // page never holds a second copy to fall out of step with the
+                        // assembly resource. Idempotent -- the group match spans whatever
+                        // a previous stamp left behind.
+                        html = System.Text.RegularExpressions.Regex.Replace(
+                            html,
+                            @"(<div class=""tz-about-version"" id=""aboutVersion"">)[^<]*(</div>)",
+                            "${1}Version " + Program.AppVersion + "${2}");
                         string stamped = Path.Combine(_appDir, "TypoZen_Template.runtime.html");
-                        File.WriteAllText(stamped, html);
+                        // Only when it would actually differ. The stamp is derived from
+                        // module mtimes, so between edits every launch regenerated a file
+                        // byte-identical to the one already there -- and rewrote it anyway.
+                        // The app folder is a synced folder (OneDrive), where a write is not
+                        // free even when the content is: it is an upload, a version, and a
+                        // sync notification, on every start of the app, forever. Reading
+                        // 30 KB back to compare costs less than the write it usually avoids.
+                        bool needWrite = true;
+                        try
+                        {
+                            if (File.Exists(stamped))
+                                needWrite = !string.Equals(File.ReadAllText(stamped), html, StringComparison.Ordinal);
+                        }
+                        catch { needWrite = true; }   // unreadable: rewrite it
+                        if (needWrite) File.WriteAllText(stamped, html);
                         navName = "TypoZen_Template.runtime.html";
                     }
                     catch { /* fall back to unstamped template */ }
@@ -4638,7 +4723,7 @@ namespace TypoZen
                 // hover does not send this — so hover cannot pin.
                 _sidebarOpen = msg.Substring(14) == "1";
                 _sidebarPinned = _sidebarOpen;
-                if (!_sidebarPinned && _sidebarAutoHide) StartChromeWatch();
+                UpdateChromeWatch();
                 Dispatcher.BeginInvoke(new Action(() =>
                     SetToolbarActive(FindElement("btnToggleSidebar") as Button, _sidebarOpen)),
                     DispatcherPriority.Normal);
@@ -6037,21 +6122,67 @@ namespace TypoZen
 
         private void StartChromeWatch()
         {
-            if (_chromeWatch != null) return;
-            _chromeWatch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
-            _chromeWatch.Tick += (s, e) => ChromeWatchTick();
-            _chromeWatch.Start();
+            if (_chromeWatch == null)
+            {
+                _chromeWatch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
+                _chromeWatch.Tick += (s, e) => ChromeWatchTick();
+            }
+            // Not "return if it exists": once UpdateChromeWatch can stop it, the object
+            // outliving a Stop must still be restartable.
+            if (!_chromeWatch.IsEnabled) _chromeWatch.Start();
+        }
+
+        /// <summary>
+        /// Run the pointer watch only while a setting actually needs it.
+        /// </summary>
+        /// <remarks>
+        /// The condition is ChromeWatchTick's own guard, stated once: chrome auto-hide, or
+        /// an unpinned sidebar with edge-reveal switched on. Nothing used to stop the timer
+        /// -- turning both settings off left it ticking for the life of the process, waking
+        /// the UI thread ~17 times a second to re-read that guard and return. Cheap per
+        /// tick, but it keeps the process off idle and out of the OS timer coalescing that
+        /// a laptop on battery depends on. Every caller goes through here so the start
+        /// condition and the tick's guard cannot drift apart.
+        /// </remarks>
+        private void UpdateChromeWatch()
+        {
+            if (_chromeAutoHide || (_sidebarAutoHide && !_sidebarPinned))
+            {
+                StartChromeWatch();
+                return;
+            }
+            try { if (_chromeWatch != null) _chromeWatch.Stop(); } catch { }
         }
 
         /// <summary>True while a menu or toolbar dropdown is open — never hide under it.</summary>
+        /// <summary>The menus ChromeWatchTick polls. Created by the XAML load, never replaced.</summary>
+        private Menu[] _chromeWatchMenus;
+
         private bool IsAnyMenuOpen()
         {
             try
             {
-                foreach (string name in new[] { "topMenu", "headingMenu", "listMenu", "tableMenu" })
+                // Resolved once. This is reached on most watch ticks (~17/s while chrome
+                // auto-hide is on -- nearTop and nearLeft short-circuit it only when the
+                // pointer is in a reveal band), and looking four controls up by name every
+                // time to get objects that cannot have changed is work for nothing.
+                if (_chromeWatchMenus == null)
                 {
-                    var menu = FindElement(name) as Menu;
-                    if (menu == null) continue;
+                    var found = new List<Menu>(4);
+                    foreach (string name in new[] { "topMenu", "headingMenu", "listMenu", "tableMenu" })
+                    {
+                        var m = FindElement(name) as Menu;
+                        if (m != null) found.Add(m);
+                    }
+                    // Nothing found means the tree is not up yet, not that there are no
+                    // menus: cache that and the answer is "no menu is ever open" forever.
+                    if (found.Count == 0) return false;
+                    _chromeWatchMenus = found.ToArray();
+                }
+
+                for (int i = 0; i < _chromeWatchMenus.Length; i++)
+                {
+                    Menu menu = _chromeWatchMenus[i];
                     if (menu.IsKeyboardFocusWithin) return true;
                     foreach (object item in menu.Items)
                     {
@@ -6341,7 +6472,7 @@ namespace TypoZen
             if (!on) SetChromeHidden(false);
             // Pointer watch also drives left-edge sidebar hover when the bar is unpinned
             // and that reveal is switched on.
-            if (on || (_sidebarAutoHide && !_sidebarPinned)) StartChromeWatch();
+            UpdateChromeWatch();
             // Starts visible either way: you watch it retract rather than wondering where
             // it went, which is what makes the behaviour discoverable without a tutorial.
             if (!_applyingRestoredSettings) SaveWindowState();
@@ -6805,7 +6936,7 @@ namespace TypoZen
                 _leftHover = false;
                 if (!_sidebarPinned) SendMsg("cmd:sidebar_edge:0");
             }
-            if (on) StartChromeWatch();
+            UpdateChromeWatch();
             if (!_applyingRestoredSettings) SaveWindowState();
         }
 

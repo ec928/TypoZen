@@ -1469,6 +1469,15 @@
             color: var(--hi, var(--accent, #60A5FA));
             line-height: 1.2;
         }
+        .tz-about-version {
+            margin: 3px 0 0;
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+            color: var(--tx-muted, #A1A1AA);
+        }
+        .tz-about-version:empty {
+            display: none;
+        }
         .tz-about-tag {
             margin: 6px 0 0;
             font-size: 13px;
