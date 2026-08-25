@@ -169,7 +169,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
 - **Links** — hover a link for **Open Link**, **Show in Folder** and **Edit Link**; select text and use **Add Link** in the selection popover to make one. Both open a dialog with the visible text and the target.
   - A link to a file, relative to the document that contains it (`[notes](other-file.md)`) opens as a tab. Resolution happens in the host, because only the host knows where the document lives.
   - `http`, `https` and `mailto` open in the default browser and carry a `↗`. **Only** those three schemes are handed to the shell: a link's address comes out of document content, and without that restriction a `file:` or custom-scheme link would be a way to make opening a note launch a program. Everything path-shaped is opened as a *document*, which reads a file and cannot run one.
-  - `#heading` jumps within the document, through the same path an outline click uses.
+  - `#heading` jumps within the document, through the same path an outline click uses. Slugs follow the usual Markdown convention — lower-cased, punctuation dropped, each remaining space becoming its own hyphen, so `## Look & feel` is `#look--feel` — and letters in any script are kept, so `## 日本語` is `#日本語`. An anchor that matches no heading does nothing rather than guessing.
   - A plain click still places the caret — this is an editor, and link text has to stay editable. `Ctrl+click` opens directly.
 - Table insert (`Ctrl+T`)
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)

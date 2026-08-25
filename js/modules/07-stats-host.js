@@ -414,12 +414,27 @@
         function goToHeadingAnchor(hash) {
             const want = String(hash || '').replace(/^#/, '').trim().toLowerCase();
             if (!want) return false;
+            // The slug rule Markdown renderers use: lower-case, drop punctuation, and turn
+            // EACH remaining space into its own hyphen.
+            //
+            // Two details are load-bearing and were both wrong first time round.
+            // \w is ASCII, so every non-Latin heading -- CJK, Greek, Cyrillic, and any
+            // accented word reduced to nothing -- slugged to the empty string, and empty
+            // matched empty: in a document headed 日本語 and Ελλάδα, a link to the second
+            // jumped to the first, confidently and wrongly. \p{L}\p{N} keeps letters in
+            // every script instead. And collapsing runs of whitespace merged the two
+            // hyphens that removing punctuation leaves behind, so "Look & feel" became
+            // look-feel here and look--feel everywhere else, and a link copied from
+            // anywhere else did not match.
             const slug = function (t) {
                 return String(t || '').trim().toLowerCase()
-                    .replace(/[^\w\s-]/g, '')
-                    .replace(/\s+/g, '-');
+                    .replace(/[^\p{L}\p{N}_\s-]/gu, '')
+                    .replace(/\s/g, '-');
             };
             const target = slug(want);
+            // Nothing left to match on. Better to go nowhere than to land on whichever
+            // heading happens to slug the same way.
+            if (!target) return false;
             const list = _chapterEntries || [];
             for (let i = 0; i < list.length; i++) {
                 if (slug(list[i].title) === target) {
