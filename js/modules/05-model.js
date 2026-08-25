@@ -628,6 +628,240 @@
             _contentCache = null;
         }
 
+        /**
+         * Is the reader mid selection-drag, and where did the drag start?
+         *
+         * The virtual window keeps this block mounted for as long as the button is down,
+         * so auto-scrolling away from it does not delete the far end of the selection.
+         * Gated on the button rather than on "a selection exists": outside a drag, wheeling
+         * away from an old selection must NOT drag its block along and mount everything in
+         * between. Same principle as the page-mode drag guard in 03-shell -- do not finish
+         * what the browser started until the reader lets go.
+         */
+        // ---- Selection across a DOM rebuild -------------------------------------
+        //
+        // Both mount paths throw the editor away and rebuild it: paintWindow for the
+        // scrolling virtual window, mountPageChunk for the 800-block page window. Any
+        // Selection pointing into those nodes dies with them, so both have to save the
+        // selection first and put it back after. One implementation, used by both --
+        // the page path had none at all, which is why the fix for scrolling did nothing
+        // for Pages.
+
+        function describePoint(node, offset, allowEdgeClamp) {
+            if (!node) return null;
+            const block = getAncestorBlock(node);
+            if (block) {
+                const mi = DocumentModel.modelIndexOfEl(block);
+                if (mi < 0) return null;
+                const pre = document.createRange();
+                pre.selectNodeContents(block);
+                pre.setEnd(node, offset);
+                return { mi: mi, offset: pre.toString().length };
+            }
+            // Not in a block: past the mounted region the point sits inside a
+            // virt-spacer, the element standing in for every block above or below the
+            // window. It can be resolved to the window edge -- but ONLY for the focus,
+            // which the browser re-sets from the pointer on the next mousemove.
+            //
+            // allowEdgeClamp exists because this was got wrong once, with a comment
+            // above it saying the anchor is never clamped while the code clamped
+            // whichever end happened to be in the spacer. When a scrubber jump or a
+            // long drag took the ANCHOR out of the window, it was silently rewritten to
+            // virtStart -- so the selection quietly re-based itself somewhere earlier in
+            // the document and copied text the reader never highlighted. A lost
+            // selection is a nuisance; a selection that lies about its extent is data
+            // loss with a straight face. The anchor is resolved by identity or not at all.
+            if (!allowEdgeClamp) return null;
+            let el = node.nodeType === 3 ? node.parentElement : node;
+            const spacer = el && el.closest ? el.closest('[data-virt-spacer]') : null;
+            if (!spacer) return null;
+            if (spacer.getAttribute('data-virt-spacer') === 'top') {
+                return { mi: DocumentModel.virtStart, offset: 0, edge: 'top' };
+            }
+            return { mi: Math.max(0, DocumentModel.virtEnd - 1), offset: -1, edge: 'bottom' };
+        }
+
+        /** Range point for an offset, falling back to the block's own edges when the
+         *  text walk finds nothing -- an image-only or empty block has no text node to
+         *  land in, and returning null there skipped the restore entirely. */
+        function pointFor(el, offset) {
+            if (!el) return null;
+            if (offset < 0) return { node: el, offset: el.childNodes.length };
+            const hit = locateOffsetInBlock(el, offset);
+            if (hit) return hit.before ? { node: hit.node.parentNode, offset: 0 } : hit;
+            return { node: el, offset: offset > 0 ? el.childNodes.length : 0 };
+        }
+
+        /**
+         * The block span a live selection covers, or null when there is nothing to hold.
+         *
+         * Both mount paths need this, and they are in different files: the scrolling window
+         * widens itself in computeWindow, the page window in mountPageChunk. Exposed as a
+         * function so the page path is not reaching across for a `let`.
+         */
+        function selectionHoldSpan() {
+            if (!(_selDragActive || _selHoldAnchor)) return null;
+            let lo = _selHoldLo, hi = _selHoldHi;
+            if (_selDragAnchorMi >= 0) {
+                lo = lo < 0 ? _selDragAnchorMi : Math.min(lo, _selDragAnchorMi);
+                hi = hi < 0 ? _selDragAnchorMi : Math.max(hi, _selDragAnchorMi);
+            }
+            if (lo < 0 || hi < lo) return null;
+            if (hi - lo > SEL_DRAG_MAX_EXTEND) return null;
+            return { lo: lo, hi: hi };
+        }
+
+        /** Snapshot the live selection as model indices + offsets, or null. */
+        function captureSelectionForRemount() {
+            try {
+                const sel = window.getSelection();
+                if (!sel || sel.rangeCount === 0) return null;
+                let a = describePoint(sel.anchorNode, sel.anchorOffset, false);
+                // The anchor is never invented. If the live one cannot be named, fall back
+                // to the point this drag actually started from, which is remembered from
+                // when it WAS mounted -- the true anchor, not the edge of a window.
+                if (!a && _selDragAnchorPoint && (_selDragActive || _selHoldAnchor)) {
+                    a = _selDragAnchorPoint;
+                }
+                if (!a) return null;
+                const f = sel.isCollapsed ? a : describePoint(sel.focusNode, sel.focusOffset, true);
+                if (!f) return null;
+                return { a: a, f: f, collapsed: sel.isCollapsed };
+            } catch (e) { return null; }
+        }
+
+        /** Put a snapshot back after the rebuild. Silent when an endpoint did not survive. */
+        function restoreSelectionAfterRemount(saved) {
+            if (!saved) return;
+            try {
+                const aEl = elementForModelIndex(saved.a.mi);
+                if (saved.collapsed) {
+                    if (aEl) setCaretAtOffset(aEl, Math.max(0, saved.a.offset));
+                    return;
+                }
+                // No anchor element means the anchor block is outside the mounted window,
+                // and a Range cannot name a node that is not there. Leave the selection
+                // alone rather than anchor it somewhere convenient.
+                if (!aEl) return;
+                const fEl = elementForModelIndex(saved.f.mi);
+                const ap = pointFor(aEl, saved.a.offset);
+                const fp = pointFor(fEl, saved.f.offset);
+                if (ap && fp) {
+                    // setBaseAndExtent, not addRange: a drag has a direction, and
+                    // anchor/focus carry it. Collapsing to start/end would reverse a
+                    // backwards selection and the next mousemove would extend the wrong end.
+                    window.getSelection().setBaseAndExtent(ap.node, ap.offset, fp.node, fp.offset);
+                }
+            } catch (e) {}
+        }
+
+        let _selDragActive = false;
+        /**
+         * Keep holding the anchor after the button comes up, while the selection lives.
+         *
+         * Releasing used to drop the hold immediately, and the very next remount could not
+         * find the anchor block any more -- so a selection the reader had just finished
+         * making vanished a moment later, before they could copy it. The hold ends when the
+         * selection does: the next press, or a collapse.
+         */
+        let _selHoldAnchor = false;
+        let _selDragAnchorMi = -1;
+        /**
+         * Both ends of the live selection, as model indices, so the window can hold the
+         * whole thing. Holding only the anchor was not enough: a selection made left to
+         * right ends one block PAST the anchor, the window was stretched to exactly
+         * anchor+1 (exclusive), and the focus block fell outside it -- so the restore could
+         * not name the far end and gave up, and the selection vanished on the first scroll.
+         */
+        let _selHoldLo = -1, _selHoldHi = -1;
+        /**
+         * The far end of the live drag, as {mi, offset}, remembered across remounts.
+         *
+         * Auto-scroll remounts several times a second, and each cycle reads the live
+         * selection to save it. If one cycle happens to read a selection that a previous
+         * cycle has just torn down, it saves a collapsed one, and the restore re-anchors
+         * the drag wherever the caret landed -- the selection visibly shrinks and starts
+         * again from the wrong place. Holding the anchor here makes that self-healing:
+         * a collapsed reading mid-drag falls back to the last anchor known to be good
+         * instead of adopting the damage.
+         */
+        let _selDragAnchorPoint = null;
+        /**
+         * How far the window may be stretched to hold the anchor.
+         *
+         * This is not a tuning knob, it is the point where the selection breaks, so it is
+         * set past any selection somebody could plausibly make in one document rather than
+         * at a number that felt safe. 400 broke a 750-block drag; 2000 broke selecting from
+         * section 125 back to section 2 (about 4,000 lines) and re-based the anchor to the
+         * top of the mounted window, so the reader got a selection starting somewhere they
+         * had never clicked.
+         *
+         * A contiguous window means holding the anchor mounts everything between it and the
+         * focus -- that IS the selection, so the cost is proportional to what was asked for.
+         * The limit only exists so a runaway case (a 40,000-block book) cannot try to mount
+         * the whole thing; past it the selection is lost, never silently re-based.
+         */
+        const SEL_DRAG_MAX_EXTEND = 20000;
+
+        try {
+            document.addEventListener('mousedown', function (e) {
+                if (e.button !== 0 || !editor || !e.target || !editor.contains(e.target)) return;
+                _selDragActive = true;
+                _selHoldAnchor = false;
+                _selDragAnchorMi = -1;
+                _selHoldLo = _selHoldHi = -1;
+                try {
+                    const b = getAncestorBlock(e.target);
+                    if (b) _selDragAnchorMi = DocumentModel.modelIndexOfEl(b);
+                } catch (eA) {}
+            }, true);
+            document.addEventListener('mouseup', function () {
+                _selDragActive = false;
+                // Hand the hold over to the finished selection rather than dropping it.
+                let live = false;
+                try {
+                    const sel = window.getSelection();
+                    live = !!(sel && sel.rangeCount > 0 && !sel.isCollapsed);
+                    if (live) {
+                        // Record the span NOW. A short drag never triggers a remount, so
+                        // nothing has captured the ends yet -- and the next thing to happen
+                        // may be the reader dragging the scrollbar a thousand blocks away.
+                        const a = describePoint(sel.anchorNode, sel.anchorOffset, false);
+                        const f = describePoint(sel.focusNode, sel.focusOffset, false);
+                        if (a && f) {
+                            _selDragAnchorPoint = a;
+                            _selHoldLo = Math.min(a.mi, f.mi);
+                            _selHoldHi = Math.max(a.mi, f.mi);
+                            if (_selDragAnchorMi < 0) _selDragAnchorMi = a.mi;
+                        }
+                    }
+                } catch (eS) {}
+                if (live && (_selDragAnchorMi >= 0 || _selHoldLo >= 0)) {
+                    _selHoldAnchor = true;
+                } else {
+                    _selHoldAnchor = false;
+                    _selDragAnchorMi = -1;
+                    _selDragAnchorPoint = null;
+                    _selHoldLo = _selHoldHi = -1;
+                }
+            }, true);
+            // A selection that has gone away releases the window again.
+            try {
+                document.addEventListener('selectionchange', function () {
+                    if (!_selHoldAnchor || _selDragActive) return;
+                    try {
+                        const sel = window.getSelection();
+                        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+                            _selHoldAnchor = false;
+                            _selDragAnchorMi = -1;
+                            _selDragAnchorPoint = null;
+                            _selHoldLo = _selHoldHi = -1;
+                        }
+                    } catch (eC) {}
+                });
+            } catch (eSC) {}
+        } catch (eBind) {}
+
         let _virtScrollBound = false;
         let _virtScrollRaf = null;
 
@@ -715,6 +949,31 @@
                     }
                     end = Math.min(n, end + over);
                     if (end < start) end = start;
+
+                    // Hold the drag's anchor inside the window. Without this, dragging past
+                    // an edge auto-scrolls, the window moves off the block the selection
+                    // started in, and paintWindow deletes the node the anchor lives in --
+                    // so the selection dies mid-drag and the reader's button is still down.
+                    // Capped: a drag longer than SEL_DRAG_MAX_EXTEND blocks stops being
+                    // held rather than mounting an unbounded run of the document, which
+                    // leaves the long case exactly as it was instead of making it slow.
+                    if (_selDragActive || _selHoldAnchor) {
+                        // Both ends, and end is EXCLUSIVE -- hi + 1. A Range needs both of
+                        // its nodes present; one of them is not a selection.
+                        let lo = _selHoldLo, hi = _selHoldHi;
+                        if (_selDragAnchorMi >= 0) {
+                            lo = lo < 0 ? _selDragAnchorMi : Math.min(lo, _selDragAnchorMi);
+                            hi = hi < 0 ? _selDragAnchorMi : Math.max(hi, _selDragAnchorMi);
+                        }
+                        if (lo >= 0 && hi >= lo) {
+                            const want0 = Math.min(start, lo);
+                            const want1 = Math.max(end, hi + 1);
+                            if (want1 - want0 <= SEL_DRAG_MAX_EXTEND) {
+                                start = want0;
+                                end = Math.min(n, want1);
+                            }
+                        }
+                    }
                     return { start: start, end: end };
                 }
 
@@ -838,20 +1097,39 @@
                     }
                 }
 
-                let activeCaret = null;
+                // Save the WHOLE selection, not just a collapsed caret.
+                //
+                // paintWindow does editor.innerHTML = '' and rebuilds every mounted block,
+                // so a Selection pointing into them dies with the nodes. This used to save
+                // only `sel.isCollapsed` selections, which meant a range -- somebody
+                // dragging to select, or holding the button and reaching for the wheel --
+                // was destroyed by the next window shift and the drag simply ended.
+                //
+                // ANY shift did it, in either direction: a 60px wheel that moved the window
+                // two blocks was enough. It looked like a large-document fault only because
+                // virtualisation is what rebuilds the DOM, and that needs VIRT_MIN_CHARS /
+                // VIRT_MIN_BLOCKS to be crossed first. Small documents stay fully mounted
+                // and never hit it.
+                let savedSel = null;
                 try {
                     const sel = window.getSelection();
-                    if (sel && sel.rangeCount > 0 && sel.isCollapsed) {
-                        const range = sel.getRangeAt(0);
-                        const block = getAncestorBlock(range.startContainer);
-                        if (block) {
-                            const mi = DocumentModel.modelIndexOfEl(block);
-                            if (mi >= 0) {
-                                const pre = document.createRange();
-                                pre.selectNodeContents(block);
-                                pre.setEnd(range.startContainer, range.startOffset);
-                                activeCaret = { mi: mi, offset: pre.toString().length };
-                            }
+                    if (sel && sel.rangeCount > 0) {
+                        const a = describePoint(sel.anchorNode, sel.anchorOffset);
+                        const f = sel.isCollapsed ? a : describePoint(sel.focusNode, sel.focusOffset);
+                        if (a && f) savedSel = { a: a, f: f, collapsed: sel.isCollapsed };
+                    }
+                    if (_selDragActive) {
+                        if (savedSel && !savedSel.collapsed) {
+                            // A good reading: this is the anchor to fall back to next time.
+                            _selDragAnchorPoint = savedSel.a;
+                            _selHoldLo = Math.min(savedSel.a.mi, savedSel.f.mi);
+                            _selHoldHi = Math.max(savedSel.a.mi, savedSel.f.mi);
+                        } else if (_selDragAnchorPoint && savedSel) {
+                            // Collapsed mid-drag: the button is still down, so the reader has
+                            // not finished selecting. Re-anchor from the remembered point and
+                            // treat the live caret as the moving end, rather than saving the
+                            // collapse and making it permanent.
+                            savedSel = { a: _selDragAnchorPoint, f: savedSel.a, collapsed: false };
                         }
                     }
                 } catch (e) {}
@@ -868,10 +1146,30 @@
                     pinScrollToAnchor();
                 }
 
-                if (activeCaret) {
+                if (savedSel) {
                     try {
-                        const newBlock = elementForModelIndex(activeCaret.mi);
-                        if (newBlock) setCaretAtOffset(newBlock, activeCaret.offset);
+                        const aEl = elementForModelIndex(savedSel.a.mi);
+                        if (savedSel.collapsed) {
+                            if (aEl) setCaretAtOffset(aEl, Math.max(0, savedSel.a.offset));
+                        } else {
+                            const fEl = elementForModelIndex(savedSel.f.mi);
+                            const ap = pointFor(aEl, savedSel.a.offset);
+                            const fp = pointFor(fEl, savedSel.f.offset);
+                            if (ap && fp) {
+                                // setBaseAndExtent, not addRange: a drag has a direction, and
+                                // anchor/focus carry it. Collapsing it to start/end would
+                                // reverse a backwards selection, and the next mousemove would
+                                // then extend the wrong end.
+                                const sel = window.getSelection();
+                                sel.setBaseAndExtent(ap.node, ap.offset, fp.node, fp.offset);
+                            }
+                            // An endpoint whose block is no longer mounted cannot be
+                            // expressed in the DOM at all, so the selection is left alone
+                            // rather than clamped to the edge of the window. A clamped
+                            // selection would look continuous and copy silently short --
+                            // the reader would get less than they highlighted, with nothing
+                            // on screen saying so, which is worse than the drag ending.
+                        }
                     } catch (e) {}
                 }
 
@@ -1994,43 +2292,58 @@
             }
         }, { capture: true });
 
-        function setCaretAtOffset(el, targetOffset) {
-            const sel = window.getSelection();
-            const range = document.createRange();
+        /**
+         * Character offset within a block -> the (node, offset) pair a Range needs.
+         *
+         * Split out of setCaretAtOffset so the selection restore in remountVirtualWindow
+         * can place two endpoints with the same walk. One traversal to be right about,
+         * rather than a caret version and a nearly-identical range version that drift.
+         *
+         * Returns null when the offset lies past the end of the block; callers decide
+         * what that means (setCaretAtOffset puts the caret at the end).
+         */
+        function locateOffsetInBlock(el, targetOffset) {
             let currentOffset = 0;
-            let found = false;
+            let hit = null;
 
             function walk(node) {
-                if (found) return;
+                if (hit) return;
                 if (node.nodeType === Node.TEXT_NODE) {
                     const len = node.nodeValue.length;
                     if (currentOffset + len >= targetOffset) {
-                        range.setStart(node, targetOffset - currentOffset);
-                        range.collapse(true);
-                        sel.removeAllRanges();
-                        sel.addRange(range);
-                        found = true;
+                        hit = { node: node, offset: targetOffset - currentOffset, before: false };
                     } else {
                         currentOffset += len;
                     }
                 } else if (node.nodeName === 'BR') {
                     if (currentOffset >= targetOffset) {
-                        range.setStartBefore(node);
-                        range.collapse(true);
-                        sel.removeAllRanges();
-                        sel.addRange(range);
-                        found = true;
+                        hit = { node: node, offset: 0, before: true };
                     } else {
                         currentOffset += 1;
                     }
                 } else {
                     for (let i = 0; i < node.childNodes.length; i++) {
                         walk(node.childNodes[i]);
-                        if (found) return;
+                        if (hit) return;
                     }
                 }
             }
             walk(el);
+            return hit;
+        }
+
+        function setCaretAtOffset(el, targetOffset) {
+            const sel = window.getSelection();
+            const range = document.createRange();
+            const hit = locateOffsetInBlock(el, targetOffset);
+            const found = !!hit;
+            if (hit) {
+                if (hit.before) range.setStartBefore(hit.node);
+                else range.setStart(hit.node, hit.offset);
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
             // An empty block has no child nodes and no text to walk, so the guard that used
             // to stand here -- childNodes.length > 0 -- excluded the one case the fallback
             // exists for: the caret was left wherever it already was, and typing into a

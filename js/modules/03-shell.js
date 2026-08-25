@@ -549,16 +549,112 @@
                 // which is a no-op.
                 let _selDragging = false;
                 let _selDragPage = -1;
+                let _selEdgeTimer = null;
+                let _selEdgeY = 0;
+                // How close to the top/bottom counts as "asking for the next page", and how
+                // long the reader has to stay there. The dwell is the whole safety margin:
+                // an accidental overshoot on the way to a word is gone within a frame or two,
+                // while somebody who wants to keep selecting simply stays put.
+                const SEL_EDGE_PX = 26;
+                const SEL_EDGE_MS = 420;
+
+                /**
+                 * Turn the page while a selection drag is held against an edge.
+                 *
+                 * Pages sets the editor overflow-x: hidden precisely so Chromium CANNOT
+                 * auto-scroll it mid-drag -- that is what stopped reaching for the first word
+                 * throwing the reader to the previous page. The cost was that a drag could
+                 * not leave the page at all, so selecting across a page break was impossible
+                 * with the mouse and only worked if you turned pages with the wheel.
+                 *
+                 * So the turn is deliberate rather than incidental: it needs a button held, a
+                 * selection actually in progress, and the pointer parked at an edge for
+                 * SEL_EDGE_MS. None of those are true of the accidental nudge the original
+                 * fix was written for, so both behaviours can hold at once.
+                 */
+                function stopSelEdgeTurn() {
+                    if (_selEdgeTimer) { clearInterval(_selEdgeTimer); _selEdgeTimer = null; }
+                }
+                function startSelEdgeTurn() {
+                    stopSelEdgeTurn();
+                    _selEdgeTimer = setInterval(function () {
+                        if (!_selDragging || !isPaginatedLayout()) { stopSelEdgeTurn(); return; }
+                        let live = false;
+                        try {
+                            const sel = window.getSelection();
+                            live = !!(sel && sel.rangeCount > 0 && !sel.isCollapsed);
+                        } catch (eS) {}
+                        if (!live) return;              // a held button alone is not a selection
+                        let dir = 0;
+                        try {
+                            const r = editor.getBoundingClientRect();
+                            if (_selEdgeY <= r.top + SEL_EDGE_PX) dir = -1;
+                            else if (_selEdgeY >= r.bottom - SEL_EDGE_PX) dir = 1;
+                        } catch (eR) {}
+                        if (!dir) return;
+                        try {
+                            if (window.markProgrammaticScroll) window.markProgrammaticScroll(300);
+                            PageMap.step(dir);
+                            updatePageIndicator();
+                            // Turning is only half of it. The pointer is parked at the edge,
+                            // so after the turn it is not over the newly shown text and the
+                            // browser has no reason to extend anything -- the pages moved and
+                            // the selection sat still. Walk the focus onto the page that just
+                            // arrived, keeping the anchor: extend() moves the focus only,
+                            // which is exactly the "far end follows the reader" behaviour.
+                            try {
+                                const er = editor.getBoundingClientRect();
+                                const blocks = editor.querySelectorAll('.block');
+                                let target = null;
+                                for (let i = 0; i < blocks.length; i++) {
+                                    const b = blocks[i];
+                                    const r = b.getBoundingClientRect();
+                                    if (r.width === 0 && r.height === 0) continue;
+                                    if (r.right <= er.left + 1 || r.left >= er.right - 1) continue;
+                                    if (dir < 0) { target = b; break; }   // first on the page
+                                    target = b;                            // ... or the last
+                                }
+                                if (target) {
+                                    const sel2 = window.getSelection();
+                                    if (sel2 && sel2.rangeCount > 0) {
+                                        sel2.extend(target, dir < 0 ? 0 : target.childNodes.length);
+                                    }
+                                }
+                            } catch (eExt) {}
+                            // The reader is still dragging, so where they landed is now the
+                            // page to keep. Without this the mouseup restore would haul them
+                            // back to where the drag began and undo every turn.
+                            _selDragPage = PageGeometry.localIndex();
+                        } catch (eStep) {}
+                    }, SEL_EDGE_MS);
+                }
+                document.addEventListener('mousemove', function (e) {
+                    if (_selDragging) _selEdgeY = e.clientY;
+                }, true);
+
                 editor.addEventListener('mousedown', function (e) {
                     if (!isPaginatedLayout() || e.button !== 0) return;
                     _selDragging = true;
+                    _selEdgeY = e.clientY;
                     try { _selDragPage = PageGeometry.localIndex(); }
                     catch (eLi) { _selDragPage = -1; }
+                    startSelEdgeTurn();
                 });
                 document.addEventListener('mouseup', function () {
                     if (!_selDragging) return;
                     _selDragging = false;
+                    stopSelEdgeTurn();
                     if (!isPaginatedLayout() || _selDragPage < 0) return;
+                    // Only for a click or a nudge. This puts the page back where the drag
+                    // began, which is right when the browser's auto-scroll moved it while
+                    // somebody reached for the first word -- and wrong when they have
+                    // actually selected something across pages, because it scrolls them off
+                    // the text they just highlighted and undoes a deliberate turn. A live
+                    // range means they meant it, so leave them where they landed.
+                    try {
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount > 0 && !sel.isCollapsed) return;
+                    } catch (eSel) {}
                     try {
                         if (window.markProgrammaticScroll) window.markProgrammaticScroll(300);
                         PageGeometry.go(_selDragPage);

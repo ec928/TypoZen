@@ -4094,15 +4094,48 @@
 
         function mountPageChunk(c) {
             if (!editor || !pageWindowingActive()) return false;
+            // Same rebuild, same casualty as the scrolling window: everything below throws
+            // the editor away, so a selection pointing into it has to be carried across.
+            // Without this, dragging to select in Pages died the moment a chunk remounted --
+            // the fix for scroll mode lives in the other mount path and never ran here.
+            const _savedSel = (typeof captureSelectionForRemount === 'function')
+                ? captureSelectionForRemount() : null;
             const n = DocumentModel.blocks.length;
             PageChunks.ensure(n);
             c = Math.max(0, Math.min(c | 0, PageChunks.counts.length - 1));
 
             let start;
             let end;
-            // Reuse idle-built fragment when it matches this chunk and document size.
-            if (_warmPageChunk && _warmPageChunk.index === c
+            // A selection spanning more than this chunk needs BOTH its ends in the DOM, and
+            // Pages mounts exactly one 800-block range -- so scrolling to another range took
+            // the anchor's blocks away and the selection lost its far end. That is the whole
+            // reason selecting from section 33 back to section 1 failed while section 30
+            // back to 1 worked: 30 is still inside chunk 0, 33 is not.
+            const _span = (typeof selectionHoldSpan === 'function') ? selectionHoldSpan() : null;
+            const _base0 = PageChunks.firstBlockOfChunk(c);
+            const _base1 = Math.min(n, _base0 + PageChunks.size);
+            const _wide = !!(_span && (_span.lo < _base0 || _span.hi >= _base1));
+
+            if (_wide) {
+                // Mount the union of this range and the selection. Deliberately NOT reusing
+                // the warm fragment and NOT recording a measured page count below: both of
+                // those describe one chunk, and this is not one chunk. Page totals stay
+                // estimates for the ranges involved rather than being taught a wrong number.
+                start = Math.min(_base0, _span.lo);
+                end = Math.max(_base1, Math.min(n, _span.hi + 1));
+                const frag = document.createDocumentFragment();
+                for (let i = start; i < end; i++) {
+                    const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
+                    const el = createPreviewBlockEl(raw, false, i);
+                    el.setAttribute('data-model-index', String(i));
+                    if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
+                    frag.appendChild(el);
+                }
+                editor.innerHTML = '';
+                editor.appendChild(frag);
+            } else if (_warmPageChunk && _warmPageChunk.index === c
                 && _warmPageChunk.nBlocks === n && _warmPageChunk.frag) {
+                // Reuse idle-built fragment when it matches this chunk and document size.
                 start = _warmPageChunk.start;
                 end = _warmPageChunk.end;
                 editor.innerHTML = '';
@@ -4126,11 +4159,19 @@
 
             // One relayout after attach (was two — second only repeated measure work).
             try { PageGeometry.relayout(); } catch (eG) {}
-            PageChunks.setMeasured(c, PageGeometry.localCount());
+            // Only when the mount really is this chunk. localCount() over a widened mount
+            // counts pages for a different amount of document, and teaching that to the
+            // chunk as a measured figure would corrupt the page totals -- the one number
+            // the reader is told is exact.
+            if (!_wide) PageChunks.setMeasured(c, PageGeometry.localCount());
 
             if (!currentActiveBlock || !editor.contains(currentActiveBlock)) {
                 currentActiveBlock = editor.querySelector('.block');
             }
+            try {
+                if (typeof restoreSelectionAfterRemount === 'function')
+                    restoreSelectionAfterRemount(_savedSel);
+            } catch (eSel) {}
             try { repaintFindHighlights(); } catch (eF) {}
             // Remount wiped .tz-marked and Highlight ranges — put them back now.
             try { repaintMarkSurface(); } catch (eMk) {}
