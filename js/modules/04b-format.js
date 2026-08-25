@@ -357,7 +357,12 @@
                 let inner = body.slice(r0, r1) || 'Link Text';
                 const m = inner.match(/^\[([^\]]*)\]\([^)]*\)$/);
                 if (m) return withPrefix(body.slice(0, r0) + m[1] + body.slice(r1));
-                return withPrefix(body.slice(0, r0) + '[' + inner + '](https://)' + body.slice(r1));
+                // _pendingLink carries what the dialog collected. Set through this path
+                // rather than a second insert routine so the prefix and offset handling
+                // that already works for every other inline format is the only copy.
+                const lt = (_pendingLink && _pendingLink.text) || inner;
+                const lu = (_pendingLink && _pendingLink.url) || 'https://';
+                return withPrefix(body.slice(0, r0) + '[' + lt + '](' + lu + ')' + body.slice(r1));
             }
 
             if (type === 'code') {
@@ -433,9 +438,11 @@
                 else if (type === 'code') { open = '`'; close = '`'; }
                 else if (type === 'strike') { open = '~~'; close = '~~'; }
                 else if (type === 'link') {
-                    const inner = full.slice(start, end) || 'Link Text';
+                    const inner0 = full.slice(start, end) || 'Link Text';
+                    const inner = (_pendingLink && _pendingLink.text) || inner0;
+                    const lu = (_pendingLink && _pendingLink.url) || 'https://';
                     HistoryManager.beginEdit();
-                    sourceSetRangeTextPreserveScroll('[' + inner + '](https://)', start, end, 'select');
+                    sourceSetRangeTextPreserveScroll('[' + inner + '](' + lu + ')', start, end, 'select');
                     resizeSourceEditor();
                     updateStats();
                     HistoryManager.commitEdit();
@@ -1707,6 +1714,50 @@
                 if (sel && sel.isCollapsed) refreshLastGoodDocRaws();
             } catch (err) {}
         }, true);
+        // --- Links: add and edit ----------------------------------------------------
+        let _pendingLink = null;
+
+        /** Wrap the current selection as a link with the values the dialog collected. */
+        function applyLinkAdd(text, url) {
+            _pendingLink = { text: text, url: url };
+            try { return applyFormatting('link'); }
+            finally { _pendingLink = null; }
+        }
+
+        /**
+         * Rewrite an existing link.
+         *
+         * By POSITION among the block's anchors, not by matching text: two links in one
+         * paragraph can read the same and point the same way, and the reader means the one
+         * they hovered. The nth anchor in the rendered block is the nth [text](url) in its
+         * raw, which sidesteps mapping a DOM range back onto markdown offsets -- the step
+         * that quietly eats a character when a URL contains a bracket.
+         */
+        function applyLinkEdit(a, text, url) {
+            if (!a) return false;
+            const block = a.closest ? a.closest('.block') : null;
+            if (!block) return false;
+            const anchors = Array.prototype.slice.call(block.querySelectorAll('a'));
+            const idx = anchors.indexOf(a);
+            if (idx < 0) return false;
+            const raw = block.getAttribute('data-raw') || '';
+            const re = /\[([^\]]*)\]\(([^)]*)\)/g;
+            let m, i = 0, hit = null;
+            while ((m = re.exec(raw)) !== null) {
+                if (i === idx) { hit = m; break; }
+                i++;
+            }
+            if (!hit) return false;
+            const next = raw.slice(0, hit.index) + '[' + text + '](' + url + ')'
+                       + raw.slice(hit.index + hit[0].length);
+            HistoryManager.beginEdit();
+            writeBlockRaw(block, next);
+            updateStats();
+            updateOutline();
+            HistoryManager.commitEdit();
+            return true;
+        }
+
         // Following a link.
         //
         // A link inside a book jumps within the document. The whole book is already open,
@@ -1723,15 +1774,28 @@
         // plain click follows -- which is also what the book path has always done.
         editor.addEventListener('click', function (e) {
             const a = e.target && e.target.closest ? e.target.closest('a') : null;
-            if (!a) return;
+            if (!a) { try { hideLinkPop(); } catch (eH) {} return; }
             const isBook = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
-            if (!isBook && editor.isContentEditable && !(e.ctrlKey || e.metaKey)) return;
 
             const target = a.getAttribute('data-book-href') || a.getAttribute('href');
             if (!target) return;
 
-            // An in-document anchor is left exactly as it was rather than half-handled.
-            if (!isBook && target.charAt(0) === '#') return;
+            // An in-document anchor goes to the heading it names, the same way clicking
+            // that heading in the outline does.
+            if (!isBook && target.charAt(0) === '#') {
+                if (editor.isContentEditable && !(e.ctrlKey || e.metaKey)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                try { hideLinkPop(); } catch (eA) {}
+                try { goToHeadingAnchor(target); } catch (eB) {}
+                return;
+            }
+
+            // Plain click keeps the caret: this is an editor, and a click that navigated
+            // away from the text you were about to edit is a document-reader's behaviour.
+            // The actions live on the hover chip, so nothing is hidden behind a chord.
+            if (!isBook && editor.isContentEditable && !(e.ctrlKey || e.metaKey)) return;
+            try { hideLinkPop(); } catch (eH2) {}
 
             e.preventDefault();
             e.stopPropagation();

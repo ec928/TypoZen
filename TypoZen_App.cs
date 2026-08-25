@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.5";
+        internal const string AppVersion = "0.2.6";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4390,43 +4390,51 @@ namespace TypoZen
             // which only the host can do, because only the host knows where that document
             // lives. Opened the way File -> Open opens anything, never handed to the shell,
             // so a link to an .exe becomes a failed document open rather than a program.
+            // "Show in Folder" on the link chip. Same resolution as open_doc, then the
+            // same Explorer call the status-bar path already makes.
+            if (msg.StartsWith("reveal_doc:"))
+            {
+                try
+                {
+                    string full = ResolveLinkPath(Uri.UnescapeDataString(msg.Substring("reveal_doc:".Length)));
+                    if (full == null) return;
+                    if (File.Exists(full))
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = "explorer.exe",
+                            Arguments = "/select,\"" + full + "\"",
+                            UseShellExecute = true
+                        });
+                    }
+                    else NotifyLink("Link target not found:\n\n" + full);
+                }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine("reveal_doc: " + ex.Message); }
+                return;
+            }
+
             if (msg.StartsWith("open_doc:"))
             {
                 try
                 {
-                    string rel = Uri.UnescapeDataString(msg.Substring("open_doc:".Length)).Trim();
-                    // A trailing #section or ?query belongs to the link, not the filename.
-                    int cut = rel.IndexOfAny(new[] { '#', '?' });
-                    if (cut >= 0) rel = rel.Substring(0, cut);
-                    rel = rel.Replace('/', Path.DirectorySeparatorChar).Trim();
-                    if (rel.Length == 0) return;
-
-                    string full;
-                    if (Path.IsPathRooted(rel))
+                    string full = ResolveLinkPath(Uri.UnescapeDataString(msg.Substring("open_doc:".Length)));
+                    if (full == null) return;
+                    if (File.Exists(full))
                     {
-                        full = Path.GetFullPath(rel);
-                    }
-                    else
-                    {
-                        string baseDir = string.IsNullOrEmpty(_currentFilePath)
-                            ? null : Path.GetDirectoryName(_currentFilePath);
-                        if (string.IsNullOrEmpty(baseDir))
+                        // Deferred, never straight from here. LoadFileFromPath pulls editor
+                        // state with a blocking script call, and that result cannot arrive
+                        // while this WebView2 message handler is still on the stack waiting
+                        // for it: it stalls to the timeout and reports that the editor could
+                        // not be reached. Session restore learned this the same way.
+                        string openPath = full;
+                        Dispatcher.BeginInvoke(new Action(delegate
                         {
-                            // An unsaved buffer has no folder, so "beside this file" has no
-                            // meaning yet. Say so rather than guessing at a working directory.
-                            NotifyLink("This document has not been saved yet, so a link relative to it has nowhere to start from.\n\nSave it first, then the link will resolve beside it.");
-                            return;
-                        }
-                        full = Path.GetFullPath(Path.Combine(baseDir, rel));
+                            try { LoadFileFromPath(openPath); } catch { }
+                        }), DispatcherPriority.Background);
                     }
-
-                    if (File.Exists(full)) LoadFileFromPath(full);
                     else NotifyLink("Link target not found:\n\n" + full);
                 }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine("open_doc: " + ex.Message);
-                }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine("open_doc: " + ex.Message); }
                 return;
             }
 
@@ -11392,6 +11400,33 @@ namespace TypoZen
                     if (_statusIndicator != null) _statusIndicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"));
                 }
             }
+        }
+
+        /// <summary>
+        /// A link's target as a full path, or null when it cannot be resolved.
+        /// </summary>
+        /// <remarks>
+        /// Relative to the document that contains the link, which only the host knows.
+        /// A trailing #section or ?query belongs to the link, not to the filename.
+        /// </remarks>
+        private string ResolveLinkPath(string rel)
+        {
+            if (rel == null) return null;
+            rel = rel.Trim();
+            int cut = rel.IndexOfAny(new[] { '#', '?' });
+            if (cut >= 0) rel = rel.Substring(0, cut);
+            rel = rel.Replace('/', Path.DirectorySeparatorChar).Trim();
+            if (rel.Length == 0) return null;
+            if (Path.IsPathRooted(rel)) return Path.GetFullPath(rel);
+
+            string baseDir = string.IsNullOrEmpty(_currentFilePath)
+                ? null : Path.GetDirectoryName(_currentFilePath);
+            if (string.IsNullOrEmpty(baseDir))
+            {
+                NotifyLink("This document has not been saved yet, so a link relative to it has nowhere to start from.\n\nSave it first, then the link will resolve beside it.");
+                return null;
+            }
+            return Path.GetFullPath(Path.Combine(baseDir, rel));
         }
 
         /// <summary>

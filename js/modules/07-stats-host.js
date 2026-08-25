@@ -352,6 +352,84 @@
         /** Block index of the chapter currently shown in the status bar (for click-to-jump). */
         let _currentChapterBi = -1;
 
+        /**
+         * Show a model block, using whatever path the current layout already uses.
+         *
+         * Lifted out of the outline click so an in-document #anchor can arrive at a
+         * heading the same way clicking it in the outline does, rather than growing a
+         * third bespoke way of getting somewhere.
+         */
+        function jumpToModelBlock(idx) {
+                    // Use whatever the current layout already uses to show a block, rather
+                    // than a third bespoke path.
+                    //
+                    // This used to seed mainContainer.scrollTop and then call
+                    // mountVirtWindow. Under virtualization the remount rebuilds the
+                    // spacers, the document height briefly collapses, and the browser
+                    // clamps the scroll back to 0 -- so clicking an outline entry moved the
+                    // caret and the status line but left the view exactly where it was.
+                    // The whole handler was wrapped in a bare catch, so nothing said so.
+                    try {
+                        const line = modelBlockStartLine(idx);
+                        try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
+                        if (DocumentModel && DocumentModel.kind === 'epub') {
+                            goToModelBlock(idx);
+                            return;
+                        }
+                        if (isPaginatedLayout()) {
+                            goToPageHoldingBlock(idx);
+                        } else {
+                            // Handles the virtualized remount, and re-restores across frames.
+                            restoreStickyDocumentLine(line);
+                        }
+                        try { updateStatsNow({ forceCaretLine: line }); } catch (eU) {}
+                        try { postChapterLabel(); } catch (eCh) {}
+
+                        // Flash the target once it is on screen, whichever path got it there.
+                        setTimeout(function () {
+                            const el = elementForModelIndex(idx);
+                            if (!el) return;
+                            // The flash goes through the same door as everything else, so
+                            // it cannot leave a second block shaded when it fires after a
+                            // search reveal has already chosen one.
+                            setFocusedBlock(el);
+                            setTimeout(function () {
+                                try { el.classList.remove('focused'); } catch (e) {}
+                            }, 1200);
+                        }, 120);
+                    } catch (e2) {
+                        window.showDebugTelemetry('outline click failed: ' + e2.message);
+                    }
+                        }
+
+        /**
+         * Follow a same-document #anchor to the heading it names.
+         *
+         * Slugs are matched the way Markdown renderers make them -- lowercased, spaces to
+         * hyphens, punctuation dropped -- against the headings already collected for the
+         * outline, so there is one list of headings and not a second index to fall out of
+         * step with it. Returns false when nothing matches, and the caller leaves the link
+         * alone rather than jumping somewhere arbitrary.
+         */
+        function goToHeadingAnchor(hash) {
+            const want = String(hash || '').replace(/^#/, '').trim().toLowerCase();
+            if (!want) return false;
+            const slug = function (t) {
+                return String(t || '').trim().toLowerCase()
+                    .replace(/[^\w\s-]/g, '')
+                    .replace(/\s+/g, '-');
+            };
+            const target = slug(want);
+            const list = _chapterEntries || [];
+            for (let i = 0; i < list.length; i++) {
+                if (slug(list[i].title) === target) {
+                    try { jumpToModelBlock(list[i].bi); } catch (e) { return false; }
+                    return true;
+                }
+            }
+            return false;
+        }
+
         function updateOutline() {
             if (!outlineList) return;
             outlineList.innerHTML = '';
@@ -399,48 +477,7 @@
                 const item = document.createElement('div');
                 item.className = 'outline-item outline-h' + level;
                 item.innerText = title;
-                item.onclick = function () {
-                    // Use whatever the current layout already uses to show a block, rather
-                    // than a third bespoke path.
-                    //
-                    // This used to seed mainContainer.scrollTop and then call
-                    // mountVirtWindow. Under virtualization the remount rebuilds the
-                    // spacers, the document height briefly collapses, and the browser
-                    // clamps the scroll back to 0 -- so clicking an outline entry moved the
-                    // caret and the status line but left the view exactly where it was.
-                    // The whole handler was wrapped in a bare catch, so nothing said so.
-                    try {
-                        const line = modelBlockStartLine(idx);
-                        try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
-                        if (DocumentModel && DocumentModel.kind === 'epub') {
-                            goToModelBlock(idx);
-                            return;
-                        }
-                        if (isPaginatedLayout()) {
-                            goToPageHoldingBlock(idx);
-                        } else {
-                            // Handles the virtualized remount, and re-restores across frames.
-                            restoreStickyDocumentLine(line);
-                        }
-                        try { updateStatsNow({ forceCaretLine: line }); } catch (eU) {}
-                        try { postChapterLabel(); } catch (eCh) {}
-
-                        // Flash the target once it is on screen, whichever path got it there.
-                        setTimeout(function () {
-                            const el = elementForModelIndex(idx);
-                            if (!el) return;
-                            // The flash goes through the same door as everything else, so
-                            // it cannot leave a second block shaded when it fires after a
-                            // search reveal has already chosen one.
-                            setFocusedBlock(el);
-                            setTimeout(function () {
-                                try { el.classList.remove('focused'); } catch (e) {}
-                            }, 1200);
-                        }, 120);
-                    } catch (e2) {
-                        window.showDebugTelemetry('outline click failed: ' + e2.message);
-                    }
-                };
+                item.onclick = function () { jumpToModelBlock(idx); };
                 outlineList.appendChild(item);
             }
 

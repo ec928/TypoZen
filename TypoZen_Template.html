@@ -239,8 +239,44 @@
                  in the way. -->
             <button type="button" id="selPopLookup" class="selpop-btn">Look up</button>
             <button type="button" id="selPopFind" class="selpop-btn">Find in document</button>
+            <button type="button" id="selPopLink" class="selpop-btn"><span aria-hidden="true">&#128279;</span> Add Link</button>
         </div>
         <div id="selPopBody" class="selpop-body" hidden></div>
+    </div>
+
+    <!-- Link chip. Same component as the selection popover above, deliberately: a link is
+         another thing you point at and act on, and the app already has a language for that.
+         Shown by a plain click, which still puts the caret where it was clicked -- Preview
+         is an editing surface and the text of a link has to stay editable -- so the action
+         is offered rather than hidden behind a chord nobody can discover. -->
+    <div id="linkPop" hidden role="dialog" aria-label="Link">
+        <div class="selpop-actions">
+            <button type="button" id="linkPopReveal" class="selpop-btn"><span aria-hidden="true">&#128193;</span> Show in Folder</button>
+            <button type="button" id="linkPopOpen" class="selpop-btn selpop-btn-primary"><span aria-hidden="true">&#9654;</span> Open Link</button>
+            <button type="button" id="linkPopEdit" class="selpop-btn"><span aria-hidden="true">&#9998;</span> Edit Link</button>
+        </div>
+    </div>
+
+    <!-- Link dialog. Same overlay the Help and About panels use, so it is themed and
+         behaves the same: Esc closes, the panel takes focus, nothing is a MessageBox. -->
+    <div id="linkModal" class="tz-help-overlay" hidden role="presentation">
+        <div class="tz-help-panel tz-link-panel" role="dialog" aria-modal="true" aria-labelledby="linkModalTitle" tabindex="-1">
+            <header class="tz-help-head">
+                <h2 id="linkModalTitle">Add Link</h2>
+                <button type="button" id="linkModalClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">&#10005;</button>
+            </header>
+            <div class="tz-help-body">
+                <label class="tz-link-label" for="linkModalText">Text</label>
+                <input type="text" id="linkModalText" class="tz-link-input" autocomplete="off" spellcheck="false">
+                <label class="tz-link-label" for="linkModalHref">Link</label>
+                <input type="text" id="linkModalHref" class="tz-link-input" autocomplete="off" spellcheck="false"
+                       placeholder="https://example.com  or  notes/other-file.md">
+            </div>
+            <footer class="tz-help-foot">
+                <span class="tz-help-hint">Esc to cancel</span>
+                <button type="button" id="linkModalOk" class="tz-help-ok">Save</button>
+            </footer>
+        </div>
     </div>
 
     <div id="findBar" role="search" aria-label="Find and Replace" tabindex="-1">
@@ -436,6 +472,7 @@
                     <h3>Files</h3>
                     <ul class="tz-about-list">
                         <li>Open Markdown, text, epub, PDF, common images and media. Save text as UTF-8 (atomic write). Export HTML; Print / PDF.</li>
+                        <li><strong>Links</strong> — hover one for <em>Open Link</em>, <em>Show in Folder</em> and <em>Edit Link</em>. A link to a file beside the document opens it in a tab, <code>http</code> links open in your browser, and <code>#heading</code> jumps within the document. Select text and use <strong>Add Link</strong> to make one.</li>
                         <li>Click the status-bar path to reveal the file in Explorer.</li>
                     </ul>
                 </section>

@@ -1931,6 +1931,199 @@
             if (el) { el.hidden = true; const b = document.getElementById('selPopBody'); if (b) b.hidden = true; }
         }
 
+        // --- Link chip -------------------------------------------------------------
+        //
+        // Clicking a link in Preview must still put the caret where it was clicked: the
+        // text of a link has to stay editable. So the click cannot follow the link, and
+        // for a long time that meant it did nothing at all and the only way through was
+        // Ctrl+click -- a chord with no affordance anywhere on screen.
+        //
+        // The chip is the answer the app already had a shape for. Same surface as the
+        // selection popover, anchored to the link, naming where it goes and offering the
+        // one action. Nothing to know in advance.
+        let _linkPopHref = '';
+        let _linkPopAnchor = null;
+        let _linkPopExternal = false;
+        let _linkHoverTimer = null;
+
+        function cancelHideLinkPop() {
+            if (_linkHoverTimer) { clearTimeout(_linkHoverTimer); _linkHoverTimer = null; }
+        }
+        function scheduleHideLinkPop() {
+            cancelHideLinkPop();
+            _linkHoverTimer = setTimeout(hideLinkPop, 260);
+        }
+
+        function hideLinkPop() {
+            const el = document.getElementById('linkPop');
+            if (el) el.hidden = true;
+            _linkPopHref = '';
+            _linkPopAnchor = null;
+        }
+
+        function showLinkPop(a) {
+            const pop = document.getElementById('linkPop');
+            if (!pop || !a) return;
+            const href = a.getAttribute('data-book-href') || a.getAttribute('href') || '';
+            if (!href) return;
+            _linkPopHref = href;
+            _linkPopAnchor = a;
+            _linkPopExternal = /^(https?:|mailto:)/i.test(href);
+            const isAnchor = href.charAt(0) === '#';
+
+            // Show in Folder only means something for a file on disk -- not for a web
+            // address, and not for a heading in this document.
+            const rev = document.getElementById('linkPopReveal');
+            if (rev) rev.hidden = _linkPopExternal || isAnchor;
+            const openBtn = document.getElementById('linkPopOpen');
+            if (openBtn) openBtn.lastChild.textContent = _linkPopExternal ? ' Open in Browser'
+                                                       : isAnchor ? ' Go to Heading' : ' Open Link';
+
+            try { hideSelPop(); } catch (e) {}
+            pop.hidden = false;
+
+            const r = a.getBoundingClientRect();
+            const w = pop.offsetWidth || 260, h = pop.offsetHeight || 36;
+            let x = r.left + r.width / 2 - w / 2;
+            let y = r.bottom + 8;                       // below, so it never covers the link
+            if (y + h > window.innerHeight - 4) y = Math.max(4, r.top - h - 8);
+            x = Math.max(6, Math.min(x, window.innerWidth - w - 6));
+            pop.style.left = Math.round(x) + 'px';
+            pop.style.top = Math.round(y) + 'px';
+        }
+
+        function followLinkTarget(href) {
+            if (!href) return;
+            if (/^(https?:|mailto:)/i.test(href)) postMsg('open_external:' + encodeURIComponent(href));
+            else postMsg('open_doc:' + encodeURIComponent(href));
+        }
+
+        (function wireLinkPop() {
+            const pop = document.getElementById('linkPop');
+            if (!pop || pop.__tzWired) return;
+            pop.__tzWired = true;
+            // Same reason as the selection popover: taking focus would move the caret the
+            // reader just placed.
+            pop.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            const open = document.getElementById('linkPopOpen');
+            if (open) open.addEventListener('click', function () {
+                const href = _linkPopHref;
+                hideLinkPop();
+                if (href && href.charAt(0) === '#') {
+                    try { goToHeadingAnchor(href); } catch (eA) {}
+                    return;
+                }
+                followLinkTarget(href);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') hideLinkPop();
+            }, true);
+            // Anything that moves the document out from under it closes it.
+            try {
+                if (mainContainer) mainContainer.addEventListener('scroll', hideLinkPop, { passive: true });
+                if (editor) editor.addEventListener('scroll', hideLinkPop, { passive: true });
+            } catch (eS) {}
+
+            const reveal = document.getElementById('linkPopReveal');
+            if (reveal) reveal.addEventListener('click', function () {
+                const href = _linkPopHref;
+                hideLinkPop();
+                if (href && !/^(https?:|mailto:)/i.test(href)) postMsg('reveal_doc:' + encodeURIComponent(href));
+            });
+
+            const editBtn = document.getElementById('linkPopEdit');
+            if (editBtn) editBtn.addEventListener('click', function () {
+                const a = _linkPopAnchor;
+                hideLinkPop();
+                if (a) openLinkModal(a);
+            });
+
+            // Hovering the chip keeps it up: the reader has to be able to travel from the
+            // link to the button without it vanishing on the way.
+            pop.addEventListener('mouseenter', cancelHideLinkPop);
+            pop.addEventListener('mouseleave', scheduleHideLinkPop);
+        })();
+
+        // Hover shows the chip; moving away hides it. No click needed to discover that a
+        // link can be acted on, and no click spent getting to the action.
+        (function wireLinkHover() {
+            if (!editor) return;
+            editor.addEventListener('mouseover', function (e) {
+                const a = e.target && e.target.closest ? e.target.closest('a') : null;
+                if (!a) return;
+                if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') return;
+                const href = a.getAttribute('href') || '';
+                if (!href) return;
+                // Chromium adds its own tooltip for a link in an editable region, saying
+                // the same thing a second later. An empty title takes it away.
+                try { if (!a.hasAttribute('title')) a.setAttribute('title', ''); } catch (eT) {}
+                cancelHideLinkPop();
+                showLinkPop(a);
+            });
+            editor.addEventListener('mouseout', function (e) {
+                const a = e.target && e.target.closest ? e.target.closest('a') : null;
+                if (a) scheduleHideLinkPop();
+            });
+        })();
+
+        // --- Link dialog ------------------------------------------------------------
+        let _linkEditAnchor = null;
+
+        function closeLinkModal() {
+            const m = document.getElementById('linkModal');
+            if (!m) return;
+            m.hidden = true;
+            m.classList.remove('open');
+            _linkEditAnchor = null;
+            try { if (editor) focusEditorNoScroll(); } catch (e) {}
+        }
+
+        /** anchor = the link being edited, or null to make a new one from the selection. */
+        function openLinkModal(anchor) {
+            const m = document.getElementById('linkModal');
+            if (!m) return;
+            _linkEditAnchor = anchor || null;
+            const title = document.getElementById('linkModalTitle');
+            const tIn = document.getElementById('linkModalText');
+            const hIn = document.getElementById('linkModalHref');
+            if (title) title.textContent = anchor ? 'Edit Link' : 'Add Link';
+            if (tIn) tIn.value = anchor ? (anchor.textContent || '') : (currentSelectionText() || '');
+            if (hIn) hIn.value = anchor ? (anchor.getAttribute('href') || '') : '';
+            hideLinkPop();
+            try { hideSelPop(); } catch (e) {}
+            m.hidden = false;
+            m.classList.add('open');
+            // The half most likely to need typing gets the caret: a new link already has
+            // its text from the selection, an edit usually needs neither or both.
+            try { (anchor ? hIn : (tIn.value ? hIn : tIn)).focus(); } catch (e2) {}
+        }
+
+        (function wireLinkModal() {
+            const m = document.getElementById('linkModal');
+            if (!m || m.__tzWired) return;
+            m.__tzWired = true;
+            const ok = document.getElementById('linkModalOk');
+            const close = document.getElementById('linkModalClose');
+            const commit = function () {
+                const t = (document.getElementById('linkModalText') || {}).value || '';
+                const u = (document.getElementById('linkModalHref') || {}).value || '';
+                if (!u.trim()) { closeLinkModal(); return; }
+                const anchor = _linkEditAnchor;
+                closeLinkModal();
+                try {
+                    if (anchor) applyLinkEdit(anchor, t.trim() || u.trim(), u.trim());
+                    else applyLinkAdd(t.trim() || u.trim(), u.trim());
+                } catch (e) {}
+            };
+            if (ok) ok.addEventListener('click', commit);
+            if (close) close.addEventListener('click', closeLinkModal);
+            m.addEventListener('click', function (e) { if (e.target === m) closeLinkModal(); });
+            m.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeLinkModal(); }
+                else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); }
+            });
+        })();
+
         /** True while the popover is showing an answer, which must outlive its selection. */
         function selPopHoldsResult() {
             const pop = document.getElementById('selPop');
@@ -2195,6 +2388,10 @@
                 if (made) {
                     try { handleCommand('show_marks'); } catch (e2) {}
                 }
+            });
+            const linkBtn = document.getElementById('selPopLink');
+            if (linkBtn) linkBtn.addEventListener('click', function () {
+                openLinkModal(null);
             });
             const lookupBtn = document.getElementById('selPopLookup');
             if (lookupBtn) lookupBtn.addEventListener('click', function () {

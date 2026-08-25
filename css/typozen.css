@@ -1266,6 +1266,29 @@
         }
         #selPop[hidden] { display: none; }
         .selpop-actions { display: flex; gap: 2px; padding: 4px; }
+        /* The link chip is the selection popover's twin: same surface, same buttons.
+           One component, two things you can point at. */
+        #linkPop {
+            position: fixed;
+            z-index: 40;
+            max-width: 460px;
+            background-color: var(--bg, #18181B);
+            background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            border: 1px solid var(--border, #3F3F46);
+            border-radius: 6px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+            /* No padding here: .selpop-actions already carries it, and having both made
+               the chip taller than the selection popover it is meant to match. */
+        }
+        .selpop-btn-primary {
+            color: var(--tx, #F4F4F5);
+            font-weight: 600;
+        }
+        .selpop-btn-primary:hover {
+            background: var(--accent-bg, rgba(59, 130, 246, 0.15));
+            color: var(--hi, var(--accent, #60A5FA));
+        }
+
         .selpop-btn {
             display: flex; align-items: center; gap: 5px;
             background: none; border: 0; border-radius: 4px;
@@ -1295,6 +1318,29 @@
         /* Prefer .open over [hidden] so we do not fight the UA [hidden] rule. */
         .tz-help-overlay[hidden] {
             display: none !important;
+        }
+        .tz-link-panel { width: min(460px, 100%); }
+        .tz-link-label {
+            display: block;
+            margin: 10px 0 4px;
+            font-family: var(--ui-font);
+            font-size: 12px;
+            color: var(--tx-muted, #A1A1AA);
+        }
+        .tz-link-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border, #3F3F46);
+            background: var(--bg, #18181B);
+            color: var(--tx, #F4F4F5);
+            font-family: var(--ui-font);
+            font-size: 13px;
+        }
+        .tz-link-input:focus {
+            outline: none;
+            border-color: var(--accent, #3B82F6);
         }
         .tz-help-panel {
             display: flex;
@@ -1808,14 +1854,42 @@
         .block.list-indent-5 > ul.task-list { margin-left: 6.25em; }
         .block.list-indent-6 > ul.task-list { margin-left: 7.5em; }
 
+        /* A link has to look like one before anything else helps. A dotted underborder
+           and a 20% opacity dip on hover read as an annotation, not something you can act
+           on -- which is why the only clue that these were live was Chromium's own
+           tooltip. */
         a {
             color: var(--accent, #3B82F6);
-            text-decoration: none;
-            border-bottom: 1px dotted var(--accent, #3B82F6);
-            transition: opacity 0.15s;
+            text-decoration: underline;
+            text-decoration-thickness: 1px;
+            text-underline-offset: 2px;
+            text-decoration-color: color-mix(in srgb, var(--accent, #3B82F6) 55%, transparent);
+            border-bottom: 0;
+            border-radius: 2px;
+            transition: color .12s, background-color .12s, text-decoration-color .12s;
         }
         a:hover {
-            opacity: 0.8;
+            color: var(--hi, var(--accent, #60A5FA));
+            text-decoration-color: currentColor;
+            background: var(--accent-bg, rgba(59, 130, 246, 0.12));
+        }
+        /* An external link leaves the app. Saying which is which costs one glyph and saves
+           the reader guessing whether a click opens a file or their browser. */
+        a[href^="http://"]::after,
+        a[href^="https://"]::after,
+        a[href^="mailto:"]::after {
+            content: "↗";        /* north-east arrow */
+            font-size: .78em;
+            vertical-align: baseline;
+            margin-left: 1px;
+            opacity: .75;
+        }
+        /* A link is a link: hand cursor, everywhere, no modifier to discover. Hover
+           already lights it up above, so the whole affordance is the two things every
+           reader already knows -- it changes under the pointer, and the pointer says
+           you can press it. */
+        #editor a {
+            cursor: pointer;
         }
 
         hr {
