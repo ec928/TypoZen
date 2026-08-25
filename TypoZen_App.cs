@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.4";
+        internal const string AppVersion = "0.2.5";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4354,6 +4354,79 @@ namespace TypoZen
             if (msg == "zoom:reset")
             {
                 SetZoom(1.0);
+                return;
+            }
+
+            // A link in the document pointing somewhere outside it.
+            //
+            // Only http, https and mailto are ever handed to the shell. The address comes
+            // from document content, and a document is not a trusted thing to be told
+            // "start this" by: without the check, a link with a file: or a custom scheme
+            // would be a way to make opening a note launch a program. Everything else that
+            // looks like a path goes through open_doc below, which opens it as a document
+            // and cannot run it.
+            if (msg.StartsWith("open_external:"))
+            {
+                try
+                {
+                    string url = Uri.UnescapeDataString(msg.Substring("open_external:".Length));
+                    if (Regex.IsMatch(url, @"^(https?|mailto):", RegexOptions.IgnoreCase))
+                    {
+                        Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+                    }
+                    else
+                    {
+                        NotifyLink("This link was not opened.\n\n" + url + "\n\nOnly http, https and mailto links are followed.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("open_external: " + ex.Message);
+                }
+                return;
+            }
+
+            // A link to another file, resolved against the document that contains it --
+            // which only the host can do, because only the host knows where that document
+            // lives. Opened the way File -> Open opens anything, never handed to the shell,
+            // so a link to an .exe becomes a failed document open rather than a program.
+            if (msg.StartsWith("open_doc:"))
+            {
+                try
+                {
+                    string rel = Uri.UnescapeDataString(msg.Substring("open_doc:".Length)).Trim();
+                    // A trailing #section or ?query belongs to the link, not the filename.
+                    int cut = rel.IndexOfAny(new[] { '#', '?' });
+                    if (cut >= 0) rel = rel.Substring(0, cut);
+                    rel = rel.Replace('/', Path.DirectorySeparatorChar).Trim();
+                    if (rel.Length == 0) return;
+
+                    string full;
+                    if (Path.IsPathRooted(rel))
+                    {
+                        full = Path.GetFullPath(rel);
+                    }
+                    else
+                    {
+                        string baseDir = string.IsNullOrEmpty(_currentFilePath)
+                            ? null : Path.GetDirectoryName(_currentFilePath);
+                        if (string.IsNullOrEmpty(baseDir))
+                        {
+                            // An unsaved buffer has no folder, so "beside this file" has no
+                            // meaning yet. Say so rather than guessing at a working directory.
+                            NotifyLink("This document has not been saved yet, so a link relative to it has nowhere to start from.\n\nSave it first, then the link will resolve beside it.");
+                            return;
+                        }
+                        full = Path.GetFullPath(Path.Combine(baseDir, rel));
+                    }
+
+                    if (File.Exists(full)) LoadFileFromPath(full);
+                    else NotifyLink("Link target not found:\n\n" + full);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("open_doc: " + ex.Message);
+                }
                 return;
             }
 
@@ -11319,6 +11392,38 @@ namespace TypoZen
                     if (_statusIndicator != null) _statusIndicator.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981"));
                 }
             }
+        }
+
+        /// <summary>
+        /// Why a link the reader clicked did not open.
+        /// </summary>
+        /// <remarks>
+        /// A dialog rather than the status bar: that bar says Saved / Unsaved and nothing
+        /// else, and borrowing it would both overwrite the dirty state and be gone before
+        /// it was read. Following a link is a deliberate act -- Ctrl+click in Preview -- so
+        /// silence is the wrong answer when it goes nowhere, which is the whole complaint
+        /// this handling exists to fix.
+        /// </remarks>
+        private void NotifyLink(string message)
+        {
+            if (_e2eMode) return;
+            // Deferred out of the WebView2 message handler, never shown from inside it. A
+            // modal pumps its own message loop, and this handler is what WebView2 is in the
+            // middle of dispatching -- the same shape as the blocking script call that once
+            // sat here and cost six seconds of dead time on every cold open.
+            try
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        WinForms.MessageBox.Show(message, "Link",
+                            WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                    }
+                    catch { }
+                }), DispatcherPriority.Background);
+            }
+            catch { }
         }
 
         private void LblFilePath_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)

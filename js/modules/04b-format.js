@@ -1707,24 +1707,48 @@
                 if (sel && sel.isCollapsed) refreshLastGoodDocRaws();
             } catch (err) {}
         }, true);
+        // Following a link.
+        //
         // A link inside a book jumps within the document. The whole book is already open,
         // so following the href would replace the application with one chapter of it -- and
         // an external link should not silently become the reader's window either.
+        //
+        // For Markdown this used to return immediately, so links did nothing at all: a
+        // relative one to a file beside the document -- the ordinary way notes point at
+        // each other -- was dead, while every other editor opens it.
+        //
+        // Ctrl / Cmd is required in Preview because Preview is an editing surface: a plain
+        // click there has to go on placing the caret, or the text of a link could never be
+        // edited. Reader sets contenteditable="false" and has no caret to place, so there a
+        // plain click follows -- which is also what the book path has always done.
         editor.addEventListener('click', function (e) {
-            if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') return;
             const a = e.target && e.target.closest ? e.target.closest('a') : null;
             if (!a) return;
+            const isBook = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
+            if (!isBook && editor.isContentEditable && !(e.ctrlKey || e.metaKey)) return;
+
             const target = a.getAttribute('data-book-href') || a.getAttribute('href');
             if (!target) return;
+
+            // An in-document anchor is left exactly as it was rather than half-handled.
+            if (!isBook && target.charAt(0) === '#') return;
+
             e.preventDefault();
             e.stopPropagation();
             if (/^(https?:|mailto:)/i.test(target)) {
                 postMsg('open_external:' + encodeURIComponent(target));
                 return;
             }
-            if (!bookGoToHref(target, a.innerText || a.textContent || '')) {
-                window.showDebugTelemetry('book link went nowhere: ' + target);
+            if (isBook) {
+                if (!bookGoToHref(target, a.innerText || a.textContent || '')) {
+                    window.showDebugTelemetry('book link went nowhere: ' + target);
+                }
+                return;
             }
+            // Anything else is a path: relative to this document, or absolute. The host
+            // resolves it, because only the host knows where the document lives, and opens
+            // it the same way File -> Open would rather than handing it to the shell.
+            postMsg('open_doc:' + encodeURIComponent(target));
         }, true);
 
         editor.addEventListener('mouseup', function () {
