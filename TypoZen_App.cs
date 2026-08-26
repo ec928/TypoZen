@@ -369,6 +369,13 @@ namespace TypoZen
 
             public string LineEnding = "\n";      // "\n" or "\r\n", from the file as loaded
             public string TrailingNewlines = "\n"; // exact run of newlines the file ended with
+
+            // Last known on-disk identity, set at load and after a successful save.
+            // Compared on activate / tab switch / save so an external edit is noticed.
+            public DateTime DiskWriteTimeUtc = DateTime.MinValue;
+            public long DiskLength = -1;
+            public int DiskFingerprint;
+            public bool DiskConflict; // dirty + disk newer; prompt when the tab is shown
             public string Title
             {
                 get
@@ -385,6 +392,13 @@ namespace TypoZen
         private StackPanel _tabStrip;
         private bool _tabOpInProgress = false;
         private bool _restoringTabs = false; // block PersistTabSession while restoring
+        private bool _diskCheckBusy;
+        private DateTime _ignoreDiskWatchUntil = DateTime.MinValue;
+        private readonly Dictionary<string, FileSystemWatcher> _diskWatchers =
+            new Dictionary<string, FileSystemWatcher>(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _pendingDiskChecks =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private DispatcherTimer _diskDebounceTimer;
         private const int MaxSessionTabs = 24;
 
         // File → Open Recent (persisted separately from prefs JSON regex patches)
@@ -701,7 +715,12 @@ namespace TypoZen
             };
             Program.PerfMark("XAML loaded");
             this.Loaded += (s, e) => { Program.PerfMark("window Loaded"); InitializeWebViewAsync(); };
-            this.Closed += (s, e) => StopSingleInstanceOpenServer();
+            this.Activated += Window_Activated;
+            this.Closed += (s, e) =>
+            {
+                StopSingleInstanceOpenServer();
+                DisposeDiskWatchers();
+            };
         }
 
         /// <summary>
@@ -2325,10 +2344,26 @@ namespace TypoZen
             // files would fire every time, and Windows already asked about overwriting.
             bool overwritingOwnFile = !forceSaveAs &&
                 string.Equals(path, tab.FilePath, StringComparison.OrdinalIgnoreCase);
+            if (overwritingOwnFile)
+            {
+                string ignored;
+                if (EngineDiskTextChanged(tab, path, out ignored) && !_e2eMode)
+                {
+                    var overwrite = WinForms.MessageBox.Show(
+                        "This file has changed on disk since it was opened or last saved.\n\n" +
+                        "Save anyway and overwrite those changes?",
+                        "File changed on disk",
+                        WinForms.MessageBoxButtons.YesNo,
+                        WinForms.MessageBoxIcon.Warning,
+                        WinForms.MessageBoxDefaultButton.Button2);
+                    if (overwrite != WinForms.DialogResult.Yes) return false;
+                }
+            }
             if (overwritingOwnFile && !ConfirmOverwriteLoss(tab, path, outText)) return false;
 
             try
             {
+                _ignoreDiskWatchUntil = DateTime.UtcNow.AddSeconds(2);
                 WriteStateFileAtomic(path, outText);
             }
             catch (Exception ex)
@@ -2340,6 +2375,8 @@ namespace TypoZen
 
             tab.FilePath = path;
             tab.IsDirty = false;
+            StampTabDisk(tab, path, outText);
+            try { SyncDiskWatchers(); } catch { }
             // Images removed from the document are now unreferenced — recycle them.
             PruneOrphanedAssets(path, tab.Content);
 
@@ -2837,12 +2874,328 @@ namespace TypoZen
                     tab.Content = content.Replace("\r\n", "\n").TrimEnd('\n');
                     tab.SourceEncoding = enc;
                     tab.IsDirty = false;
+                    StampTabDisk(tab, tab.FilePath, content);
                     return;
                 }
                 catch { }
             }
             tab.Content = "";
             tab.IsDirty = false;
+        }
+
+        /// <summary>
+        /// Record what the file on disk looked like after a load or save, so a later
+        /// check can tell "OneDrive touched mtime" from "git wrote new bytes".
+        /// </summary>
+        private void StampTabDisk(DocTab tab, string path, string diskText)
+        {
+            if (tab == null) return;
+            tab.DiskConflict = false;
+            tab.DiskFingerprint = ContentFingerprint(diskText ?? "");
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                tab.DiskWriteTimeUtc = DateTime.MinValue;
+                tab.DiskLength = -1;
+                return;
+            }
+            try
+            {
+                var fi = new FileInfo(path);
+                tab.DiskWriteTimeUtc = fi.LastWriteTimeUtc;
+                tab.DiskLength = fi.Length;
+            }
+            catch
+            {
+                tab.DiskWriteTimeUtc = DateTime.MinValue;
+                tab.DiskLength = -1;
+            }
+        }
+
+        private void StampTabDiskFromPath(DocTab tab, string path)
+        {
+            if (tab == null) return;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                StampTabDisk(tab, path, "");
+                return;
+            }
+            try
+            {
+                string enc;
+                string text = ReadTextFileDetect(path, out enc);
+                StampTabDisk(tab, path, text);
+            }
+            catch
+            {
+                StampTabDisk(tab, path, "");
+            }
+        }
+
+        private static bool IsEngineDiskTab(DocTab tab)
+        {
+            if (tab == null || string.IsNullOrEmpty(tab.FilePath)) return false;
+            if (tab.Kind == DocKind.Book || tab.Kind == DocKind.Native) return false;
+            if (tab.FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Fast path: length and write-time still match the stamp. 2 s slop covers FAT
+        /// resolution and OneDrive restamping a file it did not rewrite.
+        /// </summary>
+        private static bool DiskStampMatches(DocTab tab, FileInfo fi)
+        {
+            if (tab == null || fi == null || tab.DiskLength < 0) return false;
+            if (fi.Length != tab.DiskLength) return false;
+            return Math.Abs((fi.LastWriteTimeUtc - tab.DiskWriteTimeUtc).TotalSeconds) < 2.0;
+        }
+
+        /// <summary>
+        /// True when the file's text is not the text we last loaded or saved.
+        /// OneDrive mtime-only noise is restamped and returns false.
+        /// </summary>
+        private bool EngineDiskTextChanged(DocTab tab, string path, out string diskText)
+        {
+            diskText = null;
+            if (!IsEngineDiskTab(tab) || string.IsNullOrEmpty(path)) return false;
+            if (!File.Exists(path)) return false;
+            FileInfo fi;
+            try { fi = new FileInfo(path); }
+            catch { return false; }
+            if (DiskStampMatches(tab, fi)) return false;
+            try
+            {
+                string enc;
+                diskText = ReadTextFileDetect(path, out enc);
+            }
+            catch { return false; }
+            if (ContentFingerprint(diskText ?? "") == tab.DiskFingerprint)
+            {
+                StampTabDisk(tab, path, diskText);
+                return false;
+            }
+            return true;
+        }
+
+        private void Window_Activated(object sender, EventArgs e)
+        {
+            if (!_editorReady || _tabOpInProgress || _diskCheckBusy) return;
+            CheckAllEngineTabsDisk();
+        }
+
+        /// <summary>
+        /// Background dirty tabs only raise DiskConflict; the prompt waits until
+        /// that tab is shown. Clean tabs reload without asking.
+        /// </summary>
+        private void CheckAllEngineTabsDisk()
+        {
+            if (_e2eMode || _diskCheckBusy) return;
+            for (int i = 0; i < _tabs.Count; i++)
+            {
+                var tab = _tabs[i];
+                if (!IsEngineDiskTab(tab)) continue;
+                bool prompt = (i == _activeTabIndex);
+                CheckEngineTabDisk(tab, prompt);
+            }
+        }
+
+        private void CheckEngineTabDisk(DocTab tab, bool canPrompt)
+        {
+            if (_e2eMode || tab == null) return;
+            if (_tabOpInProgress || _diskCheckBusy) return;
+            if (!IsEngineDiskTab(tab)) return;
+            if (DateTime.UtcNow < _ignoreDiskWatchUntil) return;
+
+            string path = tab.FilePath;
+            string diskText;
+            if (!EngineDiskTextChanged(tab, path, out diskText))
+            {
+                tab.DiskConflict = false;
+                return;
+            }
+
+            if (!tab.IsDirty && !(_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    && _tabs[_activeTabIndex] == tab && _isDirty))
+            {
+                ReloadEngineTabFromDisk(tab, diskText);
+                return;
+            }
+
+            tab.DiskConflict = true;
+            if (!canPrompt) return;
+            PromptDiskNewer(tab, diskText);
+        }
+
+        private void PromptDiskNewer(DocTab tab, string diskText)
+        {
+            if (tab == null || _e2eMode) return;
+            _diskCheckBusy = true;
+            try
+            {
+                var choice = WinForms.MessageBox.Show(
+                    "This file has changed on disk.\n\n" +
+                    Path.GetFileName(tab.FilePath) + "\n\n" +
+                    "Yes = Reload from disk (discard your unsaved edits)\n" +
+                    "No = Keep editing (Save will overwrite the disk copy)\n" +
+                    "Cancel = Save your copy as a new file",
+                    "File changed on disk",
+                    WinForms.MessageBoxButtons.YesNoCancel,
+                    WinForms.MessageBoxIcon.Warning,
+                    WinForms.MessageBoxDefaultButton.Button2);
+                if (choice == WinForms.DialogResult.Yes)
+                    ReloadEngineTabFromDisk(tab, diskText);
+                else if (choice == WinForms.DialogResult.No)
+                    StampTabDisk(tab, tab.FilePath, diskText); // accept; don't nag until another change
+                else
+                    SaveTabNow(tab, true);
+            }
+            finally
+            {
+                _diskCheckBusy = false;
+                tab.DiskConflict = false;
+            }
+        }
+
+        private void ReloadEngineTabFromDisk(DocTab tab, string diskText)
+        {
+            if (tab == null || string.IsNullOrEmpty(tab.FilePath) || !File.Exists(tab.FilePath))
+                return;
+            try
+            {
+                string enc;
+                if (diskText == null)
+                    diskText = ReadTextFileDetect(tab.FilePath, out enc);
+                else
+                    ReadTextFileDetect(tab.FilePath, out enc);
+                tab.LineEnding = DetectLineEnding(diskText);
+                tab.TrailingNewlines = DetectTrailingNewlines(diskText);
+                tab.Content = (diskText ?? "").Replace("\r\n", "\n").TrimEnd('\n');
+                tab.SourceEncoding = enc;
+                tab.IsDirty = false;
+                tab.Kind = DocKind.Engine;
+                tab.NativeRole = NativeRole.None;
+                StampTabDisk(tab, tab.FilePath, diskText);
+                bool active = (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    && _tabs[_activeTabIndex] == tab);
+                if (active)
+                {
+                    _isDirty = false;
+                    ApplyTabToEditor(tab);
+                }
+                else
+                    RebuildTabStrip();
+            }
+            catch { }
+        }
+
+        private void QueueDiskPathCheck(string path)
+        {
+            if (_e2eMode || string.IsNullOrEmpty(path)) return;
+            if (DateTime.UtcNow < _ignoreDiskWatchUntil) return;
+            try { path = Path.GetFullPath(path); } catch { return; }
+            _pendingDiskChecks.Add(path);
+            if (_diskDebounceTimer == null)
+            {
+                _diskDebounceTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(400)
+                };
+                _diskDebounceTimer.Tick += (s, e) =>
+                {
+                    _diskDebounceTimer.Stop();
+                    var pending = new List<string>(_pendingDiskChecks);
+                    _pendingDiskChecks.Clear();
+                    for (int i = 0; i < pending.Count; i++)
+                    {
+                        string p = pending[i];
+                        for (int t = 0; t < _tabs.Count; t++)
+                        {
+                            var tab = _tabs[t];
+                            if (!IsEngineDiskTab(tab)) continue;
+                            if (!string.Equals(Path.GetFullPath(tab.FilePath), p, StringComparison.OrdinalIgnoreCase))
+                                continue;
+                            CheckEngineTabDisk(tab, t == _activeTabIndex);
+                        }
+                    }
+                };
+            }
+            _diskDebounceTimer.Stop();
+            _diskDebounceTimer.Start();
+        }
+
+        private void SyncDiskWatchers()
+        {
+            var want = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < _tabs.Count; i++)
+            {
+                var tab = _tabs[i];
+                if (!IsEngineDiskTab(tab) || !File.Exists(tab.FilePath)) continue;
+                try
+                {
+                    string dir = Path.GetDirectoryName(Path.GetFullPath(tab.FilePath));
+                    if (!string.IsNullOrEmpty(dir)) want.Add(dir);
+                }
+                catch { }
+            }
+            var drop = new List<string>();
+            foreach (var kv in _diskWatchers)
+            {
+                if (!want.Contains(kv.Key)) drop.Add(kv.Key);
+            }
+            for (int i = 0; i < drop.Count; i++)
+            {
+                try { _diskWatchers[drop[i]].Dispose(); } catch { }
+                _diskWatchers.Remove(drop[i]);
+            }
+            foreach (string dir in want)
+            {
+                if (_diskWatchers.ContainsKey(dir)) continue;
+                if (!Directory.Exists(dir)) continue;
+                try
+                {
+                    var w = new FileSystemWatcher(dir);
+                    w.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName;
+                    w.IncludeSubdirectories = false;
+                    FileSystemEventHandler onEvt = (s, e) =>
+                    {
+                        string full = e.FullPath;
+                        try
+                        {
+                            Dispatcher.BeginInvoke(new Action(() => QueueDiskPathCheck(full)),
+                                DispatcherPriority.Background);
+                        }
+                        catch { }
+                    };
+                    w.Changed += onEvt;
+                    w.Created += onEvt;
+                    w.Renamed += (s, e) =>
+                    {
+                        try
+                        {
+                            Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                QueueDiskPathCheck(e.FullPath);
+                                QueueDiskPathCheck(e.OldFullPath);
+                            }), DispatcherPriority.Background);
+                        }
+                        catch { }
+                    };
+                    w.EnableRaisingEvents = true;
+                    _diskWatchers[dir] = w;
+                }
+                catch { }
+            }
+        }
+
+        private void DisposeDiskWatchers()
+        {
+            try { if (_diskDebounceTimer != null) _diskDebounceTimer.Stop(); } catch { }
+            foreach (var kv in _diskWatchers)
+            {
+                try { kv.Value.Dispose(); } catch { }
+            }
+            _diskWatchers.Clear();
+            _pendingDiskChecks.Clear();
         }
 
         /// <summary>
@@ -3165,6 +3518,8 @@ namespace TypoZen
                             tab.FilePath = null;
                             tab.IsDirty = true;
                         }
+                        else
+                            StampTabDiskFromPath(tab, tab.FilePath);
                     }
                     else if (!string.IsNullOrEmpty(tab.FilePath) && File.Exists(tab.FilePath))
                     {
@@ -3177,6 +3532,7 @@ namespace TypoZen
                             tab.Content = content.Replace("\r\n", "\n").TrimEnd('\n');
                             tab.SourceEncoding = enc;
                             tab.IsDirty = false;
+                            StampTabDisk(tab, tab.FilePath, content);
                         }
                         catch
                         {
@@ -3207,6 +3563,7 @@ namespace TypoZen
                 if (active >= _tabs.Count) active = _tabs.Count - 1;
                 _activeTabIndex = active;
                 ApplyTabToEditor(_tabs[_activeTabIndex]);
+                try { SyncDiskWatchers(); } catch { }
                 return true;
             }
             catch
@@ -7209,6 +7566,14 @@ namespace TypoZen
             // file it is meant to be protecting. A failed pull means try again later.
             if (!SyncActiveTabFromEditor()) { ArmAutosave(); return; }
             if (!tab.IsDirty) return;
+            string ignored;
+            if (EngineDiskTextChanged(tab, tab.FilePath, out ignored))
+            {
+                // Never unattended-overwrite an external edit. Prompt if we can.
+                tab.DiskConflict = true;
+                CheckEngineTabDisk(tab, true);
+                return;
+            }
             try { SaveTabNow(tab, false); } catch { }
         }
 
@@ -10294,6 +10659,7 @@ namespace TypoZen
             if (index == _activeTabIndex)
             {
                 RebuildTabStrip();
+                CheckEngineTabDisk(_tabs[_activeTabIndex], true);
                 return;
             }
             Program.PerfMark("tab switch: begin (pulling editor state)");
@@ -10315,6 +10681,8 @@ namespace TypoZen
             }
             finally { _tabOpInProgress = false; }
             Program.PerfMark("tab switch: done  <<< new tab content on screen");
+            if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
+                CheckEngineTabDisk(_tabs[_activeTabIndex], true);
         }
 
         private void NewTab()
@@ -10414,6 +10782,7 @@ namespace TypoZen
                 }
             }
             finally { _tabOpInProgress = false; }
+            try { SyncDiskWatchers(); } catch { }
         }
 
         private void OpenFile()
@@ -10581,10 +10950,10 @@ namespace TypoZen
                 // is handled below by path match; we load as engine content.
 
                 string encodingName;
-                string content = ReadTextFileDetect(path, out encodingName);
-                string lineEnding = DetectLineEnding(content);
-                string trailing = DetectTrailingNewlines(content);
-                content = content.Replace("\r\n", "\n").TrimEnd('\n');
+                string raw = ReadTextFileDetect(path, out encodingName);
+                string lineEnding = DetectLineEnding(raw);
+                string trailing = DetectTrailingNewlines(raw);
+                string content = raw.Replace("\r\n", "\n").TrimEnd('\n');
                 path = Path.GetFullPath(path);
                 // Non-UTF-8: save will convert — tell the user once (unless dismissed).
                 MaybeWarnEncodingConversion(path, encodingName);
@@ -10626,7 +10995,9 @@ namespace TypoZen
                             if (choice == WinForms.DialogResult.Cancel) return;
                             if (choice == WinForms.DialogResult.No)
                             {
-                                // Just switch/focus without reloading disk.
+                                // Keep edits: accept current disk so we do not prompt again
+                                // until it changes once more.
+                                StampTabDisk(_tabs[i], path, raw);
                                 if (i != _activeTabIndex)
                                 {
                                     _tabOpInProgress = true;
@@ -10696,6 +11067,8 @@ namespace TypoZen
                                     try { SendMsg("cmd:view_set:mode:source"); } catch { }
                                 }
                             }
+                            StampTabDisk(_tabs[i], path, raw);
+                            try { SyncDiskWatchers(); } catch { }
                         }
                         finally { _tabOpInProgress = false; }
 
@@ -10741,7 +11114,9 @@ namespace TypoZen
                     tab.SourceEncoding = encodingName;
                     tab.LineEnding = lineEnding;
                     tab.TrailingNewlines = trailing;
+                    StampTabDisk(tab, path, raw);
                     ApplyTabToEditor(tab);
+                    try { SyncDiskWatchers(); } catch { }
                     if (forceEditorText || PreferSourceModeForPath(path))
                     {
                         ApplyHostModeChrome("source");
