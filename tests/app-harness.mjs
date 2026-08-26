@@ -22,6 +22,9 @@
  *   const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
  *   await app.eval(() => handleCommand('view_set:columns:2'));
  *   await app.close();
+ *
+ * options.env is merged into the child environment (TYPOZEN_PROFILE_DIR still wins).
+ * Used by disk-conflict-app.mjs for TYPOZEN_DISK_PROMPT=Yes|No|Cancel.
  */
 import { spawn, execSync } from 'child_process';
 import fs from 'fs';
@@ -117,7 +120,8 @@ async function waitForDevTools(timeoutMs) {
 /**
  * Launch TypoZen.exe --debug and attach.
  * @param {{file?:string, width?:number, height?:number, settleMs?:number,
- *          view?:true|{mode?:string,scroll?:string,columns?:number}}} options
+ *          view?:true|{mode?:string,scroll?:string,columns?:number},
+ *          env?:Record<string,string>, args?:string[]}} options
  */
 export async function launchApp(options) {
     options = options || {};
@@ -139,7 +143,9 @@ export async function launchApp(options) {
     }
 
     const args = ['--debug'];
-    if (options.file) args.push(path.join(appDir, options.file));
+    if (options.file) {
+        args.push(path.isAbsolute(options.file) ? options.file : path.join(appDir, options.file));
+    }
     // Extra command-line arguments, for the shapes ZenSeek launches with (--search, --line).
     if (options.args) for (const a of options.args) args.push(a);
 
@@ -148,7 +154,7 @@ export async function launchApp(options) {
         cwd: appDir,
         detached: false,
         stdio: 'ignore',
-        env: Object.assign({}, process.env, { TYPOZEN_PROFILE_DIR: profileDir })
+        env: Object.assign({}, process.env, options.env || {}, { TYPOZEN_PROFILE_DIR: profileDir })
     });
     await waitForDevTools(45000);
 

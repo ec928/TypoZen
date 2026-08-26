@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.10";
+        internal const string AppVersion = "0.2.11";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -142,6 +142,8 @@ namespace TypoZen
         /// single-instance server, which is right for the tab-content harness and wrong
         /// for the *-app suites, several of which exist precisely to test that a session
         /// comes back. This changes where the profile lives and nothing else.
+        /// TYPOZEN_DISK_PROMPT / TYPOZEN_SAVE_AS_PATH stub disk-conflict dialogs for
+        /// disk-conflict-app.mjs; they do not move the profile.
         /// </summary>
         internal static string ProfileDirOverride()
         {
@@ -2276,21 +2278,30 @@ namespace TypoZen
 
             if (forceSaveAs || string.IsNullOrEmpty(path))
             {
-                using (var dlg = new WinForms.SaveFileDialog())
+                string stubPath;
+                if (TrySaveAsStub(out stubPath))
                 {
-                    dlg.Filter = "Markdown File (*.md)|*.md|Text File (*.txt)|*.txt|All Files|*.*";
-                    dlg.DefaultExt = "md";
-                    dlg.Title = isBook ? "Export Book As" : "Save Document";
-                    dlg.FileName = string.IsNullOrEmpty(tab.FilePath) ? "Untitled.md"
-                        : (isBook || isNative
-                            ? Path.GetFileNameWithoutExtension(tab.FilePath) + ".md"
-                            : Path.GetFileName(tab.FilePath));
-                    if (!string.IsNullOrEmpty(tab.FilePath))
+                    if (string.IsNullOrEmpty(stubPath)) return false;
+                    path = stubPath;
+                }
+                else
+                {
+                    using (var dlg = new WinForms.SaveFileDialog())
                     {
-                        try { dlg.InitialDirectory = Path.GetDirectoryName(tab.FilePath); } catch { }
+                        dlg.Filter = "Markdown File (*.md)|*.md|Text File (*.txt)|*.txt|All Files|*.*";
+                        dlg.DefaultExt = "md";
+                        dlg.Title = isBook ? "Export Book As" : "Save Document";
+                        dlg.FileName = string.IsNullOrEmpty(tab.FilePath) ? "Untitled.md"
+                            : (isBook || isNative
+                                ? Path.GetFileNameWithoutExtension(tab.FilePath) + ".md"
+                                : Path.GetFileName(tab.FilePath));
+                        if (!string.IsNullOrEmpty(tab.FilePath))
+                        {
+                            try { dlg.InitialDirectory = Path.GetDirectoryName(tab.FilePath); } catch { }
+                        }
+                        if (dlg.ShowDialog() != WinForms.DialogResult.OK) return false;
+                        path = dlg.FileName;
                     }
-                    if (dlg.ShowDialog() != WinForms.DialogResult.OK) return false;
-                    path = dlg.FileName;
                 }
             }
 
@@ -2347,16 +2358,24 @@ namespace TypoZen
             if (overwritingOwnFile)
             {
                 string ignored, ignoredEnc;
-                if (EngineDiskTextChanged(tab, path, out ignored, out ignoredEnc) && !_e2eMode)
+                if (EngineDiskTextChanged(tab, path, out ignored, out ignoredEnc))
                 {
-                    var overwrite = WinForms.MessageBox.Show(
-                        "This file has changed on disk since it was opened or last saved.\n\n" +
-                        "Save anyway and overwrite those changes?",
-                        "File changed on disk",
-                        WinForms.MessageBoxButtons.YesNo,
-                        WinForms.MessageBoxIcon.Warning,
-                        WinForms.MessageBoxDefaultButton.Button2);
-                    if (overwrite != WinForms.DialogResult.Yes) return false;
+                    WinForms.DialogResult overwrite;
+                    if (TryDiskPromptStub(out overwrite))
+                    {
+                        if (overwrite != WinForms.DialogResult.Yes) return false;
+                    }
+                    else if (!_e2eMode)
+                    {
+                        overwrite = WinForms.MessageBox.Show(
+                            "This file has changed on disk since it was opened or last saved.\n\n" +
+                            "Save anyway and overwrite those changes?",
+                            "File changed on disk",
+                            WinForms.MessageBoxButtons.YesNo,
+                            WinForms.MessageBoxIcon.Warning,
+                            WinForms.MessageBoxDefaultButton.Button2);
+                        if (overwrite != WinForms.DialogResult.Yes) return false;
+                    }
                 }
             }
             if (overwritingOwnFile && !ConfirmOverwriteLoss(tab, path, outText)) return false;
@@ -2977,6 +2996,63 @@ namespace TypoZen
             return true;
         }
 
+        /// <summary>
+        /// TYPOZEN_DISK_PROMPT=Yes|No|Cancel answers the disk-changed MessageBox without
+        /// showing it. A real MessageBox pumps the UI thread, so a *-app.mjs suite cannot
+        /// click it over DevTools and the run hangs. Invalid / unset = no stub.
+        /// </summary>
+        private static bool TryDiskPromptStub(out WinForms.DialogResult result)
+        {
+            result = WinForms.DialogResult.None;
+            // --debug only. Without this the variable steers a shipped build: it answers
+            // disk-conflict prompts unattended, and through TrySaveAsStub it makes Save As
+            // -- and therefore saving an untitled document, and Export Book As -- return
+            // false with no dialog and no message. Silently doing nothing when asked to
+            // save is the worst failure this app has. *-app.mjs suites all launch with
+            // --debug, so nothing under test loses the stub.
+            if (!Program.DebugLogEnabled) return false;
+            string raw = Environment.GetEnvironmentVariable("TYPOZEN_DISK_PROMPT");
+            if (string.IsNullOrWhiteSpace(raw)) return false;
+            switch (raw.Trim().ToLowerInvariant())
+            {
+                case "yes": result = WinForms.DialogResult.Yes; return true;
+                case "no": result = WinForms.DialogResult.No; return true;
+                case "cancel": result = WinForms.DialogResult.Cancel; return true;
+                default: return false;
+            }
+        }
+
+        /// <summary>
+        /// In-process TYPOZEN_TAB_E2E rewrites the open file as part of other suites.
+        /// Skip disk checks there unless a suite opted in with TYPOZEN_DISK_PROMPT.
+        /// </summary>
+        private bool DiskChecksEnabled()
+        {
+            if (!_e2eMode) return true;
+            WinForms.DialogResult unused;
+            return TryDiskPromptStub(out unused);
+        }
+
+        /// <summary>
+        /// TYPOZEN_SAVE_AS_PATH supplies a Save As target. When the disk prompt is stubbed
+        /// and this is unset, Save As is treated as cancelled so the suite cannot hang on
+        /// SaveFileDialog. Returns true if the dialog should not be shown (empty path = cancel).
+        /// </summary>
+        private static bool TrySaveAsStub(out string path)
+        {
+            path = null;
+            if (!Program.DebugLogEnabled) return false;   // see TryDiskPromptStub
+            string raw = Environment.GetEnvironmentVariable("TYPOZEN_SAVE_AS_PATH");
+            if (!string.IsNullOrWhiteSpace(raw))
+            {
+                path = raw.Trim();
+                return true;
+            }
+            WinForms.DialogResult unused;
+            if (TryDiskPromptStub(out unused)) return true;
+            return false;
+        }
+
         private void Window_Activated(object sender, EventArgs e)
         {
             if (!_editorReady || _tabOpInProgress || _diskCheckBusy) return;
@@ -2989,7 +3065,7 @@ namespace TypoZen
         /// </summary>
         private void CheckAllEngineTabsDisk()
         {
-            if (_e2eMode || _diskCheckBusy) return;
+            if (!DiskChecksEnabled() || _diskCheckBusy) return;
             for (int i = 0; i < _tabs.Count; i++)
             {
                 var tab = _tabs[i];
@@ -3001,7 +3077,7 @@ namespace TypoZen
 
         private void CheckEngineTabDisk(DocTab tab, bool canPrompt)
         {
-            if (_e2eMode || tab == null) return;
+            if (!DiskChecksEnabled() || tab == null) return;
             if (_tabOpInProgress || _diskCheckBusy) return;
             if (!IsEngineDiskTab(tab)) return;
             if (DateTime.UtcNow < _ignoreDiskWatchUntil) return;
@@ -3048,11 +3124,12 @@ namespace TypoZen
 
         private void PromptDiskNewer(DocTab tab, string diskText, string encodingName)
         {
-            if (tab == null || _e2eMode) return;
-            _diskCheckBusy = true;
-            try
+            if (tab == null) return;
+            WinForms.DialogResult choice;
+            if (!TryDiskPromptStub(out choice))
             {
-                var choice = WinForms.MessageBox.Show(
+                if (_e2eMode) return;
+                choice = WinForms.MessageBox.Show(
                     "This file has changed on disk.\n\n" +
                     Path.GetFileName(tab.FilePath) + "\n\n" +
                     "Yes = Reload from disk (discard your unsaved edits)\n" +
@@ -3062,6 +3139,10 @@ namespace TypoZen
                     WinForms.MessageBoxButtons.YesNoCancel,
                     WinForms.MessageBoxIcon.Warning,
                     WinForms.MessageBoxDefaultButton.Button2);
+            }
+            _diskCheckBusy = true;
+            try
+            {
                 if (choice == WinForms.DialogResult.Yes)
                     ReloadEngineTabFromDisk(tab, diskText, encodingName);
                 else if (choice == WinForms.DialogResult.No)
@@ -3109,7 +3190,7 @@ namespace TypoZen
 
         private void QueueDiskPathCheck(string path)
         {
-            if (_e2eMode || string.IsNullOrEmpty(path)) return;
+            if (!DiskChecksEnabled() || string.IsNullOrEmpty(path)) return;
             if (DateTime.UtcNow < _ignoreDiskWatchUntil) return;
             try { path = Path.GetFullPath(path); } catch { return; }
             _pendingDiskChecks.Add(path);
