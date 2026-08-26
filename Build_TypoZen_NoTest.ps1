@@ -71,7 +71,8 @@ else {
     # *-app.mjs launch TypoZen.exe itself and need a desktop session, so they are not part
     # of the build gate; run them with RUN_APP_E2E=1 .\tests\run-tests.ps1. app-harness.mjs
     # is their helper, not a suite.
-    $helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs')
+    $helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
+                 'fonts-ab.mjs', 'scripts-ab.mjs')
     $suites = @(Get-ChildItem (Join-Path $appDir "tests\*.mjs") -ErrorAction SilentlyContinue |
                 Where-Object { $_.Name -notlike "*-pending.mjs" -and $_.Name -notlike "*-app.mjs" `
                                -and ($helpers -notcontains $_.Name) } | Sort-Object Name)

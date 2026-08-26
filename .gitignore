@@ -37,6 +37,11 @@ tests/_tab_e2e_out/
 # Written and removed by tests/bookmark-store-app.mjs; left behind only if it crashes.
 tests/_bookmark_fixture.md
 
+# Scratch HTML/JS from opt-in A/B benches (tests/fonts-ab.mjs, tests/scripts-ab.mjs).
+_fonts-ab-*.html
+_scripts-ab-*.html
+js/_ab-runtime.js
+
 # WordNet source corpus, downloaded by hand and converted by tools/Make-Dictionary.ps1.
 # ~90 MB of raw database files, needed only to regenerate the dictionary; not tracked.
 WordNet-3.0/

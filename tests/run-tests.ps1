@@ -27,7 +27,8 @@ $errFile = [System.IO.Path]::GetTempFileName()
 # 2-column mode shipped broken behind a green suite.
 $allSuites = @(Get-ChildItem ".\tests\*.mjs" | Sort-Object Name)
 # Helpers / generators, not suites.
-$helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs')
+$helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
+             'fonts-ab.mjs', 'scripts-ab.mjs')
 $allSuites = @($allSuites | Where-Object { $helpers -notcontains $_.Name })
 
 # *-app.mjs launch TypoZen.exe and drive it over the DevTools port --debug opens. They
