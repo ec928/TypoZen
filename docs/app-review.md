@@ -1,7 +1,12 @@
-# TypoZen app review (0.2.7)
+# TypoZen app review (audit 0.2.7, fixes shipped in 0.2.8)
 
-Review of the current tree as of 2026-08-26, with a follow-up pass that landed the
-fixes below. Characterised against source, not suite folklore. `known-issues.md`
+Audit of the tree at 0.2.7 on 2026-08-26, plus a fix pass now released as **0.2.8**.
+Characterised against source, not suite folklore.
+
+The Bugs section below is the audit **as found**, kept in the present tense on
+purpose -- it is the record of what was true at 0.2.7, not a description of the
+current tree. The Results table is the authority on what has since landed; the
+Verification section says how each claim was checked, and by what. `known-issues.md`
 listed no open defect-class items; several of the same *projection-for-document*
 family were still live and are now closed.
 
@@ -28,6 +33,31 @@ The two clusters from the first pass are closed in this tree (see Results). Left
 | — | Print “paragraphs” | **Fixed.** Copy says “blocks”. |
 | — | Stale Ctrl+/ comment | **Fixed.** |
 | — | Split the two monoliths | **Deferred.** Mechanical extract, high regression cost; not this pass. |
+| — | `Build-Portable.ps1` built into `bin/` | **Fixed in 0.2.8.** Output moved to `dist/`. It had been writing over the publish staging copy on its way past, and the Bookerly guard then fired on the private build's own fonts -- so a portable build could never finish, and left `bin/` half-overwritten when it stopped. It also strips the Bookerly `@font-face` block now, so the shipped template has no dead reference. |
+| — | Fix pass carried 0.2.7's version | **Fixed in 0.2.8.** The pass changed behaviour, including security behaviour, while `AppVersion` still read 0.2.7 -- which was already tagged and released. Two different binaries reported `0.2.7.0` and both said "Version 0.2.7" in About, so "am I running the build with the navigation allowlist?" had no answer from inside the app. |
+
+## Verification
+
+The default gate is jsdom. It cannot exercise a WebView2 `NavigationStarting`
+handler, `--host-resolver-rules`, or where a file is staged on disk -- which is
+to say it cannot see items 5, 6 or 7 at all. Those were run against the built
+application:
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| 1, 2 | Default gate, incl. new cut/export cases in `clipboard-roundtrip-browser` | 53/53 |
+| 5 | Opened a 205 KB markdown; looked for the staged body | Landed in the profile (`body_*.md` under `CacheDir()`); **0 files** in the exe folder |
+| 6, 7 (`localbooks`) | Opened *Dune* | 8,571 blocks, kind `epub`, 800 painted -- not cancelled |
+| 6, 7 (`localload`) | Same large-markdown open | 3,767 blocks, virtualised, staging fetched -- not cancelled |
+| 6, 7 (`localapp`) | Every run above | Template navigates normally |
+| 9 | Ran `Build-Portable.ps1` | 35 files, 10 OFL faces, **0** Bookerly; `bin/` untouched |
+| privacy | `privacy-app` | 21/21 |
+
+**Not verified: `localview` (the native reader).** Opening a PNG left the native
+surface on `about:blank` in this harness. The *same* harness does the same thing
+on the pre-fix 0.2.7 binary, so the allowlist did not cause it -- but that is a
+demonstration of "no regression", not of "works". The native reader has no
+`*-app` suite, and this is the gap to close next.
 
 ---
 

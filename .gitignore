@@ -6,6 +6,9 @@ obj/
 bin/
 *.pdb
 
+# Portable build output, rebuilt from scratch by tools/Build-Portable.ps1.
+dist/
+
 # Staging for content handed to the page: document bodies and book payloads are written
 # here and fetched over the local origin, because a 40,000-block book is not something to
 # push through the message channel. Swept by PruneLoadStageDir.
