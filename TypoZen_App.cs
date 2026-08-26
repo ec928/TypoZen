@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.9";
+        internal const string AppVersion = "0.2.10";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -2346,8 +2346,8 @@ namespace TypoZen
                 string.Equals(path, tab.FilePath, StringComparison.OrdinalIgnoreCase);
             if (overwritingOwnFile)
             {
-                string ignored;
-                if (EngineDiskTextChanged(tab, path, out ignored) && !_e2eMode)
+                string ignored, ignoredEnc;
+                if (EngineDiskTextChanged(tab, path, out ignored, out ignoredEnc) && !_e2eMode)
                 {
                     var overwrite = WinForms.MessageBox.Show(
                         "This file has changed on disk since it was opened or last saved.\n\n" +
@@ -2954,9 +2954,10 @@ namespace TypoZen
         /// True when the file's text is not the text we last loaded or saved.
         /// OneDrive mtime-only noise is restamped and returns false.
         /// </summary>
-        private bool EngineDiskTextChanged(DocTab tab, string path, out string diskText)
+        private bool EngineDiskTextChanged(DocTab tab, string path, out string diskText, out string encodingName)
         {
             diskText = null;
+            encodingName = null;
             if (!IsEngineDiskTab(tab) || string.IsNullOrEmpty(path)) return false;
             if (!File.Exists(path)) return false;
             FileInfo fi;
@@ -2965,8 +2966,7 @@ namespace TypoZen
             if (DiskStampMatches(tab, fi)) return false;
             try
             {
-                string enc;
-                diskText = ReadTextFileDetect(path, out enc);
+                diskText = ReadTextFileDetect(path, out encodingName);
             }
             catch { return false; }
             if (ContentFingerprint(diskText ?? "") == tab.DiskFingerprint)
@@ -3008,25 +3008,45 @@ namespace TypoZen
 
             string path = tab.FilePath;
             string diskText;
-            if (!EngineDiskTextChanged(tab, path, out diskText))
+            string encodingName;
+            if (!EngineDiskTextChanged(tab, path, out diskText, out encodingName))
             {
                 tab.DiskConflict = false;
                 return;
             }
 
-            if (!tab.IsDirty && !(_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
-                    && _tabs[_activeTabIndex] == tab && _isDirty))
+            bool active = (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                && _tabs[_activeTabIndex] == tab);
+            bool looksClean = !tab.IsDirty && !(active && _isDirty);
+
+            // Host dirty flags lag the page (stats 150 ms; typing ping is best-effort).
+            // Silent-reload of the active tab without a live pull can throw away a
+            // keystroke if disk also changed in that window. Same reason close reads
+            // getDocumentStateTagged instead of trusting the flag.
+            if (looksClean && active)
             {
-                ReloadEngineTabFromDisk(tab, diskText);
+                _diskCheckBusy = true;
+                try
+                {
+                    bool synced = SyncActiveTabFromEditor(allowStaleIfClean: false, timeoutMs: 3000);
+                    if (!synced || tab.IsDirty || _isDirty)
+                        looksClean = false;
+                }
+                finally { _diskCheckBusy = false; }
+            }
+
+            if (looksClean)
+            {
+                ReloadEngineTabFromDisk(tab, diskText, encodingName);
                 return;
             }
 
             tab.DiskConflict = true;
             if (!canPrompt) return;
-            PromptDiskNewer(tab, diskText);
+            PromptDiskNewer(tab, diskText, encodingName);
         }
 
-        private void PromptDiskNewer(DocTab tab, string diskText)
+        private void PromptDiskNewer(DocTab tab, string diskText, string encodingName)
         {
             if (tab == null || _e2eMode) return;
             _diskCheckBusy = true;
@@ -3043,7 +3063,7 @@ namespace TypoZen
                     WinForms.MessageBoxIcon.Warning,
                     WinForms.MessageBoxDefaultButton.Button2);
                 if (choice == WinForms.DialogResult.Yes)
-                    ReloadEngineTabFromDisk(tab, diskText);
+                    ReloadEngineTabFromDisk(tab, diskText, encodingName);
                 else if (choice == WinForms.DialogResult.No)
                     StampTabDisk(tab, tab.FilePath, diskText); // accept; don't nag until another change
                 else
@@ -3056,21 +3076,20 @@ namespace TypoZen
             }
         }
 
-        private void ReloadEngineTabFromDisk(DocTab tab, string diskText)
+        private void ReloadEngineTabFromDisk(DocTab tab, string diskText, string encodingName)
         {
             if (tab == null || string.IsNullOrEmpty(tab.FilePath) || !File.Exists(tab.FilePath))
                 return;
             try
             {
-                string enc;
                 if (diskText == null)
-                    diskText = ReadTextFileDetect(tab.FilePath, out enc);
-                else
-                    ReadTextFileDetect(tab.FilePath, out enc);
+                    diskText = ReadTextFileDetect(tab.FilePath, out encodingName);
+                else if (string.IsNullOrEmpty(encodingName))
+                    encodingName = tab.SourceEncoding ?? "UTF-8";
                 tab.LineEnding = DetectLineEnding(diskText);
                 tab.TrailingNewlines = DetectTrailingNewlines(diskText);
                 tab.Content = (diskText ?? "").Replace("\r\n", "\n").TrimEnd('\n');
-                tab.SourceEncoding = enc;
+                tab.SourceEncoding = encodingName;
                 tab.IsDirty = false;
                 tab.Kind = DocKind.Engine;
                 tab.NativeRole = NativeRole.None;
@@ -7566,8 +7585,8 @@ namespace TypoZen
             // file it is meant to be protecting. A failed pull means try again later.
             if (!SyncActiveTabFromEditor()) { ArmAutosave(); return; }
             if (!tab.IsDirty) return;
-            string ignored;
-            if (EngineDiskTextChanged(tab, tab.FilePath, out ignored))
+            string ignored, ignoredEnc;
+            if (EngineDiskTextChanged(tab, tab.FilePath, out ignored, out ignoredEnc))
             {
                 // Never unattended-overwrite an external edit. Prompt if we can.
                 tab.DiskConflict = true;
