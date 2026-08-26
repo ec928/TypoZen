@@ -43,7 +43,7 @@ console.log('=== 2-column: two leaves per spread ===');
 {
     const d = pageDisplayFromSpread(0, 5, true);
     assert(d.left === 1 && d.right === 2 && d.totalLeaves === 10, 'spread 0 → 1|2 of 10');
-    assert(d.bubble === '1 / 10', 'bubble shows left leaf / total leaves');
+    assert(d.bubble === '1–2 / 10', 'bubble shows spread leaves / total leaves');
     const d2 = pageDisplayFromSpread(2, 5, true);
     assert(d2.left === 5 && d2.right === 6, 'spread 2 → 5|6');
     const last = pageDisplayFromSpread(4, 5, true);

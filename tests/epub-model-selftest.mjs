@@ -86,12 +86,13 @@ console.log('--- 2. book markup is rendered, minus anything executable ---');
         '<form action="http://elsewhere/"><input name="p"></form>' +
         '<link rel="stylesheet" href="http://elsewhere/x.css">' +
         '<meta http-equiv="refresh" content="0;url=http://elsewhere/">' +
+        '<style>body{background:red}</style>' +
         '<template><script>steal()</script></template>' +
         '<svg><foreignObject><body>x</body></foreignObject>' +
         '<animate onbegin="steal()"/><set onbegin="steal()"/></svg>' +
         '<p>kept</p>');
     for (const tag of ['iframe', 'object', 'embed', 'base', 'form', 'link', 'meta',
-                       'template', 'foreignObject', 'animate', 'set']) {
+                       'template', 'style', 'foreignObject', 'animate', 'set']) {
         assert(!new RegExp('<' + tag, 'i').test(nasty), tag + ' is removed');
     }
     assert(nasty.indexOf('kept') !== -1, 'and ordinary markup beside it survives');

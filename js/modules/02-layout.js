@@ -93,13 +93,31 @@
                 } catch (e) {}
             }
             runFind(input.value, false, { navigate: false });
-            if (focusReplace && replaceInput) {
+            try { syncFindReplaceAvailability(); } catch (eRep) {}
+            if (focusReplace && replaceInput && !replaceInput.disabled) {
                 requestAnimationFrame(() => {
                     try { replaceInput.focus(); replaceInput.select(); } catch (e) {}
                 });
             } else {
                 focusFindInput(true);
             }
+        }
+
+        function isReadOnlyFindSurface() {
+            return typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub';
+        }
+
+        function syncFindReplaceAvailability() {
+            const hide = isReadOnlyFindSurface();
+            const ids = ['replaceInput', 'findReplaceOne', 'findReplaceAll'];
+            for (let i = 0; i < ids.length; i++) {
+                const el = document.getElementById(ids[i]);
+                if (!el) continue;
+                el.disabled = hide;
+                el.hidden = hide;
+            }
+            const lab = document.querySelector('label[for="replaceInput"]');
+            if (lab) lab.hidden = hide;
         }
 
         /** Hide Ctrl+F chrome only — never touch shared findState / sidebar results. */
@@ -3101,7 +3119,7 @@
                     left: left,
                     right: right,
                     totalLeaves: totalLeaves,
-                    bubble: left + ' / ' + totalLeaves,
+                    bubble: left + '–' + right + ' / ' + totalLeaves,
                     spread0: s,
                     spreadCount: n
                 };
@@ -3153,7 +3171,8 @@
             if (twoCol) {
                 host.innerHTML =
                     '<span class="page-num">' + d.left + '</span>' +
-                    '<span class="page-num">' + d.right + '</span>';
+                    '<span class="page-num">' + d.right + ' / '
+                    + (approx ? '~' : '') + d.totalLeaves + '</span>';
             } else {
                 host.innerHTML = '<span class="page-num">' + d.left + ' / '
                     + (approx ? '~' : '') + d.totalLeaves + '</span>';
@@ -3241,7 +3260,10 @@
                 // Scrubber steps are spreads; the bubble shows leaf pages via the helper.
                 const twoCol = !!(editor && editor.classList.contains('two-col-layout'));
                 const d = pageDisplayFromSpread(v, total, twoCol);
-                bubble.textContent = d.bubble;
+                const approx = (typeof pageTotalIsApproximate === 'function') && pageTotalIsApproximate();
+                bubble.textContent = approx
+                    ? String(d.bubble).replace(/\/ (\d+)$/, '/ ~$1')
+                    : d.bubble;
                 bubble.style.left = (total > 1 ? (v / (total - 1)) * 100 : 0) + '%';
                 bubble.classList.add('showing');
             }
@@ -4997,7 +5019,7 @@
                 // match within THIS list, and is the only one of the two that can index it.
                 const cur = (findState.currentRange != null && findState.currentRange >= 0)
                     ? findState.currentRange
-                    : findState.index;
+                    : -1;
                 if (cur >= 0 && cur < findState.ranges.length) {
                     CSS.highlights.set('typozen-find-current', new Highlight(findState.ranges[cur]));
                 }
@@ -5712,6 +5734,7 @@
 
         /** Replace using full markdown document (reliable for both modes). */
         function replaceCurrentMatch() {
+            if (isReadOnlyFindSurface()) return;
             const q = (document.getElementById('findInput') || {}).value || '';
             const rep = (document.getElementById('replaceInput') || {}).value;
             if (rep === undefined) return;
@@ -5739,6 +5762,7 @@
         }
 
         function replaceAllMatches() {
+            if (isReadOnlyFindSurface()) return;
             const q = (document.getElementById('findInput') || {}).value || '';
             const repEl = document.getElementById('replaceInput');
             const rep = repEl ? repEl.value : '';
@@ -5763,6 +5787,7 @@
         }
 
         function applyReplacedDocument(markdown) {
+            if (isReadOnlyFindSurface()) return;
             if (typeof HistoryManager !== 'undefined') HistoryManager.beginEdit();
             if (state.mode === 'source') {
                 const start = sourceEditor.selectionStart;

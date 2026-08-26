@@ -83,9 +83,12 @@ an artefact you keep and may send on. **Now:** Print stops and explains, rather 
 the whole document (which is the work windowing exists to avoid). Fails open — an unanswered
 probe prints, so a broken check cannot silently disable Print.
 
-**Cut is not affected.** Measured against the running application: `Ctrl+A` then `Ctrl+X`
-leaves the model holding all 3767 blocks and all 205,842 characters. The view blanks and the
-clipboard gets the window; the document survives and a later save writes the whole file.
+**Cut / Delete after Select All, and Export as HTML, used the window too — now fixed.**
+`getAncestorBlock` stops at `#editor`, so a `selectNodeContents(editor)` range was not
+treated as multi-block. Cut fell through to the browser: clipboard got the window, the view
+blanked, the model survived. Delete after Select All was the same hole. Export as HTML
+dumped `editor.innerHTML`. **Now:** a whole-editor selection copies/cuts/deletes via
+`DocumentModel`, and export renders every model block. Guarded by `clipboard-roundtrip-browser`.
 
 ---
 

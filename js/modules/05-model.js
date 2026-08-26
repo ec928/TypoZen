@@ -2700,11 +2700,29 @@
             // was left to restructure the blocks.
             editor.addEventListener('cut', function onEditorCut(e) {
                 if (state.mode === 'source') return;
+                const sel = window.getSelection();
+                if (sel && !sel.isCollapsed && sel.rangeCount) {
+                    try {
+                        const range = sel.getRangeAt(0);
+                        if (typeof selectionIsWholeEditor === 'function'
+                            && selectionIsWholeEditor(range)) {
+                            try {
+                                if (e.clipboardData)
+                                    e.clipboardData.setData('text/plain', selectionToPlainText());
+                            } catch (errClip) {}
+                            e.preventDefault();
+                            if (typeof replaceWholeDocumentFromModel === 'function')
+                                replaceWholeDocumentFromModel('');
+                            try { updateStats(); } catch (eSt) {}
+                            try { updateOutline(); } catch (eOu) {}
+                            return;
+                        }
+                    } catch (eWhole) {}
+                }
                 try {
                     if (typeof snapshotMultiBlockSelectionFromLive === 'function')
                         snapshotMultiBlockSelectionFromLive();
                 } catch (eSnap) {}
-                const sel = window.getSelection();
                 let multi = false;
                 if (sel && !sel.isCollapsed && sel.rangeCount
                     && sel.anchorNode && editor.contains(sel.anchorNode)) {

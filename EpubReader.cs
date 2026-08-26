@@ -348,7 +348,12 @@ namespace TypoZen
                 if (e.FullName.EndsWith("/")) continue;
                 string dest = Path.GetFullPath(Path.Combine(dir, e.FullName.Replace('/', Path.DirectorySeparatorChar)));
                 // Zip-slip: an archive must not write outside its own directory.
-                if (!dest.StartsWith(Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase)) continue;
+                // Trailing separator so dest = dir + "_evil\\…" does not match.
+                string rootPrefix = Path.GetFullPath(dir);
+                if (!rootPrefix.EndsWith(Path.DirectorySeparatorChar.ToString())
+                    && !rootPrefix.EndsWith(Path.AltDirectorySeparatorChar.ToString()))
+                    rootPrefix += Path.DirectorySeparatorChar;
+                if (!dest.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)) continue;
                 try
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(dest));

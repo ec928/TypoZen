@@ -3,9 +3,9 @@
     Build TypoZen's dictionary.tsv and thesaurus.tsv from a WordNet database you have.
 
 .DESCRIPTION
-    TypoZen bundles no dictionary and downloads nothing, so Define needs a file you
-    supply. This turns WordNet's data files into the one-line-per-word TSVs it reads,
-    which is otherwise a fiddly bit of parsing to write yourself.
+    TypoZen ships dictionary.tsv and thesaurus.tsv beside the exe (WordNet 3.1).
+    This rebuilds them from a WordNet download of your own. Nothing here reaches
+    the network — you do the download; this only reads local files.
 
     It writes two files from the same pass, because WordNet is a thesaurus as well as a
     dictionary and it would be silly to read 90 MB twice. A synset is a set of words that

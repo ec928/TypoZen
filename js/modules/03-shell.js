@@ -1716,7 +1716,7 @@
                 syncPaginationClass();
                 applyEditorChromeForMode();
                 scheduleColumnSettle(function () { ensurePageWindow(); PageMap.invalidate(); updatePageIndicator(); });
-                // Mode can change from Ctrl+/ or the View menu, not just a selector click.
+                // Mode changes from the toolbar selector (and host view_set), not a shortcut.
                 postViewState(currentViewState());
             }
             else if (cmd === "toggle_sidebar") {

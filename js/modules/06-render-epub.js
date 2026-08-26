@@ -1294,7 +1294,7 @@
                 const doc = new DOMParser().parseFromString(String(html), 'text/html');
                 // Executable / navigation chrome the book must not bring into the page.
                 const kill = doc.body.querySelectorAll(
-                    'script, iframe, object, embed, link, meta, base, form, template, ' +
+                    'script, iframe, object, embed, link, meta, base, form, template, style, ' +
                     'foreignObject, handler, set, animate, animateTransform');
                 for (let i = 0; i < kill.length; i++) kill[i].remove();
                 const all = doc.body.querySelectorAll('*');

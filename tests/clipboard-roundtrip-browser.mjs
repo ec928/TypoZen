@@ -189,6 +189,69 @@ async function main() {
         assert(saved === all.whole,
             'and what would be saved is the whole document too (' + saved + ')');
 
+        console.log('\n=== select all cut takes the document, not the window ===');
+        const cut = await page.evaluate(() => {
+            const ed = document.getElementById('editor');
+            const range = document.createRange();
+            range.selectNodeContents(ed);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            const before = DocumentModel.toMarkdown();
+            const virtBefore = !!DocumentModel.virtEnabled;
+            const mountedBefore = ed.querySelectorAll('.block').length;
+            const modelBefore = DocumentModel.blocks.length;
+            const dt = new DataTransfer();
+            const ev = new Event('cut', { bubbles: true, cancelable: true });
+            Object.defineProperty(ev, 'clipboardData', { value: dt });
+            ed.dispatchEvent(ev);
+            return {
+                virtBefore: virtBefore,
+                mountedBefore: mountedBefore,
+                modelBefore: modelBefore,
+                clip: dt.getData('text/plain').length,
+                wholeBefore: before.length,
+                after: DocumentModel.toMarkdown().length,
+                modelBlocks: DocumentModel.blocks.length
+            };
+        });
+        info('cut clipboard ' + cut.clip + ' of ' + cut.wholeBefore +
+            '; model now ' + cut.after + ' chars, ' + cut.modelBlocks + ' blocks');
+        assert(cut.virtBefore && cut.mountedBefore < cut.modelBefore,
+            'cut ran on a windowed document (' + cut.mountedBefore + ' of ' + cut.modelBefore + ')');
+        assert(cut.clip === cut.wholeBefore,
+            'select all cut copies every character (' + cut.clip + ' of ' + cut.wholeBefore + ')');
+        assert(cut.after === 0 || cut.modelBlocks <= 1,
+            'and the model is emptied rather than left holding the rest of the file');
+
+        console.log('\n=== export HTML is the document, not the window ===');
+        // Reload a virtualised document — the cut above emptied it.
+        await page.evaluate(() => {
+            const big = [];
+            for (let i = 0; i < 3000; i++) {
+                big.push('Paragraph ' + i + ' with enough words in it to occupy a line or so.');
+            }
+            loadMarkdownContent(big.join('\n\n'));
+        });
+        await sleep(2500);
+        const exp = await page.evaluate(() => {
+            const html = generateExportHtml();
+            const n = (html.match(/class="block"/g) || []).length;
+            return {
+                virt: !!DocumentModel.virtEnabled,
+                mounted: document.getElementById('editor').querySelectorAll('.block').length,
+                modelBlocks: DocumentModel.blocks.length,
+                exportedBlocks: n
+            };
+        });
+        info('export ' + exp.exportedBlocks + ' blocks; mounted ' + exp.mounted +
+            ' of ' + exp.modelBlocks);
+        assert(exp.virt && exp.mounted < exp.modelBlocks,
+            'export runs against a windowed DOM (' + exp.mounted + ' of ' + exp.modelBlocks + ')');
+        assert(exp.exportedBlocks === exp.modelBlocks,
+            'export HTML contains every model block (' + exp.exportedBlocks +
+            ' of ' + exp.modelBlocks + ')');
+
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) { console.error('\nCLIPBOARD ROUND TRIP FAILED'); process.exitCode = 1; return; }
         console.log('\nCLIPBOARD ROUND TRIP PASSED');

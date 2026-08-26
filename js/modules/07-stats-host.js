@@ -663,8 +663,25 @@
         };
 
         function generateExportHtml() {
-            const content = editor.innerHTML;
-            const theme = document.getElementById('theme-styles').innerHTML;
+            // The model is the document. editor.innerHTML is a window under
+            // virtualisation or page windowing — the same projection Print refuses
+            // and Copy already answers from DocumentModel.
+            try { if (typeof DocumentModel !== 'undefined') DocumentModel.syncMountedToModel(); } catch (eS) {}
+            const holder = document.createElement('div');
+            const blocks = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
+                ? DocumentModel.blocks : [];
+            if (blocks.length && typeof createPreviewBlockEl === 'function') {
+                for (let i = 0; i < blocks.length; i++) {
+                    const raw = blocks[i] ? blocks[i].raw : '';
+                    try { holder.appendChild(createPreviewBlockEl(raw, false, i)); }
+                    catch (eB) {}
+                }
+            } else if (editor) {
+                holder.innerHTML = editor.innerHTML;
+            }
+            const content = holder.innerHTML;
+            const themeEl = document.getElementById('theme-styles');
+            const theme = themeEl ? themeEl.innerHTML : '';
             return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Exported Document</title><style>${theme} body{padding:40px;max-width:800px;margin:0 auto;background:var(--bg);color:var(--tx);font-family:var(--font);} pre,code{background:var(--code-bg);padding:4px;border-radius:4px;} blockquote{border-left:4px solid var(--accent);padding-left:16px;}</style></head><body>${content}</body></html>`;
         }
 

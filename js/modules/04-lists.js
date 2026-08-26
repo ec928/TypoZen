@@ -139,16 +139,53 @@
          * where its comment reads "saving would have written the window and discarded the
          * rest of the file". The model is the document; ask it.
          */
-        function selectionIsWholeVirtualDocument(range) {
+        /**
+         * Ctrl+A uses selectNodeContents(editor). getAncestorBlock stops at #editor, so
+         * both ends of that range are null — Cut/Delete used to treat it as "not
+         * multi-block" and fall through to the browser.
+         */
+        function selectionIsWholeEditor(range) {
             try {
-                if (!editor || !range || typeof DocumentModel === 'undefined') return false;
-                const partial = !!DocumentModel.virtEnabled
-                    || (typeof pageWindowingActive === 'function' && pageWindowingActive());
-                if (!partial) return false;
+                if (!editor || !range) return false;
                 return range.startContainer === editor && range.endContainer === editor
                     && range.startOffset === 0
                     && range.endOffset === editor.childNodes.length;
             } catch (e) { return false; }
+        }
+
+        function selectionIsWholeVirtualDocument(range) {
+            try {
+                if (typeof DocumentModel === 'undefined') return false;
+                const partial = !!DocumentModel.virtEnabled
+                    || (typeof pageWindowingActive === 'function' && pageWindowingActive());
+                if (!partial) return false;
+                return selectionIsWholeEditor(range);
+            } catch (e) { return false; }
+        }
+
+        /**
+         * Replace the whole document from the model. Select All + Cut/Delete must not
+         * walk the mounted window, and applyModelMultiBlockDelete's accidental-wipe
+         * guard would refuse a genuine empty result.
+         */
+        function replaceWholeDocumentFromModel(nextMarkdown) {
+            if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return false;
+            try { DocumentModel.syncMountedToModel(); } catch (eS) {}
+            const pre = DocumentModel.toMarkdown();
+            const post = nextMarkdown == null ? '' : String(nextMarkdown);
+            if (typeof HistoryManager !== 'undefined') {
+                HistoryManager.recordEditPair(pre, post);
+            }
+            const hm = typeof HistoryManager !== 'undefined' ? HistoryManager : null;
+            const wasRestoring = hm ? hm.isRestoring : false;
+            if (hm) hm.isRestoring = true;
+            try {
+                loadMarkdownContent(post, { stickyLine: 1 });
+            } finally {
+                if (hm) hm.isRestoring = wasRestoring;
+            }
+            clearMultiBlockSelFreeze();
+            return true;
         }
 
         function selectionToPlainText() {
@@ -318,8 +355,12 @@
             if (!out.length) out.push('');
             const postContent = out.join('\n');
             const postNonEmpty = out.filter(function (r) { return String(r || '').trim(); }).length;
-            // Refuse accidental full wipe
-            if (preNonEmpty > 0 && postNonEmpty === 0 && preNonEmpty > 1) return null;
+            // Refuse accidental full wipe — unless the selection already named every
+            // block (Select All by dragging), which is a deliberate empty document.
+            if (preNonEmpty > 0 && postNonEmpty === 0 && preNonEmpty > 1) {
+                const whole = fromIdx === 0 && toIdx === model.length - 1;
+                if (!whole && !(spec && spec.allowWipe)) return null;
+            }
 
             if (typeof HistoryManager !== 'undefined') {
                 HistoryManager.recordEditPair(preContent, postContent);
@@ -413,10 +454,30 @@
             if (window.isComposing || (e && e.isComposing) || (e && e.keyCode === 229)) return false;
             if (state.mode === 'source') return false;
 
+            const sel = window.getSelection();
+            if (sel && !sel.isCollapsed && sel.rangeCount) {
+                try {
+                    if (selectionIsWholeEditor(sel.getRangeAt(0))) {
+                        if (e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                        }
+                        replaceWholeDocumentFromModel('');
+                        try {
+                            if (typeof updateStats === 'function') updateStats();
+                            if (typeof updateOutline === 'function') {
+                                setTimeout(function () { try { updateOutline(); } catch (e2) {} }, 0);
+                            }
+                        } catch (e3) {}
+                        return true;
+                    }
+                } catch (eWhole) {}
+            }
+
             // Refresh freeze from live selection if still multi-block
             try { snapshotMultiBlockSelectionFromLive(); } catch (eSnap) {}
 
-            const sel = window.getSelection();
             let willHandle = false;
             if (_mbSelFreeze && _mbSelFreeze.toIdx > _mbSelFreeze.fromIdx) willHandle = true;
             if (sel && !sel.isCollapsed && sel.rangeCount

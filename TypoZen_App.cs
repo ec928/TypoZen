@@ -302,6 +302,7 @@ namespace TypoZen
         private WebView2 _nativeWebView;
         private WinForms.Panel _webViewPanel;
         private string _mappedNativeFolder;
+        private string _mappedLoadFolder;
         private string _nativeNavigatedPath;
         private bool _nativeSurfaceVisible;
         private System.Drawing.Color _currentThemeBg = System.Drawing.Color.FromArgb(30, 30, 30);
@@ -546,9 +547,84 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Delete stale staged-load bodies from typozen_load. Each large open writes a
-        /// unique body_*.md that the page fetches exactly once; without this they
-        /// accumulate indefinitely in the application folder.
+        /// Where a large document or book payload is staged for the page to fetch.
+        ///
+        /// Not the application folder: that can be OneDrive-synced, and Privacy Mode
+        /// forbids writing document bytes next to the exe. Cache for ordinary use;
+        /// the opaque TEMP session while Privacy Mode is on.
+        /// </summary>
+        private string LoadStageDir()
+        {
+            if (SuppressDocumentTraces())
+            {
+                string root = EpubReader.PrivateSessionRoot;
+                if (string.IsNullOrEmpty(root))
+                {
+                    EpubReader.BeginPrivateSession();
+                    root = EpubReader.PrivateSessionRoot;
+                }
+                if (!string.IsNullOrEmpty(root))
+                    return Path.Combine(root, "load");
+            }
+            return Path.Combine(CacheDir(), "typozen_load");
+        }
+
+        /// <summary>
+        /// Write a staged payload and return the https://localload/ URL the page fetches.
+        /// </summary>
+        private string StageLoadPayload(string fileName, string contents)
+        {
+            string dir = LoadStageDir();
+            Directory.CreateDirectory(dir);
+            PruneLoadStageDir(maxAgeMinutes: 5);
+            MapLoadHost();
+            File.WriteAllText(Path.Combine(dir, fileName), contents ?? "", new UTF8Encoding(false));
+            return "https://localload/" + fileName;
+        }
+
+        /// <summary>
+        /// Point localload at the current stage directory. Re-mapped when Privacy Mode
+        /// moves the root, same reason MapBookHost re-maps.
+        /// </summary>
+        private void MapLoadHost()
+        {
+            if (_webView == null || _webView.CoreWebView2 == null) return;
+            try
+            {
+                string dir = LoadStageDir();
+                Directory.CreateDirectory(dir);
+                try { _webView.CoreWebView2.ClearVirtualHostNameToFolderMapping("localload"); } catch { }
+                // Allow: the page origin is https://localapp, and it fetch()es this host.
+                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "localload", dir, CoreWebView2HostResourceAccessKind.Allow);
+                _mappedLoadFolder = dir;
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Older builds staged under _appDir/typozen_load. Sweep leftover bodies at
+        /// launch so a crash cannot leave a novel next to the exe.
+        /// </summary>
+        private void SweepLegacyAppLoadStage()
+        {
+            try
+            {
+                string dir = Path.Combine(_appDir, "typozen_load");
+                if (!Directory.Exists(dir)) return;
+                foreach (string pattern in new[] { "body_*.md", "book_*.json" })
+                {
+                    foreach (string f in Directory.GetFiles(dir, pattern))
+                    {
+                        try { File.Delete(f); } catch { }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Delete stale staged-load bodies from the current stage directory.
         /// </summary>
         /// <param name="maxAgeMinutes">
         /// Only remove files older than this. Use 5 during a session so a load still
@@ -559,13 +635,9 @@ namespace TypoZen
         {
             try
             {
-                string dir = Path.Combine(_appDir, "typozen_load");
+                string dir = LoadStageDir();
                 if (!Directory.Exists(dir)) return;
                 DateTime cutoff = DateTime.UtcNow.AddMinutes(-Math.Abs(maxAgeMinutes));
-                // Both kinds staged here, not just document bodies. A book payload is the
-                // largest file this application ever writes -- the whole of an omnibus as
-                // JSON -- and this swept only body_*.md, so every book ever opened stayed on
-                // disk. 176 of them had accumulated to 939 MB before anyone looked.
                 foreach (string pattern in new[] { "body_*.md", "book_*.json" })
                 {
                     foreach (string f in Directory.GetFiles(dir, pattern))
@@ -574,7 +646,7 @@ namespace TypoZen
                         {
                             if (File.GetLastWriteTimeUtc(f) <= cutoff) File.Delete(f);
                         }
-                        catch { }   // locked or vanished — next sweep gets it
+                        catch { }
                     }
                 }
             }
@@ -607,6 +679,8 @@ namespace TypoZen
             }
             _appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
             Program.PerfMark("window ctor");
+            SweepLegacyAppLoadStage();
+            try { PruneLoadStageDir(maxAgeMinutes: 0); } catch { }
             PurgePendingWebStorage(); // must precede WebView2: it locks the store
             Program.PerfMark("storage purged");
             LoadXamlLayout();
@@ -2418,12 +2492,10 @@ namespace TypoZen
         // sit in the document's memory would cost more than the feature is worth. The page
         // asks for one word and gets one answer.
         //
-        // Nothing is bundled and nothing is downloaded -- consistent with an app that
-        // measures its own network traffic and finds it silent. A dictionary is a file the
-        // reader chooses: "dictionary.tsv" (word, tab, definition) or "dictionary.json"
-        // ({"word": "definition"}), beside the exe or in the cache folder. TSV first
-        // because it is what a WordNet or Wiktionary export converts to in one line of
-        // script, and because a 40 MB JSON parse on startup would be felt.
+        // dictionary.tsv / thesaurus.tsv ship beside the exe (WordNet 3.1, see
+        // WORDNET-LICENSE.txt). CacheDir() is checked first so a drop-in file there
+        // overrides the bundled one without touching the install. TSV rather than JSON
+        // because a 40 MB JSON parse on first lookup would be felt.
         private Dictionary<string, string> _dictionary;
         private bool _dictionaryChecked;
         // WordNet is a thesaurus as well as a dictionary -- a synset is a set of words that
@@ -2534,6 +2606,8 @@ namespace TypoZen
 
         private static IEnumerable<string> WordStems(string w)
         {
+            if (w.Length > 4 && w.EndsWith("ies", StringComparison.OrdinalIgnoreCase))
+                yield return w.Substring(0, w.Length - 3) + "y";
             if (w.Length > 3 && w.EndsWith("s", StringComparison.OrdinalIgnoreCase))
                 yield return w.Substring(0, w.Length - 1);
             if (w.Length > 4 && w.EndsWith("es", StringComparison.OrdinalIgnoreCase))
@@ -4107,7 +4181,7 @@ namespace TypoZen
             // attach to the real WebView2, with the real WPF host, real window size and real
             // focus behaviour. Off unless --debug, so an ordinary run never opens a port.
             string extraArgs =
-                "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1\""
+                "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1, MAP localbooks 127.0.0.1, MAP localview 127.0.0.1, MAP localload 127.0.0.1\""
                 + " --disable-background-networking"
                 + " --disable-component-update"
                 + " --disable-sync"
@@ -4152,8 +4226,9 @@ namespace TypoZen
                 // runs a DNS lookup for them on every navigation, and on a machine whose DNS
                 // is remote (a VPN, say) that NXDOMAIN round trip costs ~2 s *per navigation*
                 // before the mapping is consulted. Measured here: 2,063 ms -> 61 ms.
-                // Pinning them to loopback skips the lookup. Nothing else is affected: only
-                // these two names are mapped, and the app makes no network requests.
+                // Pinning them to loopback skips the lookup. localbooks / localview /
+                // localload were added later and must stay on this list or they pay
+                // the same NXDOMAIN cost. The app itself makes no network requests.
                 // Second group: WebView2's browser process otherwise runs Chromium background
                 // services on startup - component updates, Safe Browsing list refreshes, sync -
                 // even though this app never requests a URL. Switched off here.
@@ -4209,7 +4284,9 @@ namespace TypoZen
                 try { _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false; } catch {}
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping("localapp", _appDir, CoreWebView2HostResourceAccessKind.Allow);
                 MapBookHost();
+                MapLoadHost();
                 MapDocumentFolder(_currentFilePath);
+                AttachEditorNavigationGuards(_webView.CoreWebView2);
                 _webView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
 
                 // Native Ctrl+wheel still mutates ZoomFactor — mirror it into the status bar.
@@ -6085,7 +6162,7 @@ namespace TypoZen
 
                 try { _webView.CoreWebView2.ClearVirtualHostNameToFolderMapping("docfolder"); } catch { }
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "docfolder", dir, CoreWebView2HostResourceAccessKind.Allow);
+                    "docfolder", dir, CoreWebView2HostResourceAccessKind.DenyCors);
                 _mappedDocFolder = dir;
                 SendMsg("doc_folder_mapped");
             }
@@ -7188,6 +7265,7 @@ namespace TypoZen
                 EpubReader.EndPrivateSession();
             }
             MapBookHost();
+            MapLoadHost();
 
             if (!_applyingRestoredSettings) SaveWindowState();
         }
@@ -7208,9 +7286,100 @@ namespace TypoZen
                 string root = EpubReader.CacheRoot(_appDir);
                 Directory.CreateDirectory(root);
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "localbooks", root, CoreWebView2HostResourceAccessKind.Allow);
+                    "localbooks", root, CoreWebView2HostResourceAccessKind.DenyCors);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Keep the editor WebView on the template. A book sanitizer miss or a
+        /// target=_blank that the page did not intercept must not replace
+        /// TypoZen_Template with some other origin — chrome.webview messages still
+        /// arrive after that, and open_doc / save_prefs would then run against
+        /// whoever is on the page.
+        /// </summary>
+        private void AttachEditorNavigationGuards(CoreWebView2 core)
+        {
+            if (core == null) return;
+            core.NavigationStarting += (s, e) =>
+            {
+                try
+                {
+                    if (!IsAllowedEditorNavigation(e.Uri)) e.Cancel = true;
+                }
+                catch { }
+            };
+            core.NewWindowRequested += (s, e) =>
+            {
+                try
+                {
+                    e.Handled = true;
+                    string url = e.Uri ?? "";
+                    if (Regex.IsMatch(url, @"^(https?|mailto):", RegexOptions.IgnoreCase))
+                    {
+                        Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+                    }
+                }
+                catch { }
+            };
+        }
+
+        private static bool IsAllowedEditorNavigation(string uri)
+        {
+            if (string.IsNullOrEmpty(uri)) return false;
+            if (uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase)) return true;
+            if (uri.StartsWith("https://localapp/", StringComparison.OrdinalIgnoreCase)) return true;
+            if (uri.StartsWith("https://docfolder/", StringComparison.OrdinalIgnoreCase)) return true;
+            if (uri.StartsWith("https://localbooks/", StringComparison.OrdinalIgnoreCase)) return true;
+            if (uri.StartsWith("https://localload/", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        private void AttachNativeNavigationGuards(CoreWebView2 core)
+        {
+            if (core == null) return;
+            core.NavigationStarting += (s, e) =>
+            {
+                try
+                {
+                    string uri = e.Uri ?? "";
+                    if (IsAllowedNativeNavigation(uri)) return;
+                    if (Regex.IsMatch(uri, @"^(https?|mailto):", RegexOptions.IgnoreCase))
+                    {
+                        e.Cancel = true;
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo { FileName = uri, UseShellExecute = true });
+                        }
+                        catch { }
+                        return;
+                    }
+                    e.Cancel = true;
+                }
+                catch { }
+            };
+            core.NewWindowRequested += (s, e) =>
+            {
+                try
+                {
+                    e.Handled = true;
+                    string url = e.Uri ?? "";
+                    if (Regex.IsMatch(url, @"^(https?|mailto):", RegexOptions.IgnoreCase))
+                    {
+                        Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+                    }
+                }
+                catch { }
+            };
+        }
+
+        private static bool IsAllowedNativeNavigation(string uri)
+        {
+            if (string.IsNullOrEmpty(uri)) return false;
+            if (uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase)) return true;
+            if (uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return true;
+            if (uri.StartsWith("https://localview/", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         /// <summary>True when nothing that names a document may be written.</summary>
@@ -7346,19 +7515,10 @@ namespace TypoZen
                 }
 
                 // Large payload: unique stage file per load (avoids concurrent open races).
-                string dir = Path.Combine(_appDir, "typozen_load");
-                Directory.CreateDirectory(dir);
-                // Each staged body is fetched once and then dead, but nothing removed
-                // them: a day of large opens left 27 files / 16 MB in the app folder.
-                // Sweep old ones before adding another; the age threshold leaves any
-                // load still being fetched alone.
-                PruneLoadStageDir(maxAgeMinutes: 5);
+                // localload, not localapp: the app folder is not a place for document
+                // bodies (OneDrive, Privacy Mode).
                 string fileName = "body_" + Guid.NewGuid().ToString("N") + ".md";
-                string file = Path.Combine(dir, fileName);
-                File.WriteAllText(file, content, new UTF8Encoding(false));
-                // |plain=1 so huge logs / xaml open as Source without Markdown parse cost.
-                // |at=N lands first paint near the remembered block (same as books).
-                string url = "https://localapp/typozen_load/" + fileName + (plain ? "|plain=1" : "");
+                string url = StageLoadPayload(fileName, content) + (plain ? "|plain=1" : "");
                 if (resumeAt > 0 && !plain)
                     url += "|at=" + resumeAt;
                 SendMsg("fetch_and_load:" + url);
@@ -10655,6 +10815,16 @@ namespace TypoZen
                 return;
             }
 
+            if (existing < 0 || existing != _activeTabIndex)
+            {
+                if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
+                {
+                    NotifyEditorSyncFailedForTabOp();
+                    return;
+                }
+                SnapshotActiveTabView();
+            }
+
             _tabOpInProgress = true;
             try
             {
@@ -10689,11 +10859,8 @@ namespace TypoZen
 
                 RebuildTabStrip();
 
-                string dir = Path.Combine(_appDir, "typozen_load");
-                Directory.CreateDirectory(dir);
-                PruneLoadStageDir(maxAgeMinutes: 5);
                 string fileName = "book_" + Guid.NewGuid().ToString("N") + ".json";
-                File.WriteAllText(Path.Combine(dir, fileName), payload, new UTF8Encoding(false));
+                string bookUrl = StageLoadPayload(fileName, payload);
 
                 // Reopen where they stopped reading. A book with no remembered position --
                 // or one remembered at the very start -- opens at the cover, as it should.
@@ -10711,7 +10878,7 @@ namespace TypoZen
                     && string.Equals(Path.GetFullPath(_pendingLaunch.FilePath), path,
                                      StringComparison.OrdinalIgnoreCase))
                     resumeAt = -1;
-                SendMsg("fetch_and_load_book:https://localapp/typozen_load/" + fileName
+                SendMsg("fetch_and_load_book:" + bookUrl
                     + (resumeAt > 0 ? "|at=" + resumeAt : ""));
                 RequestTabColumns(tab);
                 SendBookmarksForCurrentDocument();
@@ -10930,6 +11097,7 @@ namespace TypoZen
                 try { _nativeWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true; } catch { }
                 try { _nativeWebView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true; } catch { }
                 try { _nativeWebView.ZoomFactorChanged += WebView_ZoomFactorChanged; } catch { }
+                try { AttachNativeNavigationGuards(_nativeWebView.CoreWebView2); } catch { }
                 // .xaml / some markup is treated as a download, not a document — cancel the
                 // shelf so we don't stack "Open file" bubbles over the wrong surface.
                 try
@@ -11019,7 +11187,7 @@ namespace TypoZen
                 if (string.Equals(dir, _mappedNativeFolder, StringComparison.OrdinalIgnoreCase)) return;
                 try { _nativeWebView.CoreWebView2.ClearVirtualHostNameToFolderMapping("localview"); } catch { }
                 _nativeWebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "localview", dir, CoreWebView2HostResourceAccessKind.Allow);
+                    "localview", dir, CoreWebView2HostResourceAccessKind.DenyCors);
                 _mappedNativeFolder = dir;
             }
             catch { }
@@ -11305,7 +11473,7 @@ namespace TypoZen
                     WinForms.MessageBox.Show(
                         "This document is too large to print directly.\n\n" +
                         "TypoZen lays out long documents a piece at a time, so only " +
-                        partial + " paragraphs are in the page right now. Printing would " +
+                        partial + " blocks are in the page right now. Printing would " +
                         "produce a PDF containing just that piece, with nothing to show " +
                         "the rest was missing.\n\n" +
                         "Save the file and print it from another application instead.",
