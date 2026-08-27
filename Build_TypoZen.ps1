@@ -245,6 +245,15 @@ if (-not $compiled) {
     }
 }
 
+Write-Host "`n[3/4] Staging to bin/..." -ForegroundColor Yellow
+$binDir = Join-Path $appDir "bin"
+if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Path $binDir | Out-Null }
+Copy-Item (Join-Path $appDir "TypoZen.exe") -Destination $binDir -Force
+if (Test-Path (Join-Path $appDir "TypoZen.pdb")) {
+    Copy-Item (Join-Path $appDir "TypoZen.pdb") -Destination $binDir -Force
+}
+Write-Host "  Copied TypoZen.exe to staging directory." -ForegroundColor Gray
+
 Write-Host "`n[4/4] Build Complete! TypoZen.exe is ready." -ForegroundColor Green
-Write-Host "You can now run TypoZen.exe directly or open TypoZen.csproj in Visual Studio." -ForegroundColor Cyan
+Write-Host "You can now run TypoZen.exe directly or from the bin/ staging folder." -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
