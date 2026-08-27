@@ -22,6 +22,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { settled } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -47,7 +48,7 @@ async function main() {
         await page.waitForFunction(() => typeof handleCommand === 'function', { timeout: 15000 });
         await page.evaluate(m => loadMarkdownContent(m),
             fs.readFileSync(path.join(appDir, 'tests', 'large-scroll-mixed.md'), 'utf8'));
-        await sleep(2500);
+        await settled(page, 15000); // Allow up to 15s for the large fixture to settle
         await page.evaluate(() => handleCommand('toggle_search_sidebar'));
         await sleep(600);
 

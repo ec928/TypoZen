@@ -166,13 +166,13 @@ async function main() {
             out.insensitive = findState.matches.length;
 
             mcBtn.click();
-            await sleep(150);
+            for(let w = 0; w < 40 && findState.matches.length === out.insensitive; w++) await sleep(50);
             out.caseSensitive = findState.matches.length;
             out.boxFollowed = !!mcBox.checked;
             out.pressed = mcBtn.getAttribute('aria-pressed');
 
             mcBtn.click();
-            await sleep(150);
+            for(let w = 0; w < 40 && findState.matches.length === out.caseSensitive; w++) await sleep(50);
 
             // "row" occurs 2147 times alone and 140 times inside a longer word, so the
             // count has to move. "column" does not -- it only ever appears whole in this
@@ -181,7 +181,7 @@ async function main() {
             runFind(input.value, false, { navigate: false });
             out.anySubstring = findState.matches.length;
             wwBtn.click();
-            await sleep(150);
+            for(let w = 0; w < 40 && findState.matches.length === out.anySubstring; w++) await sleep(50);
             out.wholeWordOnly = findState.matches.length;
             out.wwBoxFollowed = !!wwBox.checked;
 
