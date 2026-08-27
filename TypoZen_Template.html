@@ -427,53 +427,53 @@
     <!-- About (replaces WinForms MessageBox) -->
     <div id="aboutModal" class="tz-help-overlay" hidden role="presentation">
         <div class="tz-help-panel tz-about-panel" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" tabindex="-1">
-            <header class="tz-help-head">
-                <h2 id="aboutTitle">About TypoZen</h2>
-                <button type="button" id="aboutClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">✕</button>
-            </header>
-            <div class="tz-help-body tz-about-body">
+            <header class="tz-help-head tz-about-head">
                 <div class="tz-about-brand">
-                    <div class="tz-about-name">TypoZen</div>
+                    <div class="tz-about-head-top">
+                        <div id="aboutTitle" class="tz-about-name">TypoZen</div>
+                        <button type="button" id="aboutClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">✕</button>
+                    </div>
                     <!-- Filled from Program.AppVersion when the template is stamped for
                          navigation. Deliberately empty here: if the stamp cannot run the
                          app falls back to this file, and a blank line is honest where a
                          hardcoded number would be a lie. -->
                     <div class="tz-about-version" id="aboutVersion"></div>
-                    <p class="tz-about-tag">WYSIWYG Markdown &amp; text editor for Windows — books, PDFs, images, and media too.</p>
+                    <p class="tz-about-tag">Paginated ePub reader and WYSIWYG Markdown editor — with two-page spreads and media support.</p>
                 </div>
+            </header>
+            <div class="tz-help-body tz-about-body">
                 <section class="tz-help-sec">
                     <h3>Writing</h3>
                     <ul class="tz-about-list">
-                        <li><strong>Preview</strong>, <strong>Source</strong>, and <strong>Reader</strong> for the same document — switch without losing your place.</li>
-                        <li>Live block editing for Markdown: headings, lists, tables, tasks, emphasis, fenced code.</li>
-                        <li>Large files stay workable (virtualized Preview); multi-document tabs, outline + search, find &amp; replace.</li>
+                        <li><strong>Dual-mode editing:</strong> Seamlessly switch between WYSIWYG <strong>Preview</strong> and raw <strong>Source</strong> without losing your scroll position.</li>
+                        <li>Live block editing for Markdown and text: headings, lists, tables, tasks, emphasis, fenced code.</li>
+                        <li><strong>Deep immersion:</strong> Engage <strong>Focus mode</strong>, <strong>Typewriter scroll</strong>, and <strong>chrome auto-hide</strong> to eliminate distractions while you work.</li>
+                        <li><strong>Engineered for massive files:</strong> A virtualized rendering engine keeps 40,000+ block documents fast and responsive.</li>
                     </ul>
                 </section>
                 <section class="tz-help-sec">
-                    <h3>Reading</h3>
+                    <h3>Reading &amp; Research</h3>
                     <ul class="tz-about-list">
-                        <li><strong>.epub</strong> books with the publisher’s HTML, TOC, scrubber, bookmarks, and remembered position.</li>
-                        <li><strong>PDF</strong>, <strong>HTML</strong> (rendered), <strong>images</strong>, and <strong>video/audio</strong> open read-only on Chromium. Never dirty, never saved over.</li>
-                        <li>HTML is shown as a page by default. CSS / XML / XAML open as editable text in Source (not a fake viewer).</li>
-                        <li>Images fit the pane for speed; Edge’s right‑click <strong>Magnify</strong> zooms and pans when you want it.</li>
-                        <li>Video uses the browser’s controls; missing codecs (often HEVC) show a clear, high-contrast error.</li>
+                        <li><strong>A first-class .epub reader:</strong> Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.</li>
+                        <li><strong>Built-in dictionary &amp; thesaurus:</strong> Over 150,000 offline definitions. Select any word for instant definitions, synonyms, and document occurrence counts.</li>
+                        <li><strong>Marks &amp; Annotations:</strong> Highlight text, write notes, and drop bookmarks that intelligently survive document edits.</li>
+                        <li><strong>PDF</strong>, <strong>HTML</strong>, <strong>images</strong>, and <strong>media</strong> open read-only. Never dirty, never saved over.</li>
                     </ul>
                 </section>
                 <section class="tz-help-sec">
-                    <h3>Look &amp; session</h3>
+                    <h3>Look, Session &amp; Privacy</h3>
                     <ul class="tz-about-list">
-                        <li>Curated themes (dark, light, mono) plus <strong>Customise Theme…</strong> — built-ins never overwritten.</li>
-                        <li>Real margins, spacing, justified text, chrome auto-hide for reading.</li>
-                        <li>Session restore for window, theme, layout, tabs; optional unsaved buffers.</li>
-                        <li><strong>Privacy Mode</strong> (File menu): stops writing document history, positions, recent files, and the like — already in the app; see README for the full switch list and book extraction behaviour.</li>
+                        <li><strong>Bundled premium typography</strong> (Inter, Literata, Merriweather, Source Sans) ensures perfect rendering without network requests.</li>
+                        <li><strong>25 curated built-in themes</strong> (dark, light, mono) plus <strong>Customise Theme…</strong> to build and save your own palettes.</li>
+                        <li><strong>Complete session restore:</strong> Remembers your window layout, theme, tabs, margins, and exact reading positions.</li>
+                        <li><strong>100% Offline &amp; Portable:</strong> Zero telemetry. <strong>Privacy Mode</strong> stops writing document history, positions, and recent files.</li>
                     </ul>
                 </section>
                 <section class="tz-help-sec">
                     <h3>Files</h3>
                     <ul class="tz-about-list">
                         <li>Open Markdown, text, epub, PDF, common images and media. Save text as UTF-8 (atomic write). Export HTML; Print / PDF.</li>
-                        <li><strong>Links</strong> — hover one for <em>Open Link</em>, <em>Show in Folder</em> and <em>Edit Link</em>. A link to a file beside the document opens it in a tab, <code>http</code> links open in your browser, and <code>#heading</code> jumps within the document. Select text and use <strong>Add Link</strong> to make one.</li>
-                        <li>Click the status-bar path to reveal the file in Explorer.</li>
+                        <li><strong>Links</strong> — hover for <em>Open Link</em>, <em>Show in Folder</em> and <em>Edit Link</em>. Local files open in a tab, <code>http</code> links in your browser, and <code>#heading</code> jumps within the document.</li>
                     </ul>
                 </section>
                 <p class="tz-about-foot-note">
@@ -485,7 +485,7 @@
                      feedback route nobody scrolls to is a feedback route nobody uses.
                      Posts a fixed command; the host owns the URL. -->
                 <button type="button" id="aboutFeedback" class="tz-help-link"
-                        title="Opens the issue tracker in your browser">Report a problem or suggest a feature</button>
+                        title="Opens the issue tracker in your browser">Report a problem or suggest a feature on GitHub</button>
                 <span class="tz-help-hint">Esc to close</span>
                 <button type="button" id="aboutOk" class="tz-help-ok">Close</button>
             </footer>

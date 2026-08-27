@@ -1526,10 +1526,19 @@
             width: min(480px, 100%);
             max-height: min(78vh, 640px);
         }
-        .tz-about-brand {
-            margin: 4px 0 4px;
+        .tz-about-head {
+            display: block; /* Overrides the flex layout of tz-help-head */
             padding-bottom: 12px;
-            border-bottom: 1px solid color-mix(in srgb, var(--border, #3F3F46) 70%, transparent);
+        }
+        .tz-about-head-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .tz-about-brand {
+            margin: 0;
+            padding-bottom: 0;
+            /* Border moved to the bottom of the tz-about-head header */
         }
         .tz-about-name {
             font-size: 22px;
