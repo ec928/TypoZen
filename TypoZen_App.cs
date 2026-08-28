@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.21";
+        internal const string AppVersion = "0.2.22";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -11912,6 +11912,28 @@ namespace TypoZen
             "mHoverGutter", "mJustify"
         };
 
+        /// <summary>Edit and Help go whole; View loses only its document-shaped half.</summary>
+        private static IEnumerable<string> AllNativeDeadMenus
+        {
+            get
+            {
+                yield return "menuEdit";
+                yield return "menuHelp";
+                foreach (string n in NativeDeadViewItems) yield return n;
+            }
+        }
+
+        /// <summary>
+        /// Tooltips as the XAML wrote them, so restoring gives back what was there.
+        ///
+        /// The first version of this set ToolTip = null on the way back, which does not
+        /// restore a tooltip, it deletes one: mHoverGutter explains what the bookmark
+        /// gutter does, and one round trip through a PDF tab threw that away for the rest
+        /// of the session. Captured once, on the first disable, and put back verbatim.
+        /// </summary>
+        private readonly Dictionary<string, object> _menuTipsBeforeNative =
+            new Dictionary<string, object>();
+
         private void SetDocumentMenusEnabled(bool enabled, NativeRole role)
         {
             string why = enabled
@@ -11925,17 +11947,22 @@ namespace TypoZen
             // as "they still show up very visibly even if they cannot be accessed".
             // Opacity is template-independent, which is the point.
             double dim = enabled ? 1.0 : 0.4;
-            foreach (string n in new[] { "menuEdit", "menuHelp" })
+            foreach (string n in AllNativeDeadMenus)
             {
                 var mi = FindElement(n) as MenuItem;
                 if (mi == null) continue;
-                try { mi.IsEnabled = enabled; mi.Opacity = dim; mi.ToolTip = why; } catch { }
-            }
-            foreach (string n in NativeDeadViewItems)
-            {
-                var mi = FindElement(n) as MenuItem;
-                if (mi == null) continue;
-                try { mi.IsEnabled = enabled; mi.Opacity = dim; mi.ToolTip = why; } catch { }
+                try
+                {
+                    if (!enabled && !_menuTipsBeforeNative.ContainsKey(n))
+                        _menuTipsBeforeNative[n] = mi.ToolTip;
+                    mi.IsEnabled = enabled;
+                    mi.Opacity = dim;
+                    object original;
+                    mi.ToolTip = enabled
+                        ? (_menuTipsBeforeNative.TryGetValue(n, out original) ? original : null)
+                        : why;
+                }
+                catch { }
             }
         }
 
@@ -11969,7 +11996,13 @@ namespace TypoZen
                 if (sideBtnBack != null)
                 {
                     SetControlLocked(sideBtnBack, false);
-                    try { sideBtnBack.ToolTip = "Toggle sidebar"; } catch { }
+                    object sideTip;
+                    try
+                    {
+                        sideBtnBack.ToolTip = _menuTipsBeforeNative.TryGetValue("btnToggleSidebar", out sideTip)
+                            ? sideTip : sideBtnBack.ToolTip;
+                    }
+                    catch { }
                 }
                 // A turn later, deliberately. ShowEditorSurface runs as part of the switch,
                 // before the page has finished becoming the document again -- asking now
@@ -12036,8 +12069,15 @@ namespace TypoZen
                 var sideBtn = FindElement("btnToggleSidebar") as Button;
                 if (sideBtn != null)
                 {
-                    SetControlLocked(sideBtn, true);
-                    try { sideBtn.ToolTip = "The outline, search and marks belong to a document. This tab is " + NativeRoleLabel(role) + "."; } catch { }
+                    try
+                    {
+                        if (!_menuTipsBeforeNative.ContainsKey("btnToggleSidebar"))
+                            _menuTipsBeforeNative["btnToggleSidebar"] = sideBtn.ToolTip;
+                        SetControlLocked(sideBtn, true);
+                        sideBtn.ToolTip = "The outline, search and marks belong to a document. This tab is "
+                            + NativeRoleLabel(role) + ".";
+                    }
+                    catch { }
                 }
             }
             catch { }

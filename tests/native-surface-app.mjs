@@ -42,6 +42,27 @@ function ui(cmd, arg) {
     } catch (e) { return { error: String(e.message).slice(0, 200) }; }
 }
 
+/**
+ * The View menu, read until it is whole.
+ *
+ * A WPF submenu is populated when it opens, so a read that lands early returns a partial
+ * list -- an item simply missing, which reads as "disabled" or "absent" and is neither.
+ * That flakiness had me reporting a restore bug that did not exist. Ask again until the
+ * item count stops growing.
+ */
+async function viewMenuState(expected) {
+    let best = {};
+    for (let i = 0; i < 12; i++) {
+        const v = ui('menu', 'View');
+        const st = {};
+        for (const x of (v.states || [])) st[String(x.name)] = x.enabled;
+        if (Object.keys(st).length > Object.keys(best).length) best = st;
+        if (Object.keys(best).length >= expected) break;
+        await sleep(250);
+    }
+    return best;
+}
+
 /** Poll the shell rather than sleeping at it. */
 async function untilUi(cmd, pred, timeoutMs) {
     const deadline = Date.now() + (timeoutMs || 15000);
@@ -162,9 +183,7 @@ try {
         // is the disabled one. shell-ui reports IsEnabled per item so this is seen rather
         // than inferred -- an earlier version of this check could only prove the items
         // EXISTED, which is true whether they work or not.
-        const vm = ui('menu', 'View');
-        const state = {};
-        for (const x of (vm.states || [])) state[String(x.name)] = x.enabled;
+        const state = await viewMenuState(16);
         const find = (frag) => {
             const k = Object.keys(state).find(n => n.indexOf(frag) >= 0);
             return k === undefined ? null : state[k];
@@ -224,6 +243,19 @@ try {
             + ' Help=' + (helpBack ? helpBack.enabled : '?'));
         assert(editBack && editBack.enabled === true, 'Edit is usable again on the document');
         assert(helpBack && helpBack.enabled === true, 'Help is usable again on the document');
+
+        // Every View item given back, named. Fourteen items are disabled on the way in,
+        // and a restore that misses one leaves a menu permanently dead for the session --
+        // a worse bug than the one being fixed, and invisible until someone reaches for
+        // that item. This is what pays for keeping the per-item approach over greying
+        // View whole: the list is checked, not trusted.
+        const backState = await viewMenuState(16);
+        const stillOff = Object.keys(backState).filter(k => backState[k] === false);
+        info('View after: ' + Object.keys(backState).length + ' items, still greyed: '
+            + (stillOff.length ? JSON.stringify(stillOff) : 'none'));
+        assert(stillOff.length === 0,
+            'every View item is given back on the document'
+            + (stillOff.length ? ' (left greyed: ' + stillOff.join(', ') + ')' : ''));
 
         // The status bar has to come back too, not just the document.
         //
