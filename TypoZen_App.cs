@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.18";
+        internal const string AppVersion = "0.2.19";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -8317,6 +8317,23 @@ namespace TypoZen
 
         private void SendMsg(string msg)
         {
+            // A chrome command must not reach the editor while a native tab is showing.
+            //
+            // Every toolbar button and menu item below routes here as "cmd:...", and the
+            // editor WebView is still alive behind the PDF or the image -- so pressing
+            // Toggle Sidebar on a PDF collapsed the sidebar of the document you were not
+            // looking at, silently, and you found it closed when you switched back. About
+            // was worse: the modal opened on the hidden surface, which is what "it
+            // triggers on a different tab" was. Neither told you anything.
+            //
+            // Only "cmd:" is gated. load_content, stats_refresh, marks_load and the rest
+            // are the host talking to its own page and must still get through, or a
+            // native tab would stop the editor being updated at all.
+            if (_nativeSurfaceVisible && msg != null
+                && msg.StartsWith("cmd:", StringComparison.Ordinal))
+            {
+                return;
+            }
             if (_webView != null && _webView.CoreWebView2 != null)
             {
                 _webView.CoreWebView2.PostWebMessageAsString(msg);
@@ -11898,6 +11915,12 @@ namespace TypoZen
             try
             {
                 if (_lblChapter != null) _lblChapter.Text = "";
+                var sideBtnBack = FindElement("btnToggleSidebar") as Button;
+                if (sideBtnBack != null)
+                {
+                    SetControlLocked(sideBtnBack, false);
+                    try { sideBtnBack.ToolTip = "Toggle sidebar"; } catch { }
+                }
                 // A turn later, deliberately. ShowEditorSurface runs as part of the switch,
                 // before the page has finished becoming the document again -- asking now
                 // gets the outgoing tab's numbers, or nothing.
@@ -11956,6 +11979,15 @@ namespace TypoZen
                 }
                 if (_btnColumnToggle != null) SetControlLocked(_btnColumnToggle, true);
                 if (_btnScrollToggle != null) SetControlLocked(_btnScrollToggle, true);
+                // The sidebar belongs to the editor, and the editor is behind this surface.
+                // Greyed rather than merely inert: a button that looks live and does
+                // nothing is the complaint, not the fix.
+                var sideBtn = FindElement("btnToggleSidebar") as Button;
+                if (sideBtn != null)
+                {
+                    SetControlLocked(sideBtn, true);
+                    try { sideBtn.ToolTip = "The outline, search and marks belong to a document. This tab is " + NativeRoleLabel(role) + "."; } catch { }
+                }
             }
             catch { }
             try

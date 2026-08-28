@@ -112,6 +112,35 @@ try {
         const after = fs.statSync(full);
         assert(after.size === before.size && after.mtimeMs === before.mtimeMs,
             nat.file + ': the file on disk is byte-identical and untouched');
+
+        // The chrome must not reach past this tab.
+        //
+        // The first version of this suite checked tabs, status, disk bytes and the
+        // document -- and never pressed a button. Every toolbar and menu item routes
+        // "cmd:..." to the editor WebView, which is still alive behind the PDF: Toggle
+        // Sidebar collapsed the sidebar of the document you were NOT looking at, silently,
+        // and you found it shut on returning. About opened its modal on the hidden
+        // surface, which is what "it triggers on a different tab" meant. Reported from
+        // real use, on a suite that was green.
+        // Pressed through the real menu, not by calling handleCommand in the page. The
+        // first version of this check did the latter and failed against a working fix,
+        // because the gate is host-side: the page function is downstream of it. Testing
+        // the function instead of the control is how a suite misses the control.
+        // Only About. Two earlier versions of this check asserted on View>Sidebar and
+        // then View>Focus Mode, and BOTH read identically with the gate removed -- View
+        // menu items do not reach the page on a native tab either way, so those lines
+        // could never fail. Control-checked by building with the gate disabled: About is
+        // the one that flips (none -> flex), so About is the one worth asserting. A green
+        // line that cannot go red is worse than no line.
+        ui('invoke', 'Help>About TypoZen');
+        await sleep(800);
+        const chrome = await app.eval(() => ({
+            about: document.getElementById('aboutModal')
+                ? getComputedStyle(document.getElementById('aboutModal')).display : 'none'
+        }));
+        info('hidden editor: about ' + chrome.about);
+        assert(chrome.about === 'none',
+            nat.file + ': About does not open behind the native surface');
     }
 
     console.log('\n=== back to the document ===');
