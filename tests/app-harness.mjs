@@ -123,6 +123,51 @@ async function waitForDevTools(timeoutMs) {
  *          view?:true|{mode?:string,scroll?:string,columns?:number},
  *          env?:Record<string,string>, args?:string[]}} options
  */
+/**
+ * Ask the page something, briefly, and keep asking.
+ *
+ * One evaluate is one CDP call with one protocolTimeout, and a suite that parks inside
+ * the page -- seek, await sleep, measure, all in one call -- deadlocks against itself:
+ * the page cannot finish the work the call started until the call returns, and the call
+ * cannot return until the work finishes. epub-open-app did exactly that on the 45,486-
+ * block omnibus and someone raised protocolTimeout to 600s to cope, which bought a
+ * ten-minute wait for the same failure and was reverted.
+ *
+ * So: short attempts, and retry. Each try gets `perTry` and is abandoned if the main
+ * thread is busy -- the page keeps running, we simply ask again in a moment, which is
+ * what a person does. A genuinely wedged page still fails, at `timeout`, and says how
+ * many attempts it took, instead of one opaque ProtocolError.
+ *
+ * Abandoned attempts are caught: puppeteer settles them later and an unhandled
+ * rejection would take the process down long after the suite moved on.
+ */
+export async function evalPatiently(app, fn, arg, opts) {
+    // Short attempts, fast retries, and a budget measured in seconds -- not minutes.
+    // A page that cannot answer a one-line question in 3s is not "slow", it is blocked,
+    // and waiting three minutes to say so only makes the report arrive later. 25s is
+    // already far past anything healthy here: an idle page answers first time.
+    const perTry = (opts && opts.perTry) || 3000;
+    const timeout = (opts && opts.timeout) || 25000;
+    const every = (opts && opts.every) || 250;
+    const deadline = Date.now() + timeout;
+    let tries = 0, lastErr = null;
+    while (Date.now() < deadline) {
+        tries++;
+        const attempt = (arg === undefined ? app.eval(fn) : app.eval(fn, arg));
+        const settled = await Promise.race([
+            attempt.then(v => ({ ok: true, v }), e => ({ ok: false, err: e })),
+            new Promise(r => setTimeout(() => r({ busy: true }), perTry))
+        ]);
+        if (settled.busy) { attempt.catch(() => {}); await sleep(every); continue; }
+        if (settled.ok) return settled.v;
+        lastErr = settled.err;
+        await sleep(every);
+    }
+    throw new Error('page never answered after ' + tries + ' attempts over '
+        + Math.round(timeout / 1000) + 's'
+        + (lastErr ? ' (last error: ' + lastErr.message + ')' : ' (main thread busy)'));
+}
+
 export async function launchApp(options) {
     options = options || {};
     if (!fs.existsSync(EXE)) throw new Error('TypoZen.exe not found - run Build_TypoZen.ps1 first');

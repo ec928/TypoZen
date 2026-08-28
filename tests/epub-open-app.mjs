@@ -12,7 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { launchApp } from './app-harness.mjs';
+import { launchApp, evalPatiently } from './app-harness.mjs';
 import { settledApp, sleep } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -139,21 +139,30 @@ async function openAndCheck(app, book, deep) {
     // and the line box a replaced element sits on pushed it a few pixels over and multicol
     // moved the whole thing across, so the cover page rendered blank. The size was right and
     // the position was wrong, and a check that measured only the size passed. So both.
-    const cover = await app.eval(async () => {
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        // Get to the front of the book and prove it before measuring anything.
-        //
-        // PageMap.goto(0) alone is not enough on a 45,000-block omnibus: page windowing has
-        // to mount the first range, and this suite arrives having already driven the view
-        // deep into a different book. Measuring before the seek settled reported the cover
-        // 7,053px off to the left and failed a check about sizing on a fact about timing.
-        goToModelBlock(0);
-        await sleep(1500);
-        for (let i = 0; i < 6 && PageMap.current() !== 0; i++) {
-            PageMap.goto(0);
-            await sleep(1200);
-        }
-        if (PageMap.current() !== 0) return { found: false, notAtStart: PageMap.current() };
+    // Get to the front of the book and prove it before measuring anything.
+    //
+    // PageMap.goto(0) alone is not enough on a 45,000-block omnibus: page windowing has
+    // to mount the first range, and this suite arrives having already driven the view
+    // deep into a different book. Measuring before the seek settled reported the cover
+    // 7,053px off to the left and failed a check about sizing on a fact about timing.
+    //
+    // Driven from HERE, one short call at a time, rather than from a single evaluate
+    // that slept between its own gotos. Each goto mounts and measures an 800-block
+    // range up to four times over; on the omnibus that work outlived the call that
+    // started it, and the next call -- any call -- waited behind it until puppeteer's
+    // protocolTimeout killed the run. A call that returns immediately cannot hold the
+    // page open, and asking again a second later costs nothing when it is idle.
+    await evalPatiently(app, () => { goToModelBlock(0); });
+    let atStart = -1;
+    for (let i = 0; i < 12; i++) {
+        atStart = await evalPatiently(app, () => {
+            try { return PageMap.current(); } catch (e) { return -1; }
+        });
+        if (atStart === 0) break;
+        await evalPatiently(app, () => { try { PageMap.goto(0); } catch (e) {} });
+        await sleep(1200);
+    }
+    const cover = atStart !== 0 ? { found: false, notAtStart: atStart } : await evalPatiently(app, () => {
         const ed = document.getElementById('editor');
         const er = ed.getBoundingClientRect();
         let best = null;
@@ -204,10 +213,32 @@ async function openAndCheck(app, book, deep) {
     // its body classes. Columns went from 97% full to 9%: two paragraphs on a whole spread.
     // Every existing suite stayed green, because they all check *where* things are and none
     // of them checks that there is anything to read.
-    const density = await app.eval(async () => {
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.6));
-        await sleep(3000);
+    // Let the page drain before asking it anything else.
+    //
+    // The cover check above calls PageMap.goto(0) up to six times, and each goto mounts
+    // and MEASURES an 800-block range up to four times over. On the omnibus that is
+    // synchronous measurement work still running after the evaluate that started it has
+    // returned -- so the very next call, whatever it is, waits behind it and blows the
+    // 180s protocol timeout. Nothing here is slow on its own: measured in isolation the
+    // seek below is 85-112ms, so a bisect that only times the call that dies points at
+    // the wrong thing.
+    await sleep(6000);
+
+    // Seek, settle, THEN measure -- three calls, not one.
+    //
+    // This was a single evaluate that seeked 60% into the book, slept 3s and measured.
+    // On the 45,486-block omnibus it blew puppeteer's 180s protocolTimeout every run,
+    // and every part of it measures fast on its own: modelBlockStartLine 56ms,
+    // goToModelBlock 112ms, the getClientRects sweep over 840 rects 3ms. The cost is
+    // the windowing work the seek starts, which the page cannot finish while an
+    // evaluate is parked inside it waiting on its own sleep -- so the call cannot
+    // return until the work ends and the work cannot end until the call returns.
+    // Sleeping from this side instead lets the page get on with it between calls.
+    // (app-harness.mjs blamed goToModelBlock for never finishing and reverted a 600s
+    // protocolTimeout on that basis; the seek returns in 112ms.)
+    await evalPatiently(app, () => { goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.6)); });
+    await sleep(4000);
+    const density = await evalPatiently(app, () => {
         const ed = document.getElementById('editor');
         const er = ed.getBoundingClientRect();
         const cols = new Map();
@@ -916,7 +947,7 @@ async function openAndCheck(app, book, deep) {
     }
 }
 
-const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
+let app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
 try {
     await sleep(3000);
     await openAndCheck(app, primary, true);
@@ -924,7 +955,24 @@ try {
     // OEBPS/Images/ and its documents in OEBPS/Text/, so it is the only book here whose
     // images can catch a base-directory bug -- Matter is flat at the root and resolves
     // correctly under a base that is wrong for everyone else.
-    if (biggest !== primary) await openAndCheck(app, biggest, true);
+    //
+    // In its own process, though. Driving both books through one instance failed with a
+    // ProtocolError every run: after the full Matter lap -- mode switches, page seeks,
+    // outline and TOC clicks -- the page stayed busy long enough past settle that the
+    // next evaluate blew the 180s protocol timeout. Nothing about the omnibus itself is
+    // slow, which is what made this so misleading: opened first it loads in 10s, its
+    // whole navigation pass runs in 20s, and getMarkdownContent over all 8.1MB takes
+    // 8ms. It was the accumulated state of the previous book, and app-harness.mjs
+    // carried a comment blaming goToModelBlock (measured here at 0ms) for it.
+    // Suites already get a throwaway profile each for exactly this reason; a book this
+    // size deserves the same from the process.
+    if (biggest !== primary) {
+        await app.close();
+        await sleep(1500);
+        app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
+        await sleep(3000);
+        await openAndCheck(app, biggest, true);
+    }
 
     console.log('\n=== the book on disk is untouched ===');
     const target = biggest !== primary ? biggest : primary;
