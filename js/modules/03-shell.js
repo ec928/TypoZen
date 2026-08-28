@@ -2192,6 +2192,18 @@
                     try { postMsg('feedback'); } catch (e) {}
                 });
             })();
+
+            // About -> "Buy me a coffee". Same fixed-command shape as feedback: the page
+            // never learns the address. It also stays HIDDEN unless the host unhides it,
+            // because only the host knows whether a support URL is configured at all.
+            (function () {
+                const sp = document.getElementById('aboutSupport');
+                if (!sp || sp.__tzBound) return;
+                sp.__tzBound = true;
+                sp.addEventListener('click', function () {
+                    try { postMsg('support'); } catch (e) {}
+                });
+            })();
             document.addEventListener('keydown', function (e) {
                 if (e.key !== 'Escape') return;
                 if (isTzOverlayOpen('aboutModal')) {

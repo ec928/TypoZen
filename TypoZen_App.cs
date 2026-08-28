@@ -59,6 +59,18 @@ namespace TypoZen
         /// </remarks>
         internal const string IssuesUrl = "https://github.com/ec928/TypoZen/issues/new/choose";
 
+        /// <summary>Where "Buy me a coffee" in About goes. Empty hides the button entirely.</summary>
+        /// <remarks>
+        /// Held HERE, like IssuesUrl and for the same reason: the page asks for "support" and
+        /// gets this address, so no document rendered in the editor can talk the shell into
+        /// opening something else. The page never learns the URL.
+        ///
+        /// A LINK, and nothing more. It unlocks no feature and grants nothing in return -
+        /// a donation that changed what the app does would be an in-app purchase outside
+        /// Microsoft's commerce, which Store policy does not allow. Keep it that way.
+        /// </remarks>
+        internal const string SupportUrl = "https://paypal.me/ec928paypal";
+
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool AllowSetForegroundWindow(uint dwProcessId);
 
@@ -4832,6 +4844,16 @@ namespace TypoZen
                         _webView.CoreWebView2.ExecuteScriptAsync(
                             "(function(){var e=document.getElementById('aboutVersion');" +
                             "if(e)e.textContent='Version " + v + "';})()");
+
+                        // Reveal "Buy me a coffee" only when there is somewhere for it to go.
+                        // The URL itself never crosses into the page - just the fact that one
+                        // exists - so the button cannot be repointed by anything rendered.
+                        if (!string.IsNullOrWhiteSpace(Program.SupportUrl))
+                        {
+                            _webView.CoreWebView2.ExecuteScriptAsync(
+                                "(function(){var e=document.getElementById('aboutSupport');" +
+                                "if(e)e.hidden=false;})()");
+                        }
                     }
                     catch { }
                 };
@@ -5052,6 +5074,28 @@ namespace TypoZen
             // About -> "Report a problem or suggest a feature". Most readers arrive through
             // a Releases zip and never see the repository, so a feedback route that lives
             // only on GitHub is one nobody uses.
+            // About -> "Buy me a coffee". Same shape as feedback: a fixed command, the host
+            // holds the address, and it opens in the reader's own browser rather than in a
+            // WebView the app controls - a payment page belongs somewhere the reader can see
+            // the real address bar.
+            if (msg == "support")
+            {
+                if (string.IsNullOrWhiteSpace(Program.SupportUrl)) return;
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = Program.SupportUrl,
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("support link: " + ex.Message);
+                }
+                return;
+            }
+
             if (msg == "feedback")
             {
                 try
