@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.23";
+        internal const string AppVersion = "0.2.24";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4871,8 +4871,33 @@ namespace TypoZen
             if (_zoomApplying) return;
             try
             {
-                if (_webView == null) return;
-                double z = ClampZoom(_webView.ZoomFactor);
+                // Read the control that raised it, not the editor.
+                //
+                // This is wired to BOTH WebViews but always read _webView, so Ctrl+wheel
+                // over a PDF, an image or an HTML page zoomed the native surface, raised
+                // the event, and then compared the EDITOR's unchanged factor against
+                // _zoomFactor, found no difference, and returned. The content grew and the
+                // status bar went on claiming whatever it last said -- "the status bar
+                // zoom value lies", reported against 160% on a page several times that.
+                //
+                // Ignore an event from the surface that is not on screen: a hidden
+                // WebView's zoom is not what the reader is looking at.
+                var src = sender as WebView2;
+                var active = (_nativeSurfaceVisible && _nativeWebView != null)
+                    ? _nativeWebView : _webView;
+                if (active == null) return;
+                if (src != null && !ReferenceEquals(src, active)) return;
+                double raw = active.ZoomFactor;
+                double z = ClampZoom(raw);
+                // Chromium's own Ctrl+wheel runs to 500%; ours says 50-300%. Left alone,
+                // the label would sit at 300% over a page at 500% -- truthful arithmetic,
+                // still a lie on screen. Hold the control to the range the app claims,
+                // rather than reporting a number the content does not match.
+                if (Math.Abs(raw - z) > 0.001)
+                {
+                    _zoomApplying = true;
+                    try { active.ZoomFactor = z; } catch { } finally { _zoomApplying = false; }
+                }
                 if (Math.Abs(z - _zoomFactor) < 0.001) return;
                 _zoomFactor = z;
                 UpdateZoomLabel();
