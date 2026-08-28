@@ -76,14 +76,16 @@ async function untilUi(cmd, pred, timeoutMs) {
 }
 
 const NATIVES = [
-    { file: 'native-sample.pdf', label: 'PDF' },
-    { file: 'native-sample.png', label: 'Image' },
+    { file: 'native-sample.pdf', label: 'PDF', zooms: true },
+    // Zoom is expected to do nothing here: a still image is shown at its own size, so a
+    // working zoom control would move a number and change nothing visible.
+    { file: 'native-sample.png', label: 'Image', zooms: false },
     // A PLAIN page, deliberately. Opening TypoZen_Template.html in the native reader runs
     // TypoZen's own JS inside it, including the Ctrl+wheel handler in 05-model.js that
     // preventDefaults and posts zoom:in to a host not listening on that surface -- so the
     // app viewing a picture of itself behaves unlike every other HTML file. A fixture that
     // fights the thing under test measures the fixture.
-    { file: 'native-sample.html', label: 'HTML' }
+    { file: 'native-sample.html', label: 'HTML', zooms: true }
 ];
 
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 8000 });
@@ -209,15 +211,47 @@ try {
             }
             return zoomPct();
         };
-        const z0 = zoomPct();
-        ui('invoke', 'View>Zoom>Zoom In');
-        const z1 = await zoomAfter(z0);
-        ui('invoke', 'View>Zoom>Zoom In');
-        const z2 = await zoomAfter(z1);
-        info('zoom: ' + z0 + '% -> ' + z1 + '% -> ' + z2 + '%');
-        assert(z1 > z0 && z2 > z1,
-            nat.file + ': zoom advances on every press (' + z0 + '/' + z1 + '/' + z2 + ')');
-        ui('invoke', 'View>Zoom>Reset Zoom'); await sleep(400);
+        const zoomState = await viewMenuState(16);
+        const zoomKey = Object.keys(zoomState).find(k => k === 'Zoom');
+        if (nat.zooms === false) {
+            info('zoom menu: ' + (zoomKey ? zoomState[zoomKey] : '(absent)'));
+            assert(zoomKey !== undefined && zoomState[zoomKey] === false,
+                nat.file + ': Zoom is greyed -- it is shown at its own size');
+        } else {
+            // Two presses, then wait for BOTH notches. Watching each step in turn was
+            // flaky -- the PDF's label settles a beat later than the image's, so the
+            // middle read sometimes landed before the first press showed. The total is
+            // what the assertion is really about: the bug this guards made zoom advance
+            // one notch and then stick, so "two presses moved two notches" catches it
+            // without caring when the label caught up.
+            // One press at a time, each confirmed before the next.
+            //
+            // Firing both invokes back to back dropped one on the PDF: shell-ui runs a
+            // process per command and the second arrives while the menu is still closing,
+            // so the press never lands. Retrying a press that produced no movement is
+            // fair -- it is the menu invoke that is unreliable, not the zoom -- but the
+            // assertion still demands two real notches, because one notch and then
+            // nothing is exactly the bug being guarded.
+            const pressZoom = async (target) => {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    ui('invoke', 'View>Zoom>Zoom In');
+                    for (let i = 0; i < 14; i++) {
+                        const v = zoomPct();
+                        if (!isNaN(v) && v >= target) return v;
+                        await sleep(150);
+                    }
+                }
+                return zoomPct();
+            };
+            const z0 = zoomPct();
+            await pressZoom(z0 + 10);
+            const z2 = await pressZoom(z0 + 20);
+            info('zoom: ' + z0 + '% -> ' + z2 + '% after two presses');
+            assert(z2 >= z0 + 20,
+                nat.file + ': two presses move two notches, no sticking ('
+                + z0 + ' -> ' + z2 + ')');
+            ui('invoke', 'View>Zoom>Reset Zoom'); await sleep(400);
+        }
 
         // Inside View, item by item. Named individually on purpose: "half of View is
         // wrong" was the report, and a count passes just as happily when the wrong half
@@ -231,7 +265,8 @@ try {
         };
         const mustBeOff = ['Sidebar', 'Focus Mode', 'Typewriter', 'Reveal Markdown',
                            'Font Appearance', 'Spacing', 'Bookmark Gutter', 'Justified'];
-        const mustBeOn = ['Scrubber', 'Status Bar', 'Zoom', 'Fullscreen', 'Reset View'];
+        const mustBeOn = ['Scrubber', 'Status Bar', 'Fullscreen', 'Reset View']
+            .concat(nat.zooms === false ? [] : ['Zoom']);
         const wrongOff = mustBeOff.filter(f => find(f) !== false);
         const wrongOn = mustBeOn.filter(f => find(f) !== true);
         info('View: ' + (mustBeOff.length - wrongOff.length) + '/' + mustBeOff.length

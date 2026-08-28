@@ -540,7 +540,7 @@
                             <MenuItem x:Name="mWordWrap" Header="_Word Wrap" IsCheckable="True" IsChecked="True"/>
                             <Separator/>
 
-                            <MenuItem Header="_Zoom">
+                            <MenuItem x:Name="menuZoomGroup" Header="_Zoom">
                                 <MenuItem x:Name="mZoomIn" Header="Zoom _In" InputGestureText="Ctrl++"/>
                                 <MenuItem x:Name="mZoomOut" Header="Zoom _Out" InputGestureText="Ctrl+-"/>
                                 <MenuItem x:Name="mZoomReset" Header="_Reset Zoom" InputGestureText="Ctrl+0"/>

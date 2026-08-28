@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.24";
+        internal const string AppVersion = "0.2.25";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4499,6 +4499,7 @@ namespace TypoZen
             // factor -- which is exactly the shape this was reported in. PDFs looked fine
             // only because Chromium's PDF viewer has its own zoom controls, and those were
             // what was being used.
+            if (!RoleAllowsZoom(ActiveNativeRole)) return;
             double current = _zoomFactor;
             try
             {
@@ -11971,6 +11972,60 @@ namespace TypoZen
         private readonly Dictionary<string, object> _menuTipsBeforeNative =
             new Dictionary<string, object>();
 
+        /// <summary>
+        /// Zoom means something for a page and nothing for a waveform.
+        ///
+        /// A PDF, an HTML page and a video all scale usefully -- text reflows, the picture
+        /// gets bigger. A still image already has Fit and the media shell is a fixed
+        /// control, so zooming them moves a number in the status bar and changes nothing
+        /// the reader can see. Offering a control that does nothing is the same fault as
+        /// the menus that stayed bright over a PDF.
+        /// </summary>
+        private static bool RoleAllowsZoom(NativeRole role)
+        {
+            return role != NativeRole.Image && role != NativeRole.Audio;
+        }
+
+        private static readonly string[] ZoomMenuItems = new[]
+        {
+            "menuZoomGroup", "mZoomIn", "mZoomOut", "mZoomReset"
+        };
+
+        /// <summary>The role on screen, or None when the editor is showing.</summary>
+        private NativeRole ActiveNativeRole
+        {
+            get
+            {
+                if (!_nativeSurfaceVisible) return NativeRole.None;
+                if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return NativeRole.None;
+                var t = _tabs[_activeTabIndex];
+                return t == null ? NativeRole.None : t.NativeRole;
+            }
+        }
+
+        private void SetZoomMenusEnabled(bool enabled, NativeRole role)
+        {
+            string why = enabled ? null
+                : NativeRoleLabel(role) + " is shown at its own size — there is nothing to zoom.";
+            foreach (string n in ZoomMenuItems)
+            {
+                var mi = FindElement(n) as MenuItem;
+                if (mi == null) continue;
+                try
+                {
+                    if (!enabled && !_menuTipsBeforeNative.ContainsKey(n))
+                        _menuTipsBeforeNative[n] = mi.ToolTip;
+                    mi.IsEnabled = enabled;
+                    mi.Opacity = enabled ? 1.0 : 0.4;
+                    object original;
+                    mi.ToolTip = enabled
+                        ? (_menuTipsBeforeNative.TryGetValue(n, out original) ? original : null)
+                        : why;
+                }
+                catch { }
+            }
+        }
+
         private void SetDocumentMenusEnabled(bool enabled, NativeRole role)
         {
             string why = enabled
@@ -12029,6 +12084,7 @@ namespace TypoZen
             {
                 if (_lblChapter != null) _lblChapter.Text = "";
                 SetDocumentMenusEnabled(true, NativeRole.None);
+                SetZoomMenusEnabled(true, NativeRole.None);
                 var sideBtnBack = FindElement("btnToggleSidebar") as Button;
                 if (sideBtnBack != null)
                 {
@@ -12103,6 +12159,7 @@ namespace TypoZen
                 // Greyed rather than merely inert: a button that looks live and does
                 // nothing is the complaint, not the fix.
                 SetDocumentMenusEnabled(false, role);
+                SetZoomMenusEnabled(RoleAllowsZoom(role), role);
                 var sideBtn = FindElement("btnToggleSidebar") as Button;
                 if (sideBtn != null)
                 {
@@ -12277,6 +12334,16 @@ namespace TypoZen
                     string bg = string.Format("#{0:X2}{1:X2}{2:X2}",
                         _currentThemeBg.R, _currentThemeBg.G, _currentThemeBg.B);
                     string fg = "#E4E4E7";
+
+                    // Chromium's own Ctrl+wheel zoom, on only where zooming does anything.
+                    // Set per navigation because the WebView is built once and reused for
+                    // every native tab, so the role is not known when it is created.
+                    try
+                    {
+                        _nativeWebView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled =
+                            RoleAllowsZoom(role);
+                    }
+                    catch { }
 
                     // PDF / HTML: navigate file URL (relative assets for HTML).
                     if (role == NativeRole.Pdf || role == NativeRole.Page)
