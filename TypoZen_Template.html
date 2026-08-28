@@ -425,6 +425,7 @@
                     <ul class="tz-about-list">
                         <li><strong>A first-class .epub reader:</strong> Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.</li>
                         <li><strong>Built-in dictionary &amp; thesaurus:</strong> Over 150,000 offline definitions. Select any word for instant definitions, synonyms, and document occurrence counts.</li>
+                        <li><strong>Document Search:</strong> Dedicated search sidebar (<kbd>Alt+S</kbd>) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.</li>
                         <li><strong>Marks &amp; Annotations:</strong> Highlight text, write notes, and drop bookmarks that intelligently survive document edits.</li>
                         <li><strong>PDF</strong>, <strong>HTML</strong>, <strong>images</strong>, and <strong>media</strong> open read-only. Never dirty, never saved over.</li>
                     </ul>
@@ -450,15 +451,21 @@
                 </p>
             </div>
             <footer class="tz-help-foot">
-                <!-- In the pinned footer, not the body: the About body scrolls, and a
-                     feedback route nobody scrolls to is a feedback route nobody uses.
-                     Posts a fixed command; the host owns the URL. -->
-                <button type="button" id="aboutFeedback" class="tz-help-link"
-                        title="Opens the issue tracker in your browser">Report a problem or suggest a feature on GitHub</button>
-                <button type="button" id="aboutSupport" class="tz-help-link" hidden
-                        title="Opens a support page in your browser">Buy me a coffee</button>
-                <span class="tz-help-hint">Esc to close</span>
-                <button type="button" id="aboutOk" class="tz-help-ok">Close</button>
+                <!-- Group links on the left -->
+                <div style="display: flex; gap: 16px; align-items: center;">
+                    <!-- In the pinned footer, not the body: the About body scrolls, and a
+                         feedback route nobody scrolls to is a feedback route nobody uses.
+                         Posts a fixed command; the host owns the URL. -->
+                    <button type="button" id="aboutFeedback" class="tz-help-link"
+                            title="Opens the issue tracker in your browser">Feedback &amp; Issues on GitHub</button>
+                    <button type="button" id="aboutSupport" class="tz-help-link" hidden
+                            title="Opens a support page in your browser">☕ Buy me a coffee</button>
+                </div>
+                <!-- Group dismissal on the right -->
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <span class="tz-help-hint">Esc to close</span>
+                    <button type="button" id="aboutOk" class="tz-help-ok">Close</button>
+                </div>
             </footer>
         </div>
     </div>

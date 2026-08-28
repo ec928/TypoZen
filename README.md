@@ -41,6 +41,20 @@ Open these **read-only** on a Chromium surface (same tab strip). No document scr
 | **Images** | Fit-to-pane shell; **right‑click → Magnify** (Edge) for zoom/pan |
 | **Video / audio** | Browser controls; missing codecs (often **HEVC / HVC1**) show a clear error (audio-only black frame is explained too) |
 
+**Menus that cannot apply are greyed, not left looking live.** A native tab is not a
+document, so **Edit** and **Help** grey out whole — every item in them acts on the editor —
+and **View** loses only its document-shaped half: the Sidebar group, Focus Mode, Typewriter
+Scrolling, Reveal Markdown on Focus, Font Appearance, Spacing & Margins, Bookmark Gutter
+Hover and Justified. Scrubber, Status Bar, Auto-hide, Fullscreen and Reset View Settings
+stay, because they are the window's and still mean something over a PDF. They were all
+still live once, and pressing Toggle Sidebar on a PDF collapsed the sidebar of the document
+you were *not* looking at, silently, so you found it shut when you switched back.
+
+**Zoom applies where zooming does something.** PDFs, HTML pages and video scale; a still
+image is shown at its own size (use **right-click → Magnify**) and audio is a fixed
+control, so **Zoom is greyed for images and audio** — in the menu, on the keyboard, and for
+Ctrl+wheel alike, since greying a menu is not the same as disabling a feature.
+
 Format tools and Source/Preview are locked; the file is never marked dirty and never saved over. **Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native WebView; document tab → editor). **It refuses on a document too large to lay out whole**, rather than print part of one: TypoZen renders long documents a piece at a time, the print engine can only take what is on the page, and a PDF containing a fifth of a document with nothing to say so is worse than no PDF — you keep it, and you may send it to someone. Save the file and print it elsewhere. **Privacy Mode** (File menu) already applies — see [Session & privacy](#session--privacy). Details: `docs/native-reader-plan.md`.
 
 ### Reading epubs
