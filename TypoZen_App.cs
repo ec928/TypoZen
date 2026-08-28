@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.15";
+        internal const string AppVersion = "0.2.16";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -90,6 +90,24 @@ namespace TypoZen
         /// </summary>
         internal static bool SuppressFaultUi;
 
+        /// <summary>
+        /// An unhandled fault has been swallowed, so nothing in memory can be trusted.
+        ///
+        /// The dispatcher handler keeps the process alive (e.Handled = true) so the reader
+        /// can rescue their work rather than lose the window. That is the right call for a
+        /// window and the wrong one for a file: after an unknown fault on the UI thread the
+        /// document, the tab list and the dirty flags may all be half-updated, and the two
+        /// writers that run WITHOUT the reader asking -- autosave and the session snapshot
+        /// -- would then put that state over good files on disk. Staying open is worth
+        /// nothing if the next thirty seconds are spent autosaving wreckage over the thing
+        /// they wanted back.
+        ///
+        /// So: automatic writes stop, deliberate ones do not. File > Save and Save As still
+        /// work, because that is the reader choosing, with the dialog having said why.
+        /// volatile: written from the dispatcher and finaliser threads, read from the UI one.
+        /// </summary>
+        internal static volatile bool DocumentStateSuspect;
+
         private static bool _unhandledUiShown;
 
         /// <summary>
@@ -128,14 +146,22 @@ namespace TypoZen
             app.DispatcherUnhandledException += (s, e) =>
             {
                 LogFault("dispatcher", e.Exception);
+                DocumentStateSuspect = true;
                 e.Handled = true;
                 if (SuppressFaultUi) return;
                 try
                 {
                     if (_unhandledUiShown) return;
                     _unhandledUiShown = true;
+                    // Say what it means for their work, not just that it happened. "will
+                    // try to keep running" invites carrying on as normal, which is the one
+                    // thing that is no longer safe.
                     WinForms.MessageBox.Show(
-                        "TypoZen hit an unexpected error and will try to keep running.\n\n" +
+                        "TypoZen hit an unexpected error.\n\n" +
+                        "The window stays open so you can save your work, but autosave and " +
+                        "session restore are switched off for the rest of this run -- what " +
+                        "is in memory can no longer be trusted to overwrite your files.\n\n" +
+                        "Save anything you need with File > Save As, then restart TypoZen.\n\n" +
                         (e.Exception != null ? e.Exception.Message : ""),
                         "TypoZen",
                         WinForms.MessageBoxButtons.OK,
@@ -249,6 +275,10 @@ namespace TypoZen
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
                 LogFault("domain", e.ExceptionObject as Exception);
+                // Usually terminal, but not always -- a faulted finaliser or a background
+                // thread can land here with the UI still up and autosave still armed. Same
+                // rule as the dispatcher: stop writing over the reader's files.
+                DocumentStateSuspect = true;
             };
 
             string initialFile = launch.FilePath;
@@ -3508,6 +3538,10 @@ namespace TypoZen
         private void PersistTabSession()
         {
             if (_restoringTabs) return;
+            // Leave the last good session where it is. Replacing it with post-fault state
+            // turns one bad run into a bad restore on every launch after it, and the
+            // bodies it points at are what the reader recovers from.
+            if (Program.DocumentStateSuspect) return;
             // Privacy mode: the open documents are not written down, and any previous
             // index goes with them -- otherwise closing would leave the last ordinary
             // session on disk, looking current.
@@ -7965,6 +7999,9 @@ namespace TypoZen
         private void AutosaveNow()
         {
             if (!_autosave || SuppressDocumentTraces()) return;
+            // Never autosave over a real file after an unhandled fault -- see
+            // Program.DocumentStateSuspect. From here the reader saves deliberately.
+            if (Program.DocumentStateSuspect) return;
             if (_tabOpInProgress || _scriptBlockDepth > 0) { ArmAutosave(); return; }
             if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return;
             var tab = _tabs[_activeTabIndex];

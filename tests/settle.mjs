@@ -21,10 +21,23 @@
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// Sample often. Still require three identical reads (full-run contention
-// made two samples flake on twocol/pagination/smoke). 3×50ms vs 3×120ms.
+// Sample often, but decide on a DURATION of quiet, not a count of samples.
+//
+// Sampling was 120ms x 3 -- 360ms of stillness before calling it settled. Speeding the
+// sampling up to 50ms while still counting three left a 150ms window, and 150ms is
+// inside the pause a multi-column relayout takes between its own passes: the geometry
+// reads identical three times in the middle of the work, settled() says yes, and the
+// suite measures a half-laid-out page. That turned pagination-browser and
+// twocol-anchoring-browser red on the default gate -- "switching back returns to the
+// same content (block 738 vs -1)", "0 of 36 blocks in common" -- which reads exactly
+// like a product regression in column switching and is not one. Bisected: reverting
+// this file alone put both back to 28/0 and 7/0.
+//
+// Fast sampling is still worth having; it is how quickly we NOTICE the last change.
+// How long we then wait to trust it is a separate number, and it has to stay at least
+// as long as the 360ms that was proven to work under full-run contention.
 const SAMPLE_MS = 50;
-const STABLE_NEEDED = 3;
+const QUIET_MS = 400;
 
 /** One sample of everything layout decisions are made from. */
 function geometrySample() {
@@ -49,15 +62,11 @@ function geometrySample() {
 export async function settled(page, timeoutMs = 8000) {
     const started = Date.now();
     let last = null;
-    let stable = 0;
+    let lastChangeAt = Date.now();
     while (Date.now() - started < timeoutMs) {
         const now = await page.evaluate(geometrySample);
-        if (now === last) {
-            if (++stable >= STABLE_NEEDED) return true;
-        } else {
-            stable = 0;
-            last = now;
-        }
+        if (now !== last) { last = now; lastChangeAt = Date.now(); }
+        else if (Date.now() - lastChangeAt >= QUIET_MS) return true;
         await sleep(SAMPLE_MS);
     }
     return false;
@@ -77,15 +86,11 @@ export async function settled(page, timeoutMs = 8000) {
 export async function settledApp(app, timeoutMs = 10000) {
     const started = Date.now();
     let last = null;
-    let stable = 0;
+    let lastChangeAt = Date.now();
     while (Date.now() - started < timeoutMs) {
         const now = await app.eval(geometrySample);
-        if (now === last) {
-            if (++stable >= STABLE_NEEDED) return true;
-        } else {
-            stable = 0;
-            last = now;
-        }
+        if (now !== last) { last = now; lastChangeAt = Date.now(); }
+        else if (Date.now() - lastChangeAt >= QUIET_MS) return true;
         await sleep(SAMPLE_MS);
     }
     return false;
