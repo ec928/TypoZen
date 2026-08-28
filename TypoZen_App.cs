@@ -551,6 +551,33 @@ namespace TypoZen
         /// suite had run before, and a test run left its fixtures in the reader's real
         /// bookmarks.txt and book_positions.txt.
         /// </summary>
+        // Themes are SHIPPED read-only and SAVED per-user, so the two are different files.
+        //
+        // Save as New used to write back over the copy beside the executable, which requires the
+        // install directory to be writable - true for a portable unzip, false the moment the app
+        // lives anywhere protected, and false outright inside an MSIX package. It also meant a
+        // user's own palettes were destroyed by the next update overwriting that file.
+        //
+        // Reading prefers the user copy and falls back to the shipped one, so an existing
+        // customised file beside the exe keeps working and is adopted the first time anything is
+        // saved. No migration step: the fallback IS the migration.
+        private string ThemesReadPath()
+        {
+            try
+            {
+                string mine = Path.Combine(CacheDir(), "TypoZen_Themes.json");
+                if (File.Exists(mine)) return mine;
+            }
+            catch { }
+            return Path.Combine(_appDir, "TypoZen_Themes.json");
+        }
+
+        private string ThemesWritePath()
+        {
+            string dir = CacheDir();
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, "TypoZen_Themes.json");
+        }
         private string CacheDir()
         {
             if (_e2eMode) return Path.Combine(_e2eDir, "profile");
@@ -623,16 +650,49 @@ namespace TypoZen
         /// </summary>
         private void SweepLegacyAppLoadStage()
         {
+            // Guarded, not returned on. This method sweeps SEVERAL legacy locations and an early
+            // return for one of them silently skips the rest - which is exactly what happened when
+            // the book cache was added below and never ran, because most installs have no
+            // typozen_load folder left to find.
             try
             {
                 string dir = Path.Combine(_appDir, "typozen_load");
-                if (!Directory.Exists(dir)) return;
-                foreach (string pattern in new[] { "body_*.md", "book_*.json" })
+                if (Directory.Exists(dir))
                 {
-                    foreach (string f in Directory.GetFiles(dir, pattern))
+                    foreach (string pattern in new[] { "body_*.md", "book_*.json" })
                     {
-                        try { File.Delete(f); } catch { }
+                        foreach (string f in Directory.GetFiles(dir, pattern))
+                        {
+                            try { File.Delete(f); } catch { }
+                        }
                     }
+                }
+            }
+            catch { }
+
+            // Books used to extract beside the exe too, and that one grows without limit - a few
+            // novels is megabytes of unpacked HTML sitting in the install directory forever. It is
+            // a pure cache and re-extracts on demand, so removing it costs a user nothing but the
+            // next open of a book they had already opened.
+            try
+            {
+                string books = Path.Combine(_appDir, "typozen_books");
+                if (Directory.Exists(books))
+                {
+                    // Clear ReadOnly on the way down. In a synced folder the directory carries it
+                    // along with a reparse point (OneDrive marks cloud placeholders that way), and
+                    // a plain recursive Delete throws "access denied" ON THE DIRECTORY ITSELF even
+                    // after emptying it - which reads as the sweep having done nothing at all.
+                    try { new DirectoryInfo(books).Attributes = FileAttributes.Directory; } catch { }
+                    foreach (string d in Directory.GetDirectories(books, "*", SearchOption.AllDirectories))
+                    {
+                        try { new DirectoryInfo(d).Attributes = FileAttributes.Directory; } catch { }
+                    }
+                    foreach (string f in Directory.GetFiles(books, "*", SearchOption.AllDirectories))
+                    {
+                        try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
+                    }
+                    Directory.Delete(books, true);
                 }
             }
             catch { }
@@ -1266,7 +1326,7 @@ namespace TypoZen
                     var nameMatch = Regex.Match(prefsText, @"\""themeName\""\s*:\s*\""([^\""]*)\""");
                     if (nameMatch.Success) savedThemeName = nameMatch.Groups[1].Value;
                 }
-                string themesPath = Path.Combine(_appDir, "TypoZen_Themes.json");
+                string themesPath = ThemesReadPath();
                 if (File.Exists(themesPath))
                 {
                     string json = File.ReadAllText(themesPath, Encoding.UTF8);
@@ -4762,6 +4822,18 @@ namespace TypoZen
                     ApplyZoomToWebView();
                     UpdateZoomLabel();
                     _webView.Focus();
+
+                    // The About version is set HERE rather than baked into the served HTML, so it
+                    // is right whether or not the stamped copy of the template could be written.
+                    // Program.AppVersion stays the single source; the page never holds a second.
+                    try
+                    {
+                        string v = (Program.AppVersion ?? "").Replace("\\", "\\\\").Replace("'", "\'");
+                        _webView.CoreWebView2.ExecuteScriptAsync(
+                            "(function(){var e=document.getElementById('aboutVersion');" +
+                            "if(e)e.textContent='Version " + v + "';})()");
+                    }
+                    catch { }
                 };
 
                 string htmlPath = Path.Combine(_appDir, "TypoZen_Template.html");
@@ -4801,14 +4873,20 @@ namespace TypoZen
                             html,
                             @"href=""(css/typozen\.css)(?:\?[^""]*)?""",
                             "href=\"$1?v=" + v + "\"");
-                        // About modal: the version comes from Program.AppVersion, so the
-                        // page never holds a second copy to fall out of step with the
-                        // assembly resource. Idempotent -- the group match spans whatever
-                        // a previous stamp left behind.
-                        html = System.Text.RegularExpressions.Regex.Replace(
-                            html,
-                            @"(<div class=""tz-about-version"" id=""aboutVersion"">)[^<]*(</div>)",
-                            "${1}Version " + Program.AppVersion + "${2}");
+
+                        // STAYS in the app folder, deliberately, and is skipped when that folder
+                        // is read-only. The page is served from https://localapp/, which maps to
+                        // the app folder, and every relative reference in it - modules, css, fonts
+                        // - resolves against that origin. Serving the stamped copy from anywhere
+                        // else means either breaking those references or moving the page to a
+                        // second origin, and the origin is load-bearing: the page fetch()es
+                        // localapp by name and keeps state keyed to it.
+                        //
+                        // Losing the stamp where the folder is read-only costs nothing that
+                        // matters. Its job is to defeat the WebView cache after a MODULE EDIT,
+                        // which is a development concern; an installed build's modules never
+                        // change. The one user-visible part - the About version - is injected
+                        // after navigation instead, so it is correct either way.
                         string stamped = Path.Combine(_appDir, "TypoZen_Template.runtime.html");
                         // Only when it would actually differ. The stamp is derived from
                         // module mtimes, so between edits every launch regenerated a file
@@ -4866,7 +4944,7 @@ namespace TypoZen
                 if (!Program.DebugLogEnabled) return;
                 try
                 {
-                    string logPath = System.IO.Path.Combine(_appDir, "debug.log");
+                    string logPath = System.IO.Path.Combine(CacheDir(), "debug.log");
                     System.IO.File.AppendAllText(logPath, string.Format("[{0:HH:mm:ss.fff}] {1}\n", DateTime.Now, msg.Substring(10)));
                 }
                 catch { }
@@ -5022,7 +5100,7 @@ namespace TypoZen
                     catch {}
                 }
 
-                string themesPath = Path.Combine(_appDir, "TypoZen_Themes.json");
+                string themesPath = ThemesReadPath();
                 if (File.Exists(themesPath))
                 {
                     string json = File.ReadAllText(themesPath, Encoding.UTF8);
@@ -6203,7 +6281,7 @@ namespace TypoZen
                     Custom = true      // user-created: eligible for Delete Theme
                 });
 
-                string themesPath = Path.Combine(_appDir, "TypoZen_Themes.json");
+                string themesPath = ThemesWritePath();
                 string json = SerializeThemesJson(_themesList);
                 File.WriteAllText(themesPath, json, new UTF8Encoding(false));
 
@@ -6294,7 +6372,7 @@ namespace TypoZen
                 else if (next > idx) next--;
                 if (next < 0 || next >= _themesList.Count) next = 0;
 
-                string themesPath = Path.Combine(_appDir, "TypoZen_Themes.json");
+                string themesPath = ThemesWritePath();
                 string json = SerializeThemesJson(_themesList);
                 File.WriteAllText(themesPath, json, new UTF8Encoding(false));
 
@@ -7747,7 +7825,7 @@ namespace TypoZen
             if (_webView == null || _webView.CoreWebView2 == null) return;
             try
             {
-                string root = EpubReader.CacheRoot(_appDir);
+                string root = EpubReader.CacheRoot(CacheDir());
                 Directory.CreateDirectory(root);
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
                     "localbooks", root, CoreWebView2HostResourceAccessKind.DenyCors);
@@ -11279,7 +11357,7 @@ namespace TypoZen
             }
 
             string assetDir;
-            string payload = EpubReader.ReadToPayload(path, _appDir, out assetDir);
+            string payload = EpubReader.ReadToPayload(path, CacheDir(), out assetDir);
             if (payload == null)
             {
                 WinForms.MessageBox.Show(

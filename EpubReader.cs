@@ -40,10 +40,14 @@ namespace TypoZen
         /// "nothing on disk": it is an opaquely named directory under TEMP, deleted when
         /// the window closes and swept on the next launch if that never happened.
         /// </summary>
-        public static string CacheRoot(string appDir)
+        // stateDir, NOT the app folder. Extracting books beside the executable makes the
+        // install directory writable-by-requirement, which it is not once the app is
+        // installed anywhere protected (Program Files, or an MSIX package, where it is
+        // read-only outright). The cache is per-user state and belongs with the rest of it.
+        public static string CacheRoot(string stateDir)
         {
             if (PrivateSessionRoot != null) return PrivateSessionRoot;
-            return Path.Combine(appDir, "typozen_books");
+            return Path.Combine(stateDir, "typozen_books");
         }
 
         /// <summary>Set while privacy mode is on; null means the ordinary cache.</summary>
@@ -95,7 +99,7 @@ namespace TypoZen
         /// Extract a book and describe it as JSON for the page.
         /// Returns null when the file is not a readable epub, so the caller can fall back.
         /// </summary>
-        public static string ReadToPayload(string epubPath, string appDir, out string assetDir)
+        public static string ReadToPayload(string epubPath, string stateDir, out string assetDir)
         {
             assetDir = null;
             try
@@ -103,7 +107,7 @@ namespace TypoZen
                 // One directory per book, keyed by path so reopening reuses it rather than
                 // unpacking a 5 MB omnibus again on every open.
                 string key = StableKey(epubPath);
-                string root = CacheRoot(appDir);
+                string root = CacheRoot(stateDir);
                 Directory.CreateDirectory(root);
                 PruneOldBooks(root);
                 string dir = Path.Combine(root, key);
