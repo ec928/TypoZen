@@ -1,4 +1,4 @@
-# Drive TypoZen's WPF chrome from outside the process, and report as JSON.
+﻿# Drive TypoZen's WPF chrome from outside the process, and report as JSON.
 #
 # The application suites reach into the *page* over the DevTools protocol. Nothing reached
 # the shell: menus, the tab strip, dialogs. That is where the save-prompt, theme-menu and
@@ -178,9 +178,48 @@ switch ($Command) {
     }
 
     'invoke' {
-        # 'Top>Item', or just 'Item' to search the whole tree.
+        # 'Top>Item', 'Top>Group>Item', or just 'Item' to search the whole tree.
+        #
+        # More than two levels because a WPF submenu does not exist until its parent is
+        # expanded: View>Zoom>Zoom In could not be reached at all, and asking for 'Zoom In'
+        # on its own answered "no item", which reads exactly like the command being gone.
+        # Each level is expanded in turn, then searched among that level's children.
         $parts = $Arg -split '>'
         $items = Find-ByType $root 'MenuItem'
+        if ($parts.Count -gt 2) {
+            $node = $null
+            foreach ($i in $items) { if ($i.Current.Name -eq $parts[0]) { $node = $i; break } }
+            if (-not $node) { Out-Json @{ error = "no menu named '$($parts[0])'" }; break }
+            for ($lvl = 1; $lvl -lt $parts.Count; $lvl++) {
+                $ec = $null
+                if ($node.TryGetCurrentPattern(
+                        [System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$ec)) {
+                    $ec.Expand()
+                }
+                Start-Sleep -Milliseconds 400
+                $next = $null
+                foreach ($c in $node.FindAll($TS::Children,
+                    (New-Object System.Windows.Automation.PropertyCondition(
+                        $AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)))) {
+                    if ($c.Current.Name -eq $parts[$lvl]) { $next = $c; break }
+                }
+                if (-not $next) {
+                    foreach ($c in $node.FindAll($TS::Descendants,
+                        (New-Object System.Windows.Automation.PropertyCondition(
+                            $AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)))) {
+                        if ($c.Current.Name -eq $parts[$lvl]) { $next = $c; break }
+                    }
+                }
+                if (-not $next) { Out-Json @{ error = "no item '$($parts[$lvl])' under '$($parts[$lvl-1])'" }; break }
+                $node = $next
+            }
+            if ($node -and $node.Current.Name -eq $parts[$parts.Count - 1]) {
+                Assert-Safe $node.Current.Name
+                $how = Click-Element $node
+                Out-Json @{ invoked = $Arg; how = $how }
+            }
+            break
+        }
         if ($parts.Count -eq 2) {
             $top = $null
             foreach ($i in $items) { if ($i.Current.Name -eq $parts[0]) { $top = $i; break } }

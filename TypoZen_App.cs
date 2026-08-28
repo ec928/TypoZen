@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.22";
+        internal const string AppVersion = "0.2.23";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4489,11 +4489,23 @@ namespace TypoZen
 
         private void ZoomBy(double delta)
         {
-            // Prefer live control value so we step from native Ctrl+wheel zoom too
+            // Step from whichever surface is actually on screen.
+            //
+            // This read the editor's ZoomFactor unconditionally, so on an image, HTML or
+            // media tab every press computed "the EDITOR's zoom, plus one notch": the
+            // native surface jumped a single step and then stuck there, however many
+            // times you pressed. Setting the zoom on a document tab and then switching
+            // did work, because ApplyZoomToWebView runs on the way in with the right
+            // factor -- which is exactly the shape this was reported in. PDFs looked fine
+            // only because Chromium's PDF viewer has its own zoom controls, and those were
+            // what was being used.
             double current = _zoomFactor;
             try
             {
-                if (_webView != null && _webView.CoreWebView2 != null)
+                if (_nativeSurfaceVisible && _nativeWebView != null
+                    && _nativeWebView.CoreWebView2 != null)
+                    current = _nativeWebView.ZoomFactor;
+                else if (_webView != null && _webView.CoreWebView2 != null)
                     current = _webView.ZoomFactor;
             }
             catch { }

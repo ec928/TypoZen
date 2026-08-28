@@ -178,6 +178,41 @@ try {
         assert(view && view.enabled === true,
             nat.file + ': View stays available -- zoom and fullscreen still apply');
 
+        // Zoom has to actually zoom, twice.
+        //
+        // ZoomBy read the EDITOR's ZoomFactor whatever was on screen, so on an image or
+        // HTML tab every press computed "the editor's zoom plus one notch": the surface
+        // moved one step and then stuck. Reported exactly that way -- fine for PDFs
+        // (Chromium's viewer has its own controls, which is what was being used) and fine
+        // for HTML if you set the zoom on a document tab first, because the switch applies
+        // it on the way in. Two presses, because one press hid the bug.
+        const zoomPct = () => {
+            const st = (ui('status').status || []);
+            const cell = st.find(x => /%$/.test(String(x)));
+            return cell ? parseInt(String(cell), 10) : NaN;
+        };
+        // Wait for the number to move, not for a guessed interval. A flat 500ms passed on
+        // the image and failed on the PDF, where the label settles a beat later -- and a
+        // sleep that works for one fixture and not another is the fault this whole suite
+        // keeps rediscovering.
+        const zoomAfter = async (prev) => {
+            for (let i = 0; i < 20; i++) {
+                const v = zoomPct();
+                if (!isNaN(v) && v !== prev) return v;
+                await sleep(150);
+            }
+            return zoomPct();
+        };
+        const z0 = zoomPct();
+        ui('invoke', 'View>Zoom>Zoom In');
+        const z1 = await zoomAfter(z0);
+        ui('invoke', 'View>Zoom>Zoom In');
+        const z2 = await zoomAfter(z1);
+        info('zoom: ' + z0 + '% -> ' + z1 + '% -> ' + z2 + '%');
+        assert(z1 > z0 && z2 > z1,
+            nat.file + ': zoom advances on every press (' + z0 + '/' + z1 + '/' + z2 + ')');
+        ui('invoke', 'View>Zoom>Reset Zoom'); await sleep(400);
+
         // Inside View, item by item. Named individually on purpose: "half of View is
         // wrong" was the report, and a count passes just as happily when the wrong half
         // is the disabled one. shell-ui reports IsEnabled per item so this is seen rather
