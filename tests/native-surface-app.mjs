@@ -77,7 +77,13 @@ async function untilUi(cmd, pred, timeoutMs) {
 
 const NATIVES = [
     { file: 'native-sample.pdf', label: 'PDF' },
-    { file: 'native-sample.png', label: 'Image' }
+    { file: 'native-sample.png', label: 'Image' },
+    // A PLAIN page, deliberately. Opening TypoZen_Template.html in the native reader runs
+    // TypoZen's own JS inside it, including the Ctrl+wheel handler in 05-model.js that
+    // preventDefaults and posts zoom:in to a host not listening on that surface -- so the
+    // app viewing a picture of itself behaves unlike every other HTML file. A fixture that
+    // fights the thing under test measures the fixture.
+    { file: 'native-sample.html', label: 'HTML' }
 ];
 
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 8000 });
