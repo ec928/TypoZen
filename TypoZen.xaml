@@ -480,7 +480,7 @@
                             <MenuItem x:Name="mStrike" Header="Strike_through" InputGestureText="Ctrl+Shift+X"/>
                         </MenuItem>
                         <MenuItem Header="_View">
-                            <MenuItem Header="_Sidebar (Alt+\)">
+                            <MenuItem x:Name="menuSidebarGroup" Header="_Sidebar (Alt+\)">
                                 <MenuItem x:Name="mSidebarOutline" Header="_Outline"/>
                                 <MenuItem x:Name="mSidebarSearch" Header="_Search" InputGestureText="Alt+S"/>
                                 <MenuItem x:Name="mSidebarMarks" Header="_Marks"/>
@@ -496,7 +496,7 @@
                             <MenuItem x:Name="mToggleFocus" Header="_Focus Mode" InputGestureText="F8" IsCheckable="True"/>
                             <MenuItem x:Name="mToggleTypewriter" Header="_Typewriter Scrolling" InputGestureText="F9" IsCheckable="True"/>
                             <MenuItem x:Name="mToggleReveal" Header="_Reveal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
-                            <MenuItem Header="_Font Appearance">
+                            <MenuItem x:Name="menuFontAppearance" Header="_Font Appearance">
                                 <MenuItem Header="_Type">
                                     <MenuItem x:Name="mFontTheme" Header="_Theme" IsCheckable="True" IsChecked="True"/>
                                     <MenuItem x:Name="mFontSerif" Header="_Serif" IsCheckable="True"/>
@@ -511,7 +511,7 @@
                                 </MenuItem>
                                 <MenuItem x:Name="mFontCustom" Header="_Custom..." IsCheckable="True"/>
                             </MenuItem>
-                            <MenuItem Header="S_pacing &amp; Margins">
+                            <MenuItem x:Name="menuSpacing" Header="S_pacing &amp; Margins">
                                 <MenuItem Header="_Line Spacing">
                                     <MenuItem x:Name="mLineTight" Header="_Tight" IsCheckable="True"/>
                                     <MenuItem x:Name="mLineNormal" Header="_Normal" IsCheckable="True" IsChecked="True"/>

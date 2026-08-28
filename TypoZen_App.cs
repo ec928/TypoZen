@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.20";
+        internal const string AppVersion = "0.2.21";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -11903,9 +11903,13 @@ namespace TypoZen
         /// </summary>
         private static readonly string[] NativeDeadViewItems = new[]
         {
-            "mSidebarOutline", "mSidebarSearch", "mSidebarMarks",
+            // The groups, not just their children: a parent that opens onto nothing but
+            // greyed items is still telling you to go and look.
+            "menuSidebarGroup", "mSidebarOutline", "mSidebarSearch", "mSidebarMarks",
             "mToggleReveal", "mToggleFocus", "mToggleTypewriter",
-            "mMarginNarrow", "mMarginRegular", "mMarginWide"
+            "menuFontAppearance", "menuSpacing",
+            "mMarginNarrow", "mMarginRegular", "mMarginWide",
+            "mHoverGutter", "mJustify"
         };
 
         private void SetDocumentMenusEnabled(bool enabled, NativeRole role)
@@ -11913,17 +11917,25 @@ namespace TypoZen
             string why = enabled
                 ? null
                 : "Not available for " + NativeRoleLabel(role) + " — this tab is not a document.";
+            // Dim explicitly as well as disabling.
+            //
+            // The top-level menus use ToolbarMenuItem -> ToolMenuHeaderTemplate, a custom
+            // ControlTemplate with no disabled state, so IsEnabled=false stopped them
+            // opening and left them looking exactly as bright as File and Themes. Reported
+            // as "they still show up very visibly even if they cannot be accessed".
+            // Opacity is template-independent, which is the point.
+            double dim = enabled ? 1.0 : 0.4;
             foreach (string n in new[] { "menuEdit", "menuHelp" })
             {
                 var mi = FindElement(n) as MenuItem;
                 if (mi == null) continue;
-                try { mi.IsEnabled = enabled; mi.ToolTip = why; } catch { }
+                try { mi.IsEnabled = enabled; mi.Opacity = dim; mi.ToolTip = why; } catch { }
             }
             foreach (string n in NativeDeadViewItems)
             {
                 var mi = FindElement(n) as MenuItem;
                 if (mi == null) continue;
-                try { mi.IsEnabled = enabled; mi.ToolTip = why; } catch { }
+                try { mi.IsEnabled = enabled; mi.Opacity = dim; mi.ToolTip = why; } catch { }
             }
         }
 

@@ -156,6 +156,32 @@ try {
         // View keeps zoom, fullscreen and the rest, which still mean something here.
         assert(view && view.enabled === true,
             nat.file + ': View stays available -- zoom and fullscreen still apply');
+
+        // Inside View, item by item. Named individually on purpose: "half of View is
+        // wrong" was the report, and a count passes just as happily when the wrong half
+        // is the disabled one. shell-ui reports IsEnabled per item so this is seen rather
+        // than inferred -- an earlier version of this check could only prove the items
+        // EXISTED, which is true whether they work or not.
+        const vm = ui('menu', 'View');
+        const state = {};
+        for (const x of (vm.states || [])) state[String(x.name)] = x.enabled;
+        const find = (frag) => {
+            const k = Object.keys(state).find(n => n.indexOf(frag) >= 0);
+            return k === undefined ? null : state[k];
+        };
+        const mustBeOff = ['Sidebar', 'Focus Mode', 'Typewriter', 'Reveal Markdown',
+                           'Font Appearance', 'Spacing', 'Bookmark Gutter', 'Justified'];
+        const mustBeOn = ['Scrubber', 'Status Bar', 'Zoom', 'Fullscreen', 'Reset View'];
+        const wrongOff = mustBeOff.filter(f => find(f) !== false);
+        const wrongOn = mustBeOn.filter(f => find(f) !== true);
+        info('View: ' + (mustBeOff.length - wrongOff.length) + '/' + mustBeOff.length
+            + ' greyed, ' + (mustBeOn.length - wrongOn.length) + '/' + mustBeOn.length + ' kept');
+        assert(wrongOff.length === 0,
+            nat.file + ': the document-shaped View items are greyed'
+            + (wrongOff.length ? ' (still live: ' + wrongOff.join(', ') + ')' : ''));
+        assert(wrongOn.length === 0,
+            nat.file + ': the host-owned View items still work'
+            + (wrongOn.length ? ' (wrongly greyed: ' + wrongOn.join(', ') + ')' : ''));
         assert(chrome.about === 'none',
             nat.file + ': About does not open behind the native surface');
     }

@@ -160,11 +160,21 @@ switch ($Command) {
                 (New-Object System.Windows.Automation.PropertyCondition(
                     $AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)))
             $names = @()
-            foreach ($c in $children) { if ($c.Current.Name) { $names += $c.Current.Name } }
+            $states = @()
+            foreach ($c in $children) {
+                if ($c.Current.Name) {
+                    $names += $c.Current.Name
+                    # Enabled state as well as the name. Without it a suite can only prove a
+                    # menu item EXISTS, which passes just as happily when the item is dead --
+                    # and "the menu is greyed" is exactly the kind of claim that needs seeing,
+                    # not inferring.
+                    $states += @{ name = $c.Current.Name; enabled = [bool]$c.Current.IsEnabled }
+                }
+            }
         }
 
         if ($ec) { $ec.Collapse() }
-        Out-Json @{ menu = $Arg; items = $names; count = $names.Count; attempts = $attempt }
+        Out-Json @{ menu = $Arg; items = $names; states = $states; count = $names.Count; attempts = $attempt }
     }
 
     'invoke' {
