@@ -5117,6 +5117,21 @@
                 obs.observe(sourceEditor, { attributes: true, attributeFilter: ['style', 'class'] });
             } catch (eObs) {}
 
+            /* Width changes that no attribute reports.
+               Opening or closing the sidebar resizes the textarea through layout -- its
+               width is a percentage of a pane that moved -- so the style attribute never
+               changes and the observer above never fires. The mirror kept the old width,
+               re-wrapped differently from the textarea, and every mark slid off its word:
+               boxes stranded in blank space and half-covering the wrong text. Width is
+               the one property the marks cannot survive being wrong about. */
+            try {
+                const ro = new ResizeObserver(function () {
+                    if (!_srcHl || _srcHl.style.display === 'none') return;
+                    syncSourceHighlightGeometry();
+                });
+                ro.observe(sourceEditor);
+            } catch (eRo) {}
+
             _srcHlSig = '';
             return _srcHl;
         }
@@ -5867,6 +5882,10 @@
             if (!q) {
                 findState.index = -1;
                 findState.kind = 'visual';
+                // This returns before the per-surface branches below, so the Source
+                // mirror never hears about it from there. Closing the Search sidebar
+                // with Alt+S clears the query through here, and the marks stayed.
+                clearSourceHighlights();
                 updateFindCount();
                 setFindStatus('');
                 if (isFindBarOpen() && !navigate) focusFindInput(false);
@@ -6014,6 +6033,10 @@
             if (state.mode === 'source' || findState.kind === 'source') {
                 const m = findState.matches[findState.index];
                 scrollSourceMatchIntoView(m.start, m.end, isFindBarOpen());
+                // Up/Down and the find bar's arrows come through here, not findJumpTo,
+                // which is the mouse path. Without this the ring stayed on whichever hit
+                // was last clicked while the count and the list moved on.
+                paintSourceHighlights();
             } else if (findState.kind === 'model') {
                 revealModelMatch(findState.matches[findState.index], true, !isFindBarOpen());
             } else {

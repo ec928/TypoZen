@@ -136,6 +136,93 @@ try {
     assert(edited.head === 'ZZZZ', 'the mirror picked up the edit');
     assert(edited.after === edited.taLen, 'the mirror holds exactly the textarea text');
 
+    console.log('\n=== keyboard navigation moves the ring ===');
+    // findStep (Up/Down, and the find bar arrows) is a different path from findJumpTo
+    // (the mouse). The ring followed the mouse and ignored the keyboard: the count and
+    // the sidebar list moved on while the ring stayed where it was last clicked.
+    const stepped = await app.eval(async () => {
+        const nap = (ms) => new Promise(r => setTimeout(r, ms));
+        const layer = document.getElementById('source-highlights');
+        const ringed = () => {
+            const marks = layer.querySelectorAll('mark.tz-src-hit');
+            for (let i = 0; i < marks.length; i++) {
+                if (marks[i].classList.contains('cur')) return i;
+            }
+            return -1;
+        };
+        findJumpTo(20);
+        await nap(300);
+        const fromMouse = { ring: ringed(), index: findState.index };
+        findStep(1);
+        await nap(300);
+        const afterDown = { ring: ringed(), index: findState.index };
+        findStep(-1);
+        await nap(300);
+        const afterUp = { ring: ringed(), index: findState.index };
+        return { fromMouse, afterDown, afterUp };
+    });
+    info('ring/index ' + JSON.stringify(stepped));
+    assert(stepped.fromMouse.ring === stepped.fromMouse.index,
+        'the ring is on the hit the mouse chose');
+    assert(stepped.afterDown.index === stepped.fromMouse.index + 1,
+        'Down advanced the current hit');
+    assert(stepped.afterDown.ring === stepped.afterDown.index,
+        'the ring followed Down');
+    assert(stepped.afterUp.ring === stepped.afterUp.index,
+        'the ring followed Up');
+
+    console.log('\n=== clearing the query clears the marks ===');
+    // Alt+S closing the Search sidebar clears the query through runFind(''), which
+    // returns before the per-surface branches -- so the marks used to survive it.
+    const cleared = await app.eval(async () => {
+        const nap = (ms) => new Promise(r => setTimeout(r, ms));
+        runFind('', false, { navigate: false });
+        await nap(300);
+        const layer = document.getElementById('source-highlights');
+        return { display: getComputedStyle(layer).display,
+                 marks: layer.querySelectorAll('mark.tz-src-hit').length };
+    });
+    info('after clearing: display=' + cleared.display + ' marks=' + cleared.marks);
+    assert(cleared.marks === 0, 'no marks left behind');
+    assert(cleared.display === 'none', 'the mirror is hidden');
+
+    console.log('\n=== the mirror re-wraps when the pane resizes ===');
+    // The textarea's width is a percentage of a pane the sidebar moves, so a resize
+    // reports through no attribute at all. A stale width re-wraps the mirror
+    // differently and slides every mark off its word.
+    const resized = await app.eval(async (q) => {
+        const nap = (ms) => new Promise(r => setTimeout(r, ms));
+        const input = document.getElementById('findInput');
+        input.value = q;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        let dl = Date.now() + 15000;
+        while (Date.now() < dl) {
+            if (findState.query === q && findState.matches.length > 0) break;
+            await nap(150);
+        }
+        const ta = document.getElementById('source-editor');
+        const layer = document.getElementById('source-highlights');
+        const before = { ta: ta.scrollHeight, layer: layer.scrollHeight, w: ta.clientWidth };
+        // Narrow the wrapper rather than pressing Alt+S: closing the Search sidebar also
+        // clears the query, which would leave no marks to re-wrap and quietly assert
+        // nothing. This is the same thing the sidebar does to the textarea -- a width
+        // change with no attribute written on the textarea itself.
+        const wrap = document.getElementById('editor-wrapper');
+        const prev = wrap.style.width;
+        wrap.style.width = Math.round(before.w * 0.6) + 'px';
+        await nap(900);
+        const after = { ta: ta.scrollHeight, layer: layer.scrollHeight, w: ta.clientWidth };
+        wrap.style.width = prev;
+        await nap(600);
+        return { before, after };
+    }, 'scroll');
+    info('width ' + resized.before.w + ' -> ' + resized.after.w
+        + ', scrollHeight ta=' + resized.after.ta + ' mirror=' + resized.after.layer);
+    assert(resized.after.w < resized.before.w, 'the textarea narrowed by layout alone');
+    assert(resized.after.ta > resized.before.ta, 'narrowing it forced more wrapped rows');
+    assert(resized.after.ta === resized.after.layer,
+        'the mirror re-wrapped with it (' + resized.after.ta + ' / ' + resized.after.layer + ')');
+
     console.log('\n=== leaving Source takes the marks with it ===');
     await app.eval(() => handleCommand('view_set:mode:preview'));
     await sleep(1200);
