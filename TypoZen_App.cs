@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.17";
+        internal const string AppVersion = "0.2.18";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -11887,6 +11887,26 @@ namespace TypoZen
             }
             catch { }
             try { ApplyZoomToWebView(); } catch { }
+            // Undo what ShowNativeSurface did to the status bar.
+            //
+            // It writes the native kind into lblChapter ("PDF", "Image") and blanks the
+            // word / line / character counts, because none of them mean anything for a
+            // picture. Nothing put them back: return to your document from an image and
+            // the status bar still read "Image 100%" with no word count, because those
+            // labels are only refreshed when the page next pushes stats and switching to
+            // an already-loaded tab does not reload it. Caught by native-surface-app.
+            try
+            {
+                if (_lblChapter != null) _lblChapter.Text = "";
+                // A turn later, deliberately. ShowEditorSurface runs as part of the switch,
+                // before the page has finished becoming the document again -- asking now
+                // gets the outgoing tab's numbers, or nothing.
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try { SendMsg("stats_refresh"); } catch { }
+                }), DispatcherPriority.Background);
+            }
+            catch { }
         }
 
         private void ShowNativeSurface()

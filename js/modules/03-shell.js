@@ -956,6 +956,13 @@
                     const line = parseInt(msg.substring(19), 10);
                     if (isFinite(line) && line >= 1) applyExternalGotoLine(line);
                 }
+                else if (msg == "stats_refresh") {
+                    // Coming back to a document tab from a PDF or an image. The host
+                    // blanked the counts for the native surface and cannot refill them
+                    // itself -- word count, line and characters are the page's to know.
+                    updateStatsNow();
+                    try { if (typeof updateOutline === 'function') updateOutline(); } catch (eO) {}
+                }
                 else if (msg == "mark_dirty") {
                     // Host restored an unsaved session buffer — force dirty without changing text.
                     // lastSavedContent must never equal a real serialize (empty doc is valid content).
