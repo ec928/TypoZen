@@ -1,10 +1,10 @@
 /**
  * Every font the app declares or a theme asks for must actually resolve.
  *
- * Two themes named 'Bookerly' in their font stack and quietly rendered Georgia for months.
+ * Two themes named a font they did not bundle and quietly rendered a fallback for months.
  * Nothing was broken in an obvious way -- the stack has a fallback, which is exactly why
  * nobody noticed. The font was installed "for me only", which registers under HKCU, and
- * the WebView2 renderer sandbox does not enumerate per-user fonts, so local('Bookerly')
+ * the WebView2 renderer sandbox does not enumerate per-user fonts, so a local() reference
  * found nothing and there was no bundled file behind it.
  *
  * A font stack silently degrading is not detectable at runtime without measuring glyphs,

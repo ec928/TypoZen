@@ -75,37 +75,6 @@
             src: local('Literata Bold Italic'), url('fonts/Literata-BoldItalic.ttf') format('truetype');
             font-weight: 700; font-style: italic; font-display: swap;
         }
-        /*
-          Bookerly — static faces. Two themes ask for it ('Bookerly', 'Georgia', serif) and
-          it silently rendered Georgia instead: an "install for me only" copy registers
-          under HKCU, and the WebView2 renderer sandbox does not enumerate per-user fonts,
-          so local('Bookerly') found nothing and there was no bundled fallback behind it.
-
-          NOTE ON LICENSING: unlike the other four families this is NOT an open licence.
-          Bookerly is Amazon's, drawn by Dalton Maag, and its copyright forbids
-          redistribution without written permission. It is fine in a private build; it must
-          not be shipped to anyone else. See the fonts note in README.md.
-        */
-        @font-face {
-            font-family: 'Bookerly';
-            src: local('Bookerly'), url('fonts/Bookerly.ttf') format('truetype');
-            font-weight: 400; font-style: normal; font-display: swap;
-        }
-        @font-face {
-            font-family: 'Bookerly';
-            src: local('Bookerly Italic'), url('fonts/Bookerly-Italic.ttf') format('truetype');
-            font-weight: 400; font-style: italic; font-display: swap;
-        }
-        @font-face {
-            font-family: 'Bookerly';
-            src: local('Bookerly Bold'), url('fonts/Bookerly-Bold.ttf') format('truetype');
-            font-weight: 700; font-style: normal; font-display: swap;
-        }
-        @font-face {
-            font-family: 'Bookerly';
-            src: local('Bookerly Bold Italic'), url('fonts/Bookerly-BoldItalic.ttf') format('truetype');
-            font-weight: 700; font-style: italic; font-display: swap;
-        }
     </style>
     <style id="theme-styles">
         :root {

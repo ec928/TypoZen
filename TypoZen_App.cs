@@ -491,12 +491,12 @@ namespace TypoZen
         // The theme editor offers FAMILIES, not hand-written CSS stacks.
         //
         // It used to be ten literal stacks matched against a theme's FN by exact string,
-        // which drifts from the palette the moment any theme is edited: Solarized Light's
-        // "'Bookerly', 'Literata', serif" matched none of them, so the picker fell back to
-        // entry 0 and Save rewrote the font to Inter. Patching that by appending the
-        // unmatched stack as its own entry stopped the data loss but left a duplicate
-        // "Bookerly (this theme)" sitting under "Bookerly / Georgia (Serif)" -- two rows
-        // for one typeface, which is just the same modelling error made visible.
+        // which drifts from the palette the moment any theme is edited: a stack naming a
+        // face plus its fallbacks matched none of them, so the picker fell back to entry 0
+        // and Save rewrote the font to Inter. Patching that by appending the unmatched stack
+        // as its own entry stopped the data loss but left a duplicate row for one typeface,
+        // which is just the same modelling error made visible.
+
         //
         // A reader picks a typeface. The fallback chain is plumbing, so it does not belong
         // in the menu. Matching is then on the family a theme leads with, which cannot fail
@@ -509,7 +509,6 @@ namespace TypoZen
             new string[] { "Segoe UI", "sans-serif" },
             new string[] { "Merriweather", "serif" },
             new string[] { "Literata", "serif" },
-            new string[] { "Bookerly", "serif" },
             new string[] { "Georgia", "serif" },
             new string[] { "Palatino Linotype", "serif" },
             new string[] { "Sitka Text", "serif" },
@@ -12596,7 +12595,7 @@ namespace TypoZen
             {
                 // Picking the family the theme already had is not a change, so keep its
                 // original stack verbatim -- fallbacks included. Recomposing it would
-                // quietly turn "'Bookerly', 'Literata', serif" into "'Bookerly', serif"
+                // quietly turn "'Literata', 'Georgia', serif" into "'Literata', serif"
                 // just because the dialog was opened and saved.
                 fn = string.Equals(LeadingFamily(_fontPresets[fi][1]), LeadingFamily(_resetFn),
                         StringComparison.OrdinalIgnoreCase)

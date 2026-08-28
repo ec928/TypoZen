@@ -136,7 +136,7 @@ TSV first, because that is what a WordNet or Wiktionary export converts to in on
 
 **All set `FS` to 16** (base size for document and book normalisation). Palettes are reduced to three colours for the shell + page; they are not full syntax-highlight schemes.
 
-Font stacks are TypoZen’s pairing: reading-oriented entries lean **Literata** / **Merriweather** / **Bookerly** (Gruvbox Light leads with Literata, Merriweather fallback); UI-oriented entries lean **Inter** / **Source Sans 3**; Mono uses **Cascadia Mono** / **Consolas** (on Windows).
+Font stacks are TypoZen’s pairing: reading-oriented entries lean **Literata** / **Merriweather** (Gruvbox Light leads with Literata, Merriweather fallback); UI-oriented entries lean **Inter** / **Source Sans 3**; Mono uses **Cascadia Mono** / **Consolas** (on Windows).
 
 **For epub / long reading** prefer serif + soft paper or low-glare dark over Mono/IDE themes:
 
@@ -152,9 +152,7 @@ Avoid the Mono column (Dracula, Nord, Tokyo Night, Monokai) for immersion; fine 
 - **Deep recursive theming** — menus, toolbar, sidebar and status bar take the same brushes as the page.
 - **Themes → Customise Theme…** — live preview, **Save as New** (built-ins never overwritten), Reset, Cancel.
 
-Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata.
-
-> **Bookerly is not.** It is Amazon's, drawn by Dalton Maag, and its copyright forbids redistribution without written permission. Two themes name it, and before it was bundled they silently rendered Georgia instead: an "install for me only" copy registers under HKCU and the WebView2 renderer sandbox does not enumerate per-user fonts, so `local('Bookerly')` found nothing. It is fine in a private build; remove `fonts/Bookerly*.ttf` and its `@font-face` block before distributing to anyone else.
+Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that ships is openly licensed, so there is nothing to strip before handing a build to anyone.
 
 > **Merriweather is 4.4 MB, and it is not the letterforms.** Its outlines are 144 KB, the smallest serif here. `GPOS` and `GDEF` account for 3.3 MB: it carries three variable axes (`wght`, `wdth`, `opsz`), so every kerning pair stores deltas for each axis combination. Inter has two axes and 150 KB of `GPOS`. Pinning `wdth` and `opsz` would recover most of it. `tests/fonts-selftest.mjs` checks that variable families declare their weight range, since a single declared weight pins the axis and makes the browser synthesise faux-bold.
 

@@ -1,7 +1,7 @@
 /**
  * A/B: does declaring only the active theme's @font-face save startup time?
  *
- * Hypothesis from the review: skip Merriweather/Literata/Bookerly when the default
+ * Hypothesis from the review: skip Merriweather/Literata when the default
  * theme (Gruvbox) asks for Source Sans 3.
  *
  * Counter: font-display:swap, and Chromium fetches a face only when a used
