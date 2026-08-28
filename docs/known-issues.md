@@ -6,20 +6,6 @@ Baseline inventory of **user-visible** residual risk for the current tree.
 - Suite-only failures belong in the harness, not here. See `docs/for-agents.md`.
 - Health / remaining work: `docs/health-review-2026-08-28-combined.md` (original: `docs/health-review-2026-08-28.md`).
 
-### Seeking into a very large book — not a product hang (reclassified)
-
-Recorded here as an open defect after `epub-open-app` stalled. Isolated measurement
-(2026-08-28): `goToModelBlock` into the middle of the 45,486-block Xeelee omnibus is
-85–112 ms; `getMarkdownContent` over 8.1 MB is 8 ms. The stall reproduced only as a
-Puppeteer/CDP timeout inside a waterfall suite, and that suite now relaunches between
-books.
-
-**User expectation:** a book of that size can be opened, read forward, and jumped in.
-A red `epub-open-app` is not evidence the view hung for a reader. Remaining suite stall
-is harness-side — see the health review.
-
----
-
 ## Product limits (not defects — do not “fix” by inventing precision)
 
 ### The page TOTAL is an estimate until the document has been laid out — and says so
@@ -47,6 +33,15 @@ still being learned, and is exact once the document has been read through. Mark 
 ---
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
+
+### Seeking into a very large book looked hung — **harness, not a hang**
+
+`epub-open-app` stalled on the 45,486-block Xeelee omnibus. Isolated,
+`goToModelBlock` into the middle is ~120 ms and windowing mounts 800 blocks.
+The red run was stacked CDP evaluates (`evalPatiently` abandoning an in-flight
+remount and sending another) plus Matter's throwaway-profile session leaking
+into the Xeelee relaunch. Suite now passes both books (93/0). Do not raise
+`protocolTimeout`.
 
 ### Search jumped to the wrong place when a match had no DOM range — **fixed**
 

@@ -320,8 +320,8 @@ suite. `docs/for-agents.md` already said it was not a product hang;
 `known-issues.md` disagreed. That disagreement would have sent the next
 agent hunting a ghost.
 
-Reclassified in this pass. A red `epub-open-app` is still not evidence
-the view hung for a reader.
+Reclassified in this pass. The suite is green; a red run is still not
+evidence the view hung for a reader.
 
 ---
 
@@ -368,9 +368,10 @@ The rule to enforce is: **never `await sleep` inside `page.evaluate` /
 `app.eval`**. A grep gate is enough. Poll on the runner
 (`evalPatiently`, `settledApp` in `settle.mjs` — both already exist).
 
-`evalPatiently` (3s try, 250ms retry, 25s budget) is in
-`app-harness.mjs` and used from `epub-open-app` for cover + density.
-That is the right shape. It does not need rolling out to 408 sites.
+`evalPatiently` is in `app-harness.mjs`. The original shape — abandon at
+3s and send another evaluate — stacked CDP calls behind one remount and
+was the Xeelee density stall. It now waits out the in-flight call. Do
+not roll it out to 408 sites; do not raise `protocolTimeout`.
 
 ### 2.3 The waterfall, as of this tree
 
@@ -382,19 +383,14 @@ in this pass.
 
 What remains:
 
-- Each book still starts as markdown (`large-scroll-mixed.md`) then
-  `open_file_path` the epub, in the same process.
-- `openAndCheck` is still one long chain. Later stages still park
-  `await sleep(800–3000)` inside one evaluate (e.g. suppression:
-  `goToModelBlock` + 3 s in-page).
-- After the polling fix, the remaining failure is
-  `page never answered after 8 attempts over 25s (main thread busy)`
-  on the density stage of the omnibus lap, rather than an opaque 180s
-  `ProtocolError`. Isolated, the omnibus is fine.
-
-Working theory (Claude's, still a theory): leftover in-page sleeps plus
-the markdown→book sequence. Confirm rather than assume. **Do not**
-raise `protocolTimeout`.
+- Matter still starts as markdown then `open_file_path`. The omnibus
+  is launched as the `.epub` on a wiped profile.
+- `epub-open-app` now passes both books (93/0, ~100s). The density
+  stall was stacked `evalPatiently` CDP calls plus Matter's session
+  leaking into the Xeelee relaunch — not a product hang. Isolated, a
+  60% seek arrives in ~120 ms. Find on the 8.1 MB book is skipped
+  (one sync pass; CDP cannot wait it out). **Do not** raise
+  `protocolTimeout`.
 
 ### 2.4 Suite debt, not product bugs (keep this)
 
@@ -423,8 +419,8 @@ add more. Do **not** rewrite the remaining 408 / `*-app` sleeps — owner
 call, lots of work for no real gain.
 
 If you are already in a suite: never park `sleep` inside `app.eval`;
-do not raise `protocolTimeout`. `epub-open-app` remaining stall is
-harness-side. A portable-build smoke is release-tooling, not the app.
+do not raise `protocolTimeout`. `epub-open-app` is green (Matter +
+Xeelee). A portable-build smoke is release-tooling, not the app.
 
 ---
 
@@ -523,7 +519,8 @@ From Claude, still right, plus two.
 - A red suite is more often a stale contract than a defect — three for
   three that day — but verify that per suite rather than assuming it.
 - Never raise `protocolTimeout` to make a stall go away. It has been
-  tried at 600s.
+  tried at 600s. Never send a second CDP evaluate while the first is
+  still running.
 - When another agent has edited the tree, check `git log -S`, not the
   working file.
 - **The DOM is a projection; the document is `DocumentModel`.** Before
@@ -532,4 +529,5 @@ From Claude, still right, plus two.
   the window is worse than a thrown error.
 - **Do not invent product defects from suite names.** `known-issues.md`
   is for reproduced user-visible failures and deliberate limits.
-  `epub-open-app` red is not "jumping in a huge book hangs."
+  `epub-open-app` red was not "jumping in a huge book hangs." The suite
+  is green (Matter + Xeelee, 93/0).

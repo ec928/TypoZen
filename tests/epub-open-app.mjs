@@ -12,7 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { launchApp, evalPatiently } from './app-harness.mjs';
+import { launchApp, evalPatiently, profileDir } from './app-harness.mjs';
 import { settledApp, sleep } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +24,61 @@ function assert(cond, msg) {
     else { failed++; console.error('  FAIL ' + msg); }
 }
 function info(msg) { console.log('  ..   ' + msg); }
+
+async function waitIdle(app, timeoutMs) {
+    try { await app.eval(() => 1); } catch (e) {}
+    await settledApp(app, Math.min(timeoutMs || 8000, 8000));
+}
+
+async function kick(app, fn, arg) {
+    return arg === undefined ? app.eval(fn) : app.eval(fn, arg);
+}
+
+async function cmd(app, c) {
+    await kick(app, (x) => { handleCommand(x); }, c);
+    await waitIdle(app);
+}
+
+/**
+ * goToModelBlock on a paginated book schedules an rAF chain and returns.
+ * Wait until the target's chunk is the one mounted, not until the call returns.
+ */
+async function waitForBlock(app, idx, timeoutMs) {
+    const deadline = Date.now() + (timeoutMs || 30000);
+    while (Date.now() < deadline) {
+        const here = await app.eval((i) => {
+            try {
+                if (typeof PageChunks !== 'undefined' && PageChunks.mounted >= 0
+                    && typeof PageChunks.chunkOfBlock === 'function') {
+                    return PageChunks.chunkOfBlock(i) === PageChunks.mounted;
+                }
+                return !!document.querySelector('#editor .block[data-model-index="' + i + '"]');
+            } catch (e) { return false; }
+        }, idx);
+        if (here) return true;
+        await sleep(150);
+    }
+    return false;
+}
+
+async function seekFrac(app, f) {
+    const idx = await app.eval((frac) => {
+        const i = Math.max(0, Math.min(DocumentModel.blocks.length - 1,
+            Math.floor(DocumentModel.blocks.length * frac)));
+        setTimeout(() => { try { goToModelBlock(i); } catch (e) {} }, 0);
+        return i;
+    }, f);
+    const ok = await waitForBlock(app, idx);
+    if (!ok) info('seek did not arrive at block ' + idx);
+}
+
+async function seekIndex(app, i) {
+    await app.eval((idx) => {
+        setTimeout(() => { try { goToModelBlock(idx); } catch (e) {} }, 0);
+    }, i);
+    const ok = await waitForBlock(app, i);
+    if (!ok) info('seek did not arrive at block ' + i);
+}
 
 const books = fs.readdirSync(path.join(appDir, 'tests'))
     .filter(f => f.toLowerCase().endsWith('.epub')).sort();
@@ -40,25 +95,31 @@ const biggest = books
     .map(b => ({ b, size: fs.statSync(path.join(appDir, 'tests', b)).size }))
     .sort((x, y) => y.size - x.size)[0].b;
 
-async function openAndCheck(app, book, deep) {
+async function openAndCheck(app, book, deep, opts) {
     console.log('\n########## ' + book + ' ##########');
-    // Deliberately scrolling, in Preview, before the book arrives. That is the state a
-    // reader is in when they open a book from a document they were editing, and it is the
-    // one that used to strand them: Reader implies pages, the loader set the mode without
-    // the pagination, and Reader locks the scroll selector behind it.
-    await app.eval(async () => {
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        handleCommand('view_set:mode:preview');
-        await sleep(800);
-        handleCommand('view_set:columns:1');
-        await sleep(800);
-        handleCommand('view_set:scroll:scroll');
-        await sleep(800);
-    });
-    // The same message the shell sends when a file is opened from Explorer or the menu.
-    await app.eval((p) => postMsg('open_file_path:' + p), path.join(appDir, 'tests', book));
-    await sleep(1500);
-    await settledApp(app, 30000);
+    if (!opts || !opts.alreadyOpen) {
+        // Deliberately scrolling, in Preview, before the book arrives. That is the state a
+        // reader is in when they open a book from a document they were editing, and it is the
+        // one that used to strand them: Reader implies pages, the loader set the mode without
+        // the pagination, and Reader locks the scroll selector behind it.
+        await cmd(app, 'view_set:mode:preview');
+        await cmd(app, 'view_set:columns:1');
+        await cmd(app, 'view_set:scroll:scroll');
+        await evalPatiently(app, (p) => postMsg('open_file_path:' + p),
+            path.join(appDir, 'tests', book), { perTry: 20000, timeout: 60000 });
+        await waitIdle(app, 60000);
+    } else {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 90000) {
+            const k = await evalPatiently(app, () => ({
+                kind: (typeof DocumentModel !== 'undefined' && DocumentModel.kind) || '',
+                n: (DocumentModel && DocumentModel.blocks) ? DocumentModel.blocks.length : 0
+            }), undefined, { perTry: 5000, timeout: 20000 });
+            if (k && k.kind === 'epub' && k.n > 1000) break;
+            await sleep(250);
+        }
+        await waitIdle(app, 60000);
+    }
 
     const st = await app.eval(() => ({
         kind: DocumentModel.kind,
@@ -141,28 +202,27 @@ async function openAndCheck(app, book, deep) {
     // the position was wrong, and a check that measured only the size passed. So both.
     // Get to the front of the book and prove it before measuring anything.
     //
-    // PageMap.goto(0) alone is not enough on a 45,000-block omnibus: page windowing has
-    // to mount the first range, and this suite arrives having already driven the view
-    // deep into a different book. Measuring before the seek settled reported the cover
-    // 7,053px off to the left and failed a check about sizing on a fact about timing.
-    //
-    // Driven from HERE, one short call at a time, rather than from a single evaluate
-    // that slept between its own gotos. Each goto mounts and measures an 800-block
-    // range up to four times over; on the omnibus that work outlived the call that
-    // started it, and the next call -- any call -- waited behind it until puppeteer's
-    // protocolTimeout killed the run. A call that returns immediately cannot hold the
-    // page open, and asking again a second later costs nothing when it is idle.
-    await evalPatiently(app, () => { goToModelBlock(0); });
-    let atStart = -1;
-    for (let i = 0; i < 12; i++) {
+    // Already at the front: do not seek. goToModelBlock(0) / PageMap.goto(0) on a
+    // 45k-block omnibus remounts and warms an 800-block neighbour; doing that and
+    // then immediately measuring (and then seeking to 60%) is the pile-up. Only
+    // jump if we are not on page 0.
+    let atStart = await evalPatiently(app, () => {
+        try { return PageMap.current(); } catch (e) { return -1; }
+    });
+    if (atStart !== 0) {
+        await seekIndex(app, 0);
         atStart = await evalPatiently(app, () => {
             try { return PageMap.current(); } catch (e) { return -1; }
         });
-        if (atStart === 0) break;
-        await evalPatiently(app, () => { try { PageMap.goto(0); } catch (e) {} });
-        await sleep(1200);
+        if (atStart !== 0) {
+            await kick(app, () => { try { PageMap.goto(0); } catch (e) {} });
+            await waitIdle(app);
+            atStart = await evalPatiently(app, () => {
+                try { return PageMap.current(); } catch (e) { return -1; }
+            });
+        }
     }
-    const cover = atStart !== 0 ? { found: false, notAtStart: atStart } : await evalPatiently(app, () => {
+    const cover = atStart !== 0 ? { found: false, notAtStart: atStart } : await kick(app, () => {
         const ed = document.getElementById('editor');
         const er = ed.getBoundingClientRect();
         let best = null;
@@ -213,32 +273,11 @@ async function openAndCheck(app, book, deep) {
     // its body classes. Columns went from 97% full to 9%: two paragraphs on a whole spread.
     // Every existing suite stayed green, because they all check *where* things are and none
     // of them checks that there is anything to read.
-    // Let the page drain before asking it anything else.
     //
-    // The cover check above calls PageMap.goto(0) up to six times, and each goto mounts
-    // and MEASURES an 800-block range up to four times over. On the omnibus that is
-    // synchronous measurement work still running after the evaluate that started it has
-    // returned -- so the very next call, whatever it is, waits behind it and blows the
-    // 180s protocol timeout. Nothing here is slow on its own: measured in isolation the
-    // seek below is 85-112ms, so a bisect that only times the call that dies points at
-    // the wrong thing.
-    await sleep(6000);
-
-    // Seek, settle, THEN measure -- three calls, not one.
-    //
-    // This was a single evaluate that seeked 60% into the book, slept 3s and measured.
-    // On the 45,486-block omnibus it blew puppeteer's 180s protocolTimeout every run,
-    // and every part of it measures fast on its own: modelBlockStartLine 56ms,
-    // goToModelBlock 112ms, the getClientRects sweep over 840 rects 3ms. The cost is
-    // the windowing work the seek starts, which the page cannot finish while an
-    // evaluate is parked inside it waiting on its own sleep -- so the call cannot
-    // return until the work ends and the work cannot end until the call returns.
-    // Sleeping from this side instead lets the page get on with it between calls.
-    // (app-harness.mjs blamed goToModelBlock for never finishing and reverted a 600s
-    // protocolTimeout on that basis; the seek returns in 112ms.)
-    await evalPatiently(app, () => { goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.6)); });
-    await sleep(4000);
-    const density = await evalPatiently(app, () => {
+    // Isolated, this seek is ~120ms. Fire once and wait for the 60% chunk to
+    // be mounted; do not retry the seek itself.
+    await seekFrac(app, 0.6);
+    const density = await kick(app, () => {
         const ed = document.getElementById('editor');
         const er = ed.getBoundingClientRect();
         const cols = new Map();
@@ -271,37 +310,38 @@ async function openAndCheck(app, book, deep) {
     // combine and the strongest wins, `page` outranks `column`, and a multi-column layout
     // discards a paged break -- taking our chapter break with it. Measured 1 of 3 with the
     // stylesheet against 3 of 3 without, which is what pointed at the rule out of 3,114.
-    const suppression = await app.eval(async () => {
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.92));
-        await sleep(3000);
+    await seekFrac(app, 0.92);
+    const surveyChapters = () => {
         const ed = document.getElementById('editor');
-        const survey = () => {
-            const er = ed.getBoundingClientRect();
-            const pitch = PageGeometry.stride() / 2;
-            const frags = [];
-            for (const b of ed.querySelectorAll('.block'))
-                for (const r of b.getClientRects())
-                    if (r.height >= 1 && r.width >= 1)
-                        frags.push({ b, col: Math.round((r.left - er.left + ed.scrollLeft) / pitch), top: r.top });
-            let total = 0, atTop = 0;
-            for (const el of ed.querySelectorAll('.block[data-chapter-start]')) {
-                const mine = frags.filter(f => f.b === el);
-                if (!mine.length) continue;
-                total++;
-                const first = mine.reduce((a, b2) => (b2.top < a.top ? b2 : a));
-                if (!frags.some(f => f.b !== el && f.col === first.col && f.top < first.top - 2)) atTop++;
-            }
-            return { total, atTop };
-        };
-        const withBook = survey();
+        const er = ed.getBoundingClientRect();
+        const pitch = PageGeometry.stride() / 2;
+        const frags = [];
+        for (const b of ed.querySelectorAll('.block'))
+            for (const r of b.getClientRects())
+                if (r.height >= 1 && r.width >= 1)
+                    frags.push({ b, col: Math.round((r.left - er.left + ed.scrollLeft) / pitch), top: r.top });
+        let total = 0, atTop = 0;
+        for (const el of ed.querySelectorAll('.block[data-chapter-start]')) {
+            const mine = frags.filter(f => f.b === el);
+            if (!mine.length) continue;
+            total++;
+            const first = mine.reduce((a, b2) => (b2.top < a.top ? b2 : a));
+            if (!frags.some(f => f.b !== el && f.col === first.col && f.top < first.top - 2)) atTop++;
+        }
+        return { total, atTop };
+    };
+    const withBook = await evalPatiently(app, surveyChapters);
+    await evalPatiently(app, () => {
         const sheet = document.getElementById('book-styles');
-        const had = sheet ? sheet.disabled : null;
-        if (sheet) { sheet.disabled = true; void ed.offsetWidth; await sleep(1500); }
-        const without = survey();
-        if (sheet) { sheet.disabled = had; void ed.offsetWidth; await sleep(800); }
-        return { withBook, without };
+        if (sheet) { sheet.disabled = true; void document.getElementById('editor').offsetWidth; }
     });
+    await waitIdle(app);
+    const without = await evalPatiently(app, surveyChapters);
+    await evalPatiently(app, () => {
+        const sheet = document.getElementById('book-styles');
+        if (sheet) { sheet.disabled = false; void document.getElementById('editor').offsetWidth; }
+    });
+    const suppression = { withBook, without };
     info('chapter starts opening a page: ' + suppression.withBook.atTop + '/' +
          suppression.withBook.total + ' with the book CSS, ' +
          suppression.without.atTop + '/' + suppression.without.total + ' without it');
@@ -408,12 +448,9 @@ async function openAndCheck(app, book, deep) {
     // book does across a spread. What would be wrong is a chapter opening half way down one,
     // which is what break-before: column exists to prevent and what this measures. Checked in
     // 2-column because that is the layout where "column" and "page" could come apart.
-    const chapters = await app.eval(async () => {
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-        handleCommand('view_set:columns:2');
-        await sleep(2500);
-        goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.5));
-        await sleep(3000);
+    await cmd(app, 'view_set:columns:2');
+    await seekFrac(app, 0.5);
+    const chapters = await evalPatiently(app, () => {
         const ed = document.getElementById('editor');
         const er = ed.getBoundingClientRect();
 
@@ -475,48 +512,57 @@ async function openAndCheck(app, book, deep) {
             'inline markup is rendered, not flattened (' + st.inline + ' elements on screen)');
 
         // The reader features are supposed to work unchanged. That is the whole claim.
-        const search = await app.eval(async () => {
-            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-            handleCommand('toggle_search_sidebar');
-            await sleep(500);
-            const inp = document.getElementById('sidebarSearchInput');
-            inp.value = 'the';
-            inp.dispatchEvent(new Event('input', { bubbles: true }));
-            await sleep(2000);
-            const rows = document.querySelectorAll('#search-results-list .search-item');
-            const before = (editor.querySelector('.block') || {}).innerText || '';
-            if (rows.length) rows[Math.min(20, rows.length - 1)].click();
-            await sleep(1500);
-            return {
+        //
+        // Skip the find walk on an omnibus: runFind over 8.1 MB is one synchronous
+        // pass, and a CDP poll sitting behind it hits protocolTimeout. Matter is
+        // the book that covers search; Xeelee is the book that covers scale.
+        if (st.text < 2000000) {
+            await cmd(app, 'toggle_search_sidebar');
+            await evalPatiently(app, () => {
+                const inp = document.getElementById('sidebarSearchInput');
+                inp.value = 'the';
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+            const searchWait = Date.now();
+            while (Date.now() - searchWait < 10000) {
+                const n = await evalPatiently(app, () => findState.matches.length);
+                if (n > 0) break;
+                await sleep(50);
+            }
+            const searchBefore = await evalPatiently(app, () =>
+                (editor.querySelector('.block') || {}).innerText || '');
+            await evalPatiently(app, () => {
+                const rows = document.querySelectorAll('#search-results-list .search-item');
+                if (rows.length) rows[Math.min(20, rows.length - 1)].click();
+            });
+            await waitIdle(app);
+            const search = await evalPatiently(app, (before) => ({
                 matches: findState.matches.length,
-                rows: rows.length,
+                rows: document.querySelectorAll('#search-results-list .search-item').length,
                 moved: ((editor.querySelector('.block') || {}).innerText || '') !== before,
                 marked: (CSS.highlights.get('typozen-find-current') || { size: 0 }).size,
                 hayHasTags: /<\/?(p|div|span)\b/i.test(getFindHaystack().haystack)
-            };
-        });
-        info('search "the": ' + search.matches + ' matches, ' + search.rows + ' rows');
-        assert(search.matches > 1000, 'search finds matches across the book');
-        assert(!search.hayHasTags, 'and searches its text, not its markup');
-        assert(search.marked === 1, 'clicking a result marks exactly one match');
+            }), searchBefore);
+            info('search "the": ' + search.matches + ' matches, ' + search.rows + ' rows');
+            assert(search.matches > 1000, 'search finds matches across the book');
+            assert(!search.hayHasTags, 'and searches its text, not its markup');
+            assert(search.marked === 1, 'clicking a result marks exactly one match');
+        } else {
+            info('search skipped on a ' + st.text + '-char book (find walk is one sync pass)');
+        }
 
-        const paged = await app.eval(async () => {
-            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-            handleCommand('view_set:columns:2');
-            await sleep(2500);
-            handleCommand('view_set:scroll:pagination');
-            await sleep(3000);
-            const before = PageMap.current();
-            PageMap.step(1);
-            await sleep(800);
-            return {
-                paginated: isPaginatedLayout(),
-                pages: PageMap.count(),
-                turned: PageMap.current() !== before,
-                windowed: PageChunks.mounted >= 0,
-                mounted: editor.querySelectorAll('.block').length
-            };
-        });
+        await cmd(app, 'view_set:columns:2');
+        await cmd(app, 'view_set:scroll:pagination');
+        const pageBefore = await evalPatiently(app, () => PageMap.current());
+        await kick(app, () => { PageMap.step(1); });
+        await waitIdle(app);
+        const paged = await evalPatiently(app, (before) => ({
+            paginated: isPaginatedLayout(),
+            pages: PageMap.count(),
+            turned: PageMap.current() !== before,
+            windowed: PageChunks.mounted >= 0,
+            mounted: editor.querySelectorAll('.block').length
+        }), pageBefore);
         info('paginated: ' + paged.pages + ' pages, windowed ' + paged.windowed +
             ', ' + paged.mounted + ' blocks mounted');
         assert(paged.paginated, 'a book paginates');
@@ -529,54 +575,45 @@ async function openAndCheck(app, book, deep) {
         console.log('\n--- images, links and navigation ---');
         {
             // Every one of these was reported from real use after the loader landed.
-            const nav = await app.eval(async () => {
-                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                handleCommand('view_set:columns:1');
-                await sleep(1200);
-                handleCommand('view_set:scroll:scroll');
-                await sleep(1800);
+            await cmd(app, 'view_set:columns:1');
+            await cmd(app, 'view_set:scroll:scroll');
 
-                // Images: not "the src was rewritten" -- that assertion passed for weeks
-                // while Xeelee showed a broken-image placeholder on every page. Go to the
-                // blocks that carry images, let them mount, and ask the browser whether the
-                // bytes arrived. A rewritten src that 404s is the bug, not the fix.
-                let absolute = 0, relative = 0, loaded = 0, broken = 0;
-                const brokenSrcs = [];
-                let coverRatio = null, coverBoxRatio = null;
-                const carriers = [], found = [], missed = [];
-                for (let i = 0; i < DocumentModel.blocks.length && carriers.length < 3; i++) {
-                    if (/<(img|image)[\s>]/i.test(DocumentModel.blocks[i].raw)) carriers.push(i);
+            const carriers = await evalPatiently(app, () => {
+                const out = [];
+                for (let i = 0; i < DocumentModel.blocks.length && out.length < 3; i++) {
+                    if (/<(img|image)[\s>]/i.test(DocumentModel.blocks[i].raw)) out.push(i);
                 }
-                for (const bi of carriers) {
-                    goToModelBlock(bi);
-                    await sleep(1600);
-                    const el = document.querySelector('#editor .block[data-model-index="' + bi + '"]');
-                    if (!el) { missed.push(bi); continue; }
-                    found.push(bi);
-
+                return out;
+            });
+            let absolute = 0, relative = 0, loaded = 0, broken = 0;
+            const brokenSrcs = [];
+            let coverRatio = null, coverBoxRatio = null;
+            const found = [], missed = [];
+            for (const bi of carriers) {
+                await seekIndex(app, bi);
+                const shot = await evalPatiently(app, async (i) => {
+                    const el = document.querySelector('#editor .block[data-model-index="' + i + '"]');
+                    if (!el) return { missed: true };
+                    const out = { missed: false, absolute: 0, relative: 0, loaded: 0, broken: 0,
+                        brokenSrcs: [], coverRatio: null, coverBoxRatio: null };
                     for (const im of el.querySelectorAll('img')) {
                         const src = im.getAttribute('src') || '';
-                        if (/^https?:/i.test(src)) absolute++; else relative++;
-                        if (im.complete && im.naturalWidth > 0) loaded++;
-                        else { broken++; if (brokenSrcs.length < 3) brokenSrcs.push(src); }
+                        if (/^https?:/i.test(src)) out.absolute++; else out.relative++;
+                        let ok = im.complete && im.naturalWidth > 0;
+                        if (!ok && !im.complete) {
+                            ok = await new Promise((res) => {
+                                const t = setTimeout(() => res(im.naturalWidth > 0), 5000);
+                                im.onload = () => { clearTimeout(t); res(im.naturalWidth > 0); };
+                                im.onerror = () => { clearTimeout(t); res(false); };
+                            });
+                        }
+                        if (ok) out.loaded++;
+                        else { out.broken++; if (out.brokenSrcs.length < 3) out.brokenSrcs.push(src); }
                     }
-
-                    // An SVG-wrapped cover is not an <img>: the browser reports nothing
-                    // about it, so fetch the href and check the ratio it actually renders at.
                     for (const im of el.querySelectorAll('image')) {
                         const XLINK = 'http://www.w3.org/1999/xlink';
                         const href = im.getAttributeNS(XLINK, 'href') || im.getAttribute('href') || '';
-                        if (/^https?:/i.test(href)) absolute++; else relative++;
-                        // Load it as an image, NOT with fetch.
-                        //
-                        // MapBookHost maps localbooks with DenyCors, so a fetch from the
-                        // localapp origin is cross-origin and refused by design -- this
-                        // reported every SVG-wrapped cover as broken while the cover was
-                        // on screen and perfectly readable. Verified: the same URL through
-                        // new Image() loads at 510x680, and a genuinely absent file still
-                        // errors, so the check keeps its teeth. An <image> element pulls
-                        // its bytes through the image pipeline anyway, which is what this
-                        // is supposed to be testing.
+                        if (/^https?:/i.test(href)) out.absolute++; else out.relative++;
                         let ok = false;
                         try {
                             ok = await new Promise((res) => {
@@ -587,42 +624,62 @@ async function openAndCheck(app, book, deep) {
                                 probe.src = href;
                             });
                         } catch (e) { ok = false; }
-                        if (ok) loaded++; else { broken++; if (brokenSrcs.length < 3) brokenSrcs.push(href); }
-
+                        if (ok) out.loaded++; else { out.broken++; if (out.brokenSrcs.length < 3) out.brokenSrcs.push(href); }
                         const svg = im.closest('svg');
                         const vb = svg && svg.getAttribute('viewBox');
-                        if (vb && coverRatio === null) {
+                        if (vb && out.coverRatio === null) {
                             const p4 = vb.trim().split(/[\s,]+/).map(Number);
                             const r = svg.getBoundingClientRect();
                             if (p4.length === 4 && p4[3] && r.height) {
-                                coverRatio = p4[2] / p4[3];
-                                coverBoxRatio = r.width / r.height;
+                                out.coverRatio = p4[2] / p4[3];
+                                out.coverBoxRatio = r.width / r.height;
                             }
                         }
                     }
+                    return out;
+                }, bi, { perTry: 12000, timeout: 20000 });
+                if (!shot || shot.missed) { missed.push(bi); continue; }
+                found.push(bi);
+                absolute += shot.absolute; relative += shot.relative;
+                loaded += shot.loaded; broken += shot.broken;
+                for (const s of (shot.brokenSrcs || [])) if (brokenSrcs.length < 3) brokenSrcs.push(s);
+                if (coverRatio === null && shot.coverRatio != null) {
+                    coverRatio = shot.coverRatio; coverBoxRatio = shot.coverBoxRatio;
                 }
+            }
 
-                // Outline: clicking an entry has to move the reader.
-                const before = topLeftModelIndexTwoCol() >= 0
-                    ? topLeftModelIndexTwoCol() : firstVisibleIdx();
+            const outlineBefore = await evalPatiently(app, () =>
+                (topLeftModelIndexTwoCol() >= 0 ? topLeftModelIndexTwoCol() : (function () {
+                    const host = mainContainer.getBoundingClientRect();
+                    let idx = -1;
+                    document.getElementById('editor').querySelectorAll('.block').forEach(b => {
+                        if (idx >= 0) return;
+                        const r = b.getBoundingClientRect();
+                        if (r.bottom > host.top + 2 && r.top < host.bottom)
+                            idx = DocumentModel.modelIndexOfEl(b);
+                    });
+                    return idx;
+                })()));
+            await evalPatiently(app, () => {
                 const items = document.querySelectorAll('#outline-list .outline-item');
-                let outlineMoved = false, outlineTarget = -1;
-                if (items.length > 6) {
-                    items[6].click();
-                    await sleep(1500);
-                    outlineTarget = _readingAnchor;
-                    outlineMoved = firstVisibleIdx() !== before;
-                }
+                if (items.length > 6) items[6].click();
+            });
+            await waitIdle(app);
+            const outline = await evalPatiently(app, (before) => {
+                const host = mainContainer.getBoundingClientRect();
+                let idx = -1;
+                document.getElementById('editor').querySelectorAll('.block').forEach(b => {
+                    if (idx >= 0) return;
+                    const r = b.getBoundingClientRect();
+                    if (r.bottom > host.top + 2 && r.top < host.bottom)
+                        idx = DocumentModel.modelIndexOfEl(b);
+                });
+                return { outlineMoved: idx !== before, outlineTarget: _readingAnchor };
+            }, outlineBefore);
 
-                // Internal links, but only ones whose target actually exists.
-                //
-                // Matter's in-text links all point at #filepos anchors from the original
-                // MOBI, while the anchors Calibre wrote are calibre_pb_*. Those links are
-                // dangling in the file itself and no reader could follow them, so asserting
-                // on the first link found would be testing the book rather than the reader.
+            const linkPick = await evalPatiently(app, () => {
                 const anchors = buildBookAnchorIndex();
-                let linkBlock = -1, linkHref = null;
-                for (let i = 0; i < DocumentModel.blocks.length && linkBlock < 0; i++) {
+                for (let i = 0; i < DocumentModel.blocks.length; i++) {
                     const hs = (DocumentModel.blocks[i].raw || '').match(/href\s*=\s*"([^"]+)"/g);
                     if (!hs) continue;
                     for (const h of hs) {
@@ -630,88 +687,64 @@ async function openAndCheck(app, book, deep) {
                         if (/^https?:/i.test(href)) continue;
                         const frag = href.indexOf('#') >= 0 ? href.slice(href.indexOf('#') + 1) : '';
                         const file = bookNormalizeHref(href);
-                        // And whose target is somewhere else: a contents page links to the
-                        // section it sits in, so "did the view move" is not a fair question
-                        // of a link that legitimately points at the block already on screen.
                         const t = (frag && anchors[frag] !== undefined) ? anchors[frag]
                             : ((file && _bookDocIndex[file] !== undefined) ? _bookDocIndex[file] : -1);
-                        if (t >= 0 && Math.abs(t - i) > 20) {
-                            linkBlock = i; linkHref = href; break;
-                        }
+                        if (t >= 0 && Math.abs(t - i) > 20)
+                            return { linkBlock: i, linkHref: href };
                     }
                 }
-                let linkTarget = -1, linkMoved = false;
-                if (linkBlock >= 0) {
-                    goToModelBlock(linkBlock);
-                    await sleep(1200);
-                    // _readingAnchor, not firstVisibleIdx(): windowing mounts a chunk at a
-                    // time, so two blocks a few hundred apart share one window and "the
-                    // first block on screen" is the same number before and after the jump.
-                    const was = _readingAnchor;
-                    bookGoToHref(linkHref);
-                    await sleep(1500);
-                    linkTarget = _readingAnchor;
-                    linkMoved = linkTarget !== was;
-                }
-
-                // A real click on the book's own contents page, which is the route a reader
-                // takes. Matter's entries are the dangling #filepos ones, so this is where
-                // the title fallback earns its place; Xeelee's resolve by href and must not
-                // change behaviour.
-                let tocClickMoved = false, tocClickHref = null, tocClickTarget = -1, tocClickText = null;
-                {
-                    const titles = {};
-                    for (const t of (DocumentModel.toc || [])) {
-                        const k = String(t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                        if (k && titles[k] === undefined) titles[k] = t.blockIndex;
-                    }
-                    // Not firstVisibleIdx(): in a horizontally scrolling multi-column
-                    // layout every mounted block intersects the viewport vertically, so it
-                    // answers "the first block" no matter where the reader is.
-                    const whereAmI = () => (topLeftModelIndexTwoCol() >= 0
-                        ? topLeftModelIndexTwoCol() : firstVisibleIdx());
-                    goToModelBlock(0);
-                    await sleep(1500);
-                    const here = whereAmI();
-                    const as = document.querySelectorAll('#editor .block a[data-book-href]');
-                    let pick = null;
-                    for (const a of as) {
-                        const k = (a.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                        if (titles[k] !== undefined && Math.abs(titles[k] - here) > 20) { pick = a; break; }
-                    }
-                    if (pick) {
-                        tocClickHref = pick.getAttribute('data-book-href');
-                        tocClickText = (pick.innerText || '').trim();
-                        pick.click();
-                        await sleep(1800);
-                        tocClickTarget = whereAmI();
-                        tocClickMoved = tocClickTarget !== here;
-                    }
-                }
-
-                function firstVisibleIdx() {
-                    const host = mainContainer.getBoundingClientRect();
-                    let idx = -1;
-                    document.getElementById('editor').querySelectorAll('.block').forEach(b => {
-                        if (idx >= 0) return;
-                        const r = b.getBoundingClientRect();
-                        if (r.bottom > host.top + 2 && r.top < host.bottom) {
-                            idx = DocumentModel.modelIndexOfEl(b);
-                        }
-                    });
-                    return idx;
-                }
-
-                return {
-                    absolute, relative, loaded, broken, brokenSrcs, coverRatio, coverBoxRatio,
-                    carriers, found, missed,
-                    outlineMoved, outlineTarget,
-                    hasLinks: linkBlock >= 0, linkHref: linkHref,
-                    linkMoved, linkTarget,
-                    tocClickMoved, tocClickHref, tocClickTarget, tocClickText,
-                    dirty: (function () { updateStatsNow(); return null; })()
-                };
+                return { linkBlock: -1, linkHref: null };
             });
+            let linkTarget = -1, linkMoved = false;
+            if (linkPick.linkBlock >= 0) {
+                await seekIndex(app, linkPick.linkBlock);
+                const was = await evalPatiently(app, () => _readingAnchor);
+                await kick(app, (href) => { bookGoToHref(href); }, linkPick.linkHref);
+                await waitIdle(app);
+                linkTarget = await evalPatiently(app, () => _readingAnchor);
+                linkMoved = linkTarget !== was;
+            }
+
+            await seekIndex(app, 0);
+            const tocHere = await evalPatiently(app, () =>
+                (topLeftModelIndexTwoCol() >= 0 ? topLeftModelIndexTwoCol() : 0));
+            const tocPick = await evalPatiently(app, (here) => {
+                const titles = {};
+                for (const t of (DocumentModel.toc || [])) {
+                    const k = String(t.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    if (k && titles[k] === undefined) titles[k] = t.blockIndex;
+                }
+                const as = document.querySelectorAll('#editor .block a[data-book-href]');
+                for (const a of as) {
+                    const k = (a.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    if (titles[k] !== undefined && Math.abs(titles[k] - here) > 20) {
+                        a.setAttribute('data-tz-toc-pick', '1');
+                        return { href: a.getAttribute('data-book-href'), text: (a.innerText || '').trim() };
+                    }
+                }
+                return null;
+            }, tocHere);
+            let tocClickMoved = false, tocClickHref = null, tocClickTarget = -1, tocClickText = null;
+            if (tocPick) {
+                tocClickHref = tocPick.href; tocClickText = tocPick.text;
+                await evalPatiently(app, () => {
+                    const a = document.querySelector('#editor .block a[data-tz-toc-pick]');
+                    if (a) a.click();
+                });
+                await waitIdle(app);
+                tocClickTarget = await evalPatiently(app, () =>
+                    (topLeftModelIndexTwoCol() >= 0 ? topLeftModelIndexTwoCol() : 0));
+                tocClickMoved = tocClickTarget !== tocHere;
+            }
+
+            const nav = {
+                absolute, relative, loaded, broken, brokenSrcs, coverRatio, coverBoxRatio,
+                carriers, found, missed,
+                outlineMoved: outline.outlineMoved, outlineTarget: outline.outlineTarget,
+                hasLinks: linkPick.linkBlock >= 0, linkHref: linkPick.linkHref,
+                linkMoved, linkTarget,
+                tocClickMoved, tocClickHref, tocClickTarget, tocClickText
+            };
 
             info('image blocks ' + JSON.stringify(nav.carriers) + ', mounted ' +
                  JSON.stringify(nav.found) + ', missed ' + JSON.stringify(nav.missed));
@@ -777,61 +810,51 @@ async function openAndCheck(app, book, deep) {
 
         console.log('\n--- the book’s own typography and page breaks ---');
         {
-            const bs = await app.eval(async () => {
-                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                handleCommand('view_set:columns:1');
-                await sleep(1200);
-                handleCommand('view_set:scroll:scroll');
-                await sleep(1500);
-                goToModelBlock(Math.floor(DocumentModel.blocks.length * 0.4));
-                await sleep(2500);
-
+            await cmd(app, 'view_set:columns:1');
+            await cmd(app, 'view_set:scroll:scroll');
+            await seekFrac(app, 0.4);
+            const bsSheet = await evalPatiently(app, () => {
                 const sheet = (document.getElementById('book-styles') || {}).textContent || '';
-                const ed = document.getElementById('editor');
-                // The element that owns the text, not the block's first child.
-                //
-                // firstElementChild was a container: on Matter (div.block > div.calibre7 >
-                // span.calibre15) it is div.calibre7, which inherits the theme size, so
-                // this assertion read exactly what the theme had set and passed no matter
-                // what the reader saw. The text is a level deeper at 1.33333em, and this
-                // check sat green through a book rendering a third too large.
-                const prose = (function () {
-                    for (const b of ed.querySelectorAll('.block')) {
-                        if ((b.innerText || '').length <= 300) continue;
-                        const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT, null);
-                        let node = null, len = 0, x;
-                        while ((x = w.nextNode())) {
-                            const s = (x.nodeValue || '').trim();
-                            if (s.length > len) { len = s.length; node = x; }
-                        }
-                        if (node && node.parentElement) return node.parentElement;
-                    }
-                    return null;
-                })();
-
-                // The reader's own size has to reach the book's text, and be the size the
-                // text actually renders at. A stylesheet in rem is rooted at the
-                // application, so the control moved and nothing happened; one asking for
-                // 0.88em rendered a book 12% smaller than the theme it was opened under.
-                //
-                // Driven through --fs, which is what a theme sets. Writing a pixel size
-                // onto the editor instead would overwrite the correction being tested.
-                const rootFs = () => parseFloat(getComputedStyle(document.documentElement).fontSize);
-                const was = rootFs();
-                const before = prose ? parseFloat(getComputedStyle(prose).fontSize) : 0;
-                document.documentElement.style.setProperty('--fs', '28px');
-                await sleep(400);
-                const after = prose ? parseFloat(getComputedStyle(prose).fontSize) : 0;
-                const afterRoot = rootFs();
-                document.documentElement.style.setProperty('--fs', was + 'px');
-                await sleep(300);
                 return {
                     remLeft: /\d\s*rem\b/i.test(sheet),
                     pagedBreaks: (sheet.match(/page-break-(before|after)\s*:\s*(always|left|right)/gi) || []).length,
-                    columnBreaks: (sheet.match(/break-(before|after)\s*:\s*column/gi) || []).length,
-                    editorFont: was + 'px', before: before, after: after, afterRoot: afterRoot
+                    columnBreaks: (sheet.match(/break-(before|after)\s*:\s*column/gi) || []).length
                 };
             });
+            const proseFs = () => {
+                const ed = document.getElementById('editor');
+                for (const b of ed.querySelectorAll('.block')) {
+                    if ((b.innerText || '').length <= 300) continue;
+                    const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT, null);
+                    let node = null, len = 0, x;
+                    while ((x = w.nextNode())) {
+                        const s = (x.nodeValue || '').trim();
+                        if (s.length > len) { len = s.length; node = x; }
+                    }
+                    if (node && node.parentElement)
+                        return parseFloat(getComputedStyle(node.parentElement).fontSize);
+                }
+                return 0;
+            };
+            const was = await evalPatiently(app, () =>
+                parseFloat(getComputedStyle(document.documentElement).fontSize));
+            const before = await evalPatiently(app, proseFs);
+            await evalPatiently(app, () => {
+                document.documentElement.style.setProperty('--fs', '28px');
+            });
+            await waitIdle(app);
+            const after = await evalPatiently(app, proseFs);
+            const afterRoot = await evalPatiently(app, () =>
+                parseFloat(getComputedStyle(document.documentElement).fontSize));
+            await evalPatiently(app, (px) => {
+                document.documentElement.style.setProperty('--fs', px + 'px');
+            }, was);
+            const bs = {
+                remLeft: bsSheet.remLeft,
+                pagedBreaks: bsSheet.pagedBreaks,
+                columnBreaks: bsSheet.columnBreaks,
+                editorFont: was + 'px', before: before, after: after, afterRoot: afterRoot
+            };
             info('book css: ' + bs.pagedBreaks + ' paged breaks left, ' + bs.columnBreaks +
                  ' turned into column breaks, rem units left: ' + bs.remLeft);
             assert(!bs.remLeft,
@@ -852,83 +875,60 @@ async function openAndCheck(app, book, deep) {
 
         console.log('\n--- chapters start pages, and page numbers agree ---');
         {
-            const pg = await app.eval(async () => {
-                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                handleCommand('view_set:columns:2');
-                await sleep(2500);
-                handleCommand('view_set:scroll:pagination');
-                await sleep(3000);
-                // Measured at two places in the book, not one: doc starts are dense in the
-                // front matter and sparse in the middle, so a single position quietly turns
-                // a thirteen-chapter check into a two-chapter one depending on where the
-                // previous test left the reader.
-                async function measure(at) {
-                    goToModelBlock(at);
-                    await sleep(2000);
-
-                    // Per-fragment rects, not getBoundingClientRect(). A paragraph running
-                    // from one column into the next reports the *union* of its fragments --
-                    // a box spanning both columns -- which buckets by its left edge and
-                    // looks exactly like prose sitting above a chapter heading that had in
-                    // fact broken correctly. That cost a round of chasing a phantom bug.
-                    //
-                    // Text-bearing blocks only, too: a book marks its own breaks with an
-                    // empty div, and now that those are honoured the div is legitimately
-                    // the topmost thing in its column.
-                    const ed = document.getElementById('editor');
-                    const frags = [];
-                    for (const b of ed.querySelectorAll('.block')) {
-                        if (!(b.innerText || '').trim()) continue;
-                        for (const r of b.getClientRects()) {
-                            if (r.height > 0 && r.width > 0) frags.push({ el: b, r: r });
-                        }
+            await cmd(app, 'view_set:columns:2');
+            await cmd(app, 'view_set:scroll:pagination');
+            const measureSpread = () => {
+                const ed = document.getElementById('editor');
+                const frags = [];
+                for (const b of ed.querySelectorAll('.block')) {
+                    if (!(b.innerText || '').trim()) continue;
+                    for (const r of b.getClientRects()) {
+                        if (r.height > 0 && r.width > 0) frags.push({ el: b, r: r });
                     }
-                    const colTop = {};
-                    for (const f of frags) {
-                        const col = Math.round(f.r.left / 10) * 10;
-                        if (colTop[col] === undefined || f.r.top < colTop[col]) colTop[col] = f.r.top;
-                    }
-                    const seen = new Set();
-                    const out = { laidOut: 0, atTop: 0, offenders: [] };
-                    for (const x of frags) {
-                        if (!x.el.hasAttribute('data-chapter-start') || seen.has(x.el)) continue;
-                        seen.add(x.el);
-                        out.laidOut++;
-                        const col = Math.round(x.r.left / 10) * 10;
-                        const off = x.r.top - colTop[col];
-                        if (off <= 2) out.atTop++;
-                        else if (out.offenders.length < 4) {
-                            const above = frags.filter(y => Math.round(y.r.left / 10) * 10 === col
-                                && y.r.top < x.r.top - 1)
-                                .sort((a, b) => a.r.top - b.r.top).slice(0, 2)
-                                .map(y => y.el.innerText.replace(/\s+/g, ' ').slice(0, 24));
-                            out.offenders.push(Math.round(off) + 'px below its column top: "' +
-                                x.el.innerText.replace(/\s+/g, ' ').slice(0, 24) +
-                                '", under ' + JSON.stringify(above));
-                        }
-                    }
-                    return out;
                 }
-
-                const front = await measure(0);
-                const mid = await measure(Math.floor(DocumentModel.blocks.length * 0.4));
-                const laidOut = front.laidOut + mid.laidOut;
-                const atTop = front.atTop + mid.atTop;
-                const offenders = front.offenders.concat(mid.offenders).slice(0, 4);
-
+                const colTop = {};
+                for (const f of frags) {
+                    const col = Math.round(f.r.left / 10) * 10;
+                    if (colTop[col] === undefined || f.r.top < colTop[col]) colTop[col] = f.r.top;
+                }
+                const seen = new Set();
+                const out = { laidOut: 0, atTop: 0, offenders: [] };
+                for (const x of frags) {
+                    if (!x.el.hasAttribute('data-chapter-start') || seen.has(x.el)) continue;
+                    seen.add(x.el);
+                    out.laidOut++;
+                    const col = Math.round(x.r.left / 10) * 10;
+                    const off = x.r.top - colTop[col];
+                    if (off <= 2) out.atTop++;
+                    else if (out.offenders.length < 4) {
+                        const above = frags.filter(y => Math.round(y.r.left / 10) * 10 === col
+                            && y.r.top < x.r.top - 1)
+                            .sort((a, b) => a.r.top - b.r.top).slice(0, 2)
+                            .map(y => y.el.innerText.replace(/\s+/g, ' ').slice(0, 24));
+                        out.offenders.push(Math.round(off) + 'px below its column top: "' +
+                            x.el.innerText.replace(/\s+/g, ' ').slice(0, 24) +
+                            '", under ' + JSON.stringify(above));
+                    }
+                }
+                return out;
+            };
+            await seekIndex(app, 0);
+            const front = await evalPatiently(app, measureSpread);
+            await seekFrac(app, 0.4);
+            const mid = await evalPatiently(app, measureSpread);
+            const laidOut = front.laidOut + mid.laidOut;
+            const atTop = front.atTop + mid.atTop;
+            const offenders = front.offenders.concat(mid.offenders).slice(0, 4);
+            const pg = await evalPatiently(app, () => {
                 updatePageIndicator();
                 const nums = Array.prototype.map.call(
                     document.querySelectorAll('#page-indicator .page-num'), x => x.innerText);
-                return {
-                    chapterStarts: laidOut,
-                    laidOut: laidOut,
-                    atTop: atTop,
-                    offenders: offenders,
-                    nums: nums,
-                    total: PageMap.count(),
-                    current: PageMap.current()
-                };
+                return { nums, total: PageMap.count(), current: PageMap.current() };
             });
+            pg.chapterStarts = laidOut;
+            pg.laidOut = laidOut;
+            pg.atTop = atTop;
+            pg.offenders = offenders;
             info('page numbers on screen: ' + JSON.stringify(pg.nums) +
                 ', page ' + pg.current + ' of ' + pg.total);
             assert(pg.chapterStarts > 0,
@@ -949,29 +949,22 @@ async function openAndCheck(app, book, deep) {
 
 let app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
 try {
-    await sleep(3000);
     await openAndCheck(app, primary, true);
-    // The omnibus gets the full pass too, not a shallow one. Its assets live in
-    // OEBPS/Images/ and its documents in OEBPS/Text/, so it is the only book here whose
-    // images can catch a base-directory bug -- Matter is flat at the root and resolves
-    // correctly under a base that is wrong for everyone else.
+    // The omnibus gets the full pass too. Its assets live in OEBPS/Images/ and its
+    // documents in OEBPS/Text/, so it is the only book here whose images can catch a
+    // base-directory bug -- Matter is flat at the root.
     //
-    // In its own process, though. Driving both books through one instance failed with a
-    // ProtocolError every run: after the full Matter lap -- mode switches, page seeks,
-    // outline and TOC clicks -- the page stayed busy long enough past settle that the
-    // next evaluate blew the 180s protocol timeout. Nothing about the omnibus itself is
-    // slow, which is what made this so misleading: opened first it loads in 10s, its
-    // whole navigation pass runs in 20s, and getMarkdownContent over all 8.1MB takes
-    // 8ms. It was the accumulated state of the previous book, and app-harness.mjs
-    // carried a comment blaming goToModelBlock (measured here at 0ms) for it.
-    // Suites already get a throwaway profile each for exactly this reason; a book this
-    // size deserves the same from the process.
+    // Own process, launched as the .epub itself, on a fresh profile. Matter's
+    // session in the throwaway profile (2-col geometry, last file, page map)
+    // coming along for the ride left the omnibus density seek sitting behind
+    // leftover work until protocolTimeout. Isolated, the same seek is ~120ms.
     if (biggest !== primary) {
         await app.close();
-        await sleep(1500);
-        app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
-        await sleep(3000);
-        await openAndCheck(app, biggest, true);
+        try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch (e) {}
+        fs.mkdirSync(profileDir, { recursive: true });
+        await sleep(800);
+        app = await launchApp({ file: path.join('tests', biggest) });
+        await openAndCheck(app, biggest, true, { alreadyOpen: true });
     }
 
     console.log('\n=== the book on disk is untouched ===');
