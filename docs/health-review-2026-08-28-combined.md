@@ -31,7 +31,7 @@ Privacy-copy of native files unless those product questions are reopened.
 | §1.1 Uncaught errors → HUD + `debug.log` | **Done.** `window.onerror` / `unhandledrejection` → `addDebugLog` + telemetry. Host `DispatcherUnhandledException` (handled, one MessageBox) and `AppDomain.UnhandledException` → profile `debug.log` even without `--debug`. |
 | §1.2 Gate `TYPOZEN_TAB_E2E` | **Done.** Requires `Program.DebugLogEnabled`. `tests/tabs-content-e2e.py` now launches with `--debug`. |
 | §1.3 Close during script pull | **Done.** First Close while `_scriptBlockDepth > 0` cancels and does not spend the force-quit click. Second click still force-exits. |
-| §1.4 Autosave / session persist / Privacy TEMP | **Done.** Failures log to profile `debug.log` and show a one-shot dialog. Privacy Mode does not turn on if TEMP cannot be created. |
+| §1.4 Autosave / session persist / Privacy TEMP | **Done.** Failures log to profile `debug.log` and show a one-shot dialog. Privacy Mode does not turn on if TEMP cannot be created. Unhandled dispatcher fault sets `DocumentStateSuspect` and stops autosave / session persist; File > Save still writes. Proved by `tests/fault-autosave-app.mjs` (throws on the UI thread). |
 | §1.5 Dictionary off the UI thread | **Done.** Parse starts in the window ctor on a background thread; first lookup waits if needed. |
 | §1.6 Authority-path empty catches | **Done (log, not a census).** `fromMarkdown`, copy (and preventDefault on whole-document), input sync, `flushActiveBlockToRaw`, `mountVirtWindow`, history restore, export per-block. `getMarkdownContent` no longer walks the window under virt/page-windowing. |
 | §1.7 Source-search overlay size guard | **Done.** Skip the full-document mirror above 400k chars (`SRC_HL_MAX_CHARS`). |
@@ -493,6 +493,8 @@ landed in the follow-up pass (§0).
 2. ~~**§1.2 gate `TYPOZEN_TAB_E2E`**~~ **done.** Do not extract 1.7k lines — owner.
 3. ~~**§1.3 Close during `_scriptBlockDepth`**~~ **done.**
 4. ~~**§1.4** autosave / `PersistTabSession` / Privacy TEMP~~ **done.**
+    Dispatcher fault path verified by `tests/fault-autosave-app.mjs`: throw on
+    the UI thread, autosave and session persist stop, File > Save still writes.
 5. ~~**§1.5** dictionary off the UI thread~~ **done.**
 6. ~~**§1.6** authority-path logs + virt-safe `getMarkdownContent` fallback~~ **done.**
 7. ~~**§1.7** Source-search overlay size guard~~ **done.**

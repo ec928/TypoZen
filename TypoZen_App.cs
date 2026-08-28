@@ -105,6 +105,7 @@ namespace TypoZen
         /// So: automatic writes stop, deliberate ones do not. File > Save and Save As still
         /// work, because that is the reader choosing, with the dialog having said why.
         /// volatile: written from the dispatcher and finaliser threads, read from the UI one.
+        /// Runtime proof: tests/fault-autosave-app.mjs (--debug debug_throw_ui).
         /// </summary>
         internal static volatile bool DocumentStateSuspect;
 
@@ -5172,6 +5173,37 @@ namespace TypoZen
                     System.IO.File.AppendAllText(logPath, string.Format("[{0:HH:mm:ss.fff}] {1}\n", DateTime.Now, msg.Substring(10)));
                 }
                 catch { }
+                return;
+            }
+            // --debug only. fault-autosave-app throws on the dispatcher so the
+            // unhandled-exception handler actually runs, then checks autosave / persist
+            // / File>Save. A MessageBox would hang the suite; SuppressFaultUi is the
+            // same switch the tab harness uses.
+            else if (msg == "debug_throw_ui")
+            {
+                if (!Program.DebugLogEnabled) return;
+                Program.SuppressFaultUi = true;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    throw new InvalidOperationException("debug_throw_ui");
+                }), DispatcherPriority.Normal);
+                return;
+            }
+            else if (msg == "debug_save")
+            {
+                if (!Program.DebugLogEnabled) return;
+                Dispatcher.BeginInvoke(new Action(() => SaveActiveTab(false)),
+                    DispatcherPriority.Normal);
+                return;
+            }
+            else if (msg == "debug_persist_session")
+            {
+                if (!Program.DebugLogEnabled) return;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try { SyncActiveTabFromEditor(); } catch { }
+                    PersistTabSession();
+                }), DispatcherPriority.Normal);
                 return;
             }
 
