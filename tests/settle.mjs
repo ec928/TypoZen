@@ -1,6 +1,10 @@
 /**
  * Wait for the page to stop moving, instead of guessing with a fixed sleep.
  *
+ * Agents: import settled / settledApp / untilPage from here. Do not add
+ * `await sleep(400)` after a layout or find command. settleMs on launchApp is a
+ * timeout cap, not a mandatory pause.
+ *
  * Three browser suites failed intermittently in full runs and passed every time
  * standalone: twocol-anchoring, pagination and smoke. Same cause in each -- a sleep long
  * enough on an idle machine and not long enough when the build runs every browser suite
@@ -16,6 +20,11 @@
  */
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Sample often. Still require three identical reads (full-run contention
+// made two samples flake on twocol/pagination/smoke). 3×50ms vs 3×120ms.
+const SAMPLE_MS = 50;
+const STABLE_NEEDED = 3;
 
 /** One sample of everything layout decisions are made from. */
 function geometrySample() {
@@ -44,12 +53,12 @@ export async function settled(page, timeoutMs = 8000) {
     while (Date.now() - started < timeoutMs) {
         const now = await page.evaluate(geometrySample);
         if (now === last) {
-            if (++stable >= 3) return true;
+            if (++stable >= STABLE_NEEDED) return true;
         } else {
             stable = 0;
             last = now;
         }
-        await sleep(120);
+        await sleep(SAMPLE_MS);
     }
     return false;
 }
@@ -72,12 +81,26 @@ export async function settledApp(app, timeoutMs = 10000) {
     while (Date.now() - started < timeoutMs) {
         const now = await app.eval(geometrySample);
         if (now === last) {
-            if (++stable >= 3) return true;
+            if (++stable >= STABLE_NEEDED) return true;
         } else {
             stable = 0;
             last = now;
         }
-        await sleep(150);
+        await sleep(SAMPLE_MS);
+    }
+    return false;
+}
+
+/**
+ * Poll a page predicate. Use this instead of `await sleep(600)` after a command.
+ * Returns the last truthy value, or false on timeout.
+ */
+export async function untilPage(page, fn, timeoutMs = 8000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        const v = await page.evaluate(fn);
+        if (v) return v;
+        await sleep(SAMPLE_MS);
     }
     return false;
 }

@@ -22,6 +22,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { settled, untilPage } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -41,7 +42,6 @@ function eq(got, want, msg) {
         console.error('        got : ' + JSON.stringify(got));
     }
 }
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 function buildDoc(n) {
     let md = '';
@@ -98,14 +98,14 @@ async function main() {
 
         console.log('--- it boots and renders ---');
         await page.evaluate((md) => loadMarkdownContent(md), buildDoc(200));
-        await sleep(500);
+        await settled(page);
         let s = await page.evaluate(probe);
         assert(s.blocks > 0, 'document renders blocks (' + s.blocks + ')');
         assert(s.editorShown, 'the editor is visible');
 
         console.log('\n--- 2-column actually produces two columns ---');
         await page.evaluate(() => handleCommand('view_set:columns:2'));
-        await sleep(500);
+        await settled(page);
         s = await page.evaluate(probe);
         assert(/two-col-layout/.test(s.classes), '2-Column applies the class');
         // The check that matters. The class alone proved nothing: this was 'auto' for the
@@ -118,14 +118,14 @@ async function main() {
 
         console.log('\n--- 1-column undoes it ---');
         await page.evaluate(() => handleCommand('view_set:columns:1'));
-        await sleep(400);
+        await settled(page);
         s = await page.evaluate(probe);
         assert(!/two-col-layout/.test(s.classes), '1-Column drops the class');
         eq(s.renderedColumns, 1, '1-Column really renders a single column');
 
         console.log('\n--- Reader mode ---');
         await page.evaluate(() => handleCommand('view_set:mode:reader'));
-        await sleep(500);
+        await settled(page);
         s = await page.evaluate(probe);
         eq(s.mode, 'reader', 'Reader mode engages');
         assert(/reader-mode/.test(s.classes), 'Reader applies the reader-mode class');
@@ -133,13 +133,13 @@ async function main() {
 
         console.log('\n--- 2-column works in Reader too ---');
         await page.evaluate(() => handleCommand('view_set:columns:2'));
-        await sleep(500);
+        await settled(page);
         s = await page.evaluate(probe);
         eq(s.renderedColumns, 2, 'Reader + 2-Column really renders two columns');
 
         console.log('\n--- Source mode ---');
         await page.evaluate(() => handleCommand('view_set:mode:source'));
-        await sleep(500);
+        await settled(page);
         s = await page.evaluate(probe);
         eq(s.mode, 'source', 'Source mode engages');
         assert(s.sourceShown, 'the raw textarea is visible in Source');
@@ -148,7 +148,7 @@ async function main() {
 
         console.log('\n--- back to Preview ---');
         await page.evaluate(() => handleCommand('view_set:mode:preview'));
-        await sleep(500);
+        await settled(page);
         s = await page.evaluate(probe);
         eq(s.mode, 'wysiwyg', 'Preview mode engages');
         assert(s.editorShown && !s.sourceShown, 'the editor is showing and the textarea is not');
@@ -156,14 +156,14 @@ async function main() {
 
         console.log('\n--- search finds and reports matches ---');
         await page.evaluate(() => handleCommand('toggle_search_sidebar'));
-        await sleep(300);
+        await settled(page);
         await page.evaluate(() => {
             const i = document.getElementById('sidebarSearchInput');
             i.value = 'line 7';
             runFind('line 7', false, { navigate: false });
             updateSidebarSearchCount();
         });
-        await sleep(500);
+        await untilPage(page, () => findState.matches.length > 0);
         const search = await page.evaluate(() => ({
             matches: findState.matches.length,
             rows: document.querySelectorAll('#search-results-list .search-item').length,
@@ -200,12 +200,12 @@ async function main() {
             });
 
             await page.evaluate(() => handleCommand('view_set:mode:preview'));
-            await sleep(400);
+            await settled(page);
             await page.evaluate(() => { window.__vs = []; });
 
             // What the host sends when restoring a 2-column session.
             await page.evaluate(() => handleCommand('view_set:columns:2'));
-            await sleep(500);
+            await settled(page);
             let vs = await page.evaluate(() => window.__vs.slice());
             assert(vs.length > 0, 'a host-driven column change reports view_state');
             assert(vs.some(v => v.split(':')[1].split(',')[1] === '2'),
@@ -219,11 +219,11 @@ async function main() {
             // The raw low-level command still reports, as a safety net for any other path.
             await page.evaluate(() => { window.__vs = []; });
             await page.evaluate(() => handleCommand('set_column_mode:1'));
-            await sleep(400);
+            await settled(page);
             assert((await page.evaluate(() => window.__vs.slice())).length > 0,
                 'the raw set_column_mode command reports too');
             await page.evaluate(() => handleCommand('view_set:columns:2'));
-            await sleep(400);
+            await settled(page);
             await page.evaluate(() => { window.__vs = []; });
 
             // And the page really is in two columns, so toolbar and screen agree.
@@ -232,20 +232,20 @@ async function main() {
 
             await page.evaluate(() => { window.__vs = []; });
             await page.evaluate(() => handleCommand('toggle_mode'));
-            await sleep(500);
+            await settled(page);
             vs = await page.evaluate(() => window.__vs.slice());
             assert(vs.length > 0, 'a mode change from Ctrl+/ or the menu reports view_state');
 
             await page.evaluate(() => { window.__vs = []; });
             await page.evaluate(() => handleCommand('view_sync'));
-            await sleep(200);
+            await settled(page);
             vs = await page.evaluate(() => window.__vs.slice());
             assert(vs.length === 1, 'view_sync reports the current state on demand');
 
             // Mid-transition states must not reach the shell.
             await page.evaluate(() => { window.__vs = []; });
             await page.evaluate(() => handleCommand('view_set:mode:reader'));
-            await sleep(500);
+            await settled(page);
             vs = await page.evaluate(() => window.__vs.slice());
             eq(vs.length, 1, 'a selector click reports once, when the state is coherent');
             assert(/^view_state:reader,\d,pagination,/.test(vs[0]),
@@ -259,9 +259,9 @@ async function main() {
             // the base state is wherever the file opened. Undoing an edit on line 128 sent
             // the cursor, and the view with it, to line 11.
             await page.evaluate(() => { handleCommand('view_set:mode:preview'); });
-            await sleep(400);
+            await settled(page);
             await page.evaluate(() => { rememberStickyLine(60); restoreStickyDocumentLine(60); });
-            await sleep(700);
+            await settled(page);
             await page.evaluate(() => {
                 const blocks = [...editor.querySelectorAll('.block')];
                 const loc = modelLocationFromDocumentLine(60);
@@ -271,12 +271,12 @@ async function main() {
                 const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
                 currentActiveBlock = el;
             });
-            await sleep(300);
+            await settled(page);
             const atEdit = await page.evaluate(() => getCaretLineNumber());
             await page.keyboard.type('UNDOANCHOR');
-            await sleep(700);
+            await settled(page);
             await page.evaluate(() => HistoryManager.undo());
-            await sleep(900);
+            await settled(page);
             const afterUndo = await page.evaluate(() => getCaretLineNumber());
             assert(atEdit > 1, 'the edit happened away from the top of the document (line ' + atEdit + ')');
             assert(Math.abs(afterUndo - atEdit) <= 2,
@@ -309,28 +309,28 @@ async function main() {
             // clicking it is a no-op that looks like a pass. Use a fixture with headings.
             const headed = fs.readFileSync(path.join(appDir, 'tests', 'large-scroll-mixed.md'), 'utf8');
             await page.evaluate((m) => loadMarkdownContent(m), headed);
-            await sleep(1800);
+            await settled(page);
             await page.evaluate(() => {
                 document.querySelector('.sidebar-tab[data-tab="outline"]').click();
                 updateOutline();
             });
-            await sleep(800);
+            await settled(page);
             const headings = await page.evaluate(
                 () => document.querySelectorAll('#outline-list .outline-item').length);
             assert(headings > 20, 'the fixture really has headings to list (' + headings + ')');
 
             for (const layout of ['scroll', 'pagination']) {
                 await page.evaluate(() => handleCommand('view_set:mode:preview'));
-                await sleep(400);
+                await settled(page);
                 await page.evaluate((s) => handleCommand('view_set:scroll:' + s), layout);
-                await sleep(1500);
+                await settled(page);
                 // Start at the top so a jump is unambiguous.
                 await page.evaluate(() => {
                     document.querySelector('.sidebar-tab[data-tab="outline"]').click();
                     const items = document.querySelectorAll('#outline-list .outline-item');
                     if (items.length) items[0].click();
                 });
-                await sleep(1200);
+                await settled(page);
                 const before = await topBlock();
 
                 const clicked = await page.evaluate(() => {
@@ -340,7 +340,7 @@ async function main() {
                     items[i].click();
                     return items[i].innerText;
                 });
-                await sleep(1800);
+                await settled(page);
                 const after = await topBlock();
                 assert(clicked !== null, layout + ': the outline lists headings to click');
                 assert(after > before + 50,
@@ -359,9 +359,9 @@ async function main() {
             // The bound is deliberately loose: this guards against rebuilding an index per
             // row, not against a few ms of drift on someone else's machine.
             await page.evaluate(() => handleCommand('view_set:mode:preview'));
-            await sleep(400);
+            await settled(page);
             await page.evaluate(() => handleCommand('view_set:scroll:pagination'));
-            await sleep(1800);
+            await settled(page);
             await page.evaluate(() => {
                 document.querySelector('.sidebar-tab[data-tab="search"]').click();
                 const i = document.getElementById('sidebarSearchInput');
@@ -369,7 +369,7 @@ async function main() {
                 runFind('scroll', false, { navigate: false });
                 updateSidebarSearchCount();
             });
-            await sleep(1500);
+            await untilPage(page, () => findState.matches.length > 500);
 
             const perf = await page.evaluate(() => {
                 const t0 = performance.now();
@@ -423,9 +423,9 @@ async function main() {
             const seen = {};
             for (const layout of ['scroll', 'pagination']) {
                 await page.evaluate(() => handleCommand('view_set:mode:preview'));
-                await sleep(400);
+                await settled(page);
                 await page.evaluate((s) => handleCommand('view_set:scroll:' + s), layout);
-                await sleep(2000);
+                await settled(page);
                 await page.evaluate(() => {
                     document.querySelector('.sidebar-tab[data-tab="search"]').click();
                     const i = document.getElementById('sidebarSearchInput');
@@ -433,14 +433,14 @@ async function main() {
                     runFind('scroll', false, { navigate: false });
                     updateSidebarSearchCount();
                 });
-                await sleep(1500);
+                await untilPage(page, () => findState.matches.length > 0);
                 seen[layout] = await firstRows();
 
                 // Reset to the top so a jump is unambiguous, then click a result well in.
                 await page.evaluate(() => { const r = document.querySelectorAll('#search-results-list .search-item'); r[0].click(); });
-                await sleep(1200);
+                await settled(page);
                 await page.evaluate(() => { const r = document.querySelectorAll('#search-results-list .search-item'); r[90].click(); });
-                await sleep(2500);
+                await settled(page);
                 const v = await visible();
                 const target = await page.evaluate(() =>
                     markdownOffsetToBlock(findState.matches[findState.index].start).blockIndex);

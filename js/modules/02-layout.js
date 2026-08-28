@@ -5076,6 +5076,9 @@
          * one thing the reader is actually looking at.
          */
         const SRC_HL_MAX_MARKS = 8000;
+        // Full-document innerHTML of the mirror. Above this, skip the overlay rather
+        // than doubling an already-large Source file in the DOM.
+        const SRC_HL_MAX_CHARS = 400000;
 
         function srcHlEscape(t) {
             return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -5204,6 +5207,10 @@
             if (!ensureSourceHighlightLayer()) return;
 
             const text = sourceEditor.value || '';
+            if (text.length > SRC_HL_MAX_CHARS) {
+                clearSourceHighlights();
+                return;
+            }
             const cur = findState.index;
             const capped = matches.length > SRC_HL_MAX_MARKS;
             const sig = findState.query + '|' + matches.length + '|' + text.length + '|'
@@ -6275,7 +6282,11 @@
                         applyTheme(window.allThemes[themeIdx]);
                     }
                 }
-                if (savedPrefs.lastContent && savedPrefs.lastContent.trim() !== '') {
+                // Hosted: the host owns the document via the tab session. lastContent
+                // here is a leftover scratchpad and will overwrite a restored file.
+                const hosted = window.chrome && window.chrome.webview
+                    && !(navigator.userAgent || '').includes('jsdom');
+                if (!hosted && savedPrefs.lastContent && savedPrefs.lastContent.trim() !== '') {
                     loadMarkdownContent(savedPrefs.lastContent);
                     try {
                         state.lastSavedContent = (typeof DocumentModel !== 'undefined')

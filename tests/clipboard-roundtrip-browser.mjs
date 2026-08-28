@@ -17,10 +17,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { settled } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -93,7 +93,7 @@ async function main() {
             'zeta six'
         ].join('\n');
         await page.evaluate(m => loadMarkdownContent(m), doc);
-        await sleep(1200);
+        await settled(page);
 
         const before = await page.evaluate(() => DocumentModel.blocks.map(b => b.raw));
         info('document: ' + JSON.stringify(before));
@@ -157,7 +157,7 @@ async function main() {
             }
             loadMarkdownContent(big.join('\n\n'));
         });
-        await sleep(2500);
+        await settled(page);
 
         const all = await page.evaluate(() => {
             const ed = document.getElementById('editor');
@@ -233,7 +233,7 @@ async function main() {
             }
             loadMarkdownContent(big.join('\n\n'));
         });
-        await sleep(2500);
+        await settled(page);
         const exp = await page.evaluate(() => {
             const html = generateExportHtml();
             const n = (html.match(/class="block"/g) || []).length;

@@ -1,6 +1,6 @@
 """
 End-to-end multi-tab content isolation test.
-Launches TypoZen with TYPOZEN_TAB_E2E set; the app loads two files, switches
+Launches TypoZen with --debug and TYPOZEN_TAB_E2E set; the app loads two files, switches
 tabs, verifies editor content, writes tab-e2e-result.txt, and exits.
 """
 import os
@@ -34,7 +34,7 @@ def main():
     print("Starting TypoZen tab content E2E...")
     print("  OUT=", OUT)
     proc = subprocess.Popen(
-        [str(EXE)],
+        [str(EXE), "--debug"],
         cwd=str(ROOT),
         env=env,
         stdout=subprocess.DEVNULL,

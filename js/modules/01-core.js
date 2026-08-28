@@ -86,6 +86,14 @@
             }
         };
 
+        /** HUD + telemetry for a thrown error. Empty catches on authority paths call this. */
+        window.tzLogException = function(where, err) {
+            const msg = String(where || 'error') + ': ' +
+                (err && err.message ? err.message : String(err || ''));
+            try { if (typeof window.addDebugLog === 'function') window.addDebugLog(msg); } catch (e) {}
+            try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry(msg); } catch (e2) {}
+        };
+
         /**
          * Phase 3B: resolve the Mode / Column / Scroll selectors after a click.
          *

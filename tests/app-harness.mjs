@@ -32,6 +32,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-core';
+import { settled } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const appDir = path.join(__dirname, '..');
@@ -229,7 +230,10 @@ export async function launchApp(options) {
     }
     if (!page) throw new Error('Attached, but no page exposing handleCommand was found');
 
-    await sleep(options.settleMs == null ? 2500 : options.settleMs);
+    // settleMs is a timeout cap, not a mandatory sleep. A 6s launch wait that was
+    // guessed for a slow machine is how every app suite idled 6s on a fast one.
+    const settleCap = options.settleMs == null ? 8000 : options.settleMs;
+    if (settleCap > 0) await settled(page, settleCap);
 
     // Pin the view, for suites that assume one.
     //
@@ -247,9 +251,18 @@ export async function launchApp(options) {
         const v = options.view === true
             ? { mode: 'preview', scroll: 'scroll', columns: 1 }
             : options.view;
-        if (v.mode) { await page.evaluate((m) => handleCommand('view_set:mode:' + m), v.mode); await sleep(1200); }
-        if (v.scroll) { await page.evaluate((x) => handleCommand('view_set:scroll:' + x), v.scroll); await sleep(1800); }
-        if (v.columns) { await page.evaluate((c) => handleCommand('view_set:columns:' + c), v.columns); await sleep(1800); }
+        if (v.mode) {
+            await page.evaluate((m) => handleCommand('view_set:mode:' + m), v.mode);
+            await settled(page, settleCap > 0 ? settleCap : 8000);
+        }
+        if (v.scroll) {
+            await page.evaluate((x) => handleCommand('view_set:scroll:' + x), v.scroll);
+            await settled(page, settleCap > 0 ? settleCap : 8000);
+        }
+        if (v.columns) {
+            await page.evaluate((c) => handleCommand('view_set:columns:' + c), v.columns);
+            await settled(page, settleCap > 0 ? settleCap : 8000);
+        }
     }
 
     return {

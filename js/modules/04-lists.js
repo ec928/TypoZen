@@ -1073,7 +1073,9 @@
                 try { blk.setAttribute('data-tz-dirty', '1'); } catch (e3) {}
                 try { DocumentModel.syncElToModel(blk); } catch (e4) {}
                 _contentCache = null;
-            } catch (e) {}
+            } catch (e) {
+                try { window.tzLogException('flushActiveBlockToRaw', e); } catch (eL) {}
+            }
         }
 
         /**
@@ -2839,7 +2841,9 @@
                     } else if (state.mode !== 'source' && editor && editor.firstElementChild) {
                         currentActiveBlock = editor.firstElementChild;
                     }
-                } catch (e) {}
+                } catch (e) {
+                    try { window.tzLogException('history restore', e); } catch (eL) {}
+                }
             }
         };
 

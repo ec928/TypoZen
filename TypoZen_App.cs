@@ -84,6 +84,68 @@ namespace TypoZen
         // launches with the flag for column/pagination work.
         internal static bool DebugLogEnabled;
 
+        /// <summary>
+        /// True while the in-process tab harness is running. Suppresses fault MessageBoxes
+        /// that would hang the Python driver.
+        /// </summary>
+        internal static bool SuppressFaultUi;
+
+        private static bool _unhandledUiShown;
+
+        /// <summary>
+        /// In-process tab E2E. Requires --debug (or TYPOZEN_DEBUG), same as the disk-prompt
+        /// stubs: an environment variable left in a shell must not skip session restore,
+        /// run the harness, and quit a shipped build.
+        /// </summary>
+        internal static bool TabE2EActive()
+        {
+            return DebugLogEnabled
+                && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TYPOZEN_TAB_E2E"));
+        }
+
+        /// <summary>
+        /// Always-on fault log in the profile (not beside the exe). Unhandled exceptions
+        /// and persist failures write here even without --debug.
+        /// </summary>
+        internal static void LogFault(string where, Exception ex)
+        {
+            try
+            {
+                string dir = DefaultCacheDir();
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "debug.log"),
+                    string.Format("[{0:yyyy-MM-dd HH:mm:ss.fff}] FAULT {1}: {2}{3}",
+                        DateTime.Now, where,
+                        ex != null ? ex.ToString() : "",
+                        Environment.NewLine));
+            }
+            catch { }
+        }
+
+        private static Application CreateWpfApp()
+        {
+            var app = new Application();
+            app.DispatcherUnhandledException += (s, e) =>
+            {
+                LogFault("dispatcher", e.Exception);
+                e.Handled = true;
+                if (SuppressFaultUi) return;
+                try
+                {
+                    if (_unhandledUiShown) return;
+                    _unhandledUiShown = true;
+                    WinForms.MessageBox.Show(
+                        "TypoZen hit an unexpected error and will try to keep running.\n\n" +
+                        (e.Exception != null ? e.Exception.Message : ""),
+                        "TypoZen",
+                        WinForms.MessageBoxButtons.OK,
+                        WinForms.MessageBoxIcon.Error);
+                }
+                catch { }
+            };
+            return app;
+        }
+
         /// <summary>DevTools port opened only under --debug, for tests/app-harness.mjs.</summary>
         internal const int RemoteDebugPort = 9333;
 
@@ -184,11 +246,15 @@ namespace TypoZen
                 DebugLogEnabled = true;
             }
 
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                LogFault("domain", e.ExceptionObject as Exception);
+            };
 
             string initialFile = launch.FilePath;
 
             // Automated tests may run multiple processes against throwaway profiles.
-            bool e2e = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TYPOZEN_TAB_E2E"));
+            bool e2e = TabE2EActive();
             if (!e2e)
             {
                 bool createdNew;
@@ -204,6 +270,9 @@ namespace TypoZen
                 }
                 catch
                 {
+                    // Prefer a second window over dropping an Explorer "Open with".
+                    // ACL constructor throw is rare after the SID-scoped name; the more
+                    // common two-instance path is the pipe-not-ready fallback below.
                     createdNew = true;
                     mutex = null;
                 }
@@ -228,7 +297,7 @@ namespace TypoZen
                 {
                     try
                     {
-                        var app = new Application();
+                        var app = CreateWpfApp();
                         var win = new TypoZenWindow(launch);
                         win.StartSingleInstanceOpenServer();
                         app.Run(win);
@@ -246,7 +315,7 @@ namespace TypoZen
             }
 
             {
-                var app = new Application();
+                var app = CreateWpfApp();
                 var win = new TypoZenWindow(launch);
                 if (!e2e) win.StartSingleInstanceOpenServer();
                 app.Run(win);
@@ -551,12 +620,15 @@ namespace TypoZen
             }
         }
 
-        // Automated-test mode (TYPOZEN_TAB_E2E=<output dir>) runs against a throwaway
-        // profile. It used to share the real one, so a previous session's localStorage
-        // seeded the first tab (breaking the tab-count assertions) and the harness wrote
-        // its scratch documents over the user's own unsaved work in settings.json.
+        // Automated-test mode (TYPOZEN_TAB_E2E=<output dir>, and --debug) runs against a
+        // throwaway profile. It used to share the real one, so a previous session's
+        // localStorage seeded the first tab (breaking the tab-count assertions) and the
+        // harness wrote its scratch documents over the user's own unsaved work in
+        // settings.json. Ungated, the env var skipped restore and quit a shipped launch.
         private readonly bool _e2eMode;
         private readonly string _e2eDir;
+        private bool _sessionPersistFailNotified;
+        private bool _autosaveFailNotified;
 
         /// <summary>
         /// Profile folder: WebView2 user data, settings.json, window_state.json, and the
@@ -755,8 +827,9 @@ namespace TypoZen
         public TypoZenWindow(LaunchRequest launch = null)
         {
             string e2e = Environment.GetEnvironmentVariable("TYPOZEN_TAB_E2E");
-            _e2eMode = !string.IsNullOrWhiteSpace(e2e);
+            _e2eMode = Program.TabE2EActive();
             _e2eDir = _e2eMode ? e2e.Trim() : null;
+            if (_e2eMode) Program.SuppressFaultUi = true;
 
             // Before the XAML, not after the window loads. See _envTask.
             _envTask = StartWebView2Environment();
@@ -770,6 +843,7 @@ namespace TypoZen
                 _launchHintPasses = 0;
             }
             _appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
+            StartLexiconLoad();
             Program.PerfMark("window ctor");
             SweepLegacyAppLoadStage();
             try { PruneLoadStageDir(maxAgeMinutes: 0); } catch { }
@@ -1982,12 +2056,22 @@ namespace TypoZen
 
             // Second close (or force): always exit. Never block on the editor again —
             // a hung sync/load used to make the window unclosable.
-            if (_forceClose || _closeClickCount >= 2 || _scriptBlockDepth > 0)
+            if (_forceClose || _closeClickCount >= 2)
             {
                 e.Cancel = false;
                 try { SaveWindowState(); } catch { }
                 try { PersistSessionMeta(); } catch { }
                 try { PersistTabSession(); } catch { }
+                return;
+            }
+
+            // A script pull is in flight (PushFrame). Quitting here skips the dirty
+            // prompt and persists the host buffer, not the keystrokes still in the page.
+            // Don't spend the force-quit click on that; the next click still force-exits.
+            if (_scriptBlockDepth > 0)
+            {
+                _closeClickCount--;
+                e.Cancel = true;
                 return;
             }
 
@@ -2645,19 +2729,52 @@ namespace TypoZen
         // questions, and a popover answering both at once answers neither well.
         private Dictionary<string, string> _thesaurus;
         private bool _thesaurusChecked;
+        private readonly object _lexiconLock = new object();
+        private Task _lexiconTask;
+
+        /// <summary>
+        /// Parse dictionary.tsv / thesaurus.tsv off the UI thread. First lookup waits if
+        /// this has not finished; later lookups are free.
+        /// </summary>
+        private void StartLexiconLoad()
+        {
+            if (_lexiconTask != null) return;
+            _lexiconTask = Task.Run(() =>
+            {
+                LoadDictionary();
+                LoadThesaurus();
+            });
+        }
+
+        private void EnsureLexiconLoaded()
+        {
+            Task t = _lexiconTask;
+            if (t != null)
+            {
+                try { t.Wait(); } catch { }
+            }
+            if (!_dictionaryChecked) LoadDictionary();
+            if (!_thesaurusChecked) LoadThesaurus();
+        }
 
         private void LoadDictionary()
         {
-            if (_dictionaryChecked) return;
-            _dictionaryChecked = true;
-            _dictionary = LoadLexicon("dictionary");
+            lock (_lexiconLock)
+            {
+                if (_dictionaryChecked) return;
+                _dictionary = LoadLexicon("dictionary");
+                _dictionaryChecked = true;
+            }
         }
 
         private void LoadThesaurus()
         {
-            if (_thesaurusChecked) return;
-            _thesaurusChecked = true;
-            _thesaurus = LoadLexicon("thesaurus");
+            lock (_lexiconLock)
+            {
+                if (_thesaurusChecked) return;
+                _thesaurus = LoadLexicon("thesaurus");
+                _thesaurusChecked = true;
+            }
         }
 
         /// <summary>Read "&lt;stem&gt;.tsv" or "&lt;stem&gt;.json" from the cache or the app folder.</summary>
@@ -2711,7 +2828,7 @@ namespace TypoZen
         /// <summary>One word in, one definition out. Empty when there is nothing to look in.</summary>
         private void AnswerDefinition(string word)
         {
-            LoadDictionary();
+            EnsureLexiconLoaded();
             string def = "";
             if (_dictionary != null && !string.IsNullOrEmpty(word))
             {
@@ -2728,7 +2845,6 @@ namespace TypoZen
             }
             // "definition:<installed>	<word>	<definition>	<synonyms>". Both in one reply
             // because both come from one lookup, and the page decides what to show.
-            LoadThesaurus();
             string syn = "";
             if (_thesaurus != null && !string.IsNullOrEmpty(word))
             {
@@ -3517,6 +3633,7 @@ namespace TypoZen
 
                 // Index last: crash before this leaves previous index + old bodies intact.
                 WriteStateFileAtomic(TabSessionPath(), sb.ToString());
+                _sessionPersistFailNotified = false;
 
                 // Orphans only after a successful index write.
                 try
@@ -3536,6 +3653,41 @@ namespace TypoZen
                     }
                 }
                 catch { }
+            }
+            catch (Exception ex)
+            {
+                LogFault("PersistTabSession", ex);
+                NotifyPersistFailedOnce(
+                    "Could not save the session",
+                    "TypoZen could not write the tab session to disk.\n\n" +
+                    "Unsaved tabs may not come back after a restart.\n\n" + ex.Message,
+                    ref _sessionPersistFailNotified);
+            }
+        }
+
+        private void LogFault(string where, Exception ex)
+        {
+            try
+            {
+                Directory.CreateDirectory(CacheDir());
+                File.AppendAllText(Path.Combine(CacheDir(), "debug.log"),
+                    string.Format("[{0:yyyy-MM-dd HH:mm:ss.fff}] FAULT {1}: {2}{3}",
+                        DateTime.Now, where,
+                        ex != null ? ex.ToString() : "",
+                        Environment.NewLine));
+            }
+            catch { }
+        }
+
+        private void NotifyPersistFailedOnce(string title, string body, ref bool onceFlag)
+        {
+            if (_e2eMode) return;
+            if (onceFlag) return;
+            onceFlag = true;
+            try
+            {
+                WinForms.MessageBox.Show(body, title,
+                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
             }
             catch { }
         }
@@ -3746,7 +3898,10 @@ namespace TypoZen
                 if (active < 0) active = 0;
                 if (active >= _tabs.Count) active = _tabs.Count - 1;
                 _activeTabIndex = active;
-                ApplyTabToEditor(_tabs[_activeTabIndex]);
+                // Do not ApplyTabToEditor here. This runs inside WebMessageReceived
+                // ("ready"), and posting load_content from that handler can leave the
+                // page on its onload Welcome while the strip already names the file.
+                // The ready handler applies the tab on a fresh dispatcher turn.
                 try { SyncDiskWatchers(); } catch { }
                 return true;
             }
@@ -5016,24 +5171,8 @@ namespace TypoZen
                 try
                 {
                     string url = Uri.UnescapeDataString(msg.Substring("open_external:".Length));
-                    // Parse, do not pattern-match. The regex this replaced checked the
-                    // scheme and nothing else, then handed the whole unparsed string to
-                    // ShellExecute -- so everything after the colon was whatever the shell
-                    // decided it meant. Uri.TryCreate rejects what only looks like a URL,
-                    // and uri.Scheme is the parser's own verdict rather than a prefix that
-                    // happens to read like one. The page is not the authority here: it can
-                    // send anything, so this is the boundary that has to decide.
-                    Uri parsed;
-                    if (Uri.TryCreate(url, UriKind.Absolute, out parsed)
-                        && (parsed.Scheme == Uri.UriSchemeHttp
-                            || parsed.Scheme == Uri.UriSchemeHttps
-                            || parsed.Scheme == Uri.UriSchemeMailto))
-                    {
-                        // AbsoluteUri, not the raw string: launch what was actually parsed,
-                        // so the thing checked and the thing opened cannot differ.
-                        Process.Start(new ProcessStartInfo { FileName = parsed.AbsoluteUri, UseShellExecute = true });
-                    }
-                    else
+                    // Parse, do not pattern-match. See TryShellExternalUri.
+                    if (!TryShellExternalUri(url))
                     {
                         NotifyLink("This link was not opened.\n\n" + url + "\n\nOnly http, https and mailto links are followed.");
                     }
@@ -5088,7 +5227,11 @@ namespace TypoZen
                         string openPath = full;
                         Dispatcher.BeginInvoke(new Action(delegate
                         {
-                            try { LoadFileFromPath(openPath); } catch { }
+                            try { LoadFileFromPath(openPath); }
+                            catch (Exception ex)
+                            {
+                                NotifyLink("Could not open:\n\n" + openPath + "\n\n" + ex.Message);
+                            }
                         }), DispatcherPriority.Background);
                     }
                     else NotifyLink("Link target not found:\n\n" + full);
@@ -5195,6 +5338,7 @@ namespace TypoZen
                 {
                     // Multi-tab session first (Notepad-style). CLI file still opens/focuses after.
                     bool restoredSession = false;
+                    bool queuedFileOpen = false;
                     _restoringTabs = true;
                     try
                     {
@@ -5225,6 +5369,7 @@ namespace TypoZen
                                     Program.PerfMark("last file: load done");
                                 }), DispatcherPriority.Background);
                                 restoredSession = true; // skip scratchpad
+                                queuedFileOpen = true;
                             }
                             else if (!string.IsNullOrEmpty(prefsJson))
                             {
@@ -5248,6 +5393,7 @@ namespace TypoZen
                         string fileToOpen = _initialFileToOpen;
                         LaunchRequest cliLaunch = _pendingLaunch;
                         _initialFileToOpen = null;
+                        queuedFileOpen = true;
                         // Deferred out of this WebView2 message handler on purpose.
                         // LoadFileFromPath pulls editor state with a blocking script call, and
                         // that result cannot be delivered while we are still inside the handler
@@ -5269,6 +5415,22 @@ namespace TypoZen
                     else if (!restoredSession)
                     {
                         RebuildTabStrip();
+                    }
+
+                    // Session tabs (and the empty untitled) must be applied on a fresh
+                    // dispatcher turn. load_content posted from inside this ready handler
+                    // is how the page can keep showing Welcome while the chip already
+                    // names the restored file; switching away and back then "fixes" it
+                    // because that ApplyTabToEditor is not inside WebMessageReceived.
+                    if (!queuedFileOpen)
+                    {
+                        RebuildTabStrip();
+                        int applyIdx = _activeTabIndex;
+                        Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            if (applyIdx < 0 || applyIdx >= _tabs.Count) return;
+                            ApplyTabToEditor(_tabs[applyIdx]);
+                        }), DispatcherPriority.Normal);
                     }
 
                     _editorReady = true;
@@ -7821,7 +7983,20 @@ namespace TypoZen
                 CheckEngineTabDisk(tab, true);
                 return;
             }
-            try { SaveTabNow(tab, false); } catch { }
+            try
+            {
+                if (SaveTabNow(tab, false))
+                    _autosaveFailNotified = false;
+            }
+            catch (Exception ex)
+            {
+                LogFault("autosave", ex);
+                NotifyPersistFailedOnce(
+                    "Autosave failed",
+                    "TypoZen could not autosave.\n\n" +
+                    "Your edits are still in this window. Save with Ctrl+S.\n\n" + ex.Message,
+                    ref _autosaveFailNotified);
+            }
         }
 
         // A stale state file naming a fifth preset must not throw on startup.
@@ -7854,6 +8029,22 @@ namespace TypoZen
 
         private void SetPrivacyMode(bool on)
         {
+            if (on && EpubReader.PrivateSessionRoot == null
+                && EpubReader.BeginPrivateSession() == null)
+            {
+                LogFault("BeginPrivateSession", new IOException("TEMP create failed"));
+                if (!_e2eMode && !_applyingRestoredSettings)
+                {
+                    WinForms.MessageBox.Show(
+                        "Could not create a private folder in TEMP.\n\n" +
+                        "Privacy Mode was not turned on.",
+                        "Privacy Mode",
+                        WinForms.MessageBoxButtons.OK,
+                        WinForms.MessageBoxIcon.Warning);
+                }
+                return;
+            }
+
             _privacyMode = on;
             SetMenuChecked("mPrivacyMode", on);
             // The switches it subsumes are disabled rather than merely overridden: a tick
@@ -7868,14 +8059,8 @@ namespace TypoZen
             // Extraction goes somewhere disposable while this is on. Switching mid-session
             // only affects books opened from here -- one already open keeps the directory it
             // was unpacked into, because its images are still being fetched from it.
-            if (on)
-            {
-                if (EpubReader.PrivateSessionRoot == null) EpubReader.BeginPrivateSession();
-            }
-            else
-            {
+            if (!on)
                 EpubReader.EndPrivateSession();
-            }
             MapBookHost();
             MapLoadHost();
 
@@ -7926,11 +8111,7 @@ namespace TypoZen
                 try
                 {
                     e.Handled = true;
-                    string url = e.Uri ?? "";
-                    if (Regex.IsMatch(url, @"^(https?|mailto):", RegexOptions.IgnoreCase))
-                    {
-                        Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
-                    }
+                    TryShellExternalUri(e.Uri);
                 }
                 catch { }
             };
@@ -7956,17 +8137,8 @@ namespace TypoZen
                 {
                     string uri = e.Uri ?? "";
                     if (IsAllowedNativeNavigation(uri)) return;
-                    if (Regex.IsMatch(uri, @"^(https?|mailto):", RegexOptions.IgnoreCase))
-                    {
-                        e.Cancel = true;
-                        try
-                        {
-                            Process.Start(new ProcessStartInfo { FileName = uri, UseShellExecute = true });
-                        }
-                        catch { }
-                        return;
-                    }
                     e.Cancel = true;
+                    TryShellExternalUri(uri);
                 }
                 catch { }
             };
@@ -7975,14 +8147,27 @@ namespace TypoZen
                 try
                 {
                     e.Handled = true;
-                    string url = e.Uri ?? "";
-                    if (Regex.IsMatch(url, @"^(https?|mailto):", RegexOptions.IgnoreCase))
-                    {
-                        Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
-                    }
+                    TryShellExternalUri(e.Uri);
                 }
                 catch { }
             };
+        }
+
+        /// <summary>
+        /// http / https / mailto only, via the parsed URI rather than the raw string.
+        /// Same rule as open_external: a document is not trusted to name a scheme.
+        /// </summary>
+        private static bool TryShellExternalUri(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return false;
+            Uri parsed;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out parsed)) return false;
+            if (parsed.Scheme != Uri.UriSchemeHttp
+                && parsed.Scheme != Uri.UriSchemeHttps
+                && parsed.Scheme != Uri.UriSchemeMailto)
+                return false;
+            Process.Start(new ProcessStartInfo { FileName = parsed.AbsoluteUri, UseShellExecute = true });
+            return true;
         }
 
         private static bool IsAllowedNativeNavigation(string uri)
@@ -8564,7 +8749,7 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Host-driven multi-tab content isolation test. Set env TYPOZEN_TAB_E2E to an output directory.
+        /// Host-driven multi-tab content isolation test. TYPOZEN_TAB_E2E + --debug.
         /// Writes tab-e2e-result.txt (PASS/FAIL + log) then closes the app.
         /// </summary>
         private void ScheduleTabContentE2E()

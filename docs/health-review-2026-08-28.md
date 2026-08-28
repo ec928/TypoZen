@@ -1,5 +1,11 @@
 # TypoZen health review — 2026-08-28
 
+**Original (Claude).** Written at `1c104d3`. Unedited.
+
+Combined review, corrections, and follow-up status: `docs/health-review-2026-08-28-combined.md`.
+
+---
+
 Written for whoever picks this up next, including me. Everything here was measured in
 this tree at `1c104d3`, not inferred. Where a number appears, it came from running the
 thing. Where something is unproven, it says so.

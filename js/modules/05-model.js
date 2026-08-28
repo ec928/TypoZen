@@ -47,7 +47,9 @@
                 const wasBookPlain = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
                 // Keep model in lockstep with the textarea so a stale previous document
                 // (e.g. welcome Markdown) cannot be searched while Source shows the file.
-                try { DocumentModel.fromMarkdown(content); } catch (eM) {}
+                try { DocumentModel.fromMarkdown(content); } catch (eM) {
+                    try { window.tzLogException('fromMarkdown load', eM); } catch (eL) {}
+                }
                 if (wasBookPlain) {
                     try { leaveBookViewForMarkdown(); } catch (eL) { try { clearBookSession(); } catch (eC) {} }
                 } else {
@@ -882,7 +884,9 @@
             if (_virtScrollRaf) return;
             _virtScrollRaf = requestAnimationFrame(function () {
                 _virtScrollRaf = null;
-                try { mountVirtWindow(false); } catch (e) {}
+                try { mountVirtWindow(false); } catch (e) {
+                    try { window.tzLogException('mountVirtWindow', e); } catch (eL) {}
+                }
                 // Status Ln follows viewport center while scrolling (not first mounted block)
                 try { updateCaretLineStatus(); } catch (e2) {}
             });
@@ -2444,7 +2448,19 @@
                         e.clipboardData.setData('text/html', holder.outerHTML); // rich paste
                     }
                     e.preventDefault();
-                } catch (err) {}
+                } catch (err) {
+                    try { window.tzLogException('copy', err); } catch (eL) {}
+                    // Copy nothing rather than let the browser put the mounted window
+                    // on the clipboard (the 1% Select All bug).
+                    try {
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount
+                            && typeof selectionIsWholeVirtualDocument === 'function'
+                            && selectionIsWholeVirtualDocument(sel.getRangeAt(0))) {
+                            e.preventDefault();
+                        }
+                    } catch (e2) {}
+                }
             });
 
             // FUNDAMENTAL: Enter always creates a new .block (capture on editor so it
@@ -2534,7 +2550,9 @@
                     if (blk && typeof markBlockEdited === 'function') markBlockEdited(blk);
                     flushActiveBlockToRaw();
                     updateStats();
-                } catch (err) {}
+                } catch (err) {
+                    try { window.tzLogException('input sync', err); } catch (eL) {}
+                }
             });
 
         // Leaving a block: commit only if it was actually edited.

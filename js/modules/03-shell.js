@@ -10,7 +10,7 @@
                          String(d.getSeconds()).padStart(2, '0') + '.' + 
                          String(d.getMilliseconds()).padStart(3, '0');
             debugLog.push(`[${time}] ${msg}`);
-            if (debugLog.length > 25) debugLog.shift();
+            if (debugLog.length > 50) debugLog.shift();
         };
 
         let _debugHudTimer = null;
@@ -68,6 +68,19 @@
                 window.addDebugLog(`focusin: ${t ? (t.id || t.tagName) : 'null'}`);
             });
         }
+        // Uncaught errors into the HUD ring (Ctrl+Shift+D) and, with --debug, debug.log.
+        window.addEventListener('error', function (e) {
+            const msg = 'onerror: ' + (e && e.message ? e.message : '') +
+                (e && e.filename ? ' @ ' + e.filename + ':' + (e.lineno || '') : '');
+            try { window.addDebugLog(msg); } catch (x) {}
+            try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry(msg); } catch (x2) {}
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+            const r = e && e.reason;
+            const msg = 'unhandledrejection: ' + (r && r.message ? r.message : String(r || ''));
+            try { window.addDebugLog(msg); } catch (x) {}
+            try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry(msg); } catch (x2) {}
+        });
         // ---------------------
 
         /**
@@ -257,15 +270,22 @@
 
             state.themeIndex = savedPrefs.themeIndex || 0;
 
+            const hosted = window.chrome && window.chrome.webview
+                && !(navigator.userAgent || '').includes('jsdom');
             const initialContent = savedPrefs.lastContent || "# Welcome to TypoZen\n\nA modern, distraction-free **WYSIWYG** markdown and text editor.\n\n### Key Features\n- **True Live Preview**: Markdown formatting conceals when you step away, and reveals when focused.\n- **Bulletproof Engine**: Custom snapshot Undo/Redo stack, IME composition protection, and smart clipboard sanitization.\n- **Precision Editing**: 2-stage Backspace formatting clearing and cross-boundary selection merging.\n- **Multiple Themes**: Try switching themes from the menu or toolbar!\n- **Document Outline**: Click any heading in the sidebar to jump directly to it.\n- **Distraction-Free**: Toggle Focus Mode (F8) or Typewriter Scrolling (F9).";
 
             tzMark('(page) prefs read from localStorage');
-            loadMarkdownContent(initialContent, { replaceBook: true });
-            tzMark('(page) initial content rendered');
-            try {
-                state.lastSavedContent = (typeof DocumentModel !== 'undefined')
-                    ? DocumentModel.toMarkdown() : initialContent;
-            } catch (eLs) { state.lastSavedContent = initialContent; }
+            // In the app the host owns the document (session / file / new_document).
+            // Painting Welcome here first is how a restored tab can show Welcome in
+            // the editor while the chip already names the real file.
+            if (!hosted) {
+                loadMarkdownContent(initialContent, { replaceBook: true });
+                tzMark('(page) initial content rendered');
+                try {
+                    state.lastSavedContent = (typeof DocumentModel !== 'undefined')
+                        ? DocumentModel.toMarkdown() : initialContent;
+                } catch (eLs) { state.lastSavedContent = initialContent; }
+            }
             tzMark('(page) baseline set');
 
             applySavedPrefs(savedPrefs);
@@ -281,7 +301,9 @@
                 window.__tzLastUserEditAt = Date.now();
                 rememberStickyFromSourceIfFocused();
                 resizeSourceEditor();
-                try { DocumentModel.fromMarkdown(sourceEditor.value); } catch (eM) {}
+                try { DocumentModel.fromMarkdown(sourceEditor.value); } catch (eM) {
+                    try { window.tzLogException('fromMarkdown source input', eM); } catch (eL) {}
+                }
                 if (typeof HistoryManager !== 'undefined') HistoryManager.snapshot();
                 updateStatsNow();
                 if (isFindBarOpen()) {

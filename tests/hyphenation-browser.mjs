@@ -16,10 +16,10 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { settled } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -68,7 +68,7 @@ try {
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof handleCommand === 'function', { timeout: 15000 });
     await page.evaluate(() => loadMarkdownContent('# Hyphenation\n\nA paragraph.\n'));
-    await sleep(800);
+    await settled(page);
 
     // A word English hyphenation definitely breaks, and long enough to clear the 6/3/3
     // limits set in typozen.css.
@@ -76,7 +76,7 @@ try {
 
     console.log('\n=== ragged right leaves words whole ===');
     await page.evaluate(() => handleCommand('set_justify:0'));
-    await sleep(400);
+    await settled(page);
     const off = await page.evaluate(measure, WORD);
     info('hyphens: ' + off.style + ', "' + WORD + '" occupies ' + off.lines + ' line(s)');
     assert(off.style === 'manual', 'the computed value is manual when not justified');
@@ -84,7 +84,7 @@ try {
 
     console.log('\n=== justified breaks them ===');
     await page.evaluate(() => handleCommand('set_justify:1'));
-    await sleep(400);
+    await settled(page);
     const on = await page.evaluate(measure, WORD);
     info('hyphens: ' + on.style + ', "' + WORD + '" occupies ' + on.lines + ' line(s)');
     assert(on.style === 'auto', 'the computed value is auto when justified');
@@ -94,7 +94,7 @@ try {
 
     console.log('\n=== and it goes back ===');
     await page.evaluate(() => handleCommand('set_justify:0'));
-    await sleep(400);
+    await settled(page);
     const back = await page.evaluate(measure, WORD);
     info('hyphens: ' + back.style + ', ' + back.lines + ' line(s)');
     assert(back.lines === off.lines,

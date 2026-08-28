@@ -33,6 +33,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { settled } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -108,7 +109,7 @@ async function main() {
 
         const md = fs.readFileSync(path.join(appDir, 'tests', 'large-scroll-mixed.md'), 'utf8');
         await page.evaluate(m => loadMarkdownContent(m), md);
-        await sleep(2500);
+        await settled(page);
 
         assert(await page.evaluate(() => DocumentModel.virtEnabled === true),
             'the test document is large enough to virtualise (otherwise this proves nothing)');
@@ -162,7 +163,7 @@ async function main() {
 
         const caretRaw = await page.evaluate(i => DocumentModel.blocks[i].raw, park.caretIdx);
         await page.evaluate(t => insertPastedPlainText(t), PASTE);
-        await sleep(1200);
+        await settled(page);
 
         const actual = await page.evaluate(() => getMarkdownContent(false));
         const pasted = PASTE.split('\n');
@@ -222,7 +223,7 @@ async function main() {
             (caretForUndo ? caretForUndo.blockIndex : 'null') + ' vs ' + park.caretIdx + ')');
 
         await page.evaluate(() => HistoryManager.undo());
-        await sleep(1600);
+        await settled(page);
         const undone = await page.evaluate(() => ({
             content: getMarkdownContent(false),
             firstVisibleIdx: firstVisibleModelIndex(),

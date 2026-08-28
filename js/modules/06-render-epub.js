@@ -1963,11 +1963,15 @@
             // Stage B: DocumentModel is save authority after flush / source read.
             if (state.mode === 'source') {
                 const v = sourceEditor ? sourceEditor.value : '';
-                try { DocumentModel.fromMarkdown(v); } catch (eS) {}
+                try { DocumentModel.fromMarkdown(v); } catch (eS) {
+                    try { window.tzLogException('fromMarkdown getMarkdownContent', eS); } catch (eL) {}
+                }
                 return v;
             }
             if (opts && opts.flushActive === true) {
-                try { flushActiveBlockToRaw(); } catch (eF) {}
+                try { flushActiveBlockToRaw(); } catch (eF) {
+                    try { window.tzLogException('flushActive getMarkdownContent', eF); } catch (eL) {}
+                }
             }
             // A book is read-only and its blocks are HTML, so there is nothing to serialise
             // back: the model is the document, full stop. Falling through would reach the
@@ -2030,7 +2034,15 @@
                 }
                 return DocumentModel.toMarkdown();
             } catch (e2) {
-                // Fallback: legacy DOM walk
+                try { window.tzLogException('getMarkdownContent', e2); } catch (eL) {}
+                // Under virt / page windowing the DOM is a projection — walking it
+                // is the old 1% save. Answer from the model, or fail.
+                const partial = (typeof DocumentModel !== 'undefined' && DocumentModel.virtEnabled)
+                    || (typeof pageWindowingActive === 'function' && pageWindowingActive());
+                if (partial) {
+                    try { return DocumentModel.toMarkdown(); } catch (eM) {}
+                    throw e2;
+                }
                 const blocks = editor ? editor.querySelectorAll('.block') : [];
                 const lines = [];
                 for (let i = 0; i < blocks.length; i++) {

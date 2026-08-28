@@ -674,7 +674,9 @@
                 for (let i = 0; i < blocks.length; i++) {
                     const raw = blocks[i] ? blocks[i].raw : '';
                     try { holder.appendChild(createPreviewBlockEl(raw, false, i)); }
-                    catch (eB) {}
+                    catch (eB) {
+                        try { window.tzLogException('export block ' + i, eB); } catch (eL) {}
+                    }
                 }
             } else if (editor) {
                 holder.innerHTML = editor.innerHTML;
