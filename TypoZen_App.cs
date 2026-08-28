@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.14";
+        internal const string AppVersion = "0.2.15";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -76,8 +76,8 @@ namespace TypoZen
 
         // One running window; further Explorer double-clicks hand off paths over a named pipe
         // and exit (Notepad-style tabs, not a new process per file).
-        private const string SingleInstanceMutexName = @"Local\TypoZen_SingleInstance_v1";
-        internal const string OpenPipeName = "TypoZen_Open_v1";
+        private static readonly string SingleInstanceMutexName = @"Local\TypoZen_SingleInstance_v1_" + System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
+        internal static readonly string OpenPipeName = "TypoZen_Open_v1_" + System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
 
         // Telemetry log. Off unless --debug is passed (or TYPOZEN_DEBUG is set), so an
         // ordinary run never writes debug.log next to the executable. TypoZen_Debug.bat
@@ -195,7 +195,12 @@ namespace TypoZen
                 Mutex mutex = null;
                 try
                 {
-                    mutex = new Mutex(true, SingleInstanceMutexName, out createdNew);
+                    var mutexSecurity = new System.Security.AccessControl.MutexSecurity();
+                    mutexSecurity.AddAccessRule(new System.Security.AccessControl.MutexAccessRule(
+                        System.Security.Principal.WindowsIdentity.GetCurrent().User,
+                        System.Security.AccessControl.MutexRights.FullControl,
+                        System.Security.AccessControl.AccessControlType.Allow));
+                    mutex = new Mutex(true, SingleInstanceMutexName, out createdNew, mutexSecurity);
                 }
                 catch
                 {
@@ -838,12 +843,20 @@ namespace TypoZen
             {
                 try
                 {
+                    var pipeSecurity = new System.IO.Pipes.PipeSecurity();
+                    pipeSecurity.AddAccessRule(new System.IO.Pipes.PipeAccessRule(
+                        System.Security.Principal.WindowsIdentity.GetCurrent().User,
+                        System.IO.Pipes.PipeAccessRights.ReadWrite,
+                        System.Security.AccessControl.AccessControlType.Allow));
+
                     using (var server = new NamedPipeServerStream(
                         Program.OpenPipeName,
                         PipeDirection.In,
                         2,
                         PipeTransmissionMode.Byte,
-                        PipeOptions.None))
+                        PipeOptions.None,
+                        0, 0,
+                        pipeSecurity))
                     {
                         server.WaitForConnection();
                         if (ct.IsCancellationRequested) break;
@@ -5003,9 +5016,22 @@ namespace TypoZen
                 try
                 {
                     string url = Uri.UnescapeDataString(msg.Substring("open_external:".Length));
-                    if (Regex.IsMatch(url, @"^(https?|mailto):", RegexOptions.IgnoreCase))
+                    // Parse, do not pattern-match. The regex this replaced checked the
+                    // scheme and nothing else, then handed the whole unparsed string to
+                    // ShellExecute -- so everything after the colon was whatever the shell
+                    // decided it meant. Uri.TryCreate rejects what only looks like a URL,
+                    // and uri.Scheme is the parser's own verdict rather than a prefix that
+                    // happens to read like one. The page is not the authority here: it can
+                    // send anything, so this is the boundary that has to decide.
+                    Uri parsed;
+                    if (Uri.TryCreate(url, UriKind.Absolute, out parsed)
+                        && (parsed.Scheme == Uri.UriSchemeHttp
+                            || parsed.Scheme == Uri.UriSchemeHttps
+                            || parsed.Scheme == Uri.UriSchemeMailto))
                     {
-                        Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+                        // AbsoluteUri, not the raw string: launch what was actually parsed,
+                        // so the thing checked and the thing opened cannot differ.
+                        Process.Start(new ProcessStartInfo { FileName = parsed.AbsoluteUri, UseShellExecute = true });
                     }
                     else
                     {

@@ -24,10 +24,34 @@ function Test-ExeWritable {
     }
 }
 
-$running = @(Get-Process -Name "TypoZen" -ErrorAction SilentlyContinue)
+# Only this folder's build, and ask before forcing.
+#
+# Two separate faults, both of which cost the user their unsaved work. It killed every
+# TypoZen on the machine, including the one running from OneDrive\Apps\TypoZen -- the
+# real editor, which holds no lock on this exe and never needed to close. And it opened
+# with Stop-Process -Force, which is TerminateProcess: no WM_CLOSE, no chance to flush,
+# no save prompt. A build ran roughly a dozen times in one session here; every one of
+# them was a silent hard kill of whatever the user had open.
+#
+# So: match on the executable's own path, ask with CloseMainWindow (the same request the
+# X button sends, so a dirty buffer still gets its prompt), and force only what is left
+# after the grace period -- by then it is a wedged dev instance, not someone's notes.
+$running = @(Get-Process -Name "TypoZen" -ErrorAction SilentlyContinue | Where-Object {
+    try { $_.MainModule.FileName -eq $exePath } catch { $false }   # denied = not ours
+})
 if ($running.Count -gt 0) {
-    Write-Host "Closing running instance of TypoZen..." -ForegroundColor Yellow
-    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Host "Asking $($running.Count) instance(s) of this build to close..." -ForegroundColor Yellow
+    foreach ($p in $running) { try { $null = $p.CloseMainWindow() } catch {} }
+    $graceDeadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $graceDeadline) {
+        if (@($running | Where-Object { -not $_.HasExited }).Count -eq 0) { break }
+        Start-Sleep -Milliseconds 200
+    }
+    $stubborn = @($running | Where-Object { -not $_.HasExited })
+    if ($stubborn.Count -gt 0) {
+        Write-Host "  Still open after 10s (a save prompt may be waiting) - forcing." -ForegroundColor Yellow
+        $stubborn | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $deadline = (Get-Date).AddSeconds(15)
