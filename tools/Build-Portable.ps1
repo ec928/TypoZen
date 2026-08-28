@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 # Output goes to dist/, NOT bin/.
 #
@@ -61,6 +61,12 @@ foreach ($f in $fontAllow) {
         Write-Warning "Font not found: $src"
     }
 }
+
+# Defined here rather than inherited: the block that used to strip the Bookerly
+# @font-face rule set $tpl on its way past, and when that block went with the font the
+# variable went too -- leaving this check bound to $null and the whole script failing
+# before it ever reported anything.
+$tpl = Join-Path $dist 'TypoZen_Template.html'
 
 # '@font-face {', not '@font-face': a comment mentioning the at-rule in prose would otherwise
 # be counted and warn on a correct build.
