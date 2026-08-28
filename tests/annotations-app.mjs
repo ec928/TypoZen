@@ -221,6 +221,18 @@ try {
         'housekeeping: the extra highlight was removed again');
 
     console.log('\n=== a note is the reader\'s, the quotation is not ===');
+    // The window has to actually have focus for this one.
+    //
+    // The note is committed from a blur handler, and Chromium does not dispatch focus or
+    // blur events to a document that does not have focus -- activeElement still moves, so
+    // everything looks right from the page's side, but no event is delivered and the
+    // handler never runs. Under the harness the app sits in the background, so this suite
+    // reported "the note is written" and "and its note" as failures against a product
+    // that commits the note correctly: measured with a probe, hasFocus() false gives
+    // blurFired 0 and an untouched mark, and the same sequence after bringToFront gives
+    // blurFired 1 and the note in _marks. Three red assertions, no defect behind them.
+    await app.page.bringToFront().catch(() => {});
+    await sleep(500);
     const noted = await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         switchTab('marks'); await sleep(400);

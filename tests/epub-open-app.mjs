@@ -536,8 +536,26 @@ async function openAndCheck(app, book, deep) {
                         const XLINK = 'http://www.w3.org/1999/xlink';
                         const href = im.getAttributeNS(XLINK, 'href') || im.getAttribute('href') || '';
                         if (/^https?:/i.test(href)) absolute++; else relative++;
+                        // Load it as an image, NOT with fetch.
+                        //
+                        // MapBookHost maps localbooks with DenyCors, so a fetch from the
+                        // localapp origin is cross-origin and refused by design -- this
+                        // reported every SVG-wrapped cover as broken while the cover was
+                        // on screen and perfectly readable. Verified: the same URL through
+                        // new Image() loads at 510x680, and a genuinely absent file still
+                        // errors, so the check keeps its teeth. An <image> element pulls
+                        // its bytes through the image pipeline anyway, which is what this
+                        // is supposed to be testing.
                         let ok = false;
-                        try { const r = await fetch(href, { method: 'GET' }); ok = r.ok; } catch (e) { ok = false; }
+                        try {
+                            ok = await new Promise((res) => {
+                                const probe = new Image();
+                                const t = setTimeout(() => res(false), 8000);
+                                probe.onload = () => { clearTimeout(t); res(probe.naturalWidth > 0); };
+                                probe.onerror = () => { clearTimeout(t); res(false); };
+                                probe.src = href;
+                            });
+                        } catch (e) { ok = false; }
                         if (ok) loaded++; else { broken++; if (brokenSrcs.length < 3) brokenSrcs.push(href); }
 
                         const svg = im.closest('svg');

@@ -24,7 +24,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
 const CACHE = profileDir;
 const STATE = path.join(CACHE, 'window_state.json');
-const BOOKS = path.join(appDir, 'typozen_books');
+// The book cache lives with the rest of the per-user state, NOT beside the exe.
+// EpubReader.CacheRoot(stateDir) returns <stateDir>/typozen_books, and the host now
+// actively sweeps any legacy copy next to the executable -- extracting there made the
+// install directory writable-by-requirement, which it is not under MSIX. Pointing this
+// at appDir asserted a location the product had deliberately left: the control caught
+// it, but the privacy assertion below ("nothing named appears") had quietly become
+// vacuous, passing because nothing is ever written there by anyone.
+const BOOKS = path.join(profileDir, 'typozen_books');
 const DOC = path.join(appDir, 'tests', '_privacy_fixture.md');
 
 let passed = 0, failed = 0;
@@ -155,7 +162,7 @@ if (!BOOK) {
         const r = await app.eval(() => ({ kind: DocumentModel.kind, blocks: DocumentModel.blocks.length }));
         info('control: ' + JSON.stringify(normalDirs) + ', ' + r.blocks + ' blocks');
         assert(r.kind === 'epub' && r.blocks > 100, 'control: the book opens');
-        assert(normalDirs.length > 0, 'control: extraction lands in typozen_books, by name');
+        assert(normalDirs.length > 0, 'control: extraction lands in the book cache, by name');
     } finally { await app.close(); }
     await sleep(1200);
 
@@ -173,7 +180,7 @@ if (!BOOK) {
         info('privacy: app dirs=' + JSON.stringify(appDirs) + ', temp sessions +' + (during - before));
         assert(r.kind === 'epub' && r.blocks > 100, 'the book still opens');
         assert(/localbooks/.test(r.img) || r.img === '', 'assets are served from the book host');
-        assert(appDirs.length === 0, 'nothing named appears in the application folder');
+        assert(appDirs.length === 0, 'nothing named appears in the book cache');
         assert(during > before, 'a disposable directory holds it while open');
     } finally {
         closeGracefully();     // the exit path, which is what triggers the cleanup

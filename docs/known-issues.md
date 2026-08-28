@@ -2,8 +2,22 @@
 
 Baseline inventory of **user-visible** residual risk for the current tree.
 
-- **Open defect-class items:** none.
+- **Open defect-class items:** one, below.
 - Suite-only failures belong in the harness, not here. See `docs/for-agents.md`.
+
+### Seeking into the middle of a very large book does not finish
+
+`goToModelBlock()` into the middle of the 45,390-block Xeelee omnibus never returns. It
+is not slowness: `app-harness.mjs` raised `protocolTimeout` from 180s to 600s to get
+`epub-open-app` past it, and all the longer budget bought was a ten-minute wait for the
+same failure, so it was put back. The harness comment has pointed here since, while this
+file said there were no open defect-class items -- which is how a hang stayed recorded
+only in a comment on the thing that trips over it.
+
+**User expectation:** a book of that size can be opened and read forward; jumping to an
+arbitrary point deep inside it can hang the view. `epub-open-app.mjs` is red because of
+this and only this -- its Matter lap passes -- so a red run of that suite needs reading
+before it is believed to mean something new.
 
 ---
 
