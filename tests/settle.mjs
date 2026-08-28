@@ -127,10 +127,13 @@ export async function settledApp(app, timeoutMs = 10000) {
  * Poll a page predicate. Use this instead of `await sleep(600)` after a command.
  * Returns the last truthy value, or false on timeout.
  */
-export async function untilPage(page, fn, timeoutMs = 8000) {
+export async function untilPage(page, fn, timeoutMs = 8000, arg) {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
-        const v = await page.evaluate(fn);
+        // arg is forwarded into the page, so a predicate can compare against something
+        // measured on this side (the text that was on screen before a click, say) without
+        // stashing it on window.
+        const v = arg === undefined ? await page.evaluate(fn) : await page.evaluate(fn, arg);
         if (v) return v;
         await sleep(SAMPLE_MS);
     }

@@ -470,37 +470,96 @@ async function main() {
             // Both of these turned out to work; they are pinned here so they stay that way,
             // because "the internal function works" has now twice been mistaken for "the
             // feature works".
-            const undoByKey = await page.evaluate(async () => {
-                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                const el = editor.querySelector('.block[data-model-index="5"]');
-                if (!el) return { ok: false };
-                focusBlock(el, (el.innerText || '').length);
-                await sleep(200);
-                const before = getMarkdownContent(false);
-                document.execCommand('insertText', false, 'QQQ');
-                await sleep(600);
-                const dirty = getMarkdownContent(false).indexOf('QQQ') >= 0;
+            // Driven from here, waiting on the outcome rather than on a duration. The
+            // in-page version slept 200 + 600 + 1200ms whatever happened; the edit lands
+            // and the undo completes far sooner than that, and on a slow run 1200ms would
+            // not have been enough anyway. Same three steps, each waited on by what it is
+            // supposed to produce.
+            const undoByKey = await (async () => {
+                const ok = await page.evaluate(() => {
+                    const el = editor.querySelector('.block[data-model-index="5"]');
+                    if (!el) return false;
+                    focusBlock(el, (el.innerText || '').length);
+                    return true;
+                });
+                if (!ok) return { ok: false };
+                await settled(page);
+                const before = await page.evaluate(() => getMarkdownContent(false));
+                await page.evaluate(() => document.execCommand('insertText', false, 'QQQ'));
+                // The edit itself, not a guess at how long typing takes.
+                const dirty = !!await untilPage(page,
+                    () => getMarkdownContent(false).indexOf('QQQ') >= 0, 4000);
                 // The real keystroke, not HistoryManager.undo().
-                window.dispatchEvent(new KeyboardEvent('keydown',
-                    { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
-                await sleep(1200);
-                return { ok: true, dirty: dirty, restored: getMarkdownContent(false) === before };
-            });
+                await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown',
+                    { key: 'z', ctrlKey: true, bubbles: true, cancelable: true })));
+                const restored = !!await untilPage(page,
+                    (b) => getMarkdownContent(false) === b, 4000, before);
+                return { ok: true, dirty: dirty, restored: restored };
+            })();
             assert(undoByKey.ok && undoByKey.dirty, 'the edit landed, so undo has something to do');
             assert(undoByKey.restored, 'Ctrl+Z as a keystroke undoes the edit');
 
-            const clickJump = await page.evaluate(async () => {
-                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                // Establish the layout rather than inheriting it. An earlier section leaves
-                // the app in 2-column Pages, where the scroller is #editor horizontally --
-                // so reading the topmost block of #main-container returns the same thing
-                // however far the view has moved, and this reported a working click as
-                // broken. Third time this class of mistake has cost real time.
-                handleCommand('view_set:columns:1');
-                await sleep(1200);
-                handleCommand('view_set:scroll:scroll');
-                await sleep(1800);
-                const top = () => {
+            // The topmost visible block, evaluated on demand. Kept as one function so the
+            // before and after readings cannot drift apart.
+            const topBlockText = () => {
+                const h = mainContainer.getBoundingClientRect();
+                let t = '';
+                editor.querySelectorAll('.block').forEach(x => {
+                    if (t) return;
+                    const r = x.getBoundingClientRect();
+                    if (r.bottom > h.top + 2 && r.top < h.bottom) t = (x.innerText || '').slice(0, 40);
+                });
+                return t;
+            };
+
+            // Establish the layout rather than inheriting it. An earlier section leaves
+            // the app in 2-column Pages, where the scroller is #editor horizontally -- so
+            // reading the topmost block of #main-container returns the same thing however
+            // far the view has moved, and this reported a working click as broken. Third
+            // time this class of mistake has cost real time.
+            //
+            // Driven from the runner: the two layout commands used to be followed by a
+            // flat 1200ms and 1800ms inside the evaluate, which is 3s whether the layout
+            // took 200ms or was still moving at 2s. settled() waits for the geometry.
+            const clickJump = await (async () => {
+                await page.evaluate(() => handleCommand('view_set:columns:1'));
+                await settled(page);
+                await page.evaluate(() => handleCommand('view_set:scroll:scroll'));
+                await settled(page);
+
+                // A string that certainly exists, a long way down: searching for something
+                // absent would show "No results" and a click on that placeholder proves
+                // nothing, which is exactly how this check first fooled me.
+                const q = await page.evaluate(() => {
+                    const rows = DocumentModel.blocks.map(x => x.raw)
+                        .filter(r => /scroll marker row \d+$/.test(r));
+                    if (rows.length < 901) return null;
+                    return rows[900].replace(/^Line \d+ of \d+ — /, '');
+                });
+                if (!q) return { ok: false };
+
+                await page.evaluate(() => handleCommand('toggle_search_sidebar'));
+                await untilPage(page, () => !!document.getElementById('sidebarSearchInput'), 4000);
+                await page.evaluate((needle) => {
+                    const inp = document.getElementById('sidebarSearchInput');
+                    inp.value = needle;
+                    inp.dispatchEvent(new Event('input', { bubbles: true }));
+                }, q);
+                // Wait for the result, not for a guess at the debounce. A fixed 1600ms
+                // here silently became too short when the sidebar debounce went to 2000,
+                // and the click below then landed on an empty list.
+                await untilPage(page, () => findState.matches.length > 0, 15000);
+
+                const before = await page.evaluate(topBlockText);
+                const clicked = await page.evaluate(() => {
+                    const items = document.querySelectorAll('#search-results-list .search-item');
+                    if (!items.length) return false;
+                    items[0].click();          // the mouse, not findJumpTo()
+                    return true;
+                });
+                if (!clicked) return { ok: false };
+                // The view arriving is the thing being tested, so wait for exactly that.
+                const after = await untilPage(page, (b) => {
                     const h = mainContainer.getBoundingClientRect();
                     let t = '';
                     editor.querySelectorAll('.block').forEach(x => {
@@ -508,31 +567,12 @@ async function main() {
                         const r = x.getBoundingClientRect();
                         if (r.bottom > h.top + 2 && r.top < h.bottom) t = (x.innerText || '').slice(0, 40);
                     });
-                    return t;
-                };
-                // A string that certainly exists, a long way down: searching for something
-                // absent would show "No results" and a click on that placeholder proves
-                // nothing, which is exactly how this check first fooled me.
-                const rows = DocumentModel.blocks.map(x => x.raw)
-                    .filter(r => /scroll marker row \d+$/.test(r));
-                if (rows.length < 901) return { ok: false };
-                const q = rows[900].replace(/^Line \d+ of \d+ — /, '');
-                handleCommand('toggle_search_sidebar');
-                await sleep(500);
-                const inp = document.getElementById('sidebarSearchInput');
-                inp.value = q;
-                inp.dispatchEvent(new Event('input', { bubbles: true }));
-                // Wait for the result, not for a guess at the debounce. A fixed 1600ms
-                // here silently became too short when the sidebar debounce went to 2000,
-                // and the click below then landed on an empty list.
-                for (let w = 0; w < 100 && findState.matches.length === 0; w++) await sleep(100);
-                const items = document.querySelectorAll('#search-results-list .search-item');
-                const before = top();
-                items[0].click();          // the mouse, not findJumpTo()
-                await sleep(1500);
-                return {
-                    ok: true, query: q, matches: findState.matches.length,
-                    before: before, after: top(),
+                    return (t && t !== b) ? t : null;
+                }, 6000, before);
+                // Read once the view has arrived, not before it: the current-range
+                // highlight and the match rectangle both mean nothing mid-scroll.
+                const state = await page.evaluate(() => ({
+                    matches: findState.matches.length,
                     marked: (CSS.highlights.get('typozen-find-current') || { size: 0 }).size,
                     // On screen, not necessarily at the top -- scrolling a match into view
                     // puts it comfortably inside the viewport, which is the right behaviour.
@@ -543,8 +583,14 @@ async function main() {
                         const h = mainContainer.getBoundingClientRect();
                         return rect.bottom > h.top && rect.top < h.bottom;
                     })()
+                }));
+                return {
+                    ok: true, query: q, matches: state.matches,
+                    marked: state.marked, matchOnScreen: state.matchOnScreen,
+                    before: before, after: after || await page.evaluate(topBlockText)
                 };
-            });
+            })();
+
             assert(clickJump.ok && clickJump.matches === 1,
                 'the fixture contains the searched string exactly once (' +
                 (clickJump.matches === undefined ? 'n/a' : clickJump.matches) + ')');
