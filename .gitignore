@@ -52,3 +52,6 @@ WNdb-*/
 # first launch. They are derived from WordNet, whose licence permits redistribution with
 # the notice attached -- see WORDNET-LICENSE.txt.
 dictionary.json
+
+# MSIX packaging output (staged copy + package), rebuilt by tools/Build-Msix.ps1
+dist-msix/
