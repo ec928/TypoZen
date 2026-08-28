@@ -93,7 +93,7 @@ Three ways to set one, because the single place marker this replaced went unused
 
 Select text and the Mark button becomes **Highlight selection**. A highlight is a bookmark with a range, and a note is a highlight with text attached — which is why bookmarks were built first: the anchoring is the whole problem, and this reuses it unchanged.
 
-- Painted with the **CSS Custom Highlight API**, the same mechanism search uses for its matches. Not a `<mark>` element: a `.block` round-trips into `data-raw`, so anything wrapped round the words would become part of your document
+- Painted with the **CSS Custom Highlight API**, the same mechanism search uses for its matches in Preview (Source search uses a mirror layer, for the reason given above). Not a `<mark>` element: a `.block` round-trips into `data-raw`, so anything wrapped round the words would become part of your document
 - **Named by the words it quotes.** Double-click the row to write a **note** — for a highlight that edits the note, not the quotation, since renaming it would be rewriting the book
 - Highlighting the same range twice removes it, the same toggle the gutter and the button use
 - Stored beside bookmarks, with the same fingerprint anchor, so a highlight follows its sentence when the document is edited above it
@@ -161,6 +161,16 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 ### Writing tools
 
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
+- **Every match is highlighted, in Source as well as Preview.** Preview paints them with
+  the CSS Custom Highlight API. Source cannot use it — it is a `<textarea>`, and that API
+  paints over DOM text nodes while a textarea's content belongs to the native control —
+  so the marks are drawn on a mirror layer behind it, holding the same text at the same
+  font, padding and wrap, scrolled to the same offset. Before this, Source showed only
+  the current hit as a selection, and Chromium paints no selection at all for an
+  unfocused textarea: with `Ctrl+F` holding focus the hit was invisible exactly when you
+  were looking for it. The current match is ringed rather than filled, because the
+  visible glyphs belong to the textarea above the marks and a solid fill would leave
+  unreadable text over it
 - Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree. Both options (and which sidebar tab you last used — Outline vs Search) are **remembered** across restarts
 - **Recent searches** — the Search tab is a combo box: the last **8** committed queries (Enter, or a pick from the list) are kept **globally** (not per tab) in `settings.json`. Click the chevron or press ↓ on an empty box for the dropdown. Remove one with **×**, clear all from the menu footer or **File → Privacy → Clear Recent Searches**. **Alt+S** also restores the last text left in the Search box (selection still wins when you have one). Full **Clear Stored Data** still wipes history too
 - **Search mode** (a live result list — sidebar need not stay open): **Up / Down** step previous / next match with eyes on the text; **Left / Right** turn the page when the layout is paginated. Without results, Up/Down are normal (caret in Preview, page turn in Reader). **F3** / **Shift+F3** also step next/prev. Same Up/Down behaviour the results list has always used
