@@ -675,6 +675,11 @@
 
         /* Editor Wrapper — full width; horizontal padding = real page margins (not line-length caps) */
         #editor-wrapper {
+            /* Containing block for #source-highlights, which is positioned from this
+               element's rect. Safe to add: the only absolutely positioned descendant is
+               #editor .block::before, and .block is already position:relative, so its
+               anchor does not change. */
+            position: relative;
             max-width: none;
             width: 100%;
             box-sizing: border-box;
@@ -1246,6 +1251,39 @@
            themes by construction: the theme code picks --accent-tx for contrast against
            --accent. This does colour ordinary editing selection too -- a textarea has
            only the one selection to style -- which is the price of the native control. */
+        /* The Source search mirror. See paintSourceHighlights in 02-layout.js for why a
+           mirror is the only way to mark a <textarea>. Everything here exists to make it
+           invisible except for the marks: it must occupy the same box as the textarea and
+           paint no text of its own, or it would show through as a second, offset copy of
+           the document. pointer-events:none keeps clicks, drags and the caret going to
+           the real control underneath. */
+        #source-highlights {
+            position: absolute;
+            overflow: hidden;
+            pointer-events: none;
+            color: transparent;
+            background: transparent;
+            /* Same default as the textarea; the computed white-space is copied over it
+               so body.nowrap swaps both together. */
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        /* Under the textarea's own glyphs, so the wash sits behind the words rather than
+           over them. The text colour stays the textarea's --tx, which is why the current
+           hit is a ring and not a fill -- see the note in 02-layout.js. */
+        #source-highlights mark.tz-src-hit {
+            background: var(--find-soft, rgba(255, 180, 0, 0.30));
+            color: transparent;
+            border-radius: 2px;
+        }
+        #source-highlights mark.tz-src-hit.cur {
+            background: var(--find-soft, rgba(255, 180, 0, 0.30));
+            box-shadow: 0 0 0 2px var(--accent, #f59e0b);
+            border-radius: 2px;
+        }
+
         #source-editor::selection {
             background-color: var(--accent, #f59e0b);
             color: var(--accent-tx, #111);

@@ -280,6 +280,10 @@
             try {
                 if (sourceEditor) sourceEditor.style.display = isSource ? 'block' : 'none';
             } catch (eS) {}
+            // The mirror is a sibling of the textarea, not a child, so hiding the
+            // textarea does not hide it: leaving Source would strand a page of amber
+            // boxes over the Preview editor.
+            try { if (!isSource) clearSourceHighlights(); } catch (eH) {}
             try {
                 state.viewMode = viewModeFromInternal(state.mode);
             } catch (eV) {}
@@ -434,6 +438,10 @@
             sourceEditor.style.width = '100%';
             sourceEditor.style.overflowY = 'auto';
             sourceEditor.style.overflowX = document.body.classList.contains('nowrap') ? 'auto' : 'hidden';
+            // The mirror is sized from the textarea's computed style, so it has to be
+            // re-read after the inline height/width above -- and after the wrap swap,
+            // which changes white-space and so changes where every line breaks.
+            try { syncSourceHighlightGeometry(); } catch (eHl) {}
             try {
                 if (mainContainer) mainContainer.scrollTop = 0;
             } catch (e3) {}

@@ -155,6 +155,7 @@
             findState.ranges = [];
             findState.currentRange = -1;
             findState.index = -1;
+            clearSourceHighlights();
             updateFindCount();
         }
 
@@ -208,6 +209,7 @@
                 const m = findState.matches[findState.index];
                 // Always select + scroll the hit in Source so the list and the text agree.
                 scrollSourceMatchIntoView(m.start, m.end, true);
+                paintSourceHighlights();
             } else if (findState.kind === 'model') {
                 revealModelMatch(findState.matches[findState.index], true, !findBarOpen);
             } else {
@@ -5028,6 +5030,193 @@
             }
         }
 
+        /* ------------------------------------------------------------------
+           Source-mode search highlighting.
+
+           Preview marks every hit with the CSS Custom Highlight API. That API paints
+           Ranges over DOM text nodes, and Source is a <textarea> whose content is the
+           native control's internal buffer -- no Range can address it, so none of that
+           machinery reaches here. Before this, Source showed the current hit by
+           selecting it, and Chromium paints no selection at all for an unfocused
+           textarea; since Ctrl+F ends with focus in #findInput, the hit was invisible
+           exactly when the reader was looking for it.
+
+           So the marks are drawn on a mirror: a div holding the same text, with the
+           same font, padding and wrapping, scrolled to the same offset, sitting behind
+           the transparent textarea. The textarea keeps typing, caret and selection; the
+           mirror is only a shape to paint on. Its own text is transparent -- the visible
+           glyphs are still the textarea's, one layer up.
+
+           That last point decides the colours. The current hit CANNOT use the
+           accent/--accent-tx pair Preview uses, because --accent-tx recolours the text
+           and the text down here belongs to the textarea. A solid accent fill would put
+           unchanged --tx over it, which on the dark themes is light-on-amber. The
+           current hit gets the same wash plus an accent ring instead: readable on every
+           theme, and unmistakable against the others.
+           ------------------------------------------------------------------ */
+
+        let _srcHl = null;          // the mirror
+        let _srcHlInner = null;     // its content, so geometry and text update apart
+        let _srcHlSig = '';         // rebuild the marks only when they would differ
+
+        /** Everything that can move a glyph. Miss one and every mark slides. */
+        const SRC_HL_STYLE_KEYS = [
+            'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant',
+            'letterSpacing', 'wordSpacing', 'lineHeight', 'textTransform', 'textIndent',
+            'textRendering', 'whiteSpace', 'wordBreak', 'overflowWrap', 'tabSize',
+            'direction', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+            'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+            'boxSizing'
+        ];
+
+        /**
+         * Past this many marks the document is not being searched, it is being dyed:
+         * every line hit, nothing picked out, and tens of thousands of nodes to lay out
+         * on each keystroke. Above it the current hit alone is drawn, which is still the
+         * one thing the reader is actually looking at.
+         */
+        const SRC_HL_MAX_MARKS = 8000;
+
+        function srcHlEscape(t) {
+            return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function ensureSourceHighlightLayer() {
+            if (!sourceEditor) return null;
+            const host = sourceEditor.parentElement;
+            if (!host) return null;
+            if (_srcHl && _srcHl.parentElement === host) return _srcHl;
+            _srcHl = document.createElement('div');
+            _srcHl.id = 'source-highlights';
+            _srcHl.setAttribute('aria-hidden', 'true');
+            _srcHlInner = document.createElement('div');
+            _srcHl.appendChild(_srcHlInner);
+            // Before the textarea in document order: both are positioned, so the
+            // textarea paints over the marks without either needing a z-index race.
+            host.insertBefore(_srcHl, sourceEditor);
+
+            /* Follow the textarea's visibility by watching it, rather than by trusting
+               every mode-switch path to remember the mirror exists.
+
+               syncModeSurface hides the textarea and clears the marks, but it does not
+               run everywhere state.mode ends up changing -- switching to Preview left a
+               page of amber boxes stranded over the Preview editor, because at the point
+               it ran state.mode was still 'source'. Chasing that ordering would fix this
+               one path and leave the next one to be found the same way. The mirror has
+               exactly one job, to look like the textarea, so it takes its visibility from
+               the textarea directly. Style mutations are also where the inline height and
+               width from resizeSourceEditor land, so this keeps the geometry current for
+               free. */
+            try {
+                const obs = new MutationObserver(function () {
+                    if (!_srcHl || !sourceEditor) return;
+                    const hidden = getComputedStyle(sourceEditor).display === 'none';
+                    if (hidden) { _srcHl.style.display = 'none'; return; }
+                    if (_srcHl.style.display !== 'none') syncSourceHighlightGeometry();
+                });
+                obs.observe(sourceEditor, { attributes: true, attributeFilter: ['style', 'class'] });
+            } catch (eObs) {}
+
+            _srcHlSig = '';
+            return _srcHl;
+        }
+
+        /**
+         * Copy the textarea's box and text metrics onto the mirror.
+         *
+         * Read from the computed style rather than the stylesheet: resizeSourceEditor
+         * sets height/width inline, applyEditorChromeForMode sets paddingRight from the
+         * page margin, and body.nowrap swaps white-space. All three land in the computed
+         * style and none of them are visible from the rules alone.
+         */
+        function syncSourceHighlightGeometry() {
+            if (!_srcHl || !sourceEditor) return;
+            const cs = getComputedStyle(sourceEditor);
+            for (let i = 0; i < SRC_HL_STYLE_KEYS.length; i++) {
+                const k = SRC_HL_STYLE_KEYS[i];
+                _srcHl.style[k] = cs[k];
+            }
+            const host = sourceEditor.parentElement;
+            if (!host) return;
+            const r = sourceEditor.getBoundingClientRect();
+            const hr = host.getBoundingClientRect();
+            _srcHl.style.left = (r.left - hr.left) + 'px';
+            _srcHl.style.top = (r.top - hr.top) + 'px';
+            _srcHl.style.width = r.width + 'px';
+            _srcHl.style.height = r.height + 'px';
+            syncSourceHighlightScroll();
+        }
+
+        function syncSourceHighlightScroll() {
+            if (!_srcHl || !sourceEditor) return;
+            _srcHl.scrollTop = sourceEditor.scrollTop;
+            _srcHl.scrollLeft = sourceEditor.scrollLeft;
+        }
+
+        /**
+         * The mirror holds its own copy of the text, so any edit makes it a copy of a
+         * document that no longer exists. The signature cannot catch that on its own --
+         * typing over a selection can leave the length unchanged -- so editing states it
+         * outright rather than hoping the length moved.
+         */
+        function invalidateSourceHighlights() {
+            _srcHlSig = '';
+            if (findState.query && findState.matches && findState.matches.length) {
+                paintSourceHighlights();
+            } else {
+                clearSourceHighlights();
+            }
+        }
+
+        function clearSourceHighlights() {
+            _srcHlSig = '';
+            if (_srcHlInner) _srcHlInner.textContent = '';
+            if (_srcHl) _srcHl.style.display = 'none';
+        }
+
+        /**
+         * Draw every match, and ring the current one.
+         *
+         * findState.matches holds offsets into the same string as sourceEditor.value --
+         * getFindHaystack returns that value for the source surface -- so the offsets
+         * index the mirror's text directly. No second search, and no second opinion
+         * about what matched.
+         */
+        function paintSourceHighlights() {
+            if (!sourceEditor || !isSourceSurfaceActive()) { clearSourceHighlights(); return; }
+            const matches = findState.matches || [];
+            if (!findState.query || matches.length === 0) { clearSourceHighlights(); return; }
+            if (!ensureSourceHighlightLayer()) return;
+
+            const text = sourceEditor.value || '';
+            const cur = findState.index;
+            const capped = matches.length > SRC_HL_MAX_MARKS;
+            const sig = findState.query + '|' + matches.length + '|' + text.length + '|'
+                + cur + '|' + (capped ? 'cap' : 'all');
+            _srcHl.style.display = '';
+            syncSourceHighlightGeometry();
+            if (sig === _srcHlSig) return;
+            _srcHlSig = sig;
+
+            const draw = capped
+                ? (cur >= 0 && cur < matches.length ? [matches[cur]] : [])
+                : matches;
+            let html = '', last = 0;
+            for (let i = 0; i < draw.length; i++) {
+                const m = draw[i];
+                if (m.start < last) continue;          // overlapping hits: keep the first
+                const isCur = !capped ? (i === cur) : true;
+                html += srcHlEscape(text.slice(last, m.start))
+                     + '<mark class="tz-src-hit' + (isCur ? ' cur' : '') + '">'
+                     + srcHlEscape(text.slice(m.start, m.end))
+                     + '</mark>';
+                last = m.end;
+            }
+            html += srcHlEscape(text.slice(last));
+            _srcHlInner.innerHTML = html;
+            syncSourceHighlightScroll();
+        }
+
         function scrollRangeIntoMain(range) {
             if (!range || !mainContainer) return;
             try {
@@ -5703,6 +5892,9 @@
                     const findBarOpen = isFindBarOpen();
                     scrollSourceMatchIntoView(m.start, m.end, !findBarOpen);
                 }
+                // Paint on recount as well as on navigate: the count changing is exactly
+                // when the set of marks changed.
+                paintSourceHighlights();
             } else if (findState.kind === 'model') {
                 if (findState.index >= 0) {
                     if (navigate) revealModelMatch(findState.matches[findState.index], true);

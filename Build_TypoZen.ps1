@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Continue"
+﻿$ErrorActionPreference = "Continue"
 $appDir = $PSScriptRoot
 Set-Location $appDir
 
@@ -252,7 +252,23 @@ Copy-Item (Join-Path $appDir "TypoZen.exe") -Destination $binDir -Force
 if (Test-Path (Join-Path $appDir "TypoZen.pdb")) {
     Copy-Item (Join-Path $appDir "TypoZen.pdb") -Destination $binDir -Force
 }
-Write-Host "  Copied TypoZen.exe to staging directory." -ForegroundColor Gray
+
+# The exe alone is not a build. css/, js/ and the template are read from disk at
+# runtime, so staging only TypoZen.exe left bin/ running whatever assets it happened
+# to hold -- and bin/ exists precisely so a build can be PROVEN before it reaches the
+# app. A source-mode CSS fix was tested against a bin/ that had never received it and
+# looked like it did nothing. Stage what the app actually loads.
+$assetDirs = @("css", "js")
+foreach ($d in $assetDirs) {
+    $src = Join-Path $appDir $d
+    if (Test-Path $src) { Copy-Item $src -Destination $binDir -Recurse -Force }
+}
+$assetFiles = @("TypoZen_Template.html", "TypoZen.xaml", "TypoZen_Themes.json", "TypoZen.ico")
+foreach ($f in $assetFiles) {
+    $src = Join-Path $appDir $f
+    if (Test-Path $src) { Copy-Item $src -Destination $binDir -Force }
+}
+Write-Host "  Copied TypoZen.exe and the runtime assets to staging directory." -ForegroundColor Gray
 
 Write-Host "`n[4/4] Build Complete! TypoZen.exe is ready." -ForegroundColor Green
 Write-Host "You can now run TypoZen.exe directly or from the bin/ staging folder." -ForegroundColor Cyan
