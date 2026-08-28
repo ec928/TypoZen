@@ -1225,6 +1225,31 @@
             background-color: var(--accent, #f59e0b);
             color: var(--accent-tx, #111);
         }
+
+        /* Source mode is a <textarea>, so none of the above can reach it: the Custom
+           Highlight API paints Ranges over DOM text nodes and a textarea's content is
+           the native control's internal buffer. The current search hit is shown by
+           selecting it (scrollSourceMatchIntoView), and until this rule that selection
+           was Chromium's default blue -- easy to lose against a dark theme, and nothing
+           like the accent the same hit gets in Preview.
+
+           This covers the sidebar Search only. Chromium paints NO selection at all for
+           an unfocused textarea -- not a dimmed one, none -- and ::selection does not
+           change that, so Ctrl+F, which ends with focus in #findInput, still shows an
+           invisible hit. Measured, not assumed. Fixing that needs a mirrored overlay
+           div, because a textarea exposes no rect for a character range; there is no
+           CSS-only version of it. findJumpTo takes focus for sidebar jumps and returns
+           it to the find bar for Ctrl+F, which is exactly the split you see on screen.
+
+           Same accent/--accent-tx pair as typozen-find-current above, so the current hit
+           looks the same in Source as in Preview. That pair is safe on all twenty-six
+           themes by construction: the theme code picks --accent-tx for contrast against
+           --accent. This does colour ordinary editing selection too -- a textarea has
+           only the one selection to style -- which is the price of the native control. */
+        #source-editor::selection {
+            background-color: var(--accent, #f59e0b);
+            color: var(--accent-tx, #111);
+        }
         /* An annotation. Quieter than a search match on purpose: a search hit is
            transient and wants the eye, a highlight is something the reader put there
            and has to be readable underneath for as long as the book is open. Painted
