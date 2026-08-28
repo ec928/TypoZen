@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.12";
+        internal const string AppVersion = "0.2.13";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
