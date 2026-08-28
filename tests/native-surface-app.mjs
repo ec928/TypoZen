@@ -139,6 +139,23 @@ try {
                 ? getComputedStyle(document.getElementById('aboutModal')).display : 'none'
         }));
         info('hidden editor: about ' + chrome.about);
+
+        // And the menus have to LOOK dead, not merely be dead. Blocking the command stops
+        // the damage; a menu that still opens and responds to nothing is the other half of
+        // the complaint. Edit and Help are page-routed end to end, so both go grey whole.
+        const ctl = ui('controls');
+        const byName = (n) => (ctl.controls || []).find(c => c.name === n || c.id === n);
+        const edit = byName('Edit'), help = byName('Help'), view = byName('View');
+        info('menus: Edit=' + (edit ? edit.enabled : '?')
+            + ' Help=' + (help ? help.enabled : '?')
+            + ' View=' + (view ? view.enabled : '?'));
+        assert(edit && edit.enabled === false,
+            nat.file + ': the Edit menu is greyed, not silently inert');
+        assert(help && help.enabled === false,
+            nat.file + ': the Help menu is greyed, not silently inert');
+        // View keeps zoom, fullscreen and the rest, which still mean something here.
+        assert(view && view.enabled === true,
+            nat.file + ': View stays available -- zoom and fullscreen still apply');
         assert(chrome.about === 'none',
             nat.file + ': About does not open behind the native surface');
     }
@@ -171,6 +188,16 @@ try {
         assert(doc2.mounted > 0, 'and it is laid out, not left blank');
         assert((back.status || []).indexOf('Saved') >= 0,
             'the round trip did not dirty it');
+
+        // Given back, not left disabled. A menu greyed on a PDF and never restored would
+        // be a worse bug than the one being fixed.
+        const ctlBack = ui('controls');
+        const backBy = (n) => (ctlBack.controls || []).find(c => c.name === n || c.id === n);
+        const editBack = backBy('Edit'), helpBack = backBy('Help');
+        info('menus back: Edit=' + (editBack ? editBack.enabled : '?')
+            + ' Help=' + (helpBack ? helpBack.enabled : '?'));
+        assert(editBack && editBack.enabled === true, 'Edit is usable again on the document');
+        assert(helpBack && helpBack.enabled === true, 'Help is usable again on the document');
 
         // The status bar has to come back too, not just the document.
         //

@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.19";
+        internal const string AppVersion = "0.2.20";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -11890,6 +11890,43 @@ namespace TypoZen
             }
         }
 
+        /// <summary>
+        /// Menus that act on a document, switched off while a native tab is showing.
+        ///
+        /// SendMsg already refuses to pass "cmd:" to the editor behind the native surface,
+        /// which stops the damage -- Toggle Sidebar was collapsing the sidebar of the
+        /// document you were not looking at. It does not stop the menus LOOKING alive.
+        /// Edit and Help are page-routed end to end (undo, cut, find, marks, syntax help,
+        /// About), so both go grey whole. View is mixed: zoom, fullscreen, auto-hide,
+        /// scrubber and status bar are the host's and still mean something over a PDF, so
+        /// only the items that speak to the page are disabled.
+        /// </summary>
+        private static readonly string[] NativeDeadViewItems = new[]
+        {
+            "mSidebarOutline", "mSidebarSearch", "mSidebarMarks",
+            "mToggleReveal", "mToggleFocus", "mToggleTypewriter",
+            "mMarginNarrow", "mMarginRegular", "mMarginWide"
+        };
+
+        private void SetDocumentMenusEnabled(bool enabled, NativeRole role)
+        {
+            string why = enabled
+                ? null
+                : "Not available for " + NativeRoleLabel(role) + " — this tab is not a document.";
+            foreach (string n in new[] { "menuEdit", "menuHelp" })
+            {
+                var mi = FindElement(n) as MenuItem;
+                if (mi == null) continue;
+                try { mi.IsEnabled = enabled; mi.ToolTip = why; } catch { }
+            }
+            foreach (string n in NativeDeadViewItems)
+            {
+                var mi = FindElement(n) as MenuItem;
+                if (mi == null) continue;
+                try { mi.IsEnabled = enabled; mi.ToolTip = why; } catch { }
+            }
+        }
+
         private void ShowEditorSurface()
         {
             _nativeSurfaceVisible = false;
@@ -11915,6 +11952,7 @@ namespace TypoZen
             try
             {
                 if (_lblChapter != null) _lblChapter.Text = "";
+                SetDocumentMenusEnabled(true, NativeRole.None);
                 var sideBtnBack = FindElement("btnToggleSidebar") as Button;
                 if (sideBtnBack != null)
                 {
@@ -11982,6 +12020,7 @@ namespace TypoZen
                 // The sidebar belongs to the editor, and the editor is behind this surface.
                 // Greyed rather than merely inert: a button that looks live and does
                 // nothing is the complaint, not the fix.
+                SetDocumentMenusEnabled(false, role);
                 var sideBtn = FindElement("btnToggleSidebar") as Button;
                 if (sideBtn != null)
                 {
