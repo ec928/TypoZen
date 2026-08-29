@@ -1,8 +1,9 @@
 # TypoZen health review — 2026-08-28 (combined)
 
 **Combined review (Grok)** of Claude's original at `docs/health-review-2026-08-28.md`,
-plus the follow-up pass. `AppVersion` **0.2.15**. Numbers that appear were counted or
-read in this tree. Where something is unproven, it says so.
+plus the follow-up pass. `AppVersion` **0.2.15** at the time. **Current
+health snapshot: `docs/health-review-2026-08-29.md`.** Numbers that appear
+were counted or read in that day’s tree. Where something is unproven, it says so.
 
 Reading order: **§1 is the one that matters** (the shipped app). §2 is Claude's
 test diagnosis, kept because it is real, with corrections on the numbers. §3 is

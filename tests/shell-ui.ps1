@@ -329,6 +329,21 @@ switch ($Command) {
         Out-Json @{ status = $out }
     }
 
+    'keys' {
+        # Real keystrokes to the TypoZen window, not CDP into the editor page.
+        # Puppeteer talks to the hidden editor WebView even when a PDF is showing,
+        # which is how a Ctrl+B test would format the wrong surface and miss the bug.
+        # Allowlist only: a driver that can SendWait '^s' can write the fixture.
+        if ($Arg -notmatch '^\^[bikt]$') {
+            Out-Json @{ error = "refusing keys '$Arg': only ^b ^i ^k ^t are allowed" }
+            break
+        }
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.SendKeys]::SendWait($Arg)
+        Start-Sleep -Milliseconds 200
+        Out-Json @{ sent = $Arg }
+    }
+
     'maximize' {
         $wp = $null
         if ($root.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$wp)) {

@@ -1,6 +1,6 @@
 # TypoZen health review — 2026-08-29
 
-App-first review of the tree at **0.2.25**. Numbers counted or read here.
+App-first review of the tree at **0.2.26**. Numbers counted or read here.
 The 2026-08-28 combined review (`docs/health-review-2026-08-28-combined.md`)
 is the record of that day’s pass; this document is current status.
 
@@ -18,9 +18,9 @@ native-tab pass closed a real class of “the shell acted on the document
 you were not looking at.” Seeking a huge book is not a hang; `epub-open-app`
 is 93/0.
 
-There is **no open defect-class pile**. What a user can still hit is
-small, ranked below. The one I would fix next is a leftover of the
-native-tab pass, not a new architecture project.
+There is **no open defect-class pile**. The native-tab leftover (Ctrl+B
+on a PDF formatting the hidden document) is **fixed in 0.2.26**. What
+remains is product limits, not this week's bugs.
 
 ---
 
@@ -38,47 +38,31 @@ native-tab pass, not a new architecture project.
 | `NewWindowRequested` / `open_external` via `TryShellExternalUri` | Done |
 | `open_doc` fail shows `NotifyLink` | Done |
 | Session restore Welcome on a real file | Done |
-| Native tab is a second surface (zoom, menus, Print, chrome `cmd:`) | Done; guarded by `native-surface-app.mjs` |
+| Native tab is a second surface (zoom, menus, Print, chrome `cmd:` / `fmt:`) | Done; guarded by `native-surface-app.mjs` (Ctrl+B on PDF does not dirty the hidden document) |
 | Image/audio zoom greyed (shown at own size) | Done (0.2.25) |
 | `epub-open-app` Matter + Xeelee | 93/0. Harness no longer stacks CDP evaluates |
 | Print of a windowed document | Refuses rather than printing 1% |
 
-Owner still-not: monolith split, rewrite remaining `*-app` sleeps, extract
-the in-process tab harness, unique second-instance profile.
+**Owner still-not (do not start):** monolith split; rewrite remaining
+`*-app` sleeps; extract the in-process tab harness; unique second-instance
+profile; search-indexing the omnibus; Privacy-copy of native files;
+census of empty catches; another “is seeking Xeelee a hang” pass.
 
 ---
 
 ## Remaining — ranked by whether a user can hit it
 
-### 1. Ctrl+B / I / K on a native tab can still format the hidden document
+### 1. Ctrl+B / I / K on a native tab formatted the hidden document — **fixed (0.2.26)**
 
-**This is the one leftover I would actually fix.**
+`SendMsg` refused `"cmd:"` while `_nativeSurfaceVisible` but not `"fmt:"`
+or `export_html`. The host key filter posted `fmt:bold` at the editor
+behind a PDF. Menus looked dead; the chord was not.
 
-`SendMsg` refuses `"cmd:"` while `_nativeSurfaceVisible` (Toggle Sidebar,
-Find, About). Menus in Edit/Help are greyed. That is the 0.2.20–0.2.22
-work, and it is right.
-
-It does **not** refuse `"fmt:"`. The host message filter and
-`Window.KeyDown` still turn Ctrl+B / I / K / T / Shift+X into
-`fmt:bold` etc. and `SendMsg` posts them to the editor WebView, which
-is alive behind the PDF. `export_html` is the same shape (not `cmd:`).
-
-So: looking at a PDF, Ctrl+B can bold a run in the markdown you were
-editing and mark that tab dirty. You find it when you switch back,
-possibly with a save prompt for an edit you did not mean.
-
-Find (Ctrl+F) is `cmd:` so it is silently swallowed — not ideal, but it
-does not mutate. Format chords mutate.
-
-**Fix (small):** in `SendMsg`, refuse `fmt:` and `export_html` the same
-way as `cmd:` while the native surface is showing. Optionally no-op the
-preprocess filter when `_nativeSurfaceVisible` so the chord is not
-swallowed either (PDF viewer can have it). Extend `native-surface-app`
-with one keyboard assertion: after Ctrl+B on a PDF, the hidden
+**Now:** `IsEditorDocumentMessage` gates `cmd:`, `fmt:`, and `export_html`.
+The key filter does not swallow those chords on a native tab (the PDF
+viewer can have them). `native-surface-app` sends Ctrl+B through the
+real window (`shell-ui keys`, not Puppeteer) and asserts the hidden
 document is still clean.
-
-Not a data-loss hole on the PDF itself. It is a silent edit of the
-other tab.
 
 ### 2. Search on a very large book freezes the UI for a long time
 
@@ -143,10 +127,16 @@ answer, so a broken script cannot disable Print. Leave it.
 
 ## Do not spend time on
 
-Unchanged from 2026-08-28 §3: split the monoliths, extract
-`RunTabContentE2EAsync`, census empty catches, remove `PushFrame`,
-raise `protocolTimeout`, treat PNG `about:blank` as broken, unique
-second-instance profile unless asked, git-tracking of `TypoZen.exe`.
+Unchanged from 2026-08-28 §3, plus the owner call of 2026-08-29:
+
+- Split the monoliths; extract `RunTabContentE2EAsync`
+- Rewrite remaining `*-app` folklore sleeps; census empty catches
+- Remove `PushFrame`; raise `protocolTimeout`
+- Treat PNG `about:blank` as broken
+- Unique second-instance profile unless asked
+- Search-indexing the omnibus; Privacy-copy of native files
+- Git-tracking of `TypoZen.exe`
+- Another “is seeking Xeelee a hang” investigation
 
 The 2026-08-28 combined review’s §1.1–1.8 and 1.10 “to do” lists are
 **done**. Do not re-open them from that document.
@@ -155,17 +145,6 @@ The 2026-08-28 combined review’s §1.1–1.8 and 1.10 “to do” lists are
 
 ## Advise
 
-1. **Fix item 1** (fmt/export leak on native tabs) when you next touch
-   the shell, or now if you want one more genuine shipped-app patch. It
-   is small, local, and the suite already exists to extend.
-2. **Do not start** search-indexing, unique profiles, or Privacy-copy of
-   PDFs without a user report or a product decision.
-3. **Docs:** this file is the current health snapshot. The 08-28
-   combined review stays as the record of that pass. `known-issues.md`
-   still has no open defect-class items; item 1 here is not yet filed
-   there because it is unfixed advice, not a reproduced-from-use bug.
-   File it if you confirm Ctrl+B on a PDF dirties the other tab in the
-   real window.
-
-No need for a monolith cleanup, a 408-sleep rewrite, or another
-“is seeking Xeelee a hang” investigation.
+Nothing further this week unless a user hits search-on-omnibus or the
+second-instance pipe race. Item 1 is fixed. `known-issues.md` has no
+open defect-class items.

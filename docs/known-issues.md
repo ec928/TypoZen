@@ -34,6 +34,16 @@ still being learned, and is exact once the document has been read through. Mark 
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Ctrl+B on a PDF formatted the hidden document — **fixed** (0.2.26)
+
+`SendMsg` gated `cmd:` on a native tab but not `fmt:` / `export_html`. The
+host key filter posted `fmt:bold` at the editor WebView sitting behind the
+PDF, so a chord on a picture dirtied the markdown you were editing.
+
+**Now:** those messages are refused while the native surface is showing;
+the filter does not swallow the chord (the viewer can have it).
+`native-surface-app` asserts Ctrl+B leaves the hidden document clean.
+
 ### Seeking into a very large book looked hung — **harness, not a hang**
 
 `epub-open-app` stalled on the 45,486-block Xeelee omnibus. Isolated,

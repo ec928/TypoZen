@@ -279,6 +279,34 @@ try {
             + (wrongOn.length ? ' (wrongly greyed: ' + wrongOn.join(', ') + ')' : ''));
         assert(chrome.about === 'none',
             nat.file + ': About does not open behind the native surface');
+
+        // Ctrl+B must not format the markdown sitting behind this tab.
+        //
+        // SendMsg gated "cmd:" and left "fmt:" through, so the host key filter posted
+        // fmt:bold at the hidden editor. Menus looked dead; the chord was not. Keys go
+        // through the real window (shell-ui keys), not Puppeteer -- CDP talks to the
+        // editor page even when a PDF is showing, which would format it and miss the bug.
+        const beforeFmt = await app.eval(() => {
+            const b = editor && editor.querySelector('.block');
+            return {
+                dirty: (typeof getMarkdownContent === 'function')
+                    && getMarkdownContent(false) !== state.lastSavedContent,
+                html: b ? b.innerHTML : ''
+            };
+        });
+        ui('keys', '^b');
+        await sleep(400);
+        const afterFmt = await app.eval(() => {
+            const b = editor && editor.querySelector('.block');
+            return {
+                dirty: (typeof getMarkdownContent === 'function')
+                    && getMarkdownContent(false) !== state.lastSavedContent,
+                html: b ? b.innerHTML : ''
+            };
+        });
+        info('Ctrl+B: dirty ' + beforeFmt.dirty + ' -> ' + afterFmt.dirty);
+        assert(!afterFmt.dirty && afterFmt.html === beforeFmt.html,
+            nat.file + ': Ctrl+B does not format the hidden document');
     }
 
     console.log('\n=== back to the document ===');

@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.25";
+        internal const string AppVersion = "0.2.26";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1915,6 +1915,11 @@ namespace TypoZen
             else if (vk == 0x48) cmd = "cmd:find_replace";                   // H
             else return;
 
+            // Native surface has focus: these chords belong to that view (PDF find,
+            // Chromium bold), not to the markdown sitting behind it. Swallowing them
+            // and posting fmt:bold is how Ctrl+B on a PDF dirtied the other tab.
+            if (_nativeSurfaceVisible) return;
+
             // Swallow so page JS never also runs the same chord (double undo/format).
             handled = true;
 
@@ -2011,31 +2016,52 @@ namespace TypoZen
                 { ExportPdf(); e.Handled = true; }
                 else if (e.Key == Key.G)
                 {
+                    if (_nativeSurfaceVisible) return;
                     try { if (_webView != null) _webView.Focus(); } catch { }
                     SendMsg("cmd:goto_page");
                     e.Handled = true;
                 }
                 else if (e.Key == Key.M && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
                 {
+                    if (_nativeSurfaceVisible) return;
                     SendMsg("cmd:mark_toggle");
                     e.Handled = true;
                 }
                 else if (e.Key == Key.P && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
                 {
+                    if (_nativeSurfaceVisible) return;
                     SendMsg("cmd:show_marks");
                     e.Handled = true;
                 }
                 else if (e.Key == Key.J && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
                 {
+                    if (_nativeSurfaceVisible) return;
                     SendMsg("cmd:return_jump");
                     e.Handled = true;
                 }
-                else if (e.Key == Key.B) { SendMsg("fmt:bold"); e.Handled = true; }
-                else if (e.Key == Key.I) { SendMsg("fmt:italic"); e.Handled = true; }
-                else if (e.Key == Key.K) { SendMsg("fmt:link"); e.Handled = true; }
-                else if (e.Key == Key.T) { SendMsg("fmt:table"); e.Handled = true; }
+                else if (e.Key == Key.B)
+                {
+                    if (_nativeSurfaceVisible) return;
+                    SendMsg("fmt:bold"); e.Handled = true;
+                }
+                else if (e.Key == Key.I)
+                {
+                    if (_nativeSurfaceVisible) return;
+                    SendMsg("fmt:italic"); e.Handled = true;
+                }
+                else if (e.Key == Key.K)
+                {
+                    if (_nativeSurfaceVisible) return;
+                    SendMsg("fmt:link"); e.Handled = true;
+                }
+                else if (e.Key == Key.T)
+                {
+                    if (_nativeSurfaceVisible) return;
+                    SendMsg("fmt:table"); e.Handled = true;
+                }
                 else if (e.Key == Key.X && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
                 {
+                    if (_nativeSurfaceVisible) return;
                     SendMsg("fmt:strike");
                     e.Handled = true;
                 }
@@ -2047,6 +2073,7 @@ namespace TypoZen
                 }
                 else if (e.Key == Key.F)
                 {
+                    if (_nativeSurfaceVisible) return;
                     // Give WebView keyboard focus so the find input can take caret
                     try { if (_webView != null) _webView.Focus(); } catch { }
                     SendMsg("cmd:find");
@@ -2054,6 +2081,7 @@ namespace TypoZen
                 }
                 else if (e.Key == Key.H)
                 {
+                    if (_nativeSurfaceVisible) return;
                     try { if (_webView != null) _webView.Focus(); } catch { }
                     SendMsg("cmd:find_replace");
                     e.Handled = true;
@@ -8353,25 +8381,33 @@ namespace TypoZen
             finally { _applyingRestoredSettings = false; }
         }
 
+        /// <summary>
+        /// Messages that act on the editor document, not the native surface.
+        /// "cmd:" was gated first (Toggle Sidebar, Find, About). "fmt:" and
+        /// export_html were not, so Ctrl+B on a PDF bolded the markdown behind it.
+        /// Host chatter (load_content, marks_load, stats_refresh) must still pass.
+        /// </summary>
+        private static bool IsEditorDocumentMessage(string msg)
+        {
+            if (string.IsNullOrEmpty(msg)) return false;
+            if (msg.StartsWith("cmd:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("fmt:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("export_html", StringComparison.Ordinal)) return true;
+            return false;
+        }
+
         private void SendMsg(string msg)
         {
             // A chrome command must not reach the editor while a native tab is showing.
             //
-            // Every toolbar button and menu item below routes here as "cmd:...", and the
-            // editor WebView is still alive behind the PDF or the image -- so pressing
-            // Toggle Sidebar on a PDF collapsed the sidebar of the document you were not
-            // looking at, silently, and you found it closed when you switched back. About
-            // was worse: the modal opened on the hidden surface, which is what "it
-            // triggers on a different tab" was. Neither told you anything.
-            //
-            // Only "cmd:" is gated. load_content, stats_refresh, marks_load and the rest
-            // are the host talking to its own page and must still get through, or a
-            // native tab would stop the editor being updated at all.
-            if (_nativeSurfaceVisible && msg != null
-                && msg.StartsWith("cmd:", StringComparison.Ordinal))
-            {
+            // Every toolbar button and menu item below routes here, and the editor
+            // WebView is still alive behind the PDF or the image -- so pressing Toggle
+            // Sidebar on a PDF collapsed the sidebar of the document you were not
+            // looking at, silently, and you found it closed when you switched back.
+            // About opened its modal on the hidden surface. Ctrl+B posted fmt:bold and
+            // dirtied the other tab. None of that told you anything.
+            if (_nativeSurfaceVisible && IsEditorDocumentMessage(msg))
                 return;
-            }
             if (_webView != null && _webView.CoreWebView2 != null)
             {
                 _webView.CoreWebView2.PostWebMessageAsString(msg);
@@ -11931,9 +11967,10 @@ namespace TypoZen
         /// <summary>
         /// Menus that act on a document, switched off while a native tab is showing.
         ///
-        /// SendMsg already refuses to pass "cmd:" to the editor behind the native surface,
-        /// which stops the damage -- Toggle Sidebar was collapsing the sidebar of the
-        /// document you were not looking at. It does not stop the menus LOOKING alive.
+        /// SendMsg already refuses to pass editor commands (cmd:, fmt:, export_html) to
+        /// the page behind the native surface, which stops the damage -- Toggle Sidebar
+        /// was collapsing the sidebar of the document you were not looking at, and
+        /// Ctrl+B bolded it. It does not stop the menus LOOKING alive.
         /// Edit and Help are page-routed end to end (undo, cut, find, marks, syntax help,
         /// About), so both go grey whole. View is mixed: zoom, fullscreen, auto-hide,
         /// scrubber and status bar are the host's and still mean something over a PDF, so
