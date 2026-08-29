@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.27";
+        internal const string AppVersion = "0.2.28";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1890,6 +1890,21 @@ namespace TypoZen
                         _suppressNextAltMenu = true;
                         Dispatcher.BeginInvoke(new Action(() => SendMsg("cmd:toggle_sidebar")), DispatcherPriority.Send);
                     }
+                }
+            }
+
+            // Function keys the empty-tab hint and Help menu advertise. Window.KeyDown
+            // never runs while the editor WebView has focus, and AreBrowserAcceleratorKeysEnabled
+            // = false can swallow F1 (Chromium Help) before page JS. Same filter as Ctrl+Z.
+            if ((WinForms.Control.ModifierKeys & (WinForms.Keys.Control | WinForms.Keys.Alt)) == 0)
+            {
+                int vkFn = msg.wParam.ToInt32() & 0xFFFF;
+                if (vkFn == 0x70) // VK_F1
+                {
+                    handled = true;
+                    Dispatcher.BeginInvoke(new Action(() => SendMsg("cmd:help_syntax")),
+                        DispatcherPriority.Send);
+                    return;
                 }
             }
 

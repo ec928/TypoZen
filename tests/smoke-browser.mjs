@@ -603,6 +603,50 @@ async function main() {
             assert(clickJump.marked === 1, 'the clicked match is the one marked current');
         }
 
+        console.log('\n--- empty scratch is empty, and F1 actually opens help ---');
+        {
+            // The empty-tab hint used to be document text, and F1 was advertised on it
+            // (and in Help) without a page handler — F7/F8/F9 were bound, F1 was not.
+            await page.evaluate(() => loadMarkdownContent('', { replaceBook: true }));
+            await settled(page);
+            const empty = await page.evaluate(() => {
+                const wrap = document.getElementById('editor-wrapper');
+                const modal = document.getElementById('helpModal');
+                const md = (typeof getMarkdownContent === 'function') ? getMarkdownContent(false) : '';
+                const raw0 = (DocumentModel.blocks[0] && DocumentModel.blocks[0].raw) || '';
+                return {
+                    md: md,
+                    raw0: raw0,
+                    scratchEmpty: wrap && wrap.classList.contains('scratch-empty'),
+                    hintInMd: /Start typing/i.test(md) || /Untitled Document/i.test(md),
+                    modalExists: !!modal
+                };
+            });
+            assert(!empty.hintInMd, 'an empty document does not serialize the hint as markdown');
+            assert(String(empty.md || '').trim() === '', 'toMarkdown of a new scratch is empty (got ' + JSON.stringify(empty.md) + ')');
+            assert(String(empty.raw0 || '').trim() === '', 'the only block is empty, not a placeholder');
+            assert(empty.scratchEmpty, 'the wrapper carries scratch-empty so the overlay hint can paint');
+            assert(empty.modalExists, '#helpModal is in the page');
+
+            await page.keyboard.press('F1');
+            const help = await untilPage(page, () => {
+                const m = document.getElementById('helpModal');
+                if (!m || !m.classList.contains('open') || m.hasAttribute('hidden')) return false;
+                const cs = getComputedStyle(m);
+                if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+                return {
+                    open: true,
+                    display: cs.display,
+                    title: ((document.getElementById('helpTitle') || {}).textContent || '').trim(),
+                    md: (typeof getMarkdownContent === 'function') ? getMarkdownContent(false) : ''
+                };
+            }, 4000);
+            assert(help && help.open, 'F1 opens the Syntax & Shortcuts overlay');
+            assert(help && help.display === 'flex', 'the overlay is actually visible (display=' + (help && help.display) + ')');
+            assert(help && /Syntax/i.test(help.title || ''), 'the overlay title is Syntax & Shortcuts (got ' + JSON.stringify(help && help.title) + ')');
+            assert(help && String(help.md || '').trim() === '', 'opening help does not write the hint into the document');
+        }
+
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) {
             console.error('\nSMOKE FAILED');

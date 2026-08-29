@@ -2003,18 +2003,16 @@
                 openFindBar(null, true);
             }
             else if (cmd === "help_syntax") {
-                if (isTzOverlayOpen('helpModal')) closeTzOverlay('helpModal');
-                else {
-                    closeTzOverlay('aboutModal');
+                // Open, do not toggle. F1 can arrive from page JS and from the host
+                // key filter for the same key; toggling made a working F1 look dead.
+                closeTzOverlay('aboutModal');
+                if (!isTzOverlayOpen('helpModal'))
                     openTzOverlay('helpModal', 'helpClose', 'helpOk');
-                }
             }
             else if (cmd === "help_about") {
-                if (isTzOverlayOpen('aboutModal')) closeTzOverlay('aboutModal');
-                else {
-                    closeTzOverlay('helpModal');
+                closeTzOverlay('helpModal');
+                if (!isTzOverlayOpen('aboutModal'))
                     openTzOverlay('aboutModal', 'aboutClose', 'aboutOk');
-                }
             }
             else if (cmd === "toggle_debug_hud") {
                 if (typeof window.toggleDebugHUD === 'function') window.toggleDebugHUD();
@@ -2163,6 +2161,7 @@
         function openTzOverlay(id, closeId, okId) {
             const modal = document.getElementById(id);
             if (!modal) return;
+            try { modal.removeAttribute('hidden'); } catch (eH) {}
             modal.hidden = false;
             modal.classList.add('open');
             const panel = modal.querySelector('.tz-help-panel');

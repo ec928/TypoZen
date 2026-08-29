@@ -6163,8 +6163,11 @@
                         return;
                     }
                 }
-                // Function keys when WebView has focus (host may not see them)
+                // Function keys when WebView has focus (host may not see them).
+                // F1 was missing: the empty-tab hint and Help menu advertised it, but
+                // only F7/F8/F9 were bound, so the key did nothing while typing.
                 if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                    if (e.key === 'F1') { e.preventDefault(); handleCommand('help_syntax'); return; }
                     if (e.key === 'F7') { e.preventDefault(); handleCommand('toggle_reveal'); return; }
                     if (e.key === 'F8') { e.preventDefault(); handleCommand('toggle_focus'); return; }
                     if (e.key === 'F9') { e.preventDefault(); handleCommand('toggle_typewriter'); return; }

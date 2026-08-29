@@ -46,6 +46,12 @@ const shell = fs.readFileSync(path.join(__dirname, '..', 'js', 'modules', '03-sh
 assert(!/Untitled Document\\n\\nStart typing here/.test(shell),
     'new_document does not inject fake markdown');
 
+const layout = fs.readFileSync(path.join(__dirname, '..', 'js', 'modules', '02-layout.js'), 'utf8');
+assert(/e\.key === 'F1'/.test(layout) && /help_syntax/.test(layout),
+    'F1 in the page opens Syntax & Shortcuts (not only F7/F8/F9)');
+assert(/cmd === "help_syntax"/.test(shell) && /openTzOverlay\('helpModal'/.test(shell),
+    'host cmd:help_syntax opens #helpModal');
+
 console.log('\npassed=' + passed + ' failed=' + failed);
 if (failed) { console.error('SCRATCH HINT SELFTEST FAILED'); process.exit(1); }
 console.log('SCRATCH HINT SELFTEST PASSED');

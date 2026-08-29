@@ -1,6 +1,6 @@
 # TypoZen health review — 2026-08-29
 
-App-first review of the tree at **0.2.26**. Numbers counted or read here.
+App-first review of the tree at **0.2.28**. Numbers counted or read here.
 The 2026-08-28 combined review (`docs/health-review-2026-08-28-combined.md`)
 is the record of that day’s pass; this document is current status.
 
@@ -25,6 +25,13 @@ A new-tab scratch used to inject real markdown ("Untitled Document" /
 let innerText capture it on tab switch, and corrupted the buffer. Fixed
 in 0.2.27: empty scratch, hint on `#editor-wrapper`, never serialized.
 
+F1 / Help → Syntax & Shortcuts was advertised on that hint and in the
+menu, and did nothing while the editor had focus (F7/F8/F9 were bound;
+F1 was not; `Window.KeyDown` never runs inside the WebView). Fixed in
+0.2.28. That was a fundamentals miss the 0.2.26 “good shape” verdict
+did not catch — the keep-true is now `scratch-help-app`, not a review
+sentence.
+
 ---
 
 ## What landed since 0.2.15 (do not redo)
@@ -42,6 +49,7 @@ in 0.2.27: empty scratch, hint on `#editor-wrapper`, never serialized.
 | `open_doc` fail shows `NotifyLink` | Done |
 | Session restore Welcome on a real file | Done |
 | Native tab is a second surface (zoom, menus, Print, chrome `cmd:` / `fmt:`) | Done; guarded by `native-surface-app.mjs` (Ctrl+B on PDF does not dirty the hidden document) |
+| Empty new tab is empty; F1 opens Syntax & Shortcuts | Done (0.2.27 empty scratch, 0.2.28 F1). Guarded by `scratch-hint-selftest` and `scratch-help-app` |
 | Image/audio zoom greyed (shown at own size) | Done (0.2.25) |
 | `epub-open-app` Matter + Xeelee | 93/0. Harness no longer stacks CDP evaluates |
 | Print of a windowed document | Refuses rather than printing 1% |
@@ -54,6 +62,13 @@ census of empty catches; another “is seeking Xeelee a hang” pass.
 ---
 
 ## Remaining — ranked by whether a user can hit it
+
+### 0. F1 / Help → Syntax & Shortcuts did nothing — **fixed (0.2.28)**
+
+Advertised on the empty-tab hint and in Help. Page JS bound F7/F8/F9 only.
+`Window.KeyDown` has F1, but that event does not run while the editor has
+focus. `cmd:help_syntax` now opens (does not toggle) from page JS and from
+the host key filter. `scratch-help-app` sends a real `{F1}`.
 
 ### 1. Ctrl+B / I / K on a native tab formatted the hidden document — **fixed (0.2.26)**
 

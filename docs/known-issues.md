@@ -34,6 +34,18 @@ still being learned, and is exact once the document has been read through. Mark 
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### F1 / Help → Syntax & Shortcuts did nothing — **fixed** (0.2.28)
+
+The empty-tab hint and the Help menu advertised F1. Only F7/F8/F9 were bound in
+the page. `Window.KeyDown` has F1, but that event never runs while the editor
+WebView has focus, and disabled Chromium accelerator keys can swallow F1
+(browser Help) before page JS. The key looked dead.
+
+**Now:** page JS binds F1 next to F7/F8/F9; the host key filter posts
+`cmd:help_syntax` the same way it posts Ctrl+Z. The overlay **opens** (does not
+toggle, so a page+host double-fire cannot close it). CSS `.open` wins over
+`[hidden]`. `scratch-help-app` presses a real `{F1}` into the window.
+
 ### New-tab placeholder was real document text — **fixed** (0.2.27)
 
 New Tab loaded `# Untitled Document` / `Start typing here...` as markdown.

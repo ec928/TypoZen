@@ -60,7 +60,7 @@ Implemented in:
 4. Up/Down with hits are owned by `bindReaderFindKeys` (capture). The page handler must **return** for those keys when hits exist so search wins.
 5. There is **no** `,` `.` `<` `>` search chord. Removed: collided with typing.
 
-Help: **F1** / **Help → Syntax & Shortcuts** → `#helpModal`. **Help → About TypoZen** → `#aboutModal`. Both are themed in-page overlays (`openTzOverlay` in `03-shell.js`), not `alert` / MessageBox. Debug HUD: **Ctrl+Shift+D**.
+Help: **F1** / **Help → Syntax & Shortcuts** → `#helpModal`. **Help → About TypoZen** → `#aboutModal`. Both are themed in-page overlays (`openTzOverlay` in `03-shell.js`), not `alert` / MessageBox. Debug HUD: **Ctrl+Shift+D**. F1 is bound in **two** places because Window.KeyDown does not run while the editor WebView has focus, and `AreBrowserAcceleratorKeysEnabled=false` can swallow Chromium Help: page JS (`02-layout.js`, next to F7/F8/F9) and the host `ThreadPreprocessMessage` filter (same path as Ctrl+Z). `cmd:help_syntax` **opens** the overlay; it does not toggle. Esc / the Close button dismisses it. Guarded by `scratch-hint-selftest` and `scratch-help-app`.
 
 ## Search UX (related)
 

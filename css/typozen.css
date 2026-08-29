@@ -1373,11 +1373,13 @@
             font-family: var(--ui-font, 'Inter', system-ui, sans-serif);
             color: var(--tx, #F4F4F5);
         }
+        /* !important: Chromium's UA [hidden] is also display:none !important, and
+           openTzOverlay must win once it has removed the attribute and added .open.
+           If both were present, the overlay opened in the DOM and stayed invisible. */
         .tz-help-overlay.open {
-            display: flex;
+            display: flex !important;
         }
-        /* Prefer .open over [hidden] so we do not fight the UA [hidden] rule. */
-        .tz-help-overlay[hidden] {
+        .tz-help-overlay[hidden]:not(.open) {
             display: none !important;
         }
         .tz-link-panel { width: min(460px, 100%); }
