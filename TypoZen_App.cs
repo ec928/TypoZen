@@ -10814,6 +10814,8 @@ namespace TypoZen
             if (string.IsNullOrEmpty(c)) return true;
             // TypoZen_Template new_document / empty scratchpad
             if (c.IndexOf("Start typing here", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (c.IndexOf("Start typing...", StringComparison.OrdinalIgnoreCase) >= 0
+                && c.IndexOf("F1", StringComparison.OrdinalIgnoreCase) >= 0) return true;
             if (c.Equals("# Untitled Document", StringComparison.OrdinalIgnoreCase)) return true;
             if (c.StartsWith("# Untitled Document", StringComparison.OrdinalIgnoreCase)
                 && c.Length < 80) return true;
@@ -10908,6 +10910,10 @@ namespace TypoZen
                 catch { }
             }
             // Skip full remount when the page already holds this tab's buffer (A→B→A).
+            // Mode first. Loading a new scratch into the previous tab's Pages layout
+            // is how an empty editor painted as a 1-glyph column (the gutter-width
+            // placeholder on .block::before).
+            ApplyTabView(tab);
             bool alreadyLoaded = EngineTabAlreadyOnPage(tab, content);
             if (!alreadyLoaded)
             {
@@ -10917,9 +10923,6 @@ namespace TypoZen
                     LoadContentToEditor(content, tab.IsDirty, tab.FilePath, tab.ResumeBlock);
                 RememberEnginePageLoad(tab, content);
             }
-
-            // Mode + columns first (column remount moves the view). Then position last.
-            ApplyTabView(tab);
             RequestTabResume(tab);
             SendBookmarksForCurrentDocument();
             UpdateStatusDisplay();

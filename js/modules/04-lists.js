@@ -1040,13 +1040,16 @@
             if (!block) return '';
             try {
                 if (state.revealOnFocus) {
-                    return coerceBlockRaw(block.innerText || '');
+                    const t = coerceBlockRaw(block.innerText || '');
+                    return (typeof isScratchHintText === 'function' && isScratchHintText(t)) ? '' : t;
                 }
                 // Always tree-walk (blockHtmlToMarkdown). Joining child innerText used to
                 // strip nested ** / * / ~~ after toolbar or contenteditable splits.
-                return coerceBlockRaw(blockHtmlToMarkdown(block));
+                const md = coerceBlockRaw(blockHtmlToMarkdown(block));
+                return (typeof isScratchHintText === 'function' && isScratchHintText(md)) ? '' : md;
             } catch (e) {
-                return coerceBlockRaw(block.getAttribute('data-raw') || block.innerText || '');
+                const fb = coerceBlockRaw(block.getAttribute('data-raw') || block.innerText || '');
+                return (typeof isScratchHintText === 'function' && isScratchHintText(fb)) ? '' : fb;
             }
         }
 
@@ -1073,6 +1076,7 @@
                 try { blk.setAttribute('data-tz-dirty', '1'); } catch (e3) {}
                 try { DocumentModel.syncElToModel(blk); } catch (e4) {}
                 _contentCache = null;
+                try { if (typeof syncScratchEmpty === 'function') syncScratchEmpty(); } catch (e5) {}
             } catch (e) {
                 try { window.tzLogException('flushActiveBlockToRaw', e); } catch (eL) {}
             }
@@ -1100,12 +1104,19 @@
                 return normalizeBlockRaw(serializeBlockDomToRaw(block));
             }
             if (raw != null && raw !== '') return normalizeBlockRaw(raw);
-            // No stored raw yet (brand-new empty block): take the DOM.
-            if (focusedHere) return normalizeBlockRaw(serializeBlockDomToRaw(block));
+            // data-raw="" is a real empty block. Do not fall through to innerText:
+            // Chromium includes CSS ::before, and the old scratch hint lived on
+            // .block::before (the 10px gutter), so a tab switch saved that sentence
+            // as the document.
+            if (raw != null) return '';
+            if (focusedHere) {
+                const live = normalizeBlockRaw(serializeBlockDomToRaw(block));
+                return (typeof isScratchHintText === 'function' && isScratchHintText(live)) ? '' : live;
+            }
             const fromDom = String(block.innerText || '').replace(/\u00a0/g, ' ');
+            if (typeof isScratchHintText === 'function' && isScratchHintText(fromDom)) return '';
             if (fromDom.trim()) return normalizeBlockRaw(fromDom);
-            if (raw != null) return normalizeBlockRaw(raw);
-            return normalizeBlockRaw(fromDom);
+            return '';
         }
 
         /**
@@ -1163,6 +1174,7 @@
             if (state.revealOnFocus) block.innerText = raw;
             else renderBlockPreview(block, raw);
             // Stage A dual-write: model tracks the same raw as the attribute.
+            try { if (typeof syncScratchEmpty === 'function') syncScratchEmpty(); } catch (eSc) {}
             try {
                 let mi = DocumentModel.modelIndexOfEl(block);
                 if (mi < 0 && editor && block.parentNode === editor) {

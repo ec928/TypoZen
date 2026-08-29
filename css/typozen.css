@@ -675,10 +675,8 @@
 
         /* Editor Wrapper — full width; horizontal padding = real page margins (not line-length caps) */
         #editor-wrapper {
-            /* Containing block for #source-highlights, which is positioned from this
-               element's rect. Safe to add: the only absolutely positioned descendant is
-               #editor .block::before, and .block is already position:relative, so its
-               anchor does not change. */
+            /* Containing block for #source-highlights and the scratch-empty hint.
+               .block::before is the bookmark gutter (position:relative on .block). */
             position: relative;
             max-width: none;
             width: 100%;
@@ -2077,14 +2075,22 @@
             accent-color: var(--accent, #3B82F6);
         }
 
-        #editor .block:only-child:empty::before {
+        /* Hint for an empty scratch tab. MUST NOT live on .block::before: that
+           pseudo is the 10px bookmark gutter (position:absolute; width:10px), so
+           putting the sentence there laid it out one glyph per line, innerText
+           captured it on tab switch, and the user's document became that string. */
+        #editor-wrapper.scratch-empty::after {
             content: "Start typing... (F1 or Help menu for markdown syntax)";
+            position: absolute;
+            left: 16px;
+            top: 8px;
+            right: 16px;
             color: var(--tx-muted, #A1A1AA);
             opacity: 0.45;
             pointer-events: none;
-        }
-        .block:not(:only-child):empty::before, .block:not(:empty)::before {
-            content: none;
+            white-space: normal;
+            font-weight: normal;
+            z-index: 0;
         }
 
         /* Table Styling */

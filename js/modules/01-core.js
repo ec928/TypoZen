@@ -30,6 +30,21 @@
         }
         tzMark('(page) top-level script begins');
 
+        /**
+         * Generated empty-editor hint, never authored. innerText includes ::before, so
+         * a flush of an empty block used to turn the CSS placeholder into document text
+         * (and a 10px gutter rail laid it out one glyph per line).
+         */
+        function isScratchHintText(s) {
+            const t = String(s == null ? '' : s).replace(/\s+/g, '');
+            if (!t) return false;
+            if (/^Starttypinghere\.\.\.?$/i.test(t)) return true;
+            if (/^Starttyping\.\.\.\(F1orHelpmenuformarkdownsyntax\)$/i.test(t)) return true;
+            if (/^#?UntitledDocument$/i.test(t)) return true;
+            return false;
+        }
+        window.isScratchHintText = isScratchHintText;
+
         // --- CORE APPLICATION STATE ---
         let state = {
             mode: 'wysiwyg',

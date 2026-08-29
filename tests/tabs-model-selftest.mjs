@@ -100,7 +100,8 @@ class TabModel {
         if (!tab || tab.FilePath || tab.IsDirty) return false;
         const c = (tab.Content || '').trim();
         if (!c) return true;
-        if (/start typing here/i.test(c)) return true;
+            if (/start typing here/i.test(c)) return true;
+        if (/start typing\.\.\./i.test(c) && /F1/i.test(c)) return true;
         if (/^# Untitled Document/i.test(c) && c.length < 80) return true;
         // First-run welcome document from the template — generated, not authored.
         if (/^# Welcome to TypoZen/i.test(c)) return true;

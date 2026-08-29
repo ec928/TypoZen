@@ -1033,12 +1033,14 @@
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
                     try { cancelPositionReport(); } catch (eCP) {}
-                    const untitled = "# Untitled Document\n\nStart typing here...";
-                    loadMarkdownContent(untitled, { replaceBook: true });
+                    // Empty on purpose. Fake "Untitled Document" / "Start typing here..."
+                    // was real markdown: deleting it still left a CSS ::before on the
+                    // block (the 10px gutter rail) that innerText then saved as the file.
+                    loadMarkdownContent('', { replaceBook: true });
                     try {
                         state.lastSavedContent = (typeof DocumentModel !== 'undefined')
-                            ? DocumentModel.toMarkdown() : untitled;
-                    } catch (eU) { state.lastSavedContent = untitled; }
+                            ? DocumentModel.toMarkdown() : '';
+                    } catch (eU) { state.lastSavedContent = ''; }
                     if (state.mode === 'source') {
                         sourceEditor.value = state.lastSavedContent;
                         requestAnimationFrame(resizeSourceEditor);
@@ -1412,6 +1414,7 @@
                 else if (which === 'scroll') change.scroll = value;
                 else return;
                 applyViewState(resolveViewState(currentViewState(), change));
+                try { if (typeof syncScratchEmpty === 'function') syncScratchEmpty(); } catch (eSc) {}
                 return;
             }
             if (cmd === "view_sync") { postViewState(currentViewState()); return; }

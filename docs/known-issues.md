@@ -34,6 +34,19 @@ still being learned, and is exact once the document has been read through. Mark 
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### New-tab placeholder was real document text — **fixed** (0.2.27)
+
+New Tab loaded `# Untitled Document` / `Start typing here...` as markdown.
+The CSS hint lived on `.block::before`, which is the 10px bookmark gutter
+(`width:10px`), so the sentence painted one glyph per line. Chromium
+`innerText` includes `::before`, so a tab switch saved that string as the
+file — including after the user had deleted it. Selection drags on that
+rail also jumped from the start of the document.
+
+**Now:** new documents are empty. The hint is an overlay on
+`#editor-wrapper`, `pointer-events: none`, not in the block. `getBlockRaw`
+does not prefer `innerText` over empty `data-raw`.
+
 ### Ctrl+B on a PDF formatted the hidden document — **fixed** (0.2.26)
 
 `SendMsg` gated `cmd:` on a native tab but not `fmt:` / `export_html`. The

@@ -1187,6 +1187,25 @@
         /** Block indices that begin a spine document, i.e. a chapter. */
         let _bookDocStarts = {};
 
+        function syncScratchEmpty() {
+            const wrap = document.getElementById('editor-wrapper');
+            if (!wrap) return;
+            let empty = false;
+            try {
+                if (state.mode === 'wysiwyg'
+                    && typeof DocumentModel !== 'undefined'
+                    && DocumentModel.kind !== 'epub'
+                    && DocumentModel.blocks
+                    && DocumentModel.blocks.length <= 1) {
+                    const r = DocumentModel.blocks[0] ? String(DocumentModel.blocks[0].raw || '') : '';
+                    empty = !String(r).trim()
+                        && !(typeof isScratchHintText === 'function' && isScratchHintText(r));
+                }
+            } catch (e) {}
+            wrap.classList.toggle('scratch-empty', empty);
+        }
+        window.syncScratchEmpty = syncScratchEmpty;
+
         function createPreviewBlockEl(raw, progressive, modelIndex) {
             const block = document.createElement('div');
             block.className = 'block';
@@ -1332,6 +1351,7 @@
                 if (!stickyWanted) setFocusedBlock(editor.querySelector('.block'));
                 seedHistoryAndCache();
                 window.__tzPreviewPainting = false;
+                try { syncScratchEmpty(); } catch (eSc) {}
                 try { updateOutline(); } catch (eO) {}
             // Marks may have arrived before this document did; rescue any that had
             // nothing to resolve against at the time.
@@ -1379,6 +1399,7 @@
                     currentActiveBlock = editor.firstElementChild;
                 }
                 seedHistoryAndCache();
+                try { syncScratchEmpty(); } catch (eSc) {}
             }
 
             function afterPaint() {

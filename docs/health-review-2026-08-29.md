@@ -18,9 +18,12 @@ native-tab pass closed a real class of “the shell acted on the document
 you were not looking at.” Seeking a huge book is not a hang; `epub-open-app`
 is 93/0.
 
-There is **no open defect-class pile**. The native-tab leftover (Ctrl+B
-on a PDF formatting the hidden document) is **fixed in 0.2.26**. What
-remains is product limits, not this week's bugs.
+There is **no open defect-class pile** from the 0.2.15–0.2.26 punch-list.
+A new-tab scratch used to inject real markdown ("Untitled Document" /
+"Start typing here...") and put the CSS hint on `.block::before` (the
+10px bookmark gutter), which laid the sentence out one glyph per line,
+let innerText capture it on tab switch, and corrupted the buffer. Fixed
+in 0.2.27: empty scratch, hint on `#editor-wrapper`, never serialized.
 
 ---
 
