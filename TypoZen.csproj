@@ -73,6 +73,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Compile Include="EpubReader.cs" />
+    <Compile Include="SpellCheck.cs" />
     <Compile Include="TypoZen_Launch.cs" />
     <Compile Include="TypoZen_App.cs">
       <SubType>Code</SubType>

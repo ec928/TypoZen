@@ -1228,6 +1228,18 @@
             background-color: var(--accent, #f59e0b);
             color: var(--accent-tx, #111);
         }
+        /* Windows spell checker hits in Preview. Wavy underline if the Highlight
+           API will paint it; a light wash if not. Not dictionary.tsv — that file
+           is definitions. */
+        ::highlight(typozen-spell) {
+            text-decoration: underline wavy #ef4444;
+            background-color: color-mix(in srgb, #ef4444 14%, transparent);
+        }
+        .selpop-spell {
+            flex-wrap: wrap;
+            border-top: 1px solid var(--border, #3F3F46);
+        }
+        .selpop-spell[hidden] { display: none; }
 
         /* Source mode is a <textarea>, so none of the above can reach it: the Custom
            Highlight API paints Ranges over DOM text nodes and a textarea's content is

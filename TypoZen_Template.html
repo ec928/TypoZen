@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-block-hover="gutter">
+<html lang="en" data-block-hover="gutter" spellcheck="true">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -178,9 +178,12 @@
     <div id="main-container">
         <div id="editor-wrapper">
             <!-- Live Preview WYSIWYG Mode -->
-            <div id="editor" contenteditable="true" spellcheck="true"></div>
-            <!-- Raw Source Mode -->
-            <textarea id="source-editor" spellcheck="false"></textarea>
+            <div id="editor" contenteditable="true" spellcheck="true" lang="en"></div>
+            <!-- Raw Source Mode. Chromium paints its own squiggles here; Preview uses
+                 the host Windows spell checker (dictionary.tsv is definitions, not a
+                 spell list) and CSS highlights, because re-rendering blocks would wipe
+                 the browser's markers. -->
+            <textarea id="source-editor" spellcheck="true" lang="en"></textarea>
         </div>
         <!-- Book-style page numbers, Reader + Pagination only. Driven from the page map,
              so they double as a visible check that the pagination is real. -->
@@ -210,6 +213,7 @@
             <button type="button" id="selPopFind" class="selpop-btn">Find in document</button>
             <button type="button" id="selPopLink" class="selpop-btn"><span aria-hidden="true">&#128279;</span> Add Link</button>
         </div>
+        <div id="selPopSpell" class="selpop-actions selpop-spell" hidden></div>
         <div id="selPopBody" class="selpop-body" hidden></div>
     </div>
 
@@ -354,6 +358,7 @@
                             <tr><td>Close tab · cycle tabs</td><td><kbd>Ctrl+W</kbd> · <kbd>Ctrl+Tab</kbd></td></tr>
                             <tr><td>Print / PDF</td><td><kbd>Ctrl+P</kbd></td></tr>
                             <tr><td>Undo · Redo</td><td><kbd>Ctrl+Z</kbd> · <kbd>Ctrl+Y</kbd></td></tr>
+                            <tr><td>Check spelling · next issue</td><td>Edit → Spelling</td></tr>
                         </tbody>
                     </table>
                 </section>

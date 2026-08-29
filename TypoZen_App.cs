@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.28";
+        internal const string AppVersion = "0.2.29";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -875,6 +875,7 @@ namespace TypoZen
             }
             _appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
             StartLexiconLoad();
+            try { WindowsSpell.ConfigureUserWords(Path.Combine(CacheDir(), "user_words.txt")); } catch { }
             Program.PerfMark("window ctor");
             SweepLegacyAppLoadStage();
             try { PruneLoadStageDir(maxAgeMinutes: 0); } catch { }
@@ -1217,6 +1218,8 @@ namespace TypoZen
             BindClick("mMarkToggle", (s, e) => SendMsg("cmd:mark_toggle"));
             BindClick("mMarksPane", (s, e) => SendMsg("cmd:show_marks"));
             BindClick("mReturnJump", (s, e) => SendMsg("cmd:return_jump"));
+            BindClick("mSpellCheck", (s, e) => SendMsg("cmd:spell_check_doc"));
+            BindClick("mSpellNext", (s, e) => SendMsg("cmd:spell_next"));
             BindClick("mInsertLink", (s, e) => SendMsg("fmt:link"));
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
             BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
@@ -2897,6 +2900,36 @@ namespace TypoZen
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// Check a block of text the page is painting. Offsets are in the same string
+        /// the page walked from its text nodes, so the wavy underline lands on the word.
+        /// </summary>
+        private void HandleSpellCheck(string body)
+        {
+            if (_nativeSurfaceVisible) return;
+            int nl = body.IndexOf('\n');
+            string id = nl < 0 ? body : body.Substring(0, nl);
+            string text = nl < 0 ? "" : body.Substring(nl + 1);
+            var sb = new StringBuilder();
+            sb.Append("spell_hits:").Append(id)
+                .Append('\t').Append(WindowsSpell.Available ? "1" : "0");
+            if (!WindowsSpell.Available && !string.IsNullOrEmpty(WindowsSpell.LastError))
+                sb.Append('\t').Append(WindowsSpell.LastError.Replace('\n', ' ').Replace('\t', ' '));
+            if (WindowsSpell.Available && !string.IsNullOrEmpty(text))
+            {
+                foreach (var h in WindowsSpell.Check(text))
+                {
+                    sb.Append('\n')
+                        .Append(h.Start).Append('\t')
+                        .Append(h.Length).Append('\t')
+                        .Append((h.Word ?? "").Replace('\t', ' ').Replace('\n', ' '))
+                        .Append('\t')
+                        .Append(h.Suggestions == null ? "" : string.Join("|", h.Suggestions));
+                }
+            }
+            SendMsg(sb.ToString());
         }
 
         /// <summary>One word in, one definition out. Empty when there is nothing to look in.</summary>
@@ -5004,7 +5037,13 @@ namespace TypoZen
                 extraArgs += " --remote-debugging-port=" + Program.RemoteDebugPort.ToString(System.Globalization.CultureInfo.InvariantCulture)
                            + " --remote-allow-origins=*";
             }
-            return new CoreWebView2EnvironmentOptions(extraArgs, null, null, false);
+            // Language is the spellcheck dictionary Chromium will load for Source
+            // (a <textarea>). Preview uses Windows ISpellChecker instead: component
+            // update is off, so Hunspell dictionaries never arrive, and WordNet is
+            // not a spell list. Null here used to disable Source squiggles entirely.
+            string lang = System.Globalization.CultureInfo.CurrentUICulture.Name;
+            if (string.IsNullOrEmpty(lang)) lang = "en-US";
+            return new CoreWebView2EnvironmentOptions(extraArgs, lang, null, false);
         }
 
         private async void InitializeWebViewAsync()
@@ -5791,6 +5830,18 @@ namespace TypoZen
             else if (msg.StartsWith("define:"))
             {
                 AnswerDefinition(msg.Substring(7).Trim());
+            }
+            else if (msg.StartsWith("spell_check:"))
+            {
+                HandleSpellCheck(msg.Substring(12));
+            }
+            else if (msg.StartsWith("spell_add:"))
+            {
+                WindowsSpell.Add(msg.Substring(10).Trim(), !SuppressDocumentTraces());
+            }
+            else if (msg.StartsWith("spell_ignore:"))
+            {
+                WindowsSpell.Ignore(msg.Substring(13).Trim());
             }
             else if (msg.StartsWith("marks_set:"))
             {
@@ -7844,6 +7895,7 @@ namespace TypoZen
             "headingMenu", "btnQuote", "listMenu",
             "btnLink", "tableMenu",
             "mInsertLink", "mInsertTable", "mStrike",
+            "mSpellCheck", "mSpellNext",
         };
         private readonly Dictionary<string, object> _formatTips = new Dictionary<string, object>();
 

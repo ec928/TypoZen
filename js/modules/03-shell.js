@@ -306,6 +306,7 @@
                 }
                 if (typeof HistoryManager !== 'undefined') HistoryManager.snapshot();
                 updateStatsNow();
+                try { if (typeof scheduleSpellCheck === 'function') scheduleSpellCheck(); } catch (eSp) {}
                 if (isFindBarOpen()) {
                     runFind(document.getElementById('findInput').value, true, { navigate: false });
                 } else {
@@ -937,6 +938,10 @@
                     const parts = msg.substring(11).split('	');
                     try { showDefinition(parts[1] || '', parts[2] || '', parts[0] === '1', parts[3] || ''); }
                     catch (eDf) {}
+                }
+                else if (msg.startsWith("spell_hits:")) {
+                    try { if (typeof applySpellHits === 'function') applySpellHits(msg.substring(11)); }
+                    catch (eSp) {}
                 }
                 else if (msg.startsWith("marks_load:")) {
                     // This document's stored marks. Deferred a beat: the host sends it in the
@@ -2016,6 +2021,12 @@
             }
             else if (cmd === "toggle_debug_hud") {
                 if (typeof window.toggleDebugHUD === 'function') window.toggleDebugHUD();
+            }
+            else if (cmd === "spell_check_doc") {
+                if (typeof spellCheckDocument === 'function') spellCheckDocument();
+            }
+            else if (cmd === "spell_next") {
+                if (typeof spellNextIssue === 'function') spellNextIssue();
             }
         }
 

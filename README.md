@@ -114,6 +114,18 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your _reading position_, which is automatic, written atomically as you read, and unaffected by any of this.
 
+### Spelling
+
+**The bundled dictionary is not a spell checker.** `dictionary.tsv` is WordNet lemmas for **Look up** (definitions and synonyms). It does not know `teh` from `the`, and using it as a spell list would underline every inflection.
+
+Spelling uses **WPF’s built-in dictionaries** (English, French, German, Spanish with .NET 4 — the same engine a WPF TextBox uses):
+
+- **Preview:** wavy underline on the paragraph you are editing. Select the word — the popover offers replacements, **Ignore**, and **Add to dictionary** (persisted in the cache folder as `user_words.txt`, not in the document).
+- **Source:** Chromium’s own squiggles on the textarea.
+- **Edit → Spelling → Check Document** walks the file and selects the first issue; **Next Issue** continues. Books, PDFs and Reader are skipped.
+
+WPF ships dictionaries for English, French, German and Spanish. Other UI languages will not underline until a dictionary is available.
+
 ### Looking a word up
 
 Select text and a popover appears beside it — **Highlight** and **Find in document**, and for a single word the lookup itself. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.

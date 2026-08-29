@@ -2255,6 +2255,7 @@
             // be asked for.
             const lookup = document.getElementById('selPopLookup');
             if (lookup) lookup.hidden = !_selPopWord;
+            try { fillSpellSuggestions(_selPopWord); } catch (eSp) {}
             // Above the selection, or below when there is no room. Clamped to the window
             // so a selection at the edge does not push it off screen.
             const w = pop.offsetWidth || 240, h = pop.offsetHeight || 40;
@@ -2473,6 +2474,310 @@
                 hideSelPop();
             }, true);
         }
+
+        /* ---- Spelling (Windows ISpellChecker via the host) ----------------------
+           dictionary.tsv is definitions, not a spell list. Underlines and replacements
+           come from the OS proofing engine. The page paints; the host decides. */
+
+        let _spellTimer = null;
+        let _spellReq = 0;
+        let _spellPending = null;
+        let _spellHits = [];
+        let _spellBlockEl = null;
+        let _spellDocFrom = 0;
+
+        function blockPlainText(el) {
+            if (!el) return '';
+            const parts = [];
+            const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+            let n;
+            while ((n = walk.nextNode())) parts.push(n.nodeValue || '');
+            return parts.join('');
+        }
+
+        function rangeForPlainOffset(el, start, len) {
+            if (!el || len <= 0 || start < 0) return null;
+            const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+            let off = 0, n, aNode = null, aOff = 0, bNode = null, bOff = 0;
+            const end = start + len;
+            while ((n = walk.nextNode())) {
+                const L = (n.nodeValue || '').length;
+                if (!aNode && start < off + L) { aNode = n; aOff = start - off; }
+                if (end <= off + L) { bNode = n; bOff = end - off; break; }
+                off += L;
+            }
+            if (!aNode || !bNode) return null;
+            try {
+                const r = document.createRange();
+                r.setStart(aNode, Math.max(0, aOff));
+                r.setEnd(bNode, Math.max(0, Math.min(bOff, (bNode.nodeValue || '').length)));
+                return r;
+            } catch (e) { return null; }
+        }
+
+        function clearSpellHighlights() {
+            _spellHits = [];
+            _spellBlockEl = null;
+            try {
+                if (window.CSS && CSS.highlights) CSS.highlights.delete('typozen-spell');
+            } catch (e) {}
+        }
+
+        function paintSpellOnBlock(el, hits) {
+            _spellHits = hits || [];
+            _spellBlockEl = el;
+            const ranges = [];
+            if (el && hits) {
+                for (let i = 0; i < hits.length; i++) {
+                    const r = rangeForPlainOffset(el, hits[i].start, hits[i].len);
+                    if (r) ranges.push(r);
+                }
+            }
+            try {
+                if (!window.CSS || !CSS.highlights || typeof Highlight === 'undefined') return;
+                if (ranges.length) CSS.highlights.set('typozen-spell', new Highlight(...ranges));
+                else CSS.highlights.delete('typozen-spell');
+            } catch (e2) {}
+        }
+
+        function spellingEnabledHere() {
+            if (state.mode === 'reader') return false;
+            try {
+                if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
+                    return false;
+            } catch (e) {}
+            return true;
+        }
+
+        function scheduleSpellCheck() {
+            if (!spellingEnabledHere()) { clearSpellHighlights(); return; }
+            if (_spellTimer) clearTimeout(_spellTimer);
+            _spellTimer = setTimeout(runSpellCheckNow, 420);
+        }
+        window.scheduleSpellCheck = scheduleSpellCheck;
+
+        function runSpellCheckNow() {
+            _spellTimer = null;
+            if (!spellingEnabledHere()) { clearSpellHighlights(); return; }
+            if (state.mode === 'source') {
+                clearSpellHighlights();
+                return;
+            }
+            let blk = null;
+            try {
+                const sel = window.getSelection();
+                if (sel && sel.anchorNode) blk = getAncestorBlock(sel.anchorNode);
+            } catch (e) {}
+            if (!blk) blk = currentActiveBlock;
+            if (!blk || !editor || !editor.contains(blk)) { clearSpellHighlights(); return; }
+            const text = blockPlainText(blk);
+            if (!text.trim()) { clearSpellHighlights(); return; }
+            const id = 'live' + (++_spellReq);
+            _spellPending = { id: id, el: blk, mode: 'live', text: text };
+            try { postMsg('spell_check:' + id + '\n' + text.slice(0, 8000)); } catch (e2) {}
+        }
+
+        function parseSpellHits(rest) {
+            const hits = [];
+            const lines = String(rest || '').split('\n');
+            for (let i = 0; i < lines.length; i++) {
+                if (!lines[i]) continue;
+                const p = lines[i].split('\t');
+                const start = parseInt(p[0], 10) || 0;
+                const len = parseInt(p[1], 10) || 0;
+                if (len <= 0) continue;
+                hits.push({
+                    start: start,
+                    len: len,
+                    word: p[2] || '',
+                    suggs: p[3] ? p[3].split('|').filter(Boolean) : []
+                });
+            }
+            return hits;
+        }
+
+        function applySpellHits(payload) {
+            const raw = String(payload == null ? '' : payload);
+            const nl = raw.indexOf('\n');
+            const first = nl < 0 ? raw : raw.slice(0, nl);
+            const id = first.split('\t')[0];
+            const hits = parseSpellHits(nl < 0 ? '' : raw.slice(nl + 1));
+            if (_spellPending && _spellPending.id === id && _spellPending.mode === 'doc') {
+                if (hits.length) {
+                    _spellDocFrom = (_spellPending.index | 0) + 1;
+                    jumpToSpellHit(_spellPending.index | 0, hits[0], _spellPending.text);
+                } else {
+                    _spellPending.index = (_spellPending.index | 0) + 1;
+                    spellCheckDocumentStep();
+                }
+                return;
+            }
+            if (_spellPending && _spellPending.id === id && _spellPending.el)
+                paintSpellOnBlock(_spellPending.el, hits);
+        }
+        window.applySpellHits = applySpellHits;
+
+        function jumpToSpellHit(blockIndex, hit, text) {
+            try {
+                if (typeof goToModelBlock === 'function') goToModelBlock(blockIndex);
+            } catch (e) {}
+            const el = (typeof mountedBlockAtFormatIndex === 'function')
+                ? mountedBlockAtFormatIndex(blockIndex)
+                : (editor && editor.querySelector('.block[data-model-index="' + blockIndex + '"]'));
+            if (!el) return;
+            paintSpellOnBlock(el, [hit]);
+            const r = rangeForPlainOffset(el, hit.start, hit.len);
+            if (r) {
+                try {
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(r);
+                } catch (e2) {}
+            }
+            try { showSelPop(); fillSpellSuggestions(hit.word, hit.suggs); } catch (e3) {}
+        }
+
+        function spellCheckDocument() {
+            if (!spellingEnabledHere()) return;
+            _spellDocFrom = 0;
+            _spellPending = { id: '', mode: 'doc', index: 0, text: '' };
+            spellCheckDocumentStep();
+        }
+        window.spellCheckDocument = spellCheckDocument;
+
+        function spellNextIssue() {
+            if (!spellingEnabledHere()) return;
+            _spellPending = { id: '', mode: 'doc', index: _spellDocFrom | 0, text: '' };
+            spellCheckDocumentStep();
+        }
+        window.spellNextIssue = spellNextIssue;
+
+        function spellCheckDocumentStep() {
+            let blocks = [];
+            try {
+                if (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
+                    blocks = DocumentModel.blocks;
+            } catch (e) {}
+            let i = (_spellPending && _spellPending.mode === 'doc') ? (_spellPending.index | 0) : 0;
+            while (i < blocks.length) {
+                let text = String(blocks[i].raw == null ? '' : blocks[i].raw);
+                text = text.replace(/```[\s\S]*?```/g, ' ').replace(/`[^`]+`/g, ' ')
+                    .replace(/https?:\/\/\S+/gi, ' ').replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
+                if (text.replace(/\W+/g, '').length >= 2) {
+                    const id = 'doc' + i + 'x' + (++_spellReq);
+                    _spellPending = { id: id, mode: 'doc', index: i, text: text };
+                    try { postMsg('spell_check:' + id + '\n' + text.slice(0, 8000)); } catch (e2) {}
+                    return;
+                }
+                i++;
+            }
+            _spellPending = null;
+            clearSpellHighlights();
+            try {
+                if (typeof updateStatusBar === 'function') { /* no-op: host owns the bar */ }
+            } catch (e3) {}
+        }
+
+        function suggestionsForWord(word) {
+            const w = String(word || '');
+            if (!w) return [];
+            for (let i = 0; i < _spellHits.length; i++) {
+                if (String(_spellHits[i].word) === w) return _spellHits[i].suggs || [];
+            }
+            const lw = w.toLowerCase();
+            for (let j = 0; j < _spellHits.length; j++) {
+                if (String(_spellHits[j].word).toLowerCase() === lw)
+                    return _spellHits[j].suggs || [];
+            }
+            return [];
+        }
+
+        function fillSpellSuggestions(word, suggs) {
+            const box = document.getElementById('selPopSpell');
+            if (!box) return;
+            box.innerHTML = '';
+            const list = suggs || suggestionsForWord(word);
+            if (!word || !list.length) { box.hidden = true; return; }
+            list.slice(0, 5).forEach(function (s) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'selpop-btn selpop-btn-primary';
+                b.textContent = s;
+                b.setAttribute('data-spell-fix', s);
+                b.title = 'Replace with ' + s;
+                box.appendChild(b);
+            });
+            const ign = document.createElement('button');
+            ign.type = 'button';
+            ign.className = 'selpop-btn';
+            ign.textContent = 'Ignore';
+            ign.setAttribute('data-spell-ignore', '1');
+            box.appendChild(ign);
+            const add = document.createElement('button');
+            add.type = 'button';
+            add.className = 'selpop-btn';
+            add.textContent = 'Add to dictionary';
+            add.setAttribute('data-spell-add', '1');
+            box.appendChild(add);
+            box.hidden = false;
+        }
+
+        function applySpellFix(replacement) {
+            const word = _selPopWord || (window.getSelection() && window.getSelection().toString()) || '';
+            if (!replacement) return;
+            hideSelPop();
+            if (state.mode === 'source' && sourceEditor) {
+                const a = sourceEditor.selectionStart, b = sourceEditor.selectionEnd;
+                if (b > a) {
+                    const v = sourceEditor.value;
+                    sourceEditor.value = v.slice(0, a) + replacement + v.slice(b);
+                    sourceEditor.selectionStart = sourceEditor.selectionEnd = a + replacement.length;
+                    sourceEditor.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                scheduleSpellCheck();
+                return;
+            }
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+            try {
+                if (typeof HistoryManager !== 'undefined') HistoryManager.beginEdit();
+                const range = sel.getRangeAt(0);
+                range.deleteContents();
+                range.insertNode(document.createTextNode(replacement));
+                sel.removeAllRanges();
+                const blk = getAncestorBlock(range.startContainer);
+                if (blk && typeof markBlockEdited === 'function') markBlockEdited(blk);
+                if (typeof flushActiveBlockToRaw === 'function') flushActiveBlockToRaw();
+                if (typeof HistoryManager !== 'undefined') HistoryManager.commitEdit();
+            } catch (e) {
+                try { document.execCommand('insertText', false, replacement); } catch (e2) {}
+            }
+            scheduleSpellCheck();
+        }
+
+        (function wireSpellPop() {
+            const box = document.getElementById('selPopSpell');
+            if (!box || box.__tzWired) return;
+            box.__tzWired = true;
+            box.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            box.addEventListener('click', function (e) {
+                const t = e.target;
+                if (!t || !t.getAttribute) return;
+                const fix = t.getAttribute('data-spell-fix');
+                if (fix) { applySpellFix(fix); return; }
+                if (t.getAttribute('data-spell-ignore') && _selPopWord) {
+                    try { postMsg('spell_ignore:' + _selPopWord); } catch (err) {}
+                    hideSelPop();
+                    scheduleSpellCheck();
+                    return;
+                }
+                if (t.getAttribute('data-spell-add') && _selPopWord) {
+                    try { postMsg('spell_add:' + _selPopWord); } catch (err2) {}
+                    hideSelPop();
+                    scheduleSpellCheck();
+                }
+            });
+        })();
 
         /** Marks -> one line for the host, which stores it against the document's path. */
         function serializeMarks(marks) {

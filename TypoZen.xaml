@@ -470,6 +470,10 @@
                             <Separator/>
                             <MenuItem x:Name="mFind" Header="_Find &amp; Replace..." InputGestureText="Ctrl+F"/>
                             <MenuItem x:Name="mGoToPage" Header="_Go to Page..." InputGestureText="Ctrl+G"/>
+                            <MenuItem Header="S_pelling">
+                                <MenuItem x:Name="mSpellCheck" Header="_Check Document"/>
+                                <MenuItem x:Name="mSpellNext" Header="_Next Issue"/>
+                            </MenuItem>
                             <Separator/>
                             <MenuItem x:Name="mMarkToggle" Header="Bookmark This _Page" InputGestureText="Ctrl+Shift+M"/>
                             <MenuItem x:Name="mMarksPane" Header="Show Book_marks" InputGestureText="Ctrl+Shift+P"/>

@@ -2571,6 +2571,7 @@
                     if (blk && typeof markBlockEdited === 'function') markBlockEdited(blk);
                     flushActiveBlockToRaw();
                     updateStats();
+                    try { if (typeof scheduleSpellCheck === 'function') scheduleSpellCheck(); } catch (eSp) {}
                 } catch (err) {
                     try { window.tzLogException('input sync', err); } catch (eL) {}
                 }
