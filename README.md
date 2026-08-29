@@ -186,6 +186,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 
 ### Writing tools
 
+- **Spelling** — wavy underline in Preview as you type; select a misspelling for replacements, Ignore, or Add to dictionary. **Edit → Spelling → Check Document** / **Next Issue**. Source uses Chromium’s squiggles. The bundled `dictionary.tsv` is Look up, not this
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
 - **Every match is highlighted, in Source as well as Preview.** Preview paints them with
   the CSS Custom Highlight API. Source cannot use it — it is a `<textarea>`, and that API

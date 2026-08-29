@@ -1,6 +1,6 @@
 # TypoZen health review — 2026-08-29
 
-App-first review of the tree at **0.2.28**. Numbers counted or read here.
+App-first review of the tree at **0.2.29**. Numbers counted or read here.
 The 2026-08-28 combined review (`docs/health-review-2026-08-28-combined.md`)
 is the record of that day’s pass; this document is current status.
 
@@ -32,6 +32,10 @@ F1 was not; `Window.KeyDown` never runs inside the WebView). Fixed in
 did not catch — the keep-true is now `scratch-help-app`, not a review
 sentence.
 
+Spelling shipped in 0.2.29. `dictionary.tsv` is Look up (WordNet lemmas),
+not a spell list. Preview uses WPF’s built-in dictionaries; Source uses
+Chromium `spellcheck`. Guarded by `spell-selftest` and `spell-app`.
+
 ---
 
 ## What landed since 0.2.15 (do not redo)
@@ -50,6 +54,7 @@ sentence.
 | Session restore Welcome on a real file | Done |
 | Native tab is a second surface (zoom, menus, Print, chrome `cmd:` / `fmt:`) | Done; guarded by `native-surface-app.mjs` (Ctrl+B on PDF does not dirty the hidden document) |
 | Empty new tab is empty; F1 opens Syntax & Shortcuts | Done (0.2.27 empty scratch, 0.2.28 F1). Guarded by `scratch-hint-selftest` and `scratch-help-app` |
+| Spelling (Preview underlines + replacements; not WordNet) | Done (0.2.29). Guarded by `spell-selftest` and `spell-app` |
 | Image/audio zoom greyed (shown at own size) | Done (0.2.25) |
 | `epub-open-app` Matter + Xeelee | 93/0. Harness no longer stacks CDP evaluates |
 | Print of a windowed document | Refuses rather than printing 1% |

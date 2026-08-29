@@ -32,6 +32,16 @@ still being learned, and is exact once the document has been read through. Mark 
 
 ---
 
+## Product notes (not defects)
+
+### Spelling is not the bundled dictionary
+
+`dictionary.tsv` / `thesaurus.tsv` are WordNet **Look up**. Preview spelling is
+WPF’s dictionaries (English, French, German, Spanish). Source uses Chromium.
+Books, PDFs and Reader are not checked.
+
+---
+
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
 ### F1 / Help → Syntax & Shortcuts did nothing — **fixed** (0.2.28)

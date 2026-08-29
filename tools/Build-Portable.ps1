@@ -24,7 +24,8 @@ $files = @(
     'thesaurus.tsv',
     'README.md',
     'LICENSE',
-    'WORDNET-LICENSE.txt'
+    'WORDNET-LICENSE.txt',
+    'TypoZen.pdb'
 )
 
 foreach ($f in $files) {
@@ -42,6 +43,15 @@ foreach ($d in $dirs) {
     } else {
         Write-Warning "Directory not found: $d"
     }
+}
+
+$toolsDst = Join-Path $dist 'tools'
+New-Item -ItemType Directory -Force -Path $toolsDst | Out-Null
+$makeDict = Join-Path 'tools' 'Make-Dictionary.ps1'
+if (Test-Path $makeDict) {
+    Copy-Item $makeDict -Destination $toolsDst -Force
+} else {
+    Write-Warning "tools/Make-Dictionary.ps1 not found"
 }
 
 # Fonts: OFL faces only, and now that is all there is in fonts/.
