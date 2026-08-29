@@ -19,8 +19,9 @@ Product truth lives here and in the README; `docs/archive/` is history.
 | `docs/known-issues.md` | Product limits + fixed/mitigated notes (not a dump of suite noise) |
 | `docs/developer-editor-analysis.md` | Parked code-editor attempt |
 | `docs/app-review.md` | 0.2.7 app review + what was fixed afterwards |
+| `docs/health-review-2026-08-29.md` | Current health snapshot (app first). Remaining work lives here. |
 | `docs/health-review-2026-08-28.md` | Original health review (Claude, `1c104d3`) |
-| `docs/health-review-2026-08-28-combined.md` | Combined review + follow-up status (app first). Remaining work lives here. |
+| `docs/health-review-2026-08-28-combined.md` | 0.2.15 combined review + that day’s follow-up. Historical; 08-29 is current. |
 | `docs/archive/` | Historical plans and decision records — not current contracts |
 
 If README and code disagree, fix one of them; do not paper over with a third story.
