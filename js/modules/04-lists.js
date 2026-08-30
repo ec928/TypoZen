@@ -153,6 +153,33 @@
             } catch (e) { return false; }
         }
 
+        /**
+         * Select the whole document.
+         *
+         * selectNodeContents(editor) exactly, and deliberately nothing cleverer. That is
+         * the shape the rest of the app recognises: selectionIsWholeEditor() above tests
+         * for start and end being #editor itself with the offsets covering every child,
+         * and copy, cut, delete and Export all branch on it to read the MODEL rather than
+         * the mounted window. A range that merely covers the same text on screen would
+         * look identical to a reader and turn Select All + Copy back into copying 1% of
+         * the file -- 2,797 characters of 205,842, which is the bug that predicate exists
+         * to prevent.
+         *
+         * Source is a textarea and selects itself; the caller decides which surface it is
+         * talking about.
+         */
+        function selectAllDocument() {
+            try {
+                if (!editor) return false;
+                const range = document.createRange();
+                range.selectNodeContents(editor);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                return true;
+            } catch (e) { return false; }
+        }
+
         function selectionIsWholeVirtualDocument(range) {
             try {
                 if (typeof DocumentModel === 'undefined') return false;

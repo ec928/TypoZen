@@ -1779,6 +1779,18 @@
                 // Mode changes from the toolbar selector (and host view_set), not a shortcut.
                 postViewState(currentViewState());
             }
+            else if (cmd === "select_all") {
+                // Edit > Select All. The keyboard already works -- Source is a textarea
+                // that selects itself, and Ctrl+A in Preview is handled in 05-model --
+                // but the menu has to reach both surfaces without the caret being in
+                // either, which is the state you are in having just used the mouse.
+                if (state.mode === 'source' && sourceEditor) {
+                    try { sourceEditor.focus(); sourceEditor.select(); } catch (eSa) {}
+                } else if (typeof selectAllDocument === 'function') {
+                    try { if (editor) editor.focus(); } catch (eF) {}
+                    selectAllDocument();
+                }
+            }
             else if (cmd === "toggle_sidebar") {
                 // User pin: open if collapsed (or only edge-open), close if permanently open.
                 // Edge-hover leaves the bar open without pinning; a toolbar click in that

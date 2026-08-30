@@ -467,6 +467,7 @@
                             <MenuItem x:Name="mCut" Header="Cu_t" InputGestureText="Ctrl+X"/>
                             <MenuItem x:Name="mCopy" Header="_Copy" InputGestureText="Ctrl+C"/>
                             <MenuItem x:Name="mPaste" Header="_Paste" InputGestureText="Ctrl+V"/>
+                            <MenuItem x:Name="mSelectAll" Header="Select _All" InputGestureText="Ctrl+A"/>
                             <Separator/>
                             <MenuItem x:Name="mFind" Header="_Find &amp; Replace..." InputGestureText="Ctrl+F"/>
                             <MenuItem x:Name="mGoToPage" Header="_Go to Page..." InputGestureText="Ctrl+G"/>

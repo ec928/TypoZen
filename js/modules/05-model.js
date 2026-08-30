@@ -1732,8 +1732,14 @@
                     }
                     case 'a': {
                         let href = node.getAttribute('href') || '';
-                        if (!href || href === '#') return kids;
-                        return '[' + kids + '](' + href + ')';
+                        const label = String(kids || '').replace(/\s+/g, ' ').trim();
+                        // Skip-to-content and empty icon/sidebar links. Firefox Ctrl+A of
+                        // a web app puts those in the DOM; they are not part of the
+                        // visible prose (Notepad's text/plain omits the empty ones).
+                        if (/^skip\s+to(\s+\S+)?\s+content$/i.test(label)) return '';
+                        if (!href || href === '#' || href.charAt(0) === '#') return label;
+                        if (!label) return '';
+                        return '[' + label + '](' + href + ')';
                     }
                     case 'blockquote':
                         return kids.trim().split('\n').map(function(l) { return '> ' + l; }).join('\n') + '\n\n';
@@ -1771,11 +1777,14 @@
                 for (let c = ul.firstElementChild; c; c = c.nextElementSibling) {
                     if (c.tagName === 'LI') items.push(c);
                 }
-                return items.map(function(li, i) {
-                    let prefix = ordered ? (i + 1) + '. ' : '- ';
-                    let content = walkNode(li).trim().replace(/\n/g, '\n  ');
-                    return prefix + content;
-                }).join('\n');
+                const lines = [];
+                for (let i = 0; i < items.length; i++) {
+                    let content = walkNode(items[i]).trim().replace(/\n/g, '\n  ');
+                    if (!content) continue;
+                    let prefix = ordered ? (lines.length + 1) + '. ' : '- ';
+                    lines.push(prefix + content);
+                }
+                return lines.join('\n');
             }
 
             function walkTable(table) {
@@ -2227,14 +2236,11 @@
                     }
                 }
             }
-            if ((e.ctrlKey || e.metaKey || e.altKey) && e.key.toLowerCase() === 'a') {
-                if (state.mode !== 'source' && (document.activeElement === editor || editor.contains(document.activeElement))) {
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'a') {
+                if (state.mode === 'source') return; // textarea already selects all
+                if (document.activeElement === editor || (editor && editor.contains(document.activeElement))) {
                     e.preventDefault();
-                    const range = document.createRange();
-                    range.selectNodeContents(editor);
-                    const sel = window.getSelection();
-                    sel.removeAllRanges();
-                    sel.addRange(range);
+                    selectAllDocument();
                     return;
                 }
             }
