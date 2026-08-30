@@ -84,6 +84,49 @@ try {
     await app.eval(() => HistoryManager.undo());
     await sleep(500);
     assert(await firstRaw() === base, 'a further undo leaves the loaded document alone');
+
+    console.log(String.fromCharCode(10) + '=== a NEW document undoes all the way back to blank ===');
+    // Reported as "type 1 2 3 4 5, Ctrl+Z, the one stays". A new document's initial
+    // state is legitimately EMPTY, and undo() drops empty frames on the way past -- so
+    // the base frame was popped and discarded rather than restored, and the first thing
+    // typed could never be undone. The loaded-document case above cannot catch this:
+    // its base frame has text in it.
+    // What the host's File > New does to the page (03-shell.js: loadMarkdownContent('',
+    // { replaceBook: true })). 'new_tab' is not a page command -- asking for it silently
+    // did nothing and the digits went into the document already open.
+    await app.eval(() => loadMarkdownContent('', { replaceBook: true }));
+    await sleep(1500);
+    const text = () => app.eval(() => getMarkdownContent(false));
+    await app.eval(() => {
+        const b = editor.querySelector('.block');
+        if (b) focusBlock(b, 0);
+    });
+    const startedEmpty = (await text()).trim() === '';
+    assert(startedEmpty, 'control: the new document really is blank to begin with');
+
+    for (const ch of ['1', '2', '3', '4', '5']) {
+        await app.page.keyboard.type(ch, { delay: 40 });
+        await sleep(450);
+    }
+    await sleep(600);
+    const typed = (await text()).trim();
+    info('typed: ' + JSON.stringify(typed));
+    assert(typed === '12345', 'control: all five characters are in the document');
+
+    let last = typed;
+    for (let i = 1; i <= 6; i++) {
+        await app.eval(() => HistoryManager.undo());
+        for (let k = 0; k < 20; k++) {
+            if ((await text()).trim() !== last) break;
+            await sleep(150);
+        }
+        last = (await text()).trim();
+        info('undo #' + i + ': ' + JSON.stringify(last));
+        if (last === '') break;
+    }
+    assert(last === '',
+        'undo reaches the blank page, so the first character is undoable too'
+        + (last === '' ? '' : ' (stuck at ' + JSON.stringify(last) + ')'));
 } finally {
     await app.close();
 }

@@ -2741,7 +2741,17 @@
                         const prevContent = this._contentOf(prevStr);
                         // Drop empty frames only (not content-identical non-empty — that
                         // collapsed history so a second Ctrl+Z had nothing left).
-                        if (!String(prevContent).trim() && currentHad) {
+                        //
+                        // Never the LAST one, though. On a new document the initial state
+                        // is legitimately empty, and this rule ate it: type 1 2 3 4 5 and
+                        // undo, and you walked back 1234, 123, 12, 1 -- and then the "1"
+                        // stayed, because the empty base frame was popped and discarded
+                        // instead of restored. The first thing you typed could never be
+                        // undone. An empty frame at the bottom of the stack is the blank
+                        // page you started from; only an empty frame with older history
+                        // behind it is the spurious kind this is here to skip.
+                        if (!String(prevContent).trim() && currentHad
+                            && this.undoStack.length > 1) {
                             this.undoStack.pop();
                             continue;
                         }
