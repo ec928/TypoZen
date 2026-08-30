@@ -1538,19 +1538,75 @@
             }
 
             try {
-                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const doc = new DOMParser().parseFromString(extractClipboardHtmlFragment(html), 'text/html');
                 try { groupMonospaceBlocks(doc.body); } catch (eG) {}
                 const md = walkNode(doc.body).trim();
                 // Collapse runs of 3+ newlines to 2
-                return md.replace(/\n{3,}/g, '\n\n');
+                return stripClipboardLeadRepeat(md.replace(/\n{3,}/g, '\n\n'));
             } catch (e) { return ''; }
+
+            /**
+             * Clipboard HTML is a CF_HTML document, not "what you selected".
+             * Firefox Ctrl+A in particular puts the selection between
+             * <!--StartFragment--> … <!--EndFragment--> and often repeats the
+             * opening sentence after the marker (or a skip-link / title before it).
+             * Walking the whole body pasted that leftover at the end.
+             */
+            function extractClipboardHtmlFragment(html) {
+                const s = String(html == null ? '' : html);
+                const open = '<!--StartFragment-->';
+                const close = '<!--EndFragment-->';
+                const a = s.indexOf(open);
+                const b = s.indexOf(close);
+                if (a >= 0 && b > a) return s.slice(a + open.length, b);
+                const sm = /StartFragment:(\d+)/i.exec(s);
+                const em = /EndFragment:(\d+)/i.exec(s);
+                if (sm && em) {
+                    const x = parseInt(sm[1], 10);
+                    const y = parseInt(em[1], 10);
+                    if (x >= 0 && y > x && y <= s.length) return s.slice(x, y);
+                }
+                return s;
+            }
+
+            /**
+             * If the last block is a copy of the opening sentence/paragraph, drop it.
+             * Firefox (and some sites) append that outside the fragment. Require a
+             * real sentence so a short "Home" footer is not stripped.
+             */
+            function stripClipboardLeadRepeat(md) {
+                const t = String(md == null ? '' : md).trim();
+                if (!t) return t;
+                const blocks = t.split(/\n{2,}/);
+                if (blocks.length < 2) return t;
+                const first = blocks[0].trim();
+                const last = blocks[blocks.length - 1].trim();
+                if (last.length < 24) return t;
+                if (first === last || (first.length >= 24 && (first.startsWith(last) || last.startsWith(first)))) {
+                    blocks.pop();
+                    return blocks.join('\n\n');
+                }
+                const sent = first.match(/^([\s\S]{24,}?[.!?])(?:\s|$)/);
+                if (sent && (last === sent[1].trim() || last.startsWith(sent[1].trim()))) {
+                    blocks.pop();
+                    return blocks.join('\n\n');
+                }
+                return t;
+            }
 
             function walkNode(node) {
                 if (node.nodeType === 3) return node.textContent;
                 if (node.nodeType !== 1) return '';
                 const tag = node.tagName.toLowerCase();
                 // Skip style/script
-                if (tag === 'style' || tag === 'script') return '';
+                if (tag === 'style' || tag === 'script' || tag === 'noscript'
+                    || tag === 'template' || tag === 'iframe') return '';
+                try {
+                    if (node.hasAttribute && (node.hasAttribute('hidden')
+                        || node.getAttribute('aria-hidden') === 'true')) return '';
+                    if (node.style && String(node.style.display).toLowerCase() === 'none') return '';
+                    if (node.style && String(node.style.visibility).toLowerCase() === 'hidden') return '';
+                } catch (eH) {}
                 let kids = Array.from(node.childNodes).map(walkNode).join('');
 
                 // Emphasis carried by CSS rather than by <em>/<strong>.

@@ -433,6 +433,22 @@
                     sendImageToHost(img);
                     return;
                 }
+                // Same HTML path as Preview. Firefox Ctrl+A puts extras outside
+                // StartFragment; native text/plain can carry them too, but the HTML
+                // fragment is the selection. TypoZen's own copies stay text/plain
+                // (marked data-source="typozen") and fall through.
+                try {
+                    const html = dt ? dt.getData('text/html') : '';
+                    if (html && html.indexOf('data-source="typozen"') === -1
+                        && typeof htmlToMarkdown === 'function') {
+                        const md = htmlToMarkdown(html);
+                        if (md) {
+                            e.preventDefault();
+                            insertPastedPlainText(md);
+                            return;
+                        }
+                    }
+                } catch (eH) {}
                 HistoryManager.beginEdit();
                 setTimeout(() => {
                     resizeSourceEditor();

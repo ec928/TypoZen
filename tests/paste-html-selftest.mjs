@@ -172,6 +172,40 @@ console.log('--- emphasis carried by CSS ---');
 }
 
 
+console.log('--- Firefox Ctrl+A fragment (opening sentence must not reappear at the end) ---');
+{
+    const first = 'The quick brown fox jumps over the lazy dog.';
+    const rest = 'Then it sat down and thought about lunch.';
+    // Firefox Select-All: the selection is the fragment; a copy of the lead
+    // sentence sits after EndFragment (and sometimes a skip-link before it).
+    const fx = '<html><body>'
+        + '<a href="#main" style="display:none">Skip to content</a>'
+        + '<!--StartFragment-->'
+        + '<p>' + first + '</p><p>' + rest + '</p>'
+        + '<!--EndFragment-->'
+        + '<p>' + first + '</p>'
+        + '</body></html>';
+    const md = htmlToMarkdown(fx);
+    has(md, first, 'the selected opening sentence is kept');
+    has(md, rest, 'the rest of the selection is kept');
+    const lastHit = md.lastIndexOf(first);
+    const firstHit = md.indexOf(first);
+    ok(firstHit >= 0 && lastHit === firstHit, 'the opening sentence is not repeated after the fragment', md);
+
+    const hidden = '<p>Visible lead.</p><p aria-hidden="true">Visible lead.</p><p>Body copy here.</p>';
+    const hid = htmlToMarkdown(hidden);
+    ok((hid.match(/Visible lead/g) || []).length === 1, 'aria-hidden clones are not pasted', hid);
+
+    // No fragment markers, but the last block is an exact copy of the first.
+    const trail = htmlToMarkdown(
+        '<p>The quick brown fox jumps over the lazy dog.</p>'
+        + '<p>Middle of the article stays.</p>'
+        + '<p>The quick brown fox jumps over the lazy dog.</p>');
+    has(trail, 'Middle of the article stays.', 'the middle of a no-fragment paste is kept');
+    ok((trail.match(/quick brown fox/g) || []).length === 1,
+        'a trailing copy of the opening paragraph is dropped', trail);
+}
+
 console.log('\npassed=' + passed + ' failed=' + failed);
 if (failed) {
     console.error('\nPASTE HTML SELFTEST FAILED');
