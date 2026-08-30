@@ -1475,6 +1475,73 @@
 
 
         /**
+         * Ctrl+A of a web page selects chrome as well as the article. The first
+         * *visible* sentence is often not markdown block 0 (a title or skip-link
+         * sits above it), and Firefox / the site then repeat that sentence at the
+         * end. Comparing only first-block == last-block missed it.
+         */
+        function stripClipboardLeadRepeat(md) {
+            const t = String(md == null ? '' : md).trim();
+            if (!t) return t;
+            const blocks = t.split(/\n{2,}/);
+            if (blocks.length < 2) return t;
+
+            function norm(s) {
+                return String(s || '')
+                    .replace(/[#*_`~\[\]()>]/g, '')
+                    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .toLowerCase();
+            }
+            function leadKeys(block) {
+                const out = [];
+                const n = norm(block);
+                if (n.length >= 24) out.push(n);
+                const raw = String(block || '').trim();
+                const sent = raw.match(/^([\s\S]{24,}?[.!?])(?:\s|$)/);
+                if (sent) {
+                    const sn = norm(sent[1]);
+                    if (sn.length >= 24) out.push(sn);
+                }
+                return out;
+            }
+            function matchesLead(text, keys) {
+                const n = norm(text);
+                if (n.length < 24) return false;
+                for (let i = 0; i < keys.length; i++) {
+                    const k = keys[i];
+                    if (n === k) return true;
+                    if (k.length >= 40 && (n.startsWith(k) || k.startsWith(n))) return true;
+                }
+                return false;
+            }
+
+            // Only the opening, never the tail: in a short paste, "first 8
+            // blocks" is the whole document, so popping the duplicate made
+            // the unique middle the new last -- and then that matched itself.
+            const leadLimit = Math.min(4, Math.max(1, blocks.length - 2));
+            const keys = [];
+            for (let i = 0; i < leadLimit; i++) {
+                const ks = leadKeys(blocks[i]);
+                for (let j = 0; j < ks.length; j++) keys.push(ks[j]);
+            }
+            if (!keys.length) return t;
+
+            while (blocks.length >= 2 && matchesLead(blocks[blocks.length - 1], keys)) {
+                blocks.pop();
+            }
+            if (blocks.length >= 1) {
+                const last = blocks[blocks.length - 1].trim();
+                const chopped = last.match(/^([\s\S]*[.!?]["']?)\s+(.{24,})$/);
+                if (chopped && matchesLead(chopped[2], keys)) {
+                    blocks[blocks.length - 1] = chopped[1].trim();
+                }
+            }
+            return blocks.join('\n\n');
+        }
+
+        /**
          * Convert HTML to markdown for rich-paste from browsers.
          * Handles headings, bold, italic, code, tables, lists, links, blockquotes.
          */
@@ -1569,41 +1636,18 @@
                 return s;
             }
 
-            /**
-             * If the last block is a copy of the opening sentence/paragraph, drop it.
-             * Firefox (and some sites) append that outside the fragment. Require a
-             * real sentence so a short "Home" footer is not stripped.
-             */
-            function stripClipboardLeadRepeat(md) {
-                const t = String(md == null ? '' : md).trim();
-                if (!t) return t;
-                const blocks = t.split(/\n{2,}/);
-                if (blocks.length < 2) return t;
-                const first = blocks[0].trim();
-                const last = blocks[blocks.length - 1].trim();
-                if (last.length < 24) return t;
-                if (first === last || (first.length >= 24 && (first.startsWith(last) || last.startsWith(first)))) {
-                    blocks.pop();
-                    return blocks.join('\n\n');
-                }
-                const sent = first.match(/^([\s\S]{24,}?[.!?])(?:\s|$)/);
-                if (sent && (last === sent[1].trim() || last.startsWith(sent[1].trim()))) {
-                    blocks.pop();
-                    return blocks.join('\n\n');
-                }
-                return t;
-            }
-
             function walkNode(node) {
                 if (node.nodeType === 3) return node.textContent;
                 if (node.nodeType !== 1) return '';
                 const tag = node.tagName.toLowerCase();
                 // Skip style/script
                 if (tag === 'style' || tag === 'script' || tag === 'noscript'
-                    || tag === 'template' || tag === 'iframe') return '';
+                    || tag === 'template' || tag === 'iframe' || tag === 'nav') return '';
                 try {
                     if (node.hasAttribute && (node.hasAttribute('hidden')
                         || node.getAttribute('aria-hidden') === 'true')) return '';
+                    const role = (node.getAttribute && (node.getAttribute('role') || '')) || '';
+                    if (/^(banner|navigation|search|complementary)$/i.test(role)) return '';
                     if (node.style && String(node.style.display).toLowerCase() === 'none') return '';
                     if (node.style && String(node.style.visibility).toLowerCase() === 'hidden') return '';
                 } catch (eH) {}
@@ -1800,6 +1844,7 @@
          */
         function insertPastedPlainText(text) {
             if (text == null || text === '') return;
+            text = stripClipboardLeadRepeat(text);
 
             if (state.mode === 'source') {
                 if (!sourceEditor) return;

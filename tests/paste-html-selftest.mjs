@@ -39,7 +39,8 @@ function extractFunction(name) {
 const dom = new JSDOM('<!doctype html><html><body></body></html>');
 const htmlToMarkdown = new Function(
     'DOMParser',
-    extractFunction('htmlToMarkdown') + '\nreturn htmlToMarkdown;'
+    extractFunction('stripClipboardLeadRepeat') + '\n'
+        + extractFunction('htmlToMarkdown') + '\nreturn htmlToMarkdown;'
 )(dom.window.DOMParser);
 
 let passed = 0;
@@ -204,6 +205,28 @@ console.log('--- Firefox Ctrl+A fragment (opening sentence must not reappear at 
     has(trail, 'Middle of the article stays.', 'the middle of a no-fragment paste is kept');
     ok((trail.match(/quick brown fox/g) || []).length === 1,
         'a trailing copy of the opening paragraph is dropped', trail);
+
+    // The first *visible* sentence is not block 0: a title sits above it, and the
+    // same sentence is repeated at the end (Ctrl+A of an article page).
+    const nearTop = htmlToMarkdown(
+        '<h1>A Site Title</h1>'
+        + '<p>The quick brown fox jumps over the lazy dog.</p>'
+        + '<p>Then it sat down and thought about lunch.</p>'
+        + '<p>Closing unique paragraph about dessert.</p>'
+        + '<p>The quick brown fox jumps over the lazy dog.</p>');
+    has(nearTop, 'A Site Title', 'the title is kept');
+    has(nearTop, 'thought about lunch', 'the middle of the article is kept');
+    has(nearTop, 'dessert', 'the unique closing paragraph is kept');
+    ok((nearTop.match(/quick brown fox/g) || []).length === 1,
+        'a lead sentence that is not block 0 is not repeated at the end', nearTop);
+
+    const boldTrail = htmlToMarkdown(
+        '<p>Not the lead, just a kicker.</p>'
+        + '<p>The quick brown fox jumps over the lazy dog.</p>'
+        + '<p>Body stays here.</p>'
+        + '<p><strong>The quick brown fox jumps over the lazy dog.</strong></p>');
+    ok((boldTrail.match(/quick brown fox/g) || []).length === 1,
+        'a trailing copy still wrapped in <strong> is dropped', boldTrail);
 }
 
 console.log('\npassed=' + passed + ' failed=' + failed);
