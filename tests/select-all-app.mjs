@@ -32,6 +32,23 @@ function ui(cmd, arg) {
     } catch (e) { return { error: String(e.message).slice(0, 200) }; }
 }
 
+/**
+ * Press a menu item, and keep asking until it is there.
+ *
+ * A WPF submenu is populated when it opens, so an invoke that arrives before the items
+ * exist answers "no item 'Select All' under 'Edit'" -- which is indistinguishable from
+ * the command having been removed, and failed this suite against a working build.
+ */
+async function invokeMenu(pathStr) {
+    let last = null;
+    for (let i = 0; i < 5; i++) {
+        last = ui('invoke', pathStr);
+        if (last && !last.error) return last;
+        await sleep(400);
+    }
+    return last;
+}
+
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 8000, view: true });
 try {
     await settledApp(app, 8000);
@@ -54,7 +71,7 @@ try {
     const cleared = await app.eval(() => window.getSelection().rangeCount);
     assert(cleared === 0, 'control: nothing is selected before the menu is used');
 
-    const inv = ui('invoke', 'Edit>Select All');
+    const inv = await invokeMenu('Edit>Select All');
     info('invoke: ' + JSON.stringify(inv));
     // Wait for the selection to arrive rather than for 600ms. The menu press, the host
     // message and the page all happen in sequence, and a flat wait passed on one run and
@@ -88,7 +105,7 @@ try {
     await app.eval(() => handleCommand('view_set:mode:source'));
     await sleep(1200);
     await app.eval(() => { try { document.getElementById('source-editor').setSelectionRange(0, 0); } catch (e) {} });
-    ui('invoke', 'Edit>Select All');
+    await invokeMenu('Edit>Select All');
     for (let i = 0; i < 20; i++) {
         const n = await app.eval(() => {
             const ta = document.getElementById('source-editor');

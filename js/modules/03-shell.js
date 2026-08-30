@@ -736,6 +736,26 @@
                     // "is this tab unsaved" flag hangs off this, and updateStats() -- which
                     // used to raise it -- runs on programmatic changes too.
                     window.__tzLastUserEditAt = Date.now();
+                    // And the one place that knows to remember it.
+                    //
+                    // Typing in Preview recorded no undo frames at all. The only snapshots
+                    // came from compositionend (IME only), the Source textarea, and the
+                    // explicit beginEdit/commitEdit pairs around formatting commands -- so
+                    // a session of ordinary typing left the stack exactly as the document
+                    // had loaded. One Ctrl+Z then reverted EVERYTHING, because undo() falls
+                    // back to pushing the live state when it differs from the top, and a
+                    // second press did nothing at all.
+                    //
+                    // The existing suites all pressed Ctrl+Z once, which is the one case
+                    // that works, so none of them saw it.
+                    //
+                    // snapshot() is debounced 350ms and skips frames whose content matches
+                    // the top, so a burst of typing becomes one step rather than one per
+                    // keystroke, and the formatting paths that push their own frames are
+                    // not doubled.
+                    try {
+                        if (typeof HistoryManager !== 'undefined') HistoryManager.snapshot();
+                    } catch (eH) {}
                 });
             }
             initFindBar();
