@@ -5371,7 +5371,8 @@
             'textRendering', 'whiteSpace', 'wordBreak', 'overflowWrap', 'tabSize',
             'direction', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
             'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-            'boxSizing'
+            'boxSizing', 'fontKerning', 'fontFeatureSettings', 'fontVariationSettings',
+            'fontOpticalSizing', 'fontStretch'
         ];
 
         /**
@@ -5397,6 +5398,7 @@
             _srcHl = document.createElement('div');
             _srcHl.id = 'source-highlights';
             _srcHl.setAttribute('aria-hidden', 'true');
+            _srcHl.setAttribute('spellcheck', 'false');
             _srcHlInner = document.createElement('div');
             _srcHl.appendChild(_srcHlInner);
             // Before the textarea in document order: both are positioned, so the
@@ -5465,8 +5467,14 @@
             const hr = host.getBoundingClientRect();
             _srcHl.style.left = (r.left - hr.left) + 'px';
             _srcHl.style.top = (r.top - hr.top) + 'px';
-            _srcHl.style.width = r.width + 'px';
-            _srcHl.style.height = r.height + 'px';
+            // Wrap width is clientWidth, not the border box. The border box includes
+            // the scrollbar; a div with overflow:hidden does not, so using r.width
+            // made the mirror wrap ~17px wider and every mark slid off its word.
+            // Scale by the zoom that getBoundingClientRect already includes.
+            const ow = Math.max(1, sourceEditor.offsetWidth);
+            const oh = Math.max(1, sourceEditor.offsetHeight);
+            _srcHl.style.width = (sourceEditor.clientWidth * (r.width / ow)) + 'px';
+            _srcHl.style.height = (sourceEditor.clientHeight * (r.height / oh)) + 'px';
             syncSourceHighlightScroll();
         }
 
@@ -5512,12 +5520,11 @@
             if (!ensureSourceHighlightLayer()) return;
 
             const text = sourceEditor.value || '';
-            if (text.length > SRC_HL_MAX_CHARS) {
-                clearSourceHighlights();
-                return;
-            }
             const cur = findState.index;
-            const capped = matches.length > SRC_HL_MAX_MARKS;
+            // Over the char cap, still draw the current hit so Search is not a dead
+            // counter on a large Source file. Over the mark cap, same: one ring.
+            const overChars = text.length > SRC_HL_MAX_CHARS;
+            const capped = overChars || matches.length > SRC_HL_MAX_MARKS;
             const sig = findState.query + '|' + matches.length + '|' + text.length + '|'
                 + cur + '|' + (capped ? 'cap' : 'all');
             _srcHl.style.display = '';
@@ -5565,20 +5572,36 @@
 
         function scrollSourceMatchIntoView(start, end, takeFocus) {
             if (!sourceEditor) return;
-            const before = sourceEditor.value.substring(0, Math.max(0, start | 0));
-            const line = Math.max(1, before.split(/\r?\n/).length);
             try {
                 if (takeFocus) sourceEditor.focus();
                 sourceEditor.setSelectionRange(start, end);
             } catch (e) {}
-            // Same proportional mapping as scrollSourceToHardLine (wrap-safe)
+            // Paint first, then scroll to the laid-out mark. Mapping hard-line-index /
+            // total-lines onto scrollHeight is not wrap-safe: a wrapped paragraph is
+            // many visual rows and a short heading is one, so Search landed in the
+            // wrong place and the highlight looked broken.
+            try { paintSourceHighlights(); } catch (eP) {}
             try {
-                const total = countHardLines(sourceEditor.value || '');
-                const max = Math.max(0, sourceEditor.scrollHeight - sourceEditor.clientHeight);
-                if (total <= 1 || max <= 0) sourceEditor.scrollTop = 0;
-                else {
-                    const t = (Math.min(line, total) - 1) / (total - 1);
-                    sourceEditor.scrollTop = Math.round(max * Math.max(0, Math.min(1, t)));
+                const mark = _srcHlInner && _srcHlInner.querySelector('mark.tz-src-hit.cur');
+                if (mark) {
+                    const mRect = mark.getBoundingClientRect();
+                    const tRect = sourceEditor.getBoundingClientRect();
+                    if (tRect.height > 0) {
+                        const target = tRect.top + Math.min(120, tRect.height / 3);
+                        sourceEditor.scrollTop += (mRect.top - target);
+                        syncSourceHighlightScroll();
+                    }
+                } else {
+                    const before = sourceEditor.value.substring(0, Math.max(0, start | 0));
+                    const line = Math.max(1, before.split(/\r?\n/).length);
+                    const total = countHardLines(sourceEditor.value || '');
+                    const max = Math.max(0, sourceEditor.scrollHeight - sourceEditor.clientHeight);
+                    if (total <= 1 || max <= 0) sourceEditor.scrollTop = 0;
+                    else {
+                        const t = (Math.min(line, total) - 1) / (total - 1);
+                        sourceEditor.scrollTop = Math.round(max * Math.max(0, Math.min(1, t)));
+                    }
+                    syncSourceHighlightScroll();
                 }
                 if (mainContainer) mainContainer.scrollTop = 0;
             } catch (e2) {}

@@ -223,6 +223,44 @@ try {
     assert(resized.after.ta === resized.after.layer,
         'the mirror re-wrapped with it (' + resized.after.ta + ' / ' + resized.after.layer + ')');
 
+    console.log('\n=== jumping to a late match actually shows it ===');
+    // scrollSourceMatchIntoView used hard-line-index / line-count * scrollHeight.
+    // That is not wrap-safe: a wrapped paragraph is many visual rows. Search landed
+    // far from the hit and the highlight looked broken. Scroll to the laid-out mark.
+    const jumped = await app.eval(async (q) => {
+        const nap = (ms) => new Promise(r => setTimeout(r, ms));
+        const input = document.getElementById('findInput');
+        input.value = q;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        let dl = Date.now() + 15000;
+        while (Date.now() < dl) {
+            if (findState.query === q && findState.matches.length > 20) break;
+            await nap(150);
+        }
+        const last = findState.matches.length - 1;
+        findJumpTo(last);
+        await nap(400);
+        const ta = document.getElementById('source-editor');
+        const layer = document.getElementById('source-highlights');
+        const mark = layer && layer.querySelector('mark.tz-src-hit.cur');
+        if (!mark) return { n: findState.matches.length, hasMark: false };
+        const mr = mark.getBoundingClientRect();
+        const tr = ta.getBoundingClientRect();
+        return {
+            n: findState.matches.length,
+            hasMark: true,
+            inView: mr.bottom > tr.top + 2 && mr.top < tr.bottom - 2,
+            markTop: Math.round(mr.top),
+            viewTop: Math.round(tr.top),
+            viewBottom: Math.round(tr.bottom)
+        };
+    }, 'lorem');
+    info('late jump: ' + JSON.stringify(jumped));
+    assert(jumped.n > 20, 'the wrapping-paragraph query has enough hits (' + jumped.n + ')');
+    assert(jumped.hasMark, 'the current hit is marked after the jump');
+    assert(jumped.inView, 'the current mark is inside the textarea viewport (mark '
+        + jumped.markTop + ' in ' + jumped.viewTop + '..' + jumped.viewBottom + ')');
+
     console.log('\n=== leaving Source takes the marks with it ===');
     await app.eval(() => handleCommand('view_set:mode:preview'));
     await sleep(1200);

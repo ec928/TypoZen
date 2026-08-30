@@ -44,6 +44,14 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Source search highlighting jumped to the wrong place — **fixed** (0.2.30)
+
+The mirror that paints hits on a `<textarea>` scrolled by hard-line-index /
+line-count × scrollHeight. Wrapped paragraphs are many visual rows, so Search
+landed far from the match. It now paints first, then scrolls so the current
+`<mark>` is in the textarea viewport. Wrap width follows `clientWidth` (not the
+scrollbar box). `source-highlight-app` asserts a late jump is on screen.
+
 ### F1 / Help → Syntax & Shortcuts did nothing — **fixed** (0.2.28)
 
 The empty-tab hint and the Help menu advertised F1. Only F7/F8/F9 were bound in

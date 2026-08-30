@@ -1118,6 +1118,11 @@
             resize: none;
             padding: 20px 0;
             box-sizing: border-box;
+            /* Above #source-highlights. The mirror is position:absolute, so without
+               this it paints on top of the static textarea: a 1px wrap mismatch then
+               ghosts the whole document. */
+            position: relative;
+            z-index: 1;
         }
 
         /* Document-scoped Find & Replace (not Chromium page-find) */
@@ -1269,9 +1274,11 @@
            the real control underneath. */
         #source-highlights {
             position: absolute;
+            z-index: 0;
             overflow: hidden;
             pointer-events: none;
             color: transparent;
+            -webkit-text-fill-color: transparent;
             background: transparent;
             /* Same default as the textarea; the computed white-space is copied over it
                so body.nowrap swaps both together. */
