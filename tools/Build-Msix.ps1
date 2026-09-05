@@ -1,4 +1,4 @@
-# Build-Msix.ps1 - pack the proven bin/ staging build as an MSIX.
+﻿# Build-Msix.ps1 - pack the proven bin/ staging build as an MSIX.
 #
 # WHY THIS AND NOT THE SDK-STYLE MSIX TOOLING: TypoZen targets .NET Framework 4.7.2 and is
 # compiled through a PowerShell CodeDOM provider, not MSBuild, so <WindowsPackageType>MSIX
@@ -98,9 +98,13 @@ $wide.Dispose()
 Write-Host "  Assets drawn ($($sizes.Count + 1) tiles)."
 
 # ---- Manifest --------------------------------------------------------------------------
-# Identity Name and Publisher are PLACEHOLDERS until Partner Center assigns the real ones -
-# they are not chosen, they are issued, and the package will not be accepted with these.
-# Publisher must also match the signing certificate exactly for a local test install.
+# Identity Name and Publisher are ISSUED by the Store, not chosen. These are TypoZen's,
+# from Partner Center > Product Identity (Store ID 9NGKCK27GTS1, package family
+# ZenDevelopment.TypoZen_e6avwemwk7mrj). Publisher is the CN of the certificate the Store
+# signs with, which is why it is a GUID rather than a name -- and why a locally signed
+# test build needs a certificate whose subject is exactly this string. Changing either of
+# these breaks the package family: an installed copy would be treated as a different app
+# rather than an update.
 $manifest = @"
 <?xml version="1.0" encoding="utf-8"?>
 <Package
@@ -110,11 +114,11 @@ $manifest = @"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   IgnorableNamespaces="uap rescap desktop">
 
-  <Identity Name="EdC2.TypoZen" Publisher="CN=Ed C2" Version="$pkgVersion" ProcessorArchitecture="x64" />
+  <Identity Name="ZenDevelopment.TypoZen" Publisher="CN=7A78FE91-82F4-4B93-8556-7AD161523819" Version="$pkgVersion" ProcessorArchitecture="x64" />
 
   <Properties>
     <DisplayName>TypoZen</DisplayName>
-    <PublisherDisplayName>Ed C2</PublisherDisplayName>
+    <PublisherDisplayName>Zen Development</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
