@@ -2318,7 +2318,17 @@
                 return;
             }
             if (state.pageAdvance) {
-                if (e.target && e.target.closest && e.target.closest('#sidebar')) return;
+                // Anything with its own scrollbar keeps its own wheel.
+                //
+                // This is capture-phase and calls preventDefault, so in Pages mode it ate
+                // every wheel event on the window and turned the page instead. The sidebar
+                // was already excused; the modals were not, so About and Syntax & Shortcuts
+                // could not be scrolled with the wheel at all -- the page turned behind
+                // them instead. Reported as "I cannot wheel scroll the About window", and
+                // it looks like a focus problem from the outside, which is what makes it
+                // annoying to place.
+                if (e.target && e.target.closest
+                    && e.target.closest('#sidebar, .tz-help-overlay, #tableModal')) return;
                 
                 e.preventDefault();
                 let now = Date.now();
