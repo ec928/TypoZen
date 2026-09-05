@@ -286,6 +286,11 @@ async function main() {
                 for (let p = 0; p < Math.min(PageMap.count(), 48); p += 4) {
                     PageMap.goto(p);
                     await sleep(40);
+                    // The last spread of a range with an odd column count is one leftover
+                    // column plus an empty pad. That is a short page, not a fence that
+                    // refused to break. Skip it; the defect this checks for empties a
+                    // page in the middle of the document.
+                    if (PageGeometry.localIndex() === PageGeometry.localCount() - 1) continue;
                     const host = editor.getBoundingClientRect();
                     let filled = 0;
                     editor.querySelectorAll('.block').forEach(b => {

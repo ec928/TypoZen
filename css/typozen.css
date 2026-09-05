@@ -917,6 +917,18 @@
         #editor.page-mode.two-col-layout {
             column-gap: 60px;
         }
+        /* Empty trailing column so an odd leftover can sit on the left of a spread.
+           PageGeometry._syncSpreadPad appends this only when the content column
+           count is odd; CSS just makes the forced column take no ink. */
+        #editor.page-mode > .tz-spread-pad {
+            break-before: column;
+            height: 1px;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
 
         /* Scrubber is the only progress chrome — hide native scrollbars. */
         body.tz-pages #main-container {

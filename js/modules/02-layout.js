@@ -3761,6 +3761,10 @@
         //   column-width = floor((paneW - gap) / 2), column-gap = 60
         //   pageStride   = paneW + gap   (one screen of two columns, then the following gap)
         //   scrollLeft   = pageIndex * pageStride
+        //   An odd leftover column is padded so the last spread is [leftover | empty],
+        //   never [previous-right | leftover]. Without the pad, go() clamps that last
+        //   seek to maxScroll, which is half a stride, and the right-hand leaf slides
+        //   onto the left (page 104 becoming page 105).
         //
         // Native scrollbars are hidden (body.tz-pages); the scrubber is the only track.
         // -----------------------------------------------------------------------------
@@ -3778,6 +3782,7 @@
                 this._paneW = 0;
                 this._twoCol = false;
                 if (!editor) return;
+                this._removeSpreadPad();
                 editor.style.height = '';
                 editor.style.width = '';
                 editor.style.maxWidth = '';
@@ -3792,6 +3797,50 @@
                 // relayout() sets this; clear() is its opposite and must undo all of it.
                 try { editor.style.removeProperty('--tz-page-h'); } catch (eVar) {}
                 editor.scrollLeft = 0;
+            },
+
+            _spreadPad: function () {
+                return editor ? editor.querySelector('.tz-spread-pad') : null;
+            },
+
+            _removeSpreadPad: function () {
+                const pad = this._spreadPad();
+                if (pad && pad.parentNode) pad.parentNode.removeChild(pad);
+            },
+
+            /**
+             * A 2-col range with an odd column count cannot park its leftover column on
+             * the left of a spread: maxScroll is half a stride short of that, so the last
+             * turn shows the previous right-hand leaf on the left. Force an even count
+             * with an empty trailing column. Even counts are left alone — a pad there
+             * would invent a blank extra spread.
+             */
+            _syncSpreadPad: function () {
+                if (!editor) return;
+                const existing = this._spreadPad();
+                if (!this._twoCol || !(this._stride > 0)) {
+                    if (existing) this._removeSpreadPad();
+                    return;
+                }
+                const pitch = this._stride / 2;
+                if (!(pitch > 0)) return;
+                const nColNow = Math.max(1, Math.round(
+                    (editor.scrollWidth + PAGE_TWO_COL_GAP) / pitch));
+                const contentCols = existing ? Math.max(1, nColNow - 1) : nColNow;
+                if (contentCols % 2 === 1) {
+                    if (existing) return;
+                    const el = document.createElement('div');
+                    el.className = 'tz-spread-pad';
+                    el.setAttribute('aria-hidden', 'true');
+                    el.style.breakBefore = 'column';
+                    el.style.height = '1px';
+                    el.style.visibility = 'hidden';
+                    editor.appendChild(el);
+                    void editor.offsetWidth;
+                } else if (existing) {
+                    this._removeSpreadPad();
+                    void editor.offsetWidth;
+                }
             },
 
             /** Recompute pane size, lock columns, cache stride. Returns stride. */
@@ -3909,6 +3958,7 @@
                 this._paneW = paneW;
                 this._twoCol = twoCol;
                 this._stride = stride;
+                this._syncSpreadPad();
                 return this._stride;
             },
 
