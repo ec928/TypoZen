@@ -111,6 +111,22 @@ _Up to 200 characters each. One screenshot minimum; 1366×768 or larger._
 
 ---
 
+## Notes for certification
+
+_Partner Center → Submission options → "Notes for certification". Pre-empts the
+`runFullTrust` package warning, which every MSIX-packaged Win32 app raises._
+
+TypoZen is a Win32 desktop application packaged as MSIX (Desktop Bridge), so it declares `runFullTrust`. This is required because the app is a document editor: it opens and saves files at arbitrary paths chosen by the user through standard file dialogs, and reads its own assets (fonts, dictionary, themes) from the install directory. It declares no other restricted capabilities.
+
+The app makes no network requests of its own and collects no data. Everything it stores is local, under %LOCALAPPDATA%\TypoZen_Cache, and can be cleared from File → Privacy.
+
+To exercise the main paths: open any .md or .txt file to edit it, and any .epub to read it (View → Two-Page Spread for the paginated reader). PDFs, images and web pages open read-only in their own tabs. No account or sign-in is needed and there is nothing to purchase.
+
+Source code and issue tracker: https://github.com/ec928/TypoZen
+Privacy policy: https://github.com/ec928/TypoZen/blob/master/PRIVACY.md
+
+---
+
 ## Copyright and trademark info
 
 © 2026 Ed C. TypoZen is open source under the MIT licence.
