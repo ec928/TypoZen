@@ -120,7 +120,7 @@ TypoZen is a Win32 desktop application packaged as MSIX (Desktop Bridge), so it 
 
 The app makes no network requests of its own and collects no data. Everything it stores is local, under %LOCALAPPDATA%\TypoZen_Cache, and can be cleared from File → Privacy.
 
-To exercise the main paths: open any .md or .txt file to edit it, and any .epub to read it (View → Two-Page Spread for the paginated reader). PDFs, images and web pages open read-only in their own tabs. No account or sign-in is needed and there is nothing to purchase.
+To exercise the main paths: open any .md or .txt file to edit it, and any .epub to read it. For the paginated two-page spread, use the two toolbar buttons on the right of the toolbar: click "Scroll" so it reads "Pages", then click "1-Col" so it reads "2-Col" (two columns require pagination, so that order matters). PDFs, images and web pages open read-only in their own tabs. No account or sign-in is needed and there is nothing to purchase.
 
 Source code and issue tracker: https://github.com/ec928/TypoZen
 Privacy policy: https://github.com/ec928/TypoZen/blob/master/PRIVACY.md
