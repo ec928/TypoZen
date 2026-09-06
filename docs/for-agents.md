@@ -26,6 +26,13 @@ Product truth lives here and in the README; `docs/archive/` is history.
 
 If README and code disagree, fix one of them; do not paper over with a third story.
 
+**Releasing, packaging and the Store:** [releasing.md](releasing.md). Build order, what
+the build stages and why that list has been wrong twice, the two test tiers and how
+app-tier suites have lied, MSIX and Store submission, and the install-identity rules —
+read section 5 before touching the single-instance mutex, the open pipe or the profile
+folder. Account-specific operational detail is in `docs/internal/`, which is not in git
+because this repository is public.
+
 ## Do not invent defects
 
 - A failing or silent **test suite** is not automatically a product bug. Suite health (harness, fixtures, env) stays out of `known-issues.md` until a user-visible defect is reproduced.
