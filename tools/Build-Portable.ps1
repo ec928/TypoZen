@@ -36,7 +36,11 @@ foreach ($f in $files) {
     }
 }
 
-$dirs = @('css', 'js')
+# fonts/ rides here with css/ and js/. It used to be an explicit allowlist of ten
+# filenames, which silently dropped anything new -- which is how the .ttf files
+# shipped for months with no OFL.txt beside them, and the OFL requires that text
+# to travel with the faces.
+$dirs = @('css', 'js', 'fonts')
 foreach ($d in $dirs) {
     if (Test-Path $d) {
         Copy-Item $d -Destination "$dist\" -Recurse -Force
@@ -52,24 +56,6 @@ if (Test-Path $makeDict) {
     Copy-Item $makeDict -Destination $toolsDst -Force
 } else {
     Write-Warning "tools/Make-Dictionary.ps1 not found"
-}
-
-# Fonts: OFL faces only, and now that is all there is in fonts/.
-$fontDst = Join-Path $dist 'fonts'
-New-Item -ItemType Directory -Force -Path $fontDst | Out-Null
-$fontAllow = @(
-    'Inter.ttf', 'Inter-Italic.ttf',
-    'Literata.ttf', 'Literata-Italic.ttf', 'Literata-Bold.ttf', 'Literata-BoldItalic.ttf',
-    'Merriweather.ttf', 'Merriweather-Italic.ttf',
-    'SourceSans3.ttf', 'SourceSans3-Italic.ttf'
-)
-foreach ($f in $fontAllow) {
-    $src = Join-Path 'fonts' $f
-    if (Test-Path $src) {
-        Copy-Item $src -Destination $fontDst -Force
-    } else {
-        Write-Warning "Font not found: $src"
-    }
 }
 
 # Defined here rather than inherited: the block that used to strip the Bookerly

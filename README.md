@@ -507,7 +507,7 @@ From the project folder:
 - `js/typozen.js` — **deprecated stub** that throws if loaded; do not edit
 - `css/typozen.css` — editor styling
 - `TypoZen_Themes.json` — themes
-- `fonts/` — bundled typefaces
+- `fonts/` — bundled typefaces, with `fonts/OFL.txt` (their licence travels with them)
 
 The engine is nine modules sharing one global scope (not ES modules), loaded in the order `js/modules/load-order.json` gives:
 
@@ -589,6 +589,24 @@ Marks are milliseconds from entry to `Main`; the log is appended, so delete it b
 **Yes:** headings, bold/italic/strike, inline code, fenced code, links, images (stored beside the document after save), blockquotes, bullet/ordered/task lists with basic indent, tables, thematic breaks (`---`, `- - -`, and friends).
 
 **Limits — not full CommonMark or Typora:** advanced nested-list edge cases, math, Mermaid and similar extensions are not first-class features.
+
+---
+
+## Licence
+
+TypoZen is **MIT** (`LICENSE`). Three bundled things carry their own terms, and all
+three permit commercial use and redistribution:
+
+| Component | Licence | Text |
+| --- | --- | --- |
+| TypoZen itself | MIT | `LICENSE` |
+| Inter, Literata, Merriweather, Source Sans 3 | SIL Open Font License 1.1 | `fonts/OFL.txt` |
+| Dictionary and thesaurus data | WordNet | `WORDNET-LICENSE.txt` |
+
+The OFL allows these faces to be bundled, redistributed and sold with software, on
+the condition that the notice and licence go with them — which is why `fonts/OFL.txt`
+ships in every build rather than living only in this repository. The copyright lines
+in it are reproduced from each font file's own `name` table.
 
 ---
 

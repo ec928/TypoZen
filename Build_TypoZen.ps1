@@ -282,7 +282,11 @@ if (Test-Path (Join-Path $appDir "TypoZen.pdb")) {
 # to hold -- and bin/ exists precisely so a build can be PROVEN before it reaches the
 # app. A source-mode CSS fix was tested against a bin/ that had never received it and
 # looked like it did nothing. Stage what the app actually loads.
-$assetDirs = @("css", "js")
+#
+# fonts/ is in this list for the same reason: it was populated by hand, so anything
+# added to it -- a face, or the OFL licence text that has to travel with these faces --
+# reached the app and the MSIX only if someone remembered to copy it across.
+$assetDirs = @("css", "js", "fonts")
 foreach ($d in $assetDirs) {
     $src = Join-Path $appDir $d
     if (Test-Path $src) { Copy-Item $src -Destination $binDir -Recurse -Force }
