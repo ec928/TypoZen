@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.39";
+        internal const string AppVersion = "0.2.40";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -5978,6 +5978,8 @@ namespace TypoZen
             }
             else if (msg == "load_done")
             {
+                // Whatever failed before, this tab is loaded now: let it be retried again.
+                _restagedBookTabId = -1;
                 // Large staged open / book open finished — apply ZenSeek jump/highlight.
                 ScheduleApplyPendingLaunch();
                 // Re-apply THIS tab's view bag + position after content is really on the page.
@@ -6001,6 +6003,25 @@ namespace TypoZen
             }
             else if (msg.StartsWith("load_failed:"))
             {
+                // A book's payload is a staged file, and staged files go away.
+                //
+                // OpenBook writes book_<guid>.json into LoadStageDir() and sends the page a
+                // https://localload/ URL for it. That directory is disposable by design:
+                // StageLoadPayload prunes it at five minutes, Clear Stored Data empties it,
+                // and turning Privacy Mode OFF deletes the whole private root the payload
+                // was sitting in -- which is how this was found, switching back to a book
+                // after the toggle and getting "Failed to fetch" over a novel that was still
+                // perfectly readable on disk.
+                //
+                // The dialog's advice ("the tab still holds the file text") is true of a
+                // markdown tab and false of a book: tab.Content is "" for DocKind.Book, so
+                // there is nothing to push back. What a book tab does still have is its
+                // .epub, and re-staging from that is exactly what opening it does. Do that
+                // instead of reporting a failure the reader can do nothing about.
+                //
+                // Once. A book that genuinely cannot be read would otherwise re-open itself
+                // forever, and the second failure is the one worth showing.
+                if (TryRestageFailedTab()) return;
                 if (!_e2eMode)
                 {
                     WinForms.MessageBox.Show(
@@ -6017,6 +6038,11 @@ namespace TypoZen
                     if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
                     {
                         string c = _tabs[_activeTabIndex].Content ?? "";
+                        // 2 x 96 KB. A 205,842-character document is 9,234 over it, so this
+                        // declined and said nothing while the dialog above promised "the tab
+                        // still holds the file text" -- which was then simply not delivered.
+                        // Re-staging from disk above is the real recovery; this remains for
+                        // a dirty tab, whose edits exist nowhere else.
                         if (c.Length > 0 && c.Length <= LoadContentInlineMaxChars * 2)
                             SendMsg("load_content_plain:" + c);
                     }
@@ -11813,6 +11839,51 @@ namespace TypoZen
         /// nothing to write -- which is the behaviour wanted, expressed as a fact about the
         /// document rather than as a guard bolted onto each of those paths.
         /// </summary>
+        /// <summary>
+        /// Re-stage the active tab from the file it came from, after its staged payload
+        /// went missing. Returns true when a reload was started, so the caller can skip
+        /// the error dialog.
+        ///
+        /// Never for a dirty tab: disk does not have those edits, and silently replacing
+        /// unsaved work with the last saved version to recover from a failed fetch would
+        /// be a far worse bug than the one being recovered from. A dirty tab keeps the
+        /// inline path below, and the dialog when even that will not fit.
+        /// </summary>
+        private bool TryRestageFailedTab()
+        {
+            try
+            {
+                if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return false;
+                var tab = _tabs[_activeTabIndex];
+                if (tab.Kind != DocKind.Book && tab.Kind != DocKind.Engine) return false;
+                if (string.IsNullOrEmpty(tab.FilePath) || !File.Exists(tab.FilePath)) return false;
+                if (tab.Kind == DocKind.Engine && (tab.IsDirty || _isDirty)) return false;
+                // One attempt per tab per failure. Cleared on any successful load below.
+                if (_restagedBookTabId == tab.Id) return false;
+                _restagedBookTabId = tab.Id;
+
+                string path = tab.FilePath;
+                bool book = tab.Kind == DocKind.Book;
+                // Not inline: we are inside the WebView message callback, and both of
+                // these block on script round trips the WebView cannot answer until this
+                // returns -- the same trap open_file_path documents above.
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        if (book) OpenBook(path, true);
+                        else LoadFileFromPath(path);
+                    }
+                    catch { }
+                }), DispatcherPriority.Normal);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Tab whose book was last re-staged, so one failure cannot loop.</summary>
+        private int _restagedBookTabId = -1;
+
         private void OpenBook(string path, bool forceLoad = false)
         {
             path = Path.GetFullPath(path);
