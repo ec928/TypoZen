@@ -117,11 +117,15 @@ _Not "Notes for certification": that heading on the Submission Options page is a
 the separate Additional Testing Information page, not a box. The required box is this one,
 and it asks a narrower question -- why the capability is needed and how it is used._
 
-TypoZen is a Win32 desktop application packaged as MSIX using the Desktop Bridge. runFullTrust is required because a packaged desktop application cannot run at all without it -- the app is standard .NET/WPF code hosting a WebView2 control, not a sandboxed UWP app.
+**Hard limit: 500 characters.** The box silently stops accepting input; it does not warn.
+The text below is 499. Anything longer gets truncated mid-sentence, which reads worse to a
+reviewer than a short answer does.
 
-It is used for the ordinary work of a document editor. The app opens and saves files at arbitrary paths that the user chooses through standard Windows file dialogs -- Markdown, text, ePub, PDF and image files -- which is not possible under AppContainer file-access restrictions. It reads its own bundled assets (fonts, dictionary, thesaurus, themes) from the install directory, and stores settings and reading positions under %LOCALAPPDATA%.
+TypoZen is a Win32 desktop app packaged as MSIX (Desktop Bridge). A packaged desktop app cannot run without runFullTrust: it is .NET/WPF hosting WebView2, not a sandboxed UWP app.
 
-It is the only restricted capability declared, and the only capability of any kind in the manifest. The app makes no network requests, collects no data, and has no account or sign-in. Source code: https://github.com/ec928/TypoZen
+Used for ordinary document editing: opening and saving files at paths the user picks in standard Windows dialogs (Markdown, text, ePub, PDF, images), which AppContainer forbids, and reading bundled fonts and dictionary from the install dir.
+
+The only capability declared. No network use, no data collection, no sign-in.
 
 ---
 
