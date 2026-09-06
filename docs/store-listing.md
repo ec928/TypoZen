@@ -111,19 +111,38 @@ _Up to 200 characters each. One screenshot minimum; 1366×768 or larger._
 
 ---
 
-## Notes for certification
+## Restricted capabilities  (Submission options -- REQUIRED)
 
-_Partner Center → Submission options → "Notes for certification". Pre-empts the
-`runFullTrust` package warning, which every MSIX-packaged Win32 app raises._
+_Not "Notes for certification": that heading on the Submission Options page is a link to
+the separate Additional Testing Information page, not a box. The required box is this one,
+and it asks a narrower question -- why the capability is needed and how it is used._
 
-TypoZen is a Win32 desktop application packaged as MSIX (Desktop Bridge), so it declares `runFullTrust`. This is required because the app is a document editor: it opens and saves files at arbitrary paths chosen by the user through standard file dialogs, and reads its own assets (fonts, dictionary, themes) from the install directory. It declares no other restricted capabilities.
+TypoZen is a Win32 desktop application packaged as MSIX using the Desktop Bridge. runFullTrust is required because a packaged desktop application cannot run at all without it -- the app is standard .NET/WPF code hosting a WebView2 control, not a sandboxed UWP app.
 
-The app makes no network requests of its own and collects no data. Everything it stores is local, under %LOCALAPPDATA%\TypoZen_Cache, and can be cleared from File → Privacy.
+It is used for the ordinary work of a document editor. The app opens and saves files at arbitrary paths that the user chooses through standard Windows file dialogs -- Markdown, text, ePub, PDF and image files -- which is not possible under AppContainer file-access restrictions. It reads its own bundled assets (fonts, dictionary, thesaurus, themes) from the install directory, and stores settings and reading positions under %LOCALAPPDATA%.
 
-To exercise the main paths: open any .md or .txt file to edit it, and any .epub to read it. For the paginated two-page spread, use the two toolbar buttons on the right of the toolbar: click "Scroll" so it reads "Pages", then click "1-Col" so it reads "2-Col" (two columns require pagination, so that order matters). PDFs, images and web pages open read-only in their own tabs. No account or sign-in is needed and there is nothing to purchase.
+It is the only restricted capability declared, and the only capability of any kind in the manifest. The app makes no network requests, collects no data, and has no account or sign-in. Source code: https://github.com/ec928/TypoZen
 
-Source code and issue tracker: https://github.com/ec928/TypoZen
+---
+
+## Additional Testing Information  (optional)
+
+No account, sign-in or purchase is needed; all functionality is available immediately.
+
+To exercise the main paths: open any .md or .txt file to edit it, and any .epub to read it. For the paginated two-page spread, use the two buttons at the right of the toolbar -- click "Scroll" so it reads "Pages", then click "1-Col" so it reads "2-Col". Two columns require pagination, so that order matters. PDFs, images and web pages open read-only in their own tabs.
+
 Privacy policy: https://github.com/ec928/TypoZen/blob/master/PRIVACY.md
+
+---
+
+## Additional information fields
+
+| Field | Value |
+| --- | --- |
+| Copyright and trademark info | (c) 2026 Ed C. TypoZen is open source under the MIT licence. |
+| Developed by | Zen Development -- matches PublisherDisplayName in the manifest |
+| Additional license terms | Leave empty. Only for AMENDMENTS to the Standard Application License Terms; MIT governs the source on GitHub, the Standard Terms govern the Store binary, and the two do not conflict. |
+| Short title / Voice title | Leave empty -- Xbox One only |
 
 ---
 
