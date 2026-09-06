@@ -121,13 +121,20 @@ namespace TypoZen
 
         /// <summary>
         /// What distinguishes this INSTALL from another of the same app by the same user.
-        /// Empty for the portable build, so every existing name is unchanged.
+        ///
+        /// The PORTABLE build carries one too, and that is the whole point. The first
+        /// version of this put a discriminator only on the packaged side, which is inert
+        /// against the package already in the Store: 0.2.40 has no discriminator at all, an
+        /// unpackaged build computing an empty one matches it exactly, and the two collide
+        /// as before. Since 0.2.40 is the Store baseline and stays, the side that can move
+        /// is this one.
         /// </summary>
         private static readonly string InstallDiscriminator =
-            PackageFamilyName == null ? "" : "_" + PackageFamilyName;
+            PackageFamilyName == null ? "_Portable" : "_" + PackageFamilyName;
 
         /// <summary>
-        /// Profile folder name. The Store copy gets its own.
+        /// Profile folder name. Every install gets its own; TypoZen_Cache with no suffix
+        /// now belongs to the 0.2.40 package alone.
         ///
         /// This has to move WITH the identity below, not separately. A packaged
         /// Windows.FullTrustApplication is not redirected -- it writes to the real
@@ -331,7 +338,7 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Carry a profile across the first launch of a packaged build.
+        /// Carry a profile across the first launch after the install split.
         ///
         /// 0.2.41 gave the packaged copy its own profile folder. That is right for two
         /// installs living side by side, and wrong for the same install being UPDATED: a
@@ -341,20 +348,21 @@ namespace TypoZen
         /// else for it. An update that silently resets the app is worse than the window
         /// handoff this whole change exists to fix.
         ///
-        /// So: on the first run of a packaged build whose own profile does not exist yet,
-        /// copy the shared one across. It also means a portable user installing from the
-        /// Store keeps their state, which is a better first launch than an empty one.
+        /// The same applies to the portable build, which now moves too: every existing
+        /// user is on TypoZen_Cache, and 0.2.41 must not be the upgrade that emptied their
+        /// app. So on the first run of ANY build whose own profile does not exist yet, copy
+        /// the shared one across.
         ///
         /// Named files only. EBWebView is WebView2's own store, typozen_books an extraction
         /// cache and typozen_load a staging area -- all rebuildable, potentially large, and
         /// nothing a reader would miss. Copying a novel's unpacked chapters to save a
         /// re-unzip is not worth the first-launch delay.
         /// </summary>
-        private static void MigrateSharedProfileOnFirstPackagedRun()
+        private static void MigrateSharedProfileOnFirstSplitRun()
         {
             try
             {
-                if (PackageFamilyName == null) return;            // portable: nothing to do
+                if (InstallDiscriminator.Length == 0) return;      // no split: nothing to do
                 if (ProfileDirOverride() != null) return;          // test harness owns its dir
 
                 string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -388,7 +396,7 @@ namespace TypoZen
         {
             PerfMark("--- Main entered (process start + .NET/WPF load precede this)");
             // Before anything reads the profile, including the perf log's own directory.
-            MigrateSharedProfileOnFirstPackagedRun();
+            MigrateSharedProfileOnFirstSplitRun();
             // --debug, and Phase 6 (ZenSeek): --reader --search --line --match-index + path.
             LaunchRequest launch = LaunchRequest.ParseArgs(args);
             if (launch.Debug)
