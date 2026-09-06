@@ -118,7 +118,7 @@ the separate Additional Testing Information page, not a box. The required box is
 and it asks a narrower question -- why the capability is needed and how it is used._
 
 **Hard limit: 500 characters.** The box silently stops accepting input; it does not warn.
-The text below is 499. Anything longer gets truncated mid-sentence, which reads worse to a
+The text below is exactly 500, which the box accepts. Anything longer gets truncated mid-sentence, which reads worse to a
 reviewer than a short answer does.
 
 TypoZen is a Win32 desktop app packaged as MSIX (Desktop Bridge). A packaged desktop app cannot run without runFullTrust: it is .NET/WPF hosting WebView2, not a sandboxed UWP app.
