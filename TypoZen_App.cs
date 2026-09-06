@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.40";
+        internal const string AppVersion = "0.2.41";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -74,10 +74,70 @@ namespace TypoZen
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool AllowSetForegroundWindow(uint dwProcessId);
 
+        /// <summary>
+        /// The MSIX package family name, or null when running unpackaged (portable).
+        ///
+        /// APPMODEL_ERROR_NO_PACKAGE (15700) is the documented answer for "not in a package"
+        /// and is not an error condition here -- it is how the portable build identifies
+        /// itself. Anything else unexpected is treated the same way, because a copy that
+        /// cannot name its package is, for every purpose below, a portable copy.
+        /// </summary>
+        private const int AppModelErrorNoPackage = 15700;
+        private const int ErrorInsufficientBuffer = 122;
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern int GetCurrentPackageFamilyName(
+            ref int packageFamilyNameLength, System.Text.StringBuilder packageFamilyName);
+
+        internal static readonly string PackageFamilyName = ResolvePackageFamilyName();
+
+        private static string ResolvePackageFamilyName()
+        {
+            try
+            {
+                int len = 0;
+                int rc = GetCurrentPackageFamilyName(ref len, null);
+                if (rc == AppModelErrorNoPackage) return null;
+                if (rc != ErrorInsufficientBuffer && rc != 0) return null;
+                var sb = new System.Text.StringBuilder(len);
+                rc = GetCurrentPackageFamilyName(ref len, sb);
+                if (rc != 0) return null;
+                string name = sb.ToString();
+                return string.IsNullOrEmpty(name) ? null : name;
+            }
+            catch { return null; }   // pre-Win8 shim, or the API unavailable: portable.
+        }
+
+        /// <summary>
+        /// What distinguishes this INSTALL from another of the same app by the same user.
+        /// Empty for the portable build, so every existing name is unchanged.
+        /// </summary>
+        private static readonly string InstallDiscriminator =
+            PackageFamilyName == null ? "" : "_" + PackageFamilyName;
+
+        /// <summary>
+        /// Profile folder name. The Store copy gets its own.
+        ///
+        /// This has to move WITH the identity below, not separately. A packaged
+        /// Windows.FullTrustApplication is not redirected -- it writes to the real
+        /// %LOCALAPPDATA% -- so a Store copy and a portable copy were sharing one profile.
+        /// Today the single-instance mutex is the only thing preventing both from running
+        /// at once and racing settings.json, tabs_session.txt and book_positions.txt with
+        /// last-writer-wins. Splitting the mutex alone would trade a confusing window
+        /// handoff for silent state corruption, which is the worse bug.
+        /// </summary>
+        internal static readonly string CacheFolderName = "TypoZen_Cache" + InstallDiscriminator;
+
         // One running window; further Explorer double-clicks hand off paths over a named pipe
         // and exit (Notepad-style tabs, not a new process per file).
-        private static readonly string SingleInstanceMutexName = @"Local\TypoZen_SingleInstance_v1_" + System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
-        internal static readonly string OpenPipeName = "TypoZen_Open_v1_" + System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
+        //
+        // Keyed to the user AND the install. Keyed to the user alone, a Store-installed and a
+        // portable TypoZen were indistinguishable to each other: launching the Store copy while
+        // the portable one was running handed its command line down the pipe to the portable
+        // instance and exited, so the Store icon appeared to do nothing while somebody else's
+        // window came forward.
+        private static readonly string SingleInstanceMutexName = @"Local\TypoZen_SingleInstance_v1_" + System.Security.Principal.WindowsIdentity.GetCurrent().User.Value + InstallDiscriminator;
+        internal static readonly string OpenPipeName = "TypoZen_Open_v1_" + System.Security.Principal.WindowsIdentity.GetCurrent().User.Value + InstallDiscriminator;
 
         // Telemetry log. Off unless --debug is passed (or TYPOZEN_DEBUG is set), so an
         // ordinary run never writes debug.log next to the executable. TypoZen_Debug.bat
@@ -256,7 +316,7 @@ namespace TypoZen
         {
             return ProfileDirOverride() ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TypoZen_Cache");
+                CacheFolderName);
         }
 
         [STAThread]
@@ -705,7 +765,7 @@ namespace TypoZen
             if (over != null) return over;
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TypoZen_Cache");
+                Program.CacheFolderName);
         }
 
         /// <summary>
