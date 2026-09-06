@@ -303,6 +303,17 @@
                     });
                 }
                 this.invalidateHeights();
+                // The empty-scratch-tab hint is definitionally wrong now.
+                //
+                // syncScratchEmpty() already declines to set it on a book, but nothing on
+                // the book path ever called it again: open an epub into a new empty tab and
+                // the class added while the tab was blank simply stayed, painting "Start
+                // typing..." over page 1 of a 750-page novel. Clearing it here rather than
+                // in the epub loader covers the remount path too, which returns early from
+                // loadMarkdownContent and never reaches finishLoadUi.
+                try {
+                    if (typeof syncScratchEmpty === 'function') syncScratchEmpty();
+                } catch (eScratch) {}
                 return this.blocks.length;
             },
 
