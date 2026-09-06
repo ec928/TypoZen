@@ -97,7 +97,18 @@ namespace TypoZen
             {
                 int len = 0;
                 int rc = GetCurrentPackageFamilyName(ref len, null);
-                if (rc == AppModelErrorNoPackage) return null;
+                if (rc == AppModelErrorNoPackage)
+                {
+                    // Test seam, the same shape as TYPOZEN_PROFILE_DIR above. Honoured only
+                    // when the real API says unpackaged, so it can never override a genuine
+                    // package identity. Everything the packaged build does differently --
+                    // its own mutex, pipe, profile folder, and the first-run migration into
+                    // it -- is otherwise unobservable without registering an MSIX, and
+                    // "reasoned about" is not the same as "seen to work" for a code path
+                    // whose failure mode is a Store update wiping somebody's settings.
+                    string fake = Environment.GetEnvironmentVariable("TYPOZEN_PKG_FAMILY");
+                    return string.IsNullOrWhiteSpace(fake) ? null : fake.Trim();
+                }
                 if (rc != ErrorInsufficientBuffer && rc != 0) return null;
                 var sb = new System.Text.StringBuilder(len);
                 rc = GetCurrentPackageFamilyName(ref len, sb);
@@ -319,10 +330,65 @@ namespace TypoZen
                 CacheFolderName);
         }
 
+        /// <summary>
+        /// Carry a profile across the first launch of a packaged build.
+        ///
+        /// 0.2.41 gave the packaged copy its own profile folder. That is right for two
+        /// installs living side by side, and wrong for the same install being UPDATED: a
+        /// Store user coming from 0.2.40 -- whose packaged build shared TypoZen_Cache with
+        /// the portable one -- would start 0.2.41 with no settings, no themes, no bookmarks
+        /// and no reading positions. Everything still on disk, and the app looking somewhere
+        /// else for it. An update that silently resets the app is worse than the window
+        /// handoff this whole change exists to fix.
+        ///
+        /// So: on the first run of a packaged build whose own profile does not exist yet,
+        /// copy the shared one across. It also means a portable user installing from the
+        /// Store keeps their state, which is a better first launch than an empty one.
+        ///
+        /// Named files only. EBWebView is WebView2's own store, typozen_books an extraction
+        /// cache and typozen_load a staging area -- all rebuildable, potentially large, and
+        /// nothing a reader would miss. Copying a novel's unpacked chapters to save a
+        /// re-unzip is not worth the first-launch delay.
+        /// </summary>
+        private static void MigrateSharedProfileOnFirstPackagedRun()
+        {
+            try
+            {
+                if (PackageFamilyName == null) return;            // portable: nothing to do
+                if (ProfileDirOverride() != null) return;          // test harness owns its dir
+
+                string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string mine = Path.Combine(local, CacheFolderName);
+                string shared = Path.Combine(local, "TypoZen_Cache");
+                if (Directory.Exists(mine)) return;                // not the first run
+                if (!Directory.Exists(shared)) return;             // nothing to carry
+
+                Directory.CreateDirectory(mine);
+                string[] carry = {
+                    "settings.json", "recent_files.json", "tabs_session.txt",
+                    "bookmarks.txt", "book_positions.txt", "user_words.txt",
+                    "window_state.json", "TypoZen_Themes.json", "typozen_user.lex"
+                };
+                foreach (string name in carry)
+                {
+                    try
+                    {
+                        string src = Path.Combine(shared, name);
+                        if (File.Exists(src)) File.Copy(src, Path.Combine(mine, name), false);
+                    }
+                    catch { }   // one unreadable file must not cost the rest
+                }
+                PerfMark("profile migrated from the shared cache on first packaged run");
+            }
+            catch { }   // a failed migration is an empty profile, not a failed launch
+        }
+
         [STAThread]
         public static void Main(string[] args)
         {
             PerfMark("--- Main entered (process start + .NET/WPF load precede this)");
+            // Before anything reads the profile, including the perf log's own directory.
+            MigrateSharedProfileOnFirstPackagedRun();
             // --debug, and Phase 6 (ZenSeek): --reader --search --line --match-index + path.
             LaunchRequest launch = LaunchRequest.ParseArgs(args);
             if (launch.Debug)
