@@ -4,7 +4,8 @@ Baseline inventory of **user-visible** residual risk for the current tree.
 
 - **Open defect-class items:** none.
 - Suite-only failures belong in the harness, not here. See `docs/for-agents.md`.
-- Health / remaining work: `docs/health-review-2026-08-28-combined.md` (original: `docs/health-review-2026-08-28.md`).
+- This file is the living record. The health reviews are archived snapshots of older
+  trees (`docs/archive/`) and do not describe current state, whatever their own text says.
 
 ## Product limits (not defects — do not “fix” by inventing precision)
 

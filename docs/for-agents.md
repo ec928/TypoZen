@@ -18,10 +18,11 @@ Product truth lives here and in the README; `docs/archive/` is history.
 | `docs/for-agents.md` | This file — constraints, keyboard matrix, non-goals |
 | `docs/known-issues.md` | Product limits + fixed/mitigated notes (not a dump of suite noise) |
 | `docs/developer-editor-analysis.md` | Parked code-editor attempt |
-| `docs/app-review.md` | 0.2.7 app review + what was fixed afterwards |
-| `docs/health-review-2026-08-29.md` | Current health snapshot (app first). Remaining work lives here. |
-| `docs/health-review-2026-08-28.md` | Original health review (Claude, `1c104d3`) |
-| `docs/health-review-2026-08-28-combined.md` | 0.2.15 combined review + that day’s follow-up. Historical; 08-29 is current. |
+| `docs/releasing.md` | Build, package, release, Store. Read section 5 before touching install identity |
+| `docs/store-listing.md` | Store listing copy and the certification answers, with field limits |
+| `docs/fonts-ab.md` | Measured: loading only the active theme's fonts does not cut startup |
+| `docs/scripts-ab.md` | Measured: concatenating the modules into one runtime script does not either |
+| `docs/archive/` | Dated snapshots. Every health review lives here now -- none of them describes the current tree |
 | `docs/archive/` | Historical plans and decision records — not current contracts |
 
 If README and code disagree, fix one of them; do not paper over with a third story.
@@ -136,7 +137,7 @@ $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + real TypoZen.exe (slow; only 
 - `page-arrow-keys-app.mjs` — Preview: arrows = caret, PageDown pages; Reader: arrows page. Does **not** fully cover search-mode Left/Right.
 - **Never wait for a search with a fixed sleep.** `SIDEBAR_SEARCH_DEBOUNCE_MS` is 2000 and `runFind` then crosses the whole document. `search-perf-app` slept 1200ms and so could *never* pass — it reported nothing about search for as long as it was written that way — and `search-highlight-app` slept 2600ms, having already been re-tuned once from 1500. Poll for the state the assertions need (`findState.query === q && findState.matches.length > 0`); a sleep that was re-tuned once is a sleep that will be re-tuned again.
 - **A red suite is more often a stale contract than a defect.** Of six failing app suites investigated in this tree, one was a product bug; three were suite debt and one asserted behaviour the product had deliberately superseded (image-only search results navigate now — the suite still demanded "the view does not move"). Read the assertion against current product truth before believing it.
-- **`epub-open-app` stall is NOT a product hang.** Isolated, the omnibus is fine: windowing mounts **800 of 45,486** blocks, a 60% seek arrives in ~120 ms. The suite **relaunches between Matter and Xeelee on a wiped profile**, fires seeks once, and skips the find walk on the 8.1 MB book (one sync pass; CDP cannot wait it out). Do not raise `protocolTimeout`. See `docs/health-review-2026-08-28-combined.md`.
+- **`epub-open-app` stall is NOT a product hang.** Isolated, the omnibus is fine: windowing mounts **800 of 45,486** blocks, a 60% seek arrives in ~120 ms. The suite **relaunches between Matter and Xeelee on a wiped profile**, fires seeks once, and skips the find walk on the 8.1 MB book (one sync pass; CDP cannot wait it out). Do not raise `protocolTimeout`. See `docs/archive/health-review-2026-08-28-combined.md`.
 - **Unhandled UI faults stop automatic writes.** `DocumentStateSuspect` is set from `DispatcherUnhandledException` (and AppDomain). Autosave and session persist return without touching disk; File > Save still works. Proved by `tests/fault-autosave-app.mjs` (`debug_throw_ui`, `--debug` only). Do not add a shipped throw-switch.
 - Prefer characterising failures over deleting suites. Skip only when the environment truly cannot run (missing fixture / no display) — document why.
 

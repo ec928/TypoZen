@@ -1,4 +1,6 @@
 # TypoZen health review — 2026-08-29
+> **Archived.** Snapshot of the tree at **0.2.29**. Its own text calls itself "current
+> status"; it was, on 29 August 2026. Live defects: `docs/known-issues.md`.
 
 App-first review of the tree at **0.2.29**. Numbers counted or read here.
 The 2026-08-28 combined review (`docs/health-review-2026-08-28-combined.md`)

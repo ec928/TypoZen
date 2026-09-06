@@ -1,4 +1,6 @@
 # TypoZen app review (audit 0.2.7, fixes shipped in 0.2.8)
+> **Archived.** Audit of the tree at **0.2.7**; the fixes it describes shipped in 0.2.8.
+> Kept for the reasoning, not as current state. Live defects: `docs/known-issues.md`.
 
 Audit of the tree at 0.2.7 on 2026-08-26, plus a fix pass now released as **0.2.8**.
 Characterised against source, not suite folklore.

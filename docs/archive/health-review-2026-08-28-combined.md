@@ -1,4 +1,6 @@
 # TypoZen health review — 2026-08-28 (combined)
+> **Archived.** Combined health review of the tree at **0.2.15**, plus that day's
+> follow-up. Live defects: `docs/known-issues.md`.
 
 **Combined review (Grok)** of Claude's original at `docs/health-review-2026-08-28.md`,
 plus the follow-up pass. `AppVersion` **0.2.15** at the time. **Current

@@ -1,4 +1,6 @@
 # TypoZen health review — 2026-08-28
+> **Archived.** Health review of the tree at **0.2.15**, superseded the same day by
+> `health-review-2026-08-28-combined.md`. Live defects: `docs/known-issues.md`.
 
 **Original (Claude).** Written at `1c104d3`. Unedited.
 
