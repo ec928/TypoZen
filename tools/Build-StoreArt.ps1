@@ -109,15 +109,89 @@ function New-Art {
     Write-Host ("  {0,-28} {1}x{2}  {3} KB" -f $Name, $W, $H, $kb)
 }
 
+function New-Hero {
+    param([int]$W, [int]$H, [string]$Name)
+
+    # 16:9 Super hero art, which runs across the top of the listing.
+    #
+    # NO WORDMARK. Partner Center is explicit: "Must not include the product's title."
+    # So this cannot be the poster composition widened -- it shows the product instead of
+    # naming it, which for a typography app means showing type. Real Literata at low alpha,
+    # because a fake page drawn as grey bars would be a picture of a wireframe.
+    $bmp = New-Object System.Drawing.Bitmap($W, $H)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
+    $g.Clear($bg)
+
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $W, $H)
+    $top = [System.Drawing.Color]::FromArgb(255, 52, 50, 48)
+    $grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $top, $bg, 60.0)
+    $g.FillRectangle($grad, $rect)
+    $grad.Dispose()
+
+    $fam = Get-Family
+    $markSize = [int]($H * 0.34)
+
+    # A column of prose, set the way the app sets it, fading as it falls back.
+    $bodySize = [single]($H * 0.038)
+    $fBody = New-Object System.Drawing.Font($fam, $bodySize, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+    $lines = @(
+        'the sand was a low dune crest, and the wind',
+        'came off it carrying the smell of the deep',
+        'desert. He read the page again, slowly, the',
+        'way a thing is read when there is nothing',
+        'else to do with the evening but read it, and',
+        'the margin held the line where he had left',
+        'off the night before.'
+    )
+    $x = [int]($W * 0.34)
+    $lead = [int]($bodySize * 1.65)
+    # Centred on the canvas rather than started at a guessed offset: seven lines at this
+    # leading left the bottom third of a 1080 frame empty when y was pinned to 0.20.
+    $y = [int]((($H - ($lines.Count * $lead)) / 2))
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        # Falls away down the column, so the eye lands on the mark and not on the words.
+        $a = [int](150 - ($i * 17))
+        if ($a -lt 26) { $a = 26 }
+        $c = [System.Drawing.Color]::FromArgb($a, $text.R, $text.G, $text.B)
+        $b = New-Object System.Drawing.SolidBrush($c)
+        $g.DrawString($lines[$i], $fBody, $b, [single]$x, [single]($y + ($i * $lead)))
+        $b.Dispose()
+    }
+    $fBody.Dispose()
+
+    # The mark, left, drawn at the size it sits at.
+    $mark = Draw-TypoZenBitmap -size $markSize
+    $g.DrawImage($mark, [int]($W * 0.13), [int](($H - $markSize) / 2), $markSize, $markSize)
+    $mark.Dispose()
+
+    # One amber rule, the gutter the reading themes draw their bookmark rail in.
+    # Between the mark and the column, not through the mark. At 0.295 it crossed the icon,
+    # which spans 0.13W to 0.13W + 0.34H and so reaches past it on a 16:9 frame.
+    $bRule = New-Object System.Drawing.SolidBrush($accent)
+    $ruleX = [int]($W * 0.13) + $markSize + [int]($W * 0.010)
+    $g.FillRectangle($bRule, $ruleX, [int]($H * 0.20), [Math]::Max(3, [int]($W * 0.0022)), [int]($H * 0.60))
+    $bRule.Dispose()
+
+    $path = Join-Path $out $Name
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose(); $bmp.Dispose()
+    $kb = [int]((Get-Item $path).Length / 1KB)
+    Write-Host ("  {0,-28} {1}x{2}  {3} KB" -f $Name, $W, $H, $kb)
+}
+
 Write-Host "`nStore listing artwork" -ForegroundColor Cyan
 if (-not $haveLiterata) { Write-Warning "fonts\Literata.ttf not found - falling back to Georgia." }
 
 New-Art -W 720  -H 1080 -Name 'PosterArt-720x1080.png'
 New-Art -W 1080 -H 1080 -Name 'BoxArt-1080x1080.png'
+New-Hero -W 1920 -H 1080 -Name 'SuperHeroArt-1920x1080.png'
 
 $fonts.Dispose()
 
 Write-Host "`nWritten to dist-storeart\" -ForegroundColor Green
 Write-Host "  9:16 Poster art -> PosterArt-720x1080.png"
 Write-Host "  1:1 Box art     -> BoxArt-1080x1080.png"
+Write-Host "  16:9 Super hero -> SuperHeroArt-1920x1080.png  (no title, by requirement)"
 Write-Host "Both optional: without them the Store uses the package tile logos.`n"
