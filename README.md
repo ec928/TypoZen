@@ -603,6 +603,9 @@ three permit commercial use and redistribution:
 | Inter, Literata, Merriweather, Source Sans 3 | SIL Open Font License 1.1 | `fonts/OFL.txt` |
 | Dictionary and thesaurus data | WordNet | `WORDNET-LICENSE.txt` |
 
+**Privacy:** [PRIVACY.md](PRIVACY.md) — TypoZen sends nothing anywhere; everything it
+remembers is in `%LOCALAPPDATA%\TypoZen_Cache` and can be cleared from **File → Privacy**.
+
 The OFL allows these faces to be bundled, redistributed and sold with software, on
 the condition that the notice and licence go with them — which is why `fonts/OFL.txt`
 ships in every build rather than living only in this repository. The copyright lines
