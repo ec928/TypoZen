@@ -1186,12 +1186,28 @@
                 const a = isLight ? 0.30 : 0.38;
                 root.setProperty('--find-soft', 'rgba(' + rr + ',' + gg + ',' + bb + ',' + a + ')');
             })();
-            root.setProperty('--font', font);
             // Theme font size (FS) — with sane clamp; CSS body uses var(--fs)
             let fs = parseInt(t.FS != null ? t.FS : (t.FontSize != null ? t.FontSize : 16), 10);
             if (isNaN(fs) || fs < 10) fs = 14;
             if (fs > 28) fs = 28;
-            root.setProperty('--fs', fs + 'px');
+            // Font and size re-break every line, so they go through applySpacing: read the
+            // block on screen, change, seek back to it. Setting them straight onto the root
+            // repaginated underneath the reader and left them wherever the old page NUMBER
+            // now fell -- a theme with a larger size landed pages away from the paragraph
+            // they had been reading. Only the two properties that move text; the colours
+            // below cannot change a line break.
+            //
+            // Not on the first application: at startup there is no page being read yet,
+            // and the resume logic owns where the reader is put.
+            const metrics = {};
+            if (root.getPropertyValue('--font') !== font) metrics['--font'] = font;
+            if (root.getPropertyValue('--fs') !== fs + 'px') metrics['--fs'] = fs + 'px';
+            const firstApply = !root.getPropertyValue('--fs');
+            if (Object.keys(metrics).length && !firstApply && typeof applySpacing === 'function') {
+                applySpacing(metrics);
+            } else {
+                Object.keys(metrics).forEach(function (k) { root.setProperty(k, metrics[k]); });
+            }
             
             root.setProperty('--surface', t.Surface || (isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)'));
             root.setProperty('--border', t.Border || (isLight ? 'rgba(0, 0, 0, 0.18)' : 'rgba(255, 255, 255, 0.18)'));
