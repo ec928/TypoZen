@@ -1062,6 +1062,14 @@
         #page-scrubber-range {
             -webkit-appearance: none;
             appearance: none;
+            /* Block, not the UA's inline-block. As an inline box the input sat on a line
+               in #page-scrubber, and that line takes its height from the font the page
+               inherits -- the THEME size. #page-scrubber is 16px and did not move, so every
+               measurement of it looked fine, while the input inside was pushed down by a
+               taller line: at a 26px theme the thumb was painted below its own box, past
+               the bottom of the page, cut off where the status bar begins. Fixed-size
+               chrome must not ride on text metrics; a block box has no line to ride on. */
+            display: block;
             width: 100%;
             height: 16px;
             margin: 0;
