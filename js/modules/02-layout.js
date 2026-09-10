@@ -4237,6 +4237,58 @@
             return -1;
         }
 
+        /**
+         * The first character actually on screen, and the block it belongs to.
+         *
+         * Finer than topLeftModelIndexTwoCol, which answers with the first block that STARTS
+         * on the page. When a page opens partway through a paragraph -- the usual case in a
+         * plain text file, where a paragraph is one long line -- that is the block after the
+         * one being read, and returning to it after a relayout lands on the page where the
+         * next paragraph begins: close, and a page late. Reported on a theme change with a
+         * different font size. This names the text itself.
+         *
+         * Reading order is DOM order, so the first block with a fragment on screen holds
+         * it. Blocks and text nodes are rejected whole before any single character is
+         * measured, so the per-character walk only ever runs inside one text node.
+         */
+        function firstVisibleTextPosition() {
+            if (!editor || !isPaginatedLayout()) return null;
+            const host = editor.getBoundingClientRect();
+            const on = function (rc) {
+                return !!rc && rc.width >= 1 && rc.right > host.left + 1 && rc.left < host.right - 1
+                    && rc.bottom > host.top + 1 && rc.top < host.bottom - 1;
+            };
+            const any = function (list) {
+                for (let k = 0; k < list.length; k++) if (on(list[k])) return true;
+                return false;
+            };
+            try {
+                const blocks = editor.querySelectorAll('.block');
+                for (let b = 0; b < blocks.length; b++) {
+                    if (!any(blocks[b].getClientRects())) continue;
+                    const walker = document.createTreeWalker(blocks[b], NodeFilter.SHOW_TEXT);
+                    let n;
+                    while ((n = walker.nextNode())) {
+                        const v = n.nodeValue || '';
+                        if (!v.trim()) continue;
+                        const whole = document.createRange();
+                        whole.selectNodeContents(n);
+                        if (!any(whole.getClientRects())) continue;
+                        const r = document.createRange();
+                        for (let i = 0; i < v.length; i++) {
+                            r.setStart(n, i);
+                            r.setEnd(n, i + 1);
+                            if (on(r.getClientRects()[0])) {
+                                return { node: n, offset: i, block: DocumentModel.modelIndexOfEl(blocks[b]) };
+                            }
+                        }
+                    }
+                    return null;   // the first visible block has no text: an image, a rule
+                }
+            } catch (e) {}
+            return null;
+        }
+
         function topLeftModelIndexTwoCol() {
             if (!editor) return -1;
             const host = editor.getBoundingClientRect();
@@ -5094,6 +5146,28 @@
         let _gotoBlockGen = 0;
         let _gotoRecheckTimer = null;
 
+        // A character to land on instead of the block's first line, bound to ONE jump by its
+        // generation. Only applySpacing sets it, straight after starting that jump; any
+        // other caller starts a new generation and so never sees it. Falls back to the block
+        // if the node has left the DOM.
+        let _gotoText = null;
+        function holdTextForCurrentGoto(pos) {
+            _gotoText = (pos && pos.node) ? { gen: _gotoBlockGen, node: pos.node, offset: pos.offset | 0 } : null;
+        }
+        function gotoTextRange(gen) {
+            const t = _gotoText;
+            if (!t || t.gen !== gen || !t.node || !t.node.isConnected) return null;
+            try {
+                const len = (t.node.nodeValue || '').length;
+                if (!len) return null;
+                const i = Math.min(t.offset, len - 1);
+                const r = document.createRange();
+                r.setStart(t.node, i);
+                r.setEnd(t.node, i + 1);
+                return r;
+            } catch (e) { return null; }
+        }
+
         function goToPageHoldingBlock(anchorBlock, tries, lastWidth, gen) {
             const isTopLevel = (tries == null && gen == null);
             if (isTopLevel) {
@@ -5156,12 +5230,16 @@
                 // count, so its page count shrank and the same number resolved into a
                 // different range. A switch anchored on block 140 landed on block 800.
                 // Locally there is nothing to disagree with.
+                // twoColPageOfElement only reads getBoundingClientRect, which a Range has
+                // too, so measuring the character uses exactly the page math below.
+                const textHere = gotoTextRange(gen);
                 if (pageWindowingActive()) {
-                    const el = elementForModelIndex(anchorBlock);
+                    const el = textHere || elementForModelIndex(anchorBlock);
                     const lp = twoColPageOfElement(el);
                     PageMap.gotoLocal(lp == null ? 0 : lp);
                 } else {
-                    const want = PageMap.pageOfBlock(anchorBlock);
+                    const tp = textHere ? twoColPageOfElement(textHere) : null;
+                    const want = (tp != null) ? tp : PageMap.pageOfBlock(anchorBlock);
                     PageMap.goto(want);
                 }
                 // This block is what the reader asked to see, so it is the reading
@@ -5193,15 +5271,17 @@
                             'x' + editor.clientHeight;
                         // Same generation, same target: only re-measure local page, do not
                         // start a brand-new multi-frame chain (that was the thrash fuel).
+                        // Same target as the landing, or this re-lands on the block.
+                        const textThere = gotoTextRange(gen);
                         if (pageWindowingActive()) {
-                            const el2 = elementForModelIndex(anchorBlock);
+                            const el2 = textThere || elementForModelIndex(anchorBlock);
                             if (el2) {
                                 const lp2 = twoColPageOfElement(el2);
                                 if (lp2 != null) PageMap.gotoLocal(lp2);
                             }
                         } else if (nowKey !== settledKey) {
-                            const want2 = PageMap.pageOfBlock(anchorBlock);
-                            PageMap.goto(want2);
+                            const tp2 = textThere ? twoColPageOfElement(textThere) : null;
+                            PageMap.goto((tp2 != null) ? tp2 : PageMap.pageOfBlock(anchorBlock));
                         }
                         try { repaintFindHighlights(); } catch (eF1) {}
                         try { repaintMarkSurface(); } catch (eMk1) {}

@@ -1291,6 +1291,9 @@
          */
         function applySpacing(props) {
             const anchor = isPaginatedLayout() ? topLeftModelIndexTwoCol() : -1;
+            // Read with the block, before anything changes: the character is what the
+            // reader is looking at, the block only where it is safe to fall back to.
+            const textAt = isPaginatedLayout() ? firstVisibleTextPosition() : null;
             Object.keys(props).forEach(function (p) {
                 document.documentElement.style.setProperty(p, props[p]);
             });
@@ -1304,31 +1307,63 @@
             // already uses, sees the real layout and lands. Keeping the first is what stops
             // the page jumping visibly in between.
             //
-            // The chain runs for a second and a half, which is long enough for the reader
-            // to have turned a page or grabbed the scrubber, and a correction that fires
+            // The chain's seeks are scheduled out to 400ms (COLUMN_SETTLE_DELAYS_MS), and each
+            // then waits for the geometry to stop moving before it lands, which is long enough
+            // for the reader to have turned a page or grabbed the scrubber; a correction that fires
             // after that would drag them back to a paragraph they have left. So it stands
-            // down on two conditions: a newer spacing change, and any movement of the view
-            // it did not make itself. Their movement is newer than our correction.
+            // down on two conditions: a newer spacing change, and the reader taking over.
+            // Their movement is newer than our correction.
+            //
+            // "Taking over" is input -- a wheel, a key, a press. It used to be inferred
+            // from scrollLeft: note where the view was after each seek and treat any
+            // difference as the reader moving. But goToPageHoldingBlock moves the view a
+            // few frames AFTER it is called, so the position noted was the old one, the
+            // chain's own first move then read as the reader's, and the corrections still
+            // due were cancelled -- measured: the last seek ran at ~240ms and the 400ms step
+            // never did. Whatever the
+            // first, least-settled seek chose became final -- close to the paragraph, on
+            // the wrong page, which is how it was reported after a theme change.
             const token = ++_spacingSeekToken;
-            let placedAt = -1;
+            let readerMoved = false;
+            const onReader = function () { readerMoved = true; };
+            const readerEvents = ['wheel', 'keydown', 'pointerdown', 'touchstart'];
+            readerEvents.forEach(function (ev) {
+                window.addEventListener(ev, onReader, { capture: true, passive: true });
+            });
+            setTimeout(function () {
+                readerEvents.forEach(function (ev) {
+                    window.removeEventListener(ev, onReader, { capture: true });
+                });
+            }, 3000);
             const seek = function () {
                 if (token !== _spacingSeekToken) return;
-                const ed = document.getElementById('editor');
-                if (placedAt >= 0 && ed && Math.abs(ed.scrollLeft - placedAt) > 2) {
+                if (readerMoved) {
                     _spacingSeekToken++;
                     return;
                 }
                 try {
                     PageGeometry.relayout();
                     PageMap.invalidate();
-                    if (anchor >= 0) goToPageHoldingBlock(anchor);
-                    else PageGeometry.snap();
+                    // The block holding the character, so windowing mounts the range the
+                    // text is in; then the character itself, for this jump only.
+                    const target = (textAt && textAt.block >= 0) ? textAt.block : anchor;
+                    if (target >= 0) {
+                        goToPageHoldingBlock(target);
+                        holdTextForCurrentGoto(textAt);
+                    } else {
+                        PageGeometry.snap();
+                    }
                     updatePageIndicator();
                 } catch (e) {}
-                if (ed) placedAt = ed.scrollLeft;
             };
             seek();
             if (typeof scheduleColumnSettle === 'function') scheduleColumnSettle(seek);
+            // A theme can change the font FAMILY, and a face not yet used is loaded
+            // asynchronously; the layout it produces can arrive after the chain has looked.
+            // One more seek once it has.
+            try {
+                if (document.fonts && document.fonts.ready) document.fonts.ready.then(seek);
+            } catch (eF) {}
         }
 
         // --- COMMAND & FORMATTING HANDLER ---
