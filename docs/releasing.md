@@ -150,12 +150,21 @@ that cannot name a package is treated as a folder someone unzipped.
    build computing the empty string matches it byte for byte and the collision survives
    untouched. Whichever side can still move is the side that must carry it.
 
-2. **Identity and profile move together.** A packaged `Windows.FullTrustApplication` is
-   *not* redirected — it writes to the real `%LOCALAPPDATA%`. Splitting the identity
-   alone lets two instances run at once over one profile, and the state files are written
-   whole. They are written atomically, so nothing corrupts; they are still
-   last-writer-wins, so the copy that closes second silently reverts the other's settings,
-   session and reading positions. That is worse than the bug being fixed.
+2. **Identity and profile move together**, so the two always agree about which install a
+   profile belongs to, and a folder name says which copy wrote it.
+
+   This rule was first written on a claim that turned out to be false: that a packaged
+   `Windows.FullTrustApplication` is *not* redirected and writes to the real
+   `%LOCALAPPDATA%`, so both copies shared one profile. Registering 0.2.44 and running it
+   showed the packaged process redirected into
+   `%LOCALAPPDATA%\Packages\<family>\LocalCache\Local\` — read off the `--user-data-dir`
+   of its own WebView2 children — so a packaged copy never saw the portable profile.
+   What genuinely *was* shared is the single-instance mutex and the open-file pipe: named
+   kernel objects, not redirected, and the collision that was actually reported.
+
+   The first-run migration below therefore only ever does real work for the **portable**
+   build, the only one that can read the old shared folder. A packaged first run finds
+   nothing and starts clean, which is what the registered test run did.
 
 Because the profile folder moves, **the first run after a split migrates the shared
 profile into the new one** — named files only, not the WebView2 store or the book

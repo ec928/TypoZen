@@ -136,13 +136,24 @@ namespace TypoZen
         /// Profile folder name. Every install gets its own; TypoZen_Cache with no suffix
         /// now belongs to the 0.2.40 package alone.
         ///
-        /// This has to move WITH the identity below, not separately. A packaged
-        /// Windows.FullTrustApplication is not redirected -- it writes to the real
-        /// %LOCALAPPDATA% -- so a Store copy and a portable copy were sharing one profile.
-        /// Today the single-instance mutex is the only thing preventing both from running
-        /// at once and racing settings.json, tabs_session.txt and book_positions.txt with
-        /// last-writer-wins. Splitting the mutex alone would trade a confusing window
-        /// handoff for silent state corruption, which is the worse bug.
+        /// This moves WITH the identity below so the two always agree about which install
+        /// a profile belongs to, and so a name in %LOCALAPPDATA% says which copy wrote it.
+        ///
+        /// The original reason given here was that a packaged Windows.FullTrustApplication
+        /// writes to the real %LOCALAPPDATA%, so the two copies shared one profile and a
+        /// split identity alone would let them race it. MEASURED, and that was wrong:
+        /// registering 0.2.44 and running it showed Windows redirecting the packaged
+        /// process to
+        ///   %LOCALAPPDATA%\Packages\<family>\LocalCache\Local\
+        /// so a packaged copy never saw the portable profile at all. The collision that
+        /// was really reported is the single-instance mutex and the open-file pipe, which
+        /// are named kernel objects and are NOT redirected -- those genuinely were shared,
+        /// and are what the discriminator fixes.
+        ///
+        /// One consequence worth knowing: the first-run migration below can only ever do
+        /// real work for the PORTABLE build, because that is the only one that can read
+        /// the old shared folder. For a packaged first run it finds nothing and the app
+        /// starts clean, which is what the packaged test run did.
         /// </summary>
         internal static readonly string CacheFolderName = "TypoZen_Cache" + InstallDiscriminator;
 
