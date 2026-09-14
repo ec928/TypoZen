@@ -6,6 +6,26 @@ Works well with **`.md`**, **`.txt`**, and related text files.
 
 ---
 
+## Get TypoZen
+
+**[Install from the Microsoft Store](https://apps.microsoft.com/detail/9NGKCK27GTS1)** — the
+ordinary way. Signed by Microsoft, so no security warning; it lands in the Start Menu,
+uninstalls cleanly, and updates itself as new versions ship.
+
+**[Download the portable zip](https://github.com/ec928/TypoZen/releases/latest)** — unzip
+and run, nothing installed, nothing written outside your user profile. Runs from a USB
+stick. Two things to know: Windows shows a "Windows protected your PC" warning the first
+time, because the zip is unsigned (More info → Run anyway), and it does not update itself
+— come back here for new versions.
+
+Both can be installed at once. They keep **separate** settings, themes, bookmarks and
+reading positions, and neither disturbs the other.
+
+Windows 10 version 1809 or later, 64-bit. Requires the WebView2 runtime, which is already
+present on current Windows.
+
+---
+
 ## Highlights
 
 ### Dual-mode editing
