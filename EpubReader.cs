@@ -46,16 +46,28 @@ namespace TypoZen
         // read-only outright). The cache is per-user state and belongs with the rest of it.
         public static string CacheRoot(string stateDir)
         {
-            if (PrivateSessionRoot != null) return PrivateSessionRoot;
+            // PrivateMode, not "is there a root": the root is now created at launch so
+            // its virtual host can be mapped before the page navigates, so its mere
+            // existence no longer means Privacy Mode is on.
+            if (PrivateMode && PrivateSessionRoot != null) return PrivateSessionRoot;
             return Path.Combine(stateDir, "typozen_books");
         }
 
         /// <summary>Set while privacy mode is on; null means the ordinary cache.</summary>
         public static string PrivateSessionRoot;
 
-        /// <summary>Name the current session's private extraction directory, and make it.</summary>
+        /// <summary>True while Privacy Mode is on. Set by the app, read by CacheRoot.</summary>
+        public static bool PrivateMode;
+
+        /// <summary>
+        /// Name this PROCESS's private extraction directory, and make it. Idempotent:
+        /// one root for the life of the window, because its virtual host is mapped once,
+        /// before the page navigates, and a mapping added later never reaches the live
+        /// document. Minting a fresh root per session would strand that mapping.
+        /// </summary>
         public static string BeginPrivateSession()
         {
+            if (PrivateSessionRoot != null) return PrivateSessionRoot;
             try
             {
                 string dir = Path.Combine(Path.GetTempPath(),
@@ -68,14 +80,25 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Remove this session's private extraction directory, and any left by a session
-        /// that never got to run this -- a kill cannot be caught, so the next launch is the
-        /// only chance to clear up after one.
+        /// Leaving Privacy Mode. This NO LONGER deletes the extraction directory.
+        ///
+        /// A book that is open at that moment is still reading its images out of it, and
+        /// deleting it underneath the reader broke the book they were in the middle of.
+        /// Cleaning up must not cost someone the thing they are using: the directory is
+        /// removed on exit instead, by DisposePrivateSession, and a crash is covered by
+        /// the launch-time sweep.
         /// </summary>
         public static void EndPrivateSession()
         {
+            SweepAbandonedPrivateSessions();
+        }
+
+        /// <summary>Remove this process's private extraction directory. Exit only.</summary>
+        public static void DisposePrivateSession()
+        {
             string mine = PrivateSessionRoot;
             PrivateSessionRoot = null;
+            PrivateMode = false;
             if (mine != null) { try { Directory.Delete(mine, true); } catch { } }
             SweepAbandonedPrivateSessions();
         }

@@ -962,7 +962,7 @@ namespace TypoZen
 
         /// <summary>
         /// Point localload at the current stage directory. Re-mapped when Privacy Mode
-        /// moves the root, same reason MapBookHost re-maps.
+        /// moves the root, same reason the book hosts are both mapped up front.
         /// </summary>
         /// <summary>
         /// Map every folder the page will ever fetch a payload from, ONCE, before it
@@ -1673,7 +1673,7 @@ namespace TypoZen
                 // silently and leaves exactly what privacy mode is there to remove. This is
                 // the trigger — an ordinary exit clears the session's extracted books, and
                 // the sweep inside catches anything a previous crash left behind.
-                try { EpubReader.EndPrivateSession(); } catch { }
+                try { EpubReader.DisposePrivateSession(); } catch { }
                 // The per-process private staging folder goes with it. It is kept alive
                 // for the whole session because its virtual host cannot be re-mapped
                 // once the page has navigated; exit is the only safe time to remove it.
@@ -5371,7 +5371,7 @@ namespace TypoZen
                 // IMessageFilter (InstallEditorKeyFilter) so undo/format chords always work.
                 try { _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false; } catch {}
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping("localapp", _appDir, CoreWebView2HostResourceAccessKind.Allow);
-                MapBookHost();
+                MapBookHosts();
                 SweepAbandonedLoadDirs();
                 MapLoadHosts();
                 MapDocumentFolder(_currentFilePath);
@@ -8512,6 +8512,7 @@ namespace TypoZen
             }
 
             _privacyMode = on;
+            EpubReader.PrivateMode = on;
             SetMenuChecked("mPrivacyMode", on);
             // The switches it subsumes are disabled rather than merely overridden: a tick
             // that does nothing is a lie about what the app will do.
@@ -8522,12 +8523,17 @@ namespace TypoZen
             }
             if (on && _autosaveTimer != null) _autosaveTimer.Stop();
 
-            // Extraction goes somewhere disposable while this is on. Switching mid-session
-            // only affects books opened from here -- one already open keeps the directory it
-            // was unpacked into, because its images are still being fetched from it.
+            // Extraction goes somewhere disposable while this is on.
+            //
+            // Leaving Privacy Mode does NOT delete that directory. A book open at that
+            // moment is still fetching its images out of it, and deleting it underneath
+            // the reader broke the book they were in the middle of. Tidying up must not
+            // cost someone the thing they are using, so it is removed on exit instead
+            // (DisposePrivateSession), with the launch-time sweep covering a crash.
             if (!on)
-                EpubReader.EndPrivateSession();
-            MapBookHost();
+                EpubReader.EndPrivateSession();   // sweeps abandoned roots; keeps ours
+            // Nothing is re-mapped here any more: both book roots were mapped before
+            // the page navigated, and BookHostName() selects between them.
             // Bodies staged while it was on are dropped on the way out. The folder
             // itself stays: its virtual host was mapped before the page navigated and
             // cannot be re-mapped now, so the path has to survive the whole process.
@@ -8544,17 +8550,31 @@ namespace TypoZen
         /// whether the key sits in the application folder or in this session's temporary
         /// one.
         /// </summary>
-        private void MapBookHost()
+        private void MapBookHosts()
         {
             if (_webView == null || _webView.CoreWebView2 == null) return;
+            // Both roots, before the page navigates -- see MapLoadHosts. DenyCors is what
+            // book image URLs have always used.
+            MapOneBookHost("localbooks", Path.Combine(CacheDir(), "typozen_books"));
+            string priv = EpubReader.BeginPrivateSession();
+            if (priv != null) MapOneBookHost("localbooksp", priv);
+        }
+
+        private void MapOneBookHost(string host, string dir)
+        {
             try
             {
-                string root = EpubReader.CacheRoot(CacheDir());
-                Directory.CreateDirectory(root);
+                Directory.CreateDirectory(dir);
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "localbooks", root, CoreWebView2HostResourceAccessKind.DenyCors);
+                    host, dir, CoreWebView2HostResourceAccessKind.DenyCors);
             }
-            catch { }
+            catch (Exception ex) { LogFault("MapBookHosts " + host + " dir=" + dir, ex); }
+        }
+
+        /// <summary>Host serving book assets for the mode we are currently in.</summary>
+        private string BookHostName()
+        {
+            return SuppressDocumentTraces() ? "localbooksp" : "localbooks";
         }
 
         /// <summary>
@@ -8592,7 +8612,7 @@ namespace TypoZen
             if (uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase)) return true;
             if (uri.StartsWith("https://localapp/", StringComparison.OrdinalIgnoreCase)) return true;
             if (uri.StartsWith("https://docfolder/", StringComparison.OrdinalIgnoreCase)) return true;
-            if (uri.StartsWith("https://localbooks/", StringComparison.OrdinalIgnoreCase)) return true;
+            if (uri.StartsWith("https://localbooks", StringComparison.OrdinalIgnoreCase)) return true;
             // localload and localloadp -- see LoadHostName().
             if (uri.StartsWith("https://localload", StringComparison.OrdinalIgnoreCase)) return true;
             return false;
@@ -12153,6 +12173,12 @@ namespace TypoZen
 
             string assetDir;
             string payload = EpubReader.ReadToPayload(path, CacheDir(), out assetDir);
+            // assetsBase is baked into the payload -- and into the copy cached beside the
+            // extracted book -- as https://localbooks/... Rewrite that one prefix to the
+            // host for the mode we are in now, so a cached payload built in the other mode
+            // still resolves. Cheaper and safer than invalidating the cache.
+            if (payload != null && BookHostName() != "localbooks")
+                payload = payload.Replace("https://localbooks/", "https://" + BookHostName() + "/");
             if (payload == null)
             {
                 WinForms.MessageBox.Show(
