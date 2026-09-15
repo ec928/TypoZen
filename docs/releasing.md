@@ -22,15 +22,46 @@ One version number, one gate, one deploy target. In order:
 | Build + gate | `.\Build_TypoZen.ps1` | runs the headless suites, compiles, stages assets to `bin/` |
 | Portable | `.\tools\Build-Portable.ps1` | assembles `dist/` |
 | Package | `.\tools\Build-Msix.ps1` | writes `dist-msix\TypoZen.msix`, unsigned |
+| Installer | `.\tools\Build-Installer.ps1` | writes `dist-installer\TypoZen-Setup-X.Y.Z.exe` |
+| Verify it | `.\tools\Test-Installer.ps1` | ~15s; installs, hash-checks, uninstalls |
 | Deploy | copy `dist\*` over the run location | see `docs/internal/` for where that is |
 | Zip | `Compress-Archive -Path dist\* …` | archive it; shipped zips are never deleted |
-| Release | `gh release create vX.Y.Z <zip> --notes-file …` | |
+| Release | `gh release create vX.Y.Z <zip> <setup.exe> --notes-file …` | |
 
 **Do not skip the gate to save time.** It is 58 headless suites and takes seconds; it is
 not what makes a release slow.
 
 **`bin/` is staging, not disposable.** It exists so a build can be proven before it
 reaches the run location. `obj/` is the disposable one.
+
+### The installer
+
+`tools/TypoZen.iss` builds an ordinary Windows installer from the same `dist/` payload as
+the zip, for users who want a Start Menu entry and an uninstall entry. It is **per-user**
+(`PrivilegesRequired=lowest`), installs to `%LocalAppData%\Programs\TypoZen`, and
+raises no UAC prompt — which also means it works on a locked-down machine, where a
+machine-wide installer does not.
+
+It is **unsigned like everything else here**, so it does not reduce the two warnings a
+downloader clicks through; it only improves what they have afterwards. Unlike the MSIX it
+*is* safe to publish beside the zip: an unsigned installer runs after a SmartScreen
+override, whereas an unsigned MSIX cannot be installed at all.
+
+`AppId` in the `.iss` is a fixed GUID. **Never change it** — it is how Windows
+recognises an upgrade rather than a second copy.
+
+**`Test-Installer.ps1` backs up the Start Menu shortcut, and that is not paranoia.**
+`[Icons]` writes to `{autoprograms}`, the real per-user Start Menu, no matter what `/DIR`
+says on the command line, and it silently overwrites what is already there. `/NOICONS`
+does not prevent it: that switch only ticks a checkbox on the wizard page this installer
+disables. A silent test install therefore clobbers the developer's own TypoZen shortcut,
+and the uninstall that follows deletes it. That happened on 2026-09-15, and the shortcut
+had to be rebuilt by hand from the sibling apps' pattern.
+
+The same run first reported the optional tasks as correctly skipped while it was in fact
+reading a desktop shortcut that had been there since July — the check could not have
+failed. Assertions about shortcuts and file associations must compare against a snapshot
+taken *before* the install, and be control-verified with the tasks switched on.
 
 ### Version numbers
 
