@@ -6732,6 +6732,23 @@
             try {
                 // Prefer theme by name (stable across reordering), fall back to index
                 let themeIdx = savedPrefs.themeIndex;
+
+                // Record what was saved even when the theme list has NOT arrived yet.
+                // These assignments used to live inside the guard below, so if
+                // restore_prefs landed before themes: the saved theme was dropped on the
+                // floor and nothing re-applied it. The themes: handler then chose with
+                // `state.themeIndex || 0` and painted theme 0 -- a dark one -- while the
+                // host chrome and the status bar showed the real theme. A cream toolbar
+                // around a black page.
+                //
+                // It stayed hidden because window.onload seeds these from localStorage,
+                // which almost always beat the host. Clear Stored Data empties
+                // localStorage, so the next launch had nothing to seed from and the
+                // ordering bug finally showed. settings.json is meant to be the source of
+                // truth; localStorage was quietly propping it up.
+                if (savedPrefs.themeName) state.themeName = savedPrefs.themeName;
+                if (themeIdx !== undefined && themeIdx !== null) state.themeIndex = themeIdx;
+
                 if (window.allThemes && window.allThemes.length) {
                     if (savedPrefs.themeName) {
                         const byName = window.allThemes.findIndex(t => t && t.Name === savedPrefs.themeName);
