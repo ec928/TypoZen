@@ -1,4 +1,4 @@
-﻿WordNet 3.1 Licence
+WordNet 3.1 Licence
 ===================
 
 TypoZen ships dictionary.tsv and thesaurus.tsv, which are derived from the

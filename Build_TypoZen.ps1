@@ -291,7 +291,17 @@ foreach ($d in $assetDirs) {
     $src = Join-Path $appDir $d
     if (Test-Path $src) { Copy-Item $src -Destination $binDir -Recurse -Force }
 }
-$assetFiles = @("TypoZen_Template.html", "TypoZen.xaml", "TypoZen_Themes.json", "TypoZen.ico")
+# The same argument as $assetDirs, for the files that sit at the project root. These
+# were populated in bin\ by hand once and never refreshed, so bin\ silently drifted from
+# source for exactly the files nobody thinks about: WORDNET-LICENSE.txt sat in staging
+# with a stale copy while the fixed one sat in source. That matters beyond tidiness --
+# Build-Msix.ps1 packs bin\, so the Store package and the portable zip can ship
+# different bytes of the same licence. Stage everything that ships.
+$assetFiles = @("TypoZen_Template.html", "TypoZen.xaml", "TypoZen_Themes.json", "TypoZen.ico",
+                "LICENSE", "WORDNET-LICENSE.txt", "README.md",
+                "dictionary.tsv", "thesaurus.tsv",
+                "WebView2Loader.dll", "Microsoft.Web.WebView2.Core.dll",
+                "Microsoft.Web.WebView2.WinForms.dll")
 foreach ($f in $assetFiles) {
     $src = Join-Path $appDir $f
     if (Test-Path $src) { Copy-Item $src -Destination $binDir -Force }
