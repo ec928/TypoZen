@@ -4484,117 +4484,287 @@ namespace TypoZen
             return removed;
         }
 
-        private void ClearStoredData()
+        /// <summary>
+        /// What the reader chose to remove. Everything defaults OFF except the incidental
+        /// state; anything they made by hand -- bookmarks, added words, custom themes --
+        /// starts unticked, because a "clear" that silently takes those away is the same
+        /// mistake as deleting a book someone is reading.
+        /// </summary>
+        private sealed class ClearChoices
         {
-            var res = WinForms.MessageBox.Show(
-                "Delete TypoZen's stored data?\n\n" +
-                "This removes:\n" +
-                "  • unsaved text kept for session restore\n" +
-                "  • the list of open tabs\n" +
-                "  • the recent files list\n" +
-                "  • recent Search queries\n" +
-                "  • pasted images held in the cache\n" +
-                "  • saved web storage (cleared on next launch)\n\n" +
-                "Extracted book data is asked about separately.\n\n" +
-                "Your documents are not touched. Only " + CacheDir() + " is affected.",
-                "Clear Stored Data",
-                WinForms.MessageBoxButtons.OKCancel,
-                WinForms.MessageBoxIcon.Warning);
-            if (res != WinForms.DialogResult.OK) return;
+            public bool SessionText, OpenTabs, RecentFiles, RecentSearches, PastedImages;
+            public bool WebStorage, ReadingPositions, ExtractedBooks, Bookmarks;
+            public bool AddedWords, CustomThemes;
+        }
 
-            // Asked BEFORE anything is deleted, so Cancel here really does mean nothing
-            // happened. Its own question with its own buttons: extracted books used to be
-            // silently excluded while the dialog said only the cache folder was affected,
-            // which reads as though the books went with it. They did not.
-            bool clearBooks = false;
+        private static string HumanSize(long bytes)
+        {
+            if (bytes <= 0) return "empty";
+            if (bytes >= 1024L * 1024L) return (bytes / 1048576.0).ToString("0.#") + " MB";
+            if (bytes >= 1024L) return (bytes / 1024L) + " KB";
+            return bytes + " bytes";
+        }
+
+        private long SizeOfFile(string path)
+        {
+            try { return File.Exists(path) ? new FileInfo(path).Length : 0; } catch { return 0; }
+        }
+
+        private long SizeOfDir(string path)
+        {
+            try
+            {
+                if (!Directory.Exists(path)) return 0;
+                long n = 0;
+                foreach (var f in new DirectoryInfo(path).GetFiles("*", SearchOption.AllDirectories))
+                {
+                    try { n += f.Length; } catch { }
+                }
+                return n;
+            }
+            catch { return 0; }
+        }
+
+        private int CountLines(string path)
+        {
+            try { return File.Exists(path) ? File.ReadAllLines(path).Length : 0; } catch { return 0; }
+        }
+
+        /// <summary>
+        /// Ask what to remove. Returns null if the reader cancelled.
+        ///
+        /// A list of checkboxes rather than a chain of Yes/No boxes: these are independent
+        /// choices, and asking them one at a time made the reader answer a question they
+        /// could not see the whole of. Each line carries what it will actually cost --
+        /// "6.8 MB, the text of 2 books" is a different offer from "some cached data".
+        /// </summary>
+        private ClearChoices AskWhatToClear()
+        {
+            string cache = CacheDir();
             int bookCount; long bookBytes;
             BookCacheStats(out bookCount, out bookBytes);
-            if (bookCount > 0)
+
+            var win = new Window
             {
-                string size = bookBytes >= 1024L * 1024L
-                    ? (bookBytes / 1048576.0).ToString("0.#") + " MB"
-                    : Math.Max(1L, bookBytes / 1024L) + " KB";
-                var b = WinForms.MessageBox.Show(
-                    "Also remove extracted book data?\n\n" +
-                    bookCount + (bookCount == 1 ? " book" : " books") + ", " + size + ".\n\n" +
-                    "Opening an epub unpacks it here so it reopens instantly. Removing it " +
-                    "costs a few seconds the next time you open each book.\n\n" +
-                    "Your .epub files are not touched. A book that is open stays unpacked.",
-                    "Clear Stored Data",
-                    WinForms.MessageBoxButtons.YesNoCancel,
-                    WinForms.MessageBoxIcon.Question);
-                if (b == WinForms.DialogResult.Cancel) return;
-                clearBooks = (b == WinForms.DialogResult.Yes);
-            }
+                Title = "Clear Stored Data",
+                SizeToContent = SizeToContent.Height,
+                Width = 520,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Background = this.Background,
+                Foreground = this.Foreground
+            };
+            try { win.Owner = this; } catch { }
+
+            var root = new StackPanel { Margin = new Thickness(18) };
+            root.Children.Add(new TextBlock
+            {
+                Text = "Choose what to remove. Your documents and .epub files are never touched.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 12)
+            });
+
+            var boxes = new List<CheckBox>();
+            Func<string, string, bool, CheckBox> add = (label, detail, on) =>
+            {
+                var cb = new CheckBox
+                {
+                    IsChecked = on,
+                    Margin = new Thickness(0, 5, 0, 0),
+                    Foreground = win.Foreground,
+                    Content = new TextBlock
+                    {
+                        Text = label + (string.IsNullOrEmpty(detail) ? "" : "   -- " + detail),
+                        TextWrapping = TextWrapping.Wrap
+                    }
+                };
+                root.Children.Add(cb);
+                boxes.Add(cb);
+                return cb;
+            };
+
+            var cbSession  = add("Unsaved text kept for session restore", HumanSize(SizeOfDir(TabSessionBodiesDir())), true);
+            var cbTabs     = add("The list of open tabs", null, true);
+            var cbRecent   = add("Recent files list", CountLines(RecentFilesPath()) > 0 ? "" : "empty", true);
+            var cbSearch   = add("Recent search queries", null, true);
+            var cbImages   = add("Pasted images held in the cache", HumanSize(SizeOfDir(Path.Combine(cache, "assets"))), true);
+            var cbWeb      = add("Saved web storage", "cleared on next launch", true);
+            var cbPos      = add("Reading positions", CountLines(BookPositionsPath()) + " remembered", true);
+            var cbBooks    = add("Extracted book data",
+                                 bookCount > 0 ? bookCount + (bookCount == 1 ? " book, " : " books, ") + HumanSize(bookBytes)
+                                               : "none unpacked", false);
+            var cbMarks    = add("Bookmarks", CountLines(BookmarksPath()) + " document(s) with marks", false);
+            var cbWords    = add("Words you added to the dictionary", HumanSize(SizeOfFile(Path.Combine(cache, "typozen_user.lex"))), false);
+            var cbThemes   = add("Custom themes", HumanSize(SizeOfFile(Path.Combine(cache, "TypoZen_Themes.json"))), false);
+
+            root.Children.Add(new TextBlock
+            {
+                Text = "Bookmarks, added words and custom themes are things you made, so they "
+                     + "start unticked. A book that is open stays unpacked.",
+                TextWrapping = TextWrapping.Wrap,
+                Opacity = 0.75,
+                Margin = new Thickness(0, 14, 0, 0)
+            });
+
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 18, 0, 0)
+            };
+            var ok = new Button { Content = "Clear", Width = 90, Height = 26, IsDefault = true };
+            var cancel = new Button { Content = "Cancel", Width = 90, Height = 26, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+            row.Children.Add(ok); row.Children.Add(cancel);
+            root.Children.Add(row);
+            win.Content = root;
+
+            bool accepted = false;
+            ok.Click += (s2, e2) => { accepted = true; win.DialogResult = true; };
+            try { win.ShowDialog(); } catch { return null; }
+            if (!accepted) return null;
+
+            return new ClearChoices
+            {
+                SessionText      = cbSession.IsChecked == true,
+                OpenTabs         = cbTabs.IsChecked == true,
+                RecentFiles      = cbRecent.IsChecked == true,
+                RecentSearches   = cbSearch.IsChecked == true,
+                PastedImages     = cbImages.IsChecked == true,
+                WebStorage       = cbWeb.IsChecked == true,
+                ReadingPositions = cbPos.IsChecked == true,
+                ExtractedBooks   = cbBooks.IsChecked == true,
+                Bookmarks        = cbMarks.IsChecked == true,
+                AddedWords       = cbWords.IsChecked == true,
+                CustomThemes     = cbThemes.IsChecked == true
+            };
+        }
+
+        private void ClearStoredData()
+        {
+            var want = AskWhatToClear();
+            if (want == null) return;               // cancelled: nothing has been touched
 
             string cache = CacheDir();
-            try
+            var done = new List<string>();
+
+            if (want.SessionText)
             {
-                string bodyDir = TabSessionBodiesDir();
-                if (Directory.Exists(bodyDir))
+                try
                 {
-                    foreach (string f in Directory.GetFiles(bodyDir)) try { File.Delete(f); } catch { }
-                    try { Directory.Delete(bodyDir); } catch { }
+                    string bodyDir = TabSessionBodiesDir();
+                    if (Directory.Exists(bodyDir))
+                    {
+                        foreach (string f in Directory.GetFiles(bodyDir)) try { File.Delete(f); } catch { }
+                        try { Directory.Delete(bodyDir); } catch { }
+                    }
                 }
+                catch { }
+                done.Add("unsaved session text");
             }
-            catch { }
-            try { File.Delete(TabSessionPath()); } catch { }
-            try { File.Delete(RecentFilesPath()); } catch { }
-            _recentFiles.Clear();
-            RebuildRecentFilesMenu();
 
-            // Pasted images that were never written beside a document.
-            try
+            if (want.OpenTabs)
             {
-                string assets = Path.Combine(cache, "assets");
-                if (Directory.Exists(assets))
+                try { File.Delete(TabSessionPath()); } catch { }
+                done.Add("open tabs");
+            }
+
+            if (want.RecentFiles)
+            {
+                try { File.Delete(RecentFilesPath()); } catch { }
+                _recentFiles.Clear();
+                RebuildRecentFilesMenu();
+                done.Add("recent files");
+            }
+
+            if (want.PastedImages)
+            {
+                try
                 {
-                    foreach (string f in Directory.GetFiles(assets)) try { File.Delete(f); } catch { }
+                    string assets = Path.Combine(cache, "assets");
+                    if (Directory.Exists(assets))
+                        foreach (string f in Directory.GetFiles(assets)) try { File.Delete(f); } catch { }
                 }
+                catch { }
+                done.Add("pasted images");
             }
-            catch { }
 
-            // Blank document scratch fields and recent searches; keep theme/mode.
-            try
+            // Reading positions and bookmarks live in their own files and were never
+            // cleared, while the dialog said only the cache folder was affected. Both are
+            // in that folder, so a reader who asked for a clean slate did not get one.
+            if (want.ReadingPositions)
             {
-                var prefs = LoadHostPrefs();
-                prefs.LastFilePath = "";
-                prefs.LastContent = "";
-                prefs.SearchHistory = new List<string>();
-                prefs.LastSearchQuery = "";
-                prefs.FindMatchCase = false;
-                prefs.FindWholeWord = false;
-                WriteHostPrefs(prefs);
+                try { File.Delete(BookPositionsPath()); } catch { }
+                _bookPositions = null;              // drop the in-memory copy, or it is rewritten
+                foreach (var t in _tabs) t.ResumeBlock = 0;
+                done.Add("reading positions");
             }
-            catch { }
 
-            // The WebView2 profile holds localStorage in a LevelDB, which keeps superseded
-            // values on disk until it feels like compacting. It is locked while the browser
-            // is running, so flag it and delete the store at next launch instead.
-            try { File.WriteAllText(Path.Combine(cache, "purge_webstorage.flag"), "1"); } catch { }
-            try { SendMsg("cmd:clear_local_storage"); } catch { }
+            if (want.Bookmarks)
+            {
+                try { File.Delete(BookmarksPath()); } catch { }
+                _bookmarks = null;
+                done.Add("bookmarks");
+            }
+
+            if (want.AddedWords)
+            {
+                try { File.Delete(Path.Combine(cache, "typozen_user.lex")); } catch { }
+                done.Add("added words");
+            }
+
+            if (want.CustomThemes)
+            {
+                try { File.Delete(Path.Combine(cache, "TypoZen_Themes.json")); } catch { }
+                done.Add("custom themes");
+            }
+
+            if (want.RecentSearches)
+            {
+                try
+                {
+                    var prefs = LoadHostPrefs();
+                    prefs.LastFilePath = "";
+                    prefs.LastContent = "";
+                    prefs.SearchHistory = new List<string>();
+                    prefs.LastSearchQuery = "";
+                    prefs.FindMatchCase = false;
+                    prefs.FindWholeWord = false;
+                    WriteHostPrefs(prefs);
+                }
+                catch { }
+                done.Add("recent searches");
+            }
+
+            if (want.WebStorage)
+            {
+                // The WebView2 profile holds localStorage in a LevelDB, which keeps
+                // superseded values on disk until it feels like compacting, and is locked
+                // while the browser runs. Flag it and delete the store at next launch.
+                try { File.WriteAllText(Path.Combine(cache, "purge_webstorage.flag"), "1"); } catch { }
+                try { SendMsg("cmd:clear_local_storage"); } catch { }
+                done.Add("web storage (next launch)");
+            }
 
             string booksLine = "";
-            if (clearBooks)
+            if (want.ExtractedBooks)
             {
                 int skipped;
                 int removed = ClearExtractedBooks(out skipped);
-                booksLine = "\n\nExtracted book data removed: " + removed
-                    + (removed == 1 ? " book" : " books") + ".";
+                done.Add(removed + (removed == 1 ? " extracted book" : " extracted books"));
                 if (skipped > 0)
                 {
-                    booksLine += "\n" + skipped
+                    booksLine = "\n" + skipped
                         + (skipped == 1
-                            ? " book is still open and was left unpacked; close it"
-                            : " books are still open and were left unpacked; close them")
-                        + " and clear again to remove "
-                        + (skipped == 1 ? "it." : "them.");
+                            ? " book is open and was left unpacked; close it and clear again."
+                            : " books are open and were left unpacked; close them and clear again.");
                 }
             }
 
             WinForms.MessageBox.Show(
-                "Stored data cleared." + booksLine
-                + "\n\nSaved web storage is removed the next time TypoZen starts.",
+                (done.Count == 0 ? "Nothing was selected, so nothing was removed."
+                                 : "Removed: " + string.Join(", ", done.ToArray()) + ".")
+                + booksLine,
                 "Clear Stored Data", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
         }
 
