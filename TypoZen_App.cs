@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.44";
+        internal const string AppVersion = "0.2.45";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -677,7 +677,6 @@ namespace TypoZen
         private bool _sessionRestoreContent;
         private bool _recentFilesEnabled = true;
         /// <summary>User chose "Don't show again" on the non-UTF-8 open warning.</summary>
-        private bool _encodingWarnDisabled;
         private MenuItem _mRecentMenu;
 
         // Tab strip palette, refreshed by ApplyThemeChrome. Defaults match the original
@@ -700,6 +699,7 @@ namespace TypoZen
         private TextBlock _lblLineCount;
         private TextBlock _lblCharCount;
         private TextBlock _lblReadingTime;
+        private TextBlock _lblEncoding;
         private TextBlock _lblZoom;
         private Border _statusIndicator;
 
@@ -1320,6 +1320,7 @@ namespace TypoZen
             _lblLineCount = (TextBlock)FindElement("lblLineCount");
             _lblCharCount = (TextBlock)FindElement("lblCharCount");
             _lblReadingTime = (TextBlock)FindElement("lblReadingTime");
+            _lblEncoding = FindElement("lblEncoding") as TextBlock;
             _lblZoom = (TextBlock)FindElement("lblZoom");
             _statusIndicator = (Border)FindElement("statusIndicator");
             UpdateZoomLabel(); // reflects zoom restored from window_state
@@ -4549,7 +4550,11 @@ namespace TypoZen
                     stateStr, w, h, l, t, _zoomFactor,
                     _chromeAutoHide ? "auto" : "always", _wordWrap ? "true" : "false", _statusBarVisible ? "true" : "false",
                     _sessionRestoreContent ? "true" : "false", _recentFilesEnabled ? "true" : "false",
-                    _encodingWarnDisabled ? "false" : "true",
+                    // encodingWarn is written for compatibility only; the dialog it
+                    // governed is gone. The slot stays so the numbered placeholders
+                    // below keep their meaning -- reclaim it when this format string
+                    // is next rewritten.
+                    "true",
                     _isTwoColumnMode ? "true" : "false",
                     _col2Rect.HasValue ? _col2Rect.Value.Width : 0, _col2Rect.HasValue ? _col2Rect.Value.Height : 0, _col2Rect.HasValue ? _col2Rect.Value.Left : 0, _col2Rect.HasValue ? _col2Rect.Value.Top : 0,
                     _col1Rect.HasValue ? _col1Rect.Value.Width : 0, _col1Rect.HasValue ? _col1Rect.Value.Height : 0, _col1Rect.HasValue ? _col1Rect.Value.Left : 0, _col1Rect.HasValue ? _col1Rect.Value.Top : 0,
@@ -4577,7 +4582,6 @@ namespace TypoZen
                 var mL = Regex.Match(json, @"\""left\""\s*:\s*([\d\.\-]+)");
                 var mT = Regex.Match(json, @"\""top\""\s*:\s*([\d\.\-]+)");
                 var mZ = Regex.Match(json, @"\""zoom\""\s*:\s*([\d\.]+)");
-                var mEncWarn = Regex.Match(json, @"\""encodingWarn\""\s*:\s*(true|false)");
                 
                 var mIsTwo = Regex.Match(json, @"\""isTwoCol\""\s*:\s*(true|false)");
                 if (mIsTwo.Success) _isTwoColumnMode = (mIsTwo.Groups[1].Value == "true");
@@ -4609,8 +4613,6 @@ namespace TypoZen
                         _col1Rect = new Rect(l1, t1, w1, h1);
                     }
                 }
-                // encodingWarn:true = show warnings (default). false = user opted out.
-                if (mEncWarn.Success) _encodingWarnDisabled = (mEncWarn.Groups[1].Value == "false");
 
                 if (mW.Success && mH.Success)
                 {
@@ -6548,31 +6550,29 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Warn once when a file is not plain UTF-8: save will rewrite as UTF-8 (no BOM).
+        /// Show the status-bar encoding chip, or hide it. Pass the encoding the file was
+        /// read as when saving will convert it; pass null when there is nothing to say.
+        ///
+        /// This replaced a modal MessageBox raised on every non-UTF-8 file opened. That
+        /// dialog interrupted a read to announce something that only happens on save, gave
+        /// no way to decline the conversion, and hid "never warn me again" behind a button
+        /// labelled No -- the one button a hurried reader takes for "do not convert it".
+        /// The conversion is lossless, so the fact belongs in the status bar, not in the
+        /// reader's way.
         /// </summary>
-        private void MaybeWarnEncodingConversion(string path, string encodingName)
+        private void ShowEncodingChip(string encodingName)
         {
-            if (_e2eMode || _encodingWarnDisabled) return;
-            if (string.IsNullOrEmpty(encodingName) || encodingName == "UTF-8") return;
-
-            var res = WinForms.MessageBox.Show(
-                "This file was opened as:\n  " + encodingName + "\n\n" +
-                "When you save, TypoZen will write UTF-8 without a BOM.\n" +
-                "Your text is kept; only the on-disk encoding changes.\n\n" +
-                (string.IsNullOrEmpty(path) ? "" : ("File:\n  " + path + "\n\n")) +
-                "Yes = OK\n" +
-                "No = Don't show this warning again",
-                "Encoding notice",
-                WinForms.MessageBoxButtons.YesNo,
-                WinForms.MessageBoxIcon.Information,
-                WinForms.MessageBoxDefaultButton.Button1);
-
-            if (res == WinForms.DialogResult.No)
+            if (_lblEncoding == null) return;
+            if (string.IsNullOrEmpty(encodingName))
             {
-                _encodingWarnDisabled = true;
-                try { SaveWindowState(); } catch { }
+                _lblEncoding.Visibility = Visibility.Collapsed;
+                _lblEncoding.Text = "";
+                return;
             }
+            _lblEncoding.Text = encodingName + "  →  UTF-8";
+            _lblEncoding.Visibility = Visibility.Visible;
         }
+
 
         private void SetMenuChecked(string name, bool isChecked)
         {
@@ -7235,6 +7235,8 @@ namespace TypoZen
                 if (lblCharCount != null) lblCharCount.Foreground = mutedTxBrush;
                 var lblReadingTime = FindElement("lblReadingTime") as TextBlock;
                 if (lblReadingTime != null) lblReadingTime.Foreground = mutedTxBrush;
+                var lblEncoding = FindElement("lblEncoding") as TextBlock;
+                if (lblEncoding != null) lblEncoding.Foreground = mutedTxBrush;
                 var lblZoom = FindElement("lblZoom") as TextBlock;
                 if (lblZoom != null) lblZoom.Foreground = mutedTxBrush;
 
@@ -11789,9 +11791,6 @@ namespace TypoZen
                 string trailing = DetectTrailingNewlines(raw);
                 string content = raw.Replace("\r\n", "\n").TrimEnd('\n');
                 path = Path.GetFullPath(path);
-                // Non-UTF-8: save will convert — tell the user once (unless dismissed).
-                MaybeWarnEncodingConversion(path, encodingName);
-
                 // If already open in a tab, switch to it.
                 for (int i = 0; i < _tabs.Count; i++)
                 {
@@ -12985,18 +12984,24 @@ namespace TypoZen
                     var activeTab = (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count) ? _tabs[_activeTabIndex] : null;
                     string enc = (activeTab != null && !string.IsNullOrEmpty(activeTab.SourceEncoding))
                         ? activeTab.SourceEncoding : "UTF-8";
-                    // Anything that is not plain UTF-8 gets converted on save — say so.
-                    string encLine = enc.StartsWith("UTF-8") && enc.IndexOf("BOM") < 0
-                        ? "Encoding: UTF-8"
-                        : "Encoding: " + enc + "  →  saved as UTF-8";
+                    // Only a text document is rewritten on save. A book or a native tab
+                    // carries a kind label here ("Epub", "PDF"), not a character encoding,
+                    // and telling the reader it will be "saved as UTF-8" would be false.
+                    bool isTextDoc = activeTab == null || activeTab.Kind == DocKind.Engine;
+                    bool converts = isTextDoc && !(enc.StartsWith("UTF-8") && enc.IndexOf("BOM") < 0);
+                    string encLine = converts
+                        ? "Encoding: " + enc + "  →  saved as UTF-8"
+                        : "Encoding: " + enc;
                     _lblFilePath.ToolTip = _currentFilePath + "\n" + encLine + "\n\nClick to show in File Explorer";
                     _lblFilePath.Cursor = Cursors.Hand;
+                    ShowEncodingChip(converts ? enc : null);
                 }
                 else
                 {
                     _lblFilePath.Text = "Untitled.md";
                     _lblFilePath.ToolTip = "Unsaved document";
                     _lblFilePath.Cursor = Cursors.Arrow;
+                    ShowEncodingChip(null);
                 }
             }
 

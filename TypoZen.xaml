@@ -1,4 +1,4 @@
-﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="TypoZen - WYSIWYG Markdown &amp; Text Editor" Height="780" Width="1200"
         WindowStartupLocation="CenterScreen" Background="#0F172A" FontFamily="Segoe UI">
@@ -713,6 +713,14 @@
                     <TextBlock x:Name="lblLineCount" Text="Ln 1/1" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Current line / total lines"/>
                     <TextBlock x:Name="lblCharCount" Text="0 chars" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Character count (selection / document when text is selected)"/>
                     <TextBlock x:Name="lblReadingTime" Text="0 min read" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"/>
+                    <!-- Only shown when the file was not plain UTF-8. This used to be a
+                         modal MessageBox on every such file opened, which interrupted a
+                         read to announce a conversion that happens on save, offered no way
+                         to decline it, and hid "never warn me again" behind a button
+                         labelled No. The fact is worth stating; the interruption was not. -->
+                    <TextBlock x:Name="lblEncoding" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
+                               Visibility="Collapsed"
+                               ToolTip="This file was not plain UTF-8. Saving rewrites it as UTF-8 without a BOM; your text is unchanged."/>
                     <TextBlock x:Name="lblZoom" Text="100%" FontSize="11" FontWeight="Normal" ToolTip="Editor zoom (Ctrl++ / Ctrl+- / Ctrl+0, or Ctrl+scroll)"/>
                 </StackPanel>
 
