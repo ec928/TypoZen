@@ -2126,8 +2126,16 @@
             left: 16px;
             top: 8px;
             right: 16px;
+            /* Fixed size on purpose: this is chrome, not prose. Without it the hint
+               inherits the editor's type size, so raising a theme's font size blew the
+               sentence up into a banner across the top of every new tab. A theme's font
+               size is a statement about how the DOCUMENT should be set -- it has no
+               business resizing a hint, any more than it had resizing the page scrubber. */
+            font-size: 14px;
+            line-height: 1.4;
+            /* One dimming mechanism, not two. This was a muted colour AND 0.45 opacity,
+               which reads as subtle at small sizes and as washed out at large ones. */
             color: var(--tx-muted, #A1A1AA);
-            opacity: 0.45;
             pointer-events: none;
             white-space: normal;
             font-weight: normal;
