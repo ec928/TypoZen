@@ -1,8 +1,8 @@
 ; TypoZen installer (Inno Setup 6).
 ;
 ; Built by tools\Build-Installer.ps1, which passes AppVersion and checks that dist\
-; actually holds that build. Source is dist\ -- the portable payload that
-; Build-Portable.ps1 assembles from the proven bin\ staging copy.
+; actually holds that build. Source is dist\ -- the same portable payload the zip
+; ships, assembled by Build-Portable.ps1 from the project root.
 ;
 ; PER-USER on purpose (PrivilegesRequired=lowest). It installs into
 ; %LocalAppData%\Programs\TypoZen, so there is no UAC prompt. The app is unsigned:

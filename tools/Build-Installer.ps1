@@ -33,8 +33,10 @@ if (-not $m.Success) { throw "Could not read AppVersion from TypoZen_App.cs" }
 $version = $m.Groups[1].Value
 
 # --- refuse to package a stale dist\ ------------------------------------------------
-# Build-Portable.ps1 assembles dist\ from bin\, the staging copy that has been proven.
-# Packaging whatever happens to be lying there is how a build nobody tested ships.
+# Build-Portable.ps1 assembles dist\ from the PROJECT ROOT -- the compile output, not the
+# bin\ staging copy. Right after a build the two are identical bytes, but nothing enforces
+# that, so the version check below is what stops a dist\ left over from an older build
+# being packaged and shipped as this one.
 $distExe = Join-Path $root 'dist\TypoZen.exe'
 if (-not (Test-Path $distExe)) {
     throw "dist\TypoZen.exe not found. Run .\tools\Build-Portable.ps1 first."
