@@ -12,14 +12,25 @@ Works well with **`.md`**, **`.txt`**, and related text files.
 ordinary way. Signed by Microsoft, so no security warning; it lands in the Start Menu,
 uninstalls cleanly, and updates itself as new versions ship.
 
+**[Run the installer](https://github.com/ec928/TypoZen/releases/latest)** —
+`TypoZen-Setup-<version>.exe` on the releases page. A normal Windows installer: Start Menu
+entry, an entry in Settings → Apps you can uninstall from, and optional file
+associations for `.md` and `.epub`. It installs for your account only, so it never asks
+for an administrator password and works on a locked-down work machine.
+
 **[Download the portable zip](https://github.com/ec928/TypoZen/releases/latest)** — unzip
 and run, nothing installed, nothing written outside your user profile. Runs from a USB
-stick. Two things to know: Windows shows a "Windows protected your PC" warning the first
-time, because the zip is unsigned (More info → Run anyway), and it does not update itself
-— come back here for new versions.
+stick.
 
-Both can be installed at once. They keep **separate** settings, themes, bookmarks and
-reading positions, and neither disturbs the other.
+The installer and the zip are **unsigned**, so Windows shows a "Windows protected your PC"
+warning the first time (More info → Run anyway), and neither updates itself — come
+back here for new versions. The Store copy has neither drawback; that is the whole of what
+it buys you.
+
+You can have the Store copy and one of the others at the same time. The Store copy keeps
+**separate** settings, themes, bookmarks and reading positions, and neither disturbs the
+other. The installer and the portable zip are the same build, so those two share one set
+of settings and only one of them runs at a time.
 
 Windows 10 version 1809 or later, 64-bit. Requires the WebView2 runtime, which is already
 present on current Windows.
