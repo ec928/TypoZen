@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.46";
+        internal const string AppVersion = "0.2.47";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4425,6 +4425,65 @@ namespace TypoZen
         /// Delete everything TypoZen has stored about your documents. Your documents
         /// themselves are never touched — only the cache folder.
         /// </summary>
+        /// <summary>
+        /// Extracted books currently on disk: how many folders and how many bytes.
+        /// Reported to the reader before asking whether to delete them, because "some
+        /// cached data" and "6.8 MB, which is the full text of your last eight books"
+        /// are not the same offer.
+        /// </summary>
+        private void BookCacheStats(out int books, out long bytes)
+        {
+            books = 0; bytes = 0;
+            try
+            {
+                string root = EpubReader.CacheRoot(CacheDir());
+                if (!Directory.Exists(root)) return;
+                foreach (var d in new DirectoryInfo(root).GetDirectories())
+                {
+                    books++;
+                    foreach (var f in d.GetFiles("*", SearchOption.AllDirectories))
+                    {
+                        try { bytes += f.Length; } catch { }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>Cache folder names of the books open right now. Never delete these.</summary>
+        private HashSet<string> OpenBookCacheKeys()
+        {
+            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in _tabs)
+            {
+                if (t.Kind != DocKind.Book || string.IsNullOrEmpty(t.FilePath)) continue;
+                try { keys.Add(EpubReader.CacheKeyFor(t.FilePath)); } catch { }
+            }
+            return keys;
+        }
+
+        /// <summary>
+        /// Delete extracted book folders, skipping any book that is open. Returns the
+        /// number removed; skipped is set to how many were left because they are in use.
+        /// </summary>
+        private int ClearExtractedBooks(out int skipped)
+        {
+            int removed = 0; skipped = 0;
+            var open = OpenBookCacheKeys();
+            try
+            {
+                string root = EpubReader.CacheRoot(CacheDir());
+                if (!Directory.Exists(root)) return 0;
+                foreach (var d in new DirectoryInfo(root).GetDirectories())
+                {
+                    if (open.Contains(d.Name)) { skipped++; continue; }
+                    try { d.Delete(true); removed++; } catch { }
+                }
+            }
+            catch { }
+            return removed;
+        }
+
         private void ClearStoredData()
         {
             var res = WinForms.MessageBox.Show(
@@ -4436,11 +4495,37 @@ namespace TypoZen
                 "  • recent Search queries\n" +
                 "  • pasted images held in the cache\n" +
                 "  • saved web storage (cleared on next launch)\n\n" +
+                "Extracted book data is asked about separately.\n\n" +
                 "Your documents are not touched. Only " + CacheDir() + " is affected.",
                 "Clear Stored Data",
                 WinForms.MessageBoxButtons.OKCancel,
                 WinForms.MessageBoxIcon.Warning);
             if (res != WinForms.DialogResult.OK) return;
+
+            // Asked BEFORE anything is deleted, so Cancel here really does mean nothing
+            // happened. Its own question with its own buttons: extracted books used to be
+            // silently excluded while the dialog said only the cache folder was affected,
+            // which reads as though the books went with it. They did not.
+            bool clearBooks = false;
+            int bookCount; long bookBytes;
+            BookCacheStats(out bookCount, out bookBytes);
+            if (bookCount > 0)
+            {
+                string size = bookBytes >= 1024L * 1024L
+                    ? (bookBytes / 1048576.0).ToString("0.#") + " MB"
+                    : Math.Max(1L, bookBytes / 1024L) + " KB";
+                var b = WinForms.MessageBox.Show(
+                    "Also remove extracted book data?\n\n" +
+                    bookCount + (bookCount == 1 ? " book" : " books") + ", " + size + ".\n\n" +
+                    "Opening an epub unpacks it here so it reopens instantly. Removing it " +
+                    "costs a few seconds the next time you open each book.\n\n" +
+                    "Your .epub files are not touched. A book that is open stays unpacked.",
+                    "Clear Stored Data",
+                    WinForms.MessageBoxButtons.YesNoCancel,
+                    WinForms.MessageBoxIcon.Question);
+                if (b == WinForms.DialogResult.Cancel) return;
+                clearBooks = (b == WinForms.DialogResult.Yes);
+            }
 
             string cache = CacheDir();
             try
@@ -4489,8 +4574,27 @@ namespace TypoZen
             try { File.WriteAllText(Path.Combine(cache, "purge_webstorage.flag"), "1"); } catch { }
             try { SendMsg("cmd:clear_local_storage"); } catch { }
 
+            string booksLine = "";
+            if (clearBooks)
+            {
+                int skipped;
+                int removed = ClearExtractedBooks(out skipped);
+                booksLine = "\n\nExtracted book data removed: " + removed
+                    + (removed == 1 ? " book" : " books") + ".";
+                if (skipped > 0)
+                {
+                    booksLine += "\n" + skipped
+                        + (skipped == 1
+                            ? " book is still open and was left unpacked; close it"
+                            : " books are still open and were left unpacked; close them")
+                        + " and clear again to remove "
+                        + (skipped == 1 ? "it." : "them.");
+                }
+            }
+
             WinForms.MessageBox.Show(
-                "Stored data cleared.\n\nSaved web storage is removed the next time TypoZen starts.",
+                "Stored data cleared." + booksLine
+                + "\n\nSaved web storage is removed the next time TypoZen starts.",
                 "Clear Stored Data", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
         }
 

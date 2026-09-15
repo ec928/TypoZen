@@ -407,6 +407,17 @@ namespace TypoZen
 
         // --- small helpers --------------------------------------------------------------
 
+        /// <summary>
+        /// The cache folder name a given .epub unpacks into. Public so the app can tell
+        /// which extracted folders belong to books that are open right now, and leave
+        /// those alone when clearing stored data -- deleting the assets of a book someone
+        /// is reading is the same mistake EndPrivateSession used to make.
+        /// </summary>
+        public static string CacheKeyFor(string epubPath)
+        {
+            return StableKey(epubPath);
+        }
+
         private static string StableKey(string path)
         {
             string name = Path.GetFileNameWithoutExtension(path) ?? "book";
