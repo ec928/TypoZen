@@ -913,8 +913,19 @@ namespace TypoZen
         ///
         /// The graceful path deletes this session's folder on the way out, but a crash or
         /// a force-kill leaves document bytes in TEMP, which is exactly what Privacy Mode
-        /// exists to prevent. Same 12-hour rule as SweepAbandonedPrivateSessions, and for
-        /// the same reason: anything younger might belong to a live sibling instance.
+        /// exists to prevent.
+        ///
+        /// ONE hour, not the twelve the book sessions use. A book session holds an extract
+        /// of a file the reader already has on disk; this holds the text of the document
+        /// itself, so it should not outlive the session by half a day.
+        ///
+        /// The risk in the shorter window is a live sibling instance -- a packaged copy
+        /// running beside an unpackaged one -- whose folder has simply been idle for an
+        /// hour. It is survivable: StageLoadPayload creates the directory again before
+        /// every write, and the virtual host is mapped by path, so the mapping still
+        /// resolves once the folder is back. The only loss would be a body deleted between
+        /// being written and being fetched, by a sweep that runs solely at another
+        /// instance's launch. That costs one failed load, and reopening the file fixes it.
         /// </summary>
         private void SweepAbandonedLoadDirs()
         {
@@ -926,7 +937,7 @@ namespace TypoZen
                     if (_privateLoadDir != null &&
                         string.Equals(d.FullName, _privateLoadDir, StringComparison.OrdinalIgnoreCase))
                         continue;
-                    if ((DateTime.UtcNow - d.LastWriteTimeUtc).TotalHours < 12) continue;
+                    if ((DateTime.UtcNow - d.LastWriteTimeUtc).TotalHours < 1) continue;
                     try { d.Delete(true); } catch { }
                 }
             }
@@ -5373,6 +5384,11 @@ namespace TypoZen
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping("localapp", _appDir, CoreWebView2HostResourceAccessKind.Allow);
                 MapBookHosts();
                 SweepAbandonedLoadDirs();
+                // At launch, which is what both sweeps' comments always claimed but only
+                // the load one did: the book sweep ran on privacy-off and on clean exit,
+                // so a copy that is repeatedly killed rather than closed never cleared
+                // anything -- the one case a sweep exists for.
+                try { EpubReader.SweepAbandonedPrivateSessions(); } catch { }
                 MapLoadHosts();
                 MapDocumentFolder(_currentFilePath);
                 AttachEditorNavigationGuards(_webView.CoreWebView2);

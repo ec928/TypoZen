@@ -86,7 +86,9 @@ namespace TypoZen
         /// deleting it underneath the reader broke the book they were in the middle of.
         /// Cleaning up must not cost someone the thing they are using: the directory is
         /// removed on exit instead, by DisposePrivateSession, and a crash is covered by
-        /// the launch-time sweep.
+        /// the sweep the app runs at launch. That sweep call is in the app's WebView init
+        /// beside SweepAbandonedLoadDirs -- it was missing for a while, so a copy that was
+        /// always killed rather than closed never cleared anything.
         /// </summary>
         public static void EndPrivateSession()
         {
