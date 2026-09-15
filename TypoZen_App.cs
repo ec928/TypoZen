@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.45";
+        internal const string AppVersion = "0.2.46";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -566,7 +566,19 @@ namespace TypoZen
         private WebView2 _nativeWebView;
         private WinForms.Panel _webViewPanel;
         private string _mappedNativeFolder;
-        private string _mappedLoadFolder;
+        /// <summary>
+        /// The virtual host the page is currently told to fetch staged payloads from.
+        ///
+        /// It carries a generation because RE-POINTING a virtual host that is already
+        /// mapped does not reach a page that is already running: the renderer goes on
+        /// resolving the old name to the old folder. Privacy Mode is the one thing that
+        /// moves the folder, and it deletes the old one on the way out, so every staged
+        /// fetch after the toggle died as "Failed to fetch" -- the document tab came up
+        /// empty and the next one raised "Load failed". Measured 2026-09-15.
+        ///
+        /// Retiring the name instead of re-pointing it sidesteps the whole question: a
+        /// host that has never been mapped before resolves correctly first time.
+        /// </summary>
         private string _nativeNavigatedPath;
         private bool _nativeSurfaceVisible;
         private System.Drawing.Color _currentThemeBg = System.Drawing.Color.FromArgb(30, 30, 30);
@@ -862,18 +874,78 @@ namespace TypoZen
         /// </summary>
         private string LoadStageDir()
         {
-            if (SuppressDocumentTraces())
+            return SuppressDocumentTraces()
+                ? PrivateLoadDir()
+                : Path.Combine(CacheDir(), "typozen_load");
+        }
+
+        /// <summary>
+        /// One staging folder per PROCESS for Privacy Mode, not one per private session.
+        ///
+        /// It has to be stable for the life of the window because its virtual host is
+        /// mapped once, before the page navigates. A mapping added after that never
+        /// reaches the live document -- measured on 2026-09-15, in both directions:
+        /// toggling Privacy Mode either way re-pointed the host correctly, the file was
+        /// written to the right folder, and every fetch still died as "Failed to fetch"
+        /// because the renderer went on resolving the name it was given at navigation.
+        ///
+        /// Emptied when Privacy Mode goes off and removed at exit, so it holds document
+        /// bytes only while Privacy Mode is actually on.
+        /// </summary>
+        private string _privateLoadDir;
+        private string PrivateLoadDir()
+        {
+            if (_privateLoadDir == null)
             {
-                string root = EpubReader.PrivateSessionRoot;
-                if (string.IsNullOrEmpty(root))
-                {
-                    EpubReader.BeginPrivateSession();
-                    root = EpubReader.PrivateSessionRoot;
-                }
-                if (!string.IsNullOrEmpty(root))
-                    return Path.Combine(root, "load");
+                _privateLoadDir = Path.Combine(Path.GetTempPath(),
+                    "tzload-" + Guid.NewGuid().ToString("N"));
             }
-            return Path.Combine(CacheDir(), "typozen_load");
+            return _privateLoadDir;
+        }
+
+        /// <summary>Host for the folder LoadStageDir() is currently using.</summary>
+        private string LoadHostName()
+        {
+            return SuppressDocumentTraces() ? "localloadp" : "localload";
+        }
+        /// <summary>
+        /// Remove private staging folders left by a process that did not exit cleanly.
+        ///
+        /// The graceful path deletes this session's folder on the way out, but a crash or
+        /// a force-kill leaves document bytes in TEMP, which is exactly what Privacy Mode
+        /// exists to prevent. Same 12-hour rule as SweepAbandonedPrivateSessions, and for
+        /// the same reason: anything younger might belong to a live sibling instance.
+        /// </summary>
+        private void SweepAbandonedLoadDirs()
+        {
+            try
+            {
+                var temp = new DirectoryInfo(Path.GetTempPath());
+                foreach (var d in temp.GetDirectories("tzload-*"))
+                {
+                    if (_privateLoadDir != null &&
+                        string.Equals(d.FullName, _privateLoadDir, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if ((DateTime.UtcNow - d.LastWriteTimeUtc).TotalHours < 12) continue;
+                    try { d.Delete(true); } catch { }
+                }
+            }
+            catch { }
+        }
+
+
+        /// <summary>Drop anything staged while Privacy Mode was on. Keeps the folder.</summary>
+        private void EmptyPrivateLoadDir()
+        {
+            try
+            {
+                if (_privateLoadDir == null || !Directory.Exists(_privateLoadDir)) return;
+                foreach (string f in Directory.GetFiles(_privateLoadDir))
+                {
+                    try { File.Delete(f); } catch { }
+                }
+            }
+            catch { }
         }
 
         /// <summary>
@@ -884,29 +956,42 @@ namespace TypoZen
             string dir = LoadStageDir();
             Directory.CreateDirectory(dir);
             PruneLoadStageDir(maxAgeMinutes: 5);
-            MapLoadHost();
             File.WriteAllText(Path.Combine(dir, fileName), contents ?? "", new UTF8Encoding(false));
-            return "https://localload/" + fileName;
+            return "https://" + LoadHostName() + "/" + fileName;
         }
 
         /// <summary>
         /// Point localload at the current stage directory. Re-mapped when Privacy Mode
         /// moves the root, same reason MapBookHost re-maps.
         /// </summary>
-        private void MapLoadHost()
+        /// <summary>
+        /// Map every folder the page will ever fetch a payload from, ONCE, before it
+        /// navigates. Both are mapped regardless of the current Privacy Mode, because the
+        /// mode can change later and a mapping installed later does not work.
+        /// StageLoadPayload picks the matching host when it mints a URL.
+        /// </summary>
+        private void MapLoadHosts()
         {
             if (_webView == null || _webView.CoreWebView2 == null) return;
+            MapOneHost("localload", Path.Combine(CacheDir(), "typozen_load"));
+            MapOneHost("localloadp", PrivateLoadDir());
+        }
+
+        private void MapOneHost(string host, string dir)
+        {
             try
             {
-                string dir = LoadStageDir();
                 Directory.CreateDirectory(dir);
-                try { _webView.CoreWebView2.ClearVirtualHostNameToFolderMapping("localload"); } catch { }
                 // Allow: the page origin is https://localapp, and it fetch()es this host.
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "localload", dir, CoreWebView2HostResourceAccessKind.Allow);
-                _mappedLoadFolder = dir;
+                    host, dir, CoreWebView2HostResourceAccessKind.Allow);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // Was a bare catch. Swallowing this is how a missing mapping becomes an
+                // unexplained "Failed to fetch" with nothing anywhere to say why.
+                LogFault("MapLoadHosts " + host + " dir=" + dir, ex);
+            }
         }
 
         /// <summary>
@@ -1589,6 +1674,11 @@ namespace TypoZen
                 // the trigger — an ordinary exit clears the session's extracted books, and
                 // the sweep inside catches anything a previous crash left behind.
                 try { EpubReader.EndPrivateSession(); } catch { }
+                // The per-process private staging folder goes with it. It is kept alive
+                // for the whole session because its virtual host cannot be re-mapped
+                // once the page has navigated; exit is the only safe time to remove it.
+                try { if (_privateLoadDir != null && Directory.Exists(_privateLoadDir))
+                          Directory.Delete(_privateLoadDir, true); } catch { }
                 Application.Current.Shutdown();
                 Environment.Exit(0);
             };
@@ -3922,7 +4012,6 @@ namespace TypoZen
                     ref _sessionPersistFailNotified);
             }
         }
-
         private void LogFault(string where, Exception ex)
         {
             try
@@ -5283,7 +5372,8 @@ namespace TypoZen
                 try { _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false; } catch {}
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping("localapp", _appDir, CoreWebView2HostResourceAccessKind.Allow);
                 MapBookHost();
-                MapLoadHost();
+                SweepAbandonedLoadDirs();
+                MapLoadHosts();
                 MapDocumentFolder(_currentFilePath);
                 AttachEditorNavigationGuards(_webView.CoreWebView2);
                 _webView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
@@ -8438,7 +8528,10 @@ namespace TypoZen
             if (!on)
                 EpubReader.EndPrivateSession();
             MapBookHost();
-            MapLoadHost();
+            // Bodies staged while it was on are dropped on the way out. The folder
+            // itself stays: its virtual host was mapped before the page navigated and
+            // cannot be re-mapped now, so the path has to survive the whole process.
+            if (!on) EmptyPrivateLoadDir();
 
             if (!_applyingRestoredSettings) SaveWindowState();
         }
@@ -8500,7 +8593,8 @@ namespace TypoZen
             if (uri.StartsWith("https://localapp/", StringComparison.OrdinalIgnoreCase)) return true;
             if (uri.StartsWith("https://docfolder/", StringComparison.OrdinalIgnoreCase)) return true;
             if (uri.StartsWith("https://localbooks/", StringComparison.OrdinalIgnoreCase)) return true;
-            if (uri.StartsWith("https://localload/", StringComparison.OrdinalIgnoreCase)) return true;
+            // localload and localloadp -- see LoadHostName().
+            if (uri.StartsWith("https://localload", StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
 
