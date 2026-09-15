@@ -62,3 +62,6 @@ dist-storeart/
 # Operational notes tied to one machine and one Store account. The repository is public;
 # these are not. See docs/releasing.md for everything that is safe to publish.
 docs/internal/
+
+# Installer output, rebuilt by tools/Build-Installer.ps1 (needs Inno Setup 6)
+dist-installer/
