@@ -1954,6 +1954,32 @@
             border-radius: 0;
         }
 
+        /* A shallow chain shows ONE bar, not three.
+         *
+         * Depth carries meaning in a converted book, by accident: Dune has 35 quote
+         * blocks nested 3 deep (a poem, a song quoted mid-scene) and 50 nested 6 deep
+         * (the chapter epigraphs). Capping everything at three made both look identical
+         * and threw that distinction away.
+         *
+         * This restores it from the other end. A blockquote that still contains another
+         * blockquote, but whose chain never reaches a fourth level, is an outer wrapper
+         * of a shallow chain -- it draws nothing, leaving the bar on the innermost level,
+         * hard against the text where a quote bar belongs. Deep chains are untouched,
+         * because a fourth level exists below their outer wrappers, so the epigraphs keep
+         * their three.
+         *
+         *   3 deep -> 1 bar        6 deep -> 3 bars        1 deep -> 1 bar (unchanged)
+         *
+         * :has() needs Chromium 105+. On anything older the whole rule is dropped and
+         * the previous behaviour stands, which is a flatter look, not a broken one.
+         */
+        blockquote:has(blockquote):not(:has(blockquote blockquote blockquote)) {
+            border-left: none;
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+        }
+
         ul, ol {
             padding-left: 24px;
             margin: 0;
