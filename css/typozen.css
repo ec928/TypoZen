@@ -1929,6 +1929,31 @@
             font-style: italic;
         }
 
+        /* Quote decoration stops after three levels.
+         *
+         * Converters use <blockquote> as an indent carrier, not as a quotation. Dune's
+         * epigraphs arrive six deep -- six real <blockquote> elements, each of which the
+         * book styles only as "margin-left: 2em"; its stylesheet never mentions
+         * blockquote at all. We style by what the element MEANS, the book wrote it for
+         * what it DOES, and both land on the same tag.
+         *
+         * Six levels looked good on Dune by luck: the indented material there happens to
+         * be genuine epigraphs, and 2.2% of the book. The same markup around ordinary
+         * prose would set whole passages in muted italics inside a box, and every level
+         * costs 32px of column width -- a deep one can squeeze a column in two-column
+         * mode until it is unreadable. Capping bounds that at ~96px and three tints,
+         * while the first three levels keep the look.
+         *
+         * Indentation is NOT removed here: it comes from the book's own margin-left, so
+         * deeper levels still step in, they simply stop adding bars and backgrounds.
+         */
+        blockquote blockquote blockquote blockquote {
+            border-left: none;
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+        }
+
         ul, ol {
             padding-left: 24px;
             margin: 0;
