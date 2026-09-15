@@ -24,7 +24,7 @@ One version number, one gate, one deploy target. In order:
 | Package | `.\tools\Build-Msix.ps1` | writes `dist-msix\TypoZen.msix`, unsigned |
 | Installer | `.\tools\Build-Installer.ps1` | writes `dist-installer\TypoZen-Setup-X.Y.Z.exe` |
 | Verify it | `.\tools\Test-Installer.ps1` | ~15s; installs, hash-checks, uninstalls |
-| Deploy | copy `dist\*` over the run location | see `docs/internal/` for where that is |
+| Deploy | run the setup exe silently | see **Deploying a build** below |
 | Zip | `Compress-Archive -Path dist\* …` | archive it; shipped zips are never deleted |
 | Release | `gh release create vX.Y.Z <zip> <setup.exe> --notes-file …` | |
 
@@ -63,6 +63,34 @@ reading a desktop shortcut that had been there since July — the check could no
 failed. Assertions about shortcuts and file associations must compare against a snapshot
 taken *before* the install, and be control-verified with the tasks switched on.
 
+### Deploying a build
+
+**Deploy by running the real installer silently, not by copying files over the installed
+folder:**
+
+```
+.	ools\Build-Portable.ps1
+.	ools\Build-Installer.ps1
+dist-installer\TypoZen-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS="assocmd,assocepub"
+```
+
+A locally built exe carries no Mark of the Web, so nothing prompts and no window appears.
+It costs about 25 seconds more than a file copy and keeps Windows' own record honest:
+files, registry, file associations, shortcuts and the Settings -> Apps entry all end up
+describing the build that is actually installed. Copying files over the top updates the
+app but leaves the installed version, so Settings reports a version nobody is running.
+
+Pass `/TASKS` explicitly. Inno remembers wizard selections for a repeat install, but what
+it does with them in silent mode is unverified here -- state the tasks rather than find
+out.
+
+**Check which executable the tester's shortcut actually launches before asking anyone to
+test anything.** Several copies of this app can exist at once -- the compile output in the
+project root, the staging copy, and the installed one -- and running the installer
+repoints the Start Menu and desktop shortcuts at the installed copy without saying so. A
+bug was once reproduced twice against a build that did not contain the fix under test,
+because the shortcut had silently moved. Neither party noticed.
+
 ### Version numbers
 
 `AppVersion` is a three-part string (`"0.2.41"`). The Store requires the fourth part of a
@@ -85,7 +113,15 @@ appeared to do nothing because it never reached the running app.
 - `fonts/` was hand-populated, so `fonts/OFL.txt` — which the SIL Open Font Licence
   requires to travel with the faces — shipped nowhere for months.
 
-If you add a runtime asset directory, add it to `$assetDirs`. Do not copy it by hand.
+- Root-level files that ship -- the licences, the dictionary and thesaurus, the WebView2
+  DLLs -- were not staged at all. `bin/` held hand-copied ones from an earlier publish and
+  kept them, so a corrected licence sat in source while staging served the stale copy.
+  That one mattered beyond tidiness: `Build-Msix.ps1` packs `bin/` while the zip is built
+  from the project root, so the Store package and the portable zip could ship different
+  bytes of the same file.
+
+If you add a runtime asset directory add it to `$assetDirs`, and a root-level file that
+ships to `$assetFiles`. Do not copy either by hand.
 
 `TypoZen_Template.runtime.html` is **generated at startup** from the real template and
 must not be shipped; a zip containing it is shipping a stale artefact.
@@ -120,6 +156,24 @@ twenty minutes and tells you nothing.
   path.
 - **Control-verify anything load-bearing.** Break the fix, rebuild, watch the suite go
   red, restore. A test that passes against a broken build is worse than no test.
+- **Seeding state at launch is not the same as exercising the control.** `privacy-app.mjs`
+  writes `window_state.json` and launches with Privacy Mode already set. It proves the
+  flags are honoured, and it passed for months while *toggling* the mode mid-session broke
+  document loading in both directions. Nothing tested the switch a reader actually flips.
+- **`TogglePattern.Toggle()` on a checkable WPF menu item does not raise `Click`.** It
+  flips `IsChecked` directly, so a handler wired to `Click` never runs: the menu shows the
+  new state while the application is still in the old one. That is a state no user can
+  produce, and a test built on it verifies nothing. Only a real click exercises the path.
+- **Measure the element the product actually renders into.** Book text lands in `#editor`,
+  not `#editor-wrapper`. A probe on the wrong element reported zero characters for every
+  book, which reads exactly like a failure and would pass silently if the assertion were
+  inverted.
+- **Run a control before believing a negative.** A bespoke launcher used to chase one bug
+  turned out not to open books at all, so every "book did not load" reading from it was
+  meaningless. One run against a known-good path exposed that in seconds.
+- **Prefer the harness over a hand-rolled launcher.** It resets a throwaway profile,
+  attaches over the debug port and waits properly. Reproducing those steps by hand is how
+  the two faults above were introduced.
 
 ---
 

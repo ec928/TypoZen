@@ -67,6 +67,27 @@ Implemented in:
 3. **Wheel** always turns pages when `state.pageAdvance` (outside the sidebar).
 4. Up/Down with hits are owned by `bindReaderFindKeys` (capture). The page handler must **return** for those keys when hits exist so search wins.
 5. There is **no** `,` `.` `<` `>` search chord. Removed: collided with typing.
+6. **A WebView2 virtual host mapping must be installed BEFORE the page navigates.** One
+   added afterwards never reaches the live document -- the renderer goes on resolving the
+   name it was given at navigation time, and `SetVirtualHostNameToFolderMapping` reports
+   no error. Measured 2026-09-15 in both directions: toggling Privacy Mode re-pointed
+   `localload` at the correct folder, the payload was written there, the host and the file
+   agreed, and every fetch still failed with `Failed to fetch`. Renaming the host per
+   generation was tried and failed too, which is what isolated the cause to navigation
+   timing rather than name reuse.
+
+   So map **every** folder the page could ever fetch from at init -- `MapLoadHosts` and
+   `MapBookHosts` -- and choose between the hosts when the URL is minted
+   (`LoadHostName`, `BookHostName`). Never re-map mid-session. A payload cached with the
+   canonical host baked in is rewritten to the current one as it is sent, which is why the
+   book payload cache does not need invalidating.
+7. **Privacy Mode cleans up on exit, not on the toggle.** Leaving the mode used to delete
+   the private extraction directory immediately, which destroyed the images of a book the
+   reader had open -- while a comment above it claimed an open book kept its directory.
+   `EndPrivateSession` now only sweeps abandoned roots; `DisposePrivateSession` removes
+   this process's root at exit, and the launch-time sweep covers a crash. Staged document
+   bodies *are* dropped on the toggle, because the page has already consumed them.
+   **Tidying up must never cost someone the thing they are using.**
 
 Spelling: **not** `dictionary.tsv` (that is Look up). Preview uses WPF `TextBox` spellcheck (`SpellCheck.cs`, .NET 4 dictionaries); the page paints `::highlight(typozen-spell)` and the selection popover offers replacements. Source uses Chromium `spellcheck` on the textarea. `cmd:spell_check_doc` / `cmd:spell_next`. Do not feed WordNet to a spell loop.
 
