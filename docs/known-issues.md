@@ -2,13 +2,22 @@
 
 Baseline inventory of **user-visible** residual risk for the current tree.
 
-- **Open defect-class items:** one, below — a book opened while another is already open
-  takes the other tab's page number.
+- **Open defect-class items:** two, below, both with a fix in 0.2.49 that has not yet been
+  confirmed in the app.
 - Suite-only failures belong in the harness, not here. See `docs/for-agents.md`.
 - This file is the living record. The health reviews are archived snapshots of older
   trees (`docs/archive/`) and do not describe current state, whatever their own text says.
 
 ## Open defect: a newly opened book takes the previous tab's page number
+
+**Status (0.2.49): cause measured, fix awaiting confirmation in the app.** The scroller's
+offset survives `loadBookPayload`, and a resume only runs for a block past 0, so a book
+with no remembered position (a new book, or a tab left on page 1) keeps the previous
+book's offset. Headless, on the 0.2.48 tree: book A turned to page 16, book B loaded with
+no resume -> B reported page 16 at the identical `scrollLeft` (14520). With the reset at
+the top of `loadBookPayload`: B opens on page 1, and a resume to block 400 still lands on
+its page (40). Not yet exercised: the real app, two-column mode, a windowed book, a tab
+switch. The notes below predate the measurement and are kept for the record.
 
 Open a book while another book is already open and the new one does not start at page 1.
 It starts on **the page number the other tab was showing**, and the reader really is parked
@@ -55,7 +64,14 @@ thing here is worse than none: it produced two confident false reproductions.
 ## Open defect: a book whose stylesheet forces a text colour is unreadable on some themes
 
 At least one epub sets an explicit colour on its body text, which overrides the theme. On a
-dark theme that is dark text on a dark ground. Not investigated; no fix attempted.
+dark theme that is dark text on a dark ground.
+
+**Status (0.2.49): fix awaiting confirmation in the app.** Hilldiggers' `stylesheet.css`
+declares `color: black` on its paragraph classes. `applyBookStyles` now drops neutral
+`color`, `background-color` and bare-colour `background` declarations (black, white,
+greys); coloured declarations are kept. Checked against that stylesheet headless: no
+`color: black` survives, `#c00` and `rgb(0,0,255)` do. Inline `style=` colours in the
+book's markup are not touched.
 
 ## Product limits (not defects — do not “fix” by inventing precision)
 

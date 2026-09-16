@@ -67,6 +67,24 @@
             _bookTextScaleK = 0;
             if (_bookPosTimer) { clearTimeout(_bookPosTimer); _bookPosTimer = null; }
 
+            // A different book is arriving: the scroller must start at the beginning.
+            //
+            // The page number is scrollLeft / pageWidth. Nothing reset the offset when
+            // one book replaced another -- the only reset lives in
+            // leaveBookViewForMarkdown, which is the book-to-markdown path -- so the new
+            // book inherited the previous book's offset and therefore its page NUMBER,
+            // identically whatever the length of either book. That is why it was always
+            // exactly the other page and never proportional, and why the reader really
+            // was parked mid-book rather than merely mislabelled.
+            //
+            // resumeAt is applied after this by the caller, so a book with a remembered
+            // position still lands where the reader left it.
+            try {
+                if (editor) editor.scrollLeft = 0;
+                currentTwoColPage = 0;
+                PageMap.invalidate();
+            } catch (eReset) {}
+
             // Styles before blocks: the first paint should already be the book's own
             // typography rather than a flash of unstyled text a reader would notice.
             // Kept because the size correction re-applies them with a divisor, and it has to
@@ -1124,6 +1142,25 @@
         }
 
         /**
+         * True when a CSS colour value is black, white or a grey -- a publisher assuming a
+         * white page rather than choosing a colour. Anything else, including a value that is
+         * not a bare colour (`background: url(...)`), is false and left alone.
+         */
+        function bookColourIsNeutral(value) {
+            const v = String(value || '').replace(/!\s*important/i, '').trim().toLowerCase();
+            if (/^(black|white|gray|grey|silver|gainsboro|whitesmoke|dimgray|dimgrey|darkgray|darkgrey|lightgray|lightgrey|snow|ivory)$/.test(v)) return true;
+            let r, g, b;
+            let m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(v);
+            if (m) { r = parseInt(m[1] + m[1], 16); g = parseInt(m[2] + m[2], 16); b = parseInt(m[3] + m[3], 16); }
+            else if ((m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/.exec(v))) {
+                r = parseInt(m[1], 16); g = parseInt(m[2], 16); b = parseInt(m[3], 16);
+            } else if ((m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(,[^)]*)?\)$/.exec(v))) {
+                r = +m[1]; g = +m[2]; b = +m[3];
+            } else return false;
+            return Math.max(r, g, b) - Math.min(r, g, b) <= 16;
+        }
+
+        /**
          * The book's own stylesheets, optionally with every declared size divided through.
          *
          * emDivisor is how the reader's text size is honoured without touching the box the
@@ -1213,6 +1250,18 @@
             // is levelled too. That is a real loss and a small one against a novel that
             // changes leading halfway through.
             joined = joined.replace(/(^|[;{])\s*line-height\s*:[^;}]*/gi, '$1');
+
+            // The theme's ink and paper, not the publisher's.
+            //
+            // Hilldiggers' stylesheet says `color: black` on every paragraph class. The
+            // theme sets the page colour and the book set the text colour, so on a dark
+            // theme it was black on near-black. Only neutral colours are dropped -- black,
+            // white and the greys between -- because those are the publisher assuming a
+            // white page. A red heading or a blue link is a choice, and stays.
+            joined = joined.replace(/(^|[;{])(\s*)(color|background-color|background)\s*:\s*([^;}]*)/gi,
+                function (m, lead, ws, prop, value) {
+                    return bookColourIsNeutral(value) ? lead : m;
+                });
 
             // The reader's justification, not the publisher's -- and left by default.
             //
