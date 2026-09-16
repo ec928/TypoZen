@@ -4023,6 +4023,28 @@ namespace TypoZen
                     ref _sessionPersistFailNotified);
             }
         }
+        /// <summary>
+        /// TEMPORARY. Logs the values a book open DECIDES from, on the happy path as well
+        /// as on failure -- an exception-only log is silent when the theory is wrong, which
+        /// has already cost two rounds of "reproduce it again". Remove once the page-on-open
+        /// fault is understood.
+        /// </summary>
+        private void OpenLog(string line)
+        {
+            // Never while Privacy Mode is on: these lines carry document file names, and
+            // writing those to disk is the one thing Privacy Mode exists to prevent. The
+            // earlier diagnostic in this file had exactly that fault.
+            if (SuppressDocumentTraces()) return;
+            try
+            {
+                Directory.CreateDirectory(CacheDir());
+                File.AppendAllText(Path.Combine(CacheDir(), "debug.log"),
+                    string.Format("[{0:HH:mm:ss.fff}] OPEN {1}{2}",
+                        DateTime.Now, line, Environment.NewLine));
+            }
+            catch { }
+        }
+
         private void LogFault(string where, Exception ex)
         {
             try
@@ -4779,9 +4801,11 @@ namespace TypoZen
                 string flag = Path.Combine(cache, "purge_webstorage.flag");
                 if (!File.Exists(flag)) return;
                 string store = Path.Combine(cache, "EBWebView", "Default", "Local Storage");
+                bool removed = true;
                 if (Directory.Exists(store))
                 {
-                    try { Directory.Delete(store, true); } catch { }
+                    try { Directory.Delete(store, true); }
+                    catch { removed = false; }
                 }
                 // Only once the store is actually gone. Clear Stored Data tells the reader
                 // "saved web storage is removed the next time TypoZen starts", and the
@@ -4790,7 +4814,15 @@ namespace TypoZen
                 // promise that was never kept, silently, and nothing would retry it.
                 // Keeping it means the next launch tries again, which is the whole point
                 // of deferring the delete to startup.
-                if (!Directory.Exists(store)) File.Delete(flag);
+                // Whether the DELETE succeeded, not whether the folder is absent now.
+                // WebView2 recreates Local Storage the moment it starts, so the old
+                // "is it gone?" test was false on every subsequent launch and the flag
+                // was never cleared -- which meant web storage was wiped on EVERY start,
+                // for good, from the first Clear Stored Data onwards. That is what made
+                // the theme fault reproduce 100% of the time: localStorage was empty at
+                // every launch. The promise this defers is "delete it next start"; once
+                // the delete has actually run, it has been kept.
+                if (removed) File.Delete(flag);
             }
             catch { }
         }
@@ -6032,6 +6064,23 @@ namespace TypoZen
                 {
                     string json = File.ReadAllText(themesPath, Encoding.UTF8);
                     SendMsg("init_themes:" + json);
+
+                    // Tell the page WHICH theme, rather than letting it guess.
+                    //
+                    // init_themes hands over the list and nothing else, so the page chose
+                    // with "state.themeIndex || 0" -- a value it seeds from its own
+                    // localStorage. settings.json, which is meant to be the source of
+                    // truth, never reached it. That worked only while localStorage
+                    // happened to agree; when web storage was purged the page fell back to
+                    // theme 0 and painted a dark page under light chrome, and then saved
+                    // theme 0 over the real one, so the loss stuck.
+                    try
+                    {
+                        var savedTheme = LoadHostPrefs();
+                        if (savedTheme != null && savedTheme.ThemeIndex >= 0)
+                            SendMsg("set_theme:" + savedTheme.ThemeIndex);
+                    }
+                    catch { }
                 }
 
                 ApplyRestoredViewSettings(true);   // page is ready: word wrap can apply too
@@ -6345,6 +6394,7 @@ namespace TypoZen
                     // "reopen this file where I left it"; the tab answers "come back to
                     // this tab where I left it", which is a different question when the
                     // same file is open twice and the only one an untitled buffer can ask.
+                    OpenLog("book_position:" + block + " -> tab " + _activeTabIndex + " file=" + (_currentFilePath == null ? "(none)" : Path.GetFileName(_currentFilePath)) + " tabOpInProgress=" + _tabOpInProgress);
                     if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
                         _tabs[_activeTabIndex].ResumeBlock = block;
 
@@ -11705,6 +11755,7 @@ namespace TypoZen
         private void RequestTabResume(DocTab tab)
         {
             if (tab == null || tab.ResumeBlock <= 0) return;
+            OpenLog("RequestTabResume -> resume_at:" + tab.ResumeBlock + " file=" + (tab.FilePath == null ? "(none)" : Path.GetFileName(tab.FilePath)));
             try { SendMsg("resume_at:" + tab.ResumeBlock); } catch { }
         }
 
@@ -12530,6 +12581,7 @@ namespace TypoZen
                 // When ZenSeek/CLI opens with --search, skip resume: last-read block and
                 // the search match race (page thrash 13↔141) until only one jump wins.
                 int resumeAt = RememberedBookPosition(path);
+                OpenLog("OpenBook " + Path.GetFileName(path) + " rememberedBlock=" + resumeAt + " activeTab=" + _activeTabIndex + " tabs=" + _tabs.Count);
                 // Only for the book the launch actually names. A ZenSeek launch carries a
                 // search, and the reason to skip the resume is that the remembered block and
                 // the search match would fight over the view -- which is true of that one

@@ -268,7 +268,17 @@
                 if (p) savedPrefs = JSON.parse(p);
             } catch(e) {}
 
-            state.themeIndex = savedPrefs.themeIndex || 0;
+            // Only seed from localStorage if the host has NOT already restored a theme.
+            //
+            // restore_prefs can arrive before window.onload runs. When it does,
+            // applySavedPrefs has already put the real theme in state -- and this line
+            // then overwrote it with the localStorage copy, which is EMPTY whenever the
+            // web storage purge has run. state.themeIndex went back to 0, so the page
+            // painted the first theme in the list while the host chrome kept the real
+            // one: a light toolbar around a dark page. Measured 2026-09-16 against a copy
+            // of a real profile -- margin and mode restored correctly from the same
+            // message, only the theme was lost, which is what pointed here.
+            if (!state.themeName) state.themeIndex = savedPrefs.themeIndex || 0;
 
             const hosted = window.chrome && window.chrome.webview
                 && !(navigator.userAgent || '').includes('jsdom');
