@@ -4199,6 +4199,12 @@
         function reportBookPosition() {
             if (typeof DocumentModel === 'undefined') return;
             if (_bookPosTimer) clearTimeout(_bookPosTimer);
+            // Capture the generation NOW, while this document is the one on screen.
+            // Reading it inside the timeout took whatever the host had moved on to, so a
+            // report describing the OLD book arrived stamped with the NEW book's
+            // generation and was accepted -- which is the whole fault: switch away, switch
+            // back, and the new book is sitting on the other tab's page.
+            const armedGen = window.__docGen || 0;
             _bookPosTimer = setTimeout(function () {
                 _bookPosTimer = null;
                 if (typeof DocumentModel === 'undefined') return;
@@ -4209,7 +4215,7 @@
                 // it if the reader has moved on: this fires 1200ms late, by which time
                 // another tab can be showing, and the position was being stored against
                 // that book instead.
-                try { postMsg('book_position:' + bi + '|gen=' + (window.__docGen || 0)); } catch (e) {}
+                try { postMsg('book_position:' + bi + '|gen=' + armedGen); } catch (e) {}
             }, 1200);
         }
 

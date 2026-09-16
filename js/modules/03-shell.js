@@ -858,6 +858,9 @@
                     // Which document the host is putting on the page. Echoed back with
                     // every position report so a late one cannot be misattributed.
                     window.__docGen = parseInt(msg.substring(8), 10) || 0;
+                    // A different document is arriving: anything armed for the last one is
+                    // meaningless now. Belt and braces alongside the arm-time stamp.
+                    try { cancelPositionReport(); } catch (e) {}
                 }
                 else if (msg.startsWith("restore_prefs:")) {
                     try {
