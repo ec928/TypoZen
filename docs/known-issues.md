@@ -2,10 +2,60 @@
 
 Baseline inventory of **user-visible** residual risk for the current tree.
 
-- **Open defect-class items:** none.
+- **Open defect-class items:** one, below — a book opened while another is already open
+  takes the other tab's page number.
 - Suite-only failures belong in the harness, not here. See `docs/for-agents.md`.
 - This file is the living record. The health reviews are archived snapshots of older
   trees (`docs/archive/`) and do not describe current state, whatever their own text says.
+
+## Open defect: a newly opened book takes the previous tab's page number
+
+Open a book while another book is already open and the new one does not start at page 1.
+It starts on **the page number the other tab was showing**, and the reader really is parked
+there — the status line shows a line number well into the text, not line 1.
+
+Reported repeatedly and reproducible on demand by the reader who hit it. **Not reproduced
+in testing**, across both column modes, page turns as well as programmatic jumps, File >
+Open as well as the single-instance hand-off, and a copy of the reporting profile. Treat
+the notes below accordingly: the observations are solid, the explanations are not.
+
+### What is established
+
+- The number is **exactly** the other tab's page, never a proportional position, and it is
+  the same number whatever the two books' lengths are.
+- The content is genuinely displaced, not merely mislabelled.
+- It needs a book already open. The first book opened into an empty editor is correct.
+- The page indicator is `PageMap.current()`, which derives from `editor.scrollLeft`.
+  **A shared scroll offset therefore produces the same page NUMBER in any book**, because
+  the page width is the same — which is the one property that explains "always exactly the
+  other tab's page, never proportional".
+- The only `scrollLeft = 0` on a book path is inside `leaveBookViewForMarkdown`, the
+  book-to-markdown transition. Nothing resets it when one book replaces another.
+
+### What is guesswork — none of it verified
+
+- That a debounced `book_position` report is landing on the wrong tab. A generation stamp
+  was added for it (`doc_gen`, captured when the report is armed). It did not demonstrably
+  change the reported behaviour.
+- That resetting the scroller in `loadBookPayload` fixes it. This follows from the
+  `scrollLeft` observation above and is the most promising line, but it was never built or
+  measured.
+
+### Where to start
+
+Measure `editor.scrollLeft` and `PageMap.current()` at the moment the second book paints,
+with the first book scrolled well past page 1. If the offset is non-zero, the reset is the
+fix and the position-report work is a red herring.
+
+**A warning about measuring this.** In two-column mode the page indicator renders one
+number per column, so reading its `textContent` returns "1" and "2" as `12`, and pages 9
+and 10 as `910`. Read the `.page-num` spans individually. A probe that reports the wrong
+thing here is worse than none: it produced two confident false reproductions.
+
+## Open defect: a book whose stylesheet forces a text colour is unreadable on some themes
+
+At least one epub sets an explicit colour on its body text, which overrides the theme. On a
+dark theme that is dark text on a dark ground. Not investigated; no fix attempted.
 
 ## Product limits (not defects — do not “fix” by inventing precision)
 
