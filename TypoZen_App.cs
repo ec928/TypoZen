@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.47";
+        internal const string AppVersion = "0.2.48";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -455,7 +455,7 @@ namespace TypoZen
 
                 if (!createdNew)
                 {
-                    // Another TypoZen is running — open the file there as a tab and exit.
+                    // Another TypoZen is running â€” open the file there as a tab and exit.
                     try { if (mutex != null) mutex.Dispose(); } catch { }
                     if (HandoffToRunningInstance(launch))
                         return;
@@ -509,7 +509,7 @@ namespace TypoZen
                 using (var client = new NamedPipeClientStream(".", OpenPipeName, PipeDirection.Out))
                 {
                     // Short connect: running instance answers immediately; long timeout
-                    // made Explorer "Open with" feel 3× slower than File → Open.
+                    // made Explorer "Open with" feel 3Ã— slower than File â†’ Open.
                     client.Connect(250);
                     using (var writer = new StreamWriter(client, new UTF8Encoding(false)) { AutoFlush = true })
                     {
@@ -597,9 +597,9 @@ namespace TypoZen
         /// <summary>How a tab is painted and whether it can be edited.</summary>
         private enum DocKind
         {
-            Engine = 0,  // Markdown / text — Preview / Source / Reader
-            Book = 1,    // .epub — engine HTML, Reader locked
-            Native = 2   // PDF / image / media — Chromium surface, Reader chrome
+            Engine = 0,  // Markdown / text â€” Preview / Source / Reader
+            Book = 1,    // .epub â€” engine HTML, Reader locked
+            Native = 2   // PDF / image / media â€” Chromium surface, Reader chrome
         }
 
         private enum NativeRole
@@ -609,7 +609,7 @@ namespace TypoZen
             Image,
             Video,
             Audio,
-            /// <summary>HTML page — rendered by Chromium (default open policy).</summary>
+            /// <summary>HTML page â€” rendered by Chromium (default open policy).</summary>
             Page
         }
 
@@ -638,8 +638,8 @@ namespace TypoZen
 
             /// <summary>
             /// Mode for THIS tab: "source", "preview", "reader", or "" = never chosen
-            /// (path defaults: PreferSourceMode → source; books always Reader).
-            /// Part of the same bag as Columns — one leave/enter rule, not global chrome.
+            /// (path defaults: PreferSourceMode â†’ source; books always Reader).
+            /// Part of the same bag as Columns â€” one leave/enter rule, not global chrome.
             /// </summary>
             public string ViewMode = "";
 
@@ -677,14 +677,14 @@ namespace TypoZen
         private DispatcherTimer _diskDebounceTimer;
         private const int MaxSessionTabs = 24;
 
-        // File → Open Recent (persisted separately from prefs JSON regex patches)
+        // File â†’ Open Recent (persisted separately from prefs JSON regex patches)
         private const int MaxRecentFiles = 12;
         private readonly List<string> _recentFiles = new List<string>();
 
         // Privacy switches. Both default to the choice that writes least: session bodies
         // are the only place TypoZen puts document text anywhere other than the file you
         // chose, and the recent list is a record of what you opened. Defaulting bodies to
-        // OFF costs nothing silently — closing already prompts to save every dirty tab,
+        // OFF costs nothing silently â€” closing already prompts to save every dirty tab,
         // so work is offered back to you rather than stashed in the cache behind your back.
         private bool _sessionRestoreContent;
         private bool _recentFilesEnabled = true;
@@ -772,7 +772,7 @@ namespace TypoZen
         private bool _forceClose = false;
         private bool _closePromptActive = false;
         private int _closeClickCount = 0;
-        /// <summary>True while ExecuteScriptBlocking is nested — close/open must not re-enter.</summary>
+        /// <summary>True while ExecuteScriptBlocking is nested â€” close/open must not re-enter.</summary>
         private int _scriptBlockDepth = 0;
 
         // Named-pipe listener: second process hands off Explorer "open file" paths here.
@@ -1574,7 +1574,7 @@ namespace TypoZen
             });
             BindClick("mClearData", (s, e) => ClearStoredData());
 
-            // Status-bar chapter → jump to chapter start in the page.
+            // Status-bar chapter â†’ jump to chapter start in the page.
             try
             {
                 if (_lblChapter == null) _lblChapter = FindElement("lblChapter") as TextBlock;
@@ -1642,7 +1642,7 @@ namespace TypoZen
             {
                 _btnColumnToggle.Click += (s, e) =>
                 {
-                    // Intentional layout change for the active tab — the only place that
+                    // Intentional layout change for the active tab â€” the only place that
                     // writes tab.Columns during a normal session (session restore is the other).
                     int next = (_viewColumns == 2) ? 1 : 2;
                     if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
@@ -1678,7 +1678,7 @@ namespace TypoZen
             }
 
             // Keyboard accelerators (WPF chrome). WebView-focused chords use
-            // ComponentDispatcher filter — see InstallEditorKeyFilter.
+            // ComponentDispatcher filter â€” see InstallEditorKeyFilter.
             ApplyRestoredViewSettings(false);   // menus exist now; page settings wait for ready
 
             this.KeyDown += TypoZenWindow_KeyDown;
@@ -1701,7 +1701,7 @@ namespace TypoZen
                 // After the WebView is gone, never before: Chromium holds handles on the
                 // images it has fetched, so deleting the extraction while it is alive fails
                 // silently and leaves exactly what privacy mode is there to remove. This is
-                // the trigger — an ordinary exit clears the session's extracted books, and
+                // the trigger â€” an ordinary exit clears the session's extracted books, and
                 // the sweep inside catches anything a previous crash left behind.
                 try { EpubReader.DisposePrivateSession(); } catch { }
                 // The per-process private staging folder goes with it. It is kept alive
@@ -1740,13 +1740,13 @@ namespace TypoZen
         /// <summary>
         /// Notepad-style layout: document tabs live in the window caption (title bar).
         ///
-        /// Drag rule: empty caption areas must NOT have IsHitTestVisibleInChrome — then
+        /// Drag rule: empty caption areas must NOT have IsHitTestVisibleInChrome â€” then
         /// WindowChrome treats the mouse as non-client and the window moves. Only tabs,
         /// +, and custom min/max/close set the flag. Marking the whole tabBar (as before)
         /// made the entire top strip client-area and killed drag + system buttons.
         ///
         /// Caption buttons are custom: UseAeroCaptionButtons + GlassFrameThickness 0
-        /// often draws no ─□× at all on modern Windows.
+        /// often draws no â”€â–¡Ã— at all on modern Windows.
         /// </summary>
         private void ApplyNotepadTitleChrome()
         {
@@ -1755,7 +1755,7 @@ namespace TypoZen
                 const double captionH = 36;
                 // contentRoot Margin (XAML = 6) leaves a WPF strip outside the WebView HWND.
                 // Without it, WinFormsHost covers the client and WindowChrome never sees
-                // left/right/bottom edge hits — only status-bar/corners worked.
+                // left/right/bottom edge hits â€” only status-bar/corners worked.
                 const double resizeInset = 6;
                 var chrome = new WindowChrome
                 {
@@ -1802,7 +1802,7 @@ namespace TypoZen
 
         /// <summary>
         /// Keep a thin WPF margin around content so edges resize. When maximized, still
-        /// leave a couple of pixels — Margin 0 put the WebView scrollbar under the
+        /// leave a couple of pixels â€” Margin 0 put the WebView scrollbar under the
         /// monitor edge (Windows snap/hit-test zone), so it disappeared off-screen.
         /// </summary>
         private void UpdateContentResizeInset()
@@ -1813,7 +1813,7 @@ namespace TypoZen
                 if (root == null) return;
                 if (this.WindowState == WindowState.Maximized)
                 {
-                    // Work-area edge still steals ~1–2px; keep scrollbar fully on-screen.
+                    // Work-area edge still steals ~1â€“2px; keep scrollbar fully on-screen.
                     double m = 2;
                     try
                     {
@@ -1876,7 +1876,7 @@ namespace TypoZen
         {
             var scroller = sender as ScrollViewer;
             if (scroller == null) return;
-            // Vertical wheel → horizontal tab scroll (Notepad-like when hovering the strip).
+            // Vertical wheel â†’ horizontal tab scroll (Notepad-like when hovering the strip).
             scroller.ScrollToHorizontalOffset(scroller.HorizontalOffset - e.Delta);
             e.Handled = true;
             UpdateTabScrollButtons();
@@ -1893,7 +1893,7 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Show ‹ › only when tabs overflow; keep the title bar free of a fat H-scrollbar.
+        /// Show â€¹ â€º only when tabs overflow; keep the title bar free of a fat H-scrollbar.
         /// </summary>
         private void UpdateTabScrollButtons()
         {
@@ -2024,7 +2024,7 @@ namespace TypoZen
             var fe = e.OriginalSource as FrameworkElement;
             if (fe != null)
             {
-                // Inside a tab chip (Border with a close button child) — leave it alone.
+                // Inside a tab chip (Border with a close button child) â€” leave it alone.
                 DependencyObject d = fe;
                 while (d != null && d != sender)
                 {
@@ -2113,7 +2113,7 @@ namespace TypoZen
             if (handled) return;
             if (!IsActive) return;
 
-            // Zoom keys/wheel are handled in page JS → zoom:in/out/reset (WebView focus)
+            // Zoom keys/wheel are handled in page JS â†’ zoom:in/out/reset (WebView focus)
             // plus WPF KeyDown / View menu (chrome focus). Do not also handle here or
             // every step would fire twice.
 
@@ -2194,7 +2194,7 @@ namespace TypoZen
             else if (vk == 0x54) cmd = "fmt:table";                          // T
             else if (vk == 0x58 && shift) cmd = "fmt:strike";                // Ctrl+Shift+X
             // Ctrl+W / Ctrl+Tab: page JS posts tab:close|next|prev when the editor has
-            // focus (05-model.js). Do not also handle Ctrl+Tab here — double-fire made
+            // focus (05-model.js). Do not also handle Ctrl+Tab here â€” double-fire made
             // tab targets jump. Chrome-focused Ctrl+Tab is handled in Window.KeyDown.
             else if (vk == 0x46 && !shift) cmd = "cmd:find";                 // F
             else if (vk == 0x48) cmd = "cmd:find_replace";                   // H
@@ -2351,7 +2351,7 @@ namespace TypoZen
                     e.Handled = true;
                 }
                 // Ctrl+Z / Ctrl+Y: ONLY via ThreadPreprocessMessage + SendHistoryCmd.
-                // Do not also handle here — that caused double undo when both fired.
+                // Do not also handle here â€” that caused double undo when both fired.
                 else if (e.Key == Key.Z || e.Key == Key.Y)
                 {
                     e.Handled = true;
@@ -2398,7 +2398,7 @@ namespace TypoZen
         {
             _closeClickCount++;
 
-            // Second close (or force): always exit. Never block on the editor again —
+            // Second close (or force): always exit. Never block on the editor again â€”
             // a hung sync/load used to make the window unclosable.
             if (_forceClose || _closeClickCount >= 2)
             {
@@ -2521,7 +2521,7 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Pull editor before closing a tab. Dirty + failed sync → refuse (caller stays).
+        /// Pull editor before closing a tab. Dirty + failed sync â†’ refuse (caller stays).
         /// </summary>
         private bool EnsureActiveEditorSyncedForClose()
         {
@@ -2583,7 +2583,7 @@ namespace TypoZen
             if (ext == ".mp3" || ext == ".wav" || ext == ".ogg" || ext == ".m4a" || ext == ".flac")
                 return NativeRole.Audio;
             // HTML: render as a page (default). Relative CSS/images resolve via localview folder map.
-            // CSS / XML / XAML are ordinary text — open in the editor (Source), not a native
+            // CSS / XML / XAML are ordinary text â€” open in the editor (Source), not a native
             // "markup shell". A read-only <pre> is worse than Source and not a Chromium feature.
             if (ext == ".html" || ext == ".htm" || ext == ".xhtml")
                 return NativeRole.Page;
@@ -2641,7 +2641,7 @@ namespace TypoZen
         /// Callers must have synced the active buffer first (SyncActiveTabFromEditor);
         /// this writes tab.Content and never touches the editor, so it cannot be raced.
         /// The old path posted request_save to the page and wrote whatever came back to
-        /// _currentFilePath — but that reply lands a message-loop turn later, by which
+        /// _currentFilePath â€” but that reply lands a message-loop turn later, by which
         /// time closing/switching a tab had already repointed _currentFilePath, so one
         /// tab's text was written into another tab's file.
         /// </summary>
@@ -2652,7 +2652,7 @@ namespace TypoZen
         /// The editor is LF-internal (loadMarkdownContent splits on /\r?\n/, the
         /// serializer joins with "\n") and it drops trailing blank lines. Writing the
         /// buffer straight out therefore rewrote every line of a CRLF file and dropped
-        /// the final newline of almost every file — opening a document and saving it
+        /// the final newline of almost every file â€” opening a document and saving it
         /// without touching it produced a diff. New documents default to LF plus a
         /// single trailing newline.
         /// </summary>
@@ -2666,7 +2666,7 @@ namespace TypoZen
         // Pre-save content-loss guard. Every corruption bug this editor has had shared one
         // shape: content vanished and the save wrote the damage over the only good copy.
         // Since we keep no backups, the single moment the loss is still free to undo is
-        // just before the overwrite — the old version is right there on disk.
+        // just before the overwrite â€” the old version is right there on disk.
         private const double LossRatioTrigger = 0.30;   // must lose this share of the file
         private const int LossMinDocChars = 200;        // ...of a document at least this big
         private const int LossMinLostChars = 200;       // ...and this much in absolute terms
@@ -2676,7 +2676,7 @@ namespace TypoZen
         /// Would writing <paramref name="newText"/> over <paramref name="oldText"/> drop a
         /// suspicious amount of content? Pure decision, no UI: the dialog is the caller's
         /// job, so this stays testable and cannot hang a headless run.
-        /// Thresholds are deliberately blunt — this catches bulk loss, not a mangled word.
+        /// Thresholds are deliberately blunt â€” this catches bulk loss, not a mangled word.
         /// </summary>
         private static bool WouldLoseContent(string oldText, string newText, out string summary)
         {
@@ -2706,7 +2706,7 @@ namespace TypoZen
             }
 
             var sb = new StringBuilder();
-            sb.AppendLine("Saving would remove " + lost.ToString("N0") + " characters — " +
+            sb.AppendLine("Saving would remove " + lost.ToString("N0") + " characters â€” " +
                 (int)Math.Round(100.0 * lost / oldN.Length) + "% of the file.");
             sb.AppendLine();
             sb.AppendLine("On disk: " + oldLines.Length + " lines.  After saving: " + newLines.Length + " lines.");
@@ -2776,7 +2776,7 @@ namespace TypoZen
                 || (!string.IsNullOrEmpty(path)
                     && path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase));
             bool isNative = IsNativeTab(tab) || IsNativePath(path);
-            // Native files have no engine text — Save is refuse, not "export as md".
+            // Native files have no engine text â€” Save is refuse, not "export as md".
             if (isNative && !forceSaveAs)
             {
                 WinForms.MessageBox.Show(
@@ -2830,7 +2830,7 @@ namespace TypoZen
                 return false;
             }
 
-            // Never leave two tabs on the same path (Save As collision → silent overwrite).
+            // Never leave two tabs on the same path (Save As collision â†’ silent overwrite).
             int otherIdx = IndexOfTabPath(path);
             if (otherIdx >= 0 && _tabs[otherIdx] != tab)
             {
@@ -2863,7 +2863,7 @@ namespace TypoZen
             string outText = ComposeFileText(tab);
 
             // Only guard an overwrite of this tab's OWN file. Save As onto some other
-            // existing document is a deliberate replacement — comparing two unrelated
+            // existing document is a deliberate replacement â€” comparing two unrelated
             // files would fire every time, and Windows already asked about overwriting.
             bool overwritingOwnFile = !forceSaveAs &&
                 string.Equals(path, tab.FilePath, StringComparison.OrdinalIgnoreCase);
@@ -2908,7 +2908,7 @@ namespace TypoZen
             tab.IsDirty = false;
             StampTabDisk(tab, path, outText);
             try { SyncDiskWatchers(); } catch { }
-            // Images removed from the document are now unreferenced — recycle them.
+            // Images removed from the document are now unreferenced â€” recycle them.
             PruneOrphanedAssets(path, tab.Content);
 
             bool isActive = (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && _tabs[_activeTabIndex] == tab);
@@ -2973,14 +2973,14 @@ namespace TypoZen
         /// same folder, flushed to disk, then swapped in as path.
         ///
         /// Used for:
-        ///   • settings.json / session meta (prefs + scratchpad)
-        ///   • the user's document on Save (so a crash mid-write cannot truncate the .md)
+        ///   â€¢ settings.json / session meta (prefs + scratchpad)
+        ///   â€¢ the user's document on Save (so a crash mid-write cannot truncate the .md)
         ///
         /// Sequence:
         ///   1. Write + flush the complete temp file
-        ///   2. Prefer File.Replace(tmp → path) so the original is never absent
+        ///   2. Prefer File.Replace(tmp â†’ path) so the original is never absent
         ///   3. If Replace fails (some network / OneDrive edge cases): delete original,
-        ///      then rename temp → path (what you described as the simple mental model)
+        ///      then rename temp â†’ path (what you described as the simple mental model)
         ///
         /// Also creates the parent directory when missing.
         // ---- Reading position per book ------------------------------------------------
@@ -3282,7 +3282,7 @@ namespace TypoZen
                 if (!File.Exists(path)) return;
                 foreach (string line in File.ReadAllLines(path))
                 {
-                    // "<path>\t<payload>" — path first here, unlike book_positions, because
+                    // "<path>\t<payload>" â€” path first here, unlike book_positions, because
                     // the payload is the variable-length part and a split on the first tab
                     // must not be able to land inside it.
                     int tab = line.IndexOf('\t');
@@ -3450,7 +3450,7 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Revert a dirty tab after the user chose "No" on close — so session restore
+        /// Revert a dirty tab after the user chose "No" on close â€” so session restore
         /// does not resurrect edits they explicitly discarded.
         /// </summary>
         private void DiscardTabEdits(DocTab tab)
@@ -3876,7 +3876,7 @@ namespace TypoZen
         /// Snapshot open tabs for next launch (Notepad-style). Clean on-disk files store
         /// path only; dirty and untitled tabs store buffer bodies under session_bodies/.
         /// Bodies are written before the index and orphans are removed only after the
-        /// index is committed — never wipe the body dir first (crash mid-persist used
+        /// index is committed â€” never wipe the body dir first (crash mid-persist used
         /// to lose every unsaved buffer).
         /// </summary>
         private void PersistTabSession()
@@ -4192,10 +4192,10 @@ namespace TypoZen
                     };
                     ApplyDocKindFromSession(tab, kindTok);
 
-                    // Book / native: path only — never ReadTextFileDetect (binary).
+                    // Book / native: path only â€” never ReadTextFileDetect (binary).
                     //
                     // HTML is path-classified as Native (default open = rendered page), but a
-                    // session can still record kind=engine when the user was in Mode → Source
+                    // session can still record kind=engine when the user was in Mode â†’ Source
                     // (markup). Honor that so restore reloads markup as editor Source rather
                     // than forcing Native and leaving Mode chrome wrong.
                     bool sessionEngine = string.Equals(kindTok, "engine", StringComparison.OrdinalIgnoreCase);
@@ -4249,7 +4249,7 @@ namespace TypoZen
                             tab.IsDirty = true; // unsaved buffer
                         else if (!File.Exists(tab.FilePath))
                         {
-                            // Path gone — keep buffer as untitled so work is not lost
+                            // Path gone â€” keep buffer as untitled so work is not lost
                             tab.FilePath = null;
                             tab.IsDirty = true;
                         }
@@ -4276,7 +4276,7 @@ namespace TypoZen
                     }
                     else
                     {
-                        // No body and no readable file — skip empty junk unless sole tab later
+                        // No body and no readable file â€” skip empty junk unless sole tab later
                         if (string.IsNullOrEmpty(tab.FilePath))
                         {
                             tab.Content = "";
@@ -4379,7 +4379,7 @@ namespace TypoZen
                 string path = RecentFilesPath();
                 if (!File.Exists(path)) return;
                 string json = File.ReadAllText(path, Encoding.UTF8);
-                // Simple ["path1","path2"] parser — no nested objects
+                // Simple ["path1","path2"] parser â€” no nested objects
                 foreach (Match m in Regex.Matches(json, @"\""((?:\\.|[^\""])*)\"""))
                 {
                     string p = JsonUnescape(m.Groups[1].Value);
@@ -4431,7 +4431,7 @@ namespace TypoZen
             SendMsg(on ? "cmd:persist_content_on" : "cmd:persist_content_off");
             if (!on)
             {
-                // Take effect now rather than at next save — turning it off should mean
+                // Take effect now rather than at next save â€” turning it off should mean
                 // the text is gone, not gone eventually.
                 try
                 {
@@ -4464,7 +4464,7 @@ namespace TypoZen
 
         /// <summary>
         /// Delete everything TypoZen has stored about your documents. Your documents
-        /// themselves are never touched — only the cache folder.
+        /// themselves are never touched â€” only the cache folder.
         /// </summary>
         /// <summary>
         /// Extracted books currently on disk: how many folders and how many bytes.
@@ -5172,7 +5172,7 @@ namespace TypoZen
                 UpdateZoomLabel();
             }
             finally { _zoomApplying = false; }
-            // Persist without waiting for close — matches "remember my zoom". Coalesced
+            // Persist without waiting for close â€” matches "remember my zoom". Coalesced
             // because zoom arrives one notch at a time; see SaveWindowStateDebounced.
             SaveWindowStateDebounced();
         }
@@ -5222,7 +5222,7 @@ namespace TypoZen
             b.Click += (s, e) =>
             {
                 // HTML: rendered native page by default; Source mode is how you see markup
-                // (same Mode control as Markdown — no separate "View Source" command).
+                // (same Mode control as Markdown â€” no separate "View Source" command).
                 if (selector == "mode" && HandleHtmlModeSegmentClick(value))
                     return;
                 // Intentional view change for THIS tab (same bag as columns).
@@ -5243,7 +5243,7 @@ namespace TypoZen
 
         /// <summary>
         /// HTML is not Markdown. Mode means:
-        ///   Source  = editable markup (editor — the only edit path)
+        ///   Source  = editable markup (editor â€” the only edit path)
         ///   Preview = not used for HTML (Markdown WYSIWYG of tags is a lie; left locked)
         ///   Reader  = true HTML page, read-only
         /// Returns true if the click was fully handled.
@@ -5259,7 +5259,7 @@ namespace TypoZen
 
                 if (mode == "preview")
                 {
-                    // Ignore — Preview stays locked for HTML (see PaintNativeChrome / tooltips).
+                    // Ignore â€” Preview stays locked for HTML (see PaintNativeChrome / tooltips).
                     return true;
                 }
 
@@ -5315,14 +5315,14 @@ namespace TypoZen
             //
             // view_state is "what the page is showing right now". After opening a book the
             // first paint is always 1-col until RequestTabColumns runs; writing that 1 back
-            // erased the tab's remembered 2-col. Source→book was the worst case: columns
+            // erased the tab's remembered 2-col. Sourceâ†’book was the worst case: columns
             // commands while Source is active are ignored (locked to 1), the book mounts
-            // as 1-col, this echo stored 1, and load_done re-applied 1. Preview→book often
+            // as 1-col, this echo stored 1, and load_done re-applied 1. Previewâ†’book often
             // already had a free column state so the race was less visible.
             //
             // One rule: tab.Columns is only set by (1) session restore cols=, (2) the user
             // clicking the column control. RequestTabColumns / view_state only *apply* or
-            // *paint* — they never overwrite memory.
+            // *paint* â€” they never overwrite memory.
 
             // Keep legacy mode chrome in step for Word Wrap / toolbars that still read it.
             if (mode == "source") _editorMode = "source";
@@ -5331,7 +5331,7 @@ namespace TypoZen
             RefreshEditingAvailability();
 
             // A book has no Source and no Preview. There is no markdown behind it to
-            // show, and nothing to preview an edit of — offering both asked the reader to
+            // show, and nothing to preview an edit of â€” offering both asked the reader to
             // choose between two things that do not exist for this document, and choosing
             // one is how the publisher's HTML ended up being rewritten as source.
             //
@@ -5384,7 +5384,7 @@ namespace TypoZen
             // this change, or any route that does not pass through those buttons, can
             // still arrive in the wrong place. The correction settles immediately because
             // the next view_state has mode == reader and this stops firing.
-            // Native tabs do not use the engine mode machine — chrome only (see ShowNativeSurface).
+            // Native tabs do not use the engine mode machine â€” chrome only (see ShowNativeSurface).
             if (isBook && !string.Equals(mode, "reader", StringComparison.OrdinalIgnoreCase))
                 SendMsg("cmd:view_set:mode:reader");
         }
@@ -5719,7 +5719,7 @@ namespace TypoZen
                 AttachEditorNavigationGuards(_webView.CoreWebView2);
                 _webView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
 
-                // Native Ctrl+wheel still mutates ZoomFactor — mirror it into the status bar.
+                // Native Ctrl+wheel still mutates ZoomFactor â€” mirror it into the status bar.
                 try { _webView.ZoomFactorChanged += WebView_ZoomFactorChanged; } catch { }
 
                 // Restore zoom before first paint (ZoomFactor is on the control, not CoreWebView2)
@@ -5732,7 +5732,7 @@ namespace TypoZen
                     {
                         WinForms.MessageBox.Show("WebView navigation failed: " + e.WebErrorStatus, "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                     }
-                    // Navigation can reset zoom on some runtimes — re-apply
+                    // Navigation can reset zoom on some runtimes â€” re-apply
                     ApplyZoomToWebView();
                     UpdateZoomLabel();
                     _webView.Focus();
@@ -5783,7 +5783,7 @@ namespace TypoZen
 
                     // Stamp ?v= onto script/link tags so module edits cannot stick in the
                     // WebView HTTP cache after a full navigation (query on the HTML alone
-                    // is not enough — classic script src URLs were unversioned).
+                    // is not enough â€” classic script src URLs were unversioned).
                     string navName = "TypoZen_Template.html";
                     try
                     {
@@ -5906,7 +5906,7 @@ namespace TypoZen
                 return;
             }
 
-            // Page-side zoom chords (editor focused) — most reliable path for hosted WebView2
+            // Page-side zoom chords (editor focused) â€” most reliable path for hosted WebView2
             if (msg == "zoom:in")
             {
                 ZoomBy(+ZoomStep);
@@ -6237,7 +6237,7 @@ namespace TypoZen
                 {
                     // Host owns settings.json: merge allowlisted page fields only.
                     // Never write-through the raw page blob (could wipe host fields or
-                    // stash multi‑MB lastContent).
+                    // stash multiâ€‘MB lastContent).
                     MergeAndWriteHostPrefs(msg.Substring(11));
                 }
                 catch {}
@@ -6288,7 +6288,7 @@ namespace TypoZen
                     {
                         string total = parts.Length >= 5 ? parts[4] : "0";
                         string caret = parts.Length >= 6 ? parts[5] : "?";
-                        // Ln current / total — answers "what line am I on?"
+                        // Ln current / total â€” answers "what line am I on?"
                         // Not Grouped(): a line number is a coordinate, not a count, and
                         // the search sidebar prints the same number raw in its gutter.
                         // Grouping here made one line read as "1,037" in the status bar
@@ -6315,11 +6315,11 @@ namespace TypoZen
             // NOTE: save_content: / save_as_content: are no longer sent or handled.
             // Saving pulls content synchronously (SaveTabNow) so a reply can never land
             // after the active tab changed. The page still answers request_save:, but
-            // nothing sends it — that responder is dead code worth deleting.
+            // nothing sends it â€” that responder is dead code worth deleting.
             else if (msg.StartsWith("image_data_req:"))
             {
                 // Fallback when the https://docfolder mapping does not serve the file.
-                // Read the bytes here and hand them back as a data: URI — no virtual host,
+                // Read the bytes here and hand them back as a data: URI â€” no virtual host,
                 // no cross-origin question, works regardless of path oddities.
                 try
                 {
@@ -6392,7 +6392,7 @@ namespace TypoZen
             else if (msg.StartsWith("menu_access:"))
             {
                 // Alt+<letter>, forwarded from the page. Open the top-level menu whose
-                // access key matches — derived from the "_File" style headers, so it stays
+                // access key matches â€” derived from the "_File" style headers, so it stays
                 // correct if a header is renamed.
                 OpenMenuByAccessKey(msg.Length > 12 ? msg[12] : '\0');
             }
@@ -6507,7 +6507,7 @@ namespace TypoZen
                 // with the theme, since nothing else knew whether it was on.
                 //
                 // User toggles pin the sidebar open (or clear the pin when closed). Edge
-                // hover does not send this — so hover cannot pin.
+                // hover does not send this â€” so hover cannot pin.
                 _sidebarOpen = msg.Substring(14) == "1";
                 _sidebarPinned = _sidebarOpen;
                 UpdateChromeWatch();
@@ -6517,7 +6517,7 @@ namespace TypoZen
             }
             else if (msg.StartsWith("chapter:"))
             {
-                // "chapter:<blockIndex>\t<title>" — index is for click-to-jump; empty title hides.
+                // "chapter:<blockIndex>\t<title>" â€” index is for click-to-jump; empty title hides.
                 string body = msg.Length > 8 ? msg.Substring(8) : "";
                 int bi = -1;
                 string title = body;
@@ -6591,7 +6591,7 @@ namespace TypoZen
             {
                 // Whatever failed before, this tab is loaded now: let it be retried again.
                 _restagedBookTabId = -1;
-                // Large staged open / book open finished — apply ZenSeek jump/highlight.
+                // Large staged open / book open finished â€” apply ZenSeek jump/highlight.
                 ScheduleApplyPendingLaunch();
                 // Re-apply THIS tab's view bag + position after content is really on the page.
                 // Column remount must run before resume, or we land at the top again.
@@ -6664,7 +6664,7 @@ namespace TypoZen
             {
                 // MUST NOT run inline. We are inside the WebView's message callback, and
                 // LoadFileFromPath blocks on a script round trip (SyncActiveTabFromEditor)
-                // that the WebView cannot answer until this callback returns — so it waited
+                // that the WebView cannot answer until this callback returns â€” so it waited
                 // out the timeout. Defer to a fresh dispatcher turn so the round trip can
                 // complete. Use Normal (not Background): large-file loads need the same
                 // priority as menu Open, or nested script/message pumps starve.
@@ -6687,7 +6687,7 @@ namespace TypoZen
                 if (string.IsNullOrEmpty(m)) m = "wysiwyg";
                 _editorMode = m;
                 // Keep Mode pillbox and _viewMode aligned (load_content_plain only posted
-                // mode_changed without a view_state, so Source lit Reader after HTML→Source).
+                // mode_changed without a view_state, so Source lit Reader after HTMLâ†’Source).
                 if (string.Equals(m, "source", StringComparison.OrdinalIgnoreCase))
                     _viewMode = "source";
                 else if (string.Equals(m, "reader", StringComparison.OrdinalIgnoreCase))
@@ -7033,7 +7033,7 @@ namespace TypoZen
                 _lblEncoding.Text = "";
                 return;
             }
-            _lblEncoding.Text = encodingName + "  →  UTF-8";
+            _lblEncoding.Text = encodingName + "  â†’  UTF-8";
             _lblEncoding.Visibility = Visibility.Visible;
         }
 
@@ -7274,7 +7274,7 @@ namespace TypoZen
             bool? result = dlg.ShowDialog();
             if (result != true)
             {
-                // Cancel or close without save — restore previous theme
+                // Cancel or close without save â€” restore previous theme
                 if (restoreIdx >= 0 && restoreIdx < _themesList.Count)
                     ApplyTheme(restoreIdx);
             }
@@ -7401,7 +7401,7 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Delete a theme the user created. Built-in themes are refused — they are part of
+        /// Delete a theme the user created. Built-in themes are refused â€” they are part of
         /// the shipped set, and removing one would be silently undone by any reinstall.
         /// </summary>
         private bool DeleteTheme(int idx)
@@ -7827,7 +7827,7 @@ namespace TypoZen
         /// Deliberately runs on SAVE, not on every edit: deleting an image and undoing
         /// before saving must not cost you the file. Files go to the Recycle Bin, never
         /// a hard delete, and only files inside THIS document's own "-assets" folder are
-        /// ever touched — an image you referenced by an absolute or shared path is not
+        /// ever touched â€” an image you referenced by an absolute or shared path is not
         /// ours to remove.
         /// </summary>
         private void PruneOrphanedAssets(string docPath, string savedContent)
@@ -7967,7 +7967,7 @@ namespace TypoZen
             try { if (_chromeWatch != null) _chromeWatch.Stop(); } catch { }
         }
 
-        /// <summary>True while a menu or toolbar dropdown is open — never hide under it.</summary>
+        /// <summary>True while a menu or toolbar dropdown is open â€” never hide under it.</summary>
         /// <summary>The menus ChromeWatchTick polls. Created by the XAML load, never replaced.</summary>
         private Menu[] _chromeWatchMenus;
 
@@ -8010,15 +8010,15 @@ namespace TypoZen
 
         private void ChromeWatchTick()
         {
-            // Always run while auto-hide is on, or while the sidebar can edge-reveal —
-            // which needs both the setting (View → Side Panel Auto-hide, off by default)
+            // Always run while auto-hide is on, or while the sidebar can edge-reveal â€”
+            // which needs both the setting (View â†’ Side Panel Auto-hide, off by default)
             // and a sidebar the user has actually closed.
             if (!_chromeAutoHide && (_sidebarPinned || !_sidebarAutoHide)) return;
             try
             {
                 // Convert the physical cursor position into the SAME units as ActualWidth
                 // (device-independent pixels). Comparing raw screen pixels against DIPs
-                // made the hot zone wrong by the display scale factor — about 4 logical
+                // made the hot zone wrong by the display scale factor â€” about 4 logical
                 // pixels on a 150% display, which is impossible to hit on purpose.
                 var screenPos = WinForms.Control.MousePosition;
                 Point p = PointFromScreen(new Point(screenPos.X, screenPos.Y));
@@ -8027,7 +8027,7 @@ namespace TypoZen
 
                 double chromeBottom = ChromeHeight();
                 // Reveal from anywhere in the top band INCLUDING the title bar above the
-                // client area (y is negative there) — moving the pointer to the top of the
+                // client area (y is negative there) â€” moving the pointer to the top of the
                 // window is the natural gesture, and it used to sail straight past.
                 bool nearTop = ShouldRevealChrome(x, y, chromeBottom, _chromeHidden);
 
@@ -8041,7 +8041,7 @@ namespace TypoZen
                     ApplyChromeVisibility();
                 }
 
-                // Extreme left edge: temporary sidebar unless the user pinned it open —
+                // Extreme left edge: temporary sidebar unless the user pinned it open â€”
                 // and only when the reveal has been asked for. With the setting off the
                 // band is dead, so the tick can still be running for chrome auto-hide
                 // without the side panel following the pointer.
@@ -8116,7 +8116,7 @@ namespace TypoZen
         /// sidebar temporarily unless the user pinned it open with the toolbar/menu toggle.
         /// Hysteresis: thin strip to *open*; full sidebar width to *stay* once open (edge
         /// hover sticky via _leftHover, or pinned via _sidebarOpen). Match case / Whole word
-        /// sit on the right of the 280px bar — stay band must cover those buttons.
+        /// sit on the right of the 280px bar â€” stay band must cover those buttons.
         /// </summary>
         internal bool ShouldRevealSidebar(double x, double y)
         {
@@ -8134,7 +8134,7 @@ namespace TypoZen
 
         private double ChromeHeight()
         {
-            // Always count the caption strip (tabs may be tucked but ─□× remain).
+            // Always count the caption strip (tabs may be tucked but â”€â–¡Ã— remain).
             // Command row only when expanded.
             double h = 0;
             var band = FindElement("tabBar") as FrameworkElement;
@@ -8234,7 +8234,7 @@ namespace TypoZen
 
         /// <summary>
         /// One switch, because the old "hide while typing" and "auto-hide" behaved almost
-        /// identically — auto-hide already retracted on the first keystroke as well as on
+        /// identically â€” auto-hide already retracted on the first keystroke as well as on
         /// pointer-away, so the second option earned nothing.
         /// </summary>
         /// <summary>
@@ -8452,7 +8452,7 @@ namespace TypoZen
         /// <remarks>
         /// Reader sets #editor to contenteditable="false", for a book and for Markdown
         /// alike, so every formatting command is a no-op there. Source and Preview both
-        /// take edits, paginated or not — this is about the document, not the layout.
+        /// take edits, paginated or not â€” this is about the document, not the layout.
         /// </remarks>
         private bool IsDocumentEditable()
         {
@@ -8466,7 +8466,7 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// True when Mode pills must follow the native surface (Reader for HTML/PDF/…)
+        /// True when Mode pills must follow the native surface (Reader for HTML/PDF/â€¦)
         /// rather than the hidden editor WebView's mode_changed / view_state.
         /// </summary>
         private bool ShouldIgnoreEditorModeChrome()
@@ -8507,12 +8507,12 @@ namespace TypoZen
                 Button segSource, segPreview;
                 if (_segments.TryGetValue("btnModeSource", out segSource))
                     SetControlLocked(segSource, book || nativeNonHtml);
-                // Preview = Markdown editor mode — never for HTML files.
+                // Preview = Markdown editor mode â€” never for HTML files.
                 if (_segments.TryGetValue("btnModePreview", out segPreview))
                 {
                     SetControlLocked(segPreview, book || nativeNonHtml || html);
                     if (html)
-                        try { segPreview.ToolTip = "Not used for HTML — use Source to edit markup, Reader to view the page."; } catch { }
+                        try { segPreview.ToolTip = "Not used for HTML â€” use Source to edit markup, Reader to view the page."; } catch { }
                 }
                 if (!book && !ActiveTabIsNativeSurface() && !html)
                 {
@@ -8557,10 +8557,10 @@ namespace TypoZen
             {
                 bool editable = IsDocumentEditable();
                 string why = IsEpubPath(_currentFilePath)
-                    ? "A book is read-only — formatting applies to documents you can edit"
+                    ? "A book is read-only â€” formatting applies to documents you can edit"
                     : (IsNativePath(_currentFilePath) || (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsNativeTab(_tabs[_activeTabIndex])))
-                        ? "This file is read-only — open a Markdown or text document to format"
-                        : "Reader is read-only — switch to Preview or Source to format text";
+                        ? "This file is read-only â€” open a Markdown or text document to format"
+                        : "Reader is read-only â€” switch to Preview or Source to format text";
                 foreach (string name in FormatControls)
                 {
                     var c = FindElement(name) as Control;
@@ -8610,7 +8610,7 @@ namespace TypoZen
         private int _paraSpacing = 1;
         /// <summary>
         /// Whether hovering a paragraph offers its bookmark gutter: 0=off, 1=gutter.
-        /// Default on. This is only the hover preview — a bookmark is always drawn.
+        /// Default on. This is only the hover preview â€” a bookmark is always drawn.
         /// </summary>
         private int _blockHover = 1;
         private static readonly string[] BlockHoverKeys = { "off", "gutter" };
@@ -8954,7 +8954,7 @@ namespace TypoZen
         /// <summary>
         /// Keep the editor WebView on the template. A book sanitizer miss or a
         /// target=_blank that the page did not intercept must not replace
-        /// TypoZen_Template with some other origin — chrome.webview messages still
+        /// TypoZen_Template with some other origin â€” chrome.webview messages still
         /// arrive after that, and open_doc / save_prefs would then run against
         /// whoever is on the page.
         /// </summary>
@@ -9056,7 +9056,7 @@ namespace TypoZen
         ///
         /// RestoreWindowState only fills the fields. Without this, a restored auto-hide
         /// never started its pointer watch (so hover could not reveal the chrome) and never
-        /// ticked its menu item — leaving the setting on, the menu saying off, and the
+        /// ticked its menu item â€” leaving the setting on, the menu saying off, and the
         /// first click appearing to do nothing because it toggled the field back.
         /// </summary>
         private void ApplyRestoredViewSettings(bool includePageSettings)
@@ -9144,7 +9144,7 @@ namespace TypoZen
         }
 
         // Below this, ship text inline via postMessage. Above: stage file + async fetch
-        // (avoids multi‑hundred‑KB COM marshaling on every open).
+        // (avoids multiâ€‘hundredâ€‘KB COM marshaling on every open).
         private const int LoadContentInlineMaxChars = 96 * 1024;
 
         /// <summary>
@@ -9174,7 +9174,7 @@ namespace TypoZen
 
         /// <summary>
         /// Load a file into the editor as text (Source), even if it would normally open
-        /// as a native HTML page. Used when the user presses the Mode → Source segment.
+        /// as a native HTML page. Used when the user presses the Mode â†’ Source segment.
         /// </summary>
         private void OpenAsEditorText(string path)
         {
@@ -9183,7 +9183,7 @@ namespace TypoZen
 
         /// <summary>
         /// Push content into the editor without blocking. Plain/Source is chosen by
-        /// document type (txt/log/csv/css/xml/xaml/…), not by size — virtualized Preview
+        /// document type (txt/log/csv/css/xml/xaml/â€¦), not by size â€” virtualized Preview
         /// handles large markdown without building a full WYSIWYG DOM.
         /// </summary>
         private void LoadContentToEditor(string content, bool markDirty = false, string filePathHint = null, int resumeAt = 0)
@@ -9304,7 +9304,7 @@ namespace TypoZen
 
         /// <summary>
         /// Menu Paste: same content path as Ctrl+V. WebView2 blocks document.execCommand('paste');
-        /// host clipboard → paste_text → JS insertPastedPlainText (shared with the paste event).
+        /// host clipboard â†’ paste_text â†’ JS insertPastedPlainText (shared with the paste event).
         /// </summary>
         private void PasteFromClipboard()
         {
@@ -9350,7 +9350,7 @@ namespace TypoZen
                 _activeTabIndex = 0;
         }
 
-        // Host↔editor document pull. Keep timeouts SHORT — long PushFrame freezes Close.
+        // Hostâ†”editor document pull. Keep timeouts SHORT â€” long PushFrame freezes Close.
         private const int DocStateChunkChars = 256 * 1024;
         private const int DocStateFetchTimeoutMs = 8000;
         private const int DocStateCloseTimeoutMs = 2000;
@@ -9458,7 +9458,7 @@ namespace TypoZen
 
                 int len;
                 if (!int.TryParse(meta.Substring(2), out len) || len < 0) return null;
-                // Too large to pull within close budget — fail fast, use host buffer.
+                // Too large to pull within close budget â€” fail fast, use host buffer.
                 if (len > 2 * 1024 * 1024 && timeoutMs <= DocStateCloseTimeoutMs)
                 {
                     ExecuteScriptBlocking(
@@ -9509,7 +9509,7 @@ namespace TypoZen
         /// <summary>
         /// Pull live editor text + dirty flag into the active tab.
         /// Returns true only when the WebView answered. On false the tab buffer is left
-        /// unchanged — callers must not treat it as "current" for Save/Close.
+        /// unchanged â€” callers must not treat it as "current" for Save/Close.
         /// </summary>
         /// <param name="allowStaleIfClean">
         /// When true and the editor cannot be read, succeed using the last in-memory
@@ -9554,7 +9554,7 @@ namespace TypoZen
                 return true;
             }
 
-            // If already inside a blocking script, do not nest — treat as stale/fail.
+            // If already inside a blocking script, do not nest â€” treat as stale/fail.
             if (_scriptBlockDepth > 0)
             {
                 if (allowStaleIfClean && ActiveTabLooksClean()) return true;
@@ -9563,7 +9563,7 @@ namespace TypoZen
 
             // Cheap dirty probe before a full body pull. Host may still say dirty after
             // undo-to-saved or a lagging flag; page Source compare / model join is enough
-            // to clear that without marshalling multi‑MB markdown.
+            // to clear that without marshalling multiâ€‘MB markdown.
             try
             {
                 string flag = ExecuteScriptBlocking(
@@ -9663,7 +9663,7 @@ namespace TypoZen
             Action<string> Fail = m => { ok = false; log.AppendLine("FAIL " + m); };
 
             // Refuse to run against a stale binary. A locked exe once made the build fail
-            // while the harness happily reported PASS against the previous compile — a
+            // while the harness happily reported PASS against the previous compile â€” a
             // green run for code that was never built is worse than no run at all.
             // (Only the .cs matters: the template and themes are runtime assets.)
             try
@@ -9700,7 +9700,7 @@ namespace TypoZen
             const string TOKEN_B = "TAB_TOKEN_BRAVO_9e2d";
             // ================= CORE EDITING LOOP =================
             // Runs FIRST, before any feature-specific probe. This is the sequence a user
-            // performs constantly — type, Enter, type, Enter twice, Backspace, Delete —
+            // performs constantly â€” type, Enter, type, Enter twice, Backspace, Delete â€”
             // asserting the document AND the caret after every step.
             //
             // It exists because the suite had grown around whatever I last edited: "Enter
@@ -9760,7 +9760,7 @@ namespace TypoZen
                     // ---- The structural paths that were never audited ----
                     // Each one changes block structure through the browser rather than our
                     // handlers, and the one-block-one-line serializer keeps only the first
-                    // child of a block — which is how Delete and Backspace ate whole lines.
+                    // child of a block â€” which is how Delete and Backspace ate whole lines.
                     "  function selectAcross(i0, off0, i1, off1){" +
                     "    var bs = blocks();" +
                     "    var t0 = bs[i0].innerText !== undefined ? bs[i0] : bs[i0];" +
@@ -9858,12 +9858,12 @@ namespace TypoZen
                     fireJson.IndexOf("\"input\":0", StringComparison.Ordinal) >= 0)
                     Pass("no editing logic is attached per block (it would never run)");
                 else
-                    Fail("a per-block listener fired: " + fireJson + " — editing handlers belong on #editor");
+                    Fail("a per-block listener fired: " + fireJson + " â€” editing handlers belong on #editor");
 
                 Action<string, string, string> step = (name, needle, why) =>
                 {
                     if (coreJson.IndexOf(needle, StringComparison.Ordinal) >= 0) Pass("core editing: " + why);
-                    else Fail("core editing: " + why + " — expected " + needle + " in " + coreJson);
+                    else Fail("core editing: " + why + " â€” expected " + needle + " in " + coreJson);
                 };
                 // typing five characters leaves one block, caret after them
                 step("type", "\"step\":\"type\",\"doc\":\"alpha\",\"n\":1,\"caret\":{\"i\":0,\"off\":5}",
@@ -9893,7 +9893,7 @@ namespace TypoZen
                 // The four structural paths the browser used to drive on its own. Each of
                 // these failed before the editor-level input/cut/dragstart guards went in:
                 // the DOM changed, data-raw did not, and getBlockRaw preferred whichever of
-                // the two was LONGER — so every shrinking edit silently reverted.
+                // the two was LONGER â€” so every shrinking edit silently reverted.
                 step("pasteMultiline", "\"step\":\"pasteMultiline\",\"doc\":\"alpha\\nuno\\ndos\\ntres\",\"n\":4",
                     "pasting several lines creates a line for each");
                 step("crossBlockDelete", "\"step\":\"crossBlockDelete\",\"doc\":\"alma\",\"n\":1",
@@ -9930,16 +9930,16 @@ namespace TypoZen
                 LoadFileFromPath(pathA);
                 await Task.Delay(700);
                 string ed = await FetchEditorContentAsync();
-                if (ed != null && ed.Contains(TOKEN_A)) Pass("open A → editor has TOKEN_A");
-                else Fail("open A → editor missing TOKEN_A got=[" + Trunc(ed) + "]");
+                if (ed != null && ed.Contains(TOKEN_A)) Pass("open A â†’ editor has TOKEN_A");
+                else Fail("open A â†’ editor missing TOKEN_A got=[" + Trunc(ed) + "]");
 
                 NewTab();
                 await Task.Delay(400);
                 LoadFileFromPath(pathB);
                 await Task.Delay(700);
                 ed = await FetchEditorContentAsync();
-                if (ed != null && ed.Contains(TOKEN_B)) Pass("open B → editor has TOKEN_B");
-                else Fail("open B → editor missing TOKEN_B got=[" + Trunc(ed) + "]");
+                if (ed != null && ed.Contains(TOKEN_B)) Pass("open B â†’ editor has TOKEN_B");
+                else Fail("open B â†’ editor missing TOKEN_B got=[" + Trunc(ed) + "]");
 
                 // Expect exactly two file tabs after open A + New + open B (reuse empty untitled)
                 if (_tabs.Count == 2) Pass("tab count=2 (no leftover empty untitled)");
@@ -9958,10 +9958,10 @@ namespace TypoZen
                     SwitchToTab(aIdx);
                     await Task.Delay(800);
                     ed = await FetchEditorContentAsync();
-                    if (ed != null && ed.Contains(TOKEN_A)) Pass("switch→A editor has TOKEN_A");
-                    else Fail("switch→A missing TOKEN_A got=[" + Trunc(ed) + "]");
-                    if (ed != null && ed.Contains(TOKEN_B)) Fail("switch→A leaked TOKEN_B");
-                    else if (ed != null) Pass("switch→A no TOKEN_B leak");
+                    if (ed != null && ed.Contains(TOKEN_A)) Pass("switchâ†’A editor has TOKEN_A");
+                    else Fail("switchâ†’A missing TOKEN_A got=[" + Trunc(ed) + "]");
+                    if (ed != null && ed.Contains(TOKEN_B)) Fail("switchâ†’A leaked TOKEN_B");
+                    else if (ed != null) Pass("switchâ†’A no TOKEN_B leak");
                 }
 
                 // Switch to B
@@ -9970,10 +9970,10 @@ namespace TypoZen
                     SwitchToTab(bIdx);
                     await Task.Delay(800);
                     ed = await FetchEditorContentAsync();
-                    if (ed != null && ed.Contains(TOKEN_B)) Pass("switch→B editor has TOKEN_B");
-                    else Fail("switch→B missing TOKEN_B got=[" + Trunc(ed) + "]");
-                    if (ed != null && ed.Contains(TOKEN_A)) Fail("switch→B leaked TOKEN_A");
-                    else if (ed != null) Pass("switch→B no TOKEN_A leak");
+                    if (ed != null && ed.Contains(TOKEN_B)) Pass("switchâ†’B editor has TOKEN_B");
+                    else Fail("switchâ†’B missing TOKEN_B got=[" + Trunc(ed) + "]");
+                    if (ed != null && ed.Contains(TOKEN_A)) Fail("switchâ†’B leaked TOKEN_A");
+                    else if (ed != null) Pass("switchâ†’B no TOKEN_A leak");
                 }
 
                 // In-memory buffers
@@ -10002,8 +10002,8 @@ namespace TypoZen
                     SwitchToTab(aIdx);
                     await Task.Delay(800);
                     ed = await FetchEditorContentAsync();
-                    if (ed != null && ed.Contains(TOKEN_A)) Pass("2nd switch→A still has TOKEN_A");
-                    else Fail("2nd switch→A lost TOKEN_A got=[" + Trunc(ed) + "]");
+                    if (ed != null && ed.Contains(TOKEN_A)) Pass("2nd switchâ†’A still has TOKEN_A");
+                    else Fail("2nd switchâ†’A lost TOKEN_A got=[" + Trunc(ed) + "]");
                 }
 
                 // --- Regression: a save must target its own tab, never the active path ---
@@ -10063,7 +10063,7 @@ namespace TypoZen
                 // Everything used to be read as UTF-8, so ANSI / UTF-16 files loaded as
                 // mojibake and the first save wrote that mojibake back over the original.
                 {
-                    const string ACCENTS = "café naïve Grüße";
+                    const string ACCENTS = "cafÃ© naÃ¯ve GrÃ¼ÃŸe";
                     string ansiPath = Path.Combine(dir, "enc_ansi.txt");
                     string utf16Path = Path.Combine(dir, "enc_utf16.txt");
                     string utf8BomPath = Path.Combine(dir, "enc_utf8bom.md");
@@ -10095,14 +10095,14 @@ namespace TypoZen
                     LoadFileFromPath(ansiPath);
                     await Task.Delay(700);
                     string edEnc = await FetchEditorContentAsync();
-                    if (edEnc != null && edEnc.Contains("café")) Pass("editor shows decoded accents");
+                    if (edEnc != null && edEnc.Contains("cafÃ©")) Pass("editor shows decoded accents");
                     else Fail("editor mojibake got=[" + Trunc(edEnc) + "]");
 
                     int ansiIdx = IndexOfTabPath(ansiPath);
                     if (ansiIdx >= 0 && SaveTabNow(_tabs[ansiIdx], false))
                     {
                         string after = ReadTextFileDetect(ansiPath, out encName);
-                        if (after.Contains("café") && after.Contains("Grüße"))
+                        if (after.Contains("cafÃ©") && after.Contains("GrÃ¼ÃŸe"))
                             Pass("saved back as UTF-8 with accents intact (" + encName + ")");
                         else
                             Fail("save mangled accents enc=" + encName + " got=[" + Trunc(after) + "]");
@@ -10231,7 +10231,7 @@ namespace TypoZen
                         "  r.setStart(tn, 5); r.collapse(true);" +
                         "  var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);" +
                         "  var before = s.anchorNode;" +
-                        // The debounced stats pass — what actually fires mid-edit on a
+                        // The debounced stats pass â€” what actually fires mid-edit on a
                         // timer. It must be a pure read. (getMarkdownContent() with repair
                         // on is still allowed to restructure; only edit paths call it.)
                         "  updateStatsNow();" +
@@ -10255,7 +10255,7 @@ namespace TypoZen
                 // --- Regression: forward Delete pulls the next line up ---
                 // Driven with a REAL keystroke, not a synthesised KeyboardEvent. Only
                 // #editor is contenteditable, so a real Delete targets #editor and never
-                // reaches a listener on a child .block — a dispatch aimed straight at the
+                // reaches a listener on a child .block â€” a dispatch aimed straight at the
                 // block "passed" against a handler that could never fire in practice.
                 await RunForwardDeleteKeyCase("alpha\\n\\ngamma", 1, "alpha\ngamma", 2,
                     "empty line, text below", Pass, Fail, log);
@@ -10751,7 +10751,7 @@ namespace TypoZen
 
                 // --- New View options: chrome modes, word wrap, status bar ---
                 {
-                    // Auto-hide: command row + tab chips tuck; slim caption (─□×) stays.
+                    // Auto-hide: command row + tab chips tuck; slim caption (â”€â–¡Ã—) stays.
                     var band = FindElement("tabBar") as FrameworkElement;
                     var bar = FindElement("topToolbar") as FrameworkElement;
                     var tabs = FindElement("tabScroller") as FrameworkElement;
@@ -11045,7 +11045,7 @@ namespace TypoZen
                         string sum;
 
                         bool catastrophe = WouldLoseContent(big, "This is line 0 of a real document.", out sum);
-                        // The summary lists the first few vanished lines — here that is
+                        // The summary lists the first few vanished lines â€” here that is
                         // line 1 onward, since line 0 is the one the corrupt save kept.
                         bool namesLines = sum != null &&
                             sum.IndexOf("This is line 1 of a real document.", StringComparison.Ordinal) >= 0 &&
@@ -11061,7 +11061,7 @@ namespace TypoZen
                         if (catastrophe) Pass("a save that would drop most of the document is flagged");
                         else Fail("bulk content loss went unflagged");
                         if (namesLines) Pass("the warning names the lines that would disappear");
-                        else Fail("warning gives the user nothing to judge — it would be clicked through");
+                        else Fail("warning gives the user nothing to judge â€” it would be clicked through");
                         if (!smallEdit) Pass("deleting a line is not flagged");
                         else Fail("ordinary editing triggers the loss guard");
                         if (!identical) Pass("an unchanged save is not flagged");
@@ -11105,7 +11105,7 @@ namespace TypoZen
                     // ---- Privacy: what gets written outside your own files ----
                     // The menu items must exist under the names the code binds to. A
                     // mismatch here compiles and runs fine, and the menu entry just quietly
-                    // does nothing — which is how the auto-hide toggle shipped broken.
+                    // does nothing â€” which is how the auto-hide toggle shipped broken.
                     var miBodies = FindElement("mSessionRestoreContent") as MenuItem;
                     var miRecent = FindElement("mRecentEnabled") as MenuItem;
                     var miClear = FindElement("mClearData") as MenuItem;
@@ -11113,7 +11113,7 @@ namespace TypoZen
                         " clear=" + (miClear != null));
                     if (miBodies != null && miRecent != null && miClear != null)
                         Pass("Privacy menu items exist under the names the handlers bind to");
-                    else Fail("a Privacy menu item is missing or renamed — its menu entry would do nothing");
+                    else Fail("a Privacy menu item is missing or renamed â€” its menu entry would do nothing");
                     if (miBodies != null && !miBodies.IsChecked)
                         Pass("remembering unsaved documents is off by default");
                     else Fail("unsaved-document persistence defaulted to ON");
@@ -11193,7 +11193,7 @@ namespace TypoZen
                     SetSessionRestoreContent(bodiesWas);
 
                     // Focus / Typewriter lost their toolbar buttons. They must still work
-                    // from the View menu, and the menu checkmark must still reflect state —
+                    // from the View menu, and the menu checkmark must still reflect state â€”
                     // that feedback used to be the button's highlight.
                     bool noFocusBtn = FindElement("btnFocusMode") == null;
                     bool noTypeBtn = FindElement("btnTypewriterMode") == null;
@@ -11400,7 +11400,7 @@ namespace TypoZen
         /// <summary>
         /// Put the caret at the end of block[blockIndex] and press a real Delete key, then
         /// check what the document became. SendKeys goes to whatever window is foreground,
-        /// so this refuses to fire unless TypoZen actually owns the foreground — a stray
+        /// so this refuses to fire unless TypoZen actually owns the foreground â€” a stray
         /// {DEL} into another app would be someone else's data.
         /// </summary>
         private async Task RunForwardDeleteKeyCase(string jsDocLiteral, int blockIndex,
@@ -11601,7 +11601,7 @@ namespace TypoZen
                 return;
             }
 
-            // PDF / image / media — Chromium native surface, not DocumentModel.
+            // PDF / image / media â€” Chromium native surface, not DocumentModel.
             if (IsNativeTab(tab) || IsNativePath(tab.FilePath))
             {
                 tab.Kind = DocKind.Native;
@@ -11626,7 +11626,7 @@ namespace TypoZen
             _isDirty = tab.IsDirty;
             RefreshEditingAvailability();
             // Teardown of book CSS/layout is handled inside loadMarkdownContent when
-            // kind was epub (wasBook). Do not send leave_book_surface first — that raced
+            // kind was epub (wasBook). Do not send leave_book_surface first â€” that raced
             // and could remount HTML as Markdown.
             string content = tab.Content ?? "";
             // Path-keyed store fills ResumeBlock before load so staged |at= can land first paint.
@@ -11639,7 +11639,7 @@ namespace TypoZen
                 }
                 catch { }
             }
-            // Skip full remount when the page already holds this tab's buffer (A→B→A).
+            // Skip full remount when the page already holds this tab's buffer (Aâ†’Bâ†’A).
             // Mode first. Loading a new scratch into the previous tab's Pages layout
             // is how an empty editor painted as a 1-glyph column (the gutter-width
             // placeholder on .block::before).
@@ -11656,7 +11656,7 @@ namespace TypoZen
             RequestTabResume(tab);
             SendBookmarksForCurrentDocument();
             UpdateStatusDisplay();
-            // Session/recent I/O off the open hot path — was adding disk latency on every click.
+            // Session/recent I/O off the open hot path â€” was adding disk latency on every click.
             if (!_restoringTabs)
             {
                 Dispatcher.BeginInvoke(new Action(() =>
@@ -11683,10 +11683,10 @@ namespace TypoZen
 
         /// <summary>
         /// ONE rule for per-tab view state (mode + columns):
-        ///   the reader chooses  → the click handler writes the bag (column toggle,
-        ///                         Mode segment) — and session restore fills it on load
-        ///   enter tab           → ApplyTabView (read bag onto the page after content is up)
-        ///   leave tab           → SnapshotActiveTabView records POSITION only
+        ///   the reader chooses  â†’ the click handler writes the bag (column toggle,
+        ///                         Mode segment) â€” and session restore fills it on load
+        ///   enter tab           â†’ ApplyTabView (read bag onto the page after content is up)
+        ///   leave tab           â†’ SnapshotActiveTabView records POSITION only
         ///
         /// Nothing derived from paint state (_viewMode / _viewColumns / view_state) ever
         /// writes the bag: during a mount the page reports what it has managed to draw so
@@ -11726,9 +11726,9 @@ namespace TypoZen
             // nothing else captures it in time for a quick switch. So that stays.
 
             // Position: one integer (model block). book_position is debounced 1.2s, so a
-            // quick tab switch never updated ResumeBlock — and clean leave skips the full
+            // quick tab switch never updated ResumeBlock â€” and clean leave skips the full
             // content pull. Cheap script; no document body.
-            // Prefer live viewport block, then anchor, then sticky line → block (status used
+            // Prefer live viewport block, then anchor, then sticky line â†’ block (status used
             // to show Ln 1 while sticky held the real place).
             try
             {
@@ -11810,7 +11810,7 @@ namespace TypoZen
             _tabStrip.Children.Clear();
             EnsureAtLeastOneTab();
 
-            // Tab chips stay rebuilt in the strip even while auto-hide has them tucked —
+            // Tab chips stay rebuilt in the strip even while auto-hide has them tucked â€”
             // only the scroller's Visibility follows chrome. Forcing Visible here used to
             // undo SetChromeHidden on the first stats/dirty RebuildTabStrip after typing.
             var tabScroller = FindElement("tabScroller") as UIElement;
@@ -11818,8 +11818,8 @@ namespace TypoZen
                 tabScroller.Visibility = _chromeHidden ? Visibility.Collapsed : Visibility.Visible;
 
             // Layout (strip Margin top 5, tabBar height 36, seam at y=35):
-            //   Inactive: height 24 → bottom at 29, gap above seam.
-            //   Active: same top, height 31 → covers through the seam line; open bottom,
+            //   Inactive: height 24 â†’ bottom at 29, gap above seam.
+            //   Active: same top, height 31 â†’ covers through the seam line; open bottom,
             //   fill = command bar so it reads as continuous with the menu.
             const double tabChipH = 24;
             const double activeExtra = 7; // gap + 1px seam
@@ -11846,7 +11846,7 @@ namespace TypoZen
                     Cursor = Cursors.Hand,
                     Background = active ? _tabActiveBg : Brushes.Transparent,
                     BorderBrush = active ? _tabActiveBorder : Brushes.Transparent,
-                    // Active: open bottom into the menu. Inactive: no box — dividers only.
+                    // Active: open bottom into the menu. Inactive: no box â€” dividers only.
                     BorderThickness = active
                         ? new Thickness(1, 1, 1, 0)
                         : new Thickness(0),
@@ -11876,7 +11876,7 @@ namespace TypoZen
 
                 var closeBtn = new Button
                 {
-                    Content = "×",
+                    Content = "Ã—",
                     FontSize = 13,
                     FontWeight = FontWeights.Bold,
                     Padding = new Thickness(6, 0, 2, 0),
@@ -11928,7 +11928,7 @@ namespace TypoZen
                 _tabStrip.Children.Add(border);
 
                 // Divider only between two inactive tabs. Next to the active tab the
-                // selection border already marks the edge — a rule there is a double line.
+                // selection border already marks the edge â€” a rule there is a double line.
                 if (i < _tabs.Count - 1 && !active && (i + 1) != _activeTabIndex)
                 {
                     var div = new Border
@@ -11966,7 +11966,7 @@ namespace TypoZen
             addBtn.Click += (s, e) => NewTab();
             _tabStrip.Children.Add(addBtn);
 
-            // After layout: show ‹ › only if needed; keep active tab visible.
+            // After layout: show â€¹ â€º only if needed; keep active tab visible.
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 try
@@ -11989,7 +11989,7 @@ namespace TypoZen
                 return;
             }
             Program.PerfMark("tab switch: begin (pulling editor state)");
-            // Always attempt pull; stale only allowed when clean. Dirty + fail → stay put.
+            // Always attempt pull; stale only allowed when clean. Dirty + fail â†’ stay put.
             if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
             {
                 Program.PerfMark("tab switch: ABORTED - editor sync failed");
@@ -12140,7 +12140,7 @@ namespace TypoZen
         /// <summary>
         /// Read a text file honouring its BOM, falling back to the system ANSI codepage
         /// when the bytes are not valid UTF-8. Every file used to be decoded as UTF-8,
-        /// which turned legacy ANSI and UTF-16 documents into mojibake — and the first
+        /// which turned legacy ANSI and UTF-16 documents into mojibake â€” and the first
         /// save then wrote that mojibake back over the original. Content is always
         /// written back out as UTF-8 without a BOM, so the conversion is one-way but
         /// lossless (the codepage round trip is what used to destroy characters).
@@ -12346,7 +12346,7 @@ namespace TypoZen
                         try
                         {
                             _activeTabIndex = i;
-                            // Convert native HTML → editor when opening as text (Mode Source).
+                            // Convert native HTML â†’ editor when opening as text (Mode Source).
                             _tabs[i].Kind = DocKind.Engine;
                             _tabs[i].NativeRole = NativeRole.None;
                             _tabs[i].SourceEncoding = encodingName;
@@ -12355,7 +12355,7 @@ namespace TypoZen
                             _currentFilePath = path;
                             if (!wasDirty || diskDiffers || forceEditorText)
                             {
-                                // Reload from disk when clean, discard chosen, or converting native→text.
+                                // Reload from disk when clean, discard chosen, or converting nativeâ†’text.
                                 if (!wasDirty && !diskDiffers && !forceEditorText)
                                 {
                                     _tabs[i].IsDirty = false;
@@ -12615,7 +12615,7 @@ namespace TypoZen
                 // Reopen where they stopped reading. A book with no remembered position --
                 // or one remembered at the very start -- opens at the cover, as it should.
                 // When ZenSeek/CLI opens with --search, skip resume: last-read block and
-                // the search match race (page thrash 13↔141) until only one jump wins.
+                // the search match race (page thrash 13â†”141) until only one jump wins.
                 int resumeAt = RememberedBookPosition(path);
                 OpenLog("OpenBook " + Path.GetFileName(path) + " rememberedBlock=" + resumeAt + " activeTab=" + _activeTabIndex + " tabs=" + _tabs.Count);
                 // Only for the book the launch actually names. A ZenSeek launch carries a
@@ -12827,7 +12827,7 @@ namespace TypoZen
         private void SetZoomMenusEnabled(bool enabled, NativeRole role)
         {
             string why = enabled ? null
-                : NativeRoleLabel(role) + " is shown at its own size — there is nothing to zoom.";
+                : NativeRoleLabel(role) + " is shown at its own size â€” there is nothing to zoom.";
             foreach (string n in ZoomMenuItems)
             {
                 var mi = FindElement(n) as MenuItem;
@@ -12851,7 +12851,7 @@ namespace TypoZen
         {
             string why = enabled
                 ? null
-                : "Not available for " + NativeRoleLabel(role) + " — this tab is not a document.";
+                : "Not available for " + NativeRoleLabel(role) + " â€” this tab is not a document.";
             // Dim explicitly as well as disabling.
             //
             // The top-level menus use ToolbarMenuItem -> ToolMenuHeaderTemplate, a custom
@@ -12972,7 +12972,7 @@ namespace TypoZen
                 {
                     SetControlLocked(segPreview, true);
                     if (html)
-                        try { segPreview.ToolTip = "Not used for HTML — Markdown Preview is not an HTML page. Use Source to edit, Reader to view."; } catch { }
+                        try { segPreview.ToolTip = "Not used for HTML â€” Markdown Preview is not an HTML page. Use Source to edit, Reader to view."; } catch { }
                 }
                 if (_btnColumnToggle != null) SetControlLocked(_btnColumnToggle, true);
                 if (_btnScrollToggle != null) SetControlLocked(_btnScrollToggle, true);
@@ -13032,7 +13032,7 @@ namespace TypoZen
                 try { _nativeWebView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = true; } catch { }
                 try { _nativeWebView.ZoomFactorChanged += WebView_ZoomFactorChanged; } catch { }
                 try { AttachNativeNavigationGuards(_nativeWebView.CoreWebView2); } catch { }
-                // .xaml / some markup is treated as a download, not a document — cancel the
+                // .xaml / some markup is treated as a download, not a document â€” cancel the
                 // shelf so we don't stack "Open file" bubbles over the wrong surface.
                 try
                 {
@@ -13240,7 +13240,7 @@ namespace TypoZen
                 ".wrap{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:36rem;text-align:center}" +
                 ".title{font-size:13px;opacity:.75;margin:0;word-break:break-all}" +
                 // High-contrast panel: theme text colour alone washes out on light themes
-                // when mixed with low-alpha fills (unreadable “Video picture not available”).
+                // when mixed with low-alpha fills (unreadable â€œVideo picture not availableâ€).
                 "#err{display:none;margin:0;padding:14px 16px;border-radius:8px;max-width:100%;" +
                 "background:#1e293b;color:#f8fafc;border:1px solid #334155;" +
                 "font-size:13px;line-height:1.5;text-align:left;box-shadow:0 4px 16px rgba(0,0,0,.2)}" +
@@ -13332,7 +13332,7 @@ namespace TypoZen
 
         /// <summary>
         /// Sync the editor into the active buffer, then write that buffer.
-        /// Synchronous by design — see SaveTabNow for why the async round trip went.
+        /// Synchronous by design â€” see SaveTabNow for why the async round trip went.
         /// If the editor cannot be read, do not write (avoids saving a stale buffer).
         /// </summary>
         private void SaveActiveTab(bool saveAs)
@@ -13488,7 +13488,7 @@ namespace TypoZen
                     bool isTextDoc = activeTab == null || activeTab.Kind == DocKind.Engine;
                     bool converts = isTextDoc && !(enc.StartsWith("UTF-8") && enc.IndexOf("BOM") < 0);
                     string encLine = converts
-                        ? "Encoding: " + enc + "  →  saved as UTF-8"
+                        ? "Encoding: " + enc + "  â†’  saved as UTF-8"
                         : "Encoding: " + enc;
                     _lblFilePath.ToolTip = _currentFilePath + "\n" + encLine + "\n\nClick to show in File Explorer";
                     _lblFilePath.Cursor = Cursors.Hand;
@@ -13739,7 +13739,7 @@ namespace TypoZen
         private readonly int _resetFontIndex;
         private readonly int _resetFs;
 
-        /// <summary>First family in a CSS font stack, unquoted — the label a reader expects.</summary>
+        /// <summary>First family in a CSS font stack, unquoted â€” the label a reader expects.</summary>
         private static string LeadingFamily(string fn)
         {
             string s = (fn ?? "").Split(',')[0].Trim().Trim('\'', '"').Trim();
@@ -13914,7 +13914,7 @@ namespace TypoZen
             };
             // No Preview button: the preview is already live. RequestPreview() fires on
             // dialog load, on every colour edit (picker, Enter, focus loss), on font and
-            // size change, and on Reset — so an explicit button did nothing the dialog
+            // size change, and on Reset â€” so an explicit button did nothing the dialog
             // had not already done a moment earlier.
             var btnSave = new Button
             {
