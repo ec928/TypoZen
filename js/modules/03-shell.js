@@ -854,6 +854,11 @@
                         }
                     } catch(e) {}
                 }
+                else if (msg.startsWith("doc_gen:")) {
+                    // Which document the host is putting on the page. Echoed back with
+                    // every position report so a late one cannot be misattributed.
+                    window.__docGen = parseInt(msg.substring(8), 10) || 0;
+                }
                 else if (msg.startsWith("restore_prefs:")) {
                     try {
                         const p = JSON.parse(msg.substring(14));

@@ -4205,7 +4205,11 @@
                 const bi = currentReadingBlock();
                 if (bi < 0 || bi === _bookPosLast) return;
                 _bookPosLast = bi;
-                try { postMsg('book_position:' + bi); } catch (e) {}
+                // Stamp the report with the document it was armed for. The host drops
+                // it if the reader has moved on: this fires 1200ms late, by which time
+                // another tab can be showing, and the position was being stored against
+                // that book instead.
+                try { postMsg('book_position:' + bi + '|gen=' + (window.__docGen || 0)); } catch (e) {}
             }, 1200);
         }
 

@@ -748,6 +748,25 @@ namespace TypoZen
         private SolidColorBrush _modeSourceBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33A855F7"));
         private ComboBox _cmbThemes;
         private int _currentThemeIndex = 0;
+
+        /// <summary>
+        /// Which document the page is currently showing, as a number that changes on every
+        /// load or tab switch.
+        ///
+        /// The page reports a reading position on a 1200ms debounce, so a report armed
+        /// while showing one book can arrive after the reader has switched to another --
+        /// and the host attributed it to whatever was active at ARRIVAL, storing one
+        /// book's position against another book's path. Every report now carries the
+        /// generation it was armed under, and a stale one is dropped.
+        /// </summary>
+        private int _docGen;
+
+        /// <summary>A new document is going on the page: retire reports armed for the old one.</summary>
+        private void BumpDocGen()
+        {
+            _docGen++;
+            try { SendMsg("doc_gen:" + _docGen); } catch { }
+        }
         private List<ThemeInfo> _themesList = new List<ThemeInfo>();
         private List<MenuItem> _themeMenuItems = new List<MenuItem>();
         private bool _forceClose = false;
@@ -6380,8 +6399,23 @@ namespace TypoZen
             else if (msg.StartsWith("book_position:"))
             {
                 // Historical name: any saved path (epub or markdown) may remember a block.
+                // "<block>" or "<block>|gen=<n>". A report without a generation is from
+                // a page that has not been told one yet; treat it as current.
+                string bpArg = msg.Substring(14);
+                int bpGen = _docGen;
+                int bar = bpArg.IndexOf("|gen=");
+                if (bar >= 0)
+                {
+                    int.TryParse(bpArg.Substring(bar + 5), out bpGen);
+                    bpArg = bpArg.Substring(0, bar);
+                }
+                if (bpGen != _docGen)
+                {
+                    OpenLog("book_position DROPPED stale gen=" + bpGen + " current=" + _docGen);
+                    return;
+                }
                 int block;
-                if (int.TryParse(msg.Substring(14), out block))
+                if (int.TryParse(bpArg, out block))
                 {
                     // Not while a tab operation is in flight. The page debounces this, so a
                     // report armed by the document being left can arrive after the switch
@@ -9155,6 +9189,7 @@ namespace TypoZen
         private void LoadContentToEditor(string content, bool markDirty = false, string filePathHint = null, int resumeAt = 0)
         {
             content = content ?? "";
+            BumpDocGen();
             bool plain = PreferSourceModeForPath(filePathHint);
             try
             {
@@ -12575,6 +12610,7 @@ namespace TypoZen
 
                 string fileName = "book_" + Guid.NewGuid().ToString("N") + ".json";
                 string bookUrl = StageLoadPayload(fileName, payload);
+                BumpDocGen();
 
                 // Reopen where they stopped reading. A book with no remembered position --
                 // or one remembered at the very start -- opens at the cover, as it should.
