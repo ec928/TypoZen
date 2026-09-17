@@ -379,16 +379,14 @@
             transition: background-color 0.3s ease;
         }
 
-        #editor.tz-marks-live .block { cursor: text; }
-
+        /* One step further in, and one shade quieter, per heading level. h4 and h5 were
+           each declared twice; these are the values that won. */
         .outline-h1 { font-weight: 700; color: var(--tx, #F4F4F5); }
         .outline-h2 { padding-left: 14px; font-weight: 600; }
         .outline-h3 { padding-left: 26px; font-size: 12px; }
-        .outline-h4 { padding-left: 36px; font-size: 12px; opacity: 0.92; }
-        .outline-h5 { padding-left: 46px; font-size: 11px; opacity: 0.88; }
-        .outline-h6 { padding-left: 56px; font-size: 11px; opacity: 0.84; }
         .outline-h4 { padding-left: 42px; font-size: 12px; opacity: 0.85; }
         .outline-h5 { padding-left: 54px; font-size: 11px; opacity: 0.75; }
+        .outline-h6 { padding-left: 56px; font-size: 11px; opacity: 0.84; }
 
         /* "+N more" — a control, so it reads as one rather than as a dimmed result. */
         .search-more {
