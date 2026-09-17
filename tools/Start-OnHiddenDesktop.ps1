@@ -74,6 +74,9 @@ public static class HiddenDesktop {
     public static extern bool CreateProcess(IntPtr applicationName, StringBuilder commandLine,
         IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint creationFlags,
         IntPtr environment, string currentDirectory, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint WaitForInputIdle(IntPtr process, uint milliseconds);
 }
 '@
 
@@ -134,6 +137,18 @@ if (-not $started) {
     $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
     throw "CreateProcess failed: $((New-Object ComponentModel.Win32Exception $code).Message)"
 }
+
+# Hold the desktop open until the child has attached to it.
+#
+# This script's handle is the only thing keeping the desktop alive until the child's
+# first thread connects to it, and exiting closes that handle. A child that has not
+# connected yet -- a cold start straight after a build or install -- then fails user32
+# initialisation and dies at once with 0x8007045A (ERROR_DLL_INIT_FAILED), before it
+# writes anything or opens the DevTools port. That was the "intermittent" smoke failure.
+# Measured 2026-09-17: closing the handle straight after CreateProcess killed 12 of 12
+# launches; waiting for input idle first, 0 of 12. The wait returns in about a second,
+# or at once if the child has already exited.
+[void][HiddenDesktop]::WaitForInputIdle($pi.hProcess, 15000)
 
 # stdout carries the pid and nothing else.
 Write-Output $pi.dwProcessId
