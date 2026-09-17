@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.51";
+        internal const string AppVersion = "0.2.52";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4042,27 +4042,6 @@ namespace TypoZen
                     ref _sessionPersistFailNotified);
             }
         }
-        /// <summary>
-        /// TEMPORARY. Logs the values a book open DECIDES from, on the happy path as well
-        /// as on failure -- an exception-only log is silent when the theory is wrong, which
-        /// has already cost two rounds of "reproduce it again". Remove once the page-on-open
-        /// fault is understood.
-        /// </summary>
-        private void OpenLog(string line)
-        {
-            // Never while Privacy Mode is on: these lines carry document file names, and
-            // writing those to disk is the one thing Privacy Mode exists to prevent. The
-            // earlier diagnostic in this file had exactly that fault.
-            if (SuppressDocumentTraces()) return;
-            try
-            {
-                Directory.CreateDirectory(CacheDir());
-                File.AppendAllText(Path.Combine(CacheDir(), "debug.log"),
-                    string.Format("[{0:HH:mm:ss.fff}] OPEN {1}{2}",
-                        DateTime.Now, line, Environment.NewLine));
-            }
-            catch { }
-        }
 
         private void LogFault(string where, Exception ex)
         {
@@ -6409,11 +6388,7 @@ namespace TypoZen
                     int.TryParse(bpArg.Substring(bar + 5), out bpGen);
                     bpArg = bpArg.Substring(0, bar);
                 }
-                if (bpGen != _docGen)
-                {
-                    OpenLog("book_position DROPPED stale gen=" + bpGen + " current=" + _docGen);
-                    return;
-                }
+                if (bpGen != _docGen) return;
                 int block;
                 if (int.TryParse(bpArg, out block))
                 {
@@ -6428,7 +6403,6 @@ namespace TypoZen
                     // "reopen this file where I left it"; the tab answers "come back to
                     // this tab where I left it", which is a different question when the
                     // same file is open twice and the only one an untitled buffer can ask.
-                    OpenLog("book_position:" + block + " -> tab " + _activeTabIndex + " file=" + (_currentFilePath == null ? "(none)" : Path.GetFileName(_currentFilePath)) + " tabOpInProgress=" + _tabOpInProgress);
                     if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
                         _tabs[_activeTabIndex].ResumeBlock = block;
 
@@ -11790,7 +11764,6 @@ namespace TypoZen
         private void RequestTabResume(DocTab tab)
         {
             if (tab == null || tab.ResumeBlock <= 0) return;
-            OpenLog("RequestTabResume -> resume_at:" + tab.ResumeBlock + " file=" + (tab.FilePath == null ? "(none)" : Path.GetFileName(tab.FilePath)));
             try { SendMsg("resume_at:" + tab.ResumeBlock); } catch { }
         }
 
@@ -12617,7 +12590,6 @@ namespace TypoZen
                 // When ZenSeek/CLI opens with --search, skip resume: last-read block and
                 // the search match race (page thrash 13↔141) until only one jump wins.
                 int resumeAt = RememberedBookPosition(path);
-                OpenLog("OpenBook " + Path.GetFileName(path) + " rememberedBlock=" + resumeAt + " activeTab=" + _activeTabIndex + " tabs=" + _tabs.Count);
                 // Only for the book the launch actually names. A ZenSeek launch carries a
                 // search, and the reason to skip the resume is that the remembered block and
                 // the search match would fight over the view -- which is true of that one
