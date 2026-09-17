@@ -1105,13 +1105,6 @@
                     // Host menu Paste (and any host-side clipboard feed) — same path as Ctrl+V
                     insertPastedPlainText(msg.substring(11));
                 }
-                else if (msg == "leave_book_surface") {
-                    // Do NOT call leaveBookViewForMarkdown while kind is still 'epub'.
-                    // That raced tab-switch: tore down Reader while blocks were still HTML,
-                    // and a following remount via toMarkdown painted raw calibre markup.
-                    // Full teardown runs inside loadMarkdownContent after fromMarkdown
-                    // when wasBook is true. This message is a no-op reserved for the host.
-                }
                 else if (msg == "new_document") {
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
@@ -1134,13 +1127,6 @@
                             invalidateSearchForDocumentChange();
                     } catch (eInv) {}
                     updateStatsNow();
-                }
-                else if (msg.startsWith("request_save:")) {
-                    const saveAs = msg.substring(13) === "true";
-                    // Pure read — repair freezes large docs on the save path.
-                    const content = getMarkdownContent(false);
-                    if (saveAs) postMsg("save_as_content:" + content);
-                    else postMsg("save_content:" + content);
                 }
                 else if (msg == "save_success") {
                     state.lastSavedContent = getMarkdownContent(false);
@@ -1567,34 +1553,6 @@
                 }
                 return;
             }
-            if (cmd.startsWith("set_page_advance:")) {
-                // Resolve the anchor before the layout changes under us.
-                let _pgAnchor = 0;
-                try {
-                    const _l = (typeof _stickyLineCache !== 'undefined' && _stickyLineCache) ? _stickyLineCache : 1;
-                    _pgAnchor = isPaginatedLayout()
-                        ? topLeftModelIndexTwoCol()
-                        : modelIndexAtViewportCenter();
-                    if (!(_pgAnchor >= 0)) _pgAnchor = modelLocationFromDocumentLine(_l).blockIndex;
-                } catch (e) { _pgAnchor = 0; }
-
-                state.pageAdvance = (cmd.substring(17) === '1');
-                // Pagination is a different layout, not just a different scroll gesture:
-                // put the document into (or out of) CSS multi-column to match.
-                syncPaginationClass();
-                applyEditorChromeForMode();
-                if (state.pageAdvance) {
-                    // Land on the true page holding what the reader was looking at, aligned
-                    // to its real start -- not on a page synthesised from the scroll offset.
-                    settleTwoColToLine(1, _pgAnchor);
-                } else {
-                    scheduleColumnSettle(function () { ensurePageWindow(); PageMap.invalidate(); updatePageIndicator(); });
-                }
-                // Report it: the selectors must follow the view however it was changed,
-                // not only when the change came from a selector click.
-                postViewState(currentViewState());
-                return;
-            }
             if (cmd.startsWith("set_column_mode:")) {
                 window.showDebugTelemetry("set_column_mode called with: " + cmd);
                 const twoCol = cmd.substring(16) === "2";
@@ -1737,10 +1695,7 @@
                     setEditorEditable(false);
                     applyEditorChromeForMode();
                     postMsg("mode_changed:reader");
-                    if (!state.pageAdvance) {
-                        state.pageAdvance = true;
-                        postMsg("sync_page_advance:1");
-                    }
+                    state.pageAdvance = true;
                 } else if (state.mode === 'reader') {
                     // A book stays in Reader: there is nothing to edit and nothing to
                     // serialise to Source, so leaving would only produce an empty editor.
@@ -2134,15 +2089,6 @@
             else if (cmd === "redo") { if (typeof HistoryManager !== 'undefined') HistoryManager.redo(); else document.execCommand('redo'); }
             else if (cmd === "cut") { document.execCommand('cut'); }
             else if (cmd === "copy") { document.execCommand('copy'); }
-            else if (cmd === "paste") {
-                // execCommand('paste') is blocked in WebView2. Host menu uses paste_text:;
-                // if something still sends cmd:paste, try async clipboard API then same insert path.
-                if (navigator.clipboard && navigator.clipboard.readText) {
-                    navigator.clipboard.readText().then(function (t) {
-                        if (t) insertPastedPlainText(t);
-                    }).catch(function () {});
-                }
-            }
             else if (cmd === "find") {
                 openFindBar();
             }

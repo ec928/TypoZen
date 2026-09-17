@@ -3707,8 +3707,8 @@
                 // saving is. Turning virtualisation off by hand is what the remount was for.
                 //
                 // This is the only chokepoint that catches every route into pagination:
-                // applyViewState sets state.pageAdvance directly and never goes through the
-                // set_page_advance command, so hooking there missed the selector entirely.
+                // applyViewState sets state.pageAdvance directly rather than through a
+                // command, so hooking a command missed the selector entirely.
                 const windowing = PAGE_WINDOWING_ENABLED
                     && on
                     && DocumentModel.blocks
@@ -5319,13 +5319,6 @@
                     } catch (eR) {}
                 }, 280);
             });
-        }
-
-        function settleTwoColToLine(line, anchorBlockHint) {
-            const anchorBlock = (anchorBlockHint != null)
-                ? anchorBlockHint
-                : modelLocationFromDocumentLine(Math.max(1, line | 0)).blockIndex;
-            goToPageHoldingBlock(anchorBlock);
         }
 
         /** Collect text nodes under #editor only (skips sidebar, find bar, etc.). */

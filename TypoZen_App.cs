@@ -2082,12 +2082,10 @@ namespace TypoZen
         // AreBrowserAcceleratorKeysEnabled=false older WebView2 builds also swallow
         // Ctrl+Z before page JS. ThreadPreprocessMessage sees WM_KEYDOWN for the
         // focused child HWND so undo/format chords always reach HistoryManager.
-        // Zoom uses a WinForms IMessageFilter as well: WPF preprocess often misses
-        // Ctrl++/Ctrl+wheel once focus is inside the hosted WebView HWND.
+        // Zoom is not handled here; see OnThreadPreprocessMessage.
         private bool _editorKeyFilterInstalled;
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_SYSKEYDOWN = 0x0104;
-        private const int WM_MOUSEWHEEL = 0x020A;
         private const int VK_MENU = 0x12, VK_LMENU = 0xA4, VK_RMENU = 0xA5;
 
         private void InstallEditorKeyFilter()
@@ -5682,8 +5680,8 @@ namespace TypoZen
                 // Disable Chromium page-find (Ctrl+F) and other browser accelerators.
                 // Page-find was counting sidebar outline duplicates and failing to scroll #main-container.
                 // NOTE: with this false, Ctrl+Z may never reach page JS or WPF KeyDown when WebView
-                // has focus (older WebView2 builds lack AcceleratorKeyPressed). We use a WinForms
-                // IMessageFilter (InstallEditorKeyFilter) so undo/format chords always work.
+                // has focus (older WebView2 builds lack AcceleratorKeyPressed). InstallEditorKeyFilter
+                // hooks ComponentDispatcher.ThreadPreprocessMessage so undo/format chords always work.
                 try { _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false; } catch {}
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping("localapp", _appDir, CoreWebView2HostResourceAccessKind.Allow);
                 MapBookHosts();
@@ -6291,10 +6289,9 @@ namespace TypoZen
                 }
                 catch {}
             }
-            // NOTE: save_content: / save_as_content: are no longer sent or handled.
-            // Saving pulls content synchronously (SaveTabNow) so a reply can never land
-            // after the active tab changed. The page still answers request_save:, but
-            // nothing sends it — that responder is dead code worth deleting.
+            // No save_content: / save_as_content: messages: saving pulls content
+            // synchronously (SaveTabNow) so a reply can never land after the active tab
+            // changed.
             else if (msg.StartsWith("image_data_req:"))
             {
                 // Fallback when the https://docfolder mapping does not serve the file.
@@ -11600,8 +11597,8 @@ namespace TypoZen
             _isDirty = tab.IsDirty;
             RefreshEditingAvailability();
             // Teardown of book CSS/layout is handled inside loadMarkdownContent when
-            // kind was epub (wasBook). Do not send leave_book_surface first — that raced
-            // and could remount HTML as Markdown.
+            // kind was epub (wasBook). Tearing down separately beforehand raced and could
+            // remount HTML as Markdown.
             string content = tab.Content ?? "";
             // Path-keyed store fills ResumeBlock before load so staged |at= can land first paint.
             if (tab.ResumeBlock <= 0 && !string.IsNullOrEmpty(tab.FilePath))

@@ -122,10 +122,7 @@
             // remounts the document to turn virtualisation off, and this loader mounts the
             // book itself a few statements below. Going through it would lay the book out
             // twice, the first time as Markdown.
-            if (!state.pageAdvance) {
-                state.pageAdvance = true;
-                try { postMsg('sync_page_advance:1'); } catch (eP) {}
-            }
+            state.pageAdvance = true;
             editor.classList.add('page-mode');
             editor.classList.add('reader-mode');
             PageMap.invalidate();
@@ -221,11 +218,6 @@
             window.showDebugTelemetry('book: ' + (data.title || '(untitled)') + ' — ' +
                 data.docs.length + ' documents, ' + split.blocks.length + ' blocks, ' +
                 toc.length + ' TOC entries, ' + ms + 'ms');
-
-            postMsg('book_loaded:' + encodeURIComponent(JSON.stringify({
-                title: data.title || '', author: data.author || '',
-                blocks: split.blocks.length, toc: toc.length
-            })));
             return true;
         }
 
@@ -966,10 +958,7 @@
             state.mode = 'reader';
             state.viewMode = 'reader';
             state.viewScroll = 'pagination';
-            if (!state.pageAdvance) {
-                state.pageAdvance = true;
-                try { postMsg('sync_page_advance:1'); } catch (eP) {}
-            }
+            state.pageAdvance = true;
             editor.classList.add('page-mode');
             editor.classList.add('reader-mode');
             try { editor.style.display = ''; } catch (eD) {}
@@ -1092,10 +1081,7 @@
             clearBookSession();
             try {
                 // Strip book layout always. Drop forced Pages; Preview/Source decide scroll.
-                if (state.pageAdvance) {
-                    state.pageAdvance = false;
-                    try { postMsg('sync_page_advance:0'); } catch (eP) {}
-                }
+                state.pageAdvance = false;
                 if (editor) {
                     editor.classList.remove('page-mode', 'reader-mode');
                     // two-col without pagination is invalid for preview scroll

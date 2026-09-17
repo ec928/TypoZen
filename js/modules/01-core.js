@@ -231,10 +231,7 @@
                 }
 
                 const wantAdvance = next.scroll === 'pagination';
-                if (!!state.pageAdvance !== wantAdvance) {
-                    state.pageAdvance = wantAdvance;
-                    postMsg('sync_page_advance:' + (wantAdvance ? '1' : '0'));
-                }
+                if (!!state.pageAdvance !== wantAdvance) state.pageAdvance = wantAdvance;
                 // Pagination is a layout, so the class has to follow the state however the
                 // state was reached. Setting the flag alone left 2-Column in Preview with
                 // no page-mode class, and therefore no columns at all.
