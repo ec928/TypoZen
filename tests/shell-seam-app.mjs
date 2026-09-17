@@ -66,7 +66,7 @@ const fixtureWas = fs.readFileSync(FIXTURE);
 const SETTINGS = profileFile('settings.json');
 const settingsWas = (SETTINGS && fs.existsSync(SETTINGS)) ? fs.readFileSync(SETTINGS) : null;
 
-const app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
+const app = await launchApp({ file: 'tests/large-scroll-mixed.md', visible: true });
 try {
     await sleep(4500);
     await settledApp(app, 20000);

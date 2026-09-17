@@ -152,6 +152,7 @@ async function waitPageLacks(app, needle, timeoutMs) {
 async function withApp(file, env, fn) {
     wipeSession();
     const app = await launchApp({
+        visible: true,   // UI Automation: the window must be on this desktop
         file: file,
         settleMs: 5000,
         view: true,

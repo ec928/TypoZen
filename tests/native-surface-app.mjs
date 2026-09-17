@@ -88,7 +88,7 @@ const NATIVES = [
     { file: 'native-sample.html', label: 'HTML', zooms: true }
 ];
 
-const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 8000 });
+const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 8000, visible: true });
 try {
     await settledApp(app, 8000);
 

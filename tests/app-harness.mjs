@@ -37,7 +37,21 @@ import { settled } from './settle.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const appDir = path.join(__dirname, '..');
 const PORT = 9333;                 // must match Program.RemoteDebugPort
-const EXE = path.join(appDir, 'TypoZen.exe');
+// Which build gets driven. Defaults to the loose project-root build; set TYPOZEN_EXE to
+// point at a proven staging copy (bin\TypoZen.exe) or the deployed app, so a suite can
+// exercise the binary that actually ships rather than only the one just compiled.
+// NOTE: this covers loose builds only. A registered MSIX does not launch from a path like
+// this, so it is NOT yet reachable -- that gap is open and unproven.
+const EXE = process.env.TYPOZEN_EXE || path.join(appDir, 'TypoZen.exe');
+// Hidden-desktop launching is ON by default: a full app-tier run otherwise pops 60
+// windows to the foreground, and press() raises the window on every keystroke. Opt out
+// with TYPOZEN_HIDDEN_DESKTOP=0, or per launch with launchApp({ visible: true }) --
+// which the UI Automation suites must do, because a UIA client can only see windows on
+// its own desktop (shell-ui.ps1 reports "TypoZen is not running" otherwise).
+function hiddenDesktopWanted(options) {
+    if (options && options.visible) return false;
+    return process.env.TYPOZEN_HIDDEN_DESKTOP !== '0';
+}
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -171,6 +185,44 @@ export async function evalPatiently(app, fn, arg, opts) {
 }
 
 /**
+ * Set TYPOZEN_HIDDEN_DESKTOP=1 to launch the app on a second Windows desktop, so its
+ * window never appears on the one the user is looking at and cannot take focus from
+ * what they are doing.
+ *
+ * This tier drives the app over the DevTools protocol on a TCP port, which does not
+ * care which desktop anything is on -- but a full run makes 60 launchApp calls, and
+ * press() below calls bringToFront() on every keystroke because WebView2 drops keys to
+ * an unfocused window. Unhidden, that is a window stealing focus every half minute for
+ * half an hour. A second desktop is the only option that fixes all of it at once:
+ * minimising throttles WebView2's rendering, and off-screen placement is refused by
+ * RestoreWindowState by design so a user cannot lose their window.
+ *
+ * Returns a { pid, kill } shim so killOwn() and close() work unchanged.
+ */
+function spawnOnHiddenDesktop(args, env) {
+    const script = path.join(appDir, 'tools', 'Start-OnHiddenDesktop.ps1');
+    if (!fs.existsSync(script)) throw new Error('Start-OnHiddenDesktop.ps1 not found at ' + script);
+
+    const envArg = Buffer.from(JSON.stringify(env), 'utf8').toString('base64');
+    const argsArg = Buffer.from(JSON.stringify(args), 'utf8').toString('base64');
+
+    const cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + script + '"'
+        + ' -Exe "' + EXE + '"'
+        + ' -ArgsBase64 ' + argsArg
+        + ' -WorkingDirectory "' + appDir + '"'
+        + ' -EnvBase64 ' + envArg;
+    if (process.env.TYPOZEN_HIDDEN_DEBUG === '1') {
+        console.error('[hidden-desktop] args: ' + JSON.stringify(args));
+        console.error('[hidden-desktop] cmd : ' + cmd);
+    }
+    const out = execSync(cmd, { encoding: 'utf8' });
+
+    const pid = parseInt(String(out).trim().split(/\r?\n/).pop(), 10);
+    if (!pid) throw new Error('hidden-desktop launch returned no pid: ' + out);
+    return { pid, kill: () => {} };
+}
+
+/**
  * Launch TypoZen.exe --debug and attach.
  * @param {{file?:string, width?:number, height?:number, settleMs?:number,
  *          view?:true|{mode?:string,scroll?:string,columns?:number},
@@ -203,12 +255,15 @@ export async function launchApp(options) {
     if (options.args) for (const a of options.args) args.push(a);
 
     ensureProfile();
-    const child = spawn(EXE, args, {
-        cwd: appDir,
-        detached: false,
-        stdio: 'ignore',
-        env: Object.assign({}, process.env, options.env || {}, { TYPOZEN_PROFILE_DIR: profileDir })
-    });
+    const childEnv = Object.assign({}, options.env || {}, { TYPOZEN_PROFILE_DIR: profileDir });
+    const child = hiddenDesktopWanted(options)
+        ? spawnOnHiddenDesktop(args, childEnv)
+        : spawn(EXE, args, {
+            cwd: appDir,
+            detached: false,
+            stdio: 'ignore',
+            env: Object.assign({}, process.env, childEnv)
+        });
     await waitForDevTools(45000);
 
     const browser = await puppeteer.connect({

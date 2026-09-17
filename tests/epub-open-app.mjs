@@ -9,6 +9,7 @@
  *
  *   node tests/epub-open-app.mjs
  */
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -947,6 +948,14 @@ async function openAndCheck(app, book, deep, opts) {
     }
 }
 
+// Every .epub, hashed before the suite touches anything. Reading a book must never
+// write to the file it came from, and the check at the end compares these against the
+// same files once the whole run is done.
+const epubsBefore = books.map(b => {
+    const f = path.join(appDir, 'tests', b);
+    return { b, sha: crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex') };
+});
+
 let app = await launchApp({ file: 'tests/large-scroll-mixed.md' });
 try {
     await openAndCheck(app, primary, true);
@@ -967,14 +976,22 @@ try {
         await openAndCheck(app, biggest, true, { alreadyOpen: true });
     }
 
-    console.log('\n=== the book on disk is untouched ===');
-    const target = biggest !== primary ? biggest : primary;
-    const before = fs.statSync(path.join(appDir, 'tests', target));
-    await app.eval(() => { try { postMsg('save_file'); } catch (e) {} });
-    await sleep(1500);
-    const after = fs.statSync(path.join(appDir, 'tests', target));
-    assert(before.size === after.size && before.mtimeMs === after.mtimeMs,
-        'asking to save left the .epub byte-identical and untouched');
+    console.log('\n=== the books on disk are untouched ===');
+    // This used to fire postMsg('save_file') and then assert the file had not changed.
+    // 'save_file' is handled nowhere in TypoZen_App.cs -- it does nothing at all, so the
+    // assertion could never fail and proved nothing. Nor can it simply be swapped for the
+    // real hook, postMsg('debug_save'): SaveTabNow treats a book as read-only and routes
+    // Save to Save As (TypoZen_App.cs:2640), which opens a native SaveFileDialog and would
+    // hang this suite waiting for a click that never comes.
+    //
+    // So assert the property that actually matters, across the whole run rather than one
+    // message: everything this suite did -- opening, paginating, seeking, reopening,
+    // closing -- must leave every .epub byte-for-byte as it was.
+    for (const e of epubsBefore) {
+        const now = crypto.createHash('sha256')
+            .update(fs.readFileSync(path.join(appDir, 'tests', e.b))).digest('hex');
+        assert(now === e.sha, e.b + ' is byte-identical after the whole run');
+    }
 
     console.log('\npassed=' + passed + ' failed=' + failed);
     if (failed) { console.error('\nEPUB OPEN FAILED'); process.exitCode = 1; }

@@ -49,7 +49,7 @@ async function invokeMenu(pathStr) {
     return last;
 }
 
-const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 8000, view: true });
+const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 8000, view: true, visible: true });
 try {
     await settledApp(app, 8000);
 

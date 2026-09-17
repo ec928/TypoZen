@@ -63,7 +63,7 @@ function docState() {
 }
 
 console.log('\n=== empty scratch + F1 help, against TypoZen.exe ===');
-const app = await launchApp({ view: true });
+const app = await launchApp({ view: true, visible: true });
 try {
     await settledApp(app, 15000);
 
