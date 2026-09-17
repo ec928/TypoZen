@@ -1593,7 +1593,12 @@
                 return mountedBlockAtFormatIndex(i);
             }).filter(Boolean);
             captureFormatRawsForIndices(_selectedFormatIndices, allBlocks);
-            // If multi-select raws are all empty but last-good has text, use last-good for those indices
+            fillEmptyFormatRaws(indices);
+            _formatSelectionFrozen = false;
+        }
+
+        /** A captured raw that came back empty: take last-good text, else the model's. */
+        function fillEmptyFormatRaws(indices) {
             for (let i = 0; i < indices.length; i++) {
                 const bi = indices[i];
                 if (!String(_selectedFormatRaws[bi] || '').trim()
@@ -1608,7 +1613,6 @@
                     _selectedFormatRaws[bi] = DocumentModel.blocks[bi].raw;
                 }
             }
-            _formatSelectionFrozen = false;
         }
 
         function freezeFormatSelection() {
@@ -1619,21 +1623,7 @@
                     if (!Object.keys(_selectedFormatRaws).length) {
                         captureFormatRawsForIndices(_selectedFormatIndices, allBlocks);
                     }
-                    // Fill empties from last-good / model
-                    for (let i = 0; i < _selectedFormatIndices.length; i++) {
-                        const bi = _selectedFormatIndices[i];
-                        if (!String(_selectedFormatRaws[bi] || '').trim()
-                            && _lastGoodDocRaws[bi] != null
-                            && String(_lastGoodDocRaws[bi]).trim()) {
-                            _selectedFormatRaws[bi] = _lastGoodDocRaws[bi];
-                        }
-                        if (!String(_selectedFormatRaws[bi] || '').trim()
-                            && typeof DocumentModel !== 'undefined' && DocumentModel.blocks
-                            && DocumentModel.blocks[bi]
-                            && String(DocumentModel.blocks[bi].raw || '').trim()) {
-                            _selectedFormatRaws[bi] = DocumentModel.blocks[bi].raw;
-                        }
-                    }
+                    fillEmptyFormatRaws(_selectedFormatIndices);
                 } catch (e) {}
             }
             _formatSelectionFrozen = true;

@@ -566,19 +566,7 @@
                     return false;
                 }
 
-                HistoryManager.beginEdit();
-                writeBlockRaw(block, applied);
-                currentActiveBlock = block;
-                _selectedFormatBlocks = [block];
-                try {
-                    block.scrollIntoView({ block: 'nearest' });
-                    focusBlock(block, null);
-                    selectPlainRangeInBlock(block, offsets.start, offsets.end);
-                } catch (e) {}
-                updateStats();
-                updateOutline();
-                HistoryManager.commitEdit();
-                return true;
+                return commitInlineFormatToBlock(block, applied, offsets);
             }
 
             // code / link: still raw-marker path
@@ -586,14 +574,21 @@
             const next = applyInlineFormatToRaw(raw, offsets.start, offsets.end, type);
             if (next == null || next === raw) return false;
 
+            return commitInlineFormatToBlock(block, next, offsets);
+        }
+
+        /**
+         * Write a formatted raw into one block as a single undo step, then put the caret
+         * and selection back on the formatted span (plain offsets are unchanged by a wrap).
+         */
+        function commitInlineFormatToBlock(block, raw, offsets) {
             HistoryManager.beginEdit();
-            writeBlockRaw(block, next);
+            writeBlockRaw(block, raw);
             currentActiveBlock = block;
             _selectedFormatBlocks = [block];
             try {
                 block.scrollIntoView({ block: 'nearest' });
                 focusBlock(block, null);
-                // Reselect the formatted span (plain offsets unchanged for wrap)
                 selectPlainRangeInBlock(block, offsets.start, offsets.end);
             } catch (e) {}
             updateStats();

@@ -177,14 +177,7 @@
                     try { goToModelBlock(wantBlock); } catch (eG) {}
                 }
             } else {
-                const frag = document.createDocumentFragment();
-                for (let i = 0; i < DocumentModel.blocks.length; i++) {
-                    const el = createPreviewBlockEl(DocumentModel.blocks[i].raw, false, i);
-                    el.setAttribute('data-model-index', String(i));
-                    if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
-                    frag.appendChild(el);
-                }
-                editor.appendChild(frag);
+                editor.appendChild(bookBlockFragment(0, DocumentModel.blocks.length));
             }
 
             currentActiveBlock = editor.querySelector('.block');
@@ -542,12 +535,6 @@
         }
 
         /**
-         * Blocks for a whole book, and where each spine document starts.
-         *
-         * The start map is what turns a table of contents into something navigable: a TOC
-         * entry names a document, and the reader needs a block index to scroll to.
-         */
-        /**
          * Does this block put anything on the page?
          *
          * A picture counts; so does any text. `&nbsp;` and friends do not -- a spacer
@@ -562,6 +549,26 @@
                 .replace(/\s+/g, ' ')
                 .trim();
         }
+
+        /** Page elements for model blocks [start, end) of a book, marked for chapter breaks. */
+        function bookBlockFragment(start, end) {
+            const frag = document.createDocumentFragment();
+            for (let i = start; i < end; i++) {
+                const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
+                const el = createPreviewBlockEl(raw, false, i);
+                el.setAttribute('data-model-index', String(i));
+                if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
+                frag.appendChild(el);
+            }
+            return frag;
+        }
+
+        /**
+         * Blocks for a whole book, and where each spine document starts.
+         *
+         * The start map is what turns a table of contents into something navigable: a TOC
+         * entry names a document, and the reader needs a block index to scroll to.
+         */
 
         function bookBlocksFromDocs(docs) {
             const blocks = [];
@@ -977,13 +984,7 @@
                 mountPageChunk(PageChunks.chunkOfBlock(Math.min(anchor, n - 1)));
             } else {
                 PageChunks.mounted = -1;
-                const frag = document.createDocumentFragment();
-                for (let i = 0; i < n; i++) {
-                    const el = createPreviewBlockEl(DocumentModel.blocks[i].raw, false, i);
-                    el.setAttribute('data-model-index', String(i));
-                    if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
-                    frag.appendChild(el);
-                }
+                const frag = bookBlockFragment(0, n);
                 editor.innerHTML = '';
                 editor.appendChild(frag);
             }

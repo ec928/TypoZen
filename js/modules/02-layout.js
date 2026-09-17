@@ -213,19 +213,8 @@
             } else if (findState.kind === 'model') {
                 revealModelMatch(findState.matches[findState.index], true, !findBarOpen);
             } else {
-                const surface = getFindHaystack();
-                findState.ranges = rangesFromWysiwygMatches(findState.matches, surface.map);
-                // Visual path: ranges covers every match, so findState.index indexes it directly.
-                findState.currentRange = -1;
-                applyWysiwygHighlights();
-                const r = findState.ranges[findState.index];
+                const r = revealCurrentVisualMatch();
                 if (r) {
-                    revealVisualRange(r);
-                    try {
-                        const sel = window.getSelection();
-                        sel.removeAllRanges();
-                        sel.addRange(r.cloneRange());
-                    } catch (e) {}
                     // Same arrival flash as marks / model search.
                     try {
                         let n = r.startContainer;
@@ -4693,14 +4682,7 @@
             c = Math.max(0, Math.min(c | 0, PageChunks.counts.length - 1));
             const start = PageChunks.firstBlockOfChunk(c);
             const end = Math.min(n, start + PageChunks.size);
-            const frag = document.createDocumentFragment();
-            for (let i = start; i < end; i++) {
-                const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
-                const el = createPreviewBlockEl(raw, false, i);
-                el.setAttribute('data-model-index', String(i));
-                if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
-                frag.appendChild(el);
-            }
+            const frag = bookBlockFragment(start, end);
             return { index: c, nBlocks: n, frag: frag, start: start, end: end };
         }
 
@@ -4761,14 +4743,7 @@
                 // estimates for the ranges involved rather than being taught a wrong number.
                 start = Math.min(_base0, _span.lo);
                 end = Math.max(_base1, Math.min(n, _span.hi + 1));
-                const frag = document.createDocumentFragment();
-                for (let i = start; i < end; i++) {
-                    const raw = DocumentModel.blocks[i] ? DocumentModel.blocks[i].raw : '';
-                    const el = createPreviewBlockEl(raw, false, i);
-                    el.setAttribute('data-model-index', String(i));
-                    if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
-                    frag.appendChild(el);
-                }
+                const frag = bookBlockFragment(start, end);
                 editor.innerHTML = '';
                 editor.appendChild(frag);
             } else if (_warmPageChunk && _warmPageChunk.index === c
@@ -6529,24 +6504,32 @@
             } else if (findState.kind === 'model') {
                 revealModelMatch(findState.matches[findState.index], true, !isFindBarOpen());
             } else {
-                // Rebuild ranges from current visual text (same list as matches)
-                const surface = getFindHaystack();
-                findState.ranges = rangesFromWysiwygMatches(findState.matches, surface.map);
-                // Visual path: ranges covers every match, so findState.index indexes it directly.
-                findState.currentRange = -1;
-                applyWysiwygHighlights();
-                const r = findState.ranges[findState.index];
-                if (r) {
-                    revealVisualRange(r);
-                    try {
-                        const sel = window.getSelection();
-                        sel.removeAllRanges();
-                        sel.addRange(r.cloneRange());
-                    } catch (e) {}
-                }
+                revealCurrentVisualMatch();
             }
             updateFindCount();
             focusFindInput(false);
+        }
+
+        /**
+         * Visual search surface: rebuild the ranges from the text on screen (the same list
+         * as the matches), paint them, then scroll to and select the current one.
+         * Returns that range, or null when it has no range.
+         */
+        function revealCurrentVisualMatch() {
+            const surface = getFindHaystack();
+            findState.ranges = rangesFromWysiwygMatches(findState.matches, surface.map);
+            // Visual path: ranges covers every match, so findState.index indexes it directly.
+            findState.currentRange = -1;
+            applyWysiwygHighlights();
+            const r = findState.ranges[findState.index];
+            if (!r) return null;
+            revealVisualRange(r);
+            try {
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(r.cloneRange());
+            } catch (e) {}
+            return r;
         }
 
         function initFindBar() {

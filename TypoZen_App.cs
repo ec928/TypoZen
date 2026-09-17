@@ -3448,6 +3448,22 @@ namespace TypoZen
         }
 
         /// <summary>
+        /// Fill a tab from its file on disk: text, encoding, line endings, clean state and
+        /// the disk stamp. Throws if the file cannot be read; callers decide what that means.
+        /// </summary>
+        private void LoadTabFromDisk(DocTab tab)
+        {
+            string enc;
+            string content = ReadTextFileDetect(tab.FilePath, out enc);
+            tab.LineEnding = DetectLineEnding(content);
+            tab.TrailingNewlines = DetectTrailingNewlines(content);
+            tab.Content = content.Replace("\r\n", "\n").TrimEnd('\n');
+            tab.SourceEncoding = enc;
+            tab.IsDirty = false;
+            StampTabDisk(tab, tab.FilePath, content);
+        }
+
+        /// <summary>
         /// Revert a dirty tab after the user chose "No" on close — so session restore
         /// does not resurrect edits they explicitly discarded.
         /// </summary>
@@ -3458,14 +3474,7 @@ namespace TypoZen
             {
                 try
                 {
-                    string enc;
-                    string content = ReadTextFileDetect(tab.FilePath, out enc);
-                    tab.LineEnding = DetectLineEnding(content);
-                    tab.TrailingNewlines = DetectTrailingNewlines(content);
-                    tab.Content = content.Replace("\r\n", "\n").TrimEnd('\n');
-                    tab.SourceEncoding = enc;
-                    tab.IsDirty = false;
-                    StampTabDisk(tab, tab.FilePath, content);
+                    LoadTabFromDisk(tab);
                     return;
                 }
                 catch { }
@@ -4237,14 +4246,7 @@ namespace TypoZen
                     {
                         try
                         {
-                            string enc;
-                            string content = ReadTextFileDetect(tab.FilePath, out enc);
-                            tab.LineEnding = DetectLineEnding(content);
-                            tab.TrailingNewlines = DetectTrailingNewlines(content);
-                            tab.Content = content.Replace("\r\n", "\n").TrimEnd('\n');
-                            tab.SourceEncoding = enc;
-                            tab.IsDirty = false;
-                            StampTabDisk(tab, tab.FilePath, content);
+                            LoadTabFromDisk(tab);
                         }
                         catch
                         {
@@ -11506,6 +11508,29 @@ namespace TypoZen
         /// <summary>
         /// Clean untitled buffer we can replace on Open (empty or default new_document text).
         /// </summary>
+        /// <summary>
+        /// The tab a file being opened goes into, made active: the tab already holding it
+        /// (existing &gt;= 0), else the active tab if it is an empty untitled one, else a
+        /// new tab appended to the strip.
+        /// </summary>
+        private DocTab ActivateTabForOpen(int existing)
+        {
+            if (existing >= 0)
+            {
+                _activeTabIndex = existing;
+                return _tabs[existing];
+            }
+            if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                && IsReusableEmptyUntitled(_tabs[_activeTabIndex]))
+            {
+                return _tabs[_activeTabIndex];
+            }
+            var tab = new DocTab { Id = _nextTabId++ };
+            _tabs.Add(tab);
+            _activeTabIndex = _tabs.Count - 1;
+            return tab;
+        }
+
         private static bool IsReusableEmptyUntitled(DocTab tab)
         {
             if (tab == null) return false;
@@ -12386,18 +12411,7 @@ namespace TypoZen
                 _tabOpInProgress = true;
                 try
                 {
-                    DocTab tab;
-                    if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
-                        && IsReusableEmptyUntitled(_tabs[_activeTabIndex]))
-                    {
-                        tab = _tabs[_activeTabIndex];
-                    }
-                    else
-                    {
-                        tab = new DocTab { Id = _nextTabId++ };
-                        _tabs.Add(tab);
-                        _activeTabIndex = _tabs.Count - 1;
-                    }
+                    DocTab tab = ActivateTabForOpen(-1);
 
                     tab.FilePath = path;
                     tab.Content = content;
@@ -12547,23 +12561,7 @@ namespace TypoZen
             _tabOpInProgress = true;
             try
             {
-                DocTab tab;
-                if (existing >= 0)
-                {
-                    tab = _tabs[existing];
-                    _activeTabIndex = existing;
-                }
-                else if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
-                    && IsReusableEmptyUntitled(_tabs[_activeTabIndex]))
-                {
-                    tab = _tabs[_activeTabIndex];
-                }
-                else
-                {
-                    tab = new DocTab { Id = _nextTabId++ };
-                    _tabs.Add(tab);
-                    _activeTabIndex = _tabs.Count - 1;
-                }
+                DocTab tab = ActivateTabForOpen(existing);
 
                 tab.FilePath = path;
                 tab.Content = "";
@@ -12665,23 +12663,7 @@ namespace TypoZen
                 _tabOpInProgress = true;
                 try
                 {
-                    DocTab tab;
-                    if (existing >= 0)
-                    {
-                        tab = _tabs[existing];
-                        _activeTabIndex = existing;
-                    }
-                    else if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
-                        && IsReusableEmptyUntitled(_tabs[_activeTabIndex]))
-                    {
-                        tab = _tabs[_activeTabIndex];
-                    }
-                    else
-                    {
-                        tab = new DocTab { Id = _nextTabId++ };
-                        _tabs.Add(tab);
-                        _activeTabIndex = _tabs.Count - 1;
-                    }
+                    DocTab tab = ActivateTabForOpen(existing);
 
                     tab.FilePath = path;
                     tab.Content = "";
