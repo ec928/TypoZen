@@ -69,8 +69,8 @@ taken *before* the install, and be control-verified with the tasks switched on.
 folder:**
 
 ```
-.	ools\Build-Portable.ps1
-.	ools\Build-Installer.ps1
+.\tools\Build-Portable.ps1
+.\tools\Build-Installer.ps1
 dist-installer\TypoZen-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS="assocmd,assocepub"
 ```
 
