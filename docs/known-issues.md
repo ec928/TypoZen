@@ -16,8 +16,17 @@ with no remembered position (a new book, or a tab left on page 1) keeps the prev
 book's offset. Headless, on the 0.2.48 tree: book A turned to page 16, book B loaded with
 no resume -> B reported page 16 at the identical `scrollLeft` (14520). With the reset at
 the top of `loadBookPayload`: B opens on page 1, and a resume to block 400 still lands on
-its page (40). Not yet exercised: the real app, two-column mode, a windowed book, a tab
-switch. The notes below predate the measurement and are kept for the record.
+its page (40). The notes below predate the measurement and are kept for the record.
+
+**A second cause, found when 0.2.49 was tried (0.2.50).** Slow tab switches were then
+right; a switch under about a second still put the next book on a wrong page (Hilldiggers
+on page 3 after Prador Moon on page 5). The jump to a remembered block runs on a timer --
+up to twelve 400ms retries, then a second jump 700ms later -- and nothing cancelled it when
+another document arrived, so the previous book's block was applied to the new one.
+Reproduced headless through the host messages: A with `|at=450`, B 300ms later -> B on A's
+page (45); 3s later -> page 0. `cancelResumeAt()` now runs beside `cancelPositionReport()`
+on every document-replacing message: fast switch -> 0, and A's own resume still lands (45)
+including straight after a cancelled one. Awaiting confirmation in the app.
 
 Open a book while another book is already open and the new one does not start at page 1.
 It starts on **the page number the other tab was showing**, and the reader really is parked

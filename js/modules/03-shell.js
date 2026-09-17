@@ -137,6 +137,24 @@
             _resumeAtTimer = setTimeout(attempt, 400);
         }
 
+        /**
+         * Drop a pending jump to a remembered block. Called wherever the host announces
+         * that this document is being replaced -- the same places as cancelPositionReport.
+         *
+         * The jump waits for the document (up to twelve 400ms retries) and then jumps a
+         * second time 700ms later, and nothing tied it to the document it was meant for.
+         * Switching tabs inside that window moved the NEXT book to the previous book's
+         * block: Hilldiggers opened on page 3 after a sub-second switch from Prador Moon,
+         * and on page 1 when the switch was slow. The host always sends the new
+         * document's own resume after its load message, so cancelling here cannot drop it.
+         */
+        function cancelResumeAt() {
+            if (_resumeAtTimer) {
+                try { clearTimeout(_resumeAtTimer); } catch (e) {}
+                _resumeAtTimer = null;
+            }
+        }
+
 
 
         /**
@@ -886,12 +904,14 @@
                 }
                 else if (msg.startsWith("load_content_plain:")) {
                     try { cancelPositionReport(); } catch (eCP) {}
+                    try { cancelResumeAt(); } catch (eCR) {}
                     finishLoadContent(msg.substring(19), false, true);
                 }
                 else if (msg.startsWith("load_content:")) {
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
                     try { cancelPositionReport(); } catch (eCP) {}
+                    try { cancelResumeAt(); } catch (eCR) {}
                     const content = msg.substring(13);
                     finishLoadContent(content, false, false);
                 }
@@ -899,6 +919,7 @@
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
                     try { cancelPositionReport(); } catch (eCP) {}
+                    try { cancelResumeAt(); } catch (eCR) {}
                     // A book arrives as a staged JSON payload rather than through the
                     // message channel: an omnibus is tens of megabytes of markup.
                     // "<url>" or "<url>|at=<block>", the latter being where this reader was
@@ -940,6 +961,7 @@
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
                     try { cancelPositionReport(); } catch (eCP) {}
+                    try { cancelResumeAt(); } catch (eCR) {}
                     // Optional trailing |at=<block> and/or |plain=1.
                     let spec = msg.substring(15);
                     let resumeAt = -1;
@@ -1092,6 +1114,7 @@
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
                     try { cancelPositionReport(); } catch (eCP) {}
+                    try { cancelResumeAt(); } catch (eCR) {}
                     // Empty on purpose. Fake "Untitled Document" / "Start typing here..."
                     // was real markdown: deleting it still left a CSS ::before on the
                     // block (the 10px gutter rail) that innerText then saved as the file.
