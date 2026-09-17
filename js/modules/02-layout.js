@@ -5178,6 +5178,27 @@
             } catch (e) { return null; }
         }
 
+        /**
+         * The document is being replaced: nothing remembered about where the reader was in
+         * it applies to the next one.
+         *
+         * _readingAnchor is a block index, and a block index means nothing in another book.
+         * Opening a book at page 1 never sets it -- only a resume, a page turn or a jump do --
+         * so the previous book's anchor survived, and the next remount (a column switch, a
+         * layout change) put the new book on the previous book's block: Hilldiggers on
+         * Prador Moon's Ln 112. A book opened at a remembered block overwrote the anchor
+         * with its own, which is why only a book sitting on its first page showed it.
+         * Pending rechecks from a jump are retired with it for the same reason.
+         */
+        function forgetReadingAnchor() {
+            _gotoBlockGen++;
+            if (_gotoRecheckTimer) {
+                try { clearTimeout(_gotoRecheckTimer); } catch (eT) {}
+                _gotoRecheckTimer = null;
+            }
+            _readingAnchor = -1;
+        }
+
         function goToPageHoldingBlock(anchorBlock, tries, lastWidth, gen) {
             const isTopLevel = (tries == null && gen == null);
             if (isTopLevel) {

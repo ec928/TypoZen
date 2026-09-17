@@ -153,6 +153,8 @@
                 try { clearTimeout(_resumeAtTimer); } catch (e) {}
                 _resumeAtTimer = null;
             }
+            // And the anchor a remount would put the new document on. See forgetReadingAnchor.
+            try { forgetReadingAnchor(); } catch (eA) {}
         }
 
 

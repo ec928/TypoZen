@@ -26,7 +26,19 @@ another document arrived, so the previous book's block was applied to the new on
 Reproduced headless through the host messages: A with `|at=450`, B 300ms later -> B on A's
 page (45); 3s later -> page 0. `cancelResumeAt()` now runs beside `cancelPositionReport()`
 on every document-replacing message: fast switch -> 0, and A's own resume still lands (45)
-including straight after a cancelled one. Awaiting confirmation in the app.
+including straight after a cancelled one.
+
+**A third cause, found when 0.2.50 was tried.** Fast switching now worked from a book's page
+10 but still failed from its first page: Hilldiggers, on its cover, came back at Ln 112 --
+Prador Moon's line. `_readingAnchor` (a block index) was never cleared when a document was
+replaced; only a resume, page turn or jump sets it, so a book opened at a remembered block
+overwrote it and a book on page 1 kept the previous book's. The next remount
+(`set_column_mode`, the pagination remount) then used it. Reproduced headless: B on page 1
+holding A's anchor 40 -> `set_column_mode:1` -> B on page 5. `forgetReadingAnchor()` (also
+retiring pending `goToPageHoldingBlock` rechecks) now runs from `cancelResumeAt()`: B stays
+on page 1, A's resume still lands. An uncommitted attempt found in the tree on 2026-09-16
+cleared the same anchor; it was dropped unmeasured on 09-16, which was a mistake.
+Awaiting confirmation in the app.
 
 Open a book while another book is already open and the new one does not start at page 1.
 It starts on **the page number the other tab was showing**, and the reader really is parked
