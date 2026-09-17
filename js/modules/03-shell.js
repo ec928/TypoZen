@@ -537,11 +537,6 @@
                 ro.observe(editor);
             }
 
-            // Any movement or edit by the reader invalidates the remembered column
-            // positions, so switching back anchors afresh instead of restoring a spot they
-            // have since left. Scrolls we perform ourselves are excluded by the
-            // markProgrammaticScroll window.
-            if (mainContainer) mainContainer.addEventListener('scroll', noteUserMovement, { passive: true });
             if (mainContainer) mainContainer.addEventListener('scroll', reportBookPosition, { passive: true });
             try { mainContainer.addEventListener('scroll', refreshMarkState, { passive: true }); } catch (eMs) {}
             // Selecting text changes what the Mark button will do, so it changes what the
@@ -598,7 +593,6 @@
                 }, { passive: true });
             }
             if (editor) {
-                editor.addEventListener('scroll', noteUserMovement, { passive: true });
                 editor.addEventListener('scroll', reportBookPosition, { passive: true });
                 try { editor.addEventListener('scroll', refreshMarkState, { passive: true }); } catch (eMs) {}
                 editor.addEventListener('scroll', function () {
@@ -757,11 +751,9 @@
                     }, 80);
                 }, { passive: true });
                 // Typing in multi-column contenteditable reflows the page flow in the
-                // browser — that cost is inherent. PageMap.invalidate is a no-op; we only
-                // mark that the reader moved so column-position memory is not restored
-                // after an edit. Stats flush lives on the other input listener.
+                // browser — that cost is inherent. Stats flush lives on the other input
+                // listener.
                 editor.addEventListener('input', function () {
-                    noteUserMovement();
                     // The one place that knows the document was actually edited. The host's
                     // "is this tab unsaved" flag hangs off this, and updateStats() -- which
                     // used to raise it -- runs on programmatic changes too.

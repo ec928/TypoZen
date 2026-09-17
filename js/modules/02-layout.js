@@ -5066,22 +5066,17 @@
         // --- Column position memory -------------------------------------------------
         //
         // "Going back to the original column mode without making any changes returns you
-        // to the original layout and position." Each column count remembers where it was
-        // left; returning restores it exactly, provided the reader did not move or edit in
-        // between. Anything else and the saved spot is stale, so the normal anchoring runs.
-        //
-        // This is not a shortcut around anchoring: the two layouts break content
-        // differently, so re-deriving a position from an anchor can only ever land close.
-        // Only a remembered position can return exactly.
-        let _colMemory = { c1: null, c2: null };
-        let _colMemoryDirty = false;
+        // to the original layout and position." That is delivered by the reading anchor and
+        // the round trip is asserted by twocol-anchoring-browser -- there is no separate
+        // per-column memory of the scroll position. One was scaffolded here (_colMemory,
+        // _colMemoryDirty, noteUserMovement on every scroll) and nothing ever read it, so it
+        // is gone; only the programmatic-scroll window below is real.
         let _progScrollUntil = 0;
         window.getProgScrollUntil = function() { return _progScrollUntil; };
 
         /** Scrolls we cause ourselves must not count as the reader moving. */
         window.markProgrammaticScroll = function(ms) { _progScrollUntil = Date.now() + (ms || 600); };
         function markProgrammaticScroll(ms) { window.markProgrammaticScroll(ms); }
-        function noteUserMovement() { if (Date.now() > _progScrollUntil) _colMemoryDirty = true; }
 
 
         /**
