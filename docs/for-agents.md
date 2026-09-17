@@ -162,6 +162,43 @@ $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + real TypoZen.exe (slow; only 
 - **Unhandled UI faults stop automatic writes.** `DocumentStateSuspect` is set from `DispatcherUnhandledException` (and AppDomain). Autosave and session persist return without touching disk; File > Save still works. Proved by `tests/fault-autosave-app.mjs` (`debug_throw_ui`, `--debug` only). Do not add a shipped throw-switch.
 - Prefer characterising failures over deleting suites. Skip only when the environment truly cannot run (missing fixture / no display) — document why.
 
+## Auditing for dead or duplicated code
+
+Four mechanical scans cover this tree. Each produces candidates, **not findings** — every
+one on the 2026-09-17 pass had false positives, and the checking is the work:
+
+1. **Unreferenced functions.** Every declaration in `js/modules/*.js` against every name
+   occurrence in the other modules, the template, the `.cs` files (host script strings),
+   `tools/` and `tests/`. Same for `private`/`internal` members in the `.cs` files, plus
+   `TypoZen.xaml` (handlers are wired there by name). **Strip comments first** or a
+   function named only in a war-story comment counts as live.
+2. **The message protocol, both ways.** `postMsg(...)` / `SendMsg(...)` literals against
+   `msg.startsWith` / `msg ==` / `cmd.startsWith` handlers at the other end. This is where
+   dead code survives: a handler with no sender costs nothing and shows no symptom.
+3. **Repeated runs of code.** Windows of 6–8 normalised lines occurring more than once.
+4. **CSS.** Ids, classes and custom properties whose token appears nowhere else; and the
+   same selector declared twice, where the earlier declaration is overridden.
+
+**False positives this tree actually produces:**
+
+- Names built by concatenation: `outline-h' + level`, `'list-indent-' + n` — the exact
+  token `outline-h4` appears only in the CSS, and the class is live.
+- Messages sent from a ternary (`e.shiftKey ? 'tab:prev' : 'tab:next'`), built with a
+  `StringBuilder` (`spell_hits:`), or posted from a host script string (`open_file_path:`).
+- Functions referenced only by suites. They are live; the suite is a caller.
+- Hex colours read as ids (`#A78BFA`), and doc comments that spell out a CSS function —
+  `assets-selftest` reads every `url(` in the built page as a bundled file reference.
+- C# `using` directives: a text scan cannot judge them, because types are used without
+  their namespace prefix. Only the compiler can, one removal at a time.
+
+**Before removing anything, establish what it does and what stops working without it** —
+by reading the code and measuring, not by asking. "It is sent twice" is not evidence that
+one is dead: `OpenBook` sends the column request before the book arrives *and* again at
+`load_done`, and the early one is what makes the book paint 2-col on its first paint
+(measured: without it, 1-col, 120 pages, then a second layout to 113).
+
+Removals that change rendering are checked by computed style before and after, not by eye.
+
 ## Explicit non-goals (unless the user reopens them)
 
 - True IDE / Scintilla-class code editing in Preview
