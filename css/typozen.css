@@ -1004,7 +1004,11 @@
             position: absolute;
             left: 0;
             right: 0;
-            bottom: 6px;
+            /* Above the scrubber, not level with it. At 6px the number's line box (8-24px
+               from the bottom) had the track running through it at 10px and the thumb over
+               its lower half. Both live in the same 26px PAGE_FOOT_RESERVE; this stacks them
+               in it instead of making the page shorter. */
+            bottom: 11px;
             display: none;
             justify-content: flex-end;
             /* Clickable for go-to-page; scrubber sits above on its own layer. */
@@ -1038,8 +1042,9 @@
             position: absolute;
             left: 16px;
             right: 16px;
-            bottom: 2px;
-            height: 16px;
+            /* On the bottom edge, below the page numbers: track at 7px, thumb 1.5-12.5px. */
+            bottom: 0;
+            height: 14px;
             z-index: 6;
         }
         /* Hidden by class, not by display: updatePageScrubber sets display on every page
@@ -1071,7 +1076,7 @@
                chrome must not ride on text metrics; a block box has no line to ride on. */
             display: block;
             width: 100%;
-            height: 16px;
+            height: 14px;
             margin: 0;
             background: transparent;
             cursor: pointer;

@@ -1,7 +1,7 @@
 /**
  * The page scrubber stays on screen whatever the theme's font size.
  *
- * The scrubber is fixed-size chrome: a 16px strip, an 11px thumb. It must not care what
+ * The scrubber is fixed-size chrome: a 14px strip, an 11px thumb. It must not care what
  * size the text is. It did: the range input was the UA default inline-block, so it sat
  * on a line inside #page-scrubber whose height came from the inherited theme font. A
  * larger theme pushed the input down out of its own 16px box -- at 26px the thumb was
@@ -73,7 +73,7 @@ try {
             + ', input display ' + g.inputDisplay);
         assert(g.shown, 'control: the scrubber is shown at ' + fsz + 'px');
         assert(g.inputTop >= g.boxTop - 1 && g.inputBottom <= g.boxBottom + 1,
-            'at ' + fsz + 'px the slider sits inside its own 16px strip');
+            'at ' + fsz + 'px the slider sits inside its own strip');
         assert(g.inputBottom <= g.viewport,
             'at ' + fsz + 'px the slider is on screen, not pushed past the bottom of the page');
     }
