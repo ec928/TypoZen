@@ -84,6 +84,24 @@ _Up to 20 bullets, 200 characters each._
 
 ---
 
+## Category
+
+**Books & reference.** Not Productivity.
+
+The listing was moved to Productivity (second category Utilities + tools) on advice given
+here, against the author's own first choice of ebooks. Measured on 2026-09-17 on
+`apps.microsoft.com`, signed out, GB market: a search for **`epub`** returns page after page
+of readers, every one of them in Books & reference, and **TypoZen is not among them**.
+`markdown editor` does not return it in the top rows either. `typozen` returns it first, so
+the listing is live and indexed -- it is reachable by name and unreachable by subject.
+
+Low install and rating counts also weigh on ranking and cannot be separated out from here,
+but the category is free to change and matches where the competition sits. Put it back to
+Books & reference, then re-run those three searches a few days after it publishes rather
+than assuming the change worked.
+
+---
+
 ## Search terms
 
 _Up to 7 terms, 30 characters each, 21 words total. Do not repeat the app name._
