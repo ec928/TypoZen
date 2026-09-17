@@ -82,7 +82,6 @@
             try {
                 if (editor) editor.scrollLeft = 0;
                 currentTwoColPage = 0;
-                PageMap.invalidate();
             } catch (eReset) {}
 
             // Styles before blocks: the first paint should already be the book's own
