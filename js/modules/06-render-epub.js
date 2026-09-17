@@ -1130,7 +1130,7 @@
         /**
          * True when a CSS colour value is black, white or a grey -- a publisher assuming a
          * white page rather than choosing a colour. Anything else, including a value that is
-         * not a bare colour (`background: url(...)`), is false and left alone.
+         * not a bare colour (a background with an image in it), is false and left alone.
          */
         function bookColourIsNeutral(value) {
             const v = String(value || '').replace(/!\s*important/i, '').trim().toLowerCase();
