@@ -1,46 +1,63 @@
-# 🧘 TypoZen — WYSIWYG Markdown & Text Editor
+# 🧘 TypoZen — Markdown editor and ePub reader for Windows
+**Write in the morning, read in the evening, in the same quiet window.**
 
-**TypoZen** is a standalone hybrid Markdown and plain-text editor for Windows. It pairs a **WPF** shell with **WebView2** (Chromium) for a block-based live preview and a raw Source mode — native OS integration with a modern rendering engine.
+TypoZen is a beautifully simple, distraction-free app for Windows that combines a seamless Markdown editor with a proper ePub reader.
 
-Works well with **`.md`**, **`.txt`**, and related text files.
+Whether you're drafting a new note or settling in with a good book, TypoZen gives you a calm, clean space to do it. It opens your `.md`, `.txt`, and `.epub` files—as well as PDFs, images, and media—and remembers exactly where you left off in your documents and books.
+
+**Privacy-first and completely free.** TypoZen asks nothing of the internet. There are no accounts, no sign-ins, and absolutely no tracking or telemetry. It just opens straight into your document.
+
+*(For the technically curious: Under the hood, TypoZen is a lightweight, native Windows app built with WPF and WebView2, offering both a live block-based preview and a raw Source mode for Markdown.)*
 
 ---
-
 ## Get TypoZen
 
-**[Install from the Microsoft Store](https://apps.microsoft.com/detail/9NGKCK27GTS1)** — the
-ordinary way. Signed by Microsoft, so no security warning; it lands in the Start Menu,
-uninstalls cleanly, and updates itself as new versions ship.
+**[Install from the Microsoft Store](https://apps.microsoft.com/detail/9NGKCK27GTS1)** (Recommended)  
+The easiest way. It installs cleanly, updates automatically, and gives no security warnings.
 
-**[Run the installer](https://github.com/ec928/TypoZen/releases/latest)** —
-`TypoZen-Setup-<version>.exe` on the releases page. A normal Windows installer: Start Menu
-entry, an entry in Settings → Apps you can uninstall from, and optional file
-associations for `.md` and `.epub`. It installs for your account only, so it never asks
-for an administrator password and works on a locked-down work machine.
+**[Run the installer](https://github.com/ec928/TypoZen/releases/latest)**  
+Download `TypoZen-Setup-<version>.exe`. A standard Windows installer that doesn't require administrator privileges, making it perfect for locked-down work machines. You can optionally associate it with `.md` and `.epub` files.
 
-**[Download the portable zip](https://github.com/ec928/TypoZen/releases/latest)** — unzip
-and run, nothing installed, nothing written outside your user profile. Runs from a USB
-stick.
+**[Download the portable zip](https://github.com/ec928/TypoZen/releases/latest)**  
+Just unzip and run. Nothing is installed, and it leaves no trace outside your user profile. Great for running straight from a USB stick.
 
-The installer and the zip are **unsigned**, so Windows shows a "Windows protected your PC"
-warning the first time (More info → Run anyway), and neither updates itself — come
-back here for new versions. The Store copy has neither drawback; that is the whole of what
-it buys you.
+*Note on versions:* The installer and portable versions are unsigned, so Windows may show a "Windows protected your PC" warning on the first run (click "More info" → "Run anyway"). They also won't update automatically. The Store copy can sit alongside either of the others and keeps its own settings, themes, bookmarks and reading positions; the installer and the portable zip are the same build, so those two share one set of settings and only one of them runs at a time.
 
-You can have the Store copy and one of the others at the same time. The Store copy keeps
-**separate** settings, themes, bookmarks and reading positions, and neither disturbs the
-other. The installer and the portable zip are the same build, so those two share one set
-of settings and only one of them runs at a time.
-
-Windows 10 version 1809 or later, 64-bit. Requires the WebView2 runtime, which is already
-present on current Windows.
+*Requirements: Windows 10 version 1809 or later, 64-bit. Requires the WebView2 runtime, which is already present on current Windows.*
 
 ---
-
 ## Highlights
 
-### Dual-mode editing
+### Writing
 
+- **Dual-mode editing:** Seamlessly switch between WYSIWYG Preview and raw Source without losing your scroll position.
+- **Live block editing:** Format Markdown and text on the fly, including headings, lists, tables, tasks, emphasis, and fenced code.
+- **Deep immersion:** Engage Focus mode, Typewriter scroll, and chrome auto-hide to eliminate distractions while you work.
+- **Engineered for massive files:** A virtualized rendering engine builds only the part of the document on screen, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it.
+- **Spelling as you type:** See wavy underlines in Preview for misspelled words. Select for replacements, Ignore, or Add to dictionary, or use Edit → Spelling for a document-wide check.
+
+### Reading & Research
+- **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
+- **Built-in dictionary & thesaurus:** Nearly 150,000 offline definitions and over 110,000 synonym sets. Select any word for instant definitions, synonyms, and document occurrence counts.
+- **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
+- **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
+- **Read everything else safely:** PDF, HTML, images, and media open read-only. Never dirty, never saved over.
+
+### Look, Session & Privacy
+- **Bundled premium typography:** Included fonts (Inter, Literata, Merriweather, Source Sans 3) ensure perfect rendering without any network requests.
+- **25 curated built-in themes:** Choose from dark, light, and mono themes, or use **Customise Theme...** to build and save your own palettes.
+- **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions.
+- **100% Offline & Portable:** Zero telemetry. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
+
+### Files & Links
+- **Format support:** Open Markdown, text, epub, PDF, common images, and media. Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF.
+- **Smart linking:** Hover links for Open, Show in Folder, and Edit. Local files open in a tab, `http` links open in your browser, and `#heading` jumps seamlessly within the document.
+
+---
+## In detail
+*(The following sections dive deep into how TypoZen works under the hood. If you're a developer or just curious about the technical design decisions, read on!)*
+
+### Dual-mode editing
 - **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, emphasis)
 - **Source Mode** — raw Markdown/text in a growing textarea (one scrollbar with the outer pane, never nested)
 - Switch with the **Mode** control on the toolbar (Source / Preview / Reader); the lit segment is the **current** mode
@@ -49,7 +66,6 @@ present on current Windows.
 - **Reveal markdown on focus** can be enabled to automatically show markdown details while still in preview WYSIWYG mode
 
 ### Large documents
-
 TypoZen opens by document _type_, not size — Markdown of any size opens in Live Preview, and the engine picks its own strategy:
 
 | Band | Strategy |
@@ -61,7 +77,6 @@ TypoZen opens by document _type_, not size — Markdown of any size opens in Liv
 Virtualized Preview keeps a per-block height map, estimated from the raw Markdown and refined from real measurements as blocks mount, with **scroll anchoring** so correcting a height never moves the content under your cursor. `.txt` / `.log` / `.csv` open in Source, which is the Notepad-class path.
 
 ### Reading PDFs, web, images, and media
-
 Open these **read-only** on a Chromium surface (same tab strip). No document scrubber on these tabs — that control belongs to paginated engine/book reading.
 
 | Type | Behaviour |
@@ -89,7 +104,6 @@ Ctrl+wheel alike, since greying a menu is not the same as disabling a feature.
 Format tools and Source/Preview are locked; the file is never marked dirty and never saved over. **Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native WebView; document tab → editor). **It refuses on a document too large to lay out whole**, rather than print part of one: TypoZen renders long documents a piece at a time, the print engine can only take what is on the page, and a PDF containing a fifth of a document with nothing to say so is worse than no PDF — you keep it, and you may send it to someone. Save the file and print it elsewhere. **Privacy Mode** (File menu) already applies — see [Session & privacy](#session--privacy). Details: `docs/native-reader-plan.md`.
 
 ### Reading epubs
-
 Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the book's own table of contents in the outline.
 
 - A book's blocks carry the **publisher's own HTML**, not a Markdown conversion. Converting _Blindsight_ to Markdown dropped 6/6 images, 162/162 links, 170/170 list items and 210/210 footnote references, and broke 16 of 17 headings. Carrying the HTML has no conversion step and therefore nothing to lose.
@@ -101,7 +115,6 @@ Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only
 - A book is never dirty, never saved over, and Save As refuses any path ending `.epub`.
 
 ### Position in a long document
-
 In a paginated layout the foot of the page carries page numbers and a **scrubber that spans the whole book**. It addresses pages rather than scroll offset, because the editor's own scrollbar can only span what is currently laid out — about 28 pages of a 1400-page novel.
 
 - **Click a page number** or press **`Ctrl+G`** to open a go-to-page prompt (leaf page number; in two-column mode that maps to the correct spread under the hood).
@@ -111,7 +124,6 @@ In a paginated layout the foot of the page carries page numbers and a **scrubber
 - **Bookmarks** — see below. Separately, jumping via search, outline, go-to-page, or chapter click leaves a **return breadcrumb** — **Return from Jump** (`Ctrl+Shift+J`) goes back to where you were reading. The breadcrumb is automatic rather than chosen, and session-local.
 
 ### Bookmarks
-
 Named places that survive the exit, in a **Marks** tab beside Outline and Search.
 
 Three ways to set one, because the single place marker this replaced went unused for being two shortcuts and nothing on screen:
@@ -135,7 +147,6 @@ Three ways to set one, because the single place marker this replaced went unused
 - Stored in `bookmarks.txt` in the cache, keyed by path, last **64** documents; marks _within_ a document are not capped. Your file never grows metadata because you read it, at the honest cost that marks do not travel with it
 
 ### Annotations
-
 Select text and the Mark button becomes **Highlight selection**. A highlight is a bookmark with a range, and a note is a highlight with text attached — which is why bookmarks were built first: the anchoring is the whole problem, and this reuses it unchanged.
 
 - Painted with the **CSS Custom Highlight API**, the same mechanism search uses for its matches in Preview (Source search uses a mirror layer, for the reason given above). Not a `<mark>` element: a `.block` round-trips into `data-raw`, so anything wrapped round the words would become part of your document
@@ -146,7 +157,6 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your _reading position_, which is automatic, written atomically as you read, and unaffected by any of this.
 
 ### Spelling
-
 **The bundled dictionary is not a spell checker.** `dictionary.tsv` is WordNet lemmas for **Look up** (definitions and synonyms). It does not know `teh` from `the`, and using it as a spell list would underline every inflection.
 
 Spelling uses **WPF’s built-in dictionaries** (English, French, German, Spanish with .NET 4 — the same engine a WPF TextBox uses):
@@ -158,7 +168,6 @@ Spelling uses **WPF’s built-in dictionaries** (English, French, German, Spanis
 WPF ships dictionaries for English, French, German and Spanish. Other UI languages will not underline until a dictionary is available.
 
 ### Looking a word up
-
 Select text and a popover appears beside it — **Highlight** and **Find in document**, and for a single word the lookup itself. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
 
 **A dictionary and thesaurus are included, and nothing is downloaded.** `dictionary.tsv` and `thesaurus.tsv` ship beside `TypoZen.exe` — roughly 150k entries derived from **WordNet 3.1**, which is free and permissively licensed. Lookups and synonyms work on first launch, with no setup and no network access. See [WORDNET-LICENSE.txt](WORDNET-LICENSE.txt) for the attribution WordNet requires.
@@ -181,7 +190,6 @@ TSV first, because that is what a WordNet or Wiktionary export converts to in on
 - **Occurrence count works with no dictionary at all** — "appears 2,135 times in this document" is often the question actually being asked, especially in a novel
 
 ### Themes & typography
-
 **25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customise Theme…** option lives).
 
 | Column | Themes |
@@ -216,7 +224,6 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 > Earlier versions pulled these from Google Fonts via a `<link>` in `<head>`. That was a render-blocking network round trip on every cold start of a local editor, and because Google's CSS omits `local()`, it shadowed already-installed copies and re-downloaded them. Bundling removed both problems.
 
 ### Writing tools
-
 - **Spelling** — wavy underline in Preview as you type; select a misspelling for replacements, Ignore, or Add to dictionary. **Edit → Spelling → Check Document** / **Next Issue**. Source uses Chromium’s squiggles. The bundled `dictionary.tsv` is Look up, not this
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
 - **Every match is highlighted, in Source as well as Preview.** Preview paints them with
@@ -253,7 +260,6 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 - **Alt+F / E / V / T / H** open the matching top-level menu from the keyboard (including while the editor has focus); **Alt+S** is Search, not a menu letter
 
 ### Tabs
-
 Full multi-document editing, with the tab strip living in the title bar.
 
 - **New** with the `+` button or `Ctrl+N`; close with the tab's own button or `Ctrl+W`
@@ -266,7 +272,6 @@ Full multi-document editing, with the tab strip living in the title bar.
 - **Session restore** reopens your tabs on next launch (bodies only if you've enabled unsaved-document restore under File → Privacy)
 
 ### Lists
-
 Bullet, ordered and task lists, with real nesting.
 
 - **`Tab` / `Shift+Tab`** indent and outdent list lines — 2 spaces per level, maximum depth 6, spaces only (tabs are normalised on parse)
@@ -280,11 +285,9 @@ Bullet, ordered and task lists, with real nesting.
 - Indentation is a property of the raw Markdown (leading spaces), rendered with `margin-left` rather than nested `<ul>` DOM — so Source round-trips exactly
 
 ### Live statistics
-
 The status bar updates continuously with word count, character count (both grouped — `40,772 words` is read, `40772` is counted; line numbers stay ungrouped, being coordinates the search gutter prints raw), estimated reading time (~200 wpm), total lines, **current line** (caret in Source/Preview — same document-line coordinate as Search result gutters after a jump), **current chapter** (click to jump to its start), zoom, and — when text is selected — **selected** word and character counts. Serialization is debounced so counters stay responsive on very large documents.
 
 ### Files & export
-
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
 - **Atomic document save** — write to a temp file, flush, then replace the target
 - **Reload when the file changes on disk** — engine documents only (not books or PDF/images). A stamp of write-time, size and a cheap fingerprint is taken on load and after Save. Coming back to the window, switching to the tab, a watcher on the file's folder, or Save / Autosave, compares that stamp. If the tab is **clean**, it reloads quietly. If it is **dirty**, a prompt offers Reload (discard edits), Keep editing (the next Save overwrites disk), or Save As. Autosave will not overwrite an external edit: it shows the same prompt instead. OneDrive touching mtime without changing bytes is ignored; TypoZen's own atomic save is ignored for two seconds so the temp/`Replace` dance does not look like someone else's write. Untitled buffers have no path and are not watched.
@@ -294,7 +297,6 @@ The status bar updates continuously with word count, character count (both group
 - CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path` (Phase 6 — done)
 
 ### Session & privacy
-
 Preferences live under `%LocalAppData%\TypoZen_Cache\`, and so does everything else the app
 writes: extracted books, staged payloads, `debug.log`, and any themes you save. **Nothing is
 written beside the executable**, so TypoZen runs correctly from a read-only or protected location.
@@ -316,7 +318,6 @@ preferred on load once it exists. An update replaces the shipped file and cannot
 Also restored: window size and position, theme, margins, mode, line and paragraph spacing, justification, F7/F8/F9, zoom, scrubber/status-bar visibility, chrome auto-hide, side-panel auto-hide, open tab paths **and each tab's column layout** (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
 
 ### Network behaviour
-
 **TypoZen itself requests nothing over the network.** Fonts are bundled, the editor page is served from disk through a virtual host, and the page issues no outbound requests. A document that references a remote image (`![](https://…)`) will still load it — that is the document's request, not the app's.
 
 **The WebView2 runtime is a different matter, and it is not fully silent.** The environment is created with Chromium's background services disabled:
@@ -340,13 +341,10 @@ TypoZen includes built-in tools to help diagnose layout and focus issues:
 - **Telemetry Logging (`TypoZen_Debug.bat`)**: Launching TypoZen via this script passes the `--debug` flag, which records high-volume layout telemetry (such as progressive rendering and column measurements) to a `debug.log` file in the application directory.
 
 ---
-
 ## Architecture
-
 TypoZen is a **native shell around a browser engine**. The WPF side owns the window, tabs, menus and file I/O; everything inside the document area is HTML, CSS and JavaScript running in WebView2. Nearly every design decision follows from that split.
 
 ### Stack
-
 | Layer | Shell (native) | Document surface (web) |
 | --- | --- | --- |
 | Runtime | .NET Framework 4.7.2 — `TypoZen.exe`, `WinExe` | same process |
@@ -363,7 +361,6 @@ Because the XAML, HTML template and theme JSON are all loaded at runtime, the sh
 > Sibling project **ZenSeek** uses the same content approach — WebView2 rendering a generated HTML document against a shared-shape theme JSON — but hosts it from a PowerShell script with a WinForms reader window rather than a compiled WPF shell.
 
 ### Document model
-
 `DocumentModel` holds one canonical raw Markdown string per block and is the **authority for save, tab sync and host serialization** — the DOM is a projection of it, not a peer.
 
 In Live Preview each line also carries a rendered form, so the two must never disagree. The invariants that keep them honest:
@@ -380,7 +377,6 @@ In Live Preview each line also carries a rendered form, so the two must never di
 - **Progressive paint is M-band only**, gated on block count — never on a character count.
 
 ### Books
-
 A book is a second **document kind**, not a second document model. `DocumentModel.kind` is `'markdown'` or `'epub'`, and everything downstream branches on it rather than on a separate code path: search, the outline, the word count, page windowing and the column round trip are the same code for both.
 
 | Piece | Where | Does |
@@ -401,7 +397,6 @@ Two things make reopening a book cheap. `EpubReader` caches the assembled payloa
 A book's block `raw` is the publisher's markup, so `renderBlockPreview` sets it as HTML and returns before any of the Markdown renderer runs. The editor refuses to become editable while a book is open, `GetDirtyTabs()` skips `.epub` tabs, and `ReadTextFileDetect` returns empty for one — a book cannot be edited, marked dirty, or saved over.
 
 ### Page windowing
-
 Pagination lays out the whole document, because the browser can only fragment content it has already laid out. That is correct and it is why an unwindowed 40,656-block omnibus put every block into one multi-column flow. `PageChunks` splits the document into fixed block ranges, lays out **one range at a time**, and keeps a per-range page count — cumulative sums give the global page number, exactly as `blockHeights` + `prefixHeight()` give the global scroll offset.
 
 - Unmeasured ranges are estimated from pages-per-block and refined as they are laid out — but only **upward**. Refining an unmeasured range downward removed pages the reader had already been shown, and the act of seeking was what removed them: seeking mounts a range, mounting measures it, measuring shrank the total. Ask for page 267 of 268, land on 261.
@@ -423,7 +418,6 @@ Amortised over the pages between crossings it is flat at every size, so the choi
 **The scrubber exists because that scrollbar cannot reach the ends.** It addresses pages; `PageMap.goto()` already mounts the range a page falls in, so seeking anywhere is the same operation as turning a page. It seeks on release rather than on every input event, because a drag would otherwise mount a range per pixel of travel.
 
 ### Thresholds
-
 Live constants in `TypoZen_Template.html`. Changing them changes which strategy a document gets, so they are listed here rather than left to be rediscovered:
 
 | Constant | Default | Role |
@@ -454,7 +448,6 @@ Which path a Preview load takes:
 Two rules worth keeping: don't gate progressive paint on a character count (it belongs to block count), and don't lower the virtualization floor toward 16 KB without a deliberate product decision — ordinary notes are meant to stay full WYSIWYG.
 
 ### Editor engine
-
 Standalone vanilla JavaScript — no framework.
 
 - **Custom snapshot undo/redo** (`HistoryManager`) rather than the fragile `contenteditable` undo stack, with byte- and step-capped history
@@ -468,9 +461,7 @@ Standalone vanilla JavaScript — no framework.
 The reasoning behind these decisions — including the failure modes that motivated them — is preserved in [`docs/archive/`](docs/archive/). Those records are historical; this README describes what the code does now.
 
 ---
-
 ## Keyboard shortcuts
-
 | Action | Shortcut |
 | --- | --- |
 | New | `Ctrl+N` |
@@ -507,9 +498,7 @@ The reasoning behind these decisions — including the failure modes that motiva
 Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
 
 ---
-
 ## Build
-
 From the project folder:
 
 ```powershell
@@ -586,13 +575,11 @@ Tests are split into four tiers depending on what they need to observe:
 - Some of them also drive the **chrome from outside the process** through `tests/shell-ui.ps1`, which reports menus, tab chips, dialogs and — via `-Command controls` — whether each toolbar control is actually enabled, over UI Automation as JSON. `format-availability-app.mjs` is the one that needs that last part: "greyed out" is a claim about the running window that no page-level suite can see. That is the only tier that can see what is actually painted: the page knows nothing about tabs, and the session file is written from the same model the model tests read, so both agreed with each other while the tab strip disagreed with both — see `tab-strip-paint-app.mjs`.
 
 ### Known issues and agent notes
-
 Open defects and deliberate limitations: [docs/known-issues.md](docs/known-issues.md) — reproduced and characterised only (not bare suite names).
 
 **Agents / other tools:** read [docs/for-agents.md](docs/for-agents.md) first — keyboard matrix, non-goals (no code editor revival, no inventing defects from suite noise), and where truth lives. Parked developer-editor work: [docs/developer-editor-analysis.md](docs/developer-editor-analysis.md).
 
 ### Debugging
-
 A normal run writes no log and opens no port. To debug:
 
 ```powershell
@@ -602,7 +589,6 @@ A normal run writes no log and opens no port. To debug:
 This turns on the page's telemetry channel (appending to `debug.log`) and opens the DevTools port the application harness attaches to.
 
 ### Startup profiling
-
 Set `TYPOZEN_PERF` to write a startup timeline:
 
 ```powershell
@@ -614,9 +600,7 @@ Get-Content "$env:LOCALAPPDATA\TypoZen_Cache\perf.log"
 Marks are milliseconds from entry to `Main`; the log is appended, so delete it between runs.
 
 ---
-
 ## Supported Markdown (practical)
-
 **Yes:** headings, bold/italic/strike, inline code, fenced code, links, images (stored beside the document after save), blockquotes, bullet/ordered/task lists with basic indent, tables, thematic breaks (`---`, `- - -`, and friends).
 
 **Limits — not full CommonMark or Typora:** advanced nested-list edge cases, math, Mermaid and similar extensions are not first-class features.
@@ -624,7 +608,6 @@ Marks are milliseconds from entry to `Main`; the log is appended, so delete it b
 ---
 
 ## Licence
-
 TypoZen is **MIT** (`LICENSE`). Three bundled things carry their own terms, and all
 three permit commercial use and redistribution:
 
@@ -643,5 +626,4 @@ ships in every build rather than living only in this repository. The copyright l
 in it are reproduced from each font file's own `name` table.
 
 ---
-
 _Built with zen and focus for writers, developers, and Markdown enthusiasts._
