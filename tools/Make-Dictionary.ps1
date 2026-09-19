@@ -34,7 +34,17 @@
 
 .PARAMETER MaxSenses
     How many senses to keep per word. WordNet gives "run" over fifty; a popover beside a
-    sentence is not the place for all of them, and the first few are the common ones.
+    sentence is not the place for all of them, so the most common few are kept.
+
+.PARAMETER Counts
+    Princeton WordNet's cntlist.rev: how often each sense was tagged in a real corpus.
+    This is what puts "move fast on foot" before "a score in baseball" for "run", and it
+    is the only source of that: Open English WordNet ships every count as 0. Its sense
+    keys are Princeton's, so the two line up (34,579 of 37,387 counted senses match
+    OEWN 2025+). Found in the "dict" folder of Princeton's WordNet 3.1 download,
+    https://wordnet.princeton.edu/download/current-version -- same licence as the rest of
+    the Princeton data. Without it, senses fall back to WordNet's own order per part of
+    speech, nouns first, which still gets "bank" right and still gets "run" wrong.
 
 .EXAMPLE
     .\tools\Make-Dictionary.ps1 -Source C:\wordnet\dict
@@ -46,7 +56,8 @@ param(
     # output you cannot find is output you cannot check or replace.
     [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) "dictionary.tsv"),
     [string]$ThesaurusOut = (Join-Path (Split-Path $PSScriptRoot -Parent) "thesaurus.tsv"),
-    [int]$MaxSenses = 3
+    [int]$MaxSenses = 3,
+    [string]$Counts = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -72,12 +83,25 @@ Write-Host ("Reading " + $files.Count + " WordNet files from " + $Source) -Foreg
 $map = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 
-# word -> synonym groups, one group per sense, in the order WordNet files them.
+# word -> synonym groups, one group per sense, most common sense first.
 $syn = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+
+# Pass 1 reads every synset. Nothing is chosen yet: the data files are in lexicographer-file
+# order (noun.act before noun.object), not by how common a sense is, so keeping the first
+# three met gave "run" three nouns starting with baseball, and "bank" a flight manoeuvre.
+# synset id ("n:00186329") -> gloss, and -> its member words
+$glossOf = [System.Collections.Generic.Dictionary[string, string]]::new()
+$members = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new()
+# word -> its synsets in file order, for any word the sense index does not cover
+$fileOrder = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 
 foreach ($f in $files) {
     Write-Host ("  " + (Split-Path $f -Leaf)) -ForegroundColor Gray
+    # Offsets are byte positions within one file, so they only identify a synset together
+    # with the file it came from. Letters as in a sense key's ss_type.
+    $pos = @{ 'data.noun' = 'n'; 'data.verb' = 'v'; 'data.adj' = 'a'; 'data.adv' = 'r' }[(Split-Path $f -Leaf)]
     foreach ($line in [System.IO.File]::ReadLines($f)) {
         # The licence header is indented; every real record starts with an offset.
         if ($line.Length -eq 0 -or $line[0] -eq ' ') { continue }
@@ -94,6 +118,7 @@ foreach ($f in $files) {
 
         $head = $line.Substring(0, $bar).Split(' ')
         if ($head.Count -lt 5) { continue }
+        $id = $pos + ':' + $head[0]
         # w_cnt is two hex digits.
         $wc = 0
         if (-not [int]::TryParse($head[3], [System.Globalization.NumberStyles]::HexNumber,
@@ -108,35 +133,101 @@ foreach ($f in $files) {
             if ($paren -gt 0) { $w = $w.Substring(0, $paren) }
             if ($w.Length -eq 0) { continue }
 
+            # Keys go in now so the files keep first-seen word order; senses come later.
             if (-not $map.ContainsKey($w)) {
                 $map[$w] = [System.Collections.Generic.List[string]]::new()
+                $fileOrder[$w] = [System.Collections.Generic.List[string]]::new()
             }
-            $list = $map[$w]
-            if ($list.Count -lt $MaxSenses -and -not $list.Contains($gloss)) {
-                [void]$list.Add($gloss)
-            }
+            [void]$fileOrder[$w].Add($id)
             [void]$words.Add($w)
         }
-
-        # Every other member of the synset is a synonym of each member. A one-word synset
-        # has none, which is most of them, and writing an empty line for those would double
-        # the file for nothing.
+        $glossOf[$id] = $gloss
+        $members[$id] = $words
         if ($words.Count -gt 1) {
             foreach ($w in $words) {
-                $others = @($words | Where-Object { $_ -ne $w })
-                if ($others.Count -eq 0) { continue }
-                if (-not $syn.ContainsKey($w)) {
-                    $syn[$w] = [System.Collections.Generic.List[string]]::new()
-                }
-                $g = $syn[$w]
-                if ($g.Count -lt $MaxSenses) {
-                    $joined = ($others -join ', ')
-                    if (-not $g.Contains($joined)) { [void]$g.Add($joined) }
-                }
+                if (-not $syn.ContainsKey($w)) { $syn[$w] = [System.Collections.Generic.List[string]]::new() }
             }
         }
     }
 }
+
+# Pass 2 ranks each word's senses: most often tagged first (Princeton's counts), then
+# WordNet's own sense number, then nouns before verbs before adjectives before adverbs --
+# the order the old single pass produced, kept for words nobody counted. One sort key per
+# (word, sense), all sorted at once: 200,000 small sorts in PowerShell would take minutes.
+$tagCount = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
+if ($Counts) {
+    if (-not (Test-Path $Counts)) { Write-Host "[ERROR] No such file: $Counts" -ForegroundColor Red; exit 1 }
+    # sense_key sense_number tag_cnt
+    foreach ($line in [System.IO.File]::ReadLines($Counts)) {
+        $p = $line.Split(' ')
+        if ($p.Count -ge 3) { $tagCount[$p[0]] = [int]$p[2] }
+    }
+    Write-Host ("  " + $tagCount.Keys.Count + " sense counts from " + $Counts) -ForegroundColor Gray
+} else {
+    Write-Host "  No -Counts: senses in WordNet order per part of speech, nouns first" -ForegroundColor Yellow
+}
+
+$indexSense = Join-Path $Source 'index.sense'
+$sortKeys = [System.Collections.Generic.List[string]]::new()
+$sortIds = [System.Collections.Generic.List[string]]::new()
+if (Test-Path $indexSense) {
+    # sense_key synset_offset sense_number tag_cnt, e.g. "run%2:38:00:: 01986994 1 0"
+    $posLetter = @{ '1' = 'n'; '2' = 'v'; '3' = 'a'; '4' = 'r'; '5' = 'a' }  # 5 = adjective satellite
+    $posRank = @{ 'n' = 0; 'v' = 1; 'a' = 2; 'r' = 3 }
+    foreach ($line in [System.IO.File]::ReadLines($indexSense)) {
+        $p = $line.Split(' ')
+        if ($p.Count -lt 3) { continue }
+        $pct = $p[0].IndexOf('%')
+        if ($pct -le 0) { continue }
+        $letter = $posLetter[$p[0].Substring($pct + 1, 1)]
+        if (-not $letter) { continue }
+        # OEWN escapes punctuation in keys ("-apos-hood" is 'hood, ".22--caliber" is
+        # .22-caliber); Princeton's keys are plain and pass through unchanged.
+        $lemma = $p[0].Substring(0, $pct)
+        if ($lemma.Contains('-')) {
+            $lemma = $lemma.Replace('-apos-', "'").Replace('-sol-', '/').Replace('-plus-', '+').
+                Replace('-excl-', '!').Replace('-comma-', ',').Replace('-colon-', ':').Replace('--', '-')
+        }
+        $lemma = $lemma.Replace('_', ' ').ToLowerInvariant()
+        $count = 0
+        [void]$tagCount.TryGetValue($p[0], [ref]$count)
+        $sortKeys.Add($lemma + "`t" + (999999 - $count).ToString('D6') + $posRank[$letter] + ([int]$p[2]).ToString('D4'))
+        $sortIds.Add($letter + ':' + $p[1])
+    }
+} else {
+    Write-Host "  No index.sense in $Source -- keeping file order" -ForegroundColor Yellow
+}
+$keyArr = $sortKeys.ToArray(); $idArr = $sortIds.ToArray()
+[Array]::Sort($keyArr, $idArr, [System.StringComparer]::Ordinal)
+
+function Add-Sense([string]$w, [string]$id) {
+    $gl = $null
+    if (-not $glossOf.TryGetValue($id, [ref]$gl)) { return }
+    $list = $map[$w]
+    if ($list.Count -lt $MaxSenses -and -not $list.Contains($gl)) { [void]$list.Add($gl) }
+
+    # Every other member of the synset is a synonym of this word. A one-word synset has
+    # none, which is most of them.
+    $g = $null
+    if (-not $syn.TryGetValue($w, [ref]$g) -or $g.Count -ge $MaxSenses) { return }
+    $others = @($members[$id] | Where-Object { $_ -ne $w })
+    if ($others.Count -gt 0) {
+        $joined = ($others -join ', ')
+        if (-not $g.Contains($joined)) { [void]$g.Add($joined) }
+    }
+}
+
+for ($i = 0; $i -lt $keyArr.Length; $i++) {
+    $w = $keyArr[$i].Substring(0, $keyArr[$i].IndexOf("`t"))
+    if ($map.ContainsKey($w)) { Add-Sense $w $idArr[$i] }
+}
+# Anything the index did not reach keeps file order, as before.
+foreach ($w in @($map.Keys)) {
+    if ($map[$w].Count -eq 0) { foreach ($id in $fileOrder[$w]) { Add-Sense $w $id } }
+}
+# A word whose synsets all had one member ends with no synonyms; no line for it.
+foreach ($w in @($syn.Keys)) { if ($syn[$w].Count -eq 0) { [void]$syn.Remove($w) } }
 
 # $map.Keys.Count, not $map.Count. PowerShell resolves a member on a Dictionary against
 # its *keys* first, and "count" is a word in WordNet -- so $map.Count returned the

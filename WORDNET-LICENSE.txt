@@ -9,7 +9,9 @@ University's WordNet 3.1. Both must be credited, and both notices follow.
 Changes made by TypoZen: tools/Make-Dictionary.ps1 reads the WordNet data
 files (data.noun, data.verb, data.adj, data.adv) and writes them out as two
 flat lists -- word -> definitions, and word -> synonyms -- keeping a limited
-number of senses per word. No other content is added or altered, and no
+number of senses per word, most common first. How common a sense is comes
+from the sense frequency counts (cntlist.rev) of Princeton WordNet 3.1, used
+only to choose and order senses. No other content is added or altered, and no
 Open English WordNet or WordNet source files are shipped.
 
 Open English WordNet: https://en-word.net/

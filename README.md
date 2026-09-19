@@ -177,8 +177,10 @@ Select text and a popover appears beside it — **Highlight** and **Find in docu
 Most people will never need this, and that is fine. If you do want to rebuild from a WordNet download of your own, `tools\Make-Dictionary.ps1` does the parsing and writes both files beside `TypoZen.exe`:
 
 ```powershell
-.\tools\Make-Dictionary.ps1 -Source C:\wordnet\dict
+.\tools\Make-Dictionary.ps1 -Source C:\wordnet\dict -Counts C:\wordnet3.1\dict\cntlist.rev
 ```
+
+`-Counts` is Princeton WordNet 3.1's sense frequency list. It is what puts the most common meaning first — "run" as in moving fast on foot, not a score in baseball. Open English WordNet carries no counts of its own, so without it senses come out in WordNet's order within each part of speech, nouns first.
 
 TSV first, because that is what a WordNet or Wiktionary export converts to in one line of script, and because a 40 MB JSON parse on startup would be felt. Lookups are answered by the **shell**, not the page: a dictionary worth having is tens of megabytes, and marshalling that across the bridge to sit in the document's memory would cost more than the feature.
 
