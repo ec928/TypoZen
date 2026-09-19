@@ -171,20 +171,36 @@ if ($null -ne $msbuild) {
     } catch {}
 }
 
+# dotnet build, as Build_TypoZen.ps1 does. The project file carries the references the
+# speech engine needs (System.Speech, Windows.winmd); the compiler fallback below has
+# no list for them, so without this step TypoZen_TTS.cs could not be compiled at all.
+if (-not $compiled) {
+    $dotnet = Get-Command "dotnet" -ErrorAction SilentlyContinue
+    if ($null -ne $dotnet) {
+        Write-Host "Using dotnet build..." -ForegroundColor Gray
+        try {
+            & dotnet build TypoZen.csproj -c Release -v m
+            if ($LASTEXITCODE -eq 0) { $compiled = $true }
+        } catch {}
+    }
+}
+
 if (-not $compiled) {
     Write-Host "Using .NET PowerShell Compiler..." -ForegroundColor Gray
     # Separate .cs files (partials + EpubReader). Compile as files, not one concatenated
-    # string — joining sources puts a second file's `using` inside the first namespace.
+    # string -- joining sources puts a second file's `using` inside the first namespace.
     $csFiles = @(Get-ChildItem (Join-Path $appDir "*.cs") -File | Sort-Object Name | ForEach-Object { $_.FullName })
     if ($csFiles.Count -eq 0) {
         Write-Host "[ERROR] No .cs files found to compile." -ForegroundColor Red
         exit 1
     }
     Write-Host ("  Sources: " + (($csFiles | ForEach-Object { Split-Path $_ -Leaf }) -join ", ")) -ForegroundColor Gray
+    # Compiled beside the real exe and swapped in only on success: deleting TypoZen.exe
+    # first meant a failed compile left the tracked exe gone from the project.
     $exeFile = Join-Path $appDir "TypoZen.exe"
-    if (Test-Path $exeFile) { 
-        try { Remove-Item $exeFile -Force -ErrorAction SilentlyContinue } catch {} 
-    }
+    $finalExe = $exeFile
+    $exeFile = Join-Path $appDir "TypoZen.new.exe"
+    if (Test-Path $exeFile) { Remove-Item $exeFile -Force -ErrorAction SilentlyContinue }
 
     $wpfAssemblies = @(
         "System", "System.Core", "System.Drawing", "System.Windows.Forms",
@@ -236,6 +252,7 @@ if (-not $compiled) {
             Write-Host "[ERROR] Compiler reported success but produced no exe." -ForegroundColor Red
             exit 1
         }
+        Move-Item $exeFile $finalExe -Force
         Write-Host "Compilation successful!" -ForegroundColor Green
         $compiled = $true
     } catch {

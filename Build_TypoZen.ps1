@@ -209,7 +209,7 @@ if (-not $compiled) {
 if (-not $compiled) {
     Write-Host "Using .NET PowerShell Compiler..." -ForegroundColor Gray
     # Separate .cs files (partials + EpubReader). Compile as files, not one concatenated
-    # string — joining sources puts a second file's `using` inside the first namespace.
+    # string -- joining sources puts a second file's `using` inside the first namespace.
     $csFiles = @(Get-ChildItem (Join-Path $appDir "*.cs") -File | Sort-Object Name | ForEach-Object { $_.FullName })
     if ($csFiles.Count -eq 0) {
         Write-Host "[ERROR] No .cs files found to compile." -ForegroundColor Red
