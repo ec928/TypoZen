@@ -33,15 +33,69 @@ namespace TypoZen
         private static string _currentWav;
         private static readonly object _sapiGate = new object();
 
+        // HDMI (and some USB / Bluetooth) outputs sleep after a few seconds of silence and
+        // drop the first second or so of the next sound while they re-lock. Measured on
+        // 2026-09-19: plays 32 s apart were silent though TypoZen played every sample
+        // (debug.log: opened, 716 ms of audio, ended), plays 3-5 s apart were heard. So a
+        // play that follows a quiet spell starts with a second of silence for the output to
+        // wake up in; plays close together get none and start at once.
+        private const int WakeSilenceMs = 1000;
+        private static readonly TimeSpan QuietAfter = TimeSpan.FromSeconds(8);
+        private static DateTime _lastSound = DateTime.MinValue;
+        private static bool _sounding;
+
+        private static void SoundStopped()
+        {
+            if (_sounding) _lastSound = DateTime.UtcNow;
+            _sounding = false;
+        }
+
+        /// <summary>
+        /// Put `ms` of silence in front of a PCM wav, in place. False (file untouched) for
+        /// anything that is not plain PCM -- silence there is not a run of zero bytes.
+        /// </summary>
+        private static bool PadLeadingSilence(string path, int ms)
+        {
+            byte[] b = File.ReadAllBytes(path);
+            if (b.Length < 44 || b[0] != 'R' || b[1] != 'I' || b[2] != 'F' || b[3] != 'F') return false;
+            int pos = 12, fmtAt = -1, dataAt = -1;
+            while (pos + 8 <= b.Length)
+            {
+                string id = System.Text.Encoding.ASCII.GetString(b, pos, 4);
+                int size = BitConverter.ToInt32(b, pos + 4);
+                if (id == "fmt ") fmtAt = pos + 8;
+                if (id == "data") { dataAt = pos; break; }
+                pos += 8 + size + (size & 1);
+            }
+            if (fmtAt < 0 || dataAt < 0) return false;
+            short format = BitConverter.ToInt16(b, fmtAt);
+            int rate = BitConverter.ToInt32(b, fmtAt + 4);
+            short align = BitConverter.ToInt16(b, fmtAt + 12);
+            short bits = BitConverter.ToInt16(b, fmtAt + 14);
+            if (format != 1 || rate <= 0 || align <= 0) return false;
+            int pad = (int)((long)rate * ms / 1000) * align;
+            byte fill = bits == 8 ? (byte)0x80 : (byte)0;   // 8-bit PCM is unsigned
+            int payload = dataAt + 8;
+            var outBytes = new byte[b.Length + pad];
+            Buffer.BlockCopy(b, 0, outBytes, 0, payload);
+            for (int i = 0; i < pad; i++) outBytes[payload + i] = fill;
+            Buffer.BlockCopy(b, payload, outBytes, payload + pad, b.Length - payload);
+            BitConverter.GetBytes(BitConverter.ToInt32(b, dataAt + 4) + pad).CopyTo(outBytes, dataAt + 4);
+            BitConverter.GetBytes(outBytes.Length - 8).CopyTo(outBytes, 4);
+            File.WriteAllBytes(path, outBytes);
+            return true;
+        }
+
         static TypoZen_TTS()
         {
             _winrtSynth = new Windows.Media.SpeechSynthesis.SpeechSynthesizer();
             _sapiSynth = new System.Speech.Synthesis.SpeechSynthesizer();
             _player = new System.Windows.Media.MediaPlayer();
-            _player.MediaOpened += (s, e) => Note("opened, " + DurationText() + ", playing");
-            _player.MediaEnded += (s, e) => { Note("ended"); Finish(); };
+            _player.MediaOpened += (s, e) => { _sounding = true; Note("opened, " + DurationText() + ", playing"); };
+            _player.MediaEnded += (s, e) => { SoundStopped(); Note("ended"); Finish(); };
             _player.MediaFailed += (s, e) =>
             {
+                SoundStopped();
                 Note("player failed: " + (e.ErrorException != null ? e.ErrorException.Message : "unknown"));
                 Finish();
             };
@@ -172,6 +226,14 @@ namespace TypoZen
                     Finish();
                     return;
                 }
+                if (DateTime.UtcNow - _lastSound > QuietAfter)
+                {
+                    bool padded = false;
+                    try { padded = PadLeadingSilence(wav, WakeSilenceMs); } catch { }
+                    Note("play #" + gen + (padded
+                        ? " after a quiet spell: " + WakeSilenceMs + " ms of silence first, for the output to wake"
+                        : " after a quiet spell, but not plain PCM: played as is"));
+                }
                 _currentWav = wav;
                 _player.Open(new Uri(wav));
                 _player.Play();
@@ -197,6 +259,7 @@ namespace TypoZen
         {
             // Also retires a play still synthesising, so it cannot start after Stop.
             _generation++;
+            SoundStopped();
             _player.Stop();
             _player.Close();
         }
