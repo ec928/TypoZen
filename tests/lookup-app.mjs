@@ -28,7 +28,9 @@ const ask = (word) => new Promise((resolve) => {
         const hint = body.querySelector('.selpop-hint');
         if (def || hint || performance.now() - t0 > 3000) {
             const syn = body.querySelector('.selpop-syn');
+            const via = body.querySelector('.selpop-via');
             resolve({
+                via: via ? via.textContent.replace(/^\s*→\s*/, '') : '',
                 def: def ? def.textContent : '',
                 hint: hint ? hint.textContent : '',
                 syn: syn ? syn.textContent : '',
@@ -64,6 +66,10 @@ try {
     assert(/^move fast/.test(ran.def), 'ran: an irregular form answers with its base word');
     assert(ran.syn.length > 0, 'and with its synonyms');
     assert(!/^@/.test(ran.def), 'the redirect marker never reaches the reader');
+    assert(ran.via === 'run', 'and the title says the answer is for "run"');
+    assert(run.via === '', 'a word answered as itself says nothing extra');
+    const comp = await app.eval(ask, 'compositing');
+    assert(comp.via === 'composite', 'compositing: answered as "composite", and says so');
 
     const mice = await app.eval(ask, 'mice');
     assert(/rodent|mouse/i.test(mice.def), 'mice: finds mouse');

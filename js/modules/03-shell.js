@@ -1004,9 +1004,9 @@
                     if (isFinite(resumeAt) && resumeAt > 0) scheduleResumeAtBlock(resumeAt);
                 }
                 else if (msg.startsWith("definition:")) {
-                    // "definition:<installed 0|1>	<word>	<text>	<synonyms>"
+                    // "definition:<installed 0|1>	<word>	<text>	<synonyms>	<answered as>"
                     const parts = msg.substring(11).split('	');
-                    try { showDefinition(parts[1] || '', parts[2] || '', parts[0] === '1', parts[3] || ''); }
+                    try { showDefinition(parts[1] || '', parts[2] || '', parts[0] === '1', parts[3] || '', parts[4] || ''); }
                     catch (eDf) {}
                 }
                 else if (msg.startsWith("spell_hits:")) {

@@ -1750,6 +1750,7 @@
             padding: 0 6px 0 0; margin: 0;
         }
         .selpop-back:hover { color: var(--tx, #F4F4F5); }
+        .selpop-via { font-weight: 400; color: var(--tx-muted, #A1A1AA); }
         /* Senses as a numbered list and synonym groups one to a line: a hanging number
            (or dot) in a narrow gutter, text aligned beside it, and 2px between entries.
            Enough to tell one sense from the next without spending a line on spacing. */

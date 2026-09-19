@@ -2275,7 +2275,7 @@
         }
 
         /** Render whatever the host found, or say plainly that there is nothing to look in. */
-        function showDefinition(word, definition, installed, synonyms) {
+        function showDefinition(word, definition, installed, synonyms, answeredAs) {
             const body = document.getElementById('selPopBody');
             if (!body) return;
             body.innerHTML = '';
@@ -2294,6 +2294,16 @@
                 head.appendChild(back);
             }
             head.appendChild(document.createTextNode(word));
+            if (answeredAs && definition) {
+                // The dictionary had no entry for the word itself and answered for a
+                // shorter form ("compositing" -> "composite") or an irregular form's base
+                // ("ran" -> "run"). Said, so a nearby word's meaning is not read as this one's.
+                const via = document.createElement('span');
+                via.className = 'selpop-via';
+                via.textContent = ' → ' + answeredAs;
+                via.title = 'No entry for "' + word + '"; showing "' + answeredAs + '"';
+                head.appendChild(via);
+            }
             body.appendChild(head);
 
             /* Definition, then synonyms, then where else the word appears. One answer, in
