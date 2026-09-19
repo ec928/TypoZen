@@ -2313,7 +2313,12 @@
                 const speak = document.createElement('button');
                 speak.type = 'button';
                 speak.className = 'selpop-speak';
-                speak.textContent = '▶';
+                // A speaker, the dictionary convention for "hear this word"; a media play
+                // triangle read as "play something". Inline SVG like the read-aloud icon.
+                speak.innerHTML = '<svg class="tts-icon" viewBox="0 0 16 16" aria-hidden="true">' +
+                    '<path d="M2.5 6h2.2L8 3.2v9.6L4.7 10H2.5z" fill="currentColor"/>' +
+                    '<path d="M10.3 6a2.8 2.8 0 0 1 0 4M12.2 4.2a5.4 5.4 0 0 1 0 7.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' +
+                    '</svg>';
                 speak.title = 'Pronounce "' + word + '"';
                 speak.setAttribute('aria-label', 'Pronounce ' + word);
                 speak.addEventListener('click', function () {

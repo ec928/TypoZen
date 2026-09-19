@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.68";
+        internal const string AppVersion = "0.2.69";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1498,6 +1498,7 @@ namespace TypoZen
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
             BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
             BindClick("btnReadAloud", (s, e) => SendMsg("cmd:read_aloud_doc"));
+            ShowReadAloudState(false);
 
             BindClick("mSidebarOutline", (s, e) => SendMsg("cmd:show_outline"));
             BindClick("mSidebarSearch", (s, e) => SendMsg("cmd:show_search"));
@@ -6028,20 +6029,11 @@ namespace TypoZen
                 var dict = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
                 string text = dict.ContainsKey("text") ? dict["text"]?.ToString() : "";
                 
-                var btn = this.FindName("btnReadAloud") as System.Windows.Controls.Button;
-                if (btn != null) 
-                {
-                    btn.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, System.Windows.SystemColors.MenuHighlightBrushKey);
-                    btn.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, System.Windows.SystemColors.HighlightTextBrushKey);
-                }
+                ShowReadAloudState(true);
 
                 TypoZen_TTS.OnPlaybackFinished = () => {
                     Dispatcher.BeginInvoke(new Action(() => {
-                        if (btn != null) 
-                        {
-                            btn.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
-                            btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
-                        }
+                        ShowReadAloudState(false);
                         // A message the page's dispatcher handles. This was
                         // "eval:nativeTTSFinished()", which nothing handles: the page never
                         // heard playback end, so its Play/Stop stayed on Stop and the next
@@ -6080,12 +6072,7 @@ namespace TypoZen
             }
             else if (msg == "host_tts_stop")
             {
-                var btn = this.FindName("btnReadAloud") as System.Windows.Controls.Button;
-                if (btn != null) 
-                {
-                    btn.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
-                    btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
-                }
+                ShowReadAloudState(false);
                 TypoZen_TTS.Stop();
                 return;
             }
@@ -8962,6 +8949,42 @@ namespace TypoZen
         private bool _autosave;
         private DispatcherTimer _autosaveTimer;
         private const int AutosaveIdleMs = 2000;
+
+        /// <summary>
+        /// The toolbar's read-aloud button in its two states. Idle: an "A" with sound waves,
+        /// the read-aloud convention (Edge, Windows) -- it was Play, which reads as "play
+        /// media". Reading: a stop square on the highlight, showing what a press will do.
+        /// The A-with-waves glyph is only in Segoe Fluent Icons (Windows 11); Segoe MDL2
+        /// Assets (Windows 10) gets the speaker with waves instead.
+        /// </summary>
+        private void ShowReadAloudState(bool reading)
+        {
+            var btn = this.FindName("btnReadAloud") as System.Windows.Controls.Button;
+            if (btn == null) return;
+            if (_iconFont == null)
+            {
+                _iconFont = "Segoe MDL2 Assets";
+                foreach (var f in Fonts.SystemFontFamilies)
+                    if (f.Source == "Segoe Fluent Icons") { _iconFont = f.Source; break; }
+            }
+            bool fluent = _iconFont == "Segoe Fluent Icons";
+            btn.FontFamily = new FontFamily(_iconFont);
+            if (reading)
+            {
+                btn.Content = "";                                   // StopSolid
+                btn.ToolTip = "Stop reading";
+                btn.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, System.Windows.SystemColors.MenuHighlightBrushKey);
+                btn.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, System.Windows.SystemColors.HighlightTextBrushKey);
+            }
+            else
+            {
+                btn.Content = fluent ? "" : "";               // ReadAloud / Volume
+                btn.ToolTip = "Read aloud (the selection, or the page)";
+                btn.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
+                btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
+            }
+        }
+        private string _iconFont;
 
         private string _ttsVoiceId = "";
         private double _ttsSpeed = 1.0;

@@ -1348,7 +1348,11 @@
         #selPop {
             position: fixed;
             z-index: 40;
-            max-width: 380px;
+            /* As wide as its row of buttons, and no wider: the body below takes that width
+               rather than setting it (width 0, min-width 100%). A fixed max-width of 380px
+               was narrower than the row once Read aloud made it five buttons, and Add Link
+               hung out past the edge. */
+            width: max-content;
             /* Opaque, and the reason is worth writing down: --surface is a translucent
                wash -- rgba(255,255,255,0.05) on a dark theme -- which is right for the
                sidebar, because that sits on the page background and the wash lifts it.
@@ -1728,6 +1732,9 @@
             max-height: 240px; overflow-y: auto;
             font-size: var(--ui-fs-dense); line-height: 1.5;
             color: var(--tx-muted, #A1A1AA);
+            /* Takes the popover's width (set by the button row) instead of widening it: a
+               long definition wraps rather than stretching the popover across the page. */
+            width: 0; min-width: 100%; box-sizing: border-box;
         }
         .selpop-body[hidden] { display: none; }
         .selpop-word { color: var(--tx, #F4F4F5); font-weight: 600; font-size: var(--ui-fs); }
@@ -1751,12 +1758,15 @@
         }
         .selpop-back:hover { color: var(--tx, #F4F4F5); }
         .selpop-via { font-weight: 400; color: var(--tx-muted, #A1A1AA); }
+        /* Read aloud / Stop in the selection popover: icon sized to the label's cap height. */
+        .tts-icon { width: 1.05em; height: 1.05em; vertical-align: -0.16em; margin-right: 0.3em; }
         /* Pronounce: a small play glyph after the word, quiet until pointed at. */
         .selpop-speak {
             background: none; border: 0; cursor: pointer; padding: 0 4px; margin-left: 4px;
-            font: inherit; font-size: 0.75em; vertical-align: 1px;
+            font: inherit;
             color: var(--tx-muted, #A1A1AA);
         }
+        .selpop-speak .tts-icon { margin-right: 0; }
         .selpop-speak:hover { color: var(--tx, #F4F4F5); }
         .selpop-speak:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 2px; }
         /* Segoe UI carries the IPA symbols (turned r, schwa, stress marks) that some UI
