@@ -24,7 +24,7 @@ function info(msg) { console.log('  ..   ' + msg); }
 
 /** In the page: put the cursor inside `word` in the first block matching `blockRe`
  *  (visible blocks only when `visibleOnly`), press Read aloud, return what would be read. */
-const readFrom = async (a) => {
+const readFrom = async function (a) {
     const { blockRe, word, visibleOnly, none, keepCaret } = a;
     const sel = window.getSelection();
     if (!keepCaret) sel.removeAllRanges();
@@ -45,9 +45,19 @@ const readFrom = async (a) => {
     }
     const wv = window.chrome.webview, real = wv.postMessage, sent = [];
     wv.postMessage = (m) => { sent.push(String(m)); };
-    try { speakSelection(); stopReading(); } finally { wv.postMessage = real; }
+    let queued = [];
+    try {
+        speakSelection();
+        // Reading is sent a block at a time: the first block goes now -- or after the page
+        // holding it has been turned to, which is why this waits -- and the rest queue up
+        // behind it, each sent as the one before finishes.
+        for (let i = 0; i < 40 && !sent.some(m => m.startsWith('host_tts_play:')); i++) await new Promise(r => setTimeout(r, 50));
+        queued = (typeof _ttsChunks !== 'undefined' ? _ttsChunks : []).map(c => c.text || '');
+        stopReading();
+    } finally { wv.postMessage = real; }
     const play = sent.find(m => m.startsWith('host_tts_play:'));
-    return { text: play ? JSON.parse(play.substring(14)).text : '' };
+    const first = play ? JSON.parse(play.substring(14)).text : (queued.length ? queued[0] : '');
+    return { text: first, queued: queued, all: [first].concat(queued).join('\n\n') };
 };
 
 // textContent, not innerText: a book's CSS can uppercase a heading on screen, and the
@@ -67,11 +77,11 @@ try {
     let r = await app.eval(readFrom, { blockRe: 'scroll marker row 5\\b', word: 'marker' });
     info(JSON.stringify((r.text || r.error || '').slice(0, 70)));
     assert(/^marker row 5/.test(r.text || ''), 'starts at the word the cursor is in, from its first letter');
-    assert(/Line 6 of 4582/.test(r.text || '') && !/Line 4 of 4582/.test(r.text || ''), 'carries on past it, and nothing before it is read');
-    assert((r.text || '').length > 100000, 'and to the end of the document, not just the part on screen (' + (r.text || '').length + ' chars)');
+    assert(/Line 6 of 4582/.test(r.all || '') && !/Line 4 of 4582/.test(r.all || ''), 'carries on past it, and nothing before it is read');
+    assert((r.all || '').length > 100000, 'and to the end of the document, not just the part on screen (' + (r.all || '').length + ' chars over ' + (r.queued.length + 1) + ' blocks)');
 
     r = await app.eval(readFrom, { none: true });
-    assert(/Section 1 of 140/.test((r.text || '').slice(0, 200)), 'no cursor in the text: from the top, as before');
+    assert(/Section 1 of 140/.test((r.all || '').slice(0, 200)), 'no cursor in the text: from the top, as before');
 
     console.log('\n=== Source mode ===');
     await app.eval(async () => { handleCommand('view_set:mode:source'); await new Promise(r => setTimeout(r, 800)); });
@@ -116,15 +126,33 @@ try {
         const r = await app.eval(readFrom, { blockRe: esc(second.slice(0, 40)), word, visibleOnly: true });
         info(JSON.stringify((r.text || r.error || '').slice(0, 70)));
         assert((r.text || '').startsWith(word), 'starts at the word the cursor is in (' + word + ')');
-        assert(!(r.text || '').includes(blocks[0].slice(0, 30)), 'the paragraph above it on the page is not read');
+        assert(!(r.all || '').includes(blocks[0].slice(0, 30)), 'the paragraph above it on the page is not read');
 
-        // Turn the page with the cursor left behind: this page from its top, as before.
-        await app.eval(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true })); await new Promise(r => setTimeout(r, 500)); });
+        // Turn pages, with the cursor left behind, until the cursor is genuinely off the
+        // page -- readingCaret() is what decides, and reading now turns pages itself, so
+        // one PageDown and a fixed wait is not enough to be sure.
+        const gone = await app.eval(async () => {
+            for (let i = 0; i < 10; i++) {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }));
+                await new Promise(r => setTimeout(r, 450));
+                if (!readingCaret()) return true;
+            }
+            return !readingCaret();
+        });
+        info('cursor now off the page: ' + gone);
         const top = await app.eval(firstVisibleBlockText);
         const r2 = await app.eval(readFrom, { none: true, keepCaret: true });
         info('next page starts: ' + JSON.stringify(top.slice(0, 40)));
-        assert(top && (r2.text || '').startsWith(top.slice(0, 30)) && !(r2.text || '').startsWith(word),
-            'a cursor left on the previous page: this page from its top, as before');
+        info('read aloud sends:  ' + JSON.stringify((r2.text || '').slice(0, 40)));
+        info('at that moment:    ' + JSON.stringify(await app.eval(() => {
+            const c = readingCaret();
+            const editor = document.getElementById('editor'), h = editor.getBoundingClientRect();
+            const first = [...editor.querySelectorAll('.block')].find(b => { const r = b.getBoundingClientRect();
+                return r.right > h.left && r.left < h.right && r.bottom > h.top && r.top < h.bottom && r.bottom > 0 && r.top < window.innerHeight; });
+            return { caretSeenAsVisible: !!c, caretText: c ? c.text.slice(0, 25) : null, firstVisible: first ? first.textContent.trim().slice(0, 25) : null };
+        })));
+        assert(gone && top && !(r2.text || '').startsWith(word) && (r2.all || '').includes(top.slice(0, 25)),
+            'a cursor left on a page turned away from: this page, not the cursor\'s');
     } else {
         assert(false, 'a page with at least two paragraphs to test with');
     }
@@ -136,7 +164,7 @@ try {
     const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const r3 = await app.eval(readFrom, { blockRe: esc(para.slice(0, 40)), word: w, visibleOnly: true });
     assert((r3.text || '').startsWith(w), 'starts at the word the cursor is in (' + w + ')');
-    assert((r3.text || '').length > para.length, 'and carries on past that paragraph');
+    assert((r3.all || '').length > para.length, 'and carries on past that paragraph');
 
     // Leave the cursor there and scroll well away: it no longer counts.
     const away = await app.eval(async () => {

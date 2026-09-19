@@ -61,9 +61,72 @@ console.log('--- the split did not duplicate or shadow anything ---');
         for (const m of text.matchAll(/^\s{0,12}function\s+([A-Za-z_$][\w$]*)\s*\(/gm)) {
             (fnHome[m[1]] = fnHome[m[1]] || []).push(mod);
         }
-        // Eight spaces of indent is this codebase's top level inside its one wrapper.
-        for (const m of text.matchAll(/^ {8}(?:let|const)\s+([A-Za-z_$][\w$]*)\s*[=;]/gm)) {
-            (letHome[m[1]] = letHome[m[1]] || []).push(mod);
+        // Nesting, not indentation. Eight spaces used to stand in for "top level inside
+        // the one wrapper", which is true of the modules written in that style and false
+        // of one written at column 0: a `const` inside an if/else inside a function sits
+        // at eight spaces there, and was reported as a duplicate global it is not.
+        // Depth 0 (a module at column 0) or 1 (inside a wrapper) is top level; deeper is
+        // somebody's local.
+        // A module's own top level is the depth its functions are declared at: 1 for the
+        // modules inside a wrapper, 0 for one written at column 0.
+        let topDepth = null, scanDepth = 0, scanComment = false;
+        const strip = (line, state) => {
+            let out = '', i = 0;
+            while (i < line.length) {
+                if (state.comment) {
+                    const end = line.indexOf('*/', i);
+                    if (end < 0) { i = line.length; break; }
+                    state.comment = false; i = end + 2; continue;
+                }
+                const two = line.substr(i, 2);
+                if (two === '/*') { state.comment = true; i += 2; continue; }
+                if (two === '//') break;
+                const c = line[i];
+                if (c === '"' || c === "'" || c === '`') {
+                    let j = i + 1;
+                    while (j < line.length && !(line[j] === c && line[j - 1] !== '\\')) j++;
+                    i = j + 1; continue;
+                }
+                out += c; i++;
+            }
+            return out;
+        };
+        {
+            const st = { comment: false };
+            for (const line of text.split('\n')) {
+                const code = strip(line, st);
+                if (/^\s*function\s+[A-Za-z_$][\w$]*\s*\(/.test(code) && (topDepth === null || scanDepth < topDepth)) topDepth = scanDepth;
+                for (const ch of code) { if (ch === '{') scanDepth++; else if (ch === '}') scanDepth--; }
+            }
+            if (topDepth === null) topDepth = 1;
+        }
+
+        let depth = 0, inBlockComment = false;
+        for (const line of text.split('\n')) {
+            const code = (() => {
+                let out = '', i = 0;
+                while (i < line.length) {
+                    if (inBlockComment) {
+                        const end = line.indexOf('*/', i);
+                        if (end < 0) { i = line.length; break; }
+                        inBlockComment = false; i = end + 2; continue;
+                    }
+                    const two = line.substr(i, 2);
+                    if (two === '/*') { inBlockComment = true; i += 2; continue; }
+                    if (two === '//') break;
+                    const c = line[i];
+                    if (c === '"' || c === "'" || c === '`') {        // skip a string
+                        let j = i + 1;
+                        while (j < line.length && !(line[j] === c && line[j - 1] !== '\\')) j++;
+                        i = j + 1; continue;
+                    }
+                    out += c; i++;
+                }
+                return out;
+            })();
+            const m = /^\s*(?:let|const)\s+([A-Za-z_$][\w$]*)\s*[=;]/.exec(code);
+            if (m && depth === topDepth) (letHome[m[1]] = letHome[m[1]] || []).push(mod);
+            for (const ch of code) { if (ch === '{') depth++; else if (ch === '}') depth--; }
         }
     }
 

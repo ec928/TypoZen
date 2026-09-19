@@ -128,8 +128,18 @@ function speakSelection() {
             // We gather what's in the DOM. For true continuous EPUB playback across chapters,
             // deeper integration with epub.js is needed, but this handles the loaded section.
             const blocks = Array.from(editor.querySelectorAll('.block'));
-            let at = caret ? blocks.indexOf(caret.block) : 0;
-            if (at < 0) at = 0;
+            let at = caret ? blocks.indexOf(caret.block) : -1;
+            if (at < 0) {
+                // No cursor on screen: the top of the page being looked at, not the top of
+                // the whole loaded chapter -- which, after turning a page, would go back.
+                const host = editor.getBoundingClientRect();
+                at = blocks.findIndex(b => {
+                    const r = b.getBoundingClientRect();
+                    return r.right > host.left && r.left < host.right && r.bottom > host.top && r.top < host.bottom
+                        && r.bottom > 0 && r.top < window.innerHeight;
+                });
+                if (at < 0) at = 0;
+            }
             
             for (let i = at; i < blocks.length; i++) {
                 let text = (i === at && caret) ? caret.text : blocks[i].innerText;
@@ -146,6 +156,17 @@ function speakSelection() {
     if (chunks.length > 0) {
         startReadingChunks(chunks);
     }
+}
+
+/**
+ * Speak one piece of text: the entry point for anything outside this module -- the
+ * dictionary's pronounce button, and tests. It disappeared when reading was split into
+ * chunks, and with it the speaker beside the word in Look up (`02-layout.js` only draws
+ * that button when this function exists).
+ */
+function startReading(text) {
+    if (!text) return;
+    startReadingChunks([{ text: text }]);
 }
 
 function startReadingChunks(chunks) {
