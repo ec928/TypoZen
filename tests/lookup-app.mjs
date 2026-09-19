@@ -97,6 +97,25 @@ try {
 } finally {
     await app.close();
 }
+
+// Synonyms belong to the word that was defined. Wiktionary defines "compositing" and has
+// no synonyms for it; stripping -ing reached "composite", whose synonym is the daisy
+// family, and the popover showed both as one answer.
+fs.writeFileSync(path.join(testDict, 'dictionary.tsv'),
+    'composite\tTEST COMPOSITE\ncompositing\tTEST IMAGE COMPOSITING\n');
+fs.writeFileSync(path.join(testDict, 'thesaurus.tsv'), 'composite\tasteracean\n');
+fs.writeFileSync(profileFile('window_state.json'), '{"dictionary":"Test"}');
+app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 6000 });
+try {
+    const c = await app.eval(ask, 'compositing');
+    assert(/TEST IMAGE COMPOSITING/.test(c.def), 'compositing: its own definition');
+    assert(!/asteracean/.test(c.syn), 'and not the synonyms of composite');
+} finally {
+    await app.close();
+}
+fs.writeFileSync(path.join(testDict, 'dictionary.tsv'),
+    'bank\tTEST BANK\nrun\tTEST SENSE ONE | TEST SENSE TWO\n');
+fs.rmSync(path.join(testDict, 'thesaurus.tsv'));
 const saved = fs.readFileSync(profileFile('window_state.json'), 'utf8');
 assert(/"dictionary"\s*:\s*"Test"/.test(saved), 'the choice survives the app writing its settings on exit');
 

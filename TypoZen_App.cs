@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.60";
+        internal const string AppVersion = "0.2.61";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -3291,6 +3291,9 @@ namespace TypoZen
             // no suffix rule can reduce, pointing at the word it is a form of. The
             // thesaurus has no such lines and is asked about the target instead.
             string lemma = null;
+            // The word the definition actually belongs to -- the selection itself, one of
+            // its stems, or a redirect target. Synonyms must come from the same word.
+            string answered = null;
             if (_dictionary != null && !string.IsNullOrEmpty(word))
             {
                 // A reader selects the word as it appears on the page, which is inflected
@@ -3312,8 +3315,9 @@ namespace TypoZen
                             }
                         }
                         if (lemma == null) continue;
+                        answered = lemma;
                     }
-                    else def = found;
+                    else { def = found; answered = key; }
                     break;
                 }
             }
@@ -3322,8 +3326,12 @@ namespace TypoZen
             string syn = "";
             if (_thesaurus != null && !string.IsNullOrEmpty(word))
             {
+                // Only the word that was defined. Trying further stems here paired
+                // Wiktionary's "compositing" (image construction) with the synonyms of
+                // "composite" (asteracean, the daisy family). With no definition at all,
+                // synonyms alone are still worth finding, so the stems are tried then.
                 bool hit = false;
-                foreach (string key in lemma != null ? new[] { lemma } : WordAndStems(word))
+                foreach (string key in answered != null ? new[] { answered } : WordAndStems(word))
                 {
                     if (_thesaurus.TryGetValue(key, out syn)) { hit = true; break; }
                 }
