@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.64";
+        internal const string AppVersion = "0.2.65";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -6042,7 +6042,11 @@ namespace TypoZen
                             btn.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
                             btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
                         }
-                        SendMsg("eval:nativeTTSFinished()");
+                        // A message the page's dispatcher handles. This was
+                        // "eval:nativeTTSFinished()", which nothing handles: the page never
+                        // heard playback end, so its Play/Stop stayed on Stop and the next
+                        // toolbar press stopped instead of playing.
+                        SendMsg("tts_finished");
                     }));
                 };
 

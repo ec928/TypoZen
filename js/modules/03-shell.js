@@ -1031,6 +1031,11 @@
                     const line = parseInt(msg.substring(19), 10);
                     if (isFinite(line) && line >= 1) applyExternalGotoLine(line);
                 }
+                else if (msg == "tts_finished") {
+                    // Native speech reached the end: put Play/Stop back to Play, the same
+                    // state the toolbar button is given by the host.
+                    try { if (typeof nativeTTSFinished === 'function') nativeTTSFinished(); } catch (eT) {}
+                }
                 else if (msg == "stats_refresh") {
                     // Coming back to a document tab from a PDF or an image. The host
                     // blanked the counts for the native surface and cannot refill them
