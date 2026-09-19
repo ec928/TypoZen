@@ -2309,14 +2309,30 @@
                 // and carries all of them: the popover sits beside a sentence, so it shows
                 // three and keeps the rest one click away. A dictionary of someone's own
                 // without the separator is one sense and shows whole, as it always did.
+                //
+                // One numbered line per sense. Joined into a paragraph with "; " they could
+                // not be told apart -- a gloss has semicolons of its own -- and "more" turned
+                // that into a wall of text.
                 const senses = String(definition).split(' | ');
-                const d = document.createElement('div');
-                d.className = 'selpop-def';
-                d.textContent = senses.slice(0, SELPOP_SENSES).join('; ');
-                body.appendChild(d);
-                addSelPopMore(body, d, senses.length - SELPOP_SENSES, 'meaning', function () {
-                    d.textContent = senses.join('; ');
-                });
+                if (senses.length === 1) {
+                    const d = document.createElement('div');
+                    d.className = 'selpop-def';
+                    d.textContent = senses[0];
+                    body.appendChild(d);
+                } else {
+                    const d = document.createElement('ol');
+                    d.className = 'selpop-def selpop-senses';
+                    const addSense = function (s) {
+                        const li = document.createElement('li');
+                        li.textContent = s;
+                        d.appendChild(li);
+                    };
+                    senses.slice(0, SELPOP_SENSES).forEach(addSense);
+                    body.appendChild(d);
+                    addSelPopMore(body, d, senses.length - SELPOP_SENSES, 'meaning', function () {
+                        senses.slice(SELPOP_SENSES).forEach(addSense);
+                    });
+                }
             } else {
                 const h = document.createElement('div');
                 h.className = 'selpop-hint';
@@ -2343,28 +2359,31 @@
                 // One element per word, not one blob of text: a synonym you cannot look up
                 // is a dead end, and following one is the whole point of a thesaurus.
                 // Senses are separated by "; " and words within a sense by ", ".
-                const sy = document.createElement('div');
+                // One line per sense, for the same reason as the definitions: run together
+                // with " · " a dozen groups were one undivided block.
+                const sy = document.createElement('ul');
                 sy.className = 'selpop-def selpop-syn';
                 const groups = String(synonyms).split(';');
-                const addGroup = function (sense, si) {
-                    if (si) sy.appendChild(document.createTextNode(' · '));
-                    sense.split(',').forEach(function (w, wi) {
+                const addGroup = function (sense) {
+                    const li = document.createElement('li');
+                    sense.split(',').forEach(function (w) {
                         const t = w.trim();
                         if (!t) return;
-                        if (wi) sy.appendChild(document.createTextNode(', '));
+                        if (li.childNodes.length) li.appendChild(document.createTextNode(', '));
                         const b = document.createElement('button');
                         b.type = 'button';
                         b.className = 'selpop-synlink';
                         b.textContent = t;
                         b.setAttribute('data-word', t);
                         b.title = 'Look up ' + t;
-                        sy.appendChild(b);
+                        li.appendChild(b);
                     });
+                    if (li.childNodes.length) sy.appendChild(li);
                 };
                 groups.slice(0, SELPOP_SENSES).forEach(addGroup);
                 body.appendChild(sy);
                 addSelPopMore(body, sy, groups.length - SELPOP_SENSES, 'sense', function () {
-                    groups.slice(SELPOP_SENSES).forEach(function (g, i) { addGroup(g, i + SELPOP_SENSES); });
+                    groups.slice(SELPOP_SENSES).forEach(addGroup);
                 });
             } else if (installed) {
                 // Only worth saying when there is a thesaurus to have looked in. With

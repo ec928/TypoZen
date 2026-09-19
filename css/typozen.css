@@ -1750,8 +1750,25 @@
             padding: 0 6px 0 0; margin: 0;
         }
         .selpop-back:hover { color: var(--tx, #F4F4F5); }
+        /* Senses as a numbered list and synonym groups one to a line: a hanging number
+           (or dot) in a narrow gutter, text aligned beside it, and 2px between entries.
+           Enough to tell one sense from the next without spending a line on spacing. */
+        .selpop-senses, .selpop-syn { list-style: none; margin: 4px 0 0; padding: 0; }
+        .selpop-senses { counter-reset: sense; }
+        /* Wrapped lines sit tighter than the gap between entries, so an entry reads as
+           one unit even when it runs to two lines. */
+        .selpop-senses li, .selpop-syn li { position: relative; padding-left: 1.35em; line-height: 1.38; }
+        .selpop-senses li + li, .selpop-syn li + li { margin-top: 4px; }
+        .selpop-senses li { counter-increment: sense; }
+        .selpop-senses li::first-letter, div.selpop-def::first-letter { text-transform: uppercase; }
+        .selpop-senses li::before, .selpop-syn li::before {
+            position: absolute; left: 0; width: 0.9em; text-align: right;
+            color: var(--tx-muted, #A1A1AA); opacity: 0.8;
+        }
+        .selpop-senses li::before { content: counter(sense); font-variant-numeric: tabular-nums; }
+        .selpop-syn li::before { content: '\2022'; }
         .selpop-more {
-            display: block; margin-top: 3px; padding: 0;
+            display: block; margin-top: 3px; padding: 0 0 0 1.35em;
             background: none; border: 0; cursor: pointer;
             font: inherit; color: var(--tx-muted, #A1A1AA);
         }
