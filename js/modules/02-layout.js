@@ -2304,6 +2304,23 @@
                 via.title = 'No entry for "' + word + '"; showing "' + answeredAs + '"';
                 head.appendChild(via);
             }
+            // After the "-> run" note rather than between it and the word, which split
+            // "ran" from what it is a form of.
+            if (typeof startReading === 'function' && word) {
+                // Say it, with the voice and speed from File > Configure Voice. The word
+                // as selected ("ran"), not the entry it was answered from ("run"). Works
+                // with any dictionary, and for words none of them can transcribe.
+                const speak = document.createElement('button');
+                speak.type = 'button';
+                speak.className = 'selpop-speak';
+                speak.textContent = '▶';
+                speak.title = 'Pronounce "' + word + '"';
+                speak.setAttribute('aria-label', 'Pronounce ' + word);
+                speak.addEventListener('click', function () {
+                    try { startReading(word); } catch (e) {}
+                });
+                head.appendChild(speak);
+            }
             if (pronunciation && definition) {
                 // IPA, from dictionaries that have it (Wiktionary does; WordNet does not).
                 // Its own line under the word rather than beside it: "UK /…/ · US /…/" beside

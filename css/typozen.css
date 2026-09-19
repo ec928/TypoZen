@@ -1751,6 +1751,14 @@
         }
         .selpop-back:hover { color: var(--tx, #F4F4F5); }
         .selpop-via { font-weight: 400; color: var(--tx-muted, #A1A1AA); }
+        /* Pronounce: a small play glyph after the word, quiet until pointed at. */
+        .selpop-speak {
+            background: none; border: 0; cursor: pointer; padding: 0 4px; margin-left: 4px;
+            font: inherit; font-size: 0.75em; vertical-align: 1px;
+            color: var(--tx-muted, #A1A1AA);
+        }
+        .selpop-speak:hover { color: var(--tx, #F4F4F5); }
+        .selpop-speak:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 2px; }
         /* Segoe UI carries the IPA symbols (turned r, schwa, stress marks) that some UI
            fonts lack. */
         .selpop-say {

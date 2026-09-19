@@ -71,6 +71,21 @@ try {
     assert(ran.via === 'run', 'and the title says the answer is for "run"');
     assert(run.via === '', 'a word answered as itself says nothing extra');
     assert(run.say === '', 'the built-in dictionary has no pronunciations, and none is shown');
+    // Pronounce: the button sends the selected word to the native speech engine. The
+    // message is caught before it reaches the host, so the suite never plays sound.
+    const spoke = await app.eval(async () => {
+        const wv = window.chrome.webview, real = wv.postMessage, sent = [];
+        wv.postMessage = (m) => { sent.push(String(m)); };
+        try {
+            const b = document.querySelector('#selPopBody .selpop-speak');
+            if (!b) return { button: false, sent };
+            b.click();
+            return { button: true, sent };
+        } finally { wv.postMessage = real; try { stopReading(); } catch (e) {} }
+    });
+    assert(spoke.button, 'a pronounce button sits by the word');
+    assert(spoke.sent.some(m => m === 'host_tts_play:' + JSON.stringify({ text: 'ran' })),
+        'and speaks the word as selected ("ran"), not the entry it was answered from');
     const comp = await app.eval(ask, 'compositing');
     assert(comp.via === 'composite', 'compositing: answered as "composite", and says so');
 
