@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.59";
+        internal const string AppVersion = "0.2.60";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1454,6 +1454,18 @@ namespace TypoZen
             _mRecentMenu = FindElement("mRecentMenu") as MenuItem;
             LoadRecentFiles();
             RebuildRecentFilesMenu();
+            var dictMenu = FindElement("mDictionaryMenu") as MenuItem;
+            if (dictMenu != null)
+            {
+                RebuildDictionaryMenu();
+                // Rescanned whenever File opens -- not when Dictionary itself opens, because
+                // with one dictionary it is hidden and cannot be opened -- so a folder added
+                // while the app runs is offered. SubmenuOpened bubbles up from children,
+                // hence the source check.
+                var fileMenu = dictMenu.Parent as MenuItem;
+                if (fileMenu != null)
+                    fileMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == fileMenu) RebuildDictionaryMenu(); };
+            }
             Program.PerfMark("   xaml: recent files menu");
             BindClick("mSave", (s, e) => SaveFile());
             BindClick("mSaveAs", (s, e) => SaveFileAs());
@@ -3063,61 +3075,165 @@ namespace TypoZen
         // overrides the bundled one without touching the install. TSV rather than JSON
         // because a 40 MB JSON parse on first lookup would be felt. The bundled files are
         // sorted and read on disk rather than held in memory; see Lexicon.cs.
+        //
+        // More dictionaries can sit in the data folder, one folder each under
+        // dictionaries\ -- dictionaries\Wiktionary\dictionary.tsv, and a thesaurus.tsv if it
+        // has one. File > Dictionary lists whatever is there when it opens; nothing is
+        // hardcoded, so a folder someone adds is simply offered. The choice is saved with
+        // the other settings; "" is the built-in one and is the default.
         private Lexicon _dictionary;
-        private bool _dictionaryChecked;
         // WordNet is a thesaurus as well as a dictionary -- a synset is a set of words that
         // mean the same thing -- so the same converter writes both files from one pass, and
         // the same loader reads them. Separate rather than merged because a reader asking
         // "what does this mean" and one asking "what else could I say" are different
         // questions, and a popover answering both at once answers neither well.
         private Lexicon _thesaurus;
-        private bool _thesaurusChecked;
         private readonly object _lexiconLock = new object();
-        private Task _lexiconTask;
+        // What the user picked, and what _dictionary / _thesaurus currently hold. They differ
+        // for the moment between a switch and the load it starts; a lookup in that moment
+        // waits for the load instead of answering from the old dictionary.
+        private volatile string _dictionaryChoice = "";
+        private string _loadedChoice;                    // guarded by _lexiconLock
+
+        private string DictionariesDir() { return Path.Combine(CacheDir(), "dictionaries"); }
 
         /// <summary>
-        /// Index dictionary.tsv / thesaurus.tsv off the UI thread. First lookup waits if
-        /// this has not finished.
+        /// Index the chosen dictionary off the UI thread. First lookup waits if this has
+        /// not finished.
         /// </summary>
         private void StartLexiconLoad()
         {
-            if (_lexiconTask != null) return;
-            _lexiconTask = Task.Run(() =>
-            {
-                LoadDictionary();
-                LoadThesaurus();
-            });
+            // Read ahead of RestoreWindowState, which runs later in construction: loading
+            // the built-in dictionary first and then switching would index twice.
+            _dictionaryChoice = SavedDictionaryChoice();
+            Task.Run(() => LoadLexicons());
         }
 
-        private void EnsureLexiconLoaded()
-        {
-            Task t = _lexiconTask;
-            if (t != null)
-            {
-                try { t.Wait(); } catch { }
-            }
-            if (!_dictionaryChecked) LoadDictionary();
-            if (!_thesaurusChecked) LoadThesaurus();
-        }
+        private void EnsureLexiconLoaded() { LoadLexicons(); }
 
-        private void LoadDictionary()
+        private void LoadLexicons()
         {
             lock (_lexiconLock)
             {
-                if (_dictionaryChecked) return;
-                _dictionary = LoadLexicon("dictionary");
-                _dictionaryChecked = true;
+                string want = _dictionaryChoice ?? "";
+                if (_loadedChoice == want) return;
+                string dir = want.Length == 0 ? null : Path.Combine(DictionariesDir(), want);
+                if (dir != null && Directory.Exists(dir))
+                {
+                    // All of that dictionary, synonyms included: a folder without a
+                    // thesaurus has no synonyms, rather than borrowing the built-in ones.
+                    _dictionary = OpenLexiconIn(dir, "dictionary");
+                    _thesaurus = OpenLexiconIn(dir, "thesaurus");
+                }
+                else
+                {
+                    // Chosen folder gone (deleted, renamed): the built-in one answers.
+                    _dictionary = LoadLexicon("dictionary");
+                    _thesaurus = LoadLexicon("thesaurus");
+                }
+                _loadedChoice = want;
             }
         }
 
-        private void LoadThesaurus()
+        private static Lexicon OpenLexiconIn(string dir, string stem)
         {
-            lock (_lexiconLock)
+            foreach (string name in new[] { stem + ".tsv", stem + ".json" })
             {
-                if (_thesaurusChecked) return;
-                _thesaurus = LoadLexicon("thesaurus");
-                _thesaurusChecked = true;
+                Lexicon lex = Lexicon.Open(Path.Combine(dir, name));
+                if (lex != null) return lex;
             }
+            return null;
+        }
+
+        /// <summary>(id, menu label) for every dictionary present; the built-in one first.</summary>
+        private List<KeyValuePair<string, string>> FindDictionaries()
+        {
+            var found = new List<KeyValuePair<string, string>>();
+            found.Add(new KeyValuePair<string, string>("", "Open English WordNet (built in)"));
+            try
+            {
+                string root = DictionariesDir();
+                if (Directory.Exists(root))
+                {
+                    string[] dirs = Directory.GetDirectories(root);
+                    Array.Sort(dirs, StringComparer.OrdinalIgnoreCase);
+                    foreach (string d in dirs)
+                    {
+                        if (File.Exists(Path.Combine(d, "dictionary.tsv")) || File.Exists(Path.Combine(d, "dictionary.json")))
+                        {
+                            string name = Path.GetFileName(d);
+                            found.Add(new KeyValuePair<string, string>(name, name));
+                        }
+                    }
+                }
+            }
+            catch { }
+            return found;
+        }
+
+        private void RebuildDictionaryMenu()
+        {
+            var menu = FindElement("mDictionaryMenu") as MenuItem;
+            if (menu == null) return;
+            menu.Items.Clear();
+            var found = FindDictionaries();
+            // One dictionary is no choice, so no menu.
+            menu.Visibility = found.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+            // A saved choice whose folder has gone shows the built-in one ticked, because
+            // that is what answers.
+            string current = "";
+            foreach (var f in found) if (f.Key == _dictionaryChoice) current = f.Key;
+            foreach (var f in found)
+            {
+                string id = f.Key;
+                // Underscores are access keys in a WPF header; a folder name is not.
+                var mi = new MenuItem { Header = f.Value.Replace("_", "__"), IsCheckable = true, IsChecked = id == current };
+                mi.Click += (s, e) => SetDictionaryChoice(id);
+                menu.Items.Add(mi);
+            }
+            menu.Items.Add(new Separator());
+            var open = new MenuItem
+            {
+                Header = "_Open Dictionaries Folder",
+                ToolTip = "Each folder in here that holds a dictionary.tsv (and optionally a thesaurus.tsv) is offered above"
+            };
+            open.Click += (s, e) =>
+            {
+                try
+                {
+                    string root = DictionariesDir();
+                    Directory.CreateDirectory(root);
+                    Process.Start("explorer.exe", "\"" + root + "\"");
+                }
+                catch (Exception ex) { LogFault("open dictionaries folder", ex); }
+            };
+            menu.Items.Add(open);
+        }
+
+        private void SetDictionaryChoice(string id)
+        {
+            _dictionaryChoice = id ?? "";
+            RebuildDictionaryMenu();
+            Task.Run(() => LoadLexicons());
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        /// <summary>The saved choice, read straight from the settings file.</summary>
+        private string SavedDictionaryChoice()
+        {
+            try
+            {
+                string path = WindowStatePath();
+                if (!File.Exists(path)) return "";
+                return ParseDictionaryChoice(File.ReadAllText(path, Encoding.UTF8));
+            }
+            catch { return ""; }
+        }
+
+        private static string ParseDictionaryChoice(string json)
+        {
+            var m = Regex.Match(json ?? "", @"""dictionary""\s*:\s*""((?:[^""\\]|\\.)*)""");
+            return m.Success ? Regex.Unescape(m.Groups[1].Value) : "";
         }
 
         /// <summary>Read "&lt;stem&gt;.tsv" or "&lt;stem&gt;.json" from the cache or the app folder.</summary>
@@ -4941,7 +5057,7 @@ namespace TypoZen
                     "\"blockHover\":{28},\"fontType\":{29},\"fontFamily\":\"{30}\",\"fontSize\":{31}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
-                    "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20}}}",
+                    "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20},\"dictionary\":\"{32}\"}}",
                     stateStr, w, h, l, t, _zoomFactor,
                     _chromeAutoHide ? "auto" : "always", _wordWrap ? "true" : "false", _statusBarVisible ? "true" : "false",
                     _sessionRestoreContent ? "true" : "false", _recentFilesEnabled ? "true" : "false",
@@ -4956,7 +5072,8 @@ namespace TypoZen
                     _scrubberVisible ? "true" : "false", _lineSpacing, _paraSpacing,
                     _justified ? "true" : "false", _sidebarAutoHide ? "true" : "false",
                     _autosave ? "true" : "false", _privacyMode ? "true" : "false",
-                    _blockHover, _fontType, _customFontFamily.Replace("\"", "\\\""), _fontSize);
+                    _blockHover, _fontType, _customFontFamily.Replace("\"", "\\\""), _fontSize,
+                    (_dictionaryChoice ?? "").Replace("\\", "\\\\").Replace("\"", "\\\""));
 
                 WriteStateFileAtomic(path, json);
             }
@@ -5094,6 +5211,9 @@ namespace TypoZen
                 if (mBodies.Success) _sessionRestoreContent = mBodies.Groups[1].Value == "true";
                 var mRecent = Regex.Match(json, @"\""recentFiles\""\s*:\s*(true|false)");
                 if (mRecent.Success) _recentFilesEnabled = mRecent.Groups[1].Value == "true";
+                // Already read by StartLexiconLoad, which runs first; kept in step here
+                // so the two readings cannot disagree.
+                _dictionaryChoice = ParseDictionaryChoice(json);
             }
             catch {}
         }

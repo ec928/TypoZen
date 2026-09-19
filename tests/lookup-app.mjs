@@ -8,7 +8,9 @@
  *
  *   RUN_APP_E2E=1 node tests/lookup-app.mjs
  */
-import { launchApp } from './app-harness.mjs';
+import fs from 'fs';
+import path from 'path';
+import { launchApp, profileDir, profileFile } from './app-harness.mjs';
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -71,6 +73,39 @@ try {
 
     const none = await app.eval(ask, 'zzxqqv');
     assert(/Not in the installed dictionary/.test(none.hint), 'a non-word says so');
+} finally {
+    await app.close();
+}
+
+// A second dictionary: a folder under the profile's dictionaries\, chosen in settings the
+// way File > Dictionary saves it. The menu itself is WPF and is checked by hand; this
+// checks that the saved choice is what answers, all of it, and that a choice whose folder
+// has gone falls back to the built-in one instead of answering nothing.
+console.log('\n=== a chosen dictionary answers, synonyms and all ===');
+const testDict = path.join(profileDir, 'dictionaries', 'Test');
+fs.mkdirSync(testDict, { recursive: true });
+fs.writeFileSync(path.join(testDict, 'dictionary.tsv'),
+    'bank\tTEST BANK\nrun\tTEST SENSE ONE | TEST SENSE TWO\n');
+fs.writeFileSync(profileFile('window_state.json'), '{"dictionary":"Test"}');
+app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 6000 });
+try {
+    const run = await app.eval(ask, 'run');
+    assert(/^TEST SENSE ONE/.test(run.def) && /TEST SENSE TWO/.test(run.def), 'run: answered by the chosen dictionary');
+    assert(run.syn === '', 'and it has no thesaurus, so no synonyms -- none borrowed from the built-in one');
+    const walking = await app.eval(ask, 'walking');
+    assert(/Not in the installed dictionary/.test(walking.hint), 'a word it lacks is not looked up elsewhere');
+} finally {
+    await app.close();
+}
+const saved = fs.readFileSync(profileFile('window_state.json'), 'utf8');
+assert(/"dictionary"\s*:\s*"Test"/.test(saved), 'the choice survives the app writing its settings on exit');
+
+console.log('\n=== a chosen dictionary that has gone falls back ===');
+fs.writeFileSync(profileFile('window_state.json'), '{"dictionary":"Gone"}');
+app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 6000 });
+try {
+    const run = await app.eval(ask, 'run');
+    assert(/^move fast by using one's feet/.test(run.def), 'the built-in dictionary answers');
 } finally {
     await app.close();
 }
