@@ -31,7 +31,15 @@ namespace TypoZen
         // every failure ends the play, and a newer play retires an older one.
         private static int _generation;
         private static string _currentWav;
-        private static readonly object _sapiGate = new object();
+
+        // SAPI voices speak straight to the audio device, from the first audio they have.
+        // They used to be synthesised whole into a wav and only then played: fine for IVONA
+        // (866 chars in 982 ms), but the natural voices through NaturalVoiceSAPIAdapter took
+        // 17,421 ms for the same 866 chars (debug.log, 2026-09-19) -- 17 s of nothing.
+        private static System.Speech.Synthesis.Prompt _sapiPrompt;   // the one speaking now
+        private static System.Diagnostics.Stopwatch _sapiClock;
+        private static int _sapiGen;
+        private static bool _sapiHeard;
 
         // HDMI (and some USB / Bluetooth) outputs sleep after a few seconds of silence and
         // drop the first second or so of the next sound while they re-lock. Measured on
@@ -101,6 +109,29 @@ namespace TypoZen
             {
                 SoundStopped();
                 Note("player failed: " + (e.ErrorException != null ? e.ErrorException.Message : "unknown"));
+                Finish();
+            };
+
+            _sapiSynth.SetOutputToDefaultAudioDevice();
+            // Not SpeakProgress: System.Speech throws inside its own dispatch of that event
+            // ("Length cannot be less than zero") for a prompt that opens with a break, and
+            // the exception took the whole app down. SpeakStarted is when audio begins.
+            _sapiSynth.SpeakStarted += (s, e) =>
+            {
+                if (e.Prompt != _sapiPrompt || _sapiHeard) return;
+                _sapiHeard = true;
+                Note("play #" + _sapiGen + " audio started after " + _sapiClock.ElapsedMilliseconds
+                    + " ms, then " + WakeSilenceMs + " ms of wake-up silence before the first word");
+            };
+            _sapiSynth.SpeakCompleted += (s, e) =>
+            {
+                // Completions of prompts already replaced or stopped are not this play's end.
+                if (e.Prompt != _sapiPrompt) return;
+                _sapiPrompt = null;
+                SoundStopped();
+                if (e.Cancelled) { Note("play #" + _sapiGen + " cancelled"); return; }
+                Note("play #" + _sapiGen + (e.Error != null ? " failed: " + e.Error.Message : " ended")
+                    + " after " + _sapiClock.ElapsedMilliseconds + " ms");
                 Finish();
             };
         }
@@ -180,19 +211,23 @@ namespace TypoZen
                     if (rate < -10) rate = -10;
                     if (rate > 10) rate = 10;
 
-                    // One SAPI synthesizer, so one play at a time on it: two quick presses
-                    // used to configure and speak on it from two threads at once.
-                    await Task.Run(() => {
-                        lock (_sapiGate)
-                        {
-                            if (gen != _generation) return;           // already replaced
-                            _sapiSynth.SelectVoice(realName);
-                            _sapiSynth.Rate = rate;
-                            _sapiSynth.SetOutputToWaveFile(wav);
-                            try { _sapiSynth.Speak(text); }
-                            finally { _sapiSynth.SetOutputToNull(); } // release the file
-                        }
-                    });
+                    // Straight to the audio device, on this (UI) thread's synthesizer:
+                    // SpeakAsync returns at once and sound starts with the first audio the
+                    // voice produces. Stop() has already cancelled whatever was speaking.
+                    _sapiSynth.SelectVoice(realName);
+                    _sapiSynth.Rate = rate;
+                    // The prompt's culture is the voice's own: a prompt in another culture
+                    // lets SAPI switch to a voice that matches it instead.
+                    var pb = new System.Speech.Synthesis.PromptBuilder(_sapiSynth.Voice.Culture);
+                    pb.AppendBreak(TimeSpan.FromMilliseconds(WakeSilenceMs));   // HDMI wake-up
+                    pb.AppendText(text ?? "");
+                    _sapiGen = gen;
+                    _sapiHeard = false;
+                    _sapiClock = System.Diagnostics.Stopwatch.StartNew();
+                    _sounding = true;
+                    _sapiPrompt = _sapiSynth.SpeakAsync(pb);
+                    Note("play #" + gen + " speaking directly, voice ready after " + sw.ElapsedMilliseconds + " ms");
+                    return;
                 }
                 else
                 {
@@ -251,11 +286,13 @@ namespace TypoZen
 
         public static void Pause()
         {
+            if (_sapiPrompt != null) { try { _sapiSynth.Pause(); } catch { } return; }
             _player.Pause();
         }
 
         public static void Resume()
         {
+            if (_sapiPrompt != null) { try { _sapiSynth.Resume(); } catch { } return; }
             _player.Play();
         }
 
@@ -264,6 +301,13 @@ namespace TypoZen
             // Also retires a play still synthesising, so it cannot start after Stop.
             _generation++;
             SoundStopped();
+            if (_sapiPrompt != null)
+            {
+                // Its SpeakCompleted arrives later as cancelled, and is not reported as an end.
+                _sapiPrompt = null;
+                try { _sapiSynth.Resume(); } catch { }   // a paused synthesizer will not cancel
+                try { _sapiSynth.SpeakAsyncCancelAll(); } catch { }
+            }
             _player.Stop();
             _player.Close();
         }
