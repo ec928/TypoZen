@@ -20,16 +20,68 @@ namespace TypoZen
         private static Windows.Media.SpeechSynthesis.SpeechSynthesizer _winrtSynth;
         private static System.Speech.Synthesis.SpeechSynthesizer _sapiSynth;
         private static System.Windows.Media.MediaPlayer _player;
-        private static string _tempWavPath;
         public static Action OnPlaybackFinished;
+        /// <summary>One line per step, for debug.log. Never passed the text being read.</summary>
+        public static Action<string> Log;
+
+        // Every play used to share one typozen_tts_temp.wav, rewritten while the player
+        // might still hold the previous one; and any failure -- synthesis, a file the
+        // player could not open -- was swallowed without OnPlaybackFinished, so the page
+        // sat on "Stop" for ever with nothing playing. Now each play has its own file,
+        // every failure ends the play, and a newer play retires an older one.
+        private static int _generation;
+        private static string _currentWav;
+        private static readonly object _sapiGate = new object();
 
         static TypoZen_TTS()
         {
             _winrtSynth = new Windows.Media.SpeechSynthesis.SpeechSynthesizer();
             _sapiSynth = new System.Speech.Synthesis.SpeechSynthesizer();
             _player = new System.Windows.Media.MediaPlayer();
-            _player.MediaEnded += (s, e) => { OnPlaybackFinished?.Invoke(); };
-            _tempWavPath = Path.Combine(Path.GetTempPath(), "typozen_tts_temp.wav");
+            _player.MediaOpened += (s, e) => Note("opened, " + DurationText() + ", playing");
+            _player.MediaEnded += (s, e) => { Note("ended"); Finish(); };
+            _player.MediaFailed += (s, e) =>
+            {
+                Note("player failed: " + (e.ErrorException != null ? e.ErrorException.Message : "unknown"));
+                Finish();
+            };
+        }
+
+        private static void Note(string what)
+        {
+            try { var l = Log; if (l != null) l("tts " + what); } catch { }
+        }
+
+        private static string DurationText()
+        {
+            try
+            {
+                return _player.NaturalDuration.HasTimeSpan
+                    ? _player.NaturalDuration.TimeSpan.TotalMilliseconds.ToString("0") + " ms of audio"
+                    : "length unknown";
+            }
+            catch { return "length unknown"; }
+        }
+
+        private static void Finish()
+        {
+            try { OnPlaybackFinished?.Invoke(); } catch { }
+        }
+
+        /// <summary>This play's own wav; earlier ones are deleted once nothing holds them.</summary>
+        private static string NewWavPath(int gen)
+        {
+            string dir = Path.GetTempPath();
+            try
+            {
+                foreach (string old in Directory.GetFiles(dir, "typozen_tts_*.wav"))
+                {
+                    if (string.Equals(old, _currentWav, StringComparison.OrdinalIgnoreCase)) continue;
+                    try { File.Delete(old); } catch { }
+                }
+            }
+            catch { }
+            return Path.Combine(dir, "typozen_tts_" + System.Diagnostics.Process.GetCurrentProcess().Id + "_" + gen + ".wav");
         }
 
         public static List<VoiceInfo> GetVoices()
@@ -54,28 +106,35 @@ namespace TypoZen
         public static async Task PlayAsync(string text, string voiceId, double speed)
         {
             Stop();
+            int gen = ++_generation;
+            string wav = NewWavPath(gen);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Note("play #" + gen + ": " + (text ?? "").Length + " chars, voice " + (voiceId ?? "(default)"));
 
             try
             {
                 if (voiceId != null && voiceId.StartsWith("sapi:"))
                 {
                     string realName = voiceId.Substring("sapi:".Length);
-                    _sapiSynth.SelectVoice(realName);
-                    // Speed in SAPI5 is -10 to 10. Default is 0. 
+                    // Speed in SAPI5 is -10 to 10. Default is 0.
                     // Map 0.5x -> -5, 1.0x -> 0, 2.0x -> 10. (Approximation)
                     int rate = (int)((speed - 1.0) * 10.0);
                     if (rate < -10) rate = -10;
                     if (rate > 10) rate = 10;
-                    _sapiSynth.Rate = rate;
 
+                    // One SAPI synthesizer, so one play at a time on it: two quick presses
+                    // used to configure and speak on it from two threads at once.
                     await Task.Run(() => {
-                        _sapiSynth.SetOutputToWaveFile(_tempWavPath);
-                        _sapiSynth.Speak(text);
-                        _sapiSynth.SetOutputToNull(); // release file lock
+                        lock (_sapiGate)
+                        {
+                            if (gen != _generation) return;           // already replaced
+                            _sapiSynth.SelectVoice(realName);
+                            _sapiSynth.Rate = rate;
+                            _sapiSynth.SetOutputToWaveFile(wav);
+                            try { _sapiSynth.Speak(text); }
+                            finally { _sapiSynth.SetOutputToNull(); } // release the file
+                        }
                     });
-                    
-                    _player.Open(new Uri(_tempWavPath));
-                    _player.Play(); 
                 }
                 else
                 {
@@ -89,21 +148,38 @@ namespace TypoZen
                     _winrtSynth.Options.SpeakingRate = speed;
 
                     var stream = await _winrtSynth.SynthesizeTextToStreamAsync(text);
-                    
+
                     var reader = new Windows.Storage.Streams.DataReader(stream.GetInputStreamAt(0));
                     await reader.LoadAsync((uint)stream.Size);
                     byte[] buffer = new byte[(uint)stream.Size];
                     reader.ReadBytes(buffer);
-                    
-                    System.IO.File.WriteAllBytes(_tempWavPath, buffer);
-                    
-                    _player.Open(new Uri(_tempWavPath));
-                    _player.Play(); 
+
+                    if (gen == _generation) System.IO.File.WriteAllBytes(wav, buffer);
                 }
+
+                if (gen != _generation)
+                {
+                    // A newer play (or Stop) took over while this one was synthesising.
+                    Note("play #" + gen + " superseded");
+                    return;
+                }
+                long bytes = File.Exists(wav) ? new FileInfo(wav).Length : 0;
+                Note("play #" + gen + " synthesised in " + sw.ElapsedMilliseconds + " ms, " + bytes + " bytes");
+                if (bytes <= 44)
+                {
+                    // A wav header and no sound: nothing to play, so say so and end.
+                    Note("play #" + gen + " produced no audio");
+                    Finish();
+                    return;
+                }
+                _currentWav = wav;
+                _player.Open(new Uri(wav));
+                _player.Play();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine("TTS Play Error: " + ex.Message);
+                Note("play #" + gen + " failed: " + ex.GetType().Name + ": " + ex.Message);
+                if (gen == _generation) Finish();
             }
         }
 
@@ -119,6 +195,8 @@ namespace TypoZen
 
         public static void Stop()
         {
+            // Also retires a play still synthesising, so it cannot start after Stop.
+            _generation++;
             _player.Stop();
             _player.Close();
         }

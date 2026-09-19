@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.65";
+        internal const string AppVersion = "0.2.66";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -6049,6 +6049,21 @@ namespace TypoZen
                         SendMsg("tts_finished");
                     }));
                 };
+                // Each step of a play -- synthesised, opened, ended, or why it failed -- in
+                // debug.log, so a play that goes silent says where. Never the text itself.
+                if (TypoZen_TTS.Log == null)
+                {
+                    string logDir = CacheDir();
+                    TypoZen_TTS.Log = line =>
+                    {
+                        try
+                        {
+                            File.AppendAllText(Path.Combine(logDir, "debug.log"),
+                                string.Format("[{0:HH:mm:ss.fff}] {1}\n", DateTime.Now, line));
+                        }
+                        catch { }
+                    };
+                }
 
                 _ = TypoZen_TTS.PlayAsync(text, _ttsVoiceId, _ttsSpeed);
                 return;
