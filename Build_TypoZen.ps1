@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "Continue"
 $appDir = $PSScriptRoot
 Set-Location $appDir
 
@@ -193,6 +193,17 @@ if ($null -ne $msbuild) {
         & msbuild TypoZen.csproj /p:Configuration=Release /verbosity:minimal
         if ($LASTEXITCODE -eq 0) { $compiled = $true }
     } catch {}
+}
+
+if (-not $compiled) {
+    $dotnet = Get-Command "dotnet" -ErrorAction SilentlyContinue
+    if ($null -ne $dotnet) {
+        Write-Host "Using dotnet build..." -ForegroundColor Gray
+        try {
+            & dotnet build TypoZen.csproj -c Release -v m
+            if ($LASTEXITCODE -eq 0) { $compiled = $true }
+        } catch {}
+    }
 }
 
 if (-not $compiled) {

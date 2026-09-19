@@ -28,7 +28,7 @@ console.log('=== engine modules ===');
     assert(names.indexOf('04-lists.js') >= 0, '04-lists.js listed');
     assert(names.indexOf('04b-format.js') >= 0, '04b-format.js listed');
     assert(names.indexOf('07-stats-host.js') >= 0, '07-stats-host.js listed');
-    assert(names[names.length - 1] === '08-code.js', 'last module is 08-code.js');
+    assert(names[names.length - 1] === '09-speech.js', 'last module is 09-speech.js');
 
     for (const p of engineModulePaths()) {
         assert(fs.existsSync(p), 'exists: ' + path.relative(appDir, p));

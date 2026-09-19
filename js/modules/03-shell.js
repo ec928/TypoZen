@@ -1426,6 +1426,14 @@
         try { wireSidebarEdgePointerGuard(); } catch (eW) {}
 
         function handleCommand(cmd) {
+            if (cmd === "read_aloud_doc") {
+                if (typeof isPlaying !== 'undefined' && isPlaying) {
+                    if (typeof stopReading === 'function') stopReading();
+                } else {
+                    if (typeof speakSelection === 'function') speakSelection();
+                }
+                return;
+            }
             if (cmd === "wordwrap_on") { document.body.classList.remove("nowrap"); return; }
             if (cmd === "wordwrap_off") { document.body.classList.add("nowrap"); return; }
 

@@ -445,6 +445,7 @@
                                  data folder's dictionaries\. Nothing here is hardcoded, and it
                                  is hidden while there is only one to choose from. -->
                             <MenuItem x:Name="mDictionaryMenu" Header="_Dictionary" Visibility="Collapsed"/>
+                            <MenuItem x:Name="mConfigureVoice" Header="_Configure Voice..."/>
                             <Separator/>
                             <MenuItem Header="Pri_vacy">
                                 <!-- One switch instead of three: while it is on, nothing that
@@ -654,6 +655,10 @@
                 </StackPanel>
 
                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <Button x:Name="btnReadAloud" Style="{StaticResource GhostToolbarButton}" 
+                            Content="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                            Margin="0,0,12,0" ToolTip="Read Aloud"/>
+
                     <!-- Phase 3A: three segmented controls, Mode then Column then Scroll.
                          Each group is a bordered strip of SegmentButtons; C# paints the
                          selected segment and drops the whole group's opacity when the

@@ -2267,4 +2267,58 @@
                the sidebar lists use. */
             background-color: rgba(128, 128, 128, 0.10);
         }
-    
+
+        /* --- TTS Player --- */
+        .tts-player {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 4px 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 1000;
+            gap: 4px;
+            font-family: var(--ui-font);
+        }
+        .tts-btn {
+            background: none;
+            border: none;
+            color: var(--tx);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.8;
+            transition: opacity 0.2s, background 0.2s;
+        }
+        .tts-btn:hover {
+            opacity: 1;
+            background-color: rgba(128, 128, 128, 0.2);
+        }
+        .tts-div {
+            width: 1px;
+            height: 20px;
+            background-color: var(--border);
+            margin: 0 8px;
+        }
+
+        .tts-settings-pop {
+            position: absolute;
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000;
+            width: 280px;
+            font-family: var(--ui-font);
+            color: var(--tx);
+        }

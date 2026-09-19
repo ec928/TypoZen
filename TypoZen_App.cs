@@ -1497,6 +1497,7 @@ namespace TypoZen
             BindClick("mInsertLink", (s, e) => SendMsg("fmt:link"));
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
             BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
+            BindClick("btnReadAloud", (s, e) => SendMsg("cmd:read_aloud_doc"));
 
             BindClick("mSidebarOutline", (s, e) => SendMsg("cmd:show_outline"));
             BindClick("mSidebarSearch", (s, e) => SendMsg("cmd:show_search"));
@@ -1562,6 +1563,7 @@ namespace TypoZen
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
+            BindClick("mConfigureVoice", (s, e) => ShowConfigureVoiceDialog());
             BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
             BindClick("mWordWrap", (s, e) =>
             {
@@ -6013,6 +6015,62 @@ namespace TypoZen
                 return;
             }
 
+            if (msg == "host_tts_get_voices")
+            {
+                var voices = TypoZen_TTS.GetVoices();
+                var json = new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(voices);
+                SendMsg("eval:populateWinRTVoices('" + json.Replace("'", "\\'").Replace("\n", "") + "')");
+                return;
+            }
+            else if (msg.StartsWith("host_tts_play:"))
+            {
+                string json = msg.Substring("host_tts_play:".Length);
+                var dict = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+                string text = dict.ContainsKey("text") ? dict["text"]?.ToString() : "";
+                
+                var btn = this.FindName("btnReadAloud") as System.Windows.Controls.Button;
+                if (btn != null) 
+                {
+                    btn.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, System.Windows.SystemColors.MenuHighlightBrushKey);
+                    btn.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, System.Windows.SystemColors.HighlightTextBrushKey);
+                }
+
+                TypoZen_TTS.OnPlaybackFinished = () => {
+                    Dispatcher.BeginInvoke(new Action(() => {
+                        if (btn != null) 
+                        {
+                            btn.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
+                            btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
+                        }
+                        SendMsg("eval:nativeTTSFinished()");
+                    }));
+                };
+
+                _ = TypoZen_TTS.PlayAsync(text, _ttsVoiceId, _ttsSpeed);
+                return;
+            }
+            else if (msg == "host_tts_pause")
+            {
+                TypoZen_TTS.Pause();
+                return;
+            }
+            else if (msg == "host_tts_resume")
+            {
+                TypoZen_TTS.Resume();
+                return;
+            }
+            else if (msg == "host_tts_stop")
+            {
+                var btn = this.FindName("btnReadAloud") as System.Windows.Controls.Button;
+                if (btn != null) 
+                {
+                    btn.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
+                    btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
+                }
+                TypoZen_TTS.Stop();
+                return;
+            }
+
             // Page-side zoom chords (editor focused) — most reliable path for hosted WebView2
             if (msg == "zoom:in")
             {
@@ -6202,9 +6260,13 @@ namespace TypoZen
                     // theme 0 over the real one, so the loss stuck.
                     try
                     {
-                        var savedTheme = LoadHostPrefs();
-                        if (savedTheme != null && savedTheme.ThemeIndex >= 0)
-                            SendMsg("set_theme:" + savedTheme.ThemeIndex);
+                        var prefs = LoadHostPrefs();
+                        if (prefs != null)
+                        {
+                            if (prefs.ThemeIndex >= 0) SendMsg("set_theme:" + prefs.ThemeIndex);
+                            if (!string.IsNullOrEmpty(prefs.TtsVoiceId)) _ttsVoiceId = prefs.TtsVoiceId;
+                            if (prefs.TtsSpeed > 0) _ttsSpeed = prefs.TtsSpeed;
+                        }
                     }
                     catch { }
                 }
@@ -6853,6 +6915,8 @@ namespace TypoZen
             public bool FindWholeWord;
             /// <summary>"outline" or "search".</summary>
             public string SidebarTab = "outline";
+            public string TtsVoiceId = "";
+            public double TtsSpeed = 1.0;
         }
 
         private static string JsonEscape(string s)
@@ -7014,6 +7078,8 @@ namespace TypoZen
                 if (s == "outline" || s == "search") p.SidebarTab = s;
                 b = ExtractJsonBool(json, "findMatchCase"); if (b.HasValue) p.FindMatchCase = b.Value;
                 b = ExtractJsonBool(json, "findWholeWord"); if (b.HasValue) p.FindWholeWord = b.Value;
+                s = ExtractJsonString(json, "ttsVoiceId"); if (s != null) { p.TtsVoiceId = s; }
+                s = ExtractJsonString(json, "ttsSpeed"); if (s != null && double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double speed)) { p.TtsSpeed = speed; }
             }
             catch { }
             return p;
@@ -7039,6 +7105,8 @@ namespace TypoZen
                 + "\"findMatchCase\":" + (p.FindMatchCase ? "true" : "false") + ","
                 + "\"findWholeWord\":" + (p.FindWholeWord ? "true" : "false") + ","
                 + "\"sidebarTab\":\"" + tab + "\","
+                + "\"ttsVoiceId\":\"" + JsonEscape(p.TtsVoiceId ?? "") + "\","
+                + "\"ttsSpeed\":\"" + p.TtsSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\","
                 + "\"lastContent\":\"\""
                 + "}";
             string prefsPath = PrefsPath();
@@ -8875,6 +8943,113 @@ namespace TypoZen
         private bool _autosave;
         private DispatcherTimer _autosaveTimer;
         private const int AutosaveIdleMs = 2000;
+
+        private string _ttsVoiceId = "";
+        private double _ttsSpeed = 1.0;
+
+        private void ShowConfigureVoiceDialog()
+        {
+            var win = new Window
+            {
+                Title = "Configure Voice",
+                Width = 350,
+                Height = 250,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0F172A")),
+                Foreground = System.Windows.Media.Brushes.White,
+                FontFamily = this.FontFamily
+            };
+
+            var stack = new System.Windows.Controls.StackPanel { Margin = new Thickness(15) };
+            
+            var lblVoice = new System.Windows.Controls.TextBlock { Text = "Voice (Offline Natural Voices):", Margin = new Thickness(0, 0, 0, 5) };
+            stack.Children.Add(lblVoice);
+            
+            var combo = new System.Windows.Controls.ComboBox { Margin = new Thickness(0, 0, 0, 15) };
+            var voices = TypoZen_TTS.GetVoices();
+            foreach (var v in voices)
+            {
+                var item = new System.Windows.Controls.ComboBoxItem { Content = v.Name, Tag = v.Id };
+                combo.Items.Add(item);
+                if (v.Id == _ttsVoiceId || (string.IsNullOrEmpty(_ttsVoiceId) && combo.Items.Count == 1))
+                {
+                    combo.SelectedItem = item;
+                }
+            }
+            if (combo.SelectedItem == null && combo.Items.Count > 0) combo.SelectedIndex = 0;
+            stack.Children.Add(combo);
+
+            var lblSpeed = new System.Windows.Controls.TextBlock { Text = "Speed: " + _ttsSpeed.ToString("0.0") + "x", Margin = new Thickness(0, 0, 0, 5) };
+            stack.Children.Add(lblSpeed);
+            
+            var slider = new System.Windows.Controls.Slider
+            {
+                Minimum = 0.5,
+                Maximum = 2.0,
+                Value = _ttsSpeed,
+                TickFrequency = 0.1,
+                IsSnapToTickEnabled = true,
+                Margin = new Thickness(0, 0, 0, 15)
+            };
+            slider.ValueChanged += (s, e) => { lblSpeed.Text = "Speed: " + slider.Value.ToString("0.0") + "x"; };
+            stack.Children.Add(slider);
+
+            var btnOk = new System.Windows.Controls.Button
+            {
+                Content = "OK",
+                Width = 80,
+                Height = 28,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#334155")),
+                Foreground = System.Windows.Media.Brushes.White,
+                BorderThickness = new Thickness(0)
+            };
+
+            bool isUserSelection = false;
+            combo.SelectionChanged += async (s, e) => 
+            {
+                if (!isUserSelection) return;
+                if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
+                {
+                    await TypoZen_TTS.PlayAsync("Hi, I am " + item.Content.ToString(), item.Tag?.ToString(), slider.Value);
+                }
+            };
+            slider.PreviewMouseUp += async (s, e) => 
+            {
+                if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
+                {
+                    await TypoZen_TTS.PlayAsync("Hi, I am " + item.Content.ToString(), item.Tag?.ToString(), slider.Value);
+                }
+            };
+
+            btnOk.Click += (s, e) =>
+            {
+                if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
+                {
+                    _ttsVoiceId = item.Tag?.ToString();
+                }
+                _ttsSpeed = slider.Value;
+                
+                var prefs = LoadHostPrefs();
+                prefs.TtsVoiceId = _ttsVoiceId;
+                prefs.TtsSpeed = _ttsSpeed;
+                WriteHostPrefs(prefs);
+
+                TypoZen_TTS.Stop();
+                win.DialogResult = true;
+                win.Close();
+            };
+            
+            win.Closed += (s, e) => { TypoZen_TTS.Stop(); };
+            
+            stack.Children.Add(btnOk);
+
+            win.Content = stack;
+            win.Loaded += (s, e) => { isUserSelection = true; };
+            win.ShowDialog();
+        }
 
         private void SetAutosave(bool on)
         {

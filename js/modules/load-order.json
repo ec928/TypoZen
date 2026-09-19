@@ -9,6 +9,7 @@
     "05-model.js",
     "06-render-epub.js",
     "07-stats-host.js",
-    "08-code.js"
+    "08-code.js",
+    "09-speech.js"
   ]
 }
