@@ -38,7 +38,8 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
-- **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for instant definitions, synonyms, and document occurrence counts.
+- **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows. Choose the voice and speed in **File → Configure Voice**.
+- **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said.
 - **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
 - **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
 - **Read everything else safely:** PDF, HTML, images, and media open read-only. Never dirty, never saved over.
@@ -194,6 +195,20 @@ TSV first, because that is what a WordNet or Wiktionary export converts to in on
 - **One button, one answer.** Press **Look up** and the popover gives the **definition**, the **synonyms** below it, and **how many times the word appears** in what you are reading — together, in that order. It is deliberately not automatic: a word is selected to _copy_ it at least as often as to ask about it, and a definition that arrives uninvited sits on top of the text you were working with. Offered only for a single word, since a paragraph has no definition
 - **Synonyms** come from the same WordNet pass — a synset is a set of words that mean the same thing — written to `thesaurus.tsv` alongside the dictionary
 - **Occurrence count works with no dictionary at all** — "appears 2,135 times in this document" is often the question actually being asked, especially in a novel
+- **Hear the word** — the speaker beside the word in the popover says it aloud, in the voice chosen for Read aloud, whichever dictionary answered. It says the word as selected (`ran`), not the entry it was answered from (`run`)
+- **"ran → run"** — when there is no entry for the selected word and the answer is for a shorter or base form, the title says so, so a nearby word's meaning is not read as this one's. Synonyms always belong to the word that was defined
+- **Pronunciations** show under the word when the dictionary has them: a third column in `dictionary.tsv` (word, tab, senses, tab, pronunciation). The bundled WordNet has none, so this appears only with a dictionary of your own that includes them
+
+### Reading aloud
+**Read aloud** is the **A)))** button at the right of the toolbar, and **Read aloud** in the selection popover. With text selected it reads the selection; with nothing selected it reads what is on screen in a book, or the whole document otherwise (in Source mode, the raw text). While it reads, both controls become **Stop** — the toolbar button shows a stop square on the highlight — and both return to Read aloud by themselves when the speech ends.
+
+**The voices are Windows' own**, running on your machine. **File → Configure Voice** lists every voice installed in Windows — both kinds Windows has, the classic SAPI 5 voices and the newer Windows.Media ones — with a speed slider and a preview; the choice is remembered. TypoZen ships no voices and fetches none.
+
+- **A second of silence first.** HDMI, and some USB and Bluetooth outputs, go to sleep after a few seconds of quiet and swallow the start of the next sound while they wake — measured, a single spoken word could vanish entirely. Every play therefore begins with one second of silence. It is a second's wait every time, which is the cheaper mistake
+- **Long passages start at once.** SAPI 5 voices speak straight to the audio device from the first audio they produce; they used to be rendered whole before a word was heard, which for a slow voice meant a 17-second wait on a long selection. Windows.Media voices are rendered first — they are fast — into a temporary file in `%TEMP%` that is replaced by the next one
+- **Nothing is left hanging.** A voice that fails, or audio the player cannot open, ends the play and puts the controls back to Read aloud, rather than leaving them on Stop with nothing playing. Each play's steps — voice, length of text, time to first audio, end or failure — go to `debug.log` in the data folder; the text itself is never logged
+
+**More voices.** Any voice installed into Windows appears in Configure Voice with no change to TypoZen — commercial SAPI 5 voice packs, for example. Windows' Narrator "natural" voices are a special case: Windows makes them available to Narrator only, not to other apps. Third-party adapters exist that register them as ordinary SAPI 5 voices, and TypoZen lists whatever such an adapter registers; they are not part of TypoZen, depend on details of Windows that can change with an update, and some also offer online voices that send the text being read to a web service.
 
 ### Themes & typography
 **25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customise Theme…** option lives).
@@ -325,6 +340,8 @@ Also restored: window size and position, theme, margins, mode, line and paragrap
 
 ### Network behaviour
 **TypoZen itself requests nothing over the network.** Fonts are bundled, the editor page is served from disk through a virtual host, and the page issues no outbound requests. A document that references a remote image (`![](https://…)`) will still load it — that is the document's request, not the app's.
+
+**Read aloud uses the voices installed in Windows**, which run locally. A voice added to Windows by third-party software may itself go online — some adapters register web-based voices that send the text being read to a server. That is the voice's request, not TypoZen's, and choosing a local voice avoids it.
 
 **The WebView2 runtime is a different matter, and it is not fully silent.** The environment is created with Chromium's background services disabled:
 

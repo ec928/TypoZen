@@ -9,7 +9,7 @@ against the shipping build; see the note at the foot before changing any of them
 
 _Shown in search results and at the top of the listing. Limit 1,000 characters._
 
-A calm place to write, and a beautiful place to read. TypoZen is a WYSIWYG Markdown editor and a paginated ePub reader in one window — with true two-page spreads, an offline dictionary and thesaurus, 25 themes, and not a single network request.
+A calm place to write, and a beautiful place to read. TypoZen is a WYSIWYG Markdown editor and a paginated ePub reader in one window — with true two-page spreads, read aloud in your Windows voices, an offline dictionary and thesaurus, 25 themes, and not a single network request.
 
 ---
 
@@ -33,9 +33,13 @@ Open an ePub and TypoZen becomes a reader: paginated, chaptered, with a genuine 
 
 A scrubber spans the whole book with your bookmarks marked along it. The status bar names the chapter you are in; click it to jump to the start. Close the book whenever you like — it reopens exactly where you stopped.
 
+**Or just listen**
+
+Select a passage and press Read aloud, or press it with nothing selected to hear the page you are on. TypoZen speaks in the voices already installed in Windows, at the speed you choose — and the words stay on your computer.
+
 **A dictionary that works on a plane**
 
-Select any word for definitions, synonyms and how often it appears in what you are reading. Over 150,000 definitions and over 110,000 synonym sets, all on your disk. No lookup ever leaves your computer.
+Select any word for its most common meanings first, its synonyms, and how often it appears in what you are reading — and press the speaker to hear it said. Over 150,000 definitions and over 110,000 synonym sets, all on your disk. No lookup ever leaves your computer.
 
 **Everything else you opened by accident**
 
@@ -78,8 +82,8 @@ _Up to 20 bullets, 200 characters each._
 15. Control over margins, line spacing, justification and hyphenation
 16. Live word count, character count, line position and estimated reading time
 17. Tabs, with the full session restored on the next launch
-18. Atomic saves, plus a prompt if the file changed on disk while you were working
-19. Export to self-contained HTML, or print to PDF
+18. Atomic saves with a prompt if the file changed on disk; export to self-contained HTML, or print to PDF
+19. Read aloud — a passage or the page — in any voice installed in Windows, at the speed you choose
 20. No network requests, no account, no telemetry — with a Privacy Mode that records nothing
 
 ---
@@ -173,7 +177,7 @@ Privacy policy: https://github.com/ec928/TypoZen/blob/master/PRIVACY.md
 _Optional, recommended 270 characters or fewer. Deliberately NOT the opening line of the
 Description above, which is already on the same page._
 
-Write Markdown and watch it become the page as you type. Read ePubs in a real two-page spread. One quiet window, 25 themes, an offline dictionary, and nothing sent anywhere.
+Write Markdown and watch it become the page as you type. Read ePubs in a real two-page spread, or have them read to you. One quiet window, 25 themes, an offline dictionary, and nothing sent anywhere.
 
 Leave **Short title** and **Voice title** empty -- both are Xbox-only (installation screens
 and Kinect voice). Leave the three **Xbox images** empty for the same reason: Xbox is
@@ -206,7 +210,8 @@ Verified against the shipping build on 6 September 2026:
 
 | Claim | Source |
 | --- | --- |
-| "over 150,000 definitions" | `dictionary.tsv` — 152,459 entries (Open English WordNet 2025+, from 2026-09-19; was 147,478 from WordNet 3.1) |
+| "over 150,000 definitions" | `dictionary.tsv` — 152,459 words with definitions (Open English WordNet 2025+, from 2026-09-19; was 147,478 from WordNet 3.1). The file has 156,217 lines: the other 3,758 are irregular forms (`ran` → `@run`), which point at a definition rather than holding one, and are not counted |
+| "read aloud … in the voices installed in Windows" | `TypoZen_TTS.cs` — SAPI 5 and Windows.Media voices; no voice is bundled or downloaded |
 | "over 110,000 synonym sets" | `thesaurus.tsv` — 114,022 entries (was 110,543) |
 | "25 themes" | `TypoZen_Themes.json` — 25 entries |
 | "200,000-character manuscript" | `tests/large-scroll-mixed.md` — 214,626 bytes |
