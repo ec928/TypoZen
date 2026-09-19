@@ -78,98 +78,147 @@ function readingCaret() {
     } catch (e) { return null; }
 }
 
+let _currentTTSBlockEl = null;
+
 function speakSelection() {
-    let textToRead = "";
+    let selText = "";
     if (typeof currentSelectionText === 'function') {
-        textToRead = currentSelectionText().trim();
+        selText = currentSelectionText().trim();
     } else {
-        textToRead = window.getSelection().toString().trim();
+        selText = window.getSelection().toString().trim();
     }
 
-    if (!textToRead) {
-        // Nothing selected: read from the text cursor when there is one, the way Word and
-        // screen readers do, with the same reach as before -- the page on screen, the rest
-        // of the document. No cursor in the text: from the top, as it always did.
-        const caret = readingCaret();
-        const sourceEdit = document.getElementById('source-editor');
-        if (sourceEdit && window.getComputedStyle(sourceEdit).display !== 'none') {
-            textToRead = sourceEdit.value.substring(sourceEdit.selectionStart || 0);
-        } else if (typeof isPaginatedLayout === 'function' && isPaginatedLayout()) {
-            const editor = document.getElementById('editor');
-            if (editor) {
-                const host = editor.getBoundingClientRect();
-                const blocks = editor.querySelectorAll('.block');
-                const visibleText = [];
-                let started = !caret;
-                for (let i = 0; i < blocks.length; i++) {
-                    const rc = blocks[i].getBoundingClientRect();
-                    if (rc.right > host.left && rc.left < host.right && rc.bottom > host.top && rc.top < host.bottom) {
-                        if (!started && blocks[i] === caret.block) { started = true; visibleText.push(caret.text); continue; }
-                        if (started) visibleText.push(blocks[i].innerText);
-                    }
+    if (selText) {
+        startReadingChunks([{ text: selText }]);
+        return;
+    }
+
+    const caret = readingCaret();
+    const sourceEdit = document.getElementById('source-editor');
+    if (sourceEdit && window.getComputedStyle(sourceEdit).display !== 'none') {
+        let text = sourceEdit.value.substring(sourceEdit.selectionStart || 0);
+        startReadingChunks([{ text: text }]);
+        return;
+    }
+
+    let chunks = [];
+
+    if (typeof DocumentModel !== 'undefined' && typeof DocumentModel.toMarkdown === 'function' && DocumentModel.kind !== 'epub') {
+        // Full DocumentModel available
+        const idx = caret ? parseInt(caret.block.getAttribute('data-model-index'), 10) : 0;
+        if (isFinite(idx) && DocumentModel.blocks && DocumentModel.blocks[idx]) {
+            if (caret && caret.text !== DocumentModel.blocks[idx].raw) {
+                chunks.push({ idx: idx, text: caret.text });
+                for (let i = idx + 1; i < DocumentModel.blocks.length; i++) {
+                    if (DocumentModel.blocks[i].raw) chunks.push({ idx: i, text: DocumentModel.blocks[i].raw });
                 }
-                textToRead = visibleText.join('\n\n');
-            }
-        } else if (typeof DocumentModel !== 'undefined' && typeof DocumentModel.toMarkdown === 'function' && DocumentModel.kind !== 'epub') {
-            const idx = caret ? parseInt(caret.block.getAttribute('data-model-index'), 10) : NaN;
-            if (caret && isFinite(idx) && DocumentModel.blocks && DocumentModel.blocks[idx]) {
-                // Rest of the document from the model, not the page: only the part on
-                // screen is built, and reading continues well past it.
-                const rest = DocumentModel.blocks.slice(idx + 1).map(b => b.raw || '').filter(Boolean);
-                textToRead = [caret.text].concat(rest).join('\n\n');
             } else {
-                textToRead = DocumentModel.toMarkdown();
+                for (let i = idx; i < DocumentModel.blocks.length; i++) {
+                    if (DocumentModel.blocks[i].raw) chunks.push({ idx: i, text: DocumentModel.blocks[i].raw });
+                }
             }
         } else {
-            const editor = document.getElementById('editor');
-            if (editor) {
-                if (caret) {
-                    const blocks = Array.from(editor.querySelectorAll('.block'));
-                    const at = blocks.indexOf(caret.block);
-                    textToRead = [caret.text].concat(blocks.slice(at + 1).map(b => b.innerText)).join('\n\n');
+            chunks.push({ text: DocumentModel.toMarkdown() });
+        }
+    } else {
+        // EPUB or simple DOM fallback
+        const editor = document.getElementById('editor');
+        if (editor) {
+            // In EPUB, blocks might only exist for the current chapter/page. 
+            // We gather what's in the DOM. For true continuous EPUB playback across chapters,
+            // deeper integration with epub.js is needed, but this handles the loaded section.
+            const blocks = Array.from(editor.querySelectorAll('.block'));
+            let at = caret ? blocks.indexOf(caret.block) : 0;
+            if (at < 0) at = 0;
+            
+            for (let i = at; i < blocks.length; i++) {
+                let text = (i === at && caret) ? caret.text : blocks[i].innerText;
+                let bIdx = blocks[i].getAttribute('data-model-index');
+                if (bIdx != null) {
+                    chunks.push({ idx: parseInt(bIdx, 10), text: text });
                 } else {
-                    textToRead = editor.innerText;
+                    chunks.push({ el: blocks[i], text: text });
                 }
             }
         }
     }
-    
-    if (!textToRead) return;
-    
-    startReading(textToRead);
+
+    if (chunks.length > 0) {
+        startReadingChunks(chunks);
+    }
 }
 
-function startReading(text) {
-    if (!text) return;
+function startReadingChunks(chunks) {
+    if (!chunks || chunks.length === 0) return;
     
-    // SAPI and WinRT both fail or silently truncate if text is too large.
-    // Chunking in JS allows unlimited playback lengths.
-    const blocks = text.split(/\n{2,}/);
-    _ttsChunks = [];
-    let currentChunk = "";
-    for (let i = 0; i < blocks.length; i++) {
-        if (currentChunk.length + blocks[i].length > 30000) {
-            if (currentChunk) _ttsChunks.push(currentChunk);
-            currentChunk = blocks[i];
-        } else {
-            currentChunk += (currentChunk ? "\n\n" : "") + blocks[i];
-        }
+    _ttsChunks = chunks;
+    isPlaying = true;
+    showReadAloudState();
+    
+    const editor = document.getElementById('editor');
+    if (editor && chunks.some(c => c.idx != null || c.el)) {
+        editor.classList.add('tts-reading-mode');
     }
-    if (currentChunk) _ttsChunks.push(currentChunk);
+    
+    playNextChunk();
+}
 
-    if (_ttsChunks.length > 0) {
-        isPlaying = true;
-        showReadAloudState();
-        playNextChunk();
+function clearTTSFocus() {
+    if (_currentTTSBlockEl) {
+        _currentTTSBlockEl.classList.remove('tts-active');
+        _currentTTSBlockEl = null;
     }
 }
 
 function playNextChunk() {
+    clearTTSFocus();
+
     if (!isPlaying || _ttsChunks.length === 0) {
         stopReading();
         return;
     }
-    const text = _ttsChunks.shift();
+    const chunk = _ttsChunks.shift();
+    if (!chunk.text || !chunk.text.trim()) {
+        // skip empty blocks
+        setTimeout(playNextChunk, 10);
+        return;
+    }
+
+    const editor = document.getElementById('editor');
+    let targetEl = chunk.el;
+
+    if (chunk.idx != null && typeof goToPageHoldingBlock === 'function' && typeof isPaginatedLayout === 'function' && isPaginatedLayout()) {
+        goToPageHoldingBlock(chunk.idx);
+        // Wait a frame for DOM to update after page turn
+        requestAnimationFrame(() => {
+            if (!isPlaying) return;
+            if (editor) {
+                targetEl = editor.querySelector('[data-model-index="' + chunk.idx + '"]');
+                if (targetEl) {
+                    targetEl.classList.add('tts-active');
+                    _currentTTSBlockEl = targetEl;
+                }
+            }
+            sendTTSPlay(chunk.text);
+        });
+        return;
+    } else {
+        if (chunk.idx != null && editor) {
+            targetEl = editor.querySelector('[data-model-index="' + chunk.idx + '"]');
+        }
+        if (targetEl) {
+            if (typeof targetEl.scrollIntoView === 'function' && !(typeof isPaginatedLayout === 'function' && isPaginatedLayout())) {
+                targetEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+            targetEl.classList.add('tts-active');
+            _currentTTSBlockEl = targetEl;
+        }
+        sendTTSPlay(chunk.text);
+    }
+}
+
+function sendTTSPlay(text) {
+    if (text.length > 30000) text = text.substring(0, 30000);
     try { 
         window.chrome.webview.postMessage("host_tts_play:" + JSON.stringify({
             text: text
@@ -179,6 +228,10 @@ function playNextChunk() {
 
 function stopReading() {
     _ttsChunks = [];
+    clearTTSFocus();
+    const editor = document.getElementById('editor');
+    if (editor) editor.classList.remove('tts-reading-mode');
+    
     try { window.chrome.webview.postMessage("host_tts_stop"); } catch(e){}
     isPlaying = false;
     showReadAloudState();

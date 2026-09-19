@@ -52,7 +52,7 @@ namespace TypoZen
         // while a 4 s gap earlier had been -- the output's sleep time varies, and a second
         // of delay is the cheaper mistake.
         private const int WakeSilenceMs = 1000;
-        private static readonly TimeSpan QuietAfter = TimeSpan.Zero;
+        private static readonly TimeSpan QuietAfter = TimeSpan.FromMilliseconds(500);
         private static DateTime _lastSound = DateTime.MinValue;
         private static bool _sounding;
 
