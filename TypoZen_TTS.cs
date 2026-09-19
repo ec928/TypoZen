@@ -36,11 +36,15 @@ namespace TypoZen
         // HDMI (and some USB / Bluetooth) outputs sleep after a few seconds of silence and
         // drop the first second or so of the next sound while they re-lock. Measured on
         // 2026-09-19: plays 32 s apart were silent though TypoZen played every sample
-        // (debug.log: opened, 716 ms of audio, ended), plays 3-5 s apart were heard. So a
-        // play that follows a quiet spell starts with a second of silence for the output to
-        // wake up in; plays close together get none and start at once.
+        // (debug.log: opened, 716 ms of audio, ended). So a play starts with a second of
+        // silence for the output to wake up in.
+        //
+        // Every play, not only after a quiet spell. An 8 s threshold was tried first: a
+        // dictionary pronunciation 3.9 s after the last sound was not padded and not heard,
+        // while a 4 s gap earlier had been -- the output's sleep time varies, and a second
+        // of delay is the cheaper mistake.
         private const int WakeSilenceMs = 1000;
-        private static readonly TimeSpan QuietAfter = TimeSpan.FromSeconds(8);
+        private static readonly TimeSpan QuietAfter = TimeSpan.Zero;
         private static DateTime _lastSound = DateTime.MinValue;
         private static bool _sounding;
 
@@ -226,13 +230,13 @@ namespace TypoZen
                     Finish();
                     return;
                 }
-                if (DateTime.UtcNow - _lastSound > QuietAfter)
+                if (DateTime.UtcNow - _lastSound >= QuietAfter)
                 {
                     bool padded = false;
                     try { padded = PadLeadingSilence(wav, WakeSilenceMs); } catch { }
                     Note("play #" + gen + (padded
-                        ? " after a quiet spell: " + WakeSilenceMs + " ms of silence first, for the output to wake"
-                        : " after a quiet spell, but not plain PCM: played as is"));
+                        ? ": " + WakeSilenceMs + " ms of silence first, for the output to wake"
+                        : ": not plain PCM, played without the wake-up silence"));
                 }
                 _currentWav = wav;
                 _player.Open(new Uri(wav));
