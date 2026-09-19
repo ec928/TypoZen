@@ -41,6 +41,43 @@ document.addEventListener('selectionchange', function() {
     showReadAloudState();
 });
 
+/**
+ * Where the text cursor is, when nothing is selected: the block it sits in and the text of
+ * that block from the start of the word it is in. Null when there is no cursor in the
+ * document -- then reading starts where it always did.
+ */
+function readingCaret() {
+    const editor = document.getElementById('editor');
+    const sel = window.getSelection();
+    if (!editor || !sel || !sel.rangeCount || !sel.isCollapsed) return null;
+    const node = sel.anchorNode;
+    if (!node || !editor.contains(node)) return null;
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    const block = el && el.closest ? el.closest('#editor .block') : null;
+    if (!block) return null;
+    // Only a cursor on the page being looked at. A book just opened, or a cursor left
+    // behind on a page since turned or scrolled away from, means "from the top of what
+    // is on screen", as before.
+    // Inside the editor's box (the page, in Pages) and inside the window (in scroll, where
+    // the editor is as tall as everything laid out).
+    const host = editor.getBoundingClientRect();
+    const rc = block.getBoundingClientRect();
+    if (!(rc.right > host.left && rc.left < host.right && rc.bottom > host.top && rc.top < host.bottom)) return null;
+    if (!(rc.bottom > 0 && rc.top < window.innerHeight && rc.right > 0 && rc.left < window.innerWidth)) return null;
+    try {
+        const before = document.createRange();
+        before.setStart(block, 0);
+        before.setEnd(sel.anchorNode, sel.anchorOffset);
+        const all = document.createRange();
+        all.selectNodeContents(block);
+        const full = all.toString();
+        let at = before.toString().length;
+        // Back to the start of the word, so a click mid-word reads the whole word.
+        while (at > 0 && /[\wÀ-ɏ'’-]/.test(full[at - 1])) at--;
+        return { block: block, text: full.slice(at) };
+    } catch (e) { return null; }
+}
+
 function speakSelection() {
     let textToRead = "";
     if (typeof currentSelectionText === 'function') {
@@ -48,30 +85,52 @@ function speakSelection() {
     } else {
         textToRead = window.getSelection().toString().trim();
     }
-    
+
     if (!textToRead) {
+        // Nothing selected: read from the text cursor when there is one, the way Word and
+        // screen readers do, with the same reach as before -- the page on screen, the rest
+        // of the document. No cursor in the text: from the top, as it always did.
+        const caret = readingCaret();
         const sourceEdit = document.getElementById('source-editor');
         if (sourceEdit && window.getComputedStyle(sourceEdit).display !== 'none') {
-            textToRead = sourceEdit.value;
+            textToRead = sourceEdit.value.substring(sourceEdit.selectionStart || 0);
         } else if (typeof isPaginatedLayout === 'function' && isPaginatedLayout()) {
             const editor = document.getElementById('editor');
             if (editor) {
                 const host = editor.getBoundingClientRect();
                 const blocks = editor.querySelectorAll('.block');
                 const visibleText = [];
+                let started = !caret;
                 for (let i = 0; i < blocks.length; i++) {
                     const rc = blocks[i].getBoundingClientRect();
                     if (rc.right > host.left && rc.left < host.right && rc.bottom > host.top && rc.top < host.bottom) {
-                        visibleText.push(blocks[i].innerText);
+                        if (!started && blocks[i] === caret.block) { started = true; visibleText.push(caret.text); continue; }
+                        if (started) visibleText.push(blocks[i].innerText);
                     }
                 }
                 textToRead = visibleText.join('\n\n');
             }
         } else if (typeof DocumentModel !== 'undefined' && typeof DocumentModel.toMarkdown === 'function' && DocumentModel.kind !== 'epub') {
-            textToRead = DocumentModel.toMarkdown();
+            const idx = caret ? parseInt(caret.block.getAttribute('data-model-index'), 10) : NaN;
+            if (caret && isFinite(idx) && DocumentModel.blocks && DocumentModel.blocks[idx]) {
+                // Rest of the document from the model, not the page: only the part on
+                // screen is built, and reading continues well past it.
+                const rest = DocumentModel.blocks.slice(idx + 1).map(b => b.raw || '').filter(Boolean);
+                textToRead = [caret.text].concat(rest).join('\n\n');
+            } else {
+                textToRead = DocumentModel.toMarkdown();
+            }
         } else {
             const editor = document.getElementById('editor');
-            if (editor) textToRead = editor.innerText;
+            if (editor) {
+                if (caret) {
+                    const blocks = Array.from(editor.querySelectorAll('.block'));
+                    const at = blocks.indexOf(caret.block);
+                    textToRead = [caret.text].concat(blocks.slice(at + 1).map(b => b.innerText)).join('\n\n');
+                } else {
+                    textToRead = editor.innerText;
+                }
+            }
         }
     }
     
