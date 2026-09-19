@@ -38,7 +38,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
-- **Built-in dictionary & thesaurus:** Nearly 150,000 offline definitions and over 110,000 synonym sets. Select any word for instant definitions, synonyms, and document occurrence counts.
+- **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for instant definitions, synonyms, and document occurrence counts.
 - **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
 - **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
 - **Read everything else safely:** PDF, HTML, images, and media open read-only. Never dirty, never saved over.
@@ -157,20 +157,20 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your _reading position_, which is automatic, written atomically as you read, and unaffected by any of this.
 
 ### Spelling
-**The bundled dictionary is not a spell checker.** `dictionary.tsv` is WordNet lemmas for **Look up** (definitions and synonyms). It does not know `teh` from `the`, and using it as a spell list would underline every inflection.
-
-Spelling uses **WPF’s built-in dictionaries** (English, French, German, Spanish with .NET 4 — the same engine a WPF TextBox uses):
+**Spelling is checked as you type**, with suggestions, a personal dictionary and a whole-document check:
 
 - **Preview:** wavy underline on the paragraph you are editing. Select the word — the popover offers replacements, **Ignore**, and **Add to dictionary** (persisted in the cache folder as `user_words.txt`, not in the document).
 - **Source:** Chromium’s own squiggles on the textarea.
 - **Edit → Spelling → Check Document** walks the file and selects the first issue; **Next Issue** continues. Books, PDFs and Reader are skipped.
 
-WPF ships dictionaries for English, French, German and Spanish. Other UI languages will not underline until a dictionary is available.
+Preview uses **WPF’s built-in dictionaries** — English, French, German and Spanish, the same engine a WPF TextBox uses — in your Windows display language. Other languages will not underline until a dictionary for them is available.
+
+*Not to be confused with the bundled dictionary:* `dictionary.tsv` is WordNet, used for **Look up** (definitions and synonyms) below. It is not a spell list — it does not know `teh` from `the`, and using it as one would underline every inflection.
 
 ### Looking a word up
 Select text and a popover appears beside it — **Highlight** and **Find in document**, and for a single word the lookup itself. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
 
-**A dictionary and thesaurus are included, and nothing is downloaded.** `dictionary.tsv` and `thesaurus.tsv` ship beside `TypoZen.exe` — roughly 150k entries derived from **WordNet 3.1**, which is free and permissively licensed. Lookups and synonyms work on first launch, with no setup and no network access. See [WORDNET-LICENSE.txt](WORDNET-LICENSE.txt) for the attribution WordNet requires.
+**A dictionary and thesaurus are included, and nothing is downloaded.** `dictionary.tsv` and `thesaurus.tsv` ship beside `TypoZen.exe` — about 152,000 definitions and 114,000 synonym entries from the **Open English WordNet** (2025+ edition), the maintained successor to Princeton WordNet, freely licensed under CC BY 4.0. Lookups and synonyms work on first launch, with no setup and no network access. See [WORDNET-LICENSE.txt](WORDNET-LICENSE.txt) for the attribution both require.
 
 **You can replace them if you want to.** TypoZen reads `dictionary.tsv` (word, tab, definition) or `dictionary.json` (`{"word": "definition"}`), and looks in two places: its cache folder first, then beside the executable. So dropping your own file in the cache folder overrides the bundled one without touching the install — that is the only reason the cache is checked at all.
 
@@ -615,7 +615,7 @@ three permit commercial use and redistribution:
 | --- | --- | --- |
 | TypoZen itself | MIT | `LICENSE` |
 | Inter, Literata, Merriweather, Source Sans 3 | SIL Open Font License 1.1 | `fonts/OFL.txt` |
-| Dictionary and thesaurus data | WordNet | `WORDNET-LICENSE.txt` |
+| Dictionary and thesaurus data | Open English WordNet (CC BY 4.0), derived from Princeton WordNet | `WORDNET-LICENSE.txt` |
 
 **Privacy:** [PRIVACY.md](PRIVACY.md) — TypoZen sends nothing anywhere; everything it
 remembers is in `%LOCALAPPDATA%\TypoZen_Cache` and can be cleared from **File → Privacy**.

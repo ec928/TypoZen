@@ -35,7 +35,7 @@ A scrubber spans the whole book with your bookmarks marked along it. The status 
 
 **A dictionary that works on a plane**
 
-Select any word for definitions, synonyms and how often it appears in what you are reading. Nearly 150,000 definitions and over 110,000 synonym sets, all on your disk. No lookup ever leaves your computer.
+Select any word for definitions, synonyms and how often it appears in what you are reading. Over 150,000 definitions and over 110,000 synonym sets, all on your disk. No lookup ever leaves your computer.
 
 **Everything else you opened by accident**
 
@@ -65,7 +65,7 @@ _Up to 20 bullets, 200 characters each._
 2. Paginated ePub reader with true two-page spreads, chapter navigation and a scrubber across the whole book
 3. Books keep the publisher's own layout — images, footnotes and links intact, re-sized to your theme
 4. Reading position, bookmarks and open tabs restored exactly where you left them
-5. Offline dictionary and thesaurus — nearly 150,000 definitions, no lookup ever leaves your computer
+5. Offline dictionary and thesaurus — over 150,000 definitions, no lookup ever leaves your computer
 6. Handles very large documents smoothly by rendering only what is on screen
 7. Find and Replace across the entire document, including the parts not currently displayed
 8. Focus mode, typewriter scrolling and auto-hiding chrome for distraction-free writing
@@ -206,13 +206,14 @@ Verified against the shipping build on 6 September 2026:
 
 | Claim | Source |
 | --- | --- |
-| "nearly 150,000 definitions" | `dictionary.tsv` — 147,478 entries |
-| "over 110,000 synonym sets" | `thesaurus.tsv` — 110,543 entries |
+| "over 150,000 definitions" | `dictionary.tsv` — 152,459 entries (Open English WordNet 2025+, from 2026-09-19; was 147,478 from WordNet 3.1) |
+| "over 110,000 synonym sets" | `thesaurus.tsv` — 114,022 entries (was 110,543) |
 | "25 themes" | `TypoZen_Themes.json` — 25 entries |
 | "200,000-character manuscript" | `tests/large-scroll-mixed.md` — 214,626 bytes |
 | "no network requests" | no HttpClient/WebRequest/socket in the host; no fetch/XHR/sendBeacon in the page |
 
-The About dialog currently says "Over 150,000 offline definitions" and "40,000+ block
-documents". The first overstates the dictionary by about 2,500 entries; the second is a
+The About dialog once said "Over 150,000 offline definitions" and "40,000+ block
+documents". The first overstated the dictionary by about 2,500 entries at the time (it is
+true since the Open English WordNet data, 152,459 entries); the second is a
 design aspiration from `docs/developer-editor-analysis.md` rather than a measured figure
 — the largest document under test is 3,767 blocks. Neither claim is repeated here.

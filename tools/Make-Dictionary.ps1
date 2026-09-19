@@ -3,19 +3,22 @@
     Build TypoZen's dictionary.tsv and thesaurus.tsv from a WordNet database you have.
 
 .DESCRIPTION
-    TypoZen ships dictionary.tsv and thesaurus.tsv beside the exe (WordNet 3.1).
-    This rebuilds them from a WordNet download of your own. Nothing here reaches
-    the network — you do the download; this only reads local files.
+    TypoZen ships dictionary.tsv and thesaurus.tsv beside the exe (Open English
+    WordNet, 2025+ edition). This rebuilds them from a WordNet download of your own.
+    Nothing here reaches the network -- you do the download; this only reads local files.
 
     It writes two files from the same pass, because WordNet is a thesaurus as well as a
     dictionary and it would be silly to read 90 MB twice. A synset is a set of words that
     mean the same thing -- "causal_agent, cause, causal_agency" is one -- so the gloss
     gives the definition and the other members of the set give the synonyms.
 
-    WordNet is the obvious source: free under a permissive licence, plain text, about
-    150,000 entries, and a single download. Get "WordNet 3.1 database files" (or 3.0)
-    from https://wordnet.princeton.edu/download/current-version and unpack it. The files
-    this needs are data.noun, data.verb, data.adj and data.adv, in the dict folder.
+    The source is the Open English WordNet, the maintained successor to Princeton
+    WordNet: CC BY 4.0, plain text, about 152,000 entries, and a single download. Use the
+    WNDB-format zip of the "plus" edition, which keeps the curated proper nouns --
+    english-wordnet-2025-plus.zip from the 2025-edition release at
+    https://github.com/globalwordnet/english-wordnet/releases -- and unpack it. The files
+    this needs are data.noun, data.verb, data.adj and data.adv, in its oewn2025-plus
+    folder. Princeton's own WordNet 3.1 / 3.0 "dict" folder also still works as input.
 
     Nothing here reaches the network. You do the download; this only reads local files.
 

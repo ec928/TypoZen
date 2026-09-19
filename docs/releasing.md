@@ -269,7 +269,7 @@ MSIX.
 | --- | --- | --- |
 | TypoZen | MIT | `LICENSE` |
 | Inter, Literata, Merriweather, Source Sans 3 | SIL OFL 1.1 | `fonts/OFL.txt` |
-| Dictionary and thesaurus data | WordNet | `WORDNET-LICENSE.txt` |
+| Dictionary and thesaurus data | Open English WordNet (CC BY 4.0), derived from Princeton WordNet | `WORDNET-LICENSE.txt` |
 
 The OFL permits bundling **and selling** these faces with software, on the condition that
 the notice and licence travel with them — which is why `fonts/OFL.txt` is in every build
@@ -279,6 +279,9 @@ file's own `name` table rather than typed.
 ---
 
 ## 7. Claims in the product must be true
+
+(Since the move to Open English WordNet 2025+ on 2026-09-19 the file holds 152,459, so
+"over 150,000" is now true. It was not when it was first written.)
 
 The About dialog once said "over 150,000 offline definitions" when the file held 147,478,
 and "40,000+ block documents" — a figure that came from a design aspiration in a planning

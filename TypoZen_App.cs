@@ -3058,7 +3058,7 @@ namespace TypoZen
         // sit in the document's memory would cost more than the feature is worth. The page
         // asks for one word and gets one answer.
         //
-        // dictionary.tsv / thesaurus.tsv ship beside the exe (WordNet 3.1, see
+        // dictionary.tsv / thesaurus.tsv ship beside the exe (Open English WordNet 2025+, see
         // WORDNET-LICENSE.txt). CacheDir() is checked first so a drop-in file there
         // overrides the bundled one without touching the install. TSV rather than JSON
         // because a 40 MB JSON parse on first lookup would be felt.
