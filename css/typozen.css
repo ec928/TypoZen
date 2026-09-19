@@ -1750,6 +1750,13 @@
             padding: 0 6px 0 0; margin: 0;
         }
         .selpop-back:hover { color: var(--tx, #F4F4F5); }
+        .selpop-more {
+            display: block; margin-top: 3px; padding: 0;
+            background: none; border: 0; cursor: pointer;
+            font: inherit; color: var(--tx-muted, #A1A1AA);
+        }
+        .selpop-more:hover { color: var(--tx, #F4F4F5); text-decoration: underline; }
+        .selpop-more:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 2px; }
         .selpop-hint code {
             font-family: 'Cascadia Mono', Consolas, monospace;
             background: rgba(128,128,128,0.18); border-radius: 3px; padding: 0 3px;

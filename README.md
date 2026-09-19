@@ -184,7 +184,11 @@ Most people will never need this, and that is fine. If you do want to rebuild fr
 
 TSV first, because that is what a WordNet or Wiktionary export converts to in one line of script, and because a 40 MB JSON parse on startup would be felt. Lookups are answered by the **shell**, not the page: a dictionary worth having is tens of megabytes, and marshalling that across the bridge to sit in the document's memory would cost more than the feature.
 
+**The dictionary is read from disk, not loaded.** The bundled files are sorted by word, so at startup TypoZen notes every 64th word and where it sits in the file — about 50 ms and 200 KB — and a lookup reads the few lines around it, about 0.15 ms on an SSD. Holding the whole dictionary in memory cost 39 MB. A file of your own that is not sorted, or a `.json` one, is loaded into memory as before.
+
+- **The most common meanings first, and the rest behind "more".** Every sense is kept; the popover shows three, most common first, and **+ N more meanings** shows the others. In `dictionary.tsv`, senses are separated by ` | `; a file of your own without that separator shows as one definition
 - A reader selects the word as it appears on the page, which is inflected more often than not, so a miss retries the obvious stems — `walking` → `walk`, `bodies` → `body` (`ies` → `y`, plus `s` / `es` / `ed` / `ing` / `ly`)
+- **Irregular forms** no rule can reduce — `ran`, `went`, `mice`, `thought` — come from WordNet's own lists and answer with their base word (about 3,800 of them)
 - If the dictionary file is missing — moved or deleted — it says so, and how to rebuild it
 - **Follow a synonym** to its own entry — each word is a control, and a back arrow appears once there is somewhere to return to. A synonym you cannot look up is a dead end, which is most of what a thesaurus is for
 - **One button, one answer.** Press **Look up** and the popover gives the **definition**, the **synonyms** below it, and **how many times the word appears** in what you are reading — together, in that order. It is deliberately not automatic: a word is selected to _copy_ it at least as often as to ask about it, and a definition that arrives uninvited sits on top of the text you were working with. Offered only for a single word, since a paragraph has no definition

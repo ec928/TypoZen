@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.58";
+        internal const string AppVersion = "0.2.59";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -3061,22 +3061,23 @@ namespace TypoZen
         // dictionary.tsv / thesaurus.tsv ship beside the exe (Open English WordNet 2025+, see
         // WORDNET-LICENSE.txt). CacheDir() is checked first so a drop-in file there
         // overrides the bundled one without touching the install. TSV rather than JSON
-        // because a 40 MB JSON parse on first lookup would be felt.
-        private Dictionary<string, string> _dictionary;
+        // because a 40 MB JSON parse on first lookup would be felt. The bundled files are
+        // sorted and read on disk rather than held in memory; see Lexicon.cs.
+        private Lexicon _dictionary;
         private bool _dictionaryChecked;
         // WordNet is a thesaurus as well as a dictionary -- a synset is a set of words that
         // mean the same thing -- so the same converter writes both files from one pass, and
         // the same loader reads them. Separate rather than merged because a reader asking
         // "what does this mean" and one asking "what else could I say" are different
         // questions, and a popover answering both at once answers neither well.
-        private Dictionary<string, string> _thesaurus;
+        private Lexicon _thesaurus;
         private bool _thesaurusChecked;
         private readonly object _lexiconLock = new object();
         private Task _lexiconTask;
 
         /// <summary>
-        /// Parse dictionary.tsv / thesaurus.tsv off the UI thread. First lookup waits if
-        /// this has not finished; later lookups are free.
+        /// Index dictionary.tsv / thesaurus.tsv off the UI thread. First lookup waits if
+        /// this has not finished.
         /// </summary>
         private void StartLexiconLoad()
         {
@@ -3120,7 +3121,7 @@ namespace TypoZen
         }
 
         /// <summary>Read "&lt;stem&gt;.tsv" or "&lt;stem&gt;.json" from the cache or the app folder.</summary>
-        private Dictionary<string, string> LoadLexicon(string stem)
+        private Lexicon LoadLexicon(string stem)
         {
             foreach (string dir in new[] { CacheDir(), _appDir })
             {
@@ -3128,40 +3129,8 @@ namespace TypoZen
                 {
                     string path;
                     try { path = Path.Combine(dir, name); } catch { continue; }
-                    if (!File.Exists(path)) continue;
-                    try
-                    {
-                        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                        if (name.EndsWith(".tsv", StringComparison.OrdinalIgnoreCase))
-                        {
-                            foreach (string line in File.ReadLines(path))
-                            {
-                                int tab = line.IndexOf('	');
-                                if (tab <= 0) continue;
-                                string w = line.Substring(0, tab).Trim();
-                                if (w.Length == 0 || map.ContainsKey(w)) continue;
-                                map[w] = line.Substring(tab + 1).Trim();
-                            }
-                        }
-                        else
-                        {
-                            // Deliberately not a JSON parser: this is a flat string map, and
-                            // the app has no serializer dependency to reach for.
-                            string text = File.ReadAllText(path, Encoding.UTF8);
-                            // Verbatim string: the pattern is full of backslashes and doubling
-                            // every one of them is how the previous attempt at this line
-                            // failed to compile.
-                            foreach (Match m in Regex.Matches(text,
-                                @"""((?:[^""\\]|\\.)*)""\s*:\s*""((?:[^""\\]|\\.)*)"""))
-                            {
-                                string w = Regex.Unescape(m.Groups[1].Value).Trim();
-                                if (w.Length == 0 || map.ContainsKey(w)) continue;
-                                map[w] = Regex.Unescape(m.Groups[2].Value).Trim();
-                            }
-                        }
-                        if (map.Count > 0) return map;
-                    }
-                    catch { }
+                    Lexicon lex = Lexicon.Open(path);
+                    if (lex != null) return lex;
                 }
             }
             return null;
@@ -3202,17 +3171,34 @@ namespace TypoZen
         {
             EnsureLexiconLoaded();
             string def = "";
+            // Set when the entry was "@run": an irregular form ("ran", "mice", "went") that
+            // no suffix rule can reduce, pointing at the word it is a form of. The
+            // thesaurus has no such lines and is asked about the target instead.
+            string lemma = null;
             if (_dictionary != null && !string.IsNullOrEmpty(word))
             {
-                if (!_dictionary.TryGetValue(word, out def))
+                // A reader selects the word as it appears on the page, which is inflected
+                // far more often than not. Trying the obvious reductions is the difference
+                // between a dictionary that answers and one that shrugs at "walking".
+                foreach (string key in WordAndStems(word))
                 {
-                    // A reader selects the word as it appears on the page, which is inflected
-                    // far more often than not. Trying the obvious reductions is the difference
-                    // between a dictionary that answers and one that shrugs at "walking".
-                    foreach (string stem in WordStems(word))
+                    string found;
+                    if (!_dictionary.TryGetValue(key, out found)) continue;
+                    if (found.StartsWith("@", StringComparison.Ordinal))
                     {
-                        if (_dictionary.TryGetValue(stem, out def)) break;
+                        foreach (string target in found.Substring(1).Split('|'))
+                        {
+                            string t = target.Trim(), d;
+                            if (t.Length > 0 && _dictionary.TryGetValue(t, out d)
+                                && !d.StartsWith("@", StringComparison.Ordinal))
+                            {
+                                def = d; lemma = t; break;
+                            }
+                        }
+                        if (lemma == null) continue;
                     }
+                    else def = found;
+                    break;
                 }
             }
             // "definition:<installed>	<word>	<definition>	<synonyms>". Both in one reply
@@ -3220,16 +3206,21 @@ namespace TypoZen
             string syn = "";
             if (_thesaurus != null && !string.IsNullOrEmpty(word))
             {
-                if (!_thesaurus.TryGetValue(word, out syn))
+                bool hit = false;
+                foreach (string key in lemma != null ? new[] { lemma } : WordAndStems(word))
                 {
-                    foreach (string stem in WordStems(word))
-                    {
-                        if (_thesaurus.TryGetValue(stem, out syn)) break;
-                    }
+                    if (_thesaurus.TryGetValue(key, out syn)) { hit = true; break; }
                 }
+                if (!hit) syn = "";
             }
             SendMsg("definition:" + (_dictionary != null ? "1" : "0") + "	" + word
                 + "	" + (def ?? "") + "	" + (syn ?? ""));
+        }
+
+        private static IEnumerable<string> WordAndStems(string w)
+        {
+            yield return w;
+            foreach (string s in WordStems(w)) yield return s;
         }
 
         private static IEnumerable<string> WordStems(string w)

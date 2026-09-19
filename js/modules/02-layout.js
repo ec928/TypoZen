@@ -2256,6 +2256,24 @@
             pop.style.top = Math.round(y) + 'px';
         }
 
+        /** Senses (and synonym groups) shown before "more". */
+        const SELPOP_SENSES = 3;
+
+        /** "+ 4 more meanings" after `after`; reveal() fills them in and the link goes. */
+        function addSelPopMore(body, after, hiddenCount, noun, reveal) {
+            if (hiddenCount <= 0) return;
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'selpop-more';
+            more.textContent = '+ ' + hiddenCount + ' more ' + noun + (hiddenCount === 1 ? '' : 's');
+            more.addEventListener('click', function () {
+                reveal();
+                more.remove();
+                showSelPopKeepPosition();
+            });
+            after.insertAdjacentElement('afterend', more);
+        }
+
         /** Render whatever the host found, or say plainly that there is nothing to look in. */
         function showDefinition(word, definition, installed, synonyms) {
             const body = document.getElementById('selPopBody');
@@ -2287,10 +2305,18 @@
                wants the definition almost always wants the near-words too. */
 
             if (definition) {
+                // The bundled dictionary separates senses with " | ", most common first,
+                // and carries all of them: the popover sits beside a sentence, so it shows
+                // three and keeps the rest one click away. A dictionary of someone's own
+                // without the separator is one sense and shows whole, as it always did.
+                const senses = String(definition).split(' | ');
                 const d = document.createElement('div');
                 d.className = 'selpop-def';
-                d.textContent = definition;
+                d.textContent = senses.slice(0, SELPOP_SENSES).join('; ');
                 body.appendChild(d);
+                addSelPopMore(body, d, senses.length - SELPOP_SENSES, 'meaning', function () {
+                    d.textContent = senses.join('; ');
+                });
             } else {
                 const h = document.createElement('div');
                 h.className = 'selpop-hint';
@@ -2319,7 +2345,8 @@
                 // Senses are separated by "; " and words within a sense by ", ".
                 const sy = document.createElement('div');
                 sy.className = 'selpop-def selpop-syn';
-                String(synonyms).split(';').forEach(function (sense, si) {
+                const groups = String(synonyms).split(';');
+                const addGroup = function (sense, si) {
                     if (si) sy.appendChild(document.createTextNode(' · '));
                     sense.split(',').forEach(function (w, wi) {
                         const t = w.trim();
@@ -2333,8 +2360,12 @@
                         b.title = 'Look up ' + t;
                         sy.appendChild(b);
                     });
-                });
+                };
+                groups.slice(0, SELPOP_SENSES).forEach(addGroup);
                 body.appendChild(sy);
+                addSelPopMore(body, sy, groups.length - SELPOP_SENSES, 'sense', function () {
+                    groups.slice(SELPOP_SENSES).forEach(function (g, i) { addGroup(g, i + SELPOP_SENSES); });
+                });
             } else if (installed) {
                 // Only worth saying when there is a thesaurus to have looked in. With
                 // nothing installed the dictionary hint above has already said so, and

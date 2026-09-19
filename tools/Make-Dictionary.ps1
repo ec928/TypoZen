@@ -33,8 +33,16 @@
     a file placed there still overrides this one.
 
 .PARAMETER MaxSenses
-    How many senses to keep per word. WordNet gives "run" over fifty; a popover beside a
-    sentence is not the place for all of them, so the most common few are kept.
+    How many senses to keep per word; 0 (the default) keeps them all. WordNet gives "run"
+    over fifty. The popover shows the most common three and offers the rest behind
+    "More", and keeping every sense costs about 1 MB over keeping three.
+
+.NOTES
+    Output format. One word per line, sorted by word (ordinal, ignoring case) so TypoZen can look it up
+    on disk instead of loading it. dictionary.tsv separates senses with " | " (a gloss
+    can contain "; " but never "|"); thesaurus.tsv separates synonym groups with "; ".
+    Irregular forms from WordNet's *.exc lists ("ran", "mice", "went") that are not
+    words in their own right are written as "ran<TAB>@run": TypoZen follows the arrow.
 
 .PARAMETER Counts
     Princeton WordNet's cntlist.rev: how often each sense was tagged in a real corpus.
@@ -47,7 +55,7 @@
     speech, nouns first, which still gets "bank" right and still gets "run" wrong.
 
 .EXAMPLE
-    .\tools\Make-Dictionary.ps1 -Source C:\wordnet\dict
+    .\tools\Make-Dictionary.ps1 -Source C:\wordnet\dict -Counts C:\wordnet3.1\dict\cntlist.rev
 #>
 [CmdletBinding()]
 param(
@@ -56,7 +64,7 @@ param(
     # output you cannot find is output you cannot check or replace.
     [string]$Out = (Join-Path (Split-Path $PSScriptRoot -Parent) "dictionary.tsv"),
     [string]$ThesaurusOut = (Join-Path (Split-Path $PSScriptRoot -Parent) "thesaurus.tsv"),
-    [int]$MaxSenses = 3,
+    [int]$MaxSenses = 0,
     [string]$Counts = ""
 )
 
@@ -205,12 +213,13 @@ function Add-Sense([string]$w, [string]$id) {
     $gl = $null
     if (-not $glossOf.TryGetValue($id, [ref]$gl)) { return }
     $list = $map[$w]
-    if ($list.Count -lt $MaxSenses -and -not $list.Contains($gl)) { [void]$list.Add($gl) }
+    if (($MaxSenses -le 0 -or $list.Count -lt $MaxSenses) -and -not $list.Contains($gl)) { [void]$list.Add($gl) }
 
     # Every other member of the synset is a synonym of this word. A one-word synset has
     # none, which is most of them.
     $g = $null
-    if (-not $syn.TryGetValue($w, [ref]$g) -or $g.Count -ge $MaxSenses) { return }
+    if (-not $syn.TryGetValue($w, [ref]$g)) { return }
+    if ($MaxSenses -gt 0 -and $g.Count -ge $MaxSenses) { return }
     $others = @($members[$id] | Where-Object { $_ -ne $w })
     if ($others.Count -gt 0) {
         $joined = ($others -join ', ')
@@ -229,6 +238,38 @@ foreach ($w in @($map.Keys)) {
 # A word whose synsets all had one member ends with no synonyms; no line for it.
 foreach ($w in @($syn.Keys)) { if ($syn[$w].Count -eq 0) { [void]$syn.Remove($w) } }
 
+# Irregular forms. TypoZen strips -s / -ed / -ing itself, but no rule gets from "ran" to
+# "run" or "mice" to "mouse"; WordNet lists those in *.exc as "form base [base ...]".
+# Only forms that are not words of their own get a line -- "better" is already in, and
+# "axes" as the plural of "axe" must not shadow a real entry.
+$redirect = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($exc in @('noun.exc', 'verb.exc', 'adj.exc', 'adv.exc')) {
+    $excPath = Join-Path $Source $exc
+    if (-not (Test-Path $excPath)) { continue }
+    foreach ($line in [System.IO.File]::ReadLines($excPath)) {
+        $p = $line.Trim().Split(' ')
+        if ($p.Count -lt 2) { continue }
+        $form = $p[0].Replace('_', ' ')
+        if ($map.ContainsKey($form)) { continue }
+        for ($j = 1; $j -lt $p.Count; $j++) {
+            $base = $p[$j].Replace('_', ' ')
+            if (-not $map.ContainsKey($base)) { continue }
+            if (-not $redirect.ContainsKey($form)) { $redirect[$form] = [System.Collections.Generic.List[string]]::new() }
+            if (-not $redirect[$form].Contains($base)) { [void]$redirect[$form].Add($base) }
+        }
+    }
+}
+Write-Host ("  " + $redirect.Keys.Count + " irregular forms point at their base word") -ForegroundColor Gray
+
+# Sorted, because TypoZen looks words up on disk by binary search and checks the order
+# as it indexes; an unsorted file still works, but is loaded into memory instead.
+function Get-SortedKeys($dict) {
+    $k = [string[]]@($dict.Keys)
+    [Array]::Sort($k, [System.StringComparer]::OrdinalIgnoreCase)
+    return , $k
+}
+
 # $map.Keys.Count, not $map.Count. PowerShell resolves a member on a Dictionary against
 # its *keys* first, and "count" is a word in WordNet -- so $map.Count returned the
 # definitions of "count" and the progress line read "Writing the act of counting; reciting
@@ -238,13 +279,19 @@ Write-Host ("Writing " + $map.Keys.Count + " words to " + $Out) -ForegroundColor
 $dir = Split-Path $Out -Parent
 if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
 
+$all = [System.Collections.Generic.List[string]]::new([string[]]@($map.Keys))
+foreach ($f in $redirect.Keys) { $all.Add($f) }
+$allKeys = $all.ToArray()
+[Array]::Sort($allKeys, [System.StringComparer]::OrdinalIgnoreCase)
+
 # Streamed, not built in memory: 150,000 joined strings is a lot of garbage for no reason.
 $sw = [System.IO.StreamWriter]::new($Out, $false, [System.Text.UTF8Encoding]::new($false))
 try {
-    foreach ($kv in $map.GetEnumerator()) {
+    foreach ($k in $allKeys) {
+        if ($map.ContainsKey($k)) { $def = $map[$k] -join ' | ' }
+        else { $def = '@' + ($redirect[$k] -join '|') }
         # Tabs and newlines would break the one-line-per-word format outright.
-        $def = ($kv.Value -join '; ') -replace "[`t`r`n]", ' '
-        $sw.WriteLine($kv.Key + "`t" + $def)
+        $sw.WriteLine($k + "`t" + ($def -replace "[`t`r`n]", ' '))
     }
 }
 finally { $sw.Dispose() }
@@ -254,9 +301,9 @@ $tdir = Split-Path $ThesaurusOut -Parent
 if ($tdir -and -not (Test-Path $tdir)) { New-Item -ItemType Directory -Force $tdir | Out-Null }
 $tw = [System.IO.StreamWriter]::new($ThesaurusOut, $false, [System.Text.UTF8Encoding]::new($false))
 try {
-    foreach ($kv in $syn.GetEnumerator()) {
-        $line = ($kv.Value -join '; ') -replace "[`t`r`n]", ' '
-        $tw.WriteLine($kv.Key + "`t" + $line)
+    foreach ($k in (Get-SortedKeys $syn)) {
+        $line = ($syn[$k] -join '; ') -replace "[`t`r`n]", ' '
+        $tw.WriteLine($k + "`t" + $line)
     }
 }
 finally { $tw.Dispose() }
