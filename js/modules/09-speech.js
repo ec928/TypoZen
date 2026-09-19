@@ -142,27 +142,55 @@ function speakSelection() {
 function startReading(text) {
     if (!text) return;
     
-    // Send to host for native playback. Host uses its own voice/speed configuration now.
+    // SAPI and WinRT both fail or silently truncate if text is too large.
+    // Chunking in JS allows unlimited playback lengths.
+    const blocks = text.split(/\n{2,}/);
+    _ttsChunks = [];
+    let currentChunk = "";
+    for (let i = 0; i < blocks.length; i++) {
+        if (currentChunk.length + blocks[i].length > 30000) {
+            if (currentChunk) _ttsChunks.push(currentChunk);
+            currentChunk = blocks[i];
+        } else {
+            currentChunk += (currentChunk ? "\n\n" : "") + blocks[i];
+        }
+    }
+    if (currentChunk) _ttsChunks.push(currentChunk);
+
+    if (_ttsChunks.length > 0) {
+        isPlaying = true;
+        showReadAloudState();
+        playNextChunk();
+    }
+}
+
+function playNextChunk() {
+    if (!isPlaying || _ttsChunks.length === 0) {
+        stopReading();
+        return;
+    }
+    const text = _ttsChunks.shift();
     try { 
         window.chrome.webview.postMessage("host_tts_play:" + JSON.stringify({
             text: text
         })); 
     } catch(e){}
-    
-    isPlaying = true;
-    showReadAloudState();
 }
 
 function stopReading() {
-    isPlaying = false;
+    _ttsChunks = [];
     try { window.chrome.webview.postMessage("host_tts_stop"); } catch(e){}
+    isPlaying = false;
     showReadAloudState();
 }
 
 // Called by 03-shell.js when native TTS finishes reading
 function nativeTTSFinished() {
-    isPlaying = false;
-    showReadAloudState();
+    if (_ttsChunks && _ttsChunks.length > 0) {
+        playNextChunk();
+    } else {
+        stopReading();
+    }
 }
 
 window.addEventListener('load', function() {
