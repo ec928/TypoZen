@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.62";
+        internal const string AppVersion = "0.2.63";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -3341,8 +3341,13 @@ namespace TypoZen
             // selected ("compositing" answered as "composite"), so the page can say so.
             string via = answered != null && !string.Equals(answered, word, StringComparison.OrdinalIgnoreCase)
                 ? answered : "";
+            // A dictionary line may carry a pronunciation as a third column
+            // (word <TAB> senses <TAB> pronunciation); the built-in one has none. Sixth field.
+            string say = "";
+            int tab = (def ?? "").IndexOf('\t');
+            if (tab >= 0) { say = def.Substring(tab + 1).Trim(); def = def.Substring(0, tab).Trim(); }
             SendMsg("definition:" + (_dictionary != null ? "1" : "0") + "	" + word
-                + "	" + (def ?? "") + "	" + (syn ?? "") + "	" + via);
+                + "	" + (def ?? "") + "	" + (syn ?? "") + "	" + via + "	" + say);
         }
 
         private static IEnumerable<string> WordAndStems(string w)

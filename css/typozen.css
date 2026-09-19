@@ -1751,6 +1751,13 @@
         }
         .selpop-back:hover { color: var(--tx, #F4F4F5); }
         .selpop-via { font-weight: 400; color: var(--tx-muted, #A1A1AA); }
+        /* Segoe UI carries the IPA symbols (turned r, schwa, stress marks) that some UI
+           fonts lack. */
+        .selpop-say {
+            font-weight: 400; font-size: var(--ui-fs-dense);
+            color: var(--tx-muted, #A1A1AA);
+            font-family: 'Segoe UI', 'Segoe UI Symbol', sans-serif;
+        }
         /* Senses as a numbered list and synonym groups one to a line: a hanging number
            (or dot) in a narrow gutter, text aligned beside it, and 2px between entries.
            Enough to tell one sense from the next without spending a line on spacing. */

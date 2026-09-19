@@ -2275,7 +2275,7 @@
         }
 
         /** Render whatever the host found, or say plainly that there is nothing to look in. */
-        function showDefinition(word, definition, installed, synonyms, answeredAs) {
+        function showDefinition(word, definition, installed, synonyms, answeredAs, pronunciation) {
             const body = document.getElementById('selPopBody');
             if (!body) return;
             body.innerHTML = '';
@@ -2303,6 +2303,15 @@
                 via.textContent = ' → ' + answeredAs;
                 via.title = 'No entry for "' + word + '"; showing "' + answeredAs + '"';
                 head.appendChild(via);
+            }
+            if (pronunciation && definition) {
+                // IPA, from dictionaries that have it (Wiktionary does; WordNet does not).
+                // Its own line under the word rather than beside it: "UK /…/ · US /…/" beside
+                // a long word would wrap mid-transcription.
+                const say = document.createElement('div');
+                say.className = 'selpop-say';
+                say.textContent = pronunciation;
+                head.appendChild(say);
             }
             body.appendChild(head);
 

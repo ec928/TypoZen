@@ -29,7 +29,9 @@ const ask = (word) => new Promise((resolve) => {
         if (def || hint || performance.now() - t0 > 3000) {
             const syn = body.querySelector('.selpop-syn');
             const via = body.querySelector('.selpop-via');
+            const say = body.querySelector('.selpop-say');
             resolve({
+                say: say ? say.textContent : '',
                 via: via ? via.textContent.replace(/^\s*→\s*/, '') : '',
                 def: def ? def.textContent : '',
                 hint: hint ? hint.textContent : '',
@@ -68,6 +70,7 @@ try {
     assert(!/^@/.test(ran.def), 'the redirect marker never reaches the reader');
     assert(ran.via === 'run', 'and the title says the answer is for "run"');
     assert(run.via === '', 'a word answered as itself says nothing extra');
+    assert(run.say === '', 'the built-in dictionary has no pronunciations, and none is shown');
     const comp = await app.eval(ask, 'compositing');
     assert(comp.via === 'composite', 'compositing: answered as "composite", and says so');
 
@@ -91,12 +94,14 @@ console.log('\n=== a chosen dictionary answers, synonyms and all ===');
 const testDict = path.join(profileDir, 'dictionaries', 'Test');
 fs.mkdirSync(testDict, { recursive: true });
 fs.writeFileSync(path.join(testDict, 'dictionary.tsv'),
-    'bank\tTEST BANK\nrun\tTEST SENSE ONE | TEST SENSE TWO\n');
+    'bank\tTEST BANK\nrun\tTEST SENSE ONE | TEST SENSE TWO\tUK /rVn/ · US /rVn/\n');
 fs.writeFileSync(profileFile('window_state.json'), '{"dictionary":"Test"}');
 app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 6000 });
 try {
     const run = await app.eval(ask, 'run');
     assert(/^TEST SENSE ONE/.test(run.def) && /TEST SENSE TWO/.test(run.def), 'run: answered by the chosen dictionary');
+    assert(run.say === 'UK /rVn/ · US /rVn/', 'with its pronunciation, from the third column');
+    assert(!/rVn/.test(run.def), 'which is not mixed into the senses');
     assert(run.syn === '', 'and it has no thesaurus, so no synonyms -- none borrowed from the built-in one');
     const walking = await app.eval(ask, 'walking');
     assert(/Not in the installed dictionary/.test(walking.hint), 'a word it lacks is not looked up elsewhere');
