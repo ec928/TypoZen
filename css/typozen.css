@@ -1370,9 +1370,15 @@
             font-size: var(--ui-fs);
             color: var(--tx, #F4F4F5);
             zoom: calc(1 / var(--host-zoom, 1));
+            display: flex;
+            flex-direction: column;
+        }
+        #selPop.pop-above {
+            flex-direction: column-reverse;
         }
         #selPop[hidden] { display: none; }
-        .selpop-actions { display: flex; gap: 2px; padding: 4px; }
+        .selpop-actions { display: flex; flex-direction: row; gap: 4px; padding: 4px; }
+        .selpop-group { display: flex; flex-direction: column; gap: 2px; }
         /* The link chip is the selection popover's twin: same surface, same buttons.
            One component, two things you can point at. */
         #linkPop {
@@ -1735,6 +1741,10 @@
             /* Takes the popover's width (set by the button row) instead of widening it: a
                long definition wraps rather than stretching the popover across the page. */
             width: 0; min-width: 100%; box-sizing: border-box;
+        }
+        #selPop.pop-above .selpop-body {
+            border-top: none;
+            border-bottom: 1px solid var(--border, #3F3F46);
         }
         .selpop-body[hidden] { display: none; }
         .selpop-word { color: var(--tx, #F4F4F5); font-weight: 600; font-size: var(--ui-fs); }

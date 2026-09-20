@@ -1992,13 +1992,19 @@
             pop.hidden = false;
 
             const r = a.getBoundingClientRect();
-            const w = pop.offsetWidth || 260, h = pop.offsetHeight || 36;
+            
+            let hz = 1;
+            if (typeof getComputedStyle !== 'undefined') {
+                hz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--host-zoom')) || 1;
+            }
+
+            const w = (pop.offsetWidth || 260) / hz, h = (pop.offsetHeight || 36) / hz;
             let x = r.left + r.width / 2 - w / 2;
             let y = r.bottom + 8;                       // below, so it never covers the link
             if (y + h > window.innerHeight - 4) y = Math.max(4, r.top - h - 8);
             x = Math.max(6, Math.min(x, window.innerWidth - w - 6));
-            pop.style.left = Math.round(x) + 'px';
-            pop.style.top = Math.round(y) + 'px';
+            pop.style.left = Math.round(x * hz) + 'px';
+            pop.style.top = Math.round(y * hz) + 'px';
         }
 
         function followLinkTarget(href) {
@@ -2245,15 +2251,56 @@
             const lookup = document.getElementById('selPopLookup');
             if (lookup) lookup.hidden = !_selPopWord;
             try { fillSpellSuggestions(_selPopWord); } catch (eSp) {}
-            // Above the selection, or below when there is no room. Clamped to the window
-            // so a selection at the edge does not push it off screen.
-            const w = pop.offsetWidth || 240, h = pop.offsetHeight || 40;
-            let x = rect.left + rect.width / 2 - w / 2;
-            let y = rect.top - h - 8;
-            if (y < 4) y = rect.bottom + 8;
+            
+            // Add Link is a bug in a book, hide it
+            const linkBtn = document.getElementById('selPopLink');
+            if (linkBtn) {
+                linkBtn.hidden = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
+            }
+
+            // Hide any group that has all its buttons hidden
+            const groups = pop.querySelectorAll('.selpop-group');
+            groups.forEach(group => {
+                const buttons = Array.from(group.querySelectorAll('.selpop-btn'));
+                group.hidden = buttons.every(btn => btn.hidden || btn.style.display === 'none');
+            });
+
+            // Near the top, popover below selection; near the bottom, popover above.
+            let hz = 1;
+            if (typeof getComputedStyle !== 'undefined') {
+                hz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--host-zoom')) || 1;
+            }
+
+            const w = (pop.offsetWidth || 240) / hz;
+            const h = (pop.offsetHeight || 40) / hz;
+            
+            // Center the middle group under the pointer/anchor by offsetting the left group width
+            const leftGroup = document.getElementById('selPopGroupLeft');
+            const leftW = (leftGroup && !leftGroup.hidden) ? (leftGroup.offsetWidth / hz) : 0;
+            let x = rect.left + rect.width / 2 - leftW - (w / 3) / 2; // Rough center of middle group
+            
+            // Screen bisection for top/bottom placement
+            const isAbove = (rect.top >= window.innerHeight / 2);
+            
+            // Clamp X to window boundaries
             x = Math.max(6, Math.min(x, window.innerWidth - w - 6));
-            pop.style.left = Math.round(x) + 'px';
-            pop.style.top = Math.round(y) + 'px';
+            pop.style.left = Math.round(x * hz) + 'px';
+            
+            if (isAbove) {
+                // Place above the text, grow upwards
+                pop.classList.add('pop-above');
+                let b = window.innerHeight - rect.top + 8;
+                b = Math.max(4, Math.min(b, window.innerHeight - h - 4));
+                pop.style.top = '';
+                pop.style.bottom = Math.round(b * hz) + 'px';
+            } else {
+                // Place below the text, grow downwards
+                pop.classList.remove('pop-above');
+                let y = rect.bottom + 8;
+                y = Math.max(4, Math.min(y, window.innerHeight - h - 4));
+                pop.style.bottom = '';
+                pop.style.top = Math.round(y * hz) + 'px';
+            }
         }
 
         /** Senses (and synonym groups) shown before "more". */
@@ -2456,10 +2503,26 @@
         function showSelPopKeepPosition() {
             const pop = document.getElementById('selPop');
             if (!pop || pop.hidden) return;
-            const h = pop.offsetHeight || 40;
-            let y = parseFloat(pop.style.top) || 0;
-            if (y + h > window.innerHeight - 6) y = Math.max(6, window.innerHeight - h - 6);
-            pop.style.top = Math.round(y) + 'px';
+            
+            let hz = 1;
+            if (typeof getComputedStyle !== 'undefined') {
+                hz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--host-zoom')) || 1;
+            }
+            const h = (pop.offsetHeight || 40) / hz;
+            
+            if (pop.style.bottom) {
+                let b = parseFloat(pop.style.bottom) / hz || 0;
+                if (window.innerHeight - b - h < 6) {
+                    b = Math.max(4, window.innerHeight - h - 6);
+                    pop.style.bottom = Math.round(b * hz) + 'px';
+                }
+            } else {
+                let y = parseFloat(pop.style.top) / hz || 0;
+                if (y + h > window.innerHeight - 6) {
+                    y = Math.max(4, window.innerHeight - h - 6);
+                    pop.style.top = Math.round(y * hz) + 'px';
+                }
+            }
         }
 
         function wireSelPop() {
@@ -2497,6 +2560,12 @@
             const lookupBtn = document.getElementById('selPopLookup');
             if (lookupBtn) lookupBtn.addEventListener('click', function () {
                 if (!_selPopWord) return;
+                const body = document.getElementById('selPopBody');
+                if (body && !body.hidden) {
+                    body.hidden = true;
+                    showSelPopKeepPosition();
+                    return;
+                }
                 try { postMsg('define:' + _selPopWord); } catch (e) {}
             });
 

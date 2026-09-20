@@ -10,7 +10,7 @@ const READ_ALOUD_HTML =
     '<svg class="tts-icon" viewBox="0 0 16 16" aria-hidden="true">' +
     '<path d="M1.5 13 5 3.5 8.5 13M2.8 9.6h4.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<path d="M10.4 6.2a2.6 2.6 0 0 1 0 3.6M12.3 4.4a5.2 5.2 0 0 1 0 7.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' +
-    '</svg> Read aloud';
+    '</svg> Read selection';
 const STOP_READING_HTML =
     '<svg class="tts-icon" viewBox="0 0 16 16" aria-hidden="true">' +
     '<rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/>' +
@@ -32,6 +32,31 @@ function initTTS() {
             } else {
                 speakSelection();
             }
+        });
+    }
+
+    const selPopReadFromHereBtn = document.getElementById('selPopReadFromHere');
+    if (selPopReadFromHereBtn) {
+        selPopReadFromHereBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            if (isPlaying) stopReading();
+            
+            if (typeof state !== 'undefined' && state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) {
+                const at = sourceEditor.selectionStart || 0;
+                sourceEditor.setSelectionRange(at, at);
+            } else {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount) {
+                    const r = sel.getRangeAt(0);
+                    r.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(r);
+                }
+            }
+            
+            try { hideSelPop(); } catch (ex) {}
+            speakSelection();
         });
     }
 }

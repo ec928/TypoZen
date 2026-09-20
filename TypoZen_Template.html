@@ -205,14 +205,21 @@
          and the thing that makes highlighting discoverable without the sidebar open. -->
     <div id="selPop" hidden role="dialog" aria-label="Selected text">
         <div class="selpop-actions">
-            <button type="button" id="selPopMark" class="selpop-btn"><span aria-hidden="true">▮</span> Highlight</button>
-            <button type="button" id="selPopRead" class="selpop-btn">Read aloud</button>
-            <!-- One button, one combined answer. Deliberately not automatic: selecting a
-                 word is often just copying it, and a definition that arrives uninvited is
-                 in the way. -->
-            <button type="button" id="selPopLookup" class="selpop-btn">Look up</button>
-            <button type="button" id="selPopFind" class="selpop-btn">Find in document</button>
-            <button type="button" id="selPopLink" class="selpop-btn"><span aria-hidden="true">&#128279;</span> Add Link</button>
+            <div class="selpop-group" id="selPopGroupLeft">
+                <button type="button" id="selPopMark" class="selpop-btn"><span aria-hidden="true">▮</span> Highlight</button>
+                <button type="button" id="selPopLink" class="selpop-btn"><span aria-hidden="true">&#128279;</span> Add Link</button>
+            </div>
+            <div class="selpop-group" id="selPopGroupMiddle">
+                <!-- One button, one combined answer. Deliberately not automatic: selecting a
+                     word is often just copying it, and a definition that arrives uninvited is
+                     in the way. -->
+                <button type="button" id="selPopLookup" class="selpop-btn"><svg class="tts-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10v9H3z" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4v9" fill="none" stroke="currentColor" stroke-width="1.3"/></svg> Look up</button>
+                <button type="button" id="selPopFind" class="selpop-btn"><svg class="tts-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="3.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M9.5 9.5l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg> Find in document</button>
+            </div>
+            <div class="selpop-group" id="selPopGroupRight">
+                <button type="button" id="selPopRead" class="selpop-btn">Read selection</button>
+                <button type="button" id="selPopReadFromHere" class="selpop-btn"><svg class="tts-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h6M3 8h6M3 12h6M11 5l4 3.5-4 3.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg> Read from here</button>
+            </div>
         </div>
         <div id="selPopSpell" class="selpop-actions selpop-spell" hidden></div>
         <div id="selPopBody" class="selpop-body" hidden></div>

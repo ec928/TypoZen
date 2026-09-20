@@ -234,7 +234,7 @@ there is no block-body hover cue at all. Nothing in that lane uses `!important`.
 
 ## The selection popover sits on the text it is about
 
-**Open. Pre-dates the two-row experiment** -- the single-row bar does it too, confirmed by
+**Fixed in v0.3.4** -- the single-row bar does it too, confirmed by
 screenshots on 2026-09-20 against a build with no popover changes in it.
 
 Selecting a word near the top of a document raises the bar *above* the selection, where it
