@@ -199,6 +199,32 @@ one is dead: `OpenBook` sends the column request before the book arrives *and* a
 
 Removals that change rendering are checked by computed style before and after, not by eye.
 
+## Extensions (File > Extensions)
+
+Optional downloads, and **the only network request TypoZen makes** -- while an install
+runs, never at launch, on a lookup or while reading. `Extensions.cs` owns all of it.
+
+- **Kokoro voices** -> `%LocalAppData%\TypoZen_Cache<disc>\extensions\Kokoro\`, served to
+  the page through the `localextensions` virtual host. **fp16 by default**: on a WebGPU
+  card it matches fp32's speed for half the download. Quantised builds hang on WebGPU, and
+  the CPU path generates about twice as slowly as the speech plays -- so there is no
+  fallback, and a machine without WebGPU is told to stay on the Windows voices
+- **Wiktionary dictionary** -> `dictionaries\Wiktionary\`, which the existing dictionary
+  discovery then finds. Published as a GitHub release asset, checked by SHA-256
+- **A missing extension leaves no menu.** The Kokoro node hides, exactly as the dictionary
+  menu already hides itself while there is only one dictionary
+- **`kokoro-js` reaches the network in two places no setting covers** -- the model host
+  inside its copy of Transformers.js, and one hardcoded URL for the voice files. The
+  install rewrites both and **fails if either is not found exactly once**, rather than
+  shipping an engine that quietly calls out. That check is the point; do not relax it to
+  make a version bump work
+- **Never install by renaming a folder into place.** It was done that way once: removing
+  an extension the app was reading from left the folder behind, the rename then failed,
+  the staged download was discarded, and the reader was left with an empty folder. Files
+  are moved in one at a time over whatever is there
+- Claims about the network in README, About and the Store listing must keep saying "unless
+  you install an extension". `docs/releasing.md` section 7 applies to these too
+
 ## Explicit non-goals (unless the user reopens them)
 
 - True IDE / Scintilla-class code editing in Preview

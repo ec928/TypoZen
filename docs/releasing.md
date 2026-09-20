@@ -271,6 +271,20 @@ MSIX.
 | Inter, Literata, Merriweather, Source Sans 3 | SIL OFL 1.1 | `fonts/OFL.txt` |
 | Dictionary and thesaurus data | Open English WordNet (CC BY 4.0), derived from Princeton WordNet | `WORDNET-LICENSE.txt` |
 
+Extensions are downloaded, not bundled, so their licences travel with the download rather
+than with the build:
+
+| Extension | Component | Licence |
+| --- | --- | --- |
+| Kokoro voices | Kokoro-82M model and voices | Apache 2.0 |
+| Kokoro voices | kokoro-js (bundles Transformers.js, ONNX Runtime Web) | MIT / Apache 2.0 / MIT |
+| Wiktionary dictionary | English Wiktionary text | CC BY-SA 3.0 and GFDL |
+
+`ExtensionInfo.Notice` is written into the extension folder as `LICENSE.txt` as it
+installs; the Wiktionary archive carries its own. CC BY-SA is share-alike, which is why
+that data is a separate download under its own notice and not merged into the app: it
+attaches to the data, not to TypoZen.
+
 The OFL permits bundling **and selling** these faces with software, on the condition that
 the notice and licence travel with them — which is why `fonts/OFL.txt` is in every build
 and not only in the repository. Copyright lines in it are reproduced from each font

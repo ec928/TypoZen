@@ -47,6 +47,8 @@ namespace TypoZen
         public string Dir;
         /// <summary>Relative path that exists only once the install finished.</summary>
         public string Marker;
+        /// <summary>Written into the folder as LICENSE.txt, for anything downloaded.</summary>
+        public string Notice;
         public List<ExtensionFile> Files = new List<ExtensionFile>();
 
         public bool Installed
@@ -114,7 +116,24 @@ namespace TypoZen
                 Blurb = "Neural voices that read far more naturally than the Windows ones. "
                       + "Needs a graphics card with WebGPU; everything runs on this computer.",
                 Dir = dir,
-                Marker = "engine.js"
+                Marker = "engine.js",
+                Notice =
+                    "Kokoro voices for TypoZen\r\n"
+                  + "=========================\r\n\r\n"
+                  + "Downloaded by TypoZen at the reader's request. None of it is part of\r\n"
+                  + "TypoZen, and each piece keeps its own licence.\r\n\r\n"
+                  + "  Kokoro-82M (the voice model, onnx/ and voices/)\r\n"
+                  + "      Apache License 2.0 -- https://huggingface.co/hexgrad/Kokoro-82M\r\n"
+                  + "      ONNX conversion: https://huggingface.co/" + ModelRepo + "\r\n\r\n"
+                  + "  kokoro-js (engine.js)\r\n"
+                  + "      MIT -- https://github.com/hexgrad/kokoro\r\n"
+                  + "      Bundles Transformers.js (Apache 2.0) and ONNX Runtime Web (MIT).\r\n"
+                  + "      TypoZen rewrites two addresses in this file at install time so the\r\n"
+                  + "      model is read from this folder instead of a remote host. Nothing\r\n"
+                  + "      else in it is changed.\r\n\r\n"
+                  + "  ONNX Runtime Web (ort-wasm-simd-threaded.jsep.*)\r\n"
+                  + "      MIT -- https://github.com/microsoft/onnxruntime\r\n\r\n"
+                  + "Removing this folder, or File > Extensions, removes all of it.\r\n"
             };
 
             // Engine first would leave a usable marker before the model arrived, so the
@@ -236,6 +255,12 @@ namespace TypoZen
 
                 if (_cancel) return "cancelled";
                 if (report != null) report(total, total, "Finishing");
+                // The licence travels with what was downloaded, as the fonts' does.
+                if (!string.IsNullOrEmpty(x.Notice))
+                {
+                    try { File.WriteAllText(Path.Combine(staging, "LICENSE.txt"), x.Notice, new UTF8Encoding(false)); }
+                    catch { }
+                }
                 // Replace rather than merge: a previous install of the other precision
                 // would otherwise leave its model behind, doubling the folder.
                 //
