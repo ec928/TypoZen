@@ -9322,6 +9322,9 @@ namespace TypoZen
                     // A Windows voice chosen on purpose, which is not the same as never having
                     // chosen: it survives a restart instead of reverting to Kokoro.
                     SetKokoroVoice("windows_voice", v.Name);
+                    
+                    // Play a sample so the user can hear their choice (restores regression from dialog removal)
+                    var _ = TypoZen_TTS.PlayAsync("Hi, I am " + v.Name, _ttsVoiceId, _ttsSpeed);
                 };
                 into.Items.Add(mi);
             }
