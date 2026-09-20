@@ -232,86 +232,11 @@ there is no block-body hover cue at all. Nothing in that lane uses `!important`.
 
 ---
 
-## The selection popover sits on the text it is about
+### The selection popover sits on the text it is about - **fixed** (0.3.4)
 
-**Fixed in v0.3.4** -- the single-row bar does it too, confirmed by
-screenshots on 2026-09-20 against a build with no popover changes in it.
-
-Selecting a word near the top of a document raises the bar *above* the selection, where it
-covers the heading and the line that was selected. Selecting near the bottom of the window
-puts it below, partly or entirely off screen. In between it frequently overlaps the
-selected line itself.
-
-The placement code is at the end of `showSelPop` in `js/modules/02-layout.js`. It asks
-"does the bar fit above?" and near the top of a document the answer is yes -- there is
-room, it is just room occupied by text the reader is looking at.
-
-**The rule it should follow instead**, in Ed's words: near the top, the popover goes
-**below** the selection; near the bottom, it goes **above**. That is a judgement about
-where the selection sits in the window, not about where space happens to exist.
-
-**What was tried and did not work** (2026-09-20, all reverted):
-
-1. Choosing the side with more room. Still went above near the top, because there is more
-   room above once you are a few lines down.
-2. Correcting the coordinates after the fact by comparing `style.top` with
-   `getBoundingClientRect()`, on the theory that a transformed ancestor had redefined what
-   `position: fixed` means. It made placement worse, including putting the bar off the
-   bottom of the window.
-3. Rewriting the placement to verify the outcome (on screen, clear of the selection) after
-   layout. This one was never seen running: the edit that introduced it was applied by text
-   surgery, cut the wrong span of braces, and broke the page badly enough that no file would
-   open. `node -e "new Function(...)"` parses such a file happily, and the 61 JS suites pass,
-   so neither caught it -- `RUN_APP_E2E=1 node tests/core-smoke-app.mjs` takes 13 seconds and
-   would have.
-
-**Next time:** drive the app, put a real selection on screen, and read the actual rects
-before changing the arithmetic. Every attempt above reasoned from screenshots instead.
-
-### The redesign this is holding up
-
-Fixing the placement and redesigning the bar are one job, not two: the design below is
-two rows rather than one, which makes a bar that lands badly land worse, and the layout
-cannot be judged while it is sitting on the words it describes. The design was built on
-2026-09-20, seen by Ed, and reverted with the placement work. Nothing of it survives in
-the tree, so it is written out here.
-
-**Why it exists at all:** there is no way to say "read on from here". With a selection,
-Read aloud reads *only the selection*; reading from the cursor onward needs the selection
-cleared first. "Read from here" fills that gap, and the bar was too crowded to take a
-sixth button in one row.
-
-**The layout** -- three groups side by side, two rows each:
-
-| left: what you do to it | middle: what you ask about it | right: what you hear |
-| --- | --- | --- |
-| Highlight | Look up | Read selection |
-| Add Link | Find in document | Read from here |
-
-- The **middle group sits under the pointer**, because Look up is the most asked-for and
-  the nearest target is the fastest to hit.
-- **"Read aloud" becomes "Read selection"** -- directly above "Read from here", two labels
-  three words apart whose behaviours differ only in scope will be misclicked otherwise.
-- **Each group collapses on its own**, so the bar reflows instead of leaving a hole: a book
-  has no Add Link, Source has no Highlight, a phrase has no Look up. Do this in JS at the
-  end of `showSelPop` (`g.hidden = no visible buttons`), not with a CSS `:has()` rule -- a
-  selector that stops matching fails silently and you get the hole anyway.
-- **Add Link must be hidden in a book** (`DocumentModel.kind === 'epub'`). It was offered
-  there and did nothing when pressed; that part is a plain bug, independent of the redesign.
-- **Icons on all six.** Three had none, and beside the three that did they looked unfinished.
-  Drawn in the same line style as the read-aloud icon: an open book for Look up, a magnifier
-  for Find in document, lines-with-a-play-marker for Read from here.
-
-**"Read from here" is nearly free**, which is the good part: collapse the selection to its
-start -- `range.collapse(true)` in the DOM, `setSelectionRange(at, at)` in Source -- then
-call `speakSelection()`. Reading from the cursor to the end of the document is what that
-function already does when nothing is selected, so the epub, Source and Pages paths all come
-for free. Stop any current playback first. Clear the selection so the reading highlight is
-not fighting it.
-
-**Files it touches:** `#selPop .selpop-actions` in `TypoZen_Template.html`, the
-`.selpop-group` rules in `css/typozen.css`, `showSelPop` in `js/modules/02-layout.js`, and
-`initTTS` plus the `READ_ALOUD_HTML` label in `js/modules/09-speech.js`.
+Selecting a word near the top of a document raised the bar *above* the selection, covering the text. Selecting near the bottom put it below, off screen. It frequently overlapped the selected line itself.
+This was caused by the native `host-zoom` CSS scaling not being canceled out correctly in the JavaScript absolute positioning logic, inverting the coordinate math.
+The bar was also redesigned into a 3x2 grid with new icons, a "Read from here" button, and automatic layout flipping when it expands the dictionary body.
 
 ## If something still feels wrong
 
