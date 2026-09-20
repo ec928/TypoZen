@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Markup;
@@ -44,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.6";
+        internal const string AppVersion = "0.3.7";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -9293,6 +9294,53 @@ namespace TypoZen
                 Margin = new Thickness(0, 5, 0, 5)
             };
             ScrollViewer.SetHorizontalScrollBarVisibility(listBox, ScrollBarVisibility.Disabled);
+
+            // Themed scrollbar: thin rounded thumb, transparent track, matching the app's style.
+            {
+                var scrollThumbColor = AdjustHexBrightness(t.Bg, isLight ? -0.20f : 0.25f);
+                var scrollThumbHoverColor = AdjustHexBrightness(t.Bg, isLight ? -0.30f : 0.40f);
+
+                string xaml = $@"
+<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+       xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
+       TargetType='ScrollBar'>
+    <Setter Property='Background' Value='Transparent'/>
+    <Setter Property='Width' Value='8'/>
+    <Setter Property='MinWidth' Value='8'/>
+    <Setter Property='Template'>
+        <Setter.Value>
+            <ControlTemplate TargetType='ScrollBar'>
+                <Grid Background='Transparent'>
+                    <Track x:Name='PART_Track' IsDirectionReversed='true'>
+                        <Track.DecreaseRepeatButton>
+                            <RepeatButton Command='ScrollBar.PageUpCommand' Opacity='0' Focusable='false'/>
+                        </Track.DecreaseRepeatButton>
+                        <Track.Thumb>
+                            <Thumb>
+                                <Thumb.Template>
+                                    <ControlTemplate TargetType='Thumb'>
+                                        <Border x:Name='thumbBorder' Background='{scrollThumbColor}' CornerRadius='3' Margin='1'/>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property='IsMouseOver' Value='true'>
+                                                <Setter TargetName='thumbBorder' Property='Background' Value='{scrollThumbHoverColor}'/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                        </Track.Thumb>
+                        <Track.IncreaseRepeatButton>
+                            <RepeatButton Command='ScrollBar.PageDownCommand' Opacity='0' Focusable='false'/>
+                        </Track.IncreaseRepeatButton>
+                    </Track>
+                </Grid>
+            </ControlTemplate>
+        </Setter.Value>
+    </Setter>
+</Style>";
+                var sbStyle = (Style)System.Windows.Markup.XamlReader.Parse(xaml);
+                listBox.Resources.Add(typeof(ScrollBar), sbStyle);
+            }
 
             Action<string> addHeader = (title) => {
                 var tb = new TextBlock { Text = title.ToUpper(), FontWeight = FontWeights.SemiBold, Foreground = subtleTxBrush, Margin = new Thickness(12, 15, 10, 5), FontSize = 11 };
