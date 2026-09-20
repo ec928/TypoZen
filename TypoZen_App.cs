@@ -4729,7 +4729,30 @@ namespace TypoZen
         {
             public bool SessionText, OpenTabs, RecentFiles, RecentSearches, PastedImages;
             public bool WebStorage, ReadingPositions, ExtractedBooks, Bookmarks;
-            public bool AddedWords, CustomThemes, KokoroAI;
+            public bool AddedWords, CustomThemes;
+        }
+
+        /// <summary>
+        /// How many words are in the personal spelling dictionary -- the ones added with
+        /// "Add to dictionary" on a red-underlined word. Counted, not measured: the file
+        /// always carries a "#LID 1033" header, so an empty one still has a size.
+        /// </summary>
+        private string UserWordCountLabel()
+        {
+            try
+            {
+                string path = Path.Combine(CacheDir(), "typozen_user.lex");
+                if (!File.Exists(path)) return "none added";
+                int n = 0;
+                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+                {
+                    string w = line.Trim().TrimStart('﻿');
+                    if (w.Length > 0 && !w.StartsWith("#")) n++;
+                }
+                if (n == 0) return "none added";
+                return n + (n == 1 ? " word" : " words");
+            }
+            catch { return "none added"; }
         }
 
         private static string HumanSize(long bytes)
@@ -4830,14 +4853,14 @@ namespace TypoZen
                                  bookCount > 0 ? bookCount + (bookCount == 1 ? " book, " : " books, ") + HumanSize(bookBytes)
                                                : "none unpacked", false);
             var cbMarks    = add("Bookmarks", CountLines(BookmarksPath()) + " document(s) with marks", false);
-            var cbWords    = add("Words you added to the dictionary", HumanSize(SizeOfFile(Path.Combine(cache, "typozen_user.lex"))), false);
+            var cbWords    = add("Words you added to the dictionary", UserWordCountLabel(), false);
             var cbThemes   = add("Custom themes", HumanSize(SizeOfFile(Path.Combine(cache, "TypoZen_Themes.json"))), false);
-            var cbKokoro   = add("Downloaded Kokoro TTS AI models", "cleared immediately", false);
 
             root.Children.Add(new TextBlock
             {
                 Text = "Bookmarks, added words and custom themes are things you made, so they "
-                     + "start unticked. A book that is open stays unpacked.",
+                     + "start unticked. A book that is open stays unpacked. Extensions you installed -- the Kokoro voices, the Wiktionary dictionary -- are removed in File > Extensions, "
+                     + "which shows what each one is using.",
                 TextWrapping = TextWrapping.Wrap,
                 Opacity = 0.75,
                 Margin = new Thickness(0, 14, 0, 0)
@@ -4872,8 +4895,7 @@ namespace TypoZen
                 ExtractedBooks   = cbBooks.IsChecked == true,
                 Bookmarks        = cbMarks.IsChecked == true,
                 AddedWords       = cbWords.IsChecked == true,
-                CustomThemes     = cbThemes.IsChecked == true,
-                KokoroAI         = cbKokoro.IsChecked == true
+                CustomThemes     = cbThemes.IsChecked == true
             };
         }
 
@@ -4954,12 +4976,6 @@ namespace TypoZen
             {
                 try { File.Delete(Path.Combine(cache, "TypoZen_Themes.json")); } catch { }
                 done.Add("custom themes");
-            }
-
-            if (want.KokoroAI)
-            {
-                try { SendMsg("cmd:kokoro_clear"); } catch { }
-                done.Add("Kokoro TTS AI models");
             }
 
             if (want.RecentSearches)
