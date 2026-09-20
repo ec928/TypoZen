@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.2";
+        internal const string AppVersion = "0.3.3";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -2117,7 +2117,20 @@ namespace TypoZen
         {
             _kokoroVoiceId = voiceId ?? "";
             TickKokoroVoice();
+            // One voice speaks, so the other menu has to let go of its tick. Picking a
+            // Windows voice already came through here and cleared the Kokoro one; going
+            // the other way left both menus claiming to be in use.
+            UpdateWindowsVoicesCheckmark();
             SendMsg("cmd:kokoro_voice:" + voiceId + ":" + friendlyName);
+        }
+
+        /// <summary>Whether this is one of Kokoro's voices rather than a Windows one.</summary>
+        private static bool IsKokoroVoiceId(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return false;
+            foreach (string row in ExtensionCatalog.Voices)
+                if (ExtensionCatalog.VoiceId(row) == id) return true;
+            return false;
         }
 
         /// <summary>Moves the tick without telling the page -- for what the page told us.</summary>
@@ -6240,6 +6253,7 @@ namespace TypoZen
             {
                 _kokoroVoiceId = msg.Substring(27);
                 TickKokoroVoice();
+                UpdateWindowsVoicesCheckmark();
                 return;
             }
             else if (msg == "cmd:kokoro_ready")
@@ -9338,9 +9352,13 @@ namespace TypoZen
         {
             var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
             if (mWinVoices == null) return;
+            // Nothing here is speaking while a Kokoro voice is chosen, so nothing here
+            // is ticked -- including at startup, where the saved Windows voice is still
+            // remembered and would otherwise tick itself.
+            bool kokoroSpeaking = IsKokoroVoiceId(_kokoroVoiceId);
             foreach (var item in VoiceMenuItems(mWinVoices))
             {
-                item.IsChecked = (item.Tag.ToString() == _ttsVoiceId);
+                item.IsChecked = !kokoroSpeaking && (item.Tag.ToString() == _ttsVoiceId);
             }
         }
 
