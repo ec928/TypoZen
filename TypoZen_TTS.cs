@@ -13,6 +13,18 @@ namespace TypoZen
         public string Id { get; set; }
         public string Name { get; set; }
         public bool IsSapi { get; set; }
+
+        /// <summary>
+        /// What kind of engine speaks it: "local" for a neural voice running on this
+        /// computer, "cloud" for one that sends the text to a web service, "" for the
+        /// classic voices Windows has always had and for third-party ones.
+        ///
+        /// Read from the voice's own NaturalVoiceType attribute rather than from its
+        /// name: an adapter that registers Narrator's natural voices reports
+        /// "Narrator;Local", and the online ones "Edge;Cloud". Names vary per machine,
+        /// this does not.
+        /// </summary>
+        public string Kind { get; set; }
     }
 
     public static class TypoZen_TTS
@@ -186,10 +198,34 @@ namespace TypoZen
             {
                 voices.AddRange(_sapiSynth.GetInstalledVoices()
                     .Where(v => v.Enabled)
-                    .Select(v => new VoiceInfo { Id = "sapi:" + v.VoiceInfo.Name, Name = v.VoiceInfo.Name, IsSapi = true }));
+                    .Select(v => new VoiceInfo
+                    {
+                        Id = "sapi:" + v.VoiceInfo.Name,
+                        Name = v.VoiceInfo.Name,
+                        IsSapi = true,
+                        Kind = KindOf(v.VoiceInfo)
+                    }));
             } catch {}
 
             return voices;
+        }
+
+        /// <summary>
+        /// "local", "cloud" or "" -- see VoiceInfo.Kind. A voice that says nothing about
+        /// itself is classic, which is the safe reading: it claims neither to be neural
+        /// nor to need the network.
+        /// </summary>
+        private static string KindOf(System.Speech.Synthesis.VoiceInfo info)
+        {
+            try
+            {
+                string type;
+                if (!info.AdditionalInfo.TryGetValue("NaturalVoiceType", out type) || type == null) return "";
+                if (type.IndexOf("Cloud", StringComparison.OrdinalIgnoreCase) >= 0) return "cloud";
+                if (type.IndexOf("Local", StringComparison.OrdinalIgnoreCase) >= 0) return "local";
+            }
+            catch { }
+            return "";
         }
 
         public static async Task PlayAsync(string text, string voiceId, double speed)

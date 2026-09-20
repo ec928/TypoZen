@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.1";
+        internal const string AppVersion = "0.3.2";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -9246,11 +9246,40 @@ namespace TypoZen
             if (mWinVoices == null) return;
             
             var voices = TypoZen_TTS.GetVoices();
-            foreach (var v in voices)
+            // Grouped, because the flat list mixes three quite different things and gives
+            // the reader no way to tell them apart: a neural voice running here, one that
+            // sends what it reads to a web service, and the classic voices Windows has
+            // always had. Each voice says which it is; see VoiceInfo.Kind.
+            var order = new[] { "local", "cloud", "" };
+            var heading = new Dictionary<string, string> {
+                { "local", "Natural - on this computer" },
+                { "cloud", "Online - sends the text to Microsoft" },
+                { "",      "Standard Windows voices" }
+            };
+            bool grouped = voices.Exists(x => !string.IsNullOrEmpty(x.Kind));
+            foreach (string kind in order)
+            {
+            var inGroup = voices.FindAll(x => (x.Kind ?? "") == kind);
+            if (inGroup.Count == 0) continue;
+            if (grouped)
+            {
+                if (mWinVoices.Items.Count > 0) mWinVoices.Items.Add(new Separator());
+                mWinVoices.Items.Add(new MenuItem
+                {
+                    Header = heading[kind],
+                    IsEnabled = false,
+                    FontWeight = FontWeights.SemiBold
+                });
+            }
+            foreach (var v in inGroup)
             {
                 var mi = new MenuItem { Header = v.Name, IsCheckable = true, Tag = v.Id };
                 mi.Click += (s, e) => {
-                    foreach (MenuItem item in mWinVoices.Items) item.IsChecked = false;
+                    foreach (var o in mWinVoices.Items)
+                    {
+                        var item = o as MenuItem;
+                        if (item != null && item.Tag != null) item.IsChecked = false;
+                    }
                     mi.IsChecked = true;
                     
                     _ttsVoiceId = v.Id;
@@ -9264,6 +9293,7 @@ namespace TypoZen
                 };
                 mWinVoices.Items.Add(mi);
             }
+            }
             UpdateWindowsVoicesCheckmark();
         }
 
@@ -9271,9 +9301,11 @@ namespace TypoZen
         {
             var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
             if (mWinVoices == null) return;
-            foreach (MenuItem item in mWinVoices.Items)
+            foreach (var o in mWinVoices.Items)
             {
-                item.IsChecked = (item.Tag?.ToString() == _ttsVoiceId);
+                var item = o as MenuItem;
+                if (item == null || item.Tag == null) continue;      // separators and headings
+                item.IsChecked = (item.Tag.ToString() == _ttsVoiceId);
             }
         }
 
