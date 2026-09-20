@@ -2545,6 +2545,31 @@
                     if (e.target && e.target.closest && e.target.closest('#selPop')) return;
                     hideSelPop();
                 }, { passive: true, capture: true });
+                
+                // When the dictionary is conceptually "in focus", hijack document scrolling 
+                // (mouse wheel and keyboard arrows) and route it into the dictionary body.
+                window.addEventListener('wheel', function(e) {
+                    const body = document.getElementById('selPopBody');
+                    if (!pop.hidden && body && !body.hidden) {
+                        if (e.target && e.target.closest && e.target.closest('#selPopBody')) return;
+                        body.scrollTop += e.deltaY;
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                    }
+                }, { passive: false, capture: true });
+                
+                window.addEventListener('keydown', function(e) {
+                    const body = document.getElementById('selPopBody');
+                    if (!pop.hidden && body && !body.hidden) {
+                        if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp'].includes(e.key)) {
+                            let amt = (e.key === 'PageDown' || e.key === 'PageUp') ? body.clientHeight * 0.8 : 40;
+                            if (e.key === 'ArrowUp' || e.key === 'PageUp') amt = -amt;
+                            body.scrollTop += amt;
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                        }
+                    }
+                }, { capture: true });
             } catch (eS) {}
 
             // mousedown/preventDefault throughout: the popover taking focus would collapse

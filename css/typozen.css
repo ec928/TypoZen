@@ -1743,6 +1743,7 @@
             border-top: 1px solid var(--border, #3F3F46);
             padding: 8px 10px 10px;
             max-height: 240px; overflow-y: auto;
+            overscroll-behavior: contain;
             font-size: var(--ui-fs-dense); line-height: 1.5;
             color: var(--tx-muted, #A1A1AA);
             /* Takes the popover's width (set by the button row) instead of widening it: a

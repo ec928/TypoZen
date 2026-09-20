@@ -2339,7 +2339,7 @@
                 // it looks like a focus problem from the outside, which is what makes it
                 // annoying to place.
                 if (e.target && e.target.closest
-                    && e.target.closest('#sidebar, .tz-help-overlay, #tableModal')) return;
+                    && e.target.closest('#sidebar, .tz-help-overlay, #tableModal, #selPop')) return;
                 
                 e.preventDefault();
                 let now = Date.now();
