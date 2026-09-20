@@ -191,7 +191,7 @@ namespace TypoZen
             
             // 1. WinRT (OneCore) Voices
             voices.AddRange(Windows.Media.SpeechSynthesis.SpeechSynthesizer.AllVoices
-                .Select(v => new VoiceInfo { Id = "winrt:" + v.Id, Name = v.DisplayName, IsSapi = false }));
+                .Select(v => new VoiceInfo { Id = "winrt:" + v.Id, Name = v.DisplayName, IsSapi = false, Kind = "" }));
                 
             // 2. SAPI5 (Desktop / IVONA / 3rd Party) Voices
             try 
@@ -206,6 +206,10 @@ namespace TypoZen
                         Kind = KindOf(v.VoiceInfo)
                     }));
             } catch {}
+
+            // 3. Remove redundant online voices if a local version exists
+            var localNames = voices.Where(v => v.Kind == "local").Select(v => v.Name).ToList();
+            voices.RemoveAll(v => v.Kind == "cloud" && localNames.Contains(v.Name.Replace("Online ", "")));
 
             return voices;
         }
