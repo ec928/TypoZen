@@ -268,6 +268,51 @@ where the selection sits in the window, not about where space happens to exist.
 **Next time:** drive the app, put a real selection on screen, and read the actual rects
 before changing the arithmetic. Every attempt above reasoned from screenshots instead.
 
+### The redesign this is holding up
+
+Fixing the placement and redesigning the bar are one job, not two: the design below is
+two rows rather than one, which makes a bar that lands badly land worse, and the layout
+cannot be judged while it is sitting on the words it describes. The design was built on
+2026-09-20, seen by Ed, and reverted with the placement work. Nothing of it survives in
+the tree, so it is written out here.
+
+**Why it exists at all:** there is no way to say "read on from here". With a selection,
+Read aloud reads *only the selection*; reading from the cursor onward needs the selection
+cleared first. "Read from here" fills that gap, and the bar was too crowded to take a
+sixth button in one row.
+
+**The layout** -- three groups side by side, two rows each:
+
+| left: what you do to it | middle: what you ask about it | right: what you hear |
+| --- | --- | --- |
+| Highlight | Look up | Read selection |
+| Add Link | Find in document | Read from here |
+
+- The **middle group sits under the pointer**, because Look up is the most asked-for and
+  the nearest target is the fastest to hit.
+- **"Read aloud" becomes "Read selection"** -- directly above "Read from here", two labels
+  three words apart whose behaviours differ only in scope will be misclicked otherwise.
+- **Each group collapses on its own**, so the bar reflows instead of leaving a hole: a book
+  has no Add Link, Source has no Highlight, a phrase has no Look up. Do this in JS at the
+  end of `showSelPop` (`g.hidden = no visible buttons`), not with a CSS `:has()` rule -- a
+  selector that stops matching fails silently and you get the hole anyway.
+- **Add Link must be hidden in a book** (`DocumentModel.kind === 'epub'`). It was offered
+  there and did nothing when pressed; that part is a plain bug, independent of the redesign.
+- **Icons on all six.** Three had none, and beside the three that did they looked unfinished.
+  Drawn in the same line style as the read-aloud icon: an open book for Look up, a magnifier
+  for Find in document, lines-with-a-play-marker for Read from here.
+
+**"Read from here" is nearly free**, which is the good part: collapse the selection to its
+start -- `range.collapse(true)` in the DOM, `setSelectionRange(at, at)` in Source -- then
+call `speakSelection()`. Reading from the cursor to the end of the document is what that
+function already does when nothing is selected, so the epub, Source and Pages paths all come
+for free. Stop any current playback first. Clear the selection so the reading highlight is
+not fighting it.
+
+**Files it touches:** `#selPop .selpop-actions` in `TypoZen_Template.html`, the
+`.selpop-group` rules in `css/typozen.css`, `showSelPop` in `js/modules/02-layout.js`, and
+`initTTS` plus the `READ_ALOUD_HTML` label in `js/modules/09-speech.js`.
+
 ## If something still feels wrong
 
 1. Reproduce once with Debug HUD (Ctrl+Shift+D): sticky line, find index, mode.
