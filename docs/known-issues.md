@@ -232,6 +232,42 @@ there is no block-body hover cue at all. Nothing in that lane uses `!important`.
 
 ---
 
+## The selection popover sits on the text it is about
+
+**Open. Pre-dates the two-row experiment** -- the single-row bar does it too, confirmed by
+screenshots on 2026-09-20 against a build with no popover changes in it.
+
+Selecting a word near the top of a document raises the bar *above* the selection, where it
+covers the heading and the line that was selected. Selecting near the bottom of the window
+puts it below, partly or entirely off screen. In between it frequently overlaps the
+selected line itself.
+
+The placement code is at the end of `showSelPop` in `js/modules/02-layout.js`. It asks
+"does the bar fit above?" and near the top of a document the answer is yes -- there is
+room, it is just room occupied by text the reader is looking at.
+
+**The rule it should follow instead**, in Ed's words: near the top, the popover goes
+**below** the selection; near the bottom, it goes **above**. That is a judgement about
+where the selection sits in the window, not about where space happens to exist.
+
+**What was tried and did not work** (2026-09-20, all reverted):
+
+1. Choosing the side with more room. Still went above near the top, because there is more
+   room above once you are a few lines down.
+2. Correcting the coordinates after the fact by comparing `style.top` with
+   `getBoundingClientRect()`, on the theory that a transformed ancestor had redefined what
+   `position: fixed` means. It made placement worse, including putting the bar off the
+   bottom of the window.
+3. Rewriting the placement to verify the outcome (on screen, clear of the selection) after
+   layout. This one was never seen running: the edit that introduced it was applied by text
+   surgery, cut the wrong span of braces, and broke the page badly enough that no file would
+   open. `node -e "new Function(...)"` parses such a file happily, and the 61 JS suites pass,
+   so neither caught it -- `RUN_APP_E2E=1 node tests/core-smoke-app.mjs` takes 13 seconds and
+   would have.
+
+**Next time:** drive the app, put a real selection on screen, and read the actual rects
+before changing the arithmetic. Every attempt above reasoned from screenshots instead.
+
 ## If something still feels wrong
 
 1. Reproduce once with Debug HUD (Ctrl+Shift+D): sticky line, find index, mode.
