@@ -6467,7 +6467,24 @@ namespace TypoZen
                             if (prefs.ThemeIndex >= 0) SendMsg("set_theme:" + prefs.ThemeIndex);
                             if (!string.IsNullOrEmpty(prefs.TtsVoiceId)) 
                             {
-                                _ttsVoiceId = prefs.TtsVoiceId;
+                                // Validate that the saved voice still exists (it may have been
+                                // an online duplicate that was filtered out).
+                                var availableVoices = TypoZen_TTS.GetVoices();
+                                if (availableVoices.Exists(v => v.Id == prefs.TtsVoiceId))
+                                {
+                                    _ttsVoiceId = prefs.TtsVoiceId;
+                                }
+                                else
+                                {
+                                    // Saved voice no longer available — pick the best fallback:
+                                    // prefer a local natural voice, then classic, then whatever is first.
+                                    var fallback = availableVoices.Find(v => v.Kind == "local")
+                                                ?? availableVoices.Find(v => v.Kind == "")
+                                                ?? (availableVoices.Count > 0 ? availableVoices[0] : null);
+                                    _ttsVoiceId = fallback != null ? fallback.Id : "";
+                                    prefs.TtsVoiceId = _ttsVoiceId;
+                                    WriteHostPrefs(prefs);
+                                }
                                 UpdateWindowsVoicesCheckmark();
                             }
                             if (prefs.TtsSpeed > 0) _ttsSpeed = prefs.TtsSpeed;

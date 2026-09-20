@@ -254,7 +254,16 @@ namespace TypoZen
                     // Straight to the audio device, on this (UI) thread's synthesizer:
                     // SpeakAsync returns at once and sound starts with the first audio the
                     // voice produces. Stop() has already cancelled whatever was speaking.
-                    _sapiSynth.SelectVoice(realName);
+                    try { _sapiSynth.SelectVoice(realName); }
+                    catch (ArgumentException)
+                    {
+                        // Voice was removed or disabled (e.g. an online duplicate filtered out).
+                        // Fall back to the first available installed voice rather than failing
+                        // every chunk and racing the cursor silently through the document.
+                        Note("play #" + gen + " voice \"" + realName + "\" not available, falling back");
+                        var fallback = _sapiSynth.GetInstalledVoices().FirstOrDefault(v => v.Enabled);
+                        if (fallback != null) _sapiSynth.SelectVoice(fallback.VoiceInfo.Name);
+                    }
                     _sapiSynth.Rate = rate;
                     // The prompt's culture is the voice's own: a prompt in another culture
                     // lets SAPI switch to a voice that matches it instead.
