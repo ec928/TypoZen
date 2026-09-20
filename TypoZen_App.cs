@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.0";
+        internal const string AppVersion = "0.3.1";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1567,20 +1567,6 @@ namespace TypoZen
             BindClick("mConfigureSpeed", (s, e) => ShowConfigureSpeedDialog());
             PopulateWindowsVoicesMenu();
             BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
-            BindClick("mKokoroHeart", (s, e) => SetKokoroVoice("mKokoroHeart", "af_heart", "Heart"));
-            BindClick("mKokoroAlloy", (s, e) => SetKokoroVoice("mKokoroAlloy", "af_alloy", "Alloy"));
-            BindClick("mKokoroBella", (s, e) => SetKokoroVoice("mKokoroBella", "af_bella", "Bella"));
-            BindClick("mKokoroSarah", (s, e) => SetKokoroVoice("mKokoroSarah", "af_sarah", "Sarah"));
-            BindClick("mKokoroNova", (s, e) => SetKokoroVoice("mKokoroNova", "af_nova", "Nova"));
-            BindClick("mKokoroFenrir", (s, e) => SetKokoroVoice("mKokoroFenrir", "am_fenrir", "Fenrir"));
-            BindClick("mKokoroPuck", (s, e) => SetKokoroVoice("mKokoroPuck", "am_puck", "Puck"));
-            BindClick("mKokoroEcho", (s, e) => SetKokoroVoice("mKokoroEcho", "am_echo", "Echo"));
-            BindClick("mKokoroAdam", (s, e) => SetKokoroVoice("mKokoroAdam", "am_adam", "Adam"));
-            BindClick("mKokoroMichael", (s, e) => SetKokoroVoice("mKokoroMichael", "am_michael", "Michael"));
-            BindClick("mKokoroAlice", (s, e) => SetKokoroVoice("mKokoroAlice", "bf_alice", "Alice"));
-            BindClick("mKokoroEmma", (s, e) => SetKokoroVoice("mKokoroEmma", "bf_emma", "Emma"));
-            BindClick("mKokoroFable", (s, e) => SetKokoroVoice("mKokoroFable", "bm_fable", "Fable"));
-            BindClick("mKokoroGeorge", (s, e) => SetKokoroVoice("mKokoroGeorge", "bm_george", "George"));
             BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
             BindClick("mWordWrap", (s, e) =>
             {
@@ -2093,15 +2079,57 @@ namespace TypoZen
             return null;
         }
 
-        private void SetKokoroVoice(string menuName, string voiceId, string friendlyName = "")
+        /// <summary>
+        /// Builds the voice list from ExtensionCatalog.Voices and keeps the tick on the
+        /// chosen one. Built rather than written out, because the same list also decides
+        /// what the installer downloads -- when it was four hardcoded copies, the menu
+        /// offered fourteen of the twenty-eight voices that were being downloaded.
+        /// </summary>
+        private void RebuildKokoroVoiceMenu()
         {
-            var items = new[] { "mKokoroHeart", "mKokoroAlloy", "mKokoroBella", "mKokoroSarah", "mKokoroNova", "mKokoroFenrir", "mKokoroPuck", "mKokoroEcho", "mKokoroAdam", "mKokoroMichael", "mKokoroAlice", "mKokoroEmma", "mKokoroFable", "mKokoroGeorge" };
-            foreach (var n in items)
+            var menu = FindElement("mKokoroMenu") as MenuItem;
+            if (menu == null) return;
+            menu.Items.Clear();
+            string lastGroup = null;
+            foreach (string row in ExtensionCatalog.Voices)
             {
-                var mi = FindElement(n) as MenuItem;
-                if (mi != null) mi.IsChecked = (n == menuName);
+                string id = ExtensionCatalog.VoiceId(row);
+                string group = ExtensionCatalog.VoiceGroup(row);
+                if (lastGroup != null && group != lastGroup) menu.Items.Add(new Separator());
+                lastGroup = group;
+                var mi = new MenuItem
+                {
+                    Header = ExtensionCatalog.VoiceName(row) + " - " + group + " (" + ExtensionCatalog.VoiceGrade(row) + ")",
+                    IsCheckable = true,
+                    IsChecked = id == _kokoroVoiceId,
+                    Tag = id
+                };
+                string voiceId = id, friendly = ExtensionCatalog.VoiceName(row);
+                mi.Click += (s2, e2) => SetKokoroVoice(voiceId, friendly);
+                menu.Items.Add(mi);
             }
+        }
+
+        /// <summary>The voice the page is using, so the menu can show it.</summary>
+        private string _kokoroVoiceId = "";
+
+        private void SetKokoroVoice(string voiceId, string friendlyName = "")
+        {
+            _kokoroVoiceId = voiceId ?? "";
+            TickKokoroVoice();
             SendMsg("cmd:kokoro_voice:" + voiceId + ":" + friendlyName);
+        }
+
+        /// <summary>Moves the tick without telling the page -- for what the page told us.</summary>
+        private void TickKokoroVoice()
+        {
+            var menu = FindElement("mKokoroMenu") as MenuItem;
+            if (menu == null) return;
+            foreach (var o in menu.Items)
+            {
+                var mi = o as MenuItem;
+                if (mi != null) mi.IsChecked = (string)mi.Tag == _kokoroVoiceId;
+            }
         }
 
         private void BindClick(string name, RoutedEventHandler handler)
@@ -3250,7 +3278,7 @@ namespace TypoZen
             {
                 ExtensionsDialog.Show(this, CacheDir(), RefreshExtensionState, id =>
                 {
-                    if (id == ExtensionCatalog.KokoroId) SetKokoroVoice("mKokoroHeart", "af_heart", "Heart");
+                    if (id == ExtensionCatalog.KokoroId) SetKokoroVoice(ExtensionCatalog.DefaultVoice, "Heart");
                 });
             }
             catch (Exception ex) { LogFault("extensions dialog", ex); }
@@ -3270,10 +3298,11 @@ namespace TypoZen
 
                 var menu = FindElement("mKokoroMenu") as MenuItem;
                 if (menu != null) menu.Visibility = kokoro ? Visibility.Visible : Visibility.Collapsed;
+                if (kokoro) RebuildKokoroVoiceMenu();
 
                 // A voice that is no longer installed would leave the page trying to speak
                 // with an engine that is gone, so hand it back to the Windows voices.
-                if (!kokoro) SetKokoroVoice("", "windows_voice", "Windows voice");
+                if (!kokoro) SetKokoroVoice("windows_voice", "Windows voice");
 
                 RebuildDictionaryMenu();
                 // A dictionary that has just been removed is still the saved choice.
@@ -6209,32 +6238,8 @@ namespace TypoZen
             }
             else if (msg.StartsWith("host_kokoro_voice_restored:"))
             {
-                string voiceId = msg.Substring(27);
-                var map = new Dictionary<string, string> {
-                    { "af_heart", "mKokoroHeart" },
-                    { "af_alloy", "mKokoroAlloy" },
-                    { "af_bella", "mKokoroBella" },
-                    { "af_sarah", "mKokoroSarah" },
-                    { "af_nova", "mKokoroNova" },
-                    { "am_fenrir", "mKokoroFenrir" },
-                    { "am_puck", "mKokoroPuck" },
-                    { "am_echo", "mKokoroEcho" },
-                    { "am_adam", "mKokoroAdam" },
-                    { "am_michael", "mKokoroMichael" },
-                    { "bf_alice", "mKokoroAlice" },
-                    { "bf_emma", "mKokoroEmma" },
-                    { "bm_fable", "mKokoroFable" },
-                    { "bm_george", "mKokoroGeorge" }
-                };
-                if (map.ContainsKey(voiceId))
-                {
-                    var items = new List<string>(map.Values);
-                    foreach (var n in items)
-                    {
-                        var mi = FindElement(n) as MenuItem;
-                        if (mi != null) mi.IsChecked = (n == map[voiceId]);
-                    }
-                }
+                _kokoroVoiceId = msg.Substring(27);
+                TickKokoroVoice();
                 return;
             }
             else if (msg == "cmd:kokoro_ready")
@@ -9255,7 +9260,7 @@ namespace TypoZen
                     
                     // A Windows voice chosen on purpose, which is not the same as never having
                     // chosen: it survives a restart instead of reverting to Kokoro.
-                    SetKokoroVoice("", "windows_voice", v.Name);
+                    SetKokoroVoice("windows_voice", v.Name);
                 };
                 mWinVoices.Items.Add(mi);
             }

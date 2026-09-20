@@ -449,30 +449,10 @@
                                 <!-- Hidden until the Kokoro extension is installed: see
                                      RefreshExtensionState. The Windows voices below it are
                                      always there, so this node hides, not the menu. -->
-                                <MenuItem x:Name="mKokoroMenu" Header="_Kokoro Voices" Visibility="Collapsed">
-                                <!-- Best first, with Kokoro's own published grade. No "System Default" here:
-                                     that was the prototype's way back to the Windows voices, which the
-                                     Windows Standard Voices menu below already does, and naming it "default"
-                                     recommended the worst-sounding option in a menu someone installed 186 MB
-                                     to get. Grades: huggingface.co/hexgrad/Kokoro-82M VOICES.md -->
-                                <MenuItem x:Name="mKokoroHeart" Header="Heart - American female (A)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroBella" Header="Bella - American female (A-)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroEmma" Header="Emma - British female (B-)" IsCheckable="True"/>
-                                <Separator/>
-                                <MenuItem x:Name="mKokoroMichael" Header="Michael - American male (C+)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroFenrir" Header="Fenrir - American male (C+)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroPuck" Header="Puck - American male (C+)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroSarah" Header="Sarah - American female (C+)" IsCheckable="True"/>
-                                <Separator/>
-                                <MenuItem x:Name="mKokoroNova" Header="Nova - American female (C)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroAlloy" Header="Alloy - American female (C)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroFable" Header="Fable - British male (C)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroGeorge" Header="George - British male (C)" IsCheckable="True"/>
-                                <Separator/>
-                                <MenuItem x:Name="mKokoroAlice" Header="Alice - British female (D)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroEcho" Header="Echo - American male (D)" IsCheckable="True"/>
-                                <MenuItem x:Name="mKokoroAdam" Header="Adam - American male (F+)" IsCheckable="True"/>
-                            </MenuItem>
+                                <!-- Filled in code from ExtensionCatalog.Voices, which is also what the
+                                     installer downloads, so the menu cannot offer fewer voices than
+                                     are on disk. Hidden until the extension is installed. -->
+                                <MenuItem x:Name="mKokoroMenu" Header="_Kokoro Voices" Visibility="Collapsed"/>
                                 <Separator/>
                                 <MenuItem x:Name="mWindowsVoices" Header="Windows Standard Voices"/>
                                 <Separator/>

@@ -64,6 +64,29 @@ namespace TypoZen
         {
             get { long n = 0; foreach (var f in Files) n += f.Bytes; return n; }
         }
+
+        /// <summary>
+        /// Files this extension expects that are not on disk. A build that adds voices
+        /// leaves an older install short of them, and an install is not "done" just
+        /// because its marker file is there.
+        /// </summary>
+        public List<ExtensionFile> Missing()
+        {
+            var missing = new List<ExtensionFile>();
+            foreach (var f in Files)
+            {
+                if (f.Unzip) continue;                  // an archive is gone once unpacked
+                string local = System.IO.Path.Combine(Dir, f.Path.Replace('/', System.IO.Path.DirectorySeparatorChar));
+                try { if (!File.Exists(local)) missing.Add(f); }
+                catch { missing.Add(f); }
+            }
+            return missing;
+        }
+
+        public long MissingBytes()
+        {
+            long n = 0; foreach (var f in Missing()) n += f.Bytes; return n;
+        }
     }
 
     internal static class ExtensionCatalog
@@ -81,14 +104,56 @@ namespace TypoZen
         private const string HfBase = "https://huggingface.co/" + ModelRepo + "/resolve/main/";
 
         /// <summary>
-        /// The voices offered in the menu. Kokoro publishes more; these are the ones with
-        /// names in the UI, at about 0.5 MB each.
+        /// Every English voice Kokoro publishes, with the grade its own VOICES.md gives it:
+        /// huggingface.co/hexgrad/Kokoro-82M. All of them, because they are about half a
+        /// megabyte each and the grades are one opinion -- a C+ voice someone likes is
+        /// better than an A they do not. The menu is built from this, so there is one list
+        /// rather than four to keep in step.
+        ///
+        /// "id|Name|Group|Grade". Kokoro's other languages need phonemiser data that is not
+        /// downloaded here, so they are deliberately absent.
         /// </summary>
         public static readonly string[] Voices = {
-            "af_heart", "af_alloy", "af_bella", "af_sarah", "af_nova",
-            "am_fenrir", "am_puck", "am_echo", "am_adam", "am_michael",
-            "bf_alice", "bf_emma", "bm_fable", "bm_george"
+            "af_heart|Heart|American female|A",
+            "af_bella|Bella|American female|A-",
+            "af_nicole|Nicole|American female|B-",
+            "af_aoede|Aoede|American female|C+",
+            "af_kore|Kore|American female|C+",
+            "af_sarah|Sarah|American female|C+",
+            "af_alloy|Alloy|American female|C",
+            "af_nova|Nova|American female|C",
+            "af_sky|Sky|American female|C-",
+            "af_jessica|Jessica|American female|D",
+            "af_river|River|American female|D",
+
+            "am_fenrir|Fenrir|American male|C+",
+            "am_michael|Michael|American male|C+",
+            "am_puck|Puck|American male|C+",
+            "am_echo|Echo|American male|D",
+            "am_eric|Eric|American male|D",
+            "am_liam|Liam|American male|D",
+            "am_onyx|Onyx|American male|D",
+            "am_santa|Santa|American male|D-",
+            "am_adam|Adam|American male|F+",
+
+            "bf_emma|Emma|British female|B-",
+            "bf_isabella|Isabella|British female|C",
+            "bf_alice|Alice|British female|D",
+            "bf_lily|Lily|British female|D",
+
+            "bm_fable|Fable|British male|C",
+            "bm_george|George|British male|C",
+            "bm_lewis|Lewis|British male|D+",
+            "bm_daniel|Daniel|British male|D"
         };
+
+        /// <summary>The voice a fresh install starts on: the best-graded one.</summary>
+        public const string DefaultVoice = "af_heart";
+
+        public static string VoiceId(string row) { return row.Split('|')[0]; }
+        public static string VoiceName(string row) { return row.Split('|')[1]; }
+        public static string VoiceGroup(string row) { return row.Split('|')[2]; }
+        public static string VoiceGrade(string row) { return row.Split('|')[3]; }
 
         public static string ExtensionsDir(string cacheDir) { return Path.Combine(cacheDir, "extensions"); }
         public static string KokoroDir(string cacheDir) { return Path.Combine(ExtensionsDir(cacheDir), KokoroId); }
@@ -144,8 +209,11 @@ namespace TypoZen
             x.Files.Add(new ExtensionFile { Url = HfBase + "tokenizer.json", Path = hf + "tokenizer.json", Bytes = 3497 });
             x.Files.Add(new ExtensionFile { Url = HfBase + "tokenizer_config.json", Path = hf + "tokenizer_config.json", Bytes = 113 });
             x.Files.Add(new ExtensionFile { Url = HfBase + "onnx/" + model, Path = hf + "onnx/" + model, Bytes = modelBytes });
-            foreach (string v in Voices)
+            foreach (string row in Voices)
+            {
+                string v = VoiceId(row);
                 x.Files.Add(new ExtensionFile { Url = HfBase + "voices/" + v + ".bin", Path = hf + "voices/" + v + ".bin", Bytes = 522240 });
+            }
             x.Files.Add(new ExtensionFile { Url = KokoroJs, Path = "engine.js", Bytes = 2135422, PatchEngine = true });
             return x;
         }
@@ -223,6 +291,17 @@ namespace TypoZen
                     Directory.CreateDirectory(Path.GetDirectoryName(dest));
                     string name = Path.GetFileName(f.Path);
                     long before = done;
+
+                    // Already downloaded, and the right size: keep it. This is what makes
+                    // adding voices to a later build cost the voices, not the whole model.
+                    string existing = Path.Combine(x.Dir, f.Path.Replace('/', Path.DirectorySeparatorChar));
+                    if (!f.Unzip && File.Exists(existing) && new FileInfo(existing).Length == f.Bytes)
+                    {
+                        if (report != null) report(done, total, "Keeping " + name);
+                        File.Copy(existing, dest, true);
+                        done = before + f.Bytes;
+                        continue;
+                    }
 
                     Download(f.Url, dest, (got) =>
                     {
@@ -470,10 +549,20 @@ namespace TypoZen
                     var now = live();
                     bool on = now.Installed;
                     long onDisk = SizeOf(now.Dir);
-                    state.Text = on
-                        ? "Installed - " + Human(onDisk) + " on disk"
-                        : "Not installed - " + Human(now.DownloadBytes) + " to download";
-                    button.Content = on ? "Remove" : "Install";
+                    long short_ = on ? now.MissingBytes() : 0;
+                    if (on && short_ > 0)
+                    {
+                        state.Text = "Installed - " + Human(onDisk) + " on disk, "
+                                   + now.Missing().Count + " newer file(s) missing ("
+                                   + Human(short_) + " to fetch)";
+                    }
+                    else
+                    {
+                        state.Text = on
+                            ? "Installed - " + Human(onDisk) + " on disk"
+                            : "Not installed - " + Human(now.DownloadBytes) + " to download";
+                    }
+                    button.Content = on ? (short_ > 0 ? "Update" : "Remove") : "Install";
                     if (info.Id == ExtensionCatalog.KokoroId) quality.IsEnabled = !on;
                 };
                 rows.Add(refresh);
@@ -481,7 +570,7 @@ namespace TypoZen
                 button.Click += (s, e) =>
                 {
                     var now = live();
-                    if (now.Installed)
+                    if (now.Installed && now.MissingBytes() == 0)
                     {
                         var ask = MessageBox.Show(win,
                             "Remove " + now.Title + "? " + Human(SizeOf(now.Dir)) + " will be deleted.",

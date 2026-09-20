@@ -115,7 +115,9 @@ async function main() {
                     const out = [];
                     for (let i = 0; i < 2; i++) {
                         const t = performance.now();
-                        const a = await _kokoroEngine.generate(text, { voice: 'af_bella' });
+                        // af_nicole is one of the voices added later: proves the ids in
+                        // the catalogue match real files, not just the original fourteen.
+                        const a = await _kokoroEngine.generate(text, { voice: i ? 'af_nicole' : 'af_bella' });
                         out.push({ ms: Math.round(performance.now() - t), samples: a.audio.length, rate: a.sampling_rate });
                     }
                     return out;
