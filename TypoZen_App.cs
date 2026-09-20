@@ -9212,30 +9212,28 @@ namespace TypoZen
                 MinHeight = 400,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
-                WindowStyle = WindowStyle.None,
-                AllowsTransparency = true,
-                ResizeMode = ResizeMode.CanResizeWithGrip,
                 ShowInTaskbar = false,
-                Background = System.Windows.Media.Brushes.Transparent,
+                Background = bgBrush,
                 Foreground = txBrush,
-                FontFamily = this.FontFamily
+                FontFamily = this.FontFamily,
+                UseLayoutRounding = true
             };
+            
+            System.Windows.Media.TextOptions.SetTextFormattingMode(win, System.Windows.Media.TextFormattingMode.Display);
+            System.Windows.Media.TextOptions.SetTextRenderingMode(win, System.Windows.Media.TextRenderingMode.ClearType);
+
+            System.Windows.Shell.WindowChrome.SetWindowChrome(win, new System.Windows.Shell.WindowChrome
+            {
+                CaptionHeight = 45,
+                ResizeBorderThickness = new Thickness(6),
+                CornerRadius = new CornerRadius(0),
+                GlassFrameThickness = new Thickness(0,0,0,1),
+                UseAeroCaptionButtons = false
+            });
 
             var mainBorder = new Border {
                 Background = bgBrush,
-                BorderBrush = borderBrush,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(0),
-                Margin = new Thickness(15)
-            };
-            
-            mainBorder.Effect = new System.Windows.Media.Effects.DropShadowEffect {
-                Color = System.Windows.Media.Color.FromArgb(255, 0, 0, 0),
-                Direction = 270,
-                ShadowDepth = 4,
-                BlurRadius = 15,
-                Opacity = isLight ? 0.2 : 0.6
+                Padding = new Thickness(0)
             };
 
             var rootGrid = new Grid();
@@ -9248,6 +9246,7 @@ namespace TypoZen
             titleBar.Children.Add(titleTxt);
             
             var closeBtn = new Button { Content = "\uE8BB", FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), FontSize = 10, Background = System.Windows.Media.Brushes.Transparent, Foreground = subtleTxBrush, BorderThickness = new Thickness(0), Width = 45, HorizontalAlignment = HorizontalAlignment.Right };
+            System.Windows.Shell.WindowChrome.SetIsHitTestVisibleInChrome(closeBtn, true);
             closeBtn.Click += (s, e) => win.Close();
             closeBtn.MouseEnter += (s, e) => { closeBtn.Foreground = txBrush; };
             closeBtn.MouseLeave += (s, e) => { closeBtn.Foreground = subtleTxBrush; };
@@ -9399,10 +9398,21 @@ namespace TypoZen
             speedSlider.PreviewMouseUp += (s, e) => { if (isLoaded) playSample(); };
             btnPlay.Click += (s, e) => { playSample(); };
             
+            string defaultPrefix = "Hi, I am ";
+            string defaultSuffix = ". This is a quick sample of how I will sound when reading your text out loud. You can adjust the speed below.";
+            
             listBox.SelectionChanged += (s, e) => {
+                var sel = listBox.SelectedItem as ListBoxItem;
+                if (sel != null && sel.Tag != null) {
+                    var tag = sel.Tag as string[];
+                    if (sampleBox.Text == "This is a quick sample of how the selected voice will sound when reading your text out loud. You can adjust the speed below." || 
+                        (sampleBox.Text.StartsWith(defaultPrefix) && sampleBox.Text.EndsWith(defaultSuffix))) {
+                        sampleBox.Text = defaultPrefix + tag[2] + defaultSuffix;
+                    }
+                }
+                
                 if (isLoaded) playSample();
                 else {
-                    var sel = listBox.SelectedItem as ListBoxItem;
                     if (sel != null && sel.Tag != null) {
                         var tag = sel.Tag as string[];
                         currentVoiceLbl.Text = "Selected: " + tag[2];
