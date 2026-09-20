@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.74";
+        internal const string AppVersion = "0.3.0";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1567,7 +1567,6 @@ namespace TypoZen
             BindClick("mConfigureSpeed", (s, e) => ShowConfigureSpeedDialog());
             PopulateWindowsVoicesMenu();
             BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
-            BindClick("mKokoroSystem", (s, e) => SetKokoroVoice("mKokoroSystem", "system_default", "System Default"));
             BindClick("mKokoroHeart", (s, e) => SetKokoroVoice("mKokoroHeart", "af_heart", "Heart"));
             BindClick("mKokoroAlloy", (s, e) => SetKokoroVoice("mKokoroAlloy", "af_alloy", "Alloy"));
             BindClick("mKokoroBella", (s, e) => SetKokoroVoice("mKokoroBella", "af_bella", "Bella"));
@@ -2096,7 +2095,7 @@ namespace TypoZen
 
         private void SetKokoroVoice(string menuName, string voiceId, string friendlyName = "")
         {
-            var items = new[] { "mKokoroSystem", "mKokoroHeart", "mKokoroAlloy", "mKokoroBella", "mKokoroSarah", "mKokoroNova", "mKokoroFenrir", "mKokoroPuck", "mKokoroEcho", "mKokoroAdam", "mKokoroMichael", "mKokoroAlice", "mKokoroEmma", "mKokoroFable", "mKokoroGeorge" };
+            var items = new[] { "mKokoroHeart", "mKokoroAlloy", "mKokoroBella", "mKokoroSarah", "mKokoroNova", "mKokoroFenrir", "mKokoroPuck", "mKokoroEcho", "mKokoroAdam", "mKokoroMichael", "mKokoroAlice", "mKokoroEmma", "mKokoroFable", "mKokoroGeorge" };
             foreach (var n in items)
             {
                 var mi = FindElement(n) as MenuItem;
@@ -3247,7 +3246,13 @@ namespace TypoZen
         /// </summary>
         private void ShowExtensionsDialog()
         {
-            try { ExtensionsDialog.Show(this, CacheDir(), RefreshExtensionState); }
+            try
+            {
+                ExtensionsDialog.Show(this, CacheDir(), RefreshExtensionState, id =>
+                {
+                    if (id == ExtensionCatalog.KokoroId) SetKokoroVoice("mKokoroHeart", "af_heart", "Heart");
+                });
+            }
             catch (Exception ex) { LogFault("extensions dialog", ex); }
         }
 
@@ -3268,7 +3273,7 @@ namespace TypoZen
 
                 // A voice that is no longer installed would leave the page trying to speak
                 // with an engine that is gone, so hand it back to the Windows voices.
-                if (!kokoro) SetKokoroVoice("mKokoroSystem", "system_default", "System Default");
+                if (!kokoro) SetKokoroVoice("", "windows_voice", "Windows voice");
 
                 RebuildDictionaryMenu();
                 // A dictionary that has just been removed is still the saved choice.
@@ -6206,7 +6211,6 @@ namespace TypoZen
             {
                 string voiceId = msg.Substring(27);
                 var map = new Dictionary<string, string> {
-                    { "system_default", "mKokoroSystem" },
                     { "af_heart", "mKokoroHeart" },
                     { "af_alloy", "mKokoroAlloy" },
                     { "af_bella", "mKokoroBella" },
@@ -9249,7 +9253,9 @@ namespace TypoZen
                     prefs.TtsVoiceId = _ttsVoiceId;
                     WriteHostPrefs(prefs);
                     
-                    SetKokoroVoice("mKokoroSystem", "system_default", v.Name);
+                    // A Windows voice chosen on purpose, which is not the same as never having
+                    // chosen: it survives a restart instead of reverting to Kokoro.
+                    SetKokoroVoice("", "windows_voice", v.Name);
                 };
                 mWinVoices.Items.Add(mi);
             }

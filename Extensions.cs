@@ -397,7 +397,9 @@ namespace TypoZen
     /// <summary>The Extensions window: what is available, what is installed, and its size.</summary>
     internal static class ExtensionsDialog
     {
-        public static void Show(Window owner, string cacheDir, Action changed)
+        /// <param name="installed">Given the id of an extension that has just been
+        /// installed, for whatever should follow from having it.</param>
+        public static void Show(Window owner, string cacheDir, Action changed, Action<string> installed = null)
         {
             var win = new Window
             {
@@ -525,6 +527,7 @@ namespace TypoZen
                             {
                                 status.Text = now.Title + " is ready.";
                                 if (changed != null) changed();
+                                if (installed != null) installed(now.Id);
                             }
                             else if (problem == "cancelled") status.Text = "Install cancelled - nothing was kept.";
                             else status.Text = "Install failed: " + problem;

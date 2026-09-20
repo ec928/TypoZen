@@ -84,6 +84,14 @@ async function main() {
             check(ext === 'null', 'with nothing installed the page has no engine', ext);
         }
 
+        if (hasKokoro) {
+            // Installing the voices is the choice to use them: the best-graded voice is
+            // selected, never the route back to the Windows ones.
+            const voice = await page.evaluate(() => _kokoroVoice);
+            check(/^(af|am|bf|bm)_/.test(voice), 'a Kokoro voice is selected, not a Windows one', voice);
+            check(voice === 'af_heart', 'and it is the best-graded voice', voice);
+        }
+
         // Nothing should have loaded an engine merely because the app started.
         const readyAtBoot = await page.evaluate(() => _isKokoroReady === true);
         check(!readyAtBoot, 'no speech engine is loaded at launch');

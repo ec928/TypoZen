@@ -262,7 +262,7 @@ function playNextChunk() {
 
 function sendTTSPlay(text) {
     if (_isKokoroReady && _kokoroEngine) {
-        if (_kokoroVoice !== 'system_default') {
+        if (isKokoroVoice(_kokoroVoice)) {
             playKokoroChunk(text, _kokoroVoice);
             return;
         }
@@ -330,6 +330,9 @@ window.setKokoroExtension = function (payload) {
     }
     const parts = payload.split('|');
     _kokoroExt = { base: parts[0], model: parts[1], dtype: parts[2] || 'fp16' };
+    if (_kokoroVoice === 'system_default') {
+        try { window.setKokoroVoice('af_heart', 'Heart'); } catch (e) {}
+    }
 };
 
 async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a voice from File > Read Aloud.") {
@@ -349,7 +352,7 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
     if (!navigator.gpu) {
         showKokoroStatus("Kokoro needs a graphics card with WebGPU. Using the Windows voices instead.");
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 5000);
-        try { window.setKokoroVoice('system_default', 'System Default'); } catch (e) {}
+        try { window.setKokoroVoice('windows_voice', 'Windows voice'); } catch (e) {}
         return;
     }
 
@@ -381,11 +384,13 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
         try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry("Kokoro init failed: " + err.message); } catch(e){}
         showKokoroStatus("Kokoro could not start: " + err.message + ". Using the Windows voices.");
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 6000);
-        try { window.setKokoroVoice('system_default', 'System Default'); } catch (e) {}
+        try { window.setKokoroVoice('windows_voice', 'Windows voice'); } catch (e) {}
     }
 }
 
-let _kokoroVoice = localStorage.getItem('kokoro_voice') || 'system_default';
+function isKokoroVoice(id) { return /^(af|am|bf|bm)_/.test(id || ''); }
+
+let _kokoroVoice = localStorage.getItem('kokoro_voice') || 'af_heart';
 try { window.chrome.webview.postMessage("host_kokoro_voice_restored:" + _kokoroVoice); } catch(e){}
 
 // Add a hook so C# can change the voice on the fly
@@ -398,9 +403,9 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
     if (unchanged) return;
 
     let displayName = friendlyName || voiceId;
-    if (voiceId !== 'system_default' && !_isKokoroReady) {
-        setupKokoro(false, "Kokoro TTS is ready! Voice set to " + displayName);
-    } else {
+    if (isKokoroVoice(voiceId) && !_isKokoroReady) {
+        setupKokoro(false, "Kokoro is ready. Voice set to " + displayName + ".");
+    } else if (isKokoroVoice(voiceId) || _isKokoroReady) {
         showKokoroStatus("Voice set to " + displayName);
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 2000);
     }
