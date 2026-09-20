@@ -512,7 +512,12 @@ namespace TypoZen
             var quality = new ComboBox { Width = 210, Margin = new Thickness(0, 6, 0, 0) };
             quality.Items.Add("Standard - 186 MB download");
             quality.Items.Add("Full precision - 348 MB download");
-            quality.SelectedIndex = 0;
+            // Show the precision that is actually installed, not the default. Left on
+            // "Standard" while full precision was on disk, the row compared the folder
+            // against the wrong file list and reported the fp16 model as "missing" --
+            // offering to fetch a second model and discard the better one.
+            string installedModel = ExtensionCatalog.KokoroModelName(cacheDir);
+            quality.SelectedIndex = installedModel == "fp32" ? 1 : 0;
 
             Func<ExtensionInfo> kokoroChosen = () => ExtensionCatalog.Kokoro(cacheDir, quality.SelectedIndex == 1);
 
@@ -552,9 +557,10 @@ namespace TypoZen
                     long short_ = on ? now.MissingBytes() : 0;
                     if (on && short_ > 0)
                     {
-                        state.Text = "Installed - " + Human(onDisk) + " on disk, "
-                                   + now.Missing().Count + " newer file(s) missing ("
-                                   + Human(short_) + " to fetch)";
+                        int n = now.Missing().Count;
+                        state.Text = "Installed - " + Human(onDisk) + " on disk. "
+                                   + n + (n == 1 ? " file this version adds" : " files this version adds")
+                                   + " have not been downloaded yet (" + Human(short_) + ")";
                     }
                     else
                     {
@@ -611,6 +617,8 @@ namespace TypoZen
                         {
                             running = null;
                             bar.Visibility = Visibility.Collapsed;
+                            string nowModel = ExtensionCatalog.KokoroModelName(cacheDir);
+                            if (nowModel.Length > 0) quality.SelectedIndex = nowModel == "fp32" ? 1 : 0;
                             foreach (var r in rows) r();
                             if (problem == null)
                             {
