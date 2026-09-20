@@ -1937,7 +1937,13 @@
 
         function hideSelPop() {
             const el = document.getElementById('selPop');
-            if (el) { el.hidden = true; const b = document.getElementById('selPopBody'); if (b) b.hidden = true; }
+            if (el) { 
+                el.hidden = true; 
+                const b = document.getElementById('selPopBody'); 
+                if (b) b.hidden = true; 
+                const lookupBtn = document.getElementById('selPopLookup');
+                if (lookupBtn) lookupBtn.classList.remove('active');
+            }
         }
 
         // --- Link chip -------------------------------------------------------------
@@ -2496,6 +2502,9 @@
             }
 
             body.hidden = false;
+            const lookupBtn = document.getElementById('selPopLookup');
+            if (lookupBtn) lookupBtn.classList.add('active');
+            
             showSelPopKeepPosition();
         }
 
@@ -2529,6 +2538,15 @@
             const pop = document.getElementById('selPop');
             if (!pop || pop.__tzWired) return;
             pop.__tzWired = true;
+            
+            // Anything that moves the document out from under it closes it.
+            try {
+                window.addEventListener('scroll', function(e) {
+                    if (e.target && e.target.closest && e.target.closest('#selPop')) return;
+                    hideSelPop();
+                }, { passive: true, capture: true });
+            } catch (eS) {}
+
             // mousedown/preventDefault throughout: the popover taking focus would collapse
             // the selection its buttons are about, which is the same trap the Marks pane
             // button fell into.
@@ -2563,6 +2581,7 @@
                 const body = document.getElementById('selPopBody');
                 if (body && !body.hidden) {
                     body.hidden = true;
+                    lookupBtn.classList.remove('active');
                     showSelPopKeepPosition();
                     return;
                 }

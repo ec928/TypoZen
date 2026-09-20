@@ -1730,6 +1730,7 @@
            definition. Both were written as hiding and neither hid. */
         .selpop-btn[hidden] { display: none; }
         .selpop-btn:hover { background: rgba(128,128,128,0.18); color: var(--tx, #F4F4F5); }
+        .selpop-btn.active { background: rgba(128,128,128,0.30); color: var(--tx, #F4F4F5); }
         .selpop-btn:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: -2px; }
         #selPopMark span { color: var(--mark-ink, #E8A33D); font-size: 11px; }
         .selpop-body {

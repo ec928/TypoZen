@@ -232,7 +232,7 @@ there is no block-body hover cue at all. Nothing in that lane uses `!important`.
 
 ---
 
-### The selection popover sits on the text it is about - **fixed** (0.3.4)
+### The selection popover sits on the text it is about - **fixed** (0.3.5)
 
 Selecting a word near the top of a document raised the bar *above* the selection, covering the text. Selecting near the bottom put it below, off screen. It frequently overlapped the selected line itself.
 This was caused by the native `host-zoom` CSS scaling not being canceled out correctly in the JavaScript absolute positioning logic, inverting the coordinate math.
