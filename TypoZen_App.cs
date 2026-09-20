@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.73";
+        internal const string AppVersion = "0.2.74";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1564,7 +1564,24 @@ namespace TypoZen
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
-            BindClick("mConfigureVoice", (s, e) => ShowConfigureVoiceDialog());
+            BindClick("mConfigureSpeed", (s, e) => ShowConfigureSpeedDialog());
+            PopulateWindowsVoicesMenu();
+            BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
+            BindClick("mKokoroSystem", (s, e) => SetKokoroVoice("mKokoroSystem", "system_default", "System Default"));
+            BindClick("mKokoroHeart", (s, e) => SetKokoroVoice("mKokoroHeart", "af_heart", "Heart"));
+            BindClick("mKokoroAlloy", (s, e) => SetKokoroVoice("mKokoroAlloy", "af_alloy", "Alloy"));
+            BindClick("mKokoroBella", (s, e) => SetKokoroVoice("mKokoroBella", "af_bella", "Bella"));
+            BindClick("mKokoroSarah", (s, e) => SetKokoroVoice("mKokoroSarah", "af_sarah", "Sarah"));
+            BindClick("mKokoroNova", (s, e) => SetKokoroVoice("mKokoroNova", "af_nova", "Nova"));
+            BindClick("mKokoroFenrir", (s, e) => SetKokoroVoice("mKokoroFenrir", "am_fenrir", "Fenrir"));
+            BindClick("mKokoroPuck", (s, e) => SetKokoroVoice("mKokoroPuck", "am_puck", "Puck"));
+            BindClick("mKokoroEcho", (s, e) => SetKokoroVoice("mKokoroEcho", "am_echo", "Echo"));
+            BindClick("mKokoroAdam", (s, e) => SetKokoroVoice("mKokoroAdam", "am_adam", "Adam"));
+            BindClick("mKokoroMichael", (s, e) => SetKokoroVoice("mKokoroMichael", "am_michael", "Michael"));
+            BindClick("mKokoroAlice", (s, e) => SetKokoroVoice("mKokoroAlice", "bf_alice", "Alice"));
+            BindClick("mKokoroEmma", (s, e) => SetKokoroVoice("mKokoroEmma", "bf_emma", "Emma"));
+            BindClick("mKokoroFable", (s, e) => SetKokoroVoice("mKokoroFable", "bm_fable", "Fable"));
+            BindClick("mKokoroGeorge", (s, e) => SetKokoroVoice("mKokoroGeorge", "bm_george", "George"));
             BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
             BindClick("mWordWrap", (s, e) =>
             {
@@ -2075,6 +2092,17 @@ namespace TypoZen
                 if (obj != null) return obj;
             }
             return null;
+        }
+
+        private void SetKokoroVoice(string menuName, string voiceId, string friendlyName = "")
+        {
+            var items = new[] { "mKokoroSystem", "mKokoroHeart", "mKokoroAlloy", "mKokoroBella", "mKokoroSarah", "mKokoroNova", "mKokoroFenrir", "mKokoroPuck", "mKokoroEcho", "mKokoroAdam", "mKokoroMichael", "mKokoroAlice", "mKokoroEmma", "mKokoroFable", "mKokoroGeorge" };
+            foreach (var n in items)
+            {
+                var mi = FindElement(n) as MenuItem;
+                if (mi != null) mi.IsChecked = (n == menuName);
+            }
+            SendMsg("cmd:kokoro_voice:" + voiceId + ":" + friendlyName);
         }
 
         private void BindClick(string name, RoutedEventHandler handler)
@@ -3211,6 +3239,66 @@ namespace TypoZen
                 catch (Exception ex) { LogFault("open dictionaries folder", ex); }
             };
             menu.Items.Add(open);
+        }
+
+        /// <summary>
+        /// File &gt; Extensions... Optional downloads, and the only thing in TypoZen that
+        /// makes a network request -- while its install runs, and at no other time.
+        /// </summary>
+        private void ShowExtensionsDialog()
+        {
+            try { ExtensionsDialog.Show(this, CacheDir(), RefreshExtensionState); }
+            catch (Exception ex) { LogFault("extensions dialog", ex); }
+        }
+
+        /// <summary>
+        /// What is installed decides what is on the menu. An extension that is not there
+        /// leaves nothing behind: the Kokoro voices hide, and the dictionary menu goes back
+        /// to hiding itself once there is only one dictionary again.
+        /// </summary>
+        private void RefreshExtensionState()
+        {
+            try
+            {
+                string cache = CacheDir();
+                bool kokoro = ExtensionCatalog.KokoroInstalled(cache);
+
+                var menu = FindElement("mKokoroMenu") as MenuItem;
+                if (menu != null) menu.Visibility = kokoro ? Visibility.Visible : Visibility.Collapsed;
+
+                // A voice that is no longer installed would leave the page trying to speak
+                // with an engine that is gone, so hand it back to the Windows voices.
+                if (!kokoro) SetKokoroVoice("mKokoroSystem", "system_default", "System Default");
+
+                RebuildDictionaryMenu();
+                // A dictionary that has just been removed is still the saved choice.
+                if (!string.IsNullOrEmpty(_dictionaryChoice)
+                    && !Directory.Exists(Path.Combine(DictionariesDir(), _dictionaryChoice)))
+                {
+                    SetDictionaryChoice("");
+                }
+
+                SendExtensionStateToPage();
+            }
+            catch (Exception ex) { LogFault("refresh extension state", ex); }
+        }
+
+        /// <summary>
+        /// Tells the page where the speech engine lives, or that there is none. Without
+        /// this the page has no reason to load anything, which is why an uninstalled
+        /// TypoZen never touches the engine at launch.
+        /// </summary>
+        private void SendExtensionStateToPage()
+        {
+            try
+            {
+                string cache = CacheDir();
+                if (!ExtensionCatalog.KokoroInstalled(cache)) { SendMsg("cmd:kokoro_extension:none"); return; }
+                SendMsg("cmd:kokoro_extension:" + ExtensionCatalog.KokoroUrlBase
+                        + "|" + ExtensionCatalog.ModelRepoId
+                        + "|" + ExtensionCatalog.KokoroModelName(cache));
+            }
+            catch { }
         }
 
         private void SetDictionaryChoice(string id)
@@ -4644,6 +4732,29 @@ namespace TypoZen
             public bool AddedWords, CustomThemes;
         }
 
+        /// <summary>
+        /// How many words are in the personal spelling dictionary -- the ones added with
+        /// "Add to dictionary" on a red-underlined word. Counted, not measured: the file
+        /// always carries a "#LID 1033" header, so an empty one still has a size.
+        /// </summary>
+        private string UserWordCountLabel()
+        {
+            try
+            {
+                string path = Path.Combine(CacheDir(), "typozen_user.lex");
+                if (!File.Exists(path)) return "none added";
+                int n = 0;
+                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+                {
+                    string w = line.Trim().TrimStart('﻿');
+                    if (w.Length > 0 && !w.StartsWith("#")) n++;
+                }
+                if (n == 0) return "none added";
+                return n + (n == 1 ? " word" : " words");
+            }
+            catch { return "none added"; }
+        }
+
         private static string HumanSize(long bytes)
         {
             if (bytes <= 0) return "empty";
@@ -4742,13 +4853,14 @@ namespace TypoZen
                                  bookCount > 0 ? bookCount + (bookCount == 1 ? " book, " : " books, ") + HumanSize(bookBytes)
                                                : "none unpacked", false);
             var cbMarks    = add("Bookmarks", CountLines(BookmarksPath()) + " document(s) with marks", false);
-            var cbWords    = add("Words you added to the dictionary", HumanSize(SizeOfFile(Path.Combine(cache, "typozen_user.lex"))), false);
+            var cbWords    = add("Words you added to the dictionary", UserWordCountLabel(), false);
             var cbThemes   = add("Custom themes", HumanSize(SizeOfFile(Path.Combine(cache, "TypoZen_Themes.json"))), false);
 
             root.Children.Add(new TextBlock
             {
                 Text = "Bookmarks, added words and custom themes are things you made, so they "
-                     + "start unticked. A book that is open stays unpacked.",
+                     + "start unticked. A book that is open stays unpacked. Extensions you installed -- the Kokoro voices, the Wiktionary dictionary -- are removed in File > Extensions, "
+                     + "which shows what each one is using.",
                 TextWrapping = TextWrapping.Wrap,
                 Opacity = 0.75,
                 Margin = new Thickness(0, 14, 0, 0)
@@ -5817,6 +5929,17 @@ namespace TypoZen
                 // hooks ComponentDispatcher.ThreadPreprocessMessage so undo/format chords always work.
                 try { _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false; } catch {}
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping("localapp", _appDir, CoreWebView2HostResourceAccessKind.Allow);
+                // Installed extensions are served from the cache folder the same way the
+                // app's own files are, so the speech engine loads its model over a local
+                // host name instead of reaching a CDN.
+                try
+                {
+                    string ext = ExtensionCatalog.ExtensionsDir(CacheDir());
+                    Directory.CreateDirectory(ext);
+                    _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        ExtensionCatalog.HostName, ext, CoreWebView2HostResourceAccessKind.Allow);
+                }
+                catch (Exception ex) { LogFault("map extensions host", ex); }
                 MapBookHosts();
                 SweepAbandonedLoadDirs();
                 // At launch, which is what both sweeps' comments always claimed but only
@@ -5846,6 +5969,10 @@ namespace TypoZen
                     ApplyZoomToWebView();
                     UpdateZoomLabel();
                     _webView.Focus();
+
+                    // The page starts with no speech engine and is told here whether one is
+                    // installed. It loads nothing until a Kokoro voice is actually chosen.
+                    RefreshExtensionState();
 
                     // The About version is set HERE rather than baked into the served HTML, so it
                     // is right whether or not the stamped copy of the template could be written.
@@ -6070,6 +6197,48 @@ namespace TypoZen
                 TypoZen_TTS.Resume();
                 return;
             }
+            else if (msg == "host_tts_start")
+            {
+                ShowReadAloudState(true);
+                return;
+            }
+            else if (msg.StartsWith("host_kokoro_voice_restored:"))
+            {
+                string voiceId = msg.Substring(27);
+                var map = new Dictionary<string, string> {
+                    { "system_default", "mKokoroSystem" },
+                    { "af_heart", "mKokoroHeart" },
+                    { "af_alloy", "mKokoroAlloy" },
+                    { "af_bella", "mKokoroBella" },
+                    { "af_sarah", "mKokoroSarah" },
+                    { "af_nova", "mKokoroNova" },
+                    { "am_fenrir", "mKokoroFenrir" },
+                    { "am_puck", "mKokoroPuck" },
+                    { "am_echo", "mKokoroEcho" },
+                    { "am_adam", "mKokoroAdam" },
+                    { "am_michael", "mKokoroMichael" },
+                    { "bf_alice", "mKokoroAlice" },
+                    { "bf_emma", "mKokoroEmma" },
+                    { "bm_fable", "mKokoroFable" },
+                    { "bm_george", "mKokoroGeorge" }
+                };
+                if (map.ContainsKey(voiceId))
+                {
+                    var items = new List<string>(map.Values);
+                    foreach (var n in items)
+                    {
+                        var mi = FindElement(n) as MenuItem;
+                        if (mi != null) mi.IsChecked = (n == map[voiceId]);
+                    }
+                }
+                return;
+            }
+            else if (msg == "cmd:kokoro_ready")
+            {
+                // The engine finished loading its model. Nothing to do -- the menu already
+                // reflects what is installed, not what has been loaded.
+                return;
+            }
             else if (msg == "host_tts_stop")
             {
                 ShowReadAloudState(false);
@@ -6270,7 +6439,11 @@ namespace TypoZen
                         if (prefs != null)
                         {
                             if (prefs.ThemeIndex >= 0) SendMsg("set_theme:" + prefs.ThemeIndex);
-                            if (!string.IsNullOrEmpty(prefs.TtsVoiceId)) _ttsVoiceId = prefs.TtsVoiceId;
+                            if (!string.IsNullOrEmpty(prefs.TtsVoiceId)) 
+                            {
+                                _ttsVoiceId = prefs.TtsVoiceId;
+                                UpdateWindowsVoicesCheckmark();
+                            }
                             if (prefs.TtsSpeed > 0) _ttsSpeed = prefs.TtsSpeed;
                         }
                     }
@@ -8989,13 +9162,13 @@ namespace TypoZen
         private string _ttsVoiceId = "";
         private double _ttsSpeed = 1.0;
 
-        private void ShowConfigureVoiceDialog()
+        private void ShowConfigureSpeedDialog()
         {
             var win = new Window
             {
-                Title = "Configure Voice",
+                Title = "Configure TTS Speed",
                 Width = 350,
-                Height = 250,
+                Height = 160,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
                 ResizeMode = ResizeMode.NoResize,
@@ -9006,23 +9179,6 @@ namespace TypoZen
 
             var stack = new System.Windows.Controls.StackPanel { Margin = new Thickness(15) };
             
-            var lblVoice = new System.Windows.Controls.TextBlock { Text = "Voice (Offline Natural Voices):", Margin = new Thickness(0, 0, 0, 5) };
-            stack.Children.Add(lblVoice);
-            
-            var combo = new System.Windows.Controls.ComboBox { Margin = new Thickness(0, 0, 0, 15) };
-            var voices = TypoZen_TTS.GetVoices();
-            foreach (var v in voices)
-            {
-                var item = new System.Windows.Controls.ComboBoxItem { Content = v.Name, Tag = v.Id };
-                combo.Items.Add(item);
-                if (v.Id == _ttsVoiceId || (string.IsNullOrEmpty(_ttsVoiceId) && combo.Items.Count == 1))
-                {
-                    combo.SelectedItem = item;
-                }
-            }
-            if (combo.SelectedItem == null && combo.Items.Count > 0) combo.SelectedIndex = 0;
-            stack.Children.Add(combo);
-
             var lblSpeed = new System.Windows.Controls.TextBlock { Text = "Speed: " + _ttsSpeed.ToString("0.0") + "x", Margin = new Thickness(0, 0, 0, 5) };
             stack.Children.Add(lblSpeed);
             
@@ -9049,33 +9205,16 @@ namespace TypoZen
                 BorderThickness = new Thickness(0)
             };
 
-            bool isUserSelection = false;
-            combo.SelectionChanged += async (s, e) => 
-            {
-                if (!isUserSelection) return;
-                if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
-                {
-                    await TypoZen_TTS.PlayAsync("Hi, I am " + item.Content.ToString(), item.Tag?.ToString(), slider.Value);
-                }
-            };
             slider.PreviewMouseUp += async (s, e) => 
             {
-                if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
-                {
-                    await TypoZen_TTS.PlayAsync("Hi, I am " + item.Content.ToString(), item.Tag?.ToString(), slider.Value);
-                }
+                await TypoZen_TTS.PlayAsync("Speed test", _ttsVoiceId, slider.Value);
             };
 
             btnOk.Click += (s, e) =>
             {
-                if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
-                {
-                    _ttsVoiceId = item.Tag?.ToString();
-                }
                 _ttsSpeed = slider.Value;
                 
                 var prefs = LoadHostPrefs();
-                prefs.TtsVoiceId = _ttsVoiceId;
                 prefs.TtsSpeed = _ttsSpeed;
                 WriteHostPrefs(prefs);
 
@@ -9089,8 +9228,42 @@ namespace TypoZen
             stack.Children.Add(btnOk);
 
             win.Content = stack;
-            win.Loaded += (s, e) => { isUserSelection = true; };
             win.ShowDialog();
+        }
+
+        private void PopulateWindowsVoicesMenu()
+        {
+            var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
+            if (mWinVoices == null) return;
+            
+            var voices = TypoZen_TTS.GetVoices();
+            foreach (var v in voices)
+            {
+                var mi = new MenuItem { Header = v.Name, IsCheckable = true, Tag = v.Id };
+                mi.Click += (s, e) => {
+                    foreach (MenuItem item in mWinVoices.Items) item.IsChecked = false;
+                    mi.IsChecked = true;
+                    
+                    _ttsVoiceId = v.Id;
+                    var prefs = LoadHostPrefs();
+                    prefs.TtsVoiceId = _ttsVoiceId;
+                    WriteHostPrefs(prefs);
+                    
+                    SetKokoroVoice("mKokoroSystem", "system_default", v.Name);
+                };
+                mWinVoices.Items.Add(mi);
+            }
+            UpdateWindowsVoicesCheckmark();
+        }
+
+        private void UpdateWindowsVoicesCheckmark()
+        {
+            var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
+            if (mWinVoices == null) return;
+            foreach (MenuItem item in mWinVoices.Items)
+            {
+                item.IsChecked = (item.Tag?.ToString() == _ttsVoiceId);
+            }
         }
 
         private void SetAutosave(bool on)

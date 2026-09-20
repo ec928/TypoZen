@@ -5,7 +5,7 @@ TypoZen is a beautifully simple, distraction-free app for Windows that combines 
 
 Whether you're drafting a new note or settling in with a good book, TypoZen gives you a calm, clean space to do it. It opens your `.md`, `.txt`, and `.epub` files—as well as PDFs, images, and media—and remembers exactly where you left off in your documents and books.
 
-**Privacy-first and completely free.** TypoZen asks nothing of the internet. There are no accounts, no sign-ins, and absolutely no tracking or telemetry. It just opens straight into your document.
+**Privacy-first and completely free.** TypoZen asks nothing of the internet. There are no accounts, no sign-ins, and absolutely no tracking or telemetry. It just opens straight into your document. The one exception is an **extension** you choose to install from **File > Extensions**, which downloads while you watch and never afterwards — and if you install none, TypoZen makes no network request at all.
 
 *(For the technically curious: Under the hood, TypoZen is a lightweight, native Windows app built with WPF and WebView2, offering both a live block-based preview and a raw Source mode for Markdown.)*
 
@@ -48,7 +48,8 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Bundled premium typography:** Included fonts (Inter, Literata, Merriweather, Source Sans 3) ensure perfect rendering without any network requests.
 - **25 curated built-in themes:** Choose from dark, light, and mono themes, or use **Customise Theme...** to build and save your own palettes.
 - **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions.
-- **100% Offline & Portable:** Zero telemetry. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
+- **Offline & Portable:** Zero telemetry, and nothing on the network unless you install an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
+- **Extensions, if you want them:** **File > Extensions** offers neural voices for reading aloud and a dictionary of 1.3 million words. Both are optional downloads, both run entirely on your computer once installed, and removing one takes its menu away again.
 
 ### Files & Links
 - **Format support:** Open Markdown, text, epub, PDF, common images, and media. Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF.
@@ -208,6 +209,23 @@ TSV first, because that is what a WordNet or Wiktionary export converts to in on
 - **Long passages start at once.** SAPI 5 voices speak straight to the audio device from the first audio they produce; they used to be rendered whole before a word was heard, which for a slow voice meant a 17-second wait on a long selection. Windows.Media voices are rendered first — they are fast — into a temporary file in `%TEMP%` that is replaced by the next one
 - **Nothing is left hanging.** A voice that fails, or audio the player cannot open, ends the play and puts the controls back to Read aloud, rather than leaving them on Stop with nothing playing. Each play's steps — voice, length of text, time to first audio, end or failure — go to `debug.log` in the data folder; the text itself is never logged
 
+**Neural voices, if you install them.** **File → Extensions** offers Kokoro, a voice model that runs on your graphics card and reads far more naturally than the Windows voices. It is a 186 MB download — the model, the runtime and fourteen voices — and once it is there, everything happens on your computer: the engine is loaded from the data folder, not a CDN, and the model is read from disk. Measured on a WebGPU card it generates about eleven seconds of speech per second of work, so it keeps well ahead of itself; without WebGPU it is slower than speech and TypoZen says so and stays with the Windows voices. The **Kokoro Voices** menu exists only while the extension is installed.
+
+### Extensions
+
+**File → Extensions** is the one place TypoZen uses the network, and only while an install is running. Nothing is downloaded unless you ask for it, nothing is contacted at launch, and an extension you have not installed leaves no menu behind.
+
+| | Download | Where it goes |
+|---|---|---|
+| **Kokoro voices** | 186 MB (or 348 MB at full precision) | `extensions\Kokoro\` in the data folder |
+| **Wiktionary dictionary** | 34 MB, 108 MB unpacked | `dictionaries\Wiktionary\` |
+
+- **Install shows progress and can be cancelled.** Files land in a staging folder and are moved into place only when every one has arrived, so a cancelled or failed install leaves nothing behind
+- **The Wiktionary archive is checked against its SHA-256** before it is unpacked
+- **Remove deletes the folder**, and the menu that extension added disappears with it
+- **The speech engine is rewritten as it installs.** `kokoro-js` has two addresses baked in — a model host and one hardcoded URL for the voice files — that no setting covers. Both are rewritten to point at the local folder, and each must appear exactly once: if a future version of the library moves them, the install stops rather than leaving an engine that quietly calls out
+- **Both are optional in the real sense.** The built-in dictionary and the Windows voices are unaffected, and **File → Dictionary** switches between dictionaries once there is more than one
+
 **More voices.** Any voice installed into Windows appears in Configure Voice with no change to TypoZen — commercial SAPI 5 voice packs, for example. Windows' Narrator "natural" voices are a special case: Windows makes them available to Narrator only, not to other apps. Third-party adapters exist that register them as ordinary SAPI 5 voices, and TypoZen lists whatever such an adapter registers; they are not part of TypoZen, depend on details of Windows that can change with an update, and some also offer online voices that send the text being read to a web service.
 
 ### Themes & typography
@@ -339,7 +357,7 @@ preferred on load once it exists. An update replaces the shipped file and cannot
 Also restored: window size and position, theme, margins, mode, line and paragraph spacing, justification, F7/F8/F9, zoom, scrubber/status-bar visibility, chrome auto-hide, side-panel auto-hide, open tab paths **and each tab's column layout** (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
 
 ### Network behaviour
-**TypoZen itself requests nothing over the network.** Fonts are bundled, the editor page is served from disk through a virtual host, and the page issues no outbound requests. A document that references a remote image (`![](https://…)`) will still load it — that is the document's request, not the app's.
+**TypoZen itself requests nothing over the network**, with one exception you control: installing an extension (**File → Extensions**) downloads it while you watch, and nothing is fetched before or after. Fonts are bundled, the editor page is served from disk through a virtual host, and the page issues no outbound requests — an installed extension is served the same way, from the data folder through a virtual host, so the speech engine and its model are read from disk rather than a CDN. A document that references a remote image (`![](https://…)`) will still load it — that is the document's request, not the app's.
 
 **Read aloud uses the voices installed in Windows**, which run locally. A voice added to Windows by third-party software may itself go online — some adapters register web-based voices that send the text being read to a server. That is the voice's request, not TypoZen's, and choosing a local voice avoids it.
 
