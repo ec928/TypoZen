@@ -9188,66 +9188,116 @@ namespace TypoZen
         private string _ttsVoiceId = "";
         private double _ttsSpeed = 1.0;
 
-                        private void ShowConfigureVoiceDialog()
+                                private void ShowConfigureVoiceDialog()
         {
+            if (_themesList == null || _themesList.Count == 0 || _currentThemeIndex < 0 || _currentThemeIndex >= _themesList.Count) return;
+            ThemeInfo t = _themesList[_currentThemeIndex];
+            bool isLight = IsColorLight(t.Bg);
+
+            var conv = new BrushConverter();
+            var bgBrush = (SolidColorBrush)conv.ConvertFromString(t.Bg);
+            var txBrush = (SolidColorBrush)conv.ConvertFromString(t.Tx);
+            var accentBrush = (SolidColorBrush)conv.ConvertFromString(t.Hi);
+            var listBgBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.04f : 0.05f));
+            var borderBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.15f : 0.15f));
+            var subtleTxBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Tx, isLight ? 0.35f : -0.35f));
+            var btnTxBrush = (SolidColorBrush)conv.ConvertFromString(IsColorLight(t.Hi) ? "#000000" : "#FFFFFF");
+
             var win = new Window
             {
-                Title = "Voice Sampler and Speed",
-                Width = 800,
-                Height = 600,
+                Title = "Voice Sampler",
+                Width = 720,
+                Height = 520,
                 MinWidth = 600,
                 MinHeight = 400,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
-                ResizeMode = ResizeMode.CanResize,
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                ResizeMode = ResizeMode.CanResizeWithGrip,
                 ShowInTaskbar = false,
-                Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0F172A")),
-                Foreground = System.Windows.Media.Brushes.White,
+                Background = System.Windows.Media.Brushes.Transparent,
+                Foreground = txBrush,
                 FontFamily = this.FontFamily
             };
 
-            var grid = new Grid { Margin = new Thickness(20) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(350) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var mainBorder = new Border {
+                Background = bgBrush,
+                BorderBrush = borderBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(0),
+                Margin = new Thickness(15)
+            };
+            
+            mainBorder.Effect = new System.Windows.Media.Effects.DropShadowEffect {
+                Color = System.Windows.Media.Color.FromArgb(255, 0, 0, 0),
+                Direction = 270,
+                ShadowDepth = 4,
+                BlurRadius = 15,
+                Opacity = isLight ? 0.2 : 0.6
+            };
+
+            var rootGrid = new Grid();
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(45) });
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            // Custom Title Bar
+            var titleBar = new Grid { Background = System.Windows.Media.Brushes.Transparent };
+            var titleTxt = new TextBlock { Text = "Voice Sampler", FontWeight = FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 0, 0), Foreground = txBrush };
+            titleBar.Children.Add(titleTxt);
+            
+            var closeBtn = new Button { Content = "?", FontFamily = new System.Windows.Media.FontFamily("Segoe UI"), FontSize = 14, Background = System.Windows.Media.Brushes.Transparent, Foreground = subtleTxBrush, BorderThickness = new Thickness(0), Width = 45, HorizontalAlignment = HorizontalAlignment.Right };
+            closeBtn.Click += (s, e) => win.Close();
+            closeBtn.MouseEnter += (s, e) => { closeBtn.Foreground = txBrush; };
+            closeBtn.MouseLeave += (s, e) => { closeBtn.Foreground = subtleTxBrush; };
+            titleBar.Children.Add(closeBtn);
+            
+            titleBar.MouseLeftButtonDown += (s, e) => { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) win.DragMove(); };
+            Grid.SetRow(titleBar, 0);
+            rootGrid.Children.Add(titleBar);
+
+            var contentGrid = new Grid { Margin = new Thickness(20, 0, 20, 20) };
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             // Left side: Voice list
             var listBorder = new Border {
-                BorderBrush = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#334155")),
+                BorderBrush = borderBrush,
                 BorderThickness = new Thickness(1),
-                Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1E293B")),
+                Background = listBgBrush,
                 CornerRadius = new CornerRadius(6)
             };
             var listBox = new ListBox {
                 Background = System.Windows.Media.Brushes.Transparent,
                 BorderThickness = new Thickness(0),
-                Foreground = System.Windows.Media.Brushes.White,
+                Foreground = txBrush,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Margin = new Thickness(5)
+                Margin = new Thickness(0, 5, 0, 5)
             };
             ScrollViewer.SetHorizontalScrollBarVisibility(listBox, ScrollBarVisibility.Disabled);
 
             Action<string> addHeader = (title) => {
-                var tb = new TextBlock { Text = title.ToUpper(), FontWeight = FontWeights.Bold, Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#94A3B8")), Margin = new Thickness(10, 15, 10, 5), FontSize = 12 };
-                if (listBox.Items.Count == 0) tb.Margin = new Thickness(10, 5, 10, 5);
+                var tb = new TextBlock { Text = title.ToUpper(), FontWeight = FontWeights.SemiBold, Foreground = subtleTxBrush, Margin = new Thickness(12, 15, 10, 5), FontSize = 11 };
+                if (listBox.Items.Count == 0) tb.Margin = new Thickness(12, 5, 10, 5);
                 listBox.Items.Add(new ListBoxItem { Content = tb, IsEnabled = false, Focusable = false, Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0) });
             };
 
             Action<string, string, string, bool> addVoice = (id, name, desc, isKokoro) => {
-                var sp = new StackPanel { Margin = new Thickness(6, 4, 6, 4) };
-                var nameBlock = new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, FontSize = 15, Foreground = System.Windows.Media.Brushes.White };
-                var descBlock = new TextBlock { Text = desc, FontSize = 13, Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#94A3B8")), Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap };
+                var sp = new StackPanel { Margin = new Thickness(8, 4, 8, 4) };
+                var nameBlock = new TextBlock { Text = name, FontWeight = FontWeights.Medium, FontSize = 14, Foreground = txBrush };
+                var descBlock = new TextBlock { Text = desc, FontSize = 12, Foreground = subtleTxBrush, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap };
                 sp.Children.Add(nameBlock);
                 sp.Children.Add(descBlock);
                 var lbi = new ListBoxItem { Content = sp, Tag = new string[] { id, isKokoro ? "1" : "0", name } };
-                // Custom hover/select style could be done with a style, but we'll rely on default for now.
                 listBox.Items.Add(lbi);
                 
                 if (isKokoro && id == _kokoroVoiceId) listBox.SelectedItem = lbi;
                 else if (!isKokoro && id == _ttsVoiceId && _kokoroVoiceId == "windows_voice") listBox.SelectedItem = lbi;
             };
 
-            addHeader("Kokoro Neural Voices (High Quality)");
+            addHeader("Kokoro Neural Voices");
             foreach (string row in ExtensionCatalog.Voices) {
                 addVoice(ExtensionCatalog.VoiceId(row), ExtensionCatalog.VoiceName(row), ExtensionCatalog.VoiceGroup(row) + " (" + ExtensionCatalog.VoiceGrade(row) + ")", true);
             }
@@ -9257,44 +9307,42 @@ namespace TypoZen
             var classic = winVoices.FindAll(v => v.Kind == "");
             var cloud = winVoices.FindAll(v => v.Kind == "cloud");
             
-            if (local.Count > 0) { addHeader("Windows Natural Voices (Offline)"); foreach(var v in local) addVoice(v.Id, v.Name, "Local voice", false); }
-            if (classic.Count > 0) { addHeader("Windows Classic Voices (Offline)"); foreach(var v in classic) addVoice(v.Id, v.Name, "Older local voice", false); }
-            if (cloud.Count > 0) { addHeader("Windows Online Voices (Cloud)"); foreach(var v in cloud) addVoice(v.Id, v.Name, "Requires internet connection", false); }
+            if (local.Count > 0) { addHeader("Windows Natural Voices"); foreach(var v in local) addVoice(v.Id, v.Name, "Local offline processing", false); }
+            if (classic.Count > 0) { addHeader("Windows Classic Voices"); foreach(var v in classic) addVoice(v.Id, v.Name, "Older local synthesis", false); }
+            if (cloud.Count > 0) { addHeader("Windows Online Voices"); foreach(var v in cloud) addVoice(v.Id, v.Name, "Requires internet connection", false); }
 
             listBorder.Child = listBox;
             Grid.SetColumn(listBorder, 0);
-            grid.Children.Add(listBorder);
+            contentGrid.Children.Add(listBorder);
 
             // Right side: Test studio
             var rightPane = new StackPanel { Margin = new Thickness(0) };
             
-            var titleLbl = new TextBlock { Text = "Testing Studio", FontSize = 22, FontWeight = FontWeights.Light, Margin = new Thickness(0, 0, 0, 10), Foreground = System.Windows.Media.Brushes.White };
-            
-            var currentVoiceLbl = new TextBlock { Text = "No voice selected", FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#38BDF8")), Margin = new Thickness(0, 0, 0, 20) };
-
-            rightPane.Children.Add(titleLbl);
+            var currentVoiceLbl = new TextBlock { Text = "No voice selected", FontSize = 13, FontWeight = FontWeights.Medium, Foreground = accentBrush, Margin = new Thickness(0, 0, 0, 15) };
             rightPane.Children.Add(currentVoiceLbl);
 
             var sampleBox = new TextBox {
                 Text = "TypoZen's virtualized rendering engine builds only the part of the document on screen, so a massive manuscript scrolls like a short note.",
-                TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 100, Padding = new Thickness(12), FontSize = 15,
-                Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1E293B")),
-                Foreground = System.Windows.Media.Brushes.White,
-                BorderBrush = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#475569")),
+                TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, Padding = new Thickness(12), FontSize = 14,
+                Background = listBgBrush,
+                Foreground = txBrush,
+                BorderBrush = borderBrush,
                 BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 0, 0, 25),
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
             rightPane.Children.Add(sampleBox);
 
-            var lblSpeed = new TextBlock { Text = "Speed: " + _ttsSpeed.ToString("0.0") + "x", Margin = new Thickness(0, 0, 0, 10), Foreground = System.Windows.Media.Brushes.White, FontSize = 14 };
+            var lblSpeed = new TextBlock { Text = "Speed: " + _ttsSpeed.ToString("0.0") + "x", Margin = new Thickness(0, 0, 0, 10), Foreground = subtleTxBrush, FontSize = 13 };
             var speedSlider = new Slider {
                 Minimum = 0.5, Maximum = 2.0, Value = _ttsSpeed, TickFrequency = 0.1, IsSnapToTickEnabled = true,
                 Margin = new Thickness(0, 0, 0, 35)
             };
             
-            var btnPlay = new Button { Content = "Play Sample", Height = 40, Margin = new Thickness(0, 0, 0, 15), Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0284C7")), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold, FontSize = 14, Cursor = Cursors.Hand };
-            var btnOk = new Button { Content = "Save and Apply", Height = 40, Background = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#334155")), Foreground = System.Windows.Media.Brushes.White, BorderThickness = new Thickness(0), FontSize = 14, Cursor = Cursors.Hand };
+            var btnPlay = new Button { Content = "Play Sample", Height = 36, Margin = new Thickness(0, 0, 0, 15), Background = accentBrush, Foreground = btnTxBrush, BorderThickness = new Thickness(0), FontWeight = FontWeights.Medium, FontSize = 13, Cursor = Cursors.Hand };
+            
+            // Re-use listBgBrush for secondary button so it matches the theme perfectly
+            var btnOk = new Button { Content = "Save and Apply", Height = 36, Background = listBgBrush, Foreground = txBrush, BorderBrush = borderBrush, BorderThickness = new Thickness(1), FontSize = 13, Cursor = Cursors.Hand };
 
             rightPane.Children.Add(lblSpeed);
             rightPane.Children.Add(speedSlider);
@@ -9302,8 +9350,14 @@ namespace TypoZen
             rightPane.Children.Add(btnOk);
 
             Grid.SetColumn(rightPane, 2);
-            grid.Children.Add(rightPane);
+            contentGrid.Children.Add(rightPane);
             
+            Grid.SetRow(contentGrid, 1);
+            rootGrid.Children.Add(contentGrid);
+
+            mainBorder.Child = rootGrid;
+            win.Content = mainBorder;
+
             Action playSample = async () => {
                 var sel = listBox.SelectedItem as ListBoxItem;
                 if (sel == null || sel.Tag == null) return;
@@ -9352,7 +9406,6 @@ namespace TypoZen
             listBox.SelectionChanged += (s, e) => {
                 if (isLoaded) playSample();
                 else {
-                    // Update label silently if changed during load
                     var sel = listBox.SelectedItem as ListBoxItem;
                     if (sel != null && sel.Tag != null) {
                         var tag = sel.Tag as string[];
@@ -9385,7 +9438,6 @@ namespace TypoZen
                 if (_webView != null && _webView.CoreWebView2 != null)
                     _webView.CoreWebView2.WebMessageReceived -= msgHandler;
             };
-            win.Content = grid;
             win.ShowDialog();
         }
 
@@ -14811,5 +14863,6 @@ namespace TypoZen
         }
     }
 }
+
 
 
