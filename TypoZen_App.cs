@@ -9250,36 +9250,54 @@ namespace TypoZen
             // the reader no way to tell them apart: a neural voice running here, one that
             // sends what it reads to a web service, and the classic voices Windows has
             // always had. Each voice says which it is; see VoiceInfo.Kind.
-            var order = new[] { "local", "cloud", "" };
+            // Natural first, then the classic ones, and the online voices last and folded
+            // into a submenu of their own: that list is Microsoft's and keeps growing --
+            // more than twenty here already -- and inline it pushes everything else off
+            // the bottom of the screen.
+            var order = new[] { "local", "", "cloud" };
             var heading = new Dictionary<string, string> {
                 { "local", "Natural - on this computer" },
-                { "cloud", "Online - sends the text to Microsoft" },
-                { "",      "Standard Windows voices" }
+                { "",      "Standard Windows voices" },
+                { "cloud", "Online voices - these send the text to Microsoft" }
             };
             bool grouped = voices.Exists(x => !string.IsNullOrEmpty(x.Kind));
             foreach (string kind in order)
             {
             var inGroup = voices.FindAll(x => (x.Kind ?? "") == kind);
             if (inGroup.Count == 0) continue;
+            // Where this group's items go: the menu itself, or a submenu holding them all.
+            ItemsControl into = mWinVoices;
             if (grouped)
             {
                 if (mWinVoices.Items.Count > 0) mWinVoices.Items.Add(new Separator());
-                mWinVoices.Items.Add(new MenuItem
+                if (kind == "cloud")
                 {
-                    Header = heading[kind],
-                    IsEnabled = false,
-                    FontWeight = FontWeights.SemiBold
-                });
+                    // The chosen voice would otherwise be hidden inside a closed submenu.
+                    bool holdsChoice = inGroup.Exists(x => x.Id == _ttsVoiceId);
+                    var sub = new MenuItem
+                    {
+                        Header = heading[kind] + (holdsChoice ? "  (in use)" : ""),
+                        ToolTip = "Unlike every other voice here, these are spoken by a web "
+                                + "service: what TypoZen reads aloud is sent to Microsoft."
+                    };
+                    mWinVoices.Items.Add(sub);
+                    into = sub;
+                }
+                else
+                {
+                    mWinVoices.Items.Add(new MenuItem
+                    {
+                        Header = heading[kind],
+                        IsEnabled = false,
+                        FontWeight = FontWeights.SemiBold
+                    });
+                }
             }
             foreach (var v in inGroup)
             {
                 var mi = new MenuItem { Header = v.Name, IsCheckable = true, Tag = v.Id };
                 mi.Click += (s, e) => {
-                    foreach (var o in mWinVoices.Items)
-                    {
-                        var item = o as MenuItem;
-                        if (item != null && item.Tag != null) item.IsChecked = false;
-                    }
+                    foreach (var item in VoiceMenuItems(mWinVoices)) item.IsChecked = false;
                     mi.IsChecked = true;
                     
                     _ttsVoiceId = v.Id;
@@ -9291,20 +9309,37 @@ namespace TypoZen
                     // chosen: it survives a restart instead of reverting to Kokoro.
                     SetKokoroVoice("windows_voice", v.Name);
                 };
-                mWinVoices.Items.Add(mi);
+                into.Items.Add(mi);
             }
             }
             UpdateWindowsVoicesCheckmark();
+        }
+
+        /// <summary>
+        /// Every voice item under the menu -- skipping headings and separators, and
+        /// stepping into the online submenu, which is the one group that is nested.
+        /// </summary>
+        private static IEnumerable<MenuItem> VoiceMenuItems(MenuItem root)
+        {
+            foreach (var o in root.Items)
+            {
+                var item = o as MenuItem;
+                if (item == null) continue;
+                if (item.Tag != null) { yield return item; continue; }
+                foreach (var child in item.Items)
+                {
+                    var sub = child as MenuItem;
+                    if (sub != null && sub.Tag != null) yield return sub;
+                }
+            }
         }
 
         private void UpdateWindowsVoicesCheckmark()
         {
             var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
             if (mWinVoices == null) return;
-            foreach (var o in mWinVoices.Items)
+            foreach (var item in VoiceMenuItems(mWinVoices))
             {
-                var item = o as MenuItem;
-                if (item == null || item.Tag == null) continue;      // separators and headings
                 item.IsChecked = (item.Tag.ToString() == _ttsVoiceId);
             }
         }
