@@ -9388,18 +9388,26 @@ namespace TypoZen
             if (_webView != null && _webView.CoreWebView2 != null)
                 _webView.CoreWebView2.WebMessageReceived += msgHandler;
 
+            string defaultPrefix = "Hi, I am ";
+            string defaultSuffix = ". This is a quick sample of how I will sound when reading your text out loud. You can adjust the speed below.";
+
             bool isLoaded = false;
             win.Loaded += (s, e) => { 
                 isLoaded = true;
+                var sel = listBox.SelectedItem as ListBoxItem;
+                if (sel != null && sel.Tag != null) {
+                    var tag = sel.Tag as string[];
+                    if (sampleBox.Text == "This is a quick sample of how the selected voice will sound when reading your text out loud. You can adjust the speed below." || 
+                        (sampleBox.Text.StartsWith(defaultPrefix) && sampleBox.Text.EndsWith(defaultSuffix))) {
+                        sampleBox.Text = defaultPrefix + tag[2] + defaultSuffix;
+                    }
+                }
                 playSample();
             };
 
             speedSlider.ValueChanged += (s, e) => { lblSpeed.Text = "Speed: " + speedSlider.Value.ToString("0.0") + "x"; };
             speedSlider.PreviewMouseUp += (s, e) => { if (isLoaded) playSample(); };
             btnPlay.Click += (s, e) => { playSample(); };
-            
-            string defaultPrefix = "Hi, I am ";
-            string defaultSuffix = ". This is a quick sample of how I will sound when reading your text out loud. You can adjust the speed below.";
             
             listBox.SelectionChanged += (s, e) => {
                 var sel = listBox.SelectedItem as ListBoxItem;
