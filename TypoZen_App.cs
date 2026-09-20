@@ -44,7 +44,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.2.73";
+        internal const string AppVersion = "0.2.74";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1566,7 +1566,7 @@ namespace TypoZen
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
             BindClick("mConfigureSpeed", (s, e) => ShowConfigureSpeedDialog());
             PopulateWindowsVoicesMenu();
-            BindClick("mInstallKokoro", (s, e) => SendMsg("host_kokoro_install"));
+            BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
             BindClick("mKokoroSystem", (s, e) => SetKokoroVoice("mKokoroSystem", "system_default", "System Default"));
             BindClick("mKokoroHeart", (s, e) => SetKokoroVoice("mKokoroHeart", "af_heart", "Heart"));
             BindClick("mKokoroAlloy", (s, e) => SetKokoroVoice("mKokoroAlloy", "af_alloy", "Alloy"));
@@ -3239,6 +3239,66 @@ namespace TypoZen
                 catch (Exception ex) { LogFault("open dictionaries folder", ex); }
             };
             menu.Items.Add(open);
+        }
+
+        /// <summary>
+        /// File &gt; Extensions... Optional downloads, and the only thing in TypoZen that
+        /// makes a network request -- while its install runs, and at no other time.
+        /// </summary>
+        private void ShowExtensionsDialog()
+        {
+            try { ExtensionsDialog.Show(this, CacheDir(), RefreshExtensionState); }
+            catch (Exception ex) { LogFault("extensions dialog", ex); }
+        }
+
+        /// <summary>
+        /// What is installed decides what is on the menu. An extension that is not there
+        /// leaves nothing behind: the Kokoro voices hide, and the dictionary menu goes back
+        /// to hiding itself once there is only one dictionary again.
+        /// </summary>
+        private void RefreshExtensionState()
+        {
+            try
+            {
+                string cache = CacheDir();
+                bool kokoro = ExtensionCatalog.KokoroInstalled(cache);
+
+                var menu = FindElement("mKokoroMenu") as MenuItem;
+                if (menu != null) menu.Visibility = kokoro ? Visibility.Visible : Visibility.Collapsed;
+
+                // A voice that is no longer installed would leave the page trying to speak
+                // with an engine that is gone, so hand it back to the Windows voices.
+                if (!kokoro) SetKokoroVoice("mKokoroSystem", "system_default", "System Default");
+
+                RebuildDictionaryMenu();
+                // A dictionary that has just been removed is still the saved choice.
+                if (!string.IsNullOrEmpty(_dictionaryChoice)
+                    && !Directory.Exists(Path.Combine(DictionariesDir(), _dictionaryChoice)))
+                {
+                    SetDictionaryChoice("");
+                }
+
+                SendExtensionStateToPage();
+            }
+            catch (Exception ex) { LogFault("refresh extension state", ex); }
+        }
+
+        /// <summary>
+        /// Tells the page where the speech engine lives, or that there is none. Without
+        /// this the page has no reason to load anything, which is why an uninstalled
+        /// TypoZen never touches the engine at launch.
+        /// </summary>
+        private void SendExtensionStateToPage()
+        {
+            try
+            {
+                string cache = CacheDir();
+                if (!ExtensionCatalog.KokoroInstalled(cache)) { SendMsg("cmd:kokoro_extension:none"); return; }
+                SendMsg("cmd:kokoro_extension:" + ExtensionCatalog.KokoroUrlBase
+                        + "|" + ExtensionCatalog.ModelRepoId
+                        + "|" + ExtensionCatalog.KokoroModelName(cache));
+            }
+            catch { }
         }
 
         private void SetDictionaryChoice(string id)
@@ -5853,6 +5913,17 @@ namespace TypoZen
                 // hooks ComponentDispatcher.ThreadPreprocessMessage so undo/format chords always work.
                 try { _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false; } catch {}
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping("localapp", _appDir, CoreWebView2HostResourceAccessKind.Allow);
+                // Installed extensions are served from the cache folder the same way the
+                // app's own files are, so the speech engine loads its model over a local
+                // host name instead of reaching a CDN.
+                try
+                {
+                    string ext = ExtensionCatalog.ExtensionsDir(CacheDir());
+                    Directory.CreateDirectory(ext);
+                    _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        ExtensionCatalog.HostName, ext, CoreWebView2HostResourceAccessKind.Allow);
+                }
+                catch (Exception ex) { LogFault("map extensions host", ex); }
                 MapBookHosts();
                 SweepAbandonedLoadDirs();
                 // At launch, which is what both sweeps' comments always claimed but only
@@ -5882,6 +5953,10 @@ namespace TypoZen
                     ApplyZoomToWebView();
                     UpdateZoomLabel();
                     _webView.Focus();
+
+                    // The page starts with no speech engine and is told here whether one is
+                    // installed. It loads nothing until a Kokoro voice is actually chosen.
+                    RefreshExtensionState();
 
                     // The About version is set HERE rather than baked into the served HTML, so it
                     // is right whether or not the stamped copy of the template could be written.
@@ -6144,8 +6219,8 @@ namespace TypoZen
             }
             else if (msg == "cmd:kokoro_ready")
             {
-                var mi = FindElement("mInstallKokoro") as MenuItem;
-                if (mi != null) mi.IsEnabled = false;
+                // The engine finished loading its model. Nothing to do -- the menu already
+                // reflects what is installed, not what has been loaded.
                 return;
             }
             else if (msg == "host_tts_stop")

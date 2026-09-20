@@ -9,7 +9,7 @@ against the shipping build; see the note at the foot before changing any of them
 
 _Shown in search results and at the top of the listing. Limit 1,000 characters._
 
-A calm place to write, and a beautiful place to read. TypoZen is a WYSIWYG Markdown editor and a paginated ePub reader in one window — with true two-page spreads, read aloud in your Windows voices, an offline dictionary and thesaurus, 25 themes, and not a single network request.
+A calm place to write, and a beautiful place to read. TypoZen is a WYSIWYG Markdown editor and a paginated ePub reader in one window — with true two-page spreads, read aloud in your Windows voices, an offline dictionary and thesaurus, 25 themes, and no network request of its own.
 
 ---
 
@@ -84,7 +84,7 @@ _Up to 20 bullets, 200 characters each._
 17. Tabs, with the full session restored on the next launch
 18. Atomic saves with a prompt if the file changed on disk; export to self-contained HTML, or print to PDF
 19. Read aloud — a passage or the page — in any voice installed in Windows, at the speed you choose
-20. No network requests, no account, no telemetry — with a Privacy Mode that records nothing
+20. No account, no telemetry, and no network request unless you install an optional extension — plus a Privacy Mode that records nothing
 
 ---
 
@@ -143,11 +143,11 @@ and it asks a narrower question -- why the capability is needed and how it is us
 The text below is exactly 500, which the box accepts. Anything longer gets truncated mid-sentence, which reads worse to a
 reviewer than a short answer does.
 
-TypoZen is a Win32 desktop app packaged as MSIX (Desktop Bridge). A packaged desktop app cannot run without runFullTrust: it is .NET/WPF hosting WebView2, not a sandboxed UWP app.
+TypoZen is a Win32 desktop app packaged as MSIX (Desktop Bridge). It cannot run without runFullTrust: it is .NET/WPF hosting WebView2, not a sandboxed UWP app.
 
-Used for ordinary document editing: opening and saving files at paths the user picks in standard Windows dialogs (Markdown, text, ePub, PDF, images), which AppContainer forbids, and reading bundled fonts and dictionary from the install dir.
+Used for ordinary document editing: opening and saving files at paths the user picks in standard Windows dialogs, which AppContainer forbids, and reading bundled fonts and dictionary.
 
-The only capability declared. No network use, no data collection, no sign-in.
+The only capability declared. No data collection, no sign-in. Network use only while the user installs an optional extension from File > Extensions.
 
 ---
 

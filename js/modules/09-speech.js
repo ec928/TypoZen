@@ -316,71 +316,87 @@ function showKokoroStatus(text) {
     div.innerText = text;
 }
 
-async function setupKokoro(silent = false, successMsg = "Kokoro TTS is ready! Select your voice from the File > Read Aloud menu.") {
+// Where the installed engine lives. Null until the host says an extension is there, and
+// nothing below runs before it does -- this is what keeps an uninstalled TypoZen from
+// loading a speech engine, or touching the network, at launch.
+let _kokoroExt = null;
+
+window.setKokoroExtension = function (payload) {
+    if (!payload || payload === 'none') {
+        _kokoroExt = null;
+        _kokoroEngine = null;
+        _isKokoroReady = false;
+        return;
+    }
+    const parts = payload.split('|');
+    _kokoroExt = { base: parts[0], model: parts[1], dtype: parts[2] || 'fp16' };
+};
+
+async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a voice from File > Read Aloud.") {
     if (_isKokoroReady) {
         if (!silent) {
-            showKokoroStatus("Kokoro is already installed and ready!");
+            showKokoroStatus("Kokoro is ready.");
             setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 2000);
         }
         return;
     }
-    
-    if (!silent) showKokoroStatus("Loading Kokoro AI Engine...");
-    
+    if (!_kokoroExt) {
+        if (!silent) showKokoroStatus("The Kokoro voices are not installed. File > Extensions installs them.");
+        return;
+    }
+    // The model runs on the GPU. On the CPU it generates about twice as slowly as the
+    // speech plays, so there is no fallback worth offering -- the Windows voices are it.
+    if (!navigator.gpu) {
+        showKokoroStatus("Kokoro needs a graphics card with WebGPU. Using the Windows voices instead.");
+        setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 5000);
+        try { window.setKokoroVoice('system_default', 'System Default'); } catch (e) {}
+        return;
+    }
+
+    if (!silent) showKokoroStatus("Starting the Kokoro engine...");
+
     try {
-        const module = await import("https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.min.js");
+        const module = await import(_kokoroExt.base + 'engine.js');
         window._KokoroTTS = module.KokoroTTS;
-        
-        const device = navigator.gpu ? "webgpu" : "wasm";
-        const dtype = device === "webgpu" ? "fp32" : "q4f16"; // fp32 prevents WebGPU hangs, q4 is faster for WASM
-        
-        if (!silent) showKokoroStatus(`Waking up ONNX Model (${device.toUpperCase()})...`);
-        
-        const model_id = "onnx-community/Kokoro-82M-v1.0-ONNX";
-        
-        try {
-            _kokoroEngine = await window._KokoroTTS.from_pretrained(model_id, {
-                dtype: dtype,       
-                device: device, 
-            });
-        } catch (gpuErr) {
-            console.warn("Primary device failed, falling back to WASM:", gpuErr);
-            if (!silent) showKokoroStatus("WebGPU failed, falling back to CPU (WASM)...");
-            _kokoroEngine = await window._KokoroTTS.from_pretrained(model_id, {
-                dtype: "q4f16",       
-                device: "wasm", 
-            });
-        }
-        
+        // The ONNX runtime fetches its own .wasm; without this it would go to a CDN.
+        try { module.env.wasmPaths = _kokoroExt.base; } catch (e) {}
+
+        if (!silent) showKokoroStatus("Loading the voice model...");
+        _kokoroEngine = await window._KokoroTTS.from_pretrained(_kokoroExt.model, {
+            dtype: _kokoroExt.dtype,
+            device: "webgpu"
+        });
+
         _isKokoroReady = true;
         _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         try { window.chrome.webview.postMessage("cmd:kokoro_ready"); } catch(e){}
-        
+
         if (!silent) {
             showKokoroStatus(successMsg);
             setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 4000);
         }
-        
+
     } catch (err) {
         console.error(err);
         try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry("Kokoro init failed: " + err.message); } catch(e){}
-        if (!silent) showKokoroStatus("Failed to initialize Kokoro: " + err.message + " (Check console/network)");
+        showKokoroStatus("Kokoro could not start: " + err.message + ". Using the Windows voices.");
+        setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 6000);
+        try { window.setKokoroVoice('system_default', 'System Default'); } catch (e) {}
     }
 }
 
-let _kokoroVoice = localStorage.getItem('kokoro_voice') || 'af_bella';
+let _kokoroVoice = localStorage.getItem('kokoro_voice') || 'system_default';
 try { window.chrome.webview.postMessage("host_kokoro_voice_restored:" + _kokoroVoice); } catch(e){}
-
-if (_kokoroVoice !== 'system_default') {
-    // If they were using Kokoro in their last session, silently wake it up on boot
-    setTimeout(() => { setupKokoro(true); }, 2000); 
-}
 
 // Add a hook so C# can change the voice on the fly
 window.setKokoroVoice = function(voiceId, friendlyName) {
+    // The host resets this to the Windows voices whenever the extension is missing, which
+    // happens on every launch without it: saying so each time would be noise.
+    const unchanged = (voiceId === _kokoroVoice);
     _kokoroVoice = voiceId;
     localStorage.setItem('kokoro_voice', voiceId);
-    
+    if (unchanged) return;
+
     let displayName = friendlyName || voiceId;
     if (voiceId !== 'system_default' && !_isKokoroReady) {
         setupKokoro(false, "Kokoro TTS is ready! Voice set to " + displayName);

@@ -446,9 +446,10 @@
                                  is hidden while there is only one to choose from. -->
                             <MenuItem x:Name="mDictionaryMenu" Header="_Dictionary" Visibility="Collapsed"/>
                             <MenuItem x:Name="mReadAloudMenu" Header="_Read Aloud">
-                                <MenuItem Header="Kokoro Voices (Requires Activation)">
-                                    <MenuItem x:Name="mInstallKokoro" Header="_Download &amp; Activate (350MB)"/>
-                                    <Separator/>
+                                <!-- Hidden until the Kokoro extension is installed: see
+                                     RefreshExtensionState. The Windows voices below it are
+                                     always there, so this node hides, not the menu. -->
+                                <MenuItem x:Name="mKokoroMenu" Header="_Kokoro Voices" Visibility="Collapsed">
                                     <MenuItem x:Name="mKokoroSystem" Header="System Default (Fast Windows Voice)" IsCheckable="True" IsChecked="True"/>
                                     <Separator/>
                                     <MenuItem x:Name="mKokoroHeart" Header="Heart (American Female - Top Rated)" IsCheckable="True"/>
@@ -473,6 +474,10 @@
                                 <Separator/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
                             </MenuItem>
+                            <!-- Access key t, not x: Exit already has x in this menu, and a
+                                 shared access key cycles the highlight instead of opening. -->
+                            <MenuItem x:Name="mExtensions" Header="Ex_tensions..."
+                                      ToolTip="Optional downloads: neural voices, and a much larger dictionary"/>
                             <Separator/>
                             <MenuItem Header="Pri_vacy">
                                 <!-- One switch instead of three: while it is on, nothing that

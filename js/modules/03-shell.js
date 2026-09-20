@@ -1036,8 +1036,14 @@
                     // state the toolbar button is given by the host.
                     try { if (typeof nativeTTSFinished === 'function') nativeTTSFinished(); } catch (eT) {}
                 }
-                else if (msg == "host_kokoro_install") {
-                    try { if (typeof setupKokoro === 'function') setupKokoro(); } catch (eT) {}
+                else if (msg.startsWith("cmd:kokoro_extension:")) {
+                    // Where the installed speech engine lives, or "none". The page loads
+                    // nothing until this says there is something to load.
+                    try {
+                        if (typeof window.setKokoroExtension === 'function') {
+                            window.setKokoroExtension(msg.substring(21));
+                        }
+                    } catch (eT) {}
                 }
                 else if (msg.startsWith("cmd:kokoro_voice:")) {
                     const voicePayload = msg.substring(17);
