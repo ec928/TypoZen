@@ -9247,7 +9247,7 @@ namespace TypoZen
             var titleTxt = new TextBlock { Text = "Voice Sampler", FontWeight = FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 0, 0), Foreground = txBrush };
             titleBar.Children.Add(titleTxt);
             
-            var closeBtn = new Button { Content = "?", FontFamily = new System.Windows.Media.FontFamily("Segoe UI"), FontSize = 14, Background = System.Windows.Media.Brushes.Transparent, Foreground = subtleTxBrush, BorderThickness = new Thickness(0), Width = 45, HorizontalAlignment = HorizontalAlignment.Right };
+            var closeBtn = new Button { Content = "\uE8BB", FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), FontSize = 10, Background = System.Windows.Media.Brushes.Transparent, Foreground = subtleTxBrush, BorderThickness = new Thickness(0), Width = 45, HorizontalAlignment = HorizontalAlignment.Right };
             closeBtn.Click += (s, e) => win.Close();
             closeBtn.MouseEnter += (s, e) => { closeBtn.Foreground = txBrush; };
             closeBtn.MouseLeave += (s, e) => { closeBtn.Foreground = subtleTxBrush; };
@@ -9322,7 +9322,7 @@ namespace TypoZen
             rightPane.Children.Add(currentVoiceLbl);
 
             var sampleBox = new TextBox {
-                Text = "TypoZen's virtualized rendering engine builds only the part of the document on screen, so a massive manuscript scrolls like a short note.",
+                Text = "This is a quick sample of how the selected voice will sound when reading your text out loud. You can adjust the speed below.",
                 TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, Padding = new Thickness(12), FontSize = 14,
                 Background = listBgBrush,
                 Foreground = txBrush,
@@ -9365,7 +9365,7 @@ namespace TypoZen
                 string text = string.IsNullOrWhiteSpace(sampleBox.Text) ? "Please type something." : sampleBox.Text.Trim();
 
                 if (tag[1] == "1") {
-                    currentVoiceLbl.Text = "Initializing AI engine for " + tag[2] + "...";
+                    currentVoiceLbl.Text = "Starting Kokoro AI engine for " + tag[2] + "...";
                     string spdStr = speedSlider.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     SendMsg("cmd:kokoro_sample:" + spdStr + ":" + tag[0] + ":" + text.Replace("\n", " ").Replace("\r", ""));
                 } else {
@@ -9391,12 +9391,8 @@ namespace TypoZen
 
             bool isLoaded = false;
             win.Loaded += (s, e) => { 
-                isLoaded = true; 
-                var sel = listBox.SelectedItem as ListBoxItem;
-                if (sel != null && sel.Tag != null) {
-                    var tag = sel.Tag as string[];
-                    currentVoiceLbl.Text = "Selected: " + tag[2];
-                }
+                isLoaded = true;
+                playSample();
             };
 
             speedSlider.ValueChanged += (s, e) => { lblSpeed.Text = "Speed: " + speedSlider.Value.ToString("0.0") + "x"; };
