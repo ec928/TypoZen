@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.8";
+        internal const string AppVersion = "0.3.9";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -9365,7 +9365,7 @@ namespace TypoZen
             }
 
             Action<string> addHeader = (title) => {
-                var tb = new TextBlock { Text = title.ToUpper(), FontWeight = FontWeights.SemiBold, Foreground = subtleTxBrush, Margin = new Thickness(12, 15, 10, 5), FontSize = 11 };
+                var tb = new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, Foreground = subtleTxBrush, Margin = new Thickness(12, 15, 10, 5), FontSize = 12 };
                 if (listBox.Items.Count == 0) tb.Margin = new Thickness(12, 5, 10, 5);
                 listBox.Items.Add(new ListBoxItem { Content = tb, IsEnabled = false, Focusable = false, Background = System.Windows.Media.Brushes.Transparent, BorderThickness = new Thickness(0) });
             };
@@ -9383,23 +9383,54 @@ namespace TypoZen
                 else if (!isKokoro && id == _ttsVoiceId && _kokoroVoiceId == "windows_voice") listBox.SelectedItem = lbi;
             };
 
-            addHeader("Kokoro Neural Voices");
-            foreach (string row in ExtensionCatalog.Voices) {
-                addVoice(ExtensionCatalog.VoiceId(row), ExtensionCatalog.VoiceName(row), ExtensionCatalog.VoiceGroup(row) + " (" + ExtensionCatalog.VoiceGrade(row) + ")", true);
-            }
-
             var winVoices = TypoZen_TTS.GetVoices();
             var local = winVoices.FindAll(v => v.Kind == "local");
             var classic = winVoices.FindAll(v => v.Kind == "");
             var cloud = winVoices.FindAll(v => v.Kind == "cloud");
+
+            Action<bool> populateList = (kokoro) => {
+                listBox.Items.Clear();
+                if (kokoro) {
+                    addHeader("Kokoro Neural Voices");
+                    foreach (string row in ExtensionCatalog.Voices) {
+                        addVoice(ExtensionCatalog.VoiceId(row), ExtensionCatalog.VoiceName(row), ExtensionCatalog.VoiceGroup(row) + " (" + ExtensionCatalog.VoiceGrade(row) + ")", true);
+                    }
+                } else {
+                    if (local.Count > 0) { addHeader("Windows Natural Voices"); foreach(var v in local) addVoice(v.Id, v.Name, "Local offline processing", false); }
+                    if (classic.Count > 0) { addHeader("Windows Classic Voices"); foreach(var v in classic) addVoice(v.Id, v.Name, "Older local synthesis", false); }
+                    if (cloud.Count > 0) { addHeader("Windows Online Voices"); foreach(var v in cloud) addVoice(v.Id, v.Name, "Requires internet connection", false); }
+                }
+            };
+
+            var leftPane = new Grid();
+            leftPane.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            leftPane.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            var engineCombo = new ComboBox {
+                Margin = new Thickness(0, 0, 0, 10),
+                Height = 32,
+                FontSize = 13,
+                Background = bgBrush,
+                Foreground = txBrush,
+                BorderBrush = borderBrush,
+                Cursor = Cursors.Hand
+            };
+            engineCombo.Items.Add("Kokoro Neural Voices");
+            engineCombo.Items.Add("Windows Voices");
+            engineCombo.SelectionChanged += (s, e) => {
+                populateList(engineCombo.SelectedIndex == 0);
+            };
+            engineCombo.SelectedIndex = _kokoroVoiceId == "windows_voice" ? 1 : 0;
             
-            if (local.Count > 0) { addHeader("Windows Natural Voices"); foreach(var v in local) addVoice(v.Id, v.Name, "Local offline processing", false); }
-            if (classic.Count > 0) { addHeader("Windows Classic Voices"); foreach(var v in classic) addVoice(v.Id, v.Name, "Older local synthesis", false); }
-            if (cloud.Count > 0) { addHeader("Windows Online Voices"); foreach(var v in cloud) addVoice(v.Id, v.Name, "Requires internet connection", false); }
+            Grid.SetRow(engineCombo, 0);
+            leftPane.Children.Add(engineCombo);
 
             listBorder.Child = listBox;
-            Grid.SetColumn(listBorder, 0);
-            contentGrid.Children.Add(listBorder);
+            Grid.SetRow(listBorder, 1);
+            leftPane.Children.Add(listBorder);
+
+            Grid.SetColumn(leftPane, 0);
+            contentGrid.Children.Add(leftPane);
 
             // Right side: Test studio
             var rightPane = new StackPanel { Margin = new Thickness(0) };
@@ -9407,14 +9438,15 @@ namespace TypoZen
             var currentVoiceLbl = new TextBlock { Text = "No voice selected", FontSize = 13, FontWeight = FontWeights.Medium, Foreground = accentBrush, Margin = new Thickness(0, 0, 0, 15) };
             rightPane.Children.Add(currentVoiceLbl);
 
+            var sampleGrid = new Grid { Margin = new Thickness(0, 0, 0, 25) };
+
             var sampleBox = new TextBox {
                 Text = "This is a quick sample of how the selected voice will sound when reading your text out loud. You can adjust the speed below.",
-                TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, Padding = new Thickness(12), FontSize = 14,
+                TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, Padding = new Thickness(12, 12, 45, 12), FontSize = 14,
                 Background = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.02f : -0.15f)),
                 Foreground = txBrush,
                 BorderBrush = borderBrush,
                 BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 0, 0, 25),
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
             
@@ -9425,35 +9457,31 @@ namespace TypoZen
             tbStyle.Triggers.Add(tbTrigger);
             sampleBox.Style = tbStyle;
             
-            rightPane.Children.Add(sampleBox);
-
-            var speedRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
-            speedRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            speedRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            
-            var speedPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            var lblSpeed = new TextBlock { Text = "Speed: " + _ttsSpeed.ToString("0.0") + "x", Margin = new Thickness(0, 0, 0, 10), Foreground = subtleTxBrush, FontSize = 13 };
-            var speedSlider = new Slider {
-                Minimum = 0.5, Maximum = 2.0, Value = _ttsSpeed, TickFrequency = 0.1, IsSnapToTickEnabled = true,
-                Margin = new Thickness(0, 0, 20, 0)
-            };
-            speedPanel.Children.Add(lblSpeed);
-            speedPanel.Children.Add(speedSlider);
-            Grid.SetColumn(speedPanel, 0);
-            speedRow.Children.Add(speedPanel);
+            sampleGrid.Children.Add(sampleBox);
 
             var btnPlay = new Button { 
                 Content = "\uE768", FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), 
-                Width = 42, Height = 42, Background = accentBrush, Foreground = btnTxBrush, 
-                BorderThickness = new Thickness(0), FontSize = 16, Cursor = Cursors.Hand,
+                Width = 32, Height = 32, Background = accentBrush, Foreground = btnTxBrush, 
+                BorderThickness = new Thickness(0), FontSize = 14, Cursor = Cursors.Hand,
                 ToolTip = "Play Sample"
             };
-            var btnPlayBorder = new Border { CornerRadius = new CornerRadius(21), Background = accentBrush, Child = btnPlay, ClipToBounds = true };
+            var btnPlayBorder = new Border { 
+                CornerRadius = new CornerRadius(16), Background = accentBrush, Child = btnPlay, ClipToBounds = true,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 8, 8)
+            };
             btnPlay.Background = System.Windows.Media.Brushes.Transparent;
-            Grid.SetColumn(btnPlayBorder, 1);
-            speedRow.Children.Add(btnPlayBorder);
+            sampleGrid.Children.Add(btnPlayBorder);
 
-            rightPane.Children.Add(speedRow);
+            rightPane.Children.Add(sampleGrid);
+
+            var lblSpeed = new TextBlock { Text = "Speed: " + _ttsSpeed.ToString("0.0") + "x", Margin = new Thickness(0, 0, 0, 10), Foreground = subtleTxBrush, FontSize = 13 };
+            var speedSlider = new Slider {
+                Minimum = 0.5, Maximum = 2.0, Value = _ttsSpeed, TickFrequency = 0.1, IsSnapToTickEnabled = true,
+                Margin = new Thickness(0, 0, 0, 35)
+            };
+            rightPane.Children.Add(lblSpeed);
+            rightPane.Children.Add(speedSlider);
 
             Grid.SetColumn(rightPane, 2);
             contentGrid.Children.Add(rightPane);
