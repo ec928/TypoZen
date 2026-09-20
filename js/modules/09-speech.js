@@ -360,12 +360,17 @@ window.setKokoroExtension = function (payload) {
     }
 };
 
+let _isKokoroInitializing = false;
 async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a voice from File > Read Aloud.") {
     if (_isKokoroReady) {
         if (!silent) {
             showKokoroStatus("Kokoro is ready.");
             setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 2000);
         }
+        return;
+    }
+    if (_isKokoroInitializing) {
+        if (!silent) showKokoroStatus("Starting the Kokoro engine...");
         return;
     }
     if (!_kokoroExt) {
@@ -381,6 +386,7 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
         return;
     }
 
+    _isKokoroInitializing = true;
     if (!silent) showKokoroStatus("Starting the Kokoro engine...");
 
     try {
@@ -405,6 +411,7 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
         }
 
     } catch (err) {
+        _isKokoroInitializing = false;
         console.error(err);
         try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry("Kokoro init failed: " + err.message); } catch(e){}
         showKokoroStatus("Kokoro could not start: " + err.message + ". Using the Windows voices.");
@@ -448,7 +455,7 @@ window.playKokoroSample = async function(text, voice, speed = 1.0) {
 
     if (!_isKokoroReady) {
         if (typeof setupKokoro === 'function') {
-            setupKokoro(true);
+            setupKokoro(false, "Kokoro is ready for testing.");
         }
         let waited = 0;
         while (!_isKokoroReady && waited < 15000) {
