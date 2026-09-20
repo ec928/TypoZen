@@ -181,6 +181,8 @@ function startReadingChunks(chunks) {
         editor.classList.add('tts-reading-mode');
     }
     
+    try { window.chrome.webview.postMessage("host_tts_start"); } catch(e){}
+
     playNextChunk();
 }
 
@@ -218,6 +220,16 @@ function playNextChunk() {
                 if (targetEl) {
                     targetEl.classList.add('tts-active');
                     _currentTTSBlockEl = targetEl;
+                    
+                    try {
+                        const sel = window.getSelection();
+                        const range = document.createRange();
+                        range.selectNodeContents(targetEl);
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        if (typeof updateStats === 'function') updateStats();
+                    } catch (e) {}
                 }
             }
             sendTTSPlay(chunk.text);
@@ -233,12 +245,29 @@ function playNextChunk() {
             }
             targetEl.classList.add('tts-active');
             _currentTTSBlockEl = targetEl;
+            
+            try {
+                const sel = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(targetEl);
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                if (typeof updateStats === 'function') updateStats();
+            } catch (e) {}
         }
         sendTTSPlay(chunk.text);
     }
 }
 
 function sendTTSPlay(text) {
+    if (_isKokoroReady && _kokoroEngine) {
+        if (_kokoroVoice !== 'system_default') {
+            playKokoroChunk(text, _kokoroVoice);
+            return;
+        }
+    }
+
     if (text.length > 30000) text = text.substring(0, 30000);
     try { 
         window.chrome.webview.postMessage("host_tts_play:" + JSON.stringify({
@@ -253,9 +282,194 @@ function stopReading() {
     const editor = document.getElementById('editor');
     if (editor) editor.classList.remove('tts-reading-mode');
     
+    if (_kokoroAudioSource) {
+        try { _kokoroAudioSource.stop(); } catch(e){}
+        _kokoroAudioSource = null;
+    }
+    
+    // Invalidate Kokoro generation loop instantly
+    if (typeof _generationId !== 'undefined') {
+        _generationId++;
+        _generationQueue = [];
+        _playQueue = [];
+    }
+    
     try { window.chrome.webview.postMessage("host_tts_stop"); } catch(e){}
     isPlaying = false;
     showReadAloudState();
+}
+
+// --- Kokoro TTS Integration ---
+let _kokoroEngine = null;
+let _isKokoroReady = false;
+let _kokoroAudioSource = null;
+let _audioCtx = null;
+
+function showKokoroStatus(text) {
+    let div = document.getElementById('kokoro-status');
+    if (!div) {
+        div = document.createElement('div');
+        div.id = 'kokoro-status';
+        div.style.cssText = "position:fixed; bottom:20px; right:20px; background:#111; color:#fff; padding:15px 25px; border-radius:8px; z-index:99999; font-family:sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.5);";
+        document.body.appendChild(div);
+    }
+    div.innerText = text;
+}
+
+async function setupKokoro(silent = false, successMsg = "Kokoro TTS is ready! Select your voice from the File > Read Aloud menu.") {
+    if (_isKokoroReady) {
+        if (!silent) {
+            showKokoroStatus("Kokoro is already installed and ready!");
+            setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 2000);
+        }
+        return;
+    }
+    
+    if (!silent) showKokoroStatus("Loading Kokoro AI Engine...");
+    
+    try {
+        const module = await import("https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.min.js");
+        window._KokoroTTS = module.KokoroTTS;
+        
+        const device = navigator.gpu ? "webgpu" : "wasm";
+        const dtype = device === "webgpu" ? "fp32" : "q4f16"; // fp32 prevents WebGPU hangs, q4 is faster for WASM
+        
+        if (!silent) showKokoroStatus(`Waking up ONNX Model (${device.toUpperCase()})...`);
+        
+        const model_id = "onnx-community/Kokoro-82M-v1.0-ONNX";
+        
+        try {
+            _kokoroEngine = await window._KokoroTTS.from_pretrained(model_id, {
+                dtype: dtype,       
+                device: device, 
+            });
+        } catch (gpuErr) {
+            console.warn("Primary device failed, falling back to WASM:", gpuErr);
+            if (!silent) showKokoroStatus("WebGPU failed, falling back to CPU (WASM)...");
+            _kokoroEngine = await window._KokoroTTS.from_pretrained(model_id, {
+                dtype: "q4f16",       
+                device: "wasm", 
+            });
+        }
+        
+        _isKokoroReady = true;
+        _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        try { window.chrome.webview.postMessage("cmd:kokoro_ready"); } catch(e){}
+        
+        if (!silent) {
+            showKokoroStatus(successMsg);
+            setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 4000);
+        }
+        
+    } catch (err) {
+        console.error(err);
+        try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry("Kokoro init failed: " + err.message); } catch(e){}
+        if (!silent) showKokoroStatus("Failed to initialize Kokoro: " + err.message + " (Check console/network)");
+    }
+}
+
+let _kokoroVoice = localStorage.getItem('kokoro_voice') || 'af_bella';
+try { window.chrome.webview.postMessage("host_kokoro_voice_restored:" + _kokoroVoice); } catch(e){}
+
+if (_kokoroVoice !== 'system_default') {
+    // If they were using Kokoro in their last session, silently wake it up on boot
+    setTimeout(() => { setupKokoro(true); }, 2000); 
+}
+
+// Add a hook so C# can change the voice on the fly
+window.setKokoroVoice = function(voiceId, friendlyName) {
+    _kokoroVoice = voiceId;
+    localStorage.setItem('kokoro_voice', voiceId);
+    
+    let displayName = friendlyName || voiceId;
+    if (voiceId !== 'system_default' && !_isKokoroReady) {
+        setupKokoro(false, "Kokoro TTS is ready! Voice set to " + displayName);
+    } else {
+        showKokoroStatus("Voice set to " + displayName);
+        setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 2000);
+    }
+};
+
+let _generationQueue = [];
+let _playQueue = [];
+let _isGenerating = false;
+let _isPlayingChunk = false;
+let _generationId = 0; // Used to instantly cancel stale generations on Stop
+
+async function processGenerationQueue(genId, voice) {
+    if (_isGenerating) return;
+    _isGenerating = true;
+    while (_generationQueue.length > 0 && isPlaying && genId === _generationId) {
+        const sentence = _generationQueue.shift();
+        try {
+            const audio = await _kokoroEngine.generate(sentence, { voice: voice, speed: 1.0 });
+            if (!isPlaying || genId !== _generationId) break;
+            _playQueue.push(audio);
+            processPlayQueue(genId);
+        } catch (e) {
+            console.error("Generate error:", e);
+        }
+    }
+    _isGenerating = false;
+}
+
+async function processPlayQueue(genId) {
+    if (_isPlayingChunk || !isPlaying || genId !== _generationId) return;
+    
+    if (_playQueue.length === 0) {
+        if (_generationQueue.length === 0) {
+             playNextChunk(); // Entire block is done
+        }
+        return;
+    }
+    
+    _isPlayingChunk = true;
+    const audio = _playQueue.shift();
+    
+    try {
+        if (_audioCtx.state === 'suspended') await _audioCtx.resume();
+        const buffer = _audioCtx.createBuffer(1, audio.audio.length, audio.sampling_rate);
+        buffer.getChannelData(0).set(audio.audio);
+        
+        await new Promise(resolve => {
+            _kokoroAudioSource = _audioCtx.createBufferSource();
+            _kokoroAudioSource.buffer = buffer;
+            _kokoroAudioSource.connect(_audioCtx.destination);
+            _kokoroAudioSource.onended = resolve;
+            _kokoroAudioSource.start();
+        });
+    } catch (e) {
+        console.error("Playback error:", e);
+    }
+    
+    _kokoroAudioSource = null;
+    _isPlayingChunk = false;
+    
+    if (isPlaying && genId === _generationId) {
+        processPlayQueue(genId);
+    }
+}
+
+async function playKokoroChunk(text, voice) {
+    if (!isPlaying) return;
+    
+    _generationId++; 
+    const currentGenId = _generationId;
+    _generationQueue = [];
+    _playQueue = [];
+    _isGenerating = false;
+    _isPlayingChunk = false;
+    
+    const regex = /[^.!?\n]+[.!?\n]+(?:\s|$)|[^.!?\n]+$/g;
+    const sentences = text.match(regex);
+    if (!sentences || sentences.length === 0) return;
+    
+    for (let i = 0; i < sentences.length; i++) {
+        const s = sentences[i].trim();
+        if (s.length > 0) _generationQueue.push(s);
+    }
+    
+    processGenerationQueue(currentGenId, voice);
 }
 
 // Called by 03-shell.js when native TTS finishes reading

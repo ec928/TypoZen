@@ -445,7 +445,34 @@
                                  data folder's dictionaries\. Nothing here is hardcoded, and it
                                  is hidden while there is only one to choose from. -->
                             <MenuItem x:Name="mDictionaryMenu" Header="_Dictionary" Visibility="Collapsed"/>
-                            <MenuItem x:Name="mConfigureVoice" Header="_Configure Voice..."/>
+                            <MenuItem x:Name="mReadAloudMenu" Header="_Read Aloud">
+                                <MenuItem Header="Kokoro Voices (Requires Activation)">
+                                    <MenuItem x:Name="mInstallKokoro" Header="_Download &amp; Activate (350MB)"/>
+                                    <Separator/>
+                                    <MenuItem x:Name="mKokoroSystem" Header="System Default (Fast Windows Voice)" IsCheckable="True" IsChecked="True"/>
+                                    <Separator/>
+                                    <MenuItem x:Name="mKokoroHeart" Header="Heart (American Female - Top Rated)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroAlloy" Header="Alloy (American Female - Top Rated)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroBella" Header="Bella (American Female)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroSarah" Header="Sarah (American Female)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroNova" Header="Nova (American Female)" IsCheckable="True"/>
+                                    <Separator/>
+                                    <MenuItem x:Name="mKokoroFenrir" Header="Fenrir (American Male - Top Rated)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroPuck" Header="Puck (American Male - Top Rated)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroEcho" Header="Echo (American Male)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroAdam" Header="Adam (American Male)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroMichael" Header="Michael (American Male)" IsCheckable="True"/>
+                                    <Separator/>
+                                    <MenuItem x:Name="mKokoroAlice" Header="Alice (British Female)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroEmma" Header="Emma (British Female)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroFable" Header="Fable (British Male)" IsCheckable="True"/>
+                                    <MenuItem x:Name="mKokoroGeorge" Header="George (British Male)" IsCheckable="True"/>
+                                </MenuItem>
+                                <Separator/>
+                                <MenuItem x:Name="mWindowsVoices" Header="Windows Standard Voices"/>
+                                <Separator/>
+                                <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
+                            </MenuItem>
                             <Separator/>
                             <MenuItem Header="Pri_vacy">
                                 <!-- One switch instead of three: while it is on, nothing that

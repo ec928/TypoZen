@@ -1036,6 +1036,24 @@
                     // state the toolbar button is given by the host.
                     try { if (typeof nativeTTSFinished === 'function') nativeTTSFinished(); } catch (eT) {}
                 }
+                else if (msg == "host_kokoro_install") {
+                    try { if (typeof setupKokoro === 'function') setupKokoro(); } catch (eT) {}
+                }
+                else if (msg.startsWith("cmd:kokoro_voice:")) {
+                    const voicePayload = msg.substring(17);
+                    const parts = voicePayload.split(":");
+                    const voice = parts[0];
+                    const friendly = parts.length > 1 ? parts.slice(1).join(":") : "";
+                    try { if (typeof window.setKokoroVoice === 'function') window.setKokoroVoice(voice, friendly); } catch (eT) {}
+                }
+                else if (msg == "cmd:kokoro_clear") {
+                    try { 
+                        if ('caches' in window) {
+                            caches.delete('transformers-cache');
+                            if (typeof localStorage !== 'undefined') localStorage.removeItem('kokoro_voice');
+                        }
+                    } catch (eC) {}
+                }
                 else if (msg == "stats_refresh") {
                     // Coming back to a document tab from a PDF or an image. The host
                     // blanked the counts for the native surface and cannot refill them

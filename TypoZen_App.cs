@@ -1564,7 +1564,24 @@ namespace TypoZen
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
-            BindClick("mConfigureVoice", (s, e) => ShowConfigureVoiceDialog());
+            BindClick("mConfigureSpeed", (s, e) => ShowConfigureSpeedDialog());
+            PopulateWindowsVoicesMenu();
+            BindClick("mInstallKokoro", (s, e) => SendMsg("host_kokoro_install"));
+            BindClick("mKokoroSystem", (s, e) => SetKokoroVoice("mKokoroSystem", "system_default", "System Default"));
+            BindClick("mKokoroHeart", (s, e) => SetKokoroVoice("mKokoroHeart", "af_heart", "Heart"));
+            BindClick("mKokoroAlloy", (s, e) => SetKokoroVoice("mKokoroAlloy", "af_alloy", "Alloy"));
+            BindClick("mKokoroBella", (s, e) => SetKokoroVoice("mKokoroBella", "af_bella", "Bella"));
+            BindClick("mKokoroSarah", (s, e) => SetKokoroVoice("mKokoroSarah", "af_sarah", "Sarah"));
+            BindClick("mKokoroNova", (s, e) => SetKokoroVoice("mKokoroNova", "af_nova", "Nova"));
+            BindClick("mKokoroFenrir", (s, e) => SetKokoroVoice("mKokoroFenrir", "am_fenrir", "Fenrir"));
+            BindClick("mKokoroPuck", (s, e) => SetKokoroVoice("mKokoroPuck", "am_puck", "Puck"));
+            BindClick("mKokoroEcho", (s, e) => SetKokoroVoice("mKokoroEcho", "am_echo", "Echo"));
+            BindClick("mKokoroAdam", (s, e) => SetKokoroVoice("mKokoroAdam", "am_adam", "Adam"));
+            BindClick("mKokoroMichael", (s, e) => SetKokoroVoice("mKokoroMichael", "am_michael", "Michael"));
+            BindClick("mKokoroAlice", (s, e) => SetKokoroVoice("mKokoroAlice", "bf_alice", "Alice"));
+            BindClick("mKokoroEmma", (s, e) => SetKokoroVoice("mKokoroEmma", "bf_emma", "Emma"));
+            BindClick("mKokoroFable", (s, e) => SetKokoroVoice("mKokoroFable", "bm_fable", "Fable"));
+            BindClick("mKokoroGeorge", (s, e) => SetKokoroVoice("mKokoroGeorge", "bm_george", "George"));
             BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
             BindClick("mWordWrap", (s, e) =>
             {
@@ -2075,6 +2092,17 @@ namespace TypoZen
                 if (obj != null) return obj;
             }
             return null;
+        }
+
+        private void SetKokoroVoice(string menuName, string voiceId, string friendlyName = "")
+        {
+            var items = new[] { "mKokoroSystem", "mKokoroHeart", "mKokoroAlloy", "mKokoroBella", "mKokoroSarah", "mKokoroNova", "mKokoroFenrir", "mKokoroPuck", "mKokoroEcho", "mKokoroAdam", "mKokoroMichael", "mKokoroAlice", "mKokoroEmma", "mKokoroFable", "mKokoroGeorge" };
+            foreach (var n in items)
+            {
+                var mi = FindElement(n) as MenuItem;
+                if (mi != null) mi.IsChecked = (n == menuName);
+            }
+            SendMsg("cmd:kokoro_voice:" + voiceId + ":" + friendlyName);
         }
 
         private void BindClick(string name, RoutedEventHandler handler)
@@ -4641,7 +4669,7 @@ namespace TypoZen
         {
             public bool SessionText, OpenTabs, RecentFiles, RecentSearches, PastedImages;
             public bool WebStorage, ReadingPositions, ExtractedBooks, Bookmarks;
-            public bool AddedWords, CustomThemes;
+            public bool AddedWords, CustomThemes, KokoroAI;
         }
 
         private static string HumanSize(long bytes)
@@ -4744,6 +4772,7 @@ namespace TypoZen
             var cbMarks    = add("Bookmarks", CountLines(BookmarksPath()) + " document(s) with marks", false);
             var cbWords    = add("Words you added to the dictionary", HumanSize(SizeOfFile(Path.Combine(cache, "typozen_user.lex"))), false);
             var cbThemes   = add("Custom themes", HumanSize(SizeOfFile(Path.Combine(cache, "TypoZen_Themes.json"))), false);
+            var cbKokoro   = add("Downloaded Kokoro TTS AI models", "cleared immediately", false);
 
             root.Children.Add(new TextBlock
             {
@@ -4783,7 +4812,8 @@ namespace TypoZen
                 ExtractedBooks   = cbBooks.IsChecked == true,
                 Bookmarks        = cbMarks.IsChecked == true,
                 AddedWords       = cbWords.IsChecked == true,
-                CustomThemes     = cbThemes.IsChecked == true
+                CustomThemes     = cbThemes.IsChecked == true,
+                KokoroAI         = cbKokoro.IsChecked == true
             };
         }
 
@@ -4864,6 +4894,12 @@ namespace TypoZen
             {
                 try { File.Delete(Path.Combine(cache, "TypoZen_Themes.json")); } catch { }
                 done.Add("custom themes");
+            }
+
+            if (want.KokoroAI)
+            {
+                try { SendMsg("cmd:kokoro_clear"); } catch { }
+                done.Add("Kokoro TTS AI models");
             }
 
             if (want.RecentSearches)
@@ -6070,6 +6106,48 @@ namespace TypoZen
                 TypoZen_TTS.Resume();
                 return;
             }
+            else if (msg == "host_tts_start")
+            {
+                ShowReadAloudState(true);
+                return;
+            }
+            else if (msg.StartsWith("host_kokoro_voice_restored:"))
+            {
+                string voiceId = msg.Substring(27);
+                var map = new Dictionary<string, string> {
+                    { "system_default", "mKokoroSystem" },
+                    { "af_heart", "mKokoroHeart" },
+                    { "af_alloy", "mKokoroAlloy" },
+                    { "af_bella", "mKokoroBella" },
+                    { "af_sarah", "mKokoroSarah" },
+                    { "af_nova", "mKokoroNova" },
+                    { "am_fenrir", "mKokoroFenrir" },
+                    { "am_puck", "mKokoroPuck" },
+                    { "am_echo", "mKokoroEcho" },
+                    { "am_adam", "mKokoroAdam" },
+                    { "am_michael", "mKokoroMichael" },
+                    { "bf_alice", "mKokoroAlice" },
+                    { "bf_emma", "mKokoroEmma" },
+                    { "bm_fable", "mKokoroFable" },
+                    { "bm_george", "mKokoroGeorge" }
+                };
+                if (map.ContainsKey(voiceId))
+                {
+                    var items = new List<string>(map.Values);
+                    foreach (var n in items)
+                    {
+                        var mi = FindElement(n) as MenuItem;
+                        if (mi != null) mi.IsChecked = (n == map[voiceId]);
+                    }
+                }
+                return;
+            }
+            else if (msg == "cmd:kokoro_ready")
+            {
+                var mi = FindElement("mInstallKokoro") as MenuItem;
+                if (mi != null) mi.IsEnabled = false;
+                return;
+            }
             else if (msg == "host_tts_stop")
             {
                 ShowReadAloudState(false);
@@ -6270,7 +6348,11 @@ namespace TypoZen
                         if (prefs != null)
                         {
                             if (prefs.ThemeIndex >= 0) SendMsg("set_theme:" + prefs.ThemeIndex);
-                            if (!string.IsNullOrEmpty(prefs.TtsVoiceId)) _ttsVoiceId = prefs.TtsVoiceId;
+                            if (!string.IsNullOrEmpty(prefs.TtsVoiceId)) 
+                            {
+                                _ttsVoiceId = prefs.TtsVoiceId;
+                                UpdateWindowsVoicesCheckmark();
+                            }
                             if (prefs.TtsSpeed > 0) _ttsSpeed = prefs.TtsSpeed;
                         }
                     }
@@ -8989,13 +9071,13 @@ namespace TypoZen
         private string _ttsVoiceId = "";
         private double _ttsSpeed = 1.0;
 
-        private void ShowConfigureVoiceDialog()
+        private void ShowConfigureSpeedDialog()
         {
             var win = new Window
             {
-                Title = "Configure Voice",
+                Title = "Configure TTS Speed",
                 Width = 350,
-                Height = 250,
+                Height = 160,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
                 ResizeMode = ResizeMode.NoResize,
@@ -9006,23 +9088,6 @@ namespace TypoZen
 
             var stack = new System.Windows.Controls.StackPanel { Margin = new Thickness(15) };
             
-            var lblVoice = new System.Windows.Controls.TextBlock { Text = "Voice (Offline Natural Voices):", Margin = new Thickness(0, 0, 0, 5) };
-            stack.Children.Add(lblVoice);
-            
-            var combo = new System.Windows.Controls.ComboBox { Margin = new Thickness(0, 0, 0, 15) };
-            var voices = TypoZen_TTS.GetVoices();
-            foreach (var v in voices)
-            {
-                var item = new System.Windows.Controls.ComboBoxItem { Content = v.Name, Tag = v.Id };
-                combo.Items.Add(item);
-                if (v.Id == _ttsVoiceId || (string.IsNullOrEmpty(_ttsVoiceId) && combo.Items.Count == 1))
-                {
-                    combo.SelectedItem = item;
-                }
-            }
-            if (combo.SelectedItem == null && combo.Items.Count > 0) combo.SelectedIndex = 0;
-            stack.Children.Add(combo);
-
             var lblSpeed = new System.Windows.Controls.TextBlock { Text = "Speed: " + _ttsSpeed.ToString("0.0") + "x", Margin = new Thickness(0, 0, 0, 5) };
             stack.Children.Add(lblSpeed);
             
@@ -9049,33 +9114,16 @@ namespace TypoZen
                 BorderThickness = new Thickness(0)
             };
 
-            bool isUserSelection = false;
-            combo.SelectionChanged += async (s, e) => 
-            {
-                if (!isUserSelection) return;
-                if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
-                {
-                    await TypoZen_TTS.PlayAsync("Hi, I am " + item.Content.ToString(), item.Tag?.ToString(), slider.Value);
-                }
-            };
             slider.PreviewMouseUp += async (s, e) => 
             {
-                if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
-                {
-                    await TypoZen_TTS.PlayAsync("Hi, I am " + item.Content.ToString(), item.Tag?.ToString(), slider.Value);
-                }
+                await TypoZen_TTS.PlayAsync("Speed test", _ttsVoiceId, slider.Value);
             };
 
             btnOk.Click += (s, e) =>
             {
-                if (combo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
-                {
-                    _ttsVoiceId = item.Tag?.ToString();
-                }
                 _ttsSpeed = slider.Value;
                 
                 var prefs = LoadHostPrefs();
-                prefs.TtsVoiceId = _ttsVoiceId;
                 prefs.TtsSpeed = _ttsSpeed;
                 WriteHostPrefs(prefs);
 
@@ -9089,8 +9137,42 @@ namespace TypoZen
             stack.Children.Add(btnOk);
 
             win.Content = stack;
-            win.Loaded += (s, e) => { isUserSelection = true; };
             win.ShowDialog();
+        }
+
+        private void PopulateWindowsVoicesMenu()
+        {
+            var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
+            if (mWinVoices == null) return;
+            
+            var voices = TypoZen_TTS.GetVoices();
+            foreach (var v in voices)
+            {
+                var mi = new MenuItem { Header = v.Name, IsCheckable = true, Tag = v.Id };
+                mi.Click += (s, e) => {
+                    foreach (MenuItem item in mWinVoices.Items) item.IsChecked = false;
+                    mi.IsChecked = true;
+                    
+                    _ttsVoiceId = v.Id;
+                    var prefs = LoadHostPrefs();
+                    prefs.TtsVoiceId = _ttsVoiceId;
+                    WriteHostPrefs(prefs);
+                    
+                    SetKokoroVoice("mKokoroSystem", "system_default", v.Name);
+                };
+                mWinVoices.Items.Add(mi);
+            }
+            UpdateWindowsVoicesCheckmark();
+        }
+
+        private void UpdateWindowsVoicesCheckmark()
+        {
+            var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
+            if (mWinVoices == null) return;
+            foreach (MenuItem item in mWinVoices.Items)
+            {
+                item.IsChecked = (item.Tag?.ToString() == _ttsVoiceId);
+            }
         }
 
         private void SetAutosave(bool on)
