@@ -238,9 +238,17 @@ namespace TypoZen
                 if (report != null) report(total, total, "Finishing");
                 // Replace rather than merge: a previous install of the other precision
                 // would otherwise leave its model behind, doubling the folder.
-                try { if (Directory.Exists(x.Dir)) Directory.Delete(x.Dir, true); } catch { }
-                Directory.CreateDirectory(Path.GetDirectoryName(x.Dir));
-                Directory.Move(staging, x.Dir);
+                //
+                // Not Directory.Move. The folder may be one the application is reading
+                // from, and a rename needs the destination to be gone entirely: if the
+                // delete failed even partly -- one file still open, one handle not yet
+                // closed -- the move failed, the staged download was thrown away, and what
+                // was left behind was an empty folder and no dictionary. Moving file by
+                // file into whatever is there does not care.
+                Purge(x.Dir, false);
+                MoveInto(staging, x.Dir);
+
+                if (!x.Installed) return "The files did not arrive where they were meant to go.";
                 return null;
             }
             catch (Exception ex)
@@ -251,6 +259,53 @@ namespace TypoZen
             {
                 try { if (Directory.Exists(staging)) Directory.Delete(staging, true); } catch { }
             }
+        }
+
+        /// <summary>
+        /// Empties a folder, and removes it too unless it is wanted kept. Files first and
+        /// one at a time: a folder that cannot go (something still has a handle on it, or
+        /// Explorer is sitting in it) must not stop the files inside it being replaced.
+        /// </summary>
+        internal static void Purge(string dir, bool removeFolder)
+        {
+            if (!Directory.Exists(dir)) return;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    foreach (string f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                    {
+                        try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
+                        try { File.Delete(f); } catch { }
+                    }
+                    foreach (string d in Directory.GetDirectories(dir))
+                    {
+                        try { Directory.Delete(d, true); } catch { }
+                    }
+                    if (removeFolder) { try { Directory.Delete(dir, true); } catch { } }
+                    bool empty = !Directory.Exists(dir)
+                                 || Directory.GetFileSystemEntries(dir).Length == 0;
+                    if (empty) return;
+                }
+                catch { }
+                Thread.Sleep(150);
+            }
+        }
+
+        /// <summary>Moves everything from one folder into another, then drops the first.</summary>
+        private static void MoveInto(string from, string to)
+        {
+            Directory.CreateDirectory(to);
+            foreach (string src in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
+            {
+                string rel = src.Substring(from.Length).TrimStart(Path.DirectorySeparatorChar);
+                string dest = Path.Combine(to, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(dest));
+                try { if (File.Exists(dest)) File.Delete(dest); } catch { }
+                try { File.Move(src, dest); }
+                catch { File.Copy(src, dest, true); }        // across volumes, or a stale handle
+            }
+            try { Directory.Delete(from, true); } catch { }
         }
 
         private void Download(string url, string dest, Action<long> got)
@@ -405,10 +460,15 @@ namespace TypoZen
                             "Remove " + now.Title + "? " + Human(SizeOf(now.Dir)) + " will be deleted.",
                             "Extensions", MessageBoxButton.OKCancel, MessageBoxImage.Question);
                         if (ask != MessageBoxResult.OK) return;
-                        try { Directory.Delete(now.Dir, true); } catch (Exception ex) { status.Text = "Could not remove it: " + ex.Message; }
+                        // Hand it back before deleting it: while the reader has this
+                        // dictionary chosen, the application is the thing reading the file.
+                        if (changed != null) changed();
+                        ExtensionInstaller.Purge(now.Dir, true);
                         foreach (var r in rows) r();
                         if (changed != null) changed();
-                        status.Text = now.Title + " removed.";
+                        status.Text = now.Installed
+                            ? "Some of " + now.Title + " could not be removed -- close TypoZen and delete the folder by hand."
+                            : now.Title + " removed.";
                         return;
                     }
 
