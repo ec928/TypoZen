@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.7";
+        internal const string AppVersion = "0.3.8";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -9257,6 +9257,7 @@ namespace TypoZen
             var rootGrid = new Grid();
             rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(45) });
             rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(65) }); // Footer
 
             // Custom Title Bar
             var titleBar = new Grid { Background = System.Windows.Media.Brushes.Transparent };
@@ -9274,7 +9275,7 @@ namespace TypoZen
             Grid.SetRow(titleBar, 0);
             rootGrid.Children.Add(titleBar);
 
-            var contentGrid = new Grid { Margin = new Thickness(20, 0, 20, 20) };
+            var contentGrid = new Grid { Margin = new Thickness(20, 0, 20, 15) };
             contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
             contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
             contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -9295,51 +9296,72 @@ namespace TypoZen
             };
             ScrollViewer.SetHorizontalScrollBarVisibility(listBox, ScrollBarVisibility.Disabled);
 
-            // Themed scrollbar: thin rounded thumb, transparent track, matching the app's style.
+            // Themed scrollbar & ListBoxItem: thin rounded thumb, transparent track, removing blue selection/focus.
             {
                 var scrollThumbColor = AdjustHexBrightness(t.Bg, isLight ? -0.20f : 0.25f);
                 var scrollThumbHoverColor = AdjustHexBrightness(t.Bg, isLight ? -0.30f : 0.40f);
 
                 string xaml = $@"
-<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
-       xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
-       TargetType='ScrollBar'>
-    <Setter Property='Background' Value='Transparent'/>
-    <Setter Property='Width' Value='8'/>
-    <Setter Property='MinWidth' Value='8'/>
-    <Setter Property='Template'>
-        <Setter.Value>
-            <ControlTemplate TargetType='ScrollBar'>
-                <Grid Background='Transparent'>
-                    <Track x:Name='PART_Track' IsDirectionReversed='true'>
-                        <Track.DecreaseRepeatButton>
-                            <RepeatButton Command='ScrollBar.PageUpCommand' Opacity='0' Focusable='false'/>
-                        </Track.DecreaseRepeatButton>
-                        <Track.Thumb>
-                            <Thumb>
-                                <Thumb.Template>
-                                    <ControlTemplate TargetType='Thumb'>
-                                        <Border x:Name='thumbBorder' Background='{scrollThumbColor}' CornerRadius='3' Margin='1'/>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property='IsMouseOver' Value='true'>
-                                                <Setter TargetName='thumbBorder' Property='Background' Value='{scrollThumbHoverColor}'/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Thumb.Template>
-                            </Thumb>
-                        </Track.Thumb>
-                        <Track.IncreaseRepeatButton>
-                            <RepeatButton Command='ScrollBar.PageDownCommand' Opacity='0' Focusable='false'/>
-                        </Track.IncreaseRepeatButton>
-                    </Track>
-                </Grid>
-            </ControlTemplate>
-        </Setter.Value>
-    </Setter>
-</Style>";
-                var sbStyle = (Style)System.Windows.Markup.XamlReader.Parse(xaml);
-                listBox.Resources.Add(typeof(ScrollBar), sbStyle);
+<ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+                    xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+    <Style TargetType='ScrollBar'>
+        <Setter Property='Background' Value='Transparent'/>
+        <Setter Property='Width' Value='8'/>
+        <Setter Property='MinWidth' Value='8'/>
+        <Setter Property='Template'>
+            <Setter.Value>
+                <ControlTemplate TargetType='ScrollBar'>
+                    <Grid Background='Transparent'>
+                        <Track x:Name='PART_Track' IsDirectionReversed='true'>
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command='ScrollBar.PageUpCommand' Opacity='0' Focusable='false'/>
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType='Thumb'>
+                                            <Border x:Name='thumbBorder' Background='{scrollThumbColor}' CornerRadius='3' Margin='1'/>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property='IsMouseOver' Value='true'>
+                                                    <Setter TargetName='thumbBorder' Property='Background' Value='{scrollThumbHoverColor}'/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command='ScrollBar.PageDownCommand' Opacity='0' Focusable='false'/>
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType='ListBoxItem'>
+        <Setter Property='FocusVisualStyle' Value='{{x:Null}}'/>
+        <Setter Property='Template'>
+            <Setter.Value>
+                <ControlTemplate TargetType='ListBoxItem'>
+                    <Border x:Name='Bd' Background='Transparent' CornerRadius='4'>
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property='IsSelected' Value='true'>
+                            <Setter TargetName='Bd' Property='Background' Value='{scrollThumbColor}'/>
+                        </Trigger>
+                        <Trigger Property='IsMouseOver' Value='true'>
+                            <Setter TargetName='Bd' Property='Background' Value='{scrollThumbHoverColor}'/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>";
+                var resDict = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(xaml);
+                listBox.Resources.MergedDictionaries.Add(resDict);
             }
 
             Action<string> addHeader = (title) => {
@@ -9388,36 +9410,75 @@ namespace TypoZen
             var sampleBox = new TextBox {
                 Text = "This is a quick sample of how the selected voice will sound when reading your text out loud. You can adjust the speed below.",
                 TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, Padding = new Thickness(12), FontSize = 14,
-                Background = listBgBrush,
+                Background = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.02f : -0.15f)),
                 Foreground = txBrush,
                 BorderBrush = borderBrush,
                 BorderThickness = new Thickness(1),
                 Margin = new Thickness(0, 0, 0, 25),
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
+            
+            // Add focus border trigger to TextBox
+            var tbStyle = new Style(typeof(TextBox), (Style)Application.Current.TryFindResource(typeof(TextBox)));
+            var tbTrigger = new Trigger { Property = UIElement.IsFocusedProperty, Value = true };
+            tbTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, accentBrush));
+            tbStyle.Triggers.Add(tbTrigger);
+            sampleBox.Style = tbStyle;
+            
             rightPane.Children.Add(sampleBox);
 
+            var speedRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            speedRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            speedRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            
+            var speedPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             var lblSpeed = new TextBlock { Text = "Speed: " + _ttsSpeed.ToString("0.0") + "x", Margin = new Thickness(0, 0, 0, 10), Foreground = subtleTxBrush, FontSize = 13 };
             var speedSlider = new Slider {
                 Minimum = 0.5, Maximum = 2.0, Value = _ttsSpeed, TickFrequency = 0.1, IsSnapToTickEnabled = true,
-                Margin = new Thickness(0, 0, 0, 35)
+                Margin = new Thickness(0, 0, 20, 0)
             };
-            
-            var btnPlay = new Button { Content = "Play Sample", Height = 36, Margin = new Thickness(0, 0, 0, 15), Background = accentBrush, Foreground = btnTxBrush, BorderThickness = new Thickness(0), FontWeight = FontWeights.Medium, FontSize = 13, Cursor = Cursors.Hand };
-            
-            // Re-use listBgBrush for secondary button so it matches the theme perfectly
-            var btnOk = new Button { Content = "Save and Apply", Height = 36, Background = listBgBrush, Foreground = txBrush, BorderBrush = borderBrush, BorderThickness = new Thickness(1), FontSize = 13, Cursor = Cursors.Hand };
+            speedPanel.Children.Add(lblSpeed);
+            speedPanel.Children.Add(speedSlider);
+            Grid.SetColumn(speedPanel, 0);
+            speedRow.Children.Add(speedPanel);
 
-            rightPane.Children.Add(lblSpeed);
-            rightPane.Children.Add(speedSlider);
-            rightPane.Children.Add(btnPlay);
-            rightPane.Children.Add(btnOk);
+            var btnPlay = new Button { 
+                Content = "\uE768", FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), 
+                Width = 42, Height = 42, Background = accentBrush, Foreground = btnTxBrush, 
+                BorderThickness = new Thickness(0), FontSize = 16, Cursor = Cursors.Hand,
+                ToolTip = "Play Sample"
+            };
+            var btnPlayBorder = new Border { CornerRadius = new CornerRadius(21), Background = accentBrush, Child = btnPlay, ClipToBounds = true };
+            btnPlay.Background = System.Windows.Media.Brushes.Transparent;
+            Grid.SetColumn(btnPlayBorder, 1);
+            speedRow.Children.Add(btnPlayBorder);
+
+            rightPane.Children.Add(speedRow);
 
             Grid.SetColumn(rightPane, 2);
             contentGrid.Children.Add(rightPane);
             
             Grid.SetRow(contentGrid, 1);
             rootGrid.Children.Add(contentGrid);
+
+            // Footer
+            var footerBorder = new Border {
+                Background = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.05f : -0.1f)),
+                BorderBrush = borderBrush,
+                BorderThickness = new Thickness(0, 1, 0, 0)
+            };
+            var footerPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(20, 0, 20, 0) };
+            
+            var btnCancel = new Button { Content = "Cancel", Width = 100, Height = 32, Margin = new Thickness(0, 0, 10, 0), Background = System.Windows.Media.Brushes.Transparent, Foreground = txBrush, BorderThickness = new Thickness(0), FontSize = 13, Cursor = Cursors.Hand };
+            btnCancel.Click += (s, e) => win.Close();
+            
+            var btnOk = new Button { Content = "Save and Apply", Width = 140, Height = 32, Background = accentBrush, Foreground = btnTxBrush, BorderThickness = new Thickness(0), FontSize = 13, FontWeight = FontWeights.Medium, Cursor = Cursors.Hand };
+            
+            footerPanel.Children.Add(btnCancel);
+            footerPanel.Children.Add(btnOk);
+            footerBorder.Child = footerPanel;
+            Grid.SetRow(footerBorder, 2);
+            rootGrid.Children.Add(footerBorder);
 
             mainBorder.Child = rootGrid;
             win.Content = mainBorder;
