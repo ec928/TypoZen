@@ -3,18 +3,15 @@
 let isPlaying = false;
 
 // The popover's read-aloud control in its two states, drawn to match the toolbar button:
-// an "A" with sound waves when idle (it was a media Play triangle), a stop square while
-// reading. Inline SVG rather than an icon-font glyph, so it is the same on Windows 10,
-// whose icon font has no A-with-waves.
 const READ_ALOUD_HTML =
-    '<svg class="tts-icon" viewBox="0 0 16 16" aria-hidden="true">' +
-    '<path d="M1.5 13 5 3.5 8.5 13M2.8 9.6h4.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '<path d="M10.4 6.2a2.6 2.6 0 0 1 0 3.6M12.3 4.4a5.2 5.2 0 0 1 0 7.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>' +
-    '</svg> Read selection';
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M2 19l6-15 6 15M4 14h6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>' +
+    '</svg>';
 const STOP_READING_HTML =
-    '<svg class="tts-icon" viewBox="0 0 16 16" aria-hidden="true">' +
-    '<rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/>' +
-    '</svg> Stop';
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>' +
+    '</svg>';
 
 function showReadAloudState() {
     const b = document.getElementById('selPopRead');

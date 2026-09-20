@@ -1409,6 +1409,12 @@
             font-family: var(--ui-font); font-size: var(--ui-fs);
             color: var(--tx-muted, #A1A1AA); white-space: nowrap;
         }
+        .selpop-icon-btn {
+            padding: 6px; justify-content: center; width: 38px; height: 36px; box-sizing: border-box;
+        }
+        .selpop-icon-btn svg {
+            width: 20px; height: 20px; margin: 0 !important;
+        }
         /* --- Help / About overlays (F1, Help → About) ------------------------------
            Theme-coloured panels instead of alert / WinForms MessageBox. */
         .tz-help-overlay {
@@ -1732,7 +1738,7 @@
         .selpop-btn:hover { background: rgba(128,128,128,0.18); color: var(--tx, #F4F4F5); }
         .selpop-btn.active { background: rgba(128,128,128,0.30); color: var(--tx, #F4F4F5); }
         .selpop-btn:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: -2px; }
-        #selPopMark span { color: var(--mark-ink, #E8A33D); font-size: 11px; }
+        
         .selpop-body {
             border-top: 1px solid var(--border, #3F3F46);
             padding: 8px 10px 10px;
