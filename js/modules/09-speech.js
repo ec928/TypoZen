@@ -440,8 +440,11 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
     }
 };
 
-window.playKokoroSample = async function(text, voice) {
+window.playKokoroSample = async function(text, voice, speed = 1.0) {
     if (!_isKokoroReady) {
+        if (typeof setupKokoro === 'function') {
+            setupKokoro(true);
+        }
         let waited = 0;
         while (!_isKokoroReady && waited < 15000) {
             await new Promise(r => setTimeout(r, 250));
@@ -451,7 +454,7 @@ window.playKokoroSample = async function(text, voice) {
     if (!_isKokoroReady || !_kokoroEngine) return;
     try {
         if (_kokoroAudioSource) { try { _kokoroAudioSource.stop(); } catch(e){} }
-        const audio = await _kokoroEngine.generate(text, { voice: voice, speed: 1.0 });
+        const audio = await _kokoroEngine.generate(text, { voice: voice, speed: speed });
         if (_audioCtx.state === 'suspended') await _audioCtx.resume();
         const buffer = _audioCtx.createBuffer(1, audio.audio.length, audio.sampling_rate);
         buffer.getChannelData(0).set(audio.audio);

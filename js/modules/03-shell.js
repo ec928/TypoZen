@@ -1062,11 +1062,16 @@
                 }
                 else if (msg.startsWith("cmd:kokoro_sample:")) {
                     const payload = msg.substring(18);
-                    const idx = payload.indexOf(':');
-                    if (idx > 0) {
-                        const voiceId = payload.substring(0, idx);
-                        const text = payload.substring(idx + 1);
-                        try { if (typeof window.playKokoroSample === 'function') window.playKokoroSample(text, voiceId); } catch(e){}
+                    const idx1 = payload.indexOf(':');
+                    if (idx1 > 0) {
+                        const speedStr = payload.substring(0, idx1);
+                        const idx2 = payload.indexOf(':', idx1 + 1);
+                        if (idx2 > 0) {
+                            const voiceId = payload.substring(idx1 + 1, idx2);
+                            const text = payload.substring(idx2 + 1);
+                            const speed = parseFloat(speedStr) || 1.0;
+                            try { if (typeof window.playKokoroSample === 'function') window.playKokoroSample(text, voiceId, speed); } catch(e){}
+                        }
                     }
                 }
                 else if (msg == "stats_refresh") {
