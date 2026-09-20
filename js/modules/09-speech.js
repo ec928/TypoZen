@@ -441,6 +441,13 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
 };
 
 window.playKokoroSample = async function(text, voice) {
+    if (!_isKokoroReady) {
+        let waited = 0;
+        while (!_isKokoroReady && waited < 15000) {
+            await new Promise(r => setTimeout(r, 250));
+            waited += 250;
+        }
+    }
     if (!_isKokoroReady || !_kokoroEngine) return;
     try {
         if (_kokoroAudioSource) { try { _kokoroAudioSource.stop(); } catch(e){} }
