@@ -9257,7 +9257,7 @@ namespace TypoZen
             var order = new[] { "local", "", "cloud" };
             var heading = new Dictionary<string, string> {
                 { "local", "Natural - on this computer" },
-                { "",      "Standard Windows voices" },
+                { "",      "Classic - older voices on this computer" },
                 { "cloud", "Online voices - these send the text to Microsoft" }
             };
             bool grouped = voices.Exists(x => !string.IsNullOrEmpty(x.Kind));

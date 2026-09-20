@@ -454,7 +454,7 @@
                                      are on disk. Hidden until the extension is installed. -->
                                 <MenuItem x:Name="mKokoroMenu" Header="_Kokoro Voices" Visibility="Collapsed"/>
                                 <Separator/>
-                                <MenuItem x:Name="mWindowsVoices" Header="Windows Standard Voices"/>
+                                <MenuItem x:Name="mWindowsVoices" Header="Windows _Installed Voices"/>
                                 <Separator/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
                             </MenuItem>
