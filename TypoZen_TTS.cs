@@ -209,7 +209,7 @@ namespace TypoZen
 
             // 3. Remove redundant online voices if a local version exists
             var localNames = voices.Where(v => v.Kind == "local").Select(v => v.Name).ToList();
-            voices.RemoveAll(v => v.Kind == "cloud" && localNames.Contains(v.Name.Replace("Online ", "")));
+            voices.RemoveAll(v => v.Kind == "cloud" && localNames.Contains(v.Name.Replace(" Online", "")));
 
             return voices;
         }
