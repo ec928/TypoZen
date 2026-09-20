@@ -9309,16 +9309,31 @@ namespace TypoZen
                 if (sel == null || sel.Tag == null) return;
                 var tag = sel.Tag as string[];
                 string text = string.IsNullOrWhiteSpace(sampleBox.Text) ? "Please type something." : sampleBox.Text.Trim();
-                
-                currentVoiceLbl.Text = "Currently testing: " + tag[2];
 
                 if (tag[1] == "1") {
+                    currentVoiceLbl.Text = "Initializing AI engine for " + tag[2] + "...";
                     string spdStr = speedSlider.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     SendMsg("cmd:kokoro_sample:" + spdStr + ":" + tag[0] + ":" + text.Replace("\n", " ").Replace("\r", ""));
                 } else {
+                    currentVoiceLbl.Text = "Currently testing: " + tag[2];
                     await TypoZen_TTS.PlayAsync(text, tag[0], speedSlider.Value);
                 }
             };
+
+            EventHandler<CoreWebView2WebMessageReceivedEventArgs> msgHandler = (s, e) => {
+                string m = e.TryGetWebMessageAsString();
+                if (m != null && m.StartsWith("host_kokoro_sample_playing:")) {
+                    var sel = listBox.SelectedItem as ListBoxItem;
+                    if (sel != null && sel.Tag != null) {
+                        var tag = sel.Tag as string[];
+                        if (m.Substring(27) == tag[0]) {
+                            currentVoiceLbl.Text = "Currently testing: " + tag[2];
+                        }
+                    }
+                }
+            };
+            if (_webView != null && _webView.CoreWebView2 != null)
+                _webView.CoreWebView2.WebMessageReceived += msgHandler;
 
             bool isLoaded = false;
             win.Loaded += (s, e) => { 
@@ -9365,7 +9380,11 @@ namespace TypoZen
                 win.Close();
             };
             
-            win.Closed += (s, e) => { TypoZen_TTS.Stop(); };
+            win.Closed += (s, e) => { 
+                TypoZen_TTS.Stop(); 
+                if (_webView != null && _webView.CoreWebView2 != null)
+                    _webView.CoreWebView2.WebMessageReceived -= msgHandler;
+            };
             win.Content = grid;
             win.ShowDialog();
         }

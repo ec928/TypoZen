@@ -460,6 +460,7 @@ window.playKokoroSample = async function(text, voice, speed = 1.0) {
     if (currentId !== _kokoroSampleId) return; // Superseded
     if (!_isKokoroReady || !_kokoroEngine) return;
     try {
+        try { window.chrome.webview.postMessage("host_kokoro_sample_playing:" + voice); } catch(e){}
         if (_kokoroAudioSource) { try { _kokoroAudioSource.stop(); } catch(e){} }
         const audio = await _kokoroEngine.generate(text, { voice: voice, speed: speed });
         if (currentId !== _kokoroSampleId) return; // Superseded during generation
