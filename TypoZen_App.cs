@@ -9200,7 +9200,7 @@ namespace TypoZen
             var accentBrush = (SolidColorBrush)conv.ConvertFromString(t.Hi);
             var listBgBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.04f : 0.05f));
             var borderBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.15f : 0.15f));
-            var subtleTxBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Tx, isLight ? 0.35f : -0.35f));
+            var subtleTxBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Tx, isLight ? 0.20f : -0.20f));
             var btnTxBrush = (SolidColorBrush)conv.ConvertFromString(IsColorLight(t.Hi) ? "#000000" : "#FFFFFF");
 
             var win = new Window
