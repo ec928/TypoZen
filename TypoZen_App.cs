@@ -2105,7 +2105,10 @@ namespace TypoZen
                     Tag = id
                 };
                 string voiceId = id, friendly = ExtensionCatalog.VoiceName(row);
-                mi.Click += (s2, e2) => SetKokoroVoice(voiceId, friendly);
+                mi.Click += (s2, e2) => {
+                    SetKokoroVoice(voiceId, friendly);
+                    SendMsg("cmd:kokoro_sample:" + voiceId + ":Hi, I am " + friendly);
+                };
                 menu.Items.Add(mi);
             }
         }

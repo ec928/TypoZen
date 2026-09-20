@@ -416,14 +416,16 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
 function isKokoroVoice(id) { return /^(af|am|bf|bm)_/.test(id || ''); }
 
 let _kokoroVoice = localStorage.getItem('kokoro_voice') || 'af_heart';
+let _kokoroVoiceFriendly = '';
 try { window.chrome.webview.postMessage("host_kokoro_voice_restored:" + _kokoroVoice); } catch(e){}
 
 // Add a hook so C# can change the voice on the fly
 window.setKokoroVoice = function(voiceId, friendlyName) {
     // The host resets this to the Windows voices whenever the extension is missing, which
     // happens on every launch without it: saying so each time would be noise.
-    const unchanged = (voiceId === _kokoroVoice);
+    const unchanged = (voiceId === _kokoroVoice && friendlyName === _kokoroVoiceFriendly);
     _kokoroVoice = voiceId;
+    _kokoroVoiceFriendly = friendlyName;
     localStorage.setItem('kokoro_voice', voiceId);
     if (unchanged) return;
 
@@ -435,6 +437,23 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
     } else if (!isAutoReset || _isKokoroReady) {
         showKokoroStatus("Voice set to " + displayName);
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 2000);
+    }
+};
+
+window.playKokoroSample = async function(text, voice) {
+    if (!_isKokoroReady || !_kokoroEngine) return;
+    try {
+        if (_kokoroAudioSource) { try { _kokoroAudioSource.stop(); } catch(e){} }
+        const audio = await _kokoroEngine.generate(text, { voice: voice, speed: 1.0 });
+        if (_audioCtx.state === 'suspended') await _audioCtx.resume();
+        const buffer = _audioCtx.createBuffer(1, audio.audio.length, audio.sampling_rate);
+        buffer.getChannelData(0).set(audio.audio);
+        _kokoroAudioSource = _audioCtx.createBufferSource();
+        _kokoroAudioSource.buffer = buffer;
+        _kokoroAudioSource.connect(_audioCtx.destination);
+        _kokoroAudioSource.start();
+    } catch (e) {
+        console.error("Kokoro sample playback error:", e);
     }
 };
 

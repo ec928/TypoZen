@@ -1060,6 +1060,15 @@
                         }
                     } catch (eC) {}
                 }
+                else if (msg.startsWith("cmd:kokoro_sample:")) {
+                    const payload = msg.substring(18);
+                    const idx = payload.indexOf(':');
+                    if (idx > 0) {
+                        const voiceId = payload.substring(0, idx);
+                        const text = payload.substring(idx + 1);
+                        try { if (typeof window.playKokoroSample === 'function') window.playKokoroSample(text, voiceId); } catch(e){}
+                    }
+                }
                 else if (msg == "stats_refresh") {
                     // Coming back to a document tab from a PDF or an image. The host
                     // blanked the counts for the native surface and cannot refill them
