@@ -428,9 +428,11 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
     if (unchanged) return;
 
     let displayName = friendlyName || voiceId;
+    const isAutoReset = (voiceId === 'windows_voice' && friendlyName === 'Windows voice');
+
     if (isKokoroVoice(voiceId) && !_isKokoroReady) {
         setupKokoro(false, "Kokoro is ready. Voice set to " + displayName + ".");
-    } else if (isKokoroVoice(voiceId) || _isKokoroReady) {
+    } else if (!isAutoReset || _isKokoroReady) {
         showKokoroStatus("Voice set to " + displayName);
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 2000);
     }
