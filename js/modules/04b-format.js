@@ -385,6 +385,11 @@
         function tryApplyInlineFormat(type) {
             if (type !== 'bold' && type !== 'italic' && type !== 'code' && type !== 'link' && type !== 'strike') return false;
 
+            if (type === 'link' && !_pendingLink) {
+                if (typeof openLinkModal === 'function') openLinkModal(null);
+                return true;
+            }
+
             // Source mode
             if (state.mode === 'source') {
                 if (!sourceEditor) return false;
@@ -513,8 +518,7 @@
             // Live Preview: single block + partial selection
             let block = null;
             let offsets = null;
-            if (_inlineSelCache && _inlineSelCache.block && editor.contains(_inlineSelCache.block)
-                && _inlineSelCache.start !== _inlineSelCache.end) {
+            if (_inlineSelCache && _inlineSelCache.block && editor.contains(_inlineSelCache.block)) {
                 block = _inlineSelCache.block;
                 offsets = { start: _inlineSelCache.start, end: _inlineSelCache.end, text: _inlineSelCache.text };
             } else {
@@ -524,7 +528,7 @@
                     offsets = getPlainOffsetsInBlock(block);
                 }
             }
-            if (!block || !offsets || offsets.start === offsets.end) return false;
+            if (!block || !offsets || (offsets.start === offsets.end && type !== 'link')) return false;
 
             // Bold / italic / strike: apply on the live DOM first, then serialize → raw.
             // Raw-only applyInlineFormatToRaw fails when the selection sits *inside* a wider
