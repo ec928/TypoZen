@@ -7089,3 +7089,112 @@
             }
         }
 
+
+// --- Table Popover -------------------------------------------------------------
+let _tablePopTimer = null;
+        document.addEventListener('selectionchange', function() {
+            if (_tablePopTimer) clearTimeout(_tablePopTimer);
+            _tablePopTimer = setTimeout(checkTablePop, 50);
+        });
+
+        function checkTablePop() {
+            if (typeof state !== 'undefined' && state.mode !== 'wysiwyg') {
+                hideTablePop();
+                return;
+            }
+            const sel = window.getSelection();
+            if (!sel || sel.rangeCount === 0) {
+                hideTablePop();
+                return;
+            }
+            const node = sel.anchorNode;
+            if (!node) {
+                hideTablePop();
+                return;
+            }
+
+            const el = node.nodeType === 3 ? node.parentElement : node;
+            const td = el.closest('td, th');
+            const table = el.closest('table');
+            
+            if (td && table && table.closest('#editor')) {
+                showTablePop(table, td);
+            } else {
+                hideTablePop();
+            }
+        }
+
+        function showTablePop(table, td) {
+            const pop = document.getElementById('tablePop');
+            if (!pop) return;
+
+            // Mutual exclusivity with selPop
+            if (typeof hideSelPop === 'function') hideSelPop();
+
+            pop.style.display = 'block';
+
+            // Active state indication for alignment
+            const align = td ? td.style.textAlign : '';
+            const btnLeft = document.getElementById('tblPopAlignLeft');
+            const btnCenter = document.getElementById('tblPopAlignCenter');
+            const btnRight = document.getElementById('tblPopAlignRight');
+            if (btnLeft) btnLeft.classList.toggle('active', align === 'left');
+            if (btnCenter) btnCenter.classList.toggle('active', align === 'center');
+            if (btnRight) btnRight.classList.toggle('active', align === 'right');
+
+            const rect = table.getBoundingClientRect();
+            const hz = (typeof getComputedStyle !== 'undefined') ? 
+                (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--host-zoom')) || 1) : 1;
+
+            const popHeight = pop.offsetHeight || 40;
+            
+            // Position above the table by default
+            let top = (rect.top - popHeight - 8) / hz;
+            let left = rect.left / hz;
+
+            if (top < 4) {
+                top = (rect.bottom + 8) / hz;
+            }
+
+            pop.style.top = top + 'px';
+            pop.style.left = left + 'px';
+        }
+
+        function hideTablePop() {
+            const pop = document.getElementById('tablePop');
+            if (pop) pop.style.display = 'none';
+        }
+
+        setTimeout(() => {
+            const binds = {
+                'tblPopRowAbove': 'table:row_above',
+                'tblPopRowBelow': 'table:row_below',
+                'tblPopRowDel': 'table:row_delete',
+                'tblPopColLeft': 'table:col_left',
+                'tblPopColRight': 'table:col_right',
+                'tblPopColDel': 'table:col_delete',
+                'tblPopAlignLeft': 'table:align:left',
+                'tblPopAlignCenter': 'table:align:center',
+                'tblPopAlignRight': 'table:align:right'
+            };
+
+            for (const id in binds) {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    btn.addEventListener('mousedown', function(e) { e.preventDefault(); }); // prevent losing focus
+                    btn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const sel = window.getSelection();
+                        if (sel && sel.anchorNode) {
+                            const cmd = binds[id];
+                            try { 
+                                const spec = cmd.substring(6).split(':');
+                                if (typeof applyTableOp === 'function') {
+                                    applyTableOp(spec[0], spec.length > 1 ? spec[1] : null);
+                                }
+                            } catch (err) {}
+                        }
+                    });
+                }
+            }
+        }, 1000);

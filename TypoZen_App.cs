@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.19";
+        internal const string AppVersion = "0.3.20";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1625,19 +1625,6 @@ namespace TypoZen
             BindClick("btnOrderedList", (s, e) => SendMsg("fmt:ol"));
             BindClick("btnChecklist", (s, e) => SendMsg("fmt:checklist"));
             BindClick("btnTable", (s, e) => SendMsg("fmt:table"));
-            BindClick("btnTableCustom", (s, e) => SendMsg("fmt:table_custom"));
-
-            // Table editing. The page applies these to the table holding the caret.
-            BindClick("mTblRowAbove", (s, e) => SendMsg("table:row_above"));
-            BindClick("mTblRowBelow", (s, e) => SendMsg("table:row_below"));
-            BindClick("mTblRowDelete", (s, e) => SendMsg("table:row_delete"));
-            BindClick("mTblColLeft", (s, e) => SendMsg("table:col_left"));
-            BindClick("mTblColRight", (s, e) => SendMsg("table:col_right"));
-            BindClick("mTblColDelete", (s, e) => SendMsg("table:col_delete"));
-            BindClick("mTblAlignLeft", (s, e) => SendMsg("table:align:left"));
-            BindClick("mTblAlignCenter", (s, e) => SendMsg("table:align:center"));
-            BindClick("mTblAlignRight", (s, e) => SendMsg("table:align:right"));
-            BindClick("mTblAlignNone", (s, e) => SendMsg("table:align:"));
 
             BindClick("btnToggleSidebar", (s, e) => SendMsg("cmd:toggle_sidebar"));
 
@@ -15013,6 +15000,8 @@ namespace TypoZen
         }
     }
 }
+
+
 
 
 

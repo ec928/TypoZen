@@ -627,33 +627,9 @@
                     </Menu>
 
                     <!-- Inserts -->
-                    <Menu x:Name="tableMenu" Background="Transparent" Padding="0" Margin="0,0,0,0" VerticalAlignment="Center">
-                        <MenuItem x:Name="miTable" Style="{StaticResource ToolbarMenuItem}" ToolTip="Table">
-                            <MenuItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE80A;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
-                                    <TextBlock Text=" &#x25BE;" FontFamily="Segoe UI" FontSize="10" VerticalAlignment="Center" Opacity="0.7"/>
-                                </StackPanel>
-                            </MenuItem.Header>
-                            <MenuItem x:Name="btnTable" Header="_Insert table..." InputGestureText="Ctrl+T"/>
-                            <MenuItem x:Name="btnTableCustom" Header="Custom _size..."/>
-                            <Separator/>
-                            <MenuItem x:Name="mTblRowAbove" Header="Insert row _above"/>
-                            <MenuItem x:Name="mTblRowBelow" Header="Insert row _below"/>
-                            <MenuItem x:Name="mTblRowDelete" Header="_Delete row"/>
-                            <Separator/>
-                            <MenuItem x:Name="mTblColLeft" Header="Insert column _left"/>
-                            <MenuItem x:Name="mTblColRight" Header="Insert column _right"/>
-                            <MenuItem x:Name="mTblColDelete" Header="Delete _column"/>
-                            <Separator/>
-                            <MenuItem Header="Align col_umn">
-                                <MenuItem x:Name="mTblAlignLeft" Header="_Left"/>
-                                <MenuItem x:Name="mTblAlignCenter" Header="_Center"/>
-                                <MenuItem x:Name="mTblAlignRight" Header="_Right"/>
-                                <MenuItem x:Name="mTblAlignNone" Header="_Default"/>
-                            </MenuItem>
-                        </MenuItem>
-                    </Menu>
+                    <Button x:Name="btnTable" Style="{StaticResource GhostToolbarButton}" 
+                            Content="&#xE80A;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                            Margin="0,0,4,0" ToolTip="Insert Table (Ctrl+T)"/>
                 </StackPanel>
 
                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
