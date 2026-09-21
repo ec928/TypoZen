@@ -1190,6 +1190,7 @@
 
                 try { repaintFindHighlights(); } catch (eF) {}
                 try { clampMainScroll(); } catch (eCl) {}
+                try { if (typeof window.restoreTTSFocus === 'function') window.restoreTTSFocus(); } catch (eTTS) {}
             } finally {
                 DocumentModel._virtMounting = false;
             }
@@ -3325,8 +3326,9 @@
                     const all = editor.querySelectorAll('.block');
                     afterIdx = Array.prototype.indexOf.call(all, insertAfter);
                 }
+                let newIdx = -1;
                 if (afterIdx >= 0) {
-                    const newIdx = DocumentModel.insertBlockAfterIndex(afterIdx, initialRaw);
+                    newIdx = DocumentModel.insertBlockAfterIndex(afterIdx, initialRaw);
                     block.setAttribute('data-model-index', String(newIdx));
                     if (DocumentModel.virtEnabled) mountVirtWindow(true);
                     else reindexMountedBlocks();
@@ -3335,8 +3337,15 @@
                 } else {
                     // Virt without index: append to model end
                     DocumentModel.blocks.push({ id: DocumentModel._nextId++, raw: initialRaw });
-                    block.setAttribute('data-model-index', String(DocumentModel.blocks.length - 1));
+                    newIdx = DocumentModel.blocks.length - 1;
+                    block.setAttribute('data-model-index', String(newIdx));
                     mountVirtWindow(true);
+                }
+                if (DocumentModel.virtEnabled && newIdx >= 0) {
+                    const mounted = typeof elementForModelIndex === 'function'
+                        ? elementForModelIndex(newIdx)
+                        : editor.querySelector('.block[data-model-index="' + newIdx + '"]');
+                    if (mounted) return mounted;
                 }
             } catch (eM) {}
 

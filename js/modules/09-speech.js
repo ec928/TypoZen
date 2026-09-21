@@ -101,6 +101,19 @@ function readingCaret() {
 }
 
 let _currentTTSBlockEl = null;
+let _currentTTSChunkIdx = null;
+
+window.restoreTTSFocus = function() {
+    if (!isPlaying || _currentTTSChunkIdx == null) return;
+    const editor = document.getElementById('editor');
+    if (!editor) return;
+    const targetEl = editor.querySelector('[data-model-index="' + _currentTTSChunkIdx + '"]');
+    if (targetEl && targetEl !== _currentTTSBlockEl) {
+        if (_currentTTSBlockEl) _currentTTSBlockEl.classList.remove('tts-active');
+        targetEl.classList.add('tts-active');
+        _currentTTSBlockEl = targetEl;
+    }
+};
 
 function speakSelection() {
     let selText = "";
@@ -111,7 +124,21 @@ function speakSelection() {
     }
 
     if (selText) {
-        startReadingChunks([{ text: selText }]);
+        let chunk = { text: selText };
+        try {
+            const sel = window.getSelection();
+            if (sel && sel.anchorNode) {
+                const node = sel.anchorNode;
+                const el = node.nodeType === 1 ? node : node.parentElement;
+                const block = el && el.closest ? el.closest('#editor .block') : null;
+                if (block) {
+                    let idx = parseInt(block.getAttribute('data-model-index'), 10);
+                    if (isFinite(idx)) chunk.idx = idx;
+                    else chunk.el = block;
+                }
+            }
+        } catch (e) {}
+        startReadingChunks([chunk]);
         return;
     }
 
@@ -228,6 +255,7 @@ function playNextChunk() {
         setTimeout(playNextChunk, 10);
         return;
     }
+    _currentTTSChunkIdx = chunk.idx;
 
     const editor = document.getElementById('editor');
     let targetEl = chunk.el;
@@ -260,6 +288,9 @@ function playNextChunk() {
     } else {
         if (chunk.idx != null && editor) {
             targetEl = editor.querySelector('[data-model-index="' + chunk.idx + '"]');
+            if (!targetEl && typeof ensureModelBlockVisible === 'function') {
+                targetEl = ensureModelBlockVisible(chunk.idx, { topPad: 60 });
+            }
         }
         if (targetEl) {
             if (typeof targetEl.scrollIntoView === 'function' && !(typeof isPaginatedLayout === 'function' && isPaginatedLayout())) {
@@ -300,6 +331,7 @@ function sendTTSPlay(text) {
 
 function stopReading() {
     _ttsChunks = [];
+    _currentTTSChunkIdx = null;
     clearTTSFocus();
     const editor = document.getElementById('editor');
     if (editor) editor.classList.remove('tts-reading-mode');
