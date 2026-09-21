@@ -625,14 +625,24 @@ async function playKokoroChunk(text, voice) {
     _playQueue = [];
     _isGenerating = false;
     _isPlayingChunk = false;
+    const regex = /[^.!?\n]+[.!?\n]+(?:["'\u201d\u2019)\]]*)(?:\s|$)|[^.!?\n]+$/g;
     
-    const regex = /[^.!?\n]+[.!?\n]+(?:\s|$)|[^.!?\n]+$/g;
-    const sentences = text.match(regex);
+    let sentences = [];
+    if (typeof window.nlp === 'function') {
+        try {
+            sentences = window.nlp(text).sentences().out('array');
+        } catch(e) {}
+    }
+    
+    if (!sentences || sentences.length === 0) {
+        sentences = text.match(regex);
+    }
+    
     if (!sentences || sentences.length === 0) return;
     
     for (let i = 0; i < sentences.length; i++) {
         const s = sentences[i].trim();
-        if (s.length > 0) _generationQueue.push(s);
+        if (s.length > 0 && /[a-zA-Z0-9]/.test(s)) _generationQueue.push(s);
     }
     
     processGenerationQueue(currentGenId, voice);
