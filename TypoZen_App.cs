@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.14";
+        internal const string AppVersion = "0.3.15";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -9495,7 +9495,10 @@ namespace TypoZen
                     SendMsg("cmd:kokoro_sample:" + spdStr + ":" + tag[0] + ":" + text.Replace("\n", " ").Replace("\r", ""));
                 } else {
                     currentVoiceLbl.Text = "Currently testing: " + tag[2];
-                    await TypoZen_TTS.PlayAsync(text, tag[0], speedSlider.Value);
+                    string escapedText = new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(text);
+                    string res = await _webView.CoreWebView2.ExecuteScriptAsync("typeof applyTTSOverrides === 'function' ? applyTTSOverrides(" + escapedText + ") : " + escapedText);
+                    string overridden = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<string>(res) ?? text;
+                    await TypoZen_TTS.PlayAsync(overridden, tag[0], speedSlider.Value);
                 }
             };
 

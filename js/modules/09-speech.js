@@ -313,7 +313,50 @@ function playNextChunk() {
     }
 }
 
+function applyTTSOverrides(text) {
+    if (!text) return text;
+    let t = text;
+
+    // 1. Regex overrides for common Dune terms
+    t = t.replace(/\bBene Gesserit\b/g, 'Benny Jesserit');
+    t = t.replace(/\bKwisatz Haderach\b/g, 'Kwee-satz Hader-ack');
+    t = t.replace(/\bHarkonnen\b/g, 'Har-ko-nen');
+    t = t.replace(/\bChani\b/g, 'Chah-nee');
+    t = t.replace(/\bTleilaxu\b/g, 'Tlay-lak-soo');
+    t = t.replace(/\bSardaukar\b/g, 'Sar-dow-kar');
+    t = t.replace(/\bGhola\b/g, 'Go-lah');
+
+    // 2. POS Tagger for homographs
+    if (typeof window.nlp === 'function') {
+        try {
+            let doc = window.nlp(t);
+            
+            // "lives" (verb vs noun)
+            doc.match('lives').forEach(m => {
+                if (m.has('#Verb')) {
+                    let prev = m.lookBehind('.$').text().toLowerCase().trim();
+                    if (['nine', 'past', 'other', 'many', 'their', 'our', 'your', 'my', 'his', 'her', 'previous', 'future'].includes(prev)) return;
+                    m.replaceWith('livz');
+                }
+            });
+
+            // "read" (past tense)
+            doc.match('read').forEach(m => {
+                if (m.has('#PastTense')) {
+                    m.replaceWith('red');
+                }
+            });
+
+            t = doc.text();
+        } catch(e) { }
+    }
+    
+    return t;
+}
+
 function sendTTSPlay(text) {
+    text = applyTTSOverrides(text);
+
     if (_isKokoroReady && _kokoroEngine) {
         if (isKokoroVoice(_kokoroVoice)) {
             playKokoroChunk(text, _kokoroVoice);
@@ -479,6 +522,7 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
 let _kokoroSampleId = 0;
 
 window.playKokoroSample = async function(text, voice, speed = 1.0) {
+    text = applyTTSOverrides(text);
     _kokoroSampleId++;
     const currentId = _kokoroSampleId;
 

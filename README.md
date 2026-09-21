@@ -38,7 +38,8 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
-- **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows. Choose the voice and speed in **File → Configure Voice**.
+- **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows. Choose the voice and speed in **File → Configure Voice**. 
+  - **Smart Pronunciation:** TypoZen includes `compromise.js`, a lightweight offline Part-Of-Speech tagger, to resolve grammatical homographs (like the verb "lives" vs the noun "lives") before they reach the text-to-speech engine. This ensures context-aware, accurate reading even on older local TTS models.
 - **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said.
 - **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
 - **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
