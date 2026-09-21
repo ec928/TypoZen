@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.21";
+        internal const string AppVersion = "0.3.22";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -584,6 +584,7 @@ namespace TypoZen
         private bool _nativeSurfaceVisible;
         private System.Drawing.Color _currentThemeBg = System.Drawing.Color.FromArgb(30, 30, 30);
         private string _currentFilePath = null;
+        private string _lastOpenDirectory = null;   // remembered across tabs for Open dialogs
         // Last engine document pushed into the page (tab switch skip-remount).
         private int _loadedEngineTabId = -1;
         private string _loadedEnginePath = "";
@@ -13065,10 +13066,12 @@ namespace TypoZen
                     "All Files|*.*";
                 dlg.Title = "Open";
                 if (_currentFilePath != null) dlg.InitialDirectory = Path.GetDirectoryName(_currentFilePath);
+                else if (_lastOpenDirectory != null) dlg.InitialDirectory = _lastOpenDirectory;
                 else dlg.InitialDirectory = _appDir;
 
                 if (dlg.ShowDialog() == WinForms.DialogResult.OK)
                 {
+                    try { _lastOpenDirectory = Path.GetDirectoryName(dlg.FileName); } catch { }
                     LoadFileFromPath(dlg.FileName);
                 }
             }
@@ -13190,6 +13193,8 @@ namespace TypoZen
                     }
                     return;
                 }
+
+                try { _lastOpenDirectory = Path.GetDirectoryName(path); } catch { }
 
                 if (_tabOpInProgress)
                 {
