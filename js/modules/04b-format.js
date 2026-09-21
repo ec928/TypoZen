@@ -376,7 +376,9 @@
                 if (r0 >= 1 && body[r0 - 1] === '`' && body[r1] === '`') {
                     return withPrefix(body.slice(0, r0 - 1) + inner + body.slice(r1 + 1));
                 }
-                return withPrefix(body.slice(0, r0) + '`' + inner + '`' + body.slice(r1));
+                // Don't wrap trailing spaces inside backticks
+                const match = inner.match(/^(\s*)([\s\S]*?)(\s*)$/);
+                return withPrefix(body.slice(0, r0) + match[1] + '`' + match[2] + '`' + match[3] + body.slice(r1));
             }
 
             return null;

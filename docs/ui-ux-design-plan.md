@@ -36,7 +36,7 @@ To keep the popover compact, editing actions will live in the expanded overflow 
 - **Inline Code** (Moved from top bar)
 - **Highlight** (Existing)
 - **Add Link** (Existing)
-- *Proposed New:* **Copy As Markdown / HTML** (Power-user clipboard tools to solve rich-text paste headaches)
+- *Proposed New:* **Copy As Markdown / HTML** (Power-user clipboard tools to solve rich-text paste headaches) <=== question, doesn't the existing CTRL-C and edit menu handle this already?  Skip for now.
 
 *Note:* If the vertical overflow list becomes too long, we can transition it into a secondary horizontal icon row in the future (a "Sleek Pill" design). For now, a clean vertical list with descriptive icons is sufficient.
 

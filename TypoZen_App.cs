@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.3.18";
+        internal const string AppVersion = "0.3.19";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1614,10 +1614,6 @@ namespace TypoZen
             BindClick("mAbout", (s, e) => SendMsg("cmd:help_about"));
 
             // Formatting buttons
-            BindClick("btnBold", (s, e) => SendMsg("fmt:bold"));
-            BindClick("btnItalic", (s, e) => SendMsg("fmt:italic"));
-            BindClick("btnStrike", (s, e) => SendMsg("fmt:strike"));
-            BindClick("btnCode", (s, e) => SendMsg("fmt:code"));
             BindClick("btnH1", (s, e) => SendMsg("fmt:h1"));
             BindClick("btnH2", (s, e) => SendMsg("fmt:h2"));
             BindClick("btnH3", (s, e) => SendMsg("fmt:h3"));
@@ -1628,7 +1624,6 @@ namespace TypoZen
             BindClick("btnList", (s, e) => SendMsg("fmt:list"));
             BindClick("btnOrderedList", (s, e) => SendMsg("fmt:ol"));
             BindClick("btnChecklist", (s, e) => SendMsg("fmt:checklist"));
-            BindClick("btnLink", (s, e) => SendMsg("fmt:link"));
             BindClick("btnTable", (s, e) => SendMsg("fmt:table"));
             BindClick("btnTableCustom", (s, e) => SendMsg("fmt:table_custom"));
 
@@ -6623,6 +6618,19 @@ namespace TypoZen
             {
                 CycleTab(-1);
             }
+            else if (msg.StartsWith("cmd:search_web:"))
+            {
+                try
+                {
+                    string query = Uri.EscapeDataString(msg.Substring(15));
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "https://www.google.com/search?q=" + query,
+                        UseShellExecute = true
+                    });
+                }
+                catch { }
+            }
             else if (msg.StartsWith("save_prefs:"))
             {
                 try
@@ -8921,9 +8929,8 @@ namespace TypoZen
         // Controls too, so the three dropdowns lock the same way the buttons do.
         private static readonly string[] FormatControls =
         {
-            "btnBold", "btnItalic", "btnStrike", "btnCode",
             "headingMenu", "btnQuote", "listMenu",
-            "btnLink", "tableMenu",
+            "tableMenu",
             "mInsertLink", "mInsertTable", "mStrike",
             "mSpellCheck", "mSpellNext",
         };

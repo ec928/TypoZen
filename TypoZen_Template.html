@@ -211,13 +211,35 @@
                 <button type="button" id="selPopFind" class="selpop-btn selpop-icon-btn" title="Find in document"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="1.75"/><path d="M15.5 15.5l5 5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button>
                 <button type="button" id="selPopRead" class="selpop-btn selpop-icon-btn" title="Read selection"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 19l6-15 6 15M4 14h6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></button>
                 <button type="button" id="selPopReadFromHere" class="selpop-btn selpop-icon-btn" title="Read from here"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h8M4 12h8M4 18h8M16 8l6 5-6 5z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                <button type="button" id="selPopMore" class="selpop-btn selpop-icon-btn" title="More options" onclick="var o = document.getElementById('selPopOverflow'); o.style.display = o.style.display === 'flex' ? 'none' : 'flex';"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg></button>
+                <button type="button" id="selPopMore" class="selpop-btn selpop-icon-btn" title="More options"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg></button>
             </div>
-            <!-- Overflow Menu (Icons + Text) -->
-            <div id="selPopOverflow" style="display: none; flex-direction: column; gap: 2px; border-top: 1px solid var(--border, #3F3F46); padding: 4px;">
-                <button type="button" id="selPopMark" class="selpop-btn" title="Save this selection to your Marks (Ctrl+Shift+M)"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px; height:16px; margin-right:6px;"><path d="M19 4l-4-4-12 12v4h4l12-12z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/><path d="M15 2l3 3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg> Highlight</button>
-                <button type="button" id="selPopLink" class="selpop-btn" title="Turn selection into a hyperlink (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px; height:16px; margin-right:6px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg> Add Link</button>
-            </div>
+        </div>
+        <style>
+            #selPopOverflow {
+                border-top: 1px solid var(--border, #3F3F46);
+            }
+            #selPop.pop-above #selPopOverflow {
+                border-top: none;
+                border-bottom: 1px solid var(--border, #3F3F46);
+            }
+            .selpop-divider {
+                height: 1px;
+                background-color: var(--border, #3F3F46);
+                margin: 2px 0;
+                border: none;
+            }
+        </style>
+        <!-- Overflow Menu (Icons + Text) -->
+        <div id="selPopOverflow" class="selpop-actions" style="display: none; flex-direction: column; gap: 2px; padding: 4px;">
+            <button type="button" id="selPopBold" class="selpop-btn" title="Bold (Ctrl+B)"><span style="font-weight:bold; font-family:serif; width:16px; display:inline-block; text-align:center; margin-right:6px;">B</span> Bold</button>
+            <button type="button" id="selPopItalic" class="selpop-btn" title="Italic (Ctrl+I)"><span style="font-style:italic; font-family:serif; width:16px; display:inline-block; text-align:center; margin-right:6px;">I</span> Italic</button>
+            <button type="button" id="selPopStrike" class="selpop-btn" title="Strikethrough (Ctrl+Shift+X)"><span style="text-decoration:line-through; font-family:serif; width:16px; display:inline-block; text-align:center; margin-right:6px;">S</span> Strikethrough</button>
+            <button type="button" id="selPopCode" class="selpop-btn" title="Inline Code"><span style="font-family:monospace; width:16px; display:inline-block; text-align:center; margin-right:6px;">&lt;&gt;</span> Code</button>
+            <hr id="selPopDivFormat" class="selpop-divider">
+            <button type="button" id="selPopMark" class="selpop-btn" title="Save this selection to your Marks (Ctrl+Shift+M)"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px; height:16px; margin-right:6px;"><path d="M19 4l-4-4-12 12v4h4l12-12z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/><path d="M15 2l3 3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg> Highlight</button>
+            <button type="button" id="selPopLink" class="selpop-btn" title="Turn selection into a hyperlink (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px; height:16px; margin-right:6px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg> Add Link</button>
+            <hr id="selPopDivExt" class="selpop-divider">
+            <button type="button" id="selPopSearchWeb" class="selpop-btn" title="Search Web for selection"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px; height:16px; margin-right:6px;"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.75"/><ellipse cx="12" cy="12" rx="4" ry="10" fill="none" stroke="currentColor" stroke-width="1.75"/><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.75"/></svg> Search Web</button>
         </div>
         <div id="selPopSpell" class="selpop-actions selpop-spell" hidden></div>
         <div id="selPopBody" class="selpop-body" hidden></div>

@@ -3406,15 +3406,18 @@
                     inner += inlineNodeToMarkdown(kids[k]);
                 }
                 if (tag === 'del' || tag === 's' || tag === 'strike') {
-                    return '~~' + inner + '~~';
+                    const match = inner.match(/^(\s*)([\s\S]*?)(\s*)$/);
+                    return match[1] + '~~' + match[2] + '~~' + match[3];
                 }
                 if (tag === 'strong' || tag === 'b') {
                     const mark = node.getAttribute('data-mark') === 'u' ? '__' : '**';
-                    return mark + inner + mark;
+                    const match = inner.match(/^(\s*)([\s\S]*?)(\s*)$/);
+                    return match[1] + mark + match[2] + mark + match[3];
                 }
                 if (tag === 'em' || tag === 'i') {
                     const mark = node.getAttribute('data-mark') === 'u' ? '_' : '*';
-                    return mark + inner + mark;
+                    const match = inner.match(/^(\s*)([\s\S]*?)(\s*)$/);
+                    return match[1] + mark + match[2] + mark + match[3];
                 }
                 if (tag === 'code') {
                     if (node.parentElement && (node.parentElement.tagName || '').toLowerCase() === 'pre') {

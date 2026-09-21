@@ -590,21 +590,9 @@
 
                 <!-- Format tools: even MinHeight 28 hit targets; REVERT pack tags above. -->
                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <!-- Inline -->
-                    <Button x:Name="btnBold" Style="{StaticResource GhostToolbarButton}" Content="&#xE8DD;" 
-                            FontFamily="Segoe MDL2 Assets" FontSize="14"
-                            Margin="0,0,2,0" ToolTip="Bold (Ctrl+B)"/>
-                    <Button x:Name="btnItalic" Style="{StaticResource GhostToolbarButton}" Content="&#xE8DB;" 
-                            FontFamily="Segoe MDL2 Assets" FontSize="14"
-                            Margin="0,0,2,0" ToolTip="Italic (Ctrl+I)"/>
-                    <Button x:Name="btnStrike" Style="{StaticResource GhostToolbarButton}" Content="&#xEDE0;" 
-                            FontFamily="Segoe MDL2 Assets" FontSize="14"
-                            Margin="0,0,2,0" ToolTip="Strikethrough (Ctrl+Shift+X)"/>
-                    <Button x:Name="btnCode" Style="{StaticResource GhostToolbarButton}" Content="&lt;/&gt;"
-                            FontFamily="Consolas, Cascadia Mono, Segoe UI" FontSize="12"
-                            MinWidth="32" Margin="0,0,12,0" ToolTip="Inline Code"/>
+                    <!-- Inline Formatting moved to context popover -->
 
-                    <!-- Block — same hit box + accent hover as B/I -->
+                    <!-- Block – same hit box + accent hover as B/I -->
                     <Menu x:Name="headingMenu" Background="Transparent" Padding="0" Margin="0,0,2,0" VerticalAlignment="Center">
                         <MenuItem x:Name="miHeadings" Style="{StaticResource ToolbarMenuItem}" ToolTip="Headings (H1-H6)">
                             <MenuItem.Header>
@@ -639,8 +627,6 @@
                     </Menu>
 
                     <!-- Inserts -->
-                    <Button x:Name="btnLink" Style="{StaticResource GhostToolbarButton}" Content="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                            Margin="0,0,2,0" ToolTip="Insert link (Ctrl+K)"/>
                     <Menu x:Name="tableMenu" Background="Transparent" Padding="0" Margin="0,0,0,0" VerticalAlignment="Center">
                         <MenuItem x:Name="miTable" Style="{StaticResource ToolbarMenuItem}" ToolTip="Table">
                             <MenuItem.Header>
