@@ -431,6 +431,10 @@ window.setKokoroExtension = function (payload) {
     _kokoroExt = { base: parts[0], model: parts[1], dtype: parts[2] || 'fp16' };
     if (_kokoroVoice === 'system_default') {
         try { window.setKokoroVoice('af_heart', 'Heart'); } catch (e) {}
+    } else if (isKokoroVoice(_kokoroVoice) && !_isKokoroReady && !_isKokoroInitializing) {
+        // The user's saved voice is a Kokoro voice — silently start loading the engine
+        // so it's ready by the time they hit Play.
+        setupKokoro(true);
     }
 };
 
