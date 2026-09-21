@@ -1,1 +1,0 @@
-const text = 'She stared at him. He senses truth! Could he be the one? Could he truly be the one? She extinguished the excitement, reminding herself: \u201cHope clouds observation.\u201d \u201cWhat?\u201d he said. (A thought!)'; const regex = /[^.!?\n]+[.!?\n]+(?:[\"\'\u201d\u2019)\]]*)(?:\s|$)|[^.!?\n]+$/g; console.log(text.match(regex));
