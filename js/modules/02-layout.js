@@ -1668,21 +1668,6 @@
             } catch (eObs) {}
 
             const STRIP = 16;
-            editor.addEventListener('click', function (e) {
-                const block = e.target && e.target.closest ? e.target.closest('.block') : null;
-                if (!block || !editor.contains(block)) return;
-                const r = block.getBoundingClientRect();
-                if (e.clientX > r.left + STRIP) return;
-                try {
-                    const sel = window.getSelection();
-                    if (sel && !sel.isCollapsed) return;
-                } catch (e2) {}
-                const mi = parseInt(block.getAttribute('data-model-index'), 10);
-                if (!isFinite(mi) || mi < 0) return;
-                e.preventDefault();
-                e.stopPropagation();
-                toggleMarkAtBlock(mi);
-            }, true);
         }
 
         /** One delegated listener on the pane, so a redraw cannot leave stale ones behind. */

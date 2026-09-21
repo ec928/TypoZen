@@ -1922,10 +1922,11 @@
             opacity: 0.7;
             transition: opacity 0.3s ease-in-out;
         }
-        #editor.tts-reading-mode .block.tts-active {
+        #editor.tts-reading-mode .block.tts-active,
+        #editor.tts-reading-mode .block.focused.tts-active {
             opacity: 1;
             border-left: 2px solid var(--accent, #3B82F6);
-            background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.15));
+            background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
             transition: background-color 0.2s;
         }
 
