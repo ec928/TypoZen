@@ -355,14 +355,14 @@ function applyTTSOverrides(text) {
 }
 
 function sendTTSPlay(text) {
-    text = applyTTSOverrides(text);
-
     if (_isKokoroReady && _kokoroEngine) {
         if (isKokoroVoice(_kokoroVoice)) {
-            playKokoroChunk(text, _kokoroVoice);
+            playKokoroChunk(text, _kokoroVoice, _currentTTSChunkIdx);
             return;
         }
     }
+
+    text = applyTTSOverrides(text);
 
     if (text.length > 30000) text = text.substring(0, 30000);
     try { 
@@ -384,8 +384,8 @@ function stopReading() {
         _kokoroAudioSource = null;
     }
     
-    // Invalidate Kokoro generation loop instantly
-    if (typeof _kokoroPrefetchCache !== 'undefined') _kokoroPrefetchCache.clear();
+    // Invalidate Kokoro generation loop and prefetch instantly
+    _prefetchedAudio = null;
     if (typeof _generationId !== 'undefined') {
         _generationId++;
         _generationQueue = [];
@@ -399,7 +399,6 @@ function stopReading() {
 
 // --- Kokoro TTS Integration ---
 let _kokoroEngine = null;
-let _kokoroPrefetchCache = new Map();
 let _isKokoroReady = false;
 let _kokoroAudioSource = null;
 let _audioCtx = null;
@@ -567,36 +566,62 @@ let _playQueue = [];
 let _isGenerating = false;
 let _isPlayingChunk = false;
 let _generationId = 0; // Used to instantly cancel stale generations on Stop
+let _prefetchedAudio = null; // { idx, voice, buffers[] } for the next paragraph
 
-async function prefetchNextKokoro() {
-    if (!_ttsChunks || _ttsChunks.length === 0 || !_kokoroEngine || _isGenerating) return;
-    const rawText = _ttsChunks[0].text;
-    const text = applyTTSOverrides(rawText);
+// Pre-generate all audio for the next paragraph while current one is still playing.
+async function prefetchNextKokoro(genId) {
+    if (!_ttsChunks || _ttsChunks.length === 0 || !_kokoroEngine) return;
+    if (!isPlaying || genId !== _generationId) return;
+
+    const nextChunk = _ttsChunks[0];
+    if (!nextChunk || !nextChunk.text || !nextChunk.text.trim()) return;
+
+    const voice = _kokoroVoice;
+    const text = applyTTSOverrides(nextChunk.text);
+    const groups = buildSentenceGroups(text);
+    if (groups.length === 0) return;
+
+    const buffers = [];
+    for (const group of groups) {
+        if (!isPlaying || genId !== _generationId) return; // cancelled
+        try {
+            const audio = await _kokoroEngine.generate(group, { voice: voice, speed: 1.0 });
+            buffers.push(audio);
+        } catch (e) { return; }
+    }
+
+    // Only store if nothing has changed while we were generating
+    if (isPlaying && genId === _generationId) {
+        _prefetchedAudio = { idx: nextChunk.idx, voice: voice, buffers: buffers };
+    }
+}
+
+// Shared sentence grouping logic used by both playKokoroChunk and prefetchNextKokoro.
+function buildSentenceGroups(text) {
     const regex = /[^.!?\n]+[.!?\n]+(?:["'\u201d\u2019)\]]*)(?:\s|$)|[^.!?\n]+$/g;
     let sentences = [];
     if (typeof window.nlp === 'function') {
         try { sentences = window.nlp(text).sentences().out('array'); } catch(e) {}
     }
     if (!sentences || sentences.length === 0) sentences = text.match(regex);
-    if (!sentences || sentences.length === 0) return;
-    
+    if (!sentences || sentences.length === 0) return [];
+
+    const groups = [];
     let currentGroup = "";
     for (let i = 0; i < sentences.length; i++) {
         const s = sentences[i].trim();
         if (s.length === 0 || !/[a-zA-Z0-9]/.test(s)) continue;
-        if (currentGroup.length + s.length > 250 && currentGroup.length > 0) break;
-        currentGroup = currentGroup.length > 0 ? currentGroup + " " + s : s;
+        // Group sentences together up to ~250 chars (approx 40-50 words) to give the AI context,
+        // while staying safely below the 125-word hard limit and keeping generation latency low.
+        if (currentGroup.length + s.length > 250) {
+            if (currentGroup.length > 0) groups.push(currentGroup);
+            currentGroup = s;
+        } else {
+            currentGroup = currentGroup.length > 0 ? currentGroup + " " + s : s;
+        }
     }
-    
-    if (currentGroup.length > 0 && !_kokoroPrefetchCache.has(currentGroup + '|' + _kokoroVoice)) {
-        try {
-            _isGenerating = true; 
-            const audio = await _kokoroEngine.generate(currentGroup, { voice: _kokoroVoice, speed: 1.0 });
-            _kokoroPrefetchCache.set(currentGroup + '|' + _kokoroVoice, audio);
-            _isGenerating = false;
-            if (isPlaying && typeof _generationQueue !== 'undefined' && _generationQueue.length > 0) processGenerationQueue(_generationId, _kokoroVoice);
-        } catch(e) { _isGenerating = false; }
-    }
+    if (currentGroup.length > 0) groups.push(currentGroup);
+    return groups;
 }
 
 async function processGenerationQueue(genId, voice) {
@@ -605,13 +630,7 @@ async function processGenerationQueue(genId, voice) {
     while (_generationQueue.length > 0 && isPlaying && genId === _generationId) {
         const sentence = _generationQueue.shift();
         try {
-            let audio;
-            if (_kokoroPrefetchCache.has(sentence + '|' + voice)) {
-                audio = _kokoroPrefetchCache.get(sentence + '|' + voice);
-                _kokoroPrefetchCache.delete(sentence + '|' + voice);
-            } else {
-                audio = await _kokoroEngine.generate(sentence, { voice: voice, speed: 1.0 });
-            }
+            const audio = await _kokoroEngine.generate(sentence, { voice: voice, speed: 1.0 });
             if (!isPlaying || genId !== _generationId) break;
             _playQueue.push(audio);
             processPlayQueue(genId);
@@ -620,6 +639,11 @@ async function processGenerationQueue(genId, voice) {
         }
     }
     _isGenerating = false;
+
+    // Current paragraph is fully generated — start prefetching the next one
+    if (isPlaying && genId === _generationId) {
+        prefetchNextKokoro(genId);
+    }
 }
 
 async function processPlayQueue(genId) {
@@ -634,10 +658,6 @@ async function processPlayQueue(genId) {
     
     _isPlayingChunk = true;
     const audio = _playQueue.shift();
-    
-    if (_playQueue.length === 0 && _generationQueue.length === 0 && isPlaying) {
-        prefetchNextKokoro();
-    }
     
     try {
         if (_audioCtx.state === 'suspended') await _audioCtx.resume();
@@ -663,7 +683,7 @@ async function processPlayQueue(genId) {
     }
 }
 
-async function playKokoroChunk(text, voice) {
+async function playKokoroChunk(text, voice, chunkIdx) {
     if (!isPlaying) return;
     
     _generationId++; 
@@ -672,37 +692,24 @@ async function playKokoroChunk(text, voice) {
     _playQueue = [];
     _isGenerating = false;
     _isPlayingChunk = false;
-    const regex = /[^.!?\n]+[.!?\n]+(?:["'\u201d\u2019)\]]*)(?:\s|$)|[^.!?\n]+$/g;
-    
-    let sentences = [];
-    if (typeof window.nlp === 'function') {
-        try {
-            sentences = window.nlp(text).sentences().out('array');
-        } catch(e) {}
+
+    // Check if we already pre-generated audio for this chunk
+    if (_prefetchedAudio && _prefetchedAudio.idx === chunkIdx && _prefetchedAudio.voice === voice) {
+        const buffers = _prefetchedAudio.buffers;
+        _prefetchedAudio = null;
+        _playQueue = buffers;
+        processPlayQueue(currentGenId);
+        // Start prefetching the NEXT paragraph immediately
+        prefetchNextKokoro(currentGenId);
+        return;
     }
+    _prefetchedAudio = null;
+
+    text = applyTTSOverrides(text);
+    const groups = buildSentenceGroups(text);
+    if (groups.length === 0) return;
     
-    if (!sentences || sentences.length === 0) {
-        sentences = text.match(regex);
-    }
-    
-    if (!sentences || sentences.length === 0) return;
-    
-    let currentGroup = "";
-    for (let i = 0; i < sentences.length; i++) {
-        const s = sentences[i].trim();
-        if (s.length === 0 || !/[a-zA-Z0-9]/.test(s)) continue;
-        
-        // Group sentences together up to ~250 chars (approx 40-50 words) to give the AI context, 
-        // while staying safely below the 125-word hard limit and keeping generation latency low.
-        if (currentGroup.length + s.length > 250) {
-            if (currentGroup.length > 0) _generationQueue.push(currentGroup);
-            currentGroup = s;
-        } else {
-            currentGroup = currentGroup.length > 0 ? currentGroup + " " + s : s;
-        }
-    }
-    if (currentGroup.length > 0) _generationQueue.push(currentGroup);
-    
+    _generationQueue = groups;
     processGenerationQueue(currentGenId, voice);
 }
 
