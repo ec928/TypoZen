@@ -64,7 +64,7 @@ namespace TypoZen
         // while a 4 s gap earlier had been -- the output's sleep time varies, and a second
         // of delay is the cheaper mistake.
         private const int WakeSilenceMs = 1000;
-        private static readonly TimeSpan QuietAfter = TimeSpan.FromMilliseconds(500);
+        private static readonly TimeSpan QuietAfter = TimeSpan.FromMilliseconds(3000);
         private static DateTime _lastSound = DateTime.MinValue;
         private static bool _sounding;
 
@@ -268,7 +268,10 @@ namespace TypoZen
                     // The prompt's culture is the voice's own: a prompt in another culture
                     // lets SAPI switch to a voice that matches it instead.
                     var pb = new System.Speech.Synthesis.PromptBuilder(_sapiSynth.Voice.Culture);
-                    pb.AppendBreak(TimeSpan.FromMilliseconds(WakeSilenceMs));   // HDMI wake-up
+                    if (DateTime.UtcNow - _lastSound >= QuietAfter)
+                    {
+                        pb.AppendBreak(TimeSpan.FromMilliseconds(WakeSilenceMs));   // HDMI wake-up
+                    }
                     pb.AppendText(text ?? "");
                     _sapiGen = gen;
                     _sapiHeard = false;
