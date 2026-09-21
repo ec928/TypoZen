@@ -640,10 +640,21 @@ async function playKokoroChunk(text, voice) {
     
     if (!sentences || sentences.length === 0) return;
     
+    let currentGroup = "";
     for (let i = 0; i < sentences.length; i++) {
         const s = sentences[i].trim();
-        if (s.length > 0 && /[a-zA-Z0-9]/.test(s)) _generationQueue.push(s);
+        if (s.length === 0 || !/[a-zA-Z0-9]/.test(s)) continue;
+        
+        // Group sentences together up to ~250 chars (approx 40-50 words) to give the AI context, 
+        // while staying safely below the 125-word hard limit and keeping generation latency low.
+        if (currentGroup.length + s.length > 250) {
+            if (currentGroup.length > 0) _generationQueue.push(currentGroup);
+            currentGroup = s;
+        } else {
+            currentGroup = currentGroup.length > 0 ? currentGroup + " " + s : s;
+        }
     }
+    if (currentGroup.length > 0) _generationQueue.push(currentGroup);
     
     processGenerationQueue(currentGenId, voice);
 }
