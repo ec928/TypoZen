@@ -1945,10 +1945,31 @@
             }
 
             if (blockTexts.length === 1 && !blockTexts[0].includes('\n')) {
+                let startOff = 0;
+                try {
+                    if (typeof getPlainOffsetsInBlock === 'function' && active) {
+                        const off = getPlainOffsetsInBlock(active);
+                        if (off && off.start != null) startOff = off.start | 0;
+                    }
+                } catch (eOff) {}
+
                 document.execCommand('insertText', false, blockTexts[0]);
                 if (active && active.classList && active.classList.contains('block')) {
                     const raw0 = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
                     active.setAttribute('data-raw', raw0);
+                    
+                    // Render the block immediately so WYSIWYG users don't see raw markdown
+                    renderBlockPreview(active, raw0);
+
+                    // Restore the caret by adding the length of the *rendered* pasted text
+                    try {
+                        const temp = document.createElement('div');
+                        renderBlockPreview(temp, blockTexts[0]);
+                        const addedLength = (temp.innerText || '').length;
+                        if (typeof setCaretAtOffset === 'function') {
+                            setCaretAtOffset(active, startOff + addedLength);
+                        }
+                    } catch (eCaret) {}
                 }
                 updateStats();
                 updateOutline();
@@ -1995,7 +2016,9 @@
                     currentBlock = ensureModelBlockVisible(lastIdx, { topPad: 48 })
                         || elementForModelIndex(lastIdx);
                 }
-                if (currentBlock && editor.contains(currentBlock)) focusBlock(currentBlock, 0);
+                if (currentBlock && editor.contains(currentBlock)) {
+                    focusBlock(currentBlock, (currentBlock.innerText || '').length);
+                }
             } else {
                 for (let i = 0; i < blockTexts.length; i++) {
                     createBlock(blockTexts[i]);

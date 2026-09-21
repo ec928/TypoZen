@@ -1157,9 +1157,13 @@
                 if (typeof DocumentModel !== 'undefined') {
                     let mi = DocumentModel.modelIndexOfEl(block);
                     if (mi >= 0) return mi;
+                    // If virtualized, the DOM is just a tiny sliding window. The index among
+                    // siblings in the DOM is meaningless, and querySelectorAll is wasteful.
+                    if (DocumentModel.virtEnabled) return -1;
                 }
             } catch (e) {}
             if (!editor) return -1;
+            // Fallback for non-virtualized small documents
             const all = editor.querySelectorAll('.block');
             return Array.prototype.indexOf.call(all, block);
         }

@@ -39,7 +39,6 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
 - **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows. Choose the voice and speed in **File → Configure Voice**. 
-  - **Smart Pronunciation:** TypoZen includes `compromise.js`, a lightweight offline Part-Of-Speech tagger, to resolve grammatical homographs (like the verb "lives" vs the noun "lives") before they reach the text-to-speech engine. This ensures context-aware, accurate reading even on older local TTS models.
 - **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said.
 - **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
 - **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
@@ -116,6 +115,7 @@ Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only
 - **A plate gets the page it sits on.** A cover, frontispiece or part title — a picture with no text beside it — is sized to the page box, not to `vh`. `vh` is the _window_, which includes the tab strip, toolbar and status bar, so the old bound stopped a cover a quarter of a page short and shrank _Matter_'s below its own resolution (a 510×680 file painted at 391×521). Covers are small files (294×500 to 510×739), so filling the page upscales the smaller ones — presence over sharpness, chosen deliberately, because a cover is furniture you glance at rather than text you read. A picture under 400px natural is not a plate: the _Matter_ "About the Author" portrait is 230×233 and alone in its block, and filling a page with it at 3× was not an improvement.
 - Chapters start a new page, images and internal links work, and the reading position is remembered per book across sessions.
 - A book is never dirty, never saved over, and Save As refuses any path ending `.epub`.
+- **Smart Pronunciation:** TypoZen includes `compromise.js`, a lightweight offline Part-Of-Speech tagger, to resolve grammatical homographs (like the verb "lives" vs the noun "lives") before they reach the text-to-speech engine. This ensures context-aware, accurate reading even on older local TTS models.
 
 ### Position in a long document
 In a paginated layout the foot of the page carries page numbers and a **scrubber that spans the whole book**. It addresses pages rather than scroll offset, because the editor's own scrollbar can only span what is currently laid out — about 28 pages of a 1400-page novel.
