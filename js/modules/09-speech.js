@@ -584,11 +584,11 @@ async function prefetchNextKokoro() {
         currentGroup = currentGroup.length > 0 ? currentGroup + " " + s : s;
     }
     
-    if (currentGroup.length > 0 && !_kokoroPrefetchCache.has(currentGroup)) {
+    if (currentGroup.length > 0 && !_kokoroPrefetchCache.has(currentGroup + '|' + _kokoroVoice)) {
         try {
             _isGenerating = true; 
             const audio = await _kokoroEngine.generate(currentGroup, { voice: _kokoroVoice, speed: 1.0 });
-            _kokoroPrefetchCache.set(currentGroup, audio);
+            _kokoroPrefetchCache.set(currentGroup + '|' + _kokoroVoice, audio);
             _isGenerating = false;
             if (isPlaying && typeof _generationQueue !== 'undefined' && _generationQueue.length > 0) processGenerationQueue(_generationId, _kokoroVoice);
         } catch(e) { _isGenerating = false; }
@@ -602,9 +602,9 @@ async function processGenerationQueue(genId, voice) {
         const sentence = _generationQueue.shift();
         try {
             let audio;
-            if (_kokoroPrefetchCache.has(sentence)) {
-                audio = _kokoroPrefetchCache.get(sentence);
-                _kokoroPrefetchCache.delete(sentence);
+            if (_kokoroPrefetchCache.has(sentence + '|' + voice)) {
+                audio = _kokoroPrefetchCache.get(sentence + '|' + voice);
+                _kokoroPrefetchCache.delete(sentence + '|' + voice);
             } else {
                 audio = await _kokoroEngine.generate(sentence, { voice: voice, speed: 1.0 });
             }
@@ -715,5 +715,6 @@ window.addEventListener('load', function() {
     initTTS();
     showReadAloudState();
 });
+
 
 
