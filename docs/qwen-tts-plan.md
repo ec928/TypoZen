@@ -216,20 +216,29 @@ and add.
   and renders the jump point as a small chunk first. Anywhere already rendered is instant
   from the cache.
 
-## 3e. Context reaches one sentence, and no further
+## 3e. Context carries as far as the string you send
 
-Each utterance is generated as an independent sequence. Within one, stress and prosody
-follow that sentence's own syntax and punctuation. Between them, nothing carries: a build
-across three sentences will not build, and each line starts again from its instruction.
+I wrote here that context reached one sentence and no further. **That was wrong, and it was
+a claim about my chunking, not about the model.** `text` takes a string or a list: separate
+list elements are independent sequences, but several sentences in *one string* are a single
+autoregressive pass, and intonation carries across them.
 
-This is the argument for the director pass rather than a detail of it. **Context enters as
-text that we compute** -- the instruction string -- because the model has no memory of the
-line before. Two consequences:
+Measured on the same paragraph and the same question-and-answer exchange:
 
-- **Utterance boundaries should follow sentences.** Chunking is not free: merging or
-  splitting changes the reading.
-- **Homographs resolve sentence-locally.** TypoZen already added an offline POS tagger in
-  0.3.15 for exactly this on the Kokoro path, and it is reusable here.
+| shape | throughput | context |
+| --- | --- | --- |
+| sentences as separate list items | 0.45x realtime | none between sentences |
+| one paragraph as a single string | 2.27x realtime | across its sentences |
+| **eight paragraphs, each a single string, batched** | **0.34x realtime** | **across each paragraph's sentences** |
+
+So there is no trade-off to make: 85.3s of audio in 28.8s, at 6.3GB of VRAM -- faster than
+sentence batching *and* with intonation running through each paragraph.
+
+**Context span is a knob we own, not a limit the model imposes.** A longer string carries
+context further: a whole dialogue exchange can go in one pass so a sarcastic line lands off
+the one before it. The costs of a longer string are first-audio latency, coarser cache
+granularity, and eventually drift on very long sequences -- so the director pass chooses the
+grouping, and paragraph-sized is the sensible default rather than the ceiling.
 
 ## 4. The emotional beats — a director pass
 
