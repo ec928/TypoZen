@@ -83,6 +83,45 @@ cannot be maintained if generating a sentence takes longer than speaking it. Sli
 measures this. If it comes out under realtime, the fallback is to render ahead of the
 reader rather than ahead of the voice, and to say so in the UI rather than let it stutter.
 
+## 3a. Measured, 2026-09-22 — and it changes the answer
+
+Slice 1 ran. Three takes of a Banks passage, `Qwen3-TTS-12Hz-1.7B-CustomVoice`, speaker
+Vivian, bf16 on the 4070 Ti:
+
+| | |
+| --- | --- |
+| Throughput | **2.23x realtime** — 25.8s of audio took 57.8s of compute |
+| Model load | 8.3s, once |
+| Peak VRAM | 4.4GB of 12GB |
+| Sample rate | 24kHz |
+| Weights | 3.4GB, downloaded in 44s |
+
+**So streaming with a lead does not work, and section 3 above is wrong as written.** A lead
+cannot be maintained when a sentence takes twice as long to make as to say. The fallback
+named there is now the main path: render ahead of the *reader*, not ahead of the voice.
+
+Being clear about the reversal: Ed was right to challenge rendering a chapter first, and I
+was right to say quality did not require it — but the machine does. The corrected design
+was still wrong, and only the measurement said so.
+
+**What it means in practice.** A ten-hour book is about twenty-two hours of compute at this
+rate, so whole-book rendering is an overnight job rather than something done on the way in.
+Per chapter it is tolerable: a 20-minute chapter takes about 45 minutes, which is fine if it
+happens while an earlier chapter is being listened to.
+
+**Four things could move this number, none of them tried yet:**
+
+1. **Batching.** Everything above was one utterance at a time, batch size 1, which leaves
+   the card mostly idle. Several utterances in flight is the obvious first move and the one
+   that suits render-ahead.
+2. **flash-attn** is not installed — the library says so on every load and falls back to
+   "the manual PyTorch version". Awkward to build on Windows, but it is the vendor's own
+   recommendation for faster inference.
+3. **torch.compile / CUDA graphs**, unmeasured.
+4. **The 0.6B model**, if 1.7B quality turns out to be more than is needed.
+
+Until one of those lands, the design is: render ahead, cache, and never pretend to stream.
+
 ## 4. The emotional beats — a director pass
 
 This is what decides whether it sounds like an audiobook or like a machine reading. The TTS
