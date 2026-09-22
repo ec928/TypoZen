@@ -96,33 +96,51 @@ day's work and will show whether the ceiling is the direction or the model.
 
 ---
 
-## 5. Phases
+## 5. Slices, not phases
 
-**Phase 0 — spike, before anything is designed further.** A venv, `pip install qwen-tts`,
-three paragraphs of a real book rendered with three different style instructions, listened
-to by Ed. Measure seconds-of-audio per second of compute, and peak VRAM.
-**Decision gate:** if undirected output is not clearly better than Kokoro, stop here. Also
-the point at which the English-language quality of style instructions gets judged — the
-vendor's examples are in Chinese.
+Each slice ends with something that works and that Ed can listen to. None of them ends with
+a report. If a slice takes more than a day to reach sound coming out, it was cut too thick.
 
-**Phase 1 — the sidecar.** A small CLI: JSON in (text, speaker, style, output path), wav
-out, one process that stays warm across requests. No TypoZen dependency; runnable by hand,
-which keeps it debuggable and testable on its own.
+The earlier draft of this section was five phases where nothing could be heard until the
+fourth. That is the pattern that has already cost this project time: a long build against a
+design I was confident about, discovered wrong at the end. Grok's prototypes worked on day
+one and got better; mine were correct on paper for a week. Thin slice, every time.
 
-**Phase 2 — install and removal.** Model plus codec plus environment provisioned through
-File > Extensions: resumable, hash-checked, ~7GB all told. Menu gating exactly as Kokoro's
-(absent means no menu). Remove takes all of it, including the venv.
+**Slice 1 — sound, from inside TypoZen, on one paragraph.**
+A venv, `qwen-tts`, a CLI that takes text and writes a wav, and a hidden command in TypoZen
+that sends the current paragraph to it and plays the result. One fixed voice, no direction,
+no cache, no menu. Ugly is fine. What it proves is the whole chain: app → sidecar → audio →
+playback. What it produces is the number everything else depends on — seconds of audio per
+second of compute — and the first honest answer to "does this sound better than Kokoro".
+**Stop condition: if it does not, the project ends here.**
 
-**Phase 3 — director and cast.** Segmentation, attribution, style mapping, cast sheet UI,
-and a **preview** — render one paragraph and hear it before committing a chapter.
+**Slice 2 — a chapter, cached, with the highlight following.**
+Render utterance by utterance into an opus file plus a manifest of block → offset; play from
+the cache; drive the existing highlight and page turning. Still one voice, still no
+direction. At the end of this slice the feature is *usable* — a book can be listened to.
+Everything after it is improvement on a working thing.
 
-**Phase 4 — render queue.** Chapter at a time, with progress, cancel, and the cache plus
-manifest on disk. Resumable: closing the app mid-chapter loses at most one utterance.
+**Slice 3 — direction.**
+Attribution verbs and punctuation become style instructions per utterance. This is where it
+starts sounding like a narration rather than a reading. Judged by ear, one chapter at a
+time, against slice 2's recording of the same chapter.
 
-**Phase 5 — playback and export.** Play from cache with the existing block highlight and
-page turning; then export the book as m4b/opus.
+**Slice 4 — cast.** Per-character voices, a cast sheet, re-render on change.
 
----
+**Slice 5 — export.** m4b/opus out, which by then is mostly already done.
+
+Running through all of them, not gating them: it looks like an extension to the reader.
+It appears in File > Extensions with a size and a Remove button, and the narration menu is
+hidden until it is installed — exactly like Kokoro, whatever is happening underneath.
+Slice 1 can skip the dialog entirely; by slice 2 it belongs there.
+
+**Decisions already made, not questions:**
+
+- **One voice** until slice 4. Ed: a working thin slice with one voice is fine.
+- **A plain Python venv**, in the existing extensions folder under the profile. There is
+  already a data area with a convention and a Remove path; this uses it rather than
+  inventing anything.
+- **The audio cache goes with the other per-book data**, for the same reason.
 
 ## 6. Risks, and what is not known
 
@@ -143,14 +161,7 @@ page turning; then export the book as m4b/opus.
 
 ---
 
-## 7. Open questions for Ed
+## 7. What Ed decides
 
-1. **One narrator with emotional range, or a full cast with per-character voices?** The
-   cast work is most of Phase 3, and it is the difference between "good" and "the thing
-   commercial audiobooks do".
-2. **Where does the audio cache live** — beside the book, or in the profile folder? Beside
-   the book survives a profile clear and travels with the file; the profile keeps the
-   book's folder clean.
-3. **Is a plain Python venv acceptable**, given this is mainly for one machine? It removes
-   most of Phase 2's difficulty. A self-contained bundle is possible but is a project of
-   its own.
+Only one thing, and only when slice 1 has produced a wav: whether it sounds good enough to
+carry on. Everything else in here is a working decision and mine to make.
