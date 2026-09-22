@@ -159,6 +159,40 @@ experiencing several emotions at once.
 different position in a batch. If batch composition changes the output, cached audio and
 re-rendered audio diverge.
 
+## 3c. Batch composition is part of the input
+
+Tested, because it decides whether the cache can be trusted. The same line, seed pinned,
+rendered in different company:
+
+| | duration | audio |
+| --- | --- | --- |
+| alone | 3.76s | different |
+| first of four | 3.60s | baseline |
+| second of four | 3.92s | different |
+| last of four | 3.84s | different |
+| with no long neighbour | 4.08s | different |
+| **same batch, repeated** | 3.60s | **identical** |
+
+0.48s of spread on a 3.8s line, and an rms difference of 0.05 to 0.09 against a signal rms
+of 0.038 -- larger than the signal, so these are different takes rather than numerical
+noise. Padding to the longest sequence in the batch is the likely mechanism.
+
+**It is deterministic given the same batch**, which is what makes it workable:
+
+- **Batch composition must be a pure function of the document**, not of what happens to be
+  pending when the renderer reaches it. Fixed groups of N consecutive utterances, aligned to
+  block index. Then a re-render reproduces the cached bytes exactly.
+- **The manifest stores the group's hash** -- contents, order, seed, instructions, model.
+  A mismatch is what triggers a re-render, and it can be checked without generating anything.
+- **Re-rendering is per group, not per utterance.** Editing a paragraph re-renders its group
+  of eight; asking for one line again re-renders its group, because a line rendered alone is
+  a different take.
+- **A single-line preview will not match the final.** Previews are indicative. Say so in the
+  UI rather than let it be discovered.
+
+The alternative -- render every utterance alone so it is context-free -- costs the 5x
+batching speedup and puts throughput back above realtime. Not worth it.
+
 ## 4. The emotional beats — a director pass
 
 This is what decides whether it sounds like an audiobook or like a machine reading. The TTS
