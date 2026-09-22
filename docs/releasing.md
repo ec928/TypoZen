@@ -177,6 +177,32 @@ twenty minutes and tells you nothing.
 
 ---
 
+## 3b. The sixty seconds before a submission
+
+Run this by hand, in the build that is about to go out. Not because automation could not
+do it, but because these are the things that keep reaching Ed *after* a green suite, and
+looking takes less time than arguing about why a test did not see it.
+
+1. Open a large Markdown document. **Type a sentence.** It should feel instant -- no
+   stutter, no catching up after you stop.
+2. **Paste a line of markdown** with `**bold**` in it. The screen must show bold text, not
+   asterisks.
+3. **Undo it.** Twice. The document comes back exactly.
+4. **Save.** The title stops showing as edited.
+5. **Open an ePub. Turn a page.** Text appears, the page moves.
+6. **Read aloud, then Stop.** It speaks, the highlight follows, and the button returns to
+   Read aloud by itself.
+7. **Open File > Extensions.** Both rows show a sensible state and the right button.
+8. **Select a word.** The popover does not cover the word it is about.
+
+Each is one action. The whole pass is under a minute, and every release since 0.3.10 that
+went out with a defect would have failed one of these lines: 0.3.12 (a highlight in the
+margin), 0.3.13-0.3.15 (the read-aloud highlight on large documents), 0.3.16 (raw markdown
+after a paste, and typing latency). Step 8 is currently expected to fail -- see the
+selection popover entry in `known-issues.md`.
+
+---
+
 ## 4. MSIX and the Store
 
 The package is **unsigned**. It therefore cannot be installed by double-clicking, and

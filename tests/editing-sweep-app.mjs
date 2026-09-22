@@ -23,9 +23,15 @@
  * Backspace and Tab are all handled by the editor's own listeners, and calling the command
  * underneath them tests a path no keyboard reaches.
  *
- * The timings printed here include the settle sleeps and are NOT per-keystroke latency;
- * they are only a "did this hang" check. Real latency is 7ms in Scroll and 66ms in Pages,
- * measured without sleeps -- see the page-windowing note in README.md.
+ * Timings here ARE latency, and are asserted. They used to include the settle sleeps, which
+ * made them a "did this hang" check against a budget they could not exceed -- 531ms reported
+ * for Enter whatever the editor did, under an allowance of 1500ms. Real latency was known
+ * (7ms in Scroll, 66ms in Pages) and written in this comment rather than defended by an
+ * assertion, so the 10-30ms-per-keystroke regression fixed in 0.3.16 passed the suite the
+ * whole time it was shipping. The clock now holds one operation and nothing else.
+ *
+ * For reference, after that fix: a keystroke is about 0.3ms in Scroll and 4.4ms in Pages,
+ * Enter about 18-27ms. The budgets below are set from those numbers with room to spare.
  *
  *   node tests/editing-sweep-app.mjs
  */
@@ -160,8 +166,23 @@ try {
             await sleep(250);
 
             // --- typing ---
+            //
+            // Timed per keystroke, with nothing else inside the clock. It used to wrap a
+            // 400ms sleep in the same measurement and assert the total stayed under 1500ms,
+            // which meant the check could not fail: the floor was 400 and the allowance was
+            // 220ms a keystroke. A regression that put 10-30ms of work on every keypress --
+            // one shipped in 0.3.16 -- moved this number from about 405 to about 450 and
+            // passed. Measure the thing, then wait.
+            const perKey = [];
+            for (const ch of 'ZZTOP') {
+                const k = performance.now();
+                document.execCommand('insertText', false, ch);
+                perKey.push(performance.now() - k);
+            }
+            perKey.sort((a, b) => a - b);
+            out.keyMedianMs = Math.round(perKey[Math.floor(perKey.length / 2)] * 100) / 100;
+            out.keyWorstMs = Math.round(perKey[perKey.length - 1] * 100) / 100;
             let t = performance.now();
-            for (const ch of 'ZZTOP') document.execCommand('insertText', false, ch);
             await sleep(400);
             out.typeMs = Math.round(performance.now() - t);
             const after = getMarkdownContent(false);
@@ -170,11 +191,14 @@ try {
             out.grewByFive = (after.length - before.length) === 5;
 
             // --- Enter splits ---
+            // Timed the same way as a keystroke, and for the same reason: with the 500ms
+            // settle inside the clock this read 531ms whatever the editor did, against a
+            // 1500ms budget it could not exceed.
             const blocksBeforeEnter = DocumentModel.blocks.length;
             t = performance.now();
             key('Enter');
+            out.enterMs = Math.round((performance.now() - t) * 100) / 100;
             await sleep(500);
-            out.enterMs = Math.round(performance.now() - t);
             out.stackAfterEdits = 'undo=' + HistoryManager.undoStack.length;
             out.blocksAfterEnter = DocumentModel.blocks.length;
             out.enterSplit = DocumentModel.blocks.length === blocksBeforeEnter + 1;
@@ -362,24 +386,72 @@ try {
                 }
             }
 
+            // --- pasting a line of markdown, and what is then on the screen ---
+            //
+            // Asserted on the rendered text, not on the model. 0.3.16 fixed a paste that
+            // set data-raw correctly and never re-rendered the block, so the model was
+            // right and the reader was looking at literal asterisks. Every paste check in
+            // the suite read the model, so none of them could see it.
+            {
+                const el = paragraphs()[3] || pick(30);
+                if (el) {
+                    focusBlock(el, (el.innerText || '').length);
+                    await sleep(250);
+                    const dt = new DataTransfer();
+                    dt.setData('text/plain', ' **VERYBOLD** and `CODEY`');
+                    el.dispatchEvent(new ClipboardEvent('paste', {
+                        clipboardData: dt, bubbles: true, cancelable: true
+                    }));
+                    await sleep(700);
+                    const shown = el.innerText || '';
+                    const raw = el.getAttribute('data-raw') || '';
+                    out.pasteInModel = raw.indexOf('**VERYBOLD**') >= 0;
+                    out.pasteShowsWord = shown.indexOf('VERYBOLD') >= 0;
+                    // The markers must not survive into what is displayed.
+                    out.pasteRendered = shown.indexOf('**') < 0 && shown.indexOf('`') < 0;
+                    out.pasteShown = shown.slice(-40);
+                    out.pasteRestored = await rewind(6);
+                } else {
+                    out.notes.push('no paragraph to paste into');
+                    out.pasteInModel = true; out.pasteShowsWord = true;
+                    out.pasteRendered = true; out.pasteRestored = true;
+                }
+            }
+
             out.finalExact = norm(getMarkdownContent(false)) === beforeNorm;
             out.errors = (window.__sweepErrors || []).slice();
             return out;
         });
 
-        info('typing ' + r.typeMs + 'ms for 5 chars, Enter ' + r.enterMs + 'ms');
+        info('keystroke ' + r.keyMedianMs + 'ms median, ' + r.keyWorstMs + 'ms worst; Enter '
+             + r.enterMs + 'ms');
         info('edited block ' + r.pickedIndex + ' of ' + r.mounted + ' mounted: ' +
              JSON.stringify(r.pickedRaw) + ', doc grew by ' + (r.afterLen - r.beforeLen));
         if (r.notes.length) info('skipped: ' + r.notes.join('; '));
 
         assert(r.typedLanded, L.name + ': typed text lands at the caret, in order');
         assert(r.grewByFive, L.name + ': typing 5 characters changes the document by exactly 5');
-        assert(r.typeMs < 1500,
-            L.name + ': typing 5 characters stays responsive (' + r.typeMs + 'ms)');
+        // Budgets from measurement, not from what sounds safe. On this machine a keystroke
+        // in a large document costs well under a millisecond; 8ms leaves room for a slower
+        // one while still catching the 10-30ms-per-key class of regression, and 40ms says
+        // no single keypress may be felt as a stutter.
+        assert(r.keyMedianMs < 8,
+            L.name + ': a keystroke costs under 8ms (' + r.keyMedianMs + 'ms median)');
+        assert(r.keyWorstMs < 40,
+            L.name + ': no keystroke stutters (' + r.keyWorstMs + 'ms worst)');
+
+        info('after paste the block shows: ' + JSON.stringify(r.pasteShown));
+        assert(r.pasteInModel, L.name + ': a pasted line reaches the model');
+        assert(r.pasteShowsWord, L.name + ': a pasted line reaches the screen');
+        assert(r.pasteRendered,
+            L.name + ': pasted markdown is rendered, not shown raw (' + JSON.stringify(r.pasteShown) + ')');
+        assert(r.pasteRestored, L.name + ': undo takes the paste back out');
 
         assert(r.enterSplit,
             L.name + ': Enter splits the block in two (' + r.blocksAfterEnter + ' blocks)');
-        assert(r.enterMs < 1500, L.name + ': Enter stays responsive (' + r.enterMs + 'ms)');
+        // Enter does more than a keystroke -- it splits a block and re-lays what follows --
+        // so it gets its own budget, still measured rather than assumed.
+        assert(r.enterMs < 120, L.name + ': Enter stays responsive (' + r.enterMs + 'ms)');
 
         if (!r.undoExact) {
             info('history: ' + r.stackAfterEdits + ' after edits, ' + r.stacks + ' after rewind');
