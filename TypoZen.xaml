@@ -453,6 +453,11 @@
                                      installer downloads, so the menu cannot offer fewer voices than
                                      are on disk. Hidden until the extension is installed. -->
                                 <MenuItem x:Name="mKokoroMenu" Header="_Kokoro Voices" Visibility="Collapsed"/>
+                                <!-- Hidden unless the narration environment is installed, like the
+                                     Kokoro voices above. -->
+                                <MenuItem x:Name="mQwenNarrate" Header="_Narrate from here (Qwen)"
+                                          Visibility="Collapsed"
+                                          ToolTip="Read on from the cursor in a narrated voice. The first passage takes a few seconds; anything heard before is instant."/>
                                 <Separator/>
                                 <MenuItem x:Name="mWindowsVoices" Header="Windows _Installed Voices"/>
                                 <Separator/>

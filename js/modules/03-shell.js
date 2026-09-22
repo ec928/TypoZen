@@ -1036,6 +1036,23 @@
                     // state the toolbar button is given by the host.
                     try { if (typeof nativeTTSFinished === 'function') nativeTTSFinished(); } catch (eT) {}
                 }
+                else if (msg.startsWith("cmd:narrate:")) {
+                    // The sidecar is up; the page does the rest.
+                    try {
+                        if (typeof window.startQwenNarration === 'function') {
+                            window.startQwenNarration(msg.substring(12));
+                        }
+                    } catch (eN) {}
+                }
+                else if (msg.startsWith("cmd:narrator_status:")) {
+                    // Starting the narrator can take a minute the first time. Say so, rather
+                    // than leave a menu click looking like it did nothing.
+                    try {
+                        const text = msg.substring(20);
+                        if (!text) document.getElementById('kokoro-status')?.remove();
+                        else if (typeof showKokoroStatus === 'function') showKokoroStatus(text);
+                    } catch (eS) {}
+                }
                 else if (msg.startsWith("cmd:kokoro_extension:")) {
                     // Where the installed speech engine lives, or "none". The page loads
                     // nothing until this says there is something to load.
