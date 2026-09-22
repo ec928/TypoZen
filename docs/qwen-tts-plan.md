@@ -240,6 +240,38 @@ the one before it. The costs of a longer string are first-audio latency, coarser
 granularity, and eventually drift on very long sequences -- so the director pass chooses the
 grouping, and paragraph-sized is the sensible default rather than the ceiling.
 
+## 3f. The narrator voice, chosen 2026-09-22
+
+**Checkpoint: `Qwen3-TTS-12Hz-1.7B-VoiceDesign`.** Not CustomVoice, whose nine presets
+include only two English speakers (Ryan and Aiden, both American male, both rejected), and
+not Base, which is the only checkpoint that clones a voice from a reference and **accepts no
+`instruct` at all**. Cloning would forfeit the directable emotion that is the entire reason
+for preferring this over Kokoro -- the same reason F5-TTS was ruled out.
+
+Two voices, chosen by ear from described candidates. The wording *is* the voice, so it is
+recorded verbatim:
+
+**Narrator (default)** -- "northern-english":
+
+> A British woman with a soft northern English accent, gentle and grounded, with a low
+> steady delivery.
+
+**Narrator (alternate)** -- "northern-clear":
+
+> A British woman with a light northern English accent, clear and unhurried, with a smooth
+> low register and very even pacing. Understated and composed.
+
+Both are appended with the narration direction:
+
+> Narrate as an accomplished audiobook reader of literary fiction: measured and unhurried,
+> phrasing that follows the sense of the sentence, understated rather than performed. Give
+> the spoken lines a light, distinct colour without acting them out.
+
+Rejected along the way, and why it is worth remembering: every sample before this used
+**Vivian, a Chinese voice preset**, taken from the vendor's Chinese example and never
+checked. It is what made the early takes sound, in Ed's words, like someone talking to a
+baby. Check what a preset is for before building on it.
+
 ## 4. The emotional beats — a director pass
 
 This is what decides whether it sounds like an audiobook or like a machine reading. The TTS
