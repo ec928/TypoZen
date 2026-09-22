@@ -193,6 +193,44 @@ noise. Padding to the longest sequence in the batch is the likely mechanism.
 The alternative -- render every utterance alone so it is context-free -- costs the 5x
 batching speedup and puts throughput back above realtime. Not worth it.
 
+## 3d. Time to first sound, and there is no streaming mode
+
+| first chunk | compute | cold start (incl. 8.3s load) |
+| --- | --- | --- |
+| three words | 3.1s | **11.4s** |
+| one sentence | 10.0s | 18.3s |
+| batch of eight | 17.1s | 25.5s |
+
+`non_streaming_mode=False` returns a finished tuple after 9.2s and no method has "stream"
+in its name, so this package does not stream and the vendor's 97ms figure is not reachable
+through it. An earlier summary of mine said speech would start in 5 to 10 seconds cold,
+which was simply wrong arithmetic: the model load and the first utterance are serial costs
+and add.
+
+**So the sidecar stays resident.** The 8.3s is paid once per session, and then:
+
+- **First sound is about 3 seconds**, by making the first chunk a few words and widening to
+  batches of eight afterwards. In a batch, a sentence costs 2.1s against 10s alone -- the
+  ramp is not an optimisation, it is the difference between 3 seconds and 18.
+- **Seeking is about 3 seconds** into unrendered text, provided the renderer drops its queue
+  and renders the jump point as a small chunk first. Anywhere already rendered is instant
+  from the cache.
+
+## 3e. Context reaches one sentence, and no further
+
+Each utterance is generated as an independent sequence. Within one, stress and prosody
+follow that sentence's own syntax and punctuation. Between them, nothing carries: a build
+across three sentences will not build, and each line starts again from its instruction.
+
+This is the argument for the director pass rather than a detail of it. **Context enters as
+text that we compute** -- the instruction string -- because the model has no memory of the
+line before. Two consequences:
+
+- **Utterance boundaries should follow sentences.** Chunking is not free: merging or
+  splitting changes the reading.
+- **Homographs resolve sentence-locally.** TypoZen already added an offline POS tagger in
+  0.3.15 for exactly this on the Kokoro path, and it is reusable here.
+
 ## 4. The emotional beats — a director pass
 
 This is what decides whether it sounds like an audiobook or like a machine reading. The TTS
