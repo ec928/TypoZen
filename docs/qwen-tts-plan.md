@@ -144,7 +144,7 @@ Slice 1 can skip the dialog entirely; by slice 2 it belongs there.
 
 ## 6. Risks, and what is not known
 
-- **Throughput is unmeasured.** The whole schedule depends on Phase 0's number. If a
+- **Throughput is unmeasured.** Slice 1 produces the number; nothing after it is schedulable until then. If a
   ten-hour book takes ten hours to render, the feature still works — it just becomes an
   overnight job, and that should be a deliberate decision rather than a surprise.
 - **Long-form drift.** Autoregressive TTS can wander or repeat on long inputs. Rendering
