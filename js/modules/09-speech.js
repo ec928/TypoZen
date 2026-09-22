@@ -282,7 +282,11 @@ function playNextChunk() {
                     } catch (e) {}
                 }
             }
-            sendTTSPlay(chunk.text);
+            // Same rule as the unpaginated branch below: a chunk that already has audio
+            // plays it. Missing it here meant narration silently fell back to a Windows
+            // voice in Pages, which is the layout most reading happens in.
+            if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl);
+            else sendTTSPlay(chunk.text);
         });
         return;
     } else {
@@ -309,9 +313,103 @@ function playNextChunk() {
                 if (typeof updateStats === 'function') updateStats();
             } catch (e) {}
         }
-        sendTTSPlay(chunk.text);
+        // Pre-rendered narration arrives as a chunk like any other, with a URL on it.
+        // Nothing above this line knows the difference, which is the point: the highlight,
+        // the page turning and the stop button are the same code they always were.
+        if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl);
+        else sendTTSPlay(chunk.text);
     }
 }
+
+let _renderedAudio = null;
+
+/** Play one pre-rendered file, then carry on down the queue. */
+function playRenderedChunk(url) {
+    try {
+        window.__lastChunkUrl = url;          // what is actually playing, for tests and debug.log
+        if (_renderedAudio) { _renderedAudio.pause(); _renderedAudio = null; }
+        const a = new Audio(url);
+        _renderedAudio = a;
+        a.onended = () => { _renderedAudio = null; if (isPlaying) playNextChunk(); };
+        a.onerror = () => {
+            _renderedAudio = null;
+            showKokoroStatus('Narration audio could not be played.');
+            setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 4000);
+            if (isPlaying) playNextChunk();
+        };
+        a.play().catch(() => { if (isPlaying) playNextChunk(); });
+    } catch (e) {
+        if (isPlaying) playNextChunk();
+    }
+}
+
+/**
+ * Narrate from where the reader is, using the Qwen sidecar.
+ *
+ * The sidecar renders in groups and caches by group, so the first group costs seconds and
+ * anything heard before is instant. Blocks are sent with their model index, which is what
+ * comes back on each item and what the chunk queue uses to move the highlight.
+ */
+async function startQwenNarration(base) {
+    const editor = document.getElementById('editor');
+    if (!editor) return;
+    const all = Array.from(editor.querySelectorAll('.block'));
+    if (!all.length) return;
+
+    const caret = readingCaret();
+    let at = caret ? all.indexOf(caret.block) : -1;
+    if (at < 0) {
+        const host = editor.getBoundingClientRect();
+        at = all.findIndex(b => {
+            const r = b.getBoundingClientRect();
+            return r.bottom > host.top && r.top < host.bottom && r.bottom > 0 && r.top < window.innerHeight;
+        });
+    }
+    if (at < 0) at = 0;
+
+    // Three groups of eight: enough to be listening while the rest renders behind it.
+    const wanted = [];
+    for (let i = at; i < all.length && wanted.length < 24; i++) {
+        const el = all[i];
+        const text = (el.innerText || '').trim();
+        if (!text) continue;
+        wanted.push({ el: el, id: i, text: applyTTSOverrides(text) });
+    }
+    if (!wanted.length) return;
+
+    showKokoroStatus('Narrating - rendering the first passage...');
+    try {
+        const res = await fetch(base + '/render', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ blocks: wanted.map(w => ({ id: w.id, text: w.text })) })
+        });
+        if (!res.ok) throw new Error('sidecar said ' + res.status);
+        const data = await res.json();
+        document.getElementById('kokoro-status')?.remove();
+
+        const byId = new Map(wanted.map(w => [w.id, w]));
+        const chunks = [];
+        for (const item of data.items || []) {
+            const w = byId.get(item.id);
+            if (!w) continue;
+            const idx = parseInt(w.el.getAttribute('data-model-index'), 10);
+            chunks.push({
+                idx: isFinite(idx) ? idx : null,
+                el: w.el,
+                text: w.text,
+                audioUrl: 'https://localnarration/' + item.file
+            });
+        }
+        if (!chunks.length) throw new Error('nothing came back');
+        startReadingChunks(chunks);
+    } catch (err) {
+        showKokoroStatus('Narration failed: ' + (err && err.message || err));
+        setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 6000);
+    }
+}
+
+window.startQwenNarration = startQwenNarration;
 
 function applyTTSOverrides(text) {
     if (!text) return text;
@@ -382,6 +480,10 @@ function stopReading() {
     if (_kokoroAudioSource) {
         try { _kokoroAudioSource.stop(); } catch(e){}
         _kokoroAudioSource = null;
+    }
+    if (_renderedAudio) {
+        try { _renderedAudio.pause(); } catch(e){}
+        _renderedAudio = null;
     }
     
     // Invalidate Kokoro generation loop and prefetch instantly

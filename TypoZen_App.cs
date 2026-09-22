@@ -1569,6 +1569,7 @@ namespace TypoZen
             var mSpeed = FindElement("mConfigureSpeed") as MenuItem; if (mSpeed != null) mSpeed.Header = "Voice Sampler and Speed..."; BindClick("mConfigureSpeed", (s, e) => ShowConfigureVoiceDialog());
             PopulateWindowsVoicesMenu();
             BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
+            BindClick("mQwenNarrate", (s, e) => StartQwenNarration());
             BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
             BindClick("mWordWrap", (s, e) =>
             {
@@ -2061,6 +2062,27 @@ namespace TypoZen
                 if (obj != null) return obj;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Start the narrator if it is not up, then let the page get on with it: the page
+        /// gathers the blocks, asks the sidecar for audio and plays it through the same
+        /// queue everything else reads through.
+        /// </summary>
+        private async void StartQwenNarration()
+        {
+            try
+            {
+                Action<string> say = (m) =>
+                {
+                    try { SendMsg("cmd:narrator_status:" + (m ?? "")); } catch { }
+                };
+                bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, say,
+                                                           CancellationToken.None);
+                if (!up) return;
+                SendMsg("cmd:narrate:" + QwenNarrator.BaseUrl);
+            }
+            catch (Exception ex) { LogFault("start narration", ex); }
         }
 
         /// <summary>
@@ -3298,6 +3320,13 @@ namespace TypoZen
 
                 var menu = FindElement("mKokoroMenu") as MenuItem;
                 if (menu != null) menu.Visibility = kokoro ? Visibility.Visible : Visibility.Collapsed;
+
+                var narrate = FindElement("mQwenNarrate") as MenuItem;
+                if (narrate != null)
+                {
+                    narrate.Visibility = QwenNarrator.Installed(cache, _appDir)
+                        ? Visibility.Visible : Visibility.Collapsed;
+                }
                 if (kokoro) RebuildKokoroVoiceMenu();
 
                 // A voice that is no longer installed would leave the page trying to speak
@@ -5972,6 +6001,12 @@ namespace TypoZen
                     Directory.CreateDirectory(ext);
                     _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
                         ExtensionCatalog.HostName, ext, CoreWebView2HostResourceAccessKind.Allow);
+                    // Rendered narration, served the same way. Mapped at init like every other
+                    // host: one added after the page has navigated never reaches it.
+                    string narration = QwenNarrator.CacheDir(CacheDir());
+                    Directory.CreateDirectory(narration);
+                    _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        QwenNarrator.HostName, narration, CoreWebView2HostResourceAccessKind.Allow);
                 }
                 catch (Exception ex) { LogFault("map extensions host", ex); }
                 MapBookHosts();
