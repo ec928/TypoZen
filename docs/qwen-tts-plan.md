@@ -96,31 +96,35 @@ Vivian, bf16 on the 4070 Ti:
 | Sample rate | 24kHz |
 | Weights | 3.4GB, downloaded in 44s |
 
-**So streaming with a lead does not work, and section 3 above is wrong as written.** A lead
-cannot be maintained when a sentence takes twice as long to make as to say. The fallback
-named there is now the main path: render ahead of the *reader*, not ahead of the voice.
+**Batched, it is 0.45x realtime — 2.2x faster than speech.** The same eight sentences took
+101.4s one at a time and 20.3s in a single call: a **5.00x speedup**, at 5.7GB of 12GB, so
+there is room for a larger batch still.
 
-Being clear about the reversal: Ed was right to challenge rendering a chapter first, and I
-was right to say quality did not require it — but the machine does. The corrected design
-was still wrong, and only the measurement said so.
+| | audio | compute | rate |
+| --- | --- | --- | --- |
+| one at a time | 46.2s | 101.4s | 2.20x realtime |
+| eight at once | 44.9s | 20.3s | **0.45x realtime** |
 
-**What it means in practice.** A ten-hour book is about twenty-two hours of compute at this
-rate, so whole-book rendering is an overnight job rather than something done on the way in.
-Per chapter it is tolerable: a 20-minute chapter takes about 45 minutes, which is fine if it
-happens while an earlier chapter is being listened to.
+**So streaming with a lead works after all, and Ed's original instinct was right.** Batch-1
+decoding leaves the card mostly idle; the model is not slow, the way it was being called
+was. What this cost: I measured the unoptimised path, told Ed his design would not fly, and
+the next measurement said it does. Twice in one session a confident design call went out
+ahead of the evidence. The number to trust is the one from the shape you intend to ship.
 
-**Four things could move this number, none of them tried yet:**
+**The design, then:**
 
-1. **Batching.** Everything above was one utterance at a time, batch size 1, which leaves
-   the card mostly idle. Several utterances in flight is the obvious first move and the one
-   that suits render-ahead.
-2. **flash-attn** is not installed — the library says so on every load and falls back to
-   "the manual PyTorch version". Awkward to build on Windows, but it is the vendor's own
-   recommendation for faster inference.
-3. **torch.compile / CUDA graphs**, unmeasured.
-4. **The 0.6B model**, if 1.7B quality turns out to be more than is needed.
+- Render in batches of about eight utterances, play from the front of the queue while the
+  next batch renders. The lead grows rather than shrinks: eight sentences of speech cost
+  under half their own duration to make.
+- **First audio is the real latency now** -- a batch of eight takes ~20s, plus 8s of model
+  load on first use. Start with a batch of one or two so speech begins in a few seconds,
+  then widen the batch to build the lead. Untested, and the obvious next measurement.
+- Cache each utterance as it lands, as already described.
+- A ten-hour book is about **4.5 hours** of compute, not 22 -- so whole-book export is an
+  afternoon, and listening needs no preparation at all.
 
-Until one of those lands, the design is: render ahead, cache, and never pretend to stream.
+**Still unmeasured, and worth it in this order:** the first-audio ramp, batch sizes above
+eight, flash-attn (the library warns it is missing on every load), and torch.compile.
 
 ## 4. The emotional beats — a director pass
 
