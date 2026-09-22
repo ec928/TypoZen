@@ -126,6 +126,39 @@ ahead of the evidence. The number to trust is the one from the shape you intend 
 **Still unmeasured, and worth it in this order:** the first-audio ramp, batch sizes above
 eight, flash-attn (the library warns it is missing on every load), and torch.compile.
 
+## 3b. Delivery wanders unless the sampler is pinned
+
+Ed heard the emotion move between takes "like some random element is at play". It is: the
+model samples its prosody. The same line, same instruction, four times:
+
+| regime | durations | spread | identical |
+| --- | --- | --- | --- |
+| default sampling | 4.56 / 4.64 / 4.32 / 3.52 | 1.12s | no |
+| **fixed seed** | 3.76 x 4 | **0.00s** | **yes** |
+| temperature 0.2 | 4.64 / 4.00 / 4.08 / 4.32 | 0.64s | no |
+| temp 0.2 + seed | 4.40 x 4 | 0.00s | yes |
+| greedy (do_sample=False) | 4.40 / 4.40 / 4.16 / 4.72 | 0.56s | no |
+
+A quarter of the line's length, take to take. `do_sample=False` not settling it suggests the
+flag is not reaching the sampler through `**kwargs`; the seed is the lever that works.
+
+**But a seed buys reproducibility, not uniformity.** The second cause of wandering emotion is
+the direction itself: give every utterance its own instruction and delivery varies by design.
+So:
+
+- **Narration takes one fixed style instruction for the whole book**, and a seed derived from
+  the utterance's block index and text. The narrator then sounds like the same person on page
+  300 as on page 1, and a re-render reproduces the same audio so the cache stays valid.
+- **Dialogue takes the character's style plus the beat's modifier.** Variation only where the
+  text asks for it.
+
+That is the difference between a narrator and, in Ed's words, a slightly unhinged madwoman
+experiencing several emotions at once.
+
+**Untested and it matters for caching:** whether the same sentence renders identically at a
+different position in a batch. If batch composition changes the output, cached audio and
+re-rendered audio diverge.
+
 ## 4. The emotional beats — a director pass
 
 This is what decides whether it sounds like an audiobook or like a machine reading. The TTS
