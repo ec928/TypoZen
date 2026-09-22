@@ -52,26 +52,36 @@ but the machinery underneath is different and should not pretend otherwise.
 
 ---
 
-## 3. Shape: render ahead, do not stream
+## 3. Shape: stream with a lead, and keep what you render
 
-Narration is a batch job, not a live one, and that follows directly from "quality beats
-startup":
+The first draft of this section said render a whole chapter before playback. That was
+needless pessimism, and Ed was right to push on it: nothing about quality requires it.
+Quality comes from directing each utterance and being able to re-render a bad one, and
+neither needs the chapter to exist before Play is pressed.
 
-- Render a chapter **before** it is listened to, one utterance at a time, into a cache.
-- Store audio as **opus** with a **manifest**: model block index → `[start, end]` in the
-  audio file. A ten-hour book is ~150MB at 32kbps; the same as wav would be over 3GB.
-- Playback reads the cache and drives the *existing* highlight and auto-page-turn from the
-  manifest. Nothing new is needed in the reader.
+**How it should work:**
 
-What this buys:
+- Render utterance by utterance, start playing after the first one, and keep a **lead** of
+  a few utterances ahead of the voice. TypoZen already does exactly this for Kokoro -- a
+  generation queue feeding a play queue, with prefetch -- so this is less work than the
+  batch design, not more.
+- **Persist each utterance as it is produced**, into the same opus file plus a manifest of
+  block index to offset. By the time a chapter has been heard once, the cache is complete
+  and the second listen is instant. The cache is a by-product of listening rather than a
+  precondition for it.
+- **Batch is kept for the one case that wants it:** rendering a whole book with nothing
+  playing, for export. Several utterances in flight keep the GPU busy in a way that
+  serial rendering does not, and there is no listener to stay ahead of. That is a different
+  mode, not the default one.
 
-- Latency stops mattering entirely, so the budget per sentence can be generous — retries,
-  a second take, a slower sampler.
-- A voice or a direction can be changed and only the affected utterances re-rendered.
-- **Export to m4b falls out for free**, which was already on the wanted list.
-- A failed or ugly line can be re-rendered without touching the rest of the chapter.
+**Where the startup cost actually is:** not per utterance but in loading 3.4GB of weights
+into VRAM, which is a one-off of seconds. The sidecar stays resident once started, so that
+is paid on first use and not again.
 
----
+**The one thing that would force pre-rendering** is throughput below realtime -- a lead
+cannot be maintained if generating a sentence takes longer than speaking it. Slice 1
+measures this. If it comes out under realtime, the fallback is to render ahead of the
+reader rather than ahead of the voice, and to say so in the UI rather than let it stutter.
 
 ## 4. The emotional beats — a director pass
 
