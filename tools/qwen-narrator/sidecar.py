@@ -46,29 +46,50 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # stays put. Chosen by ear on 2026-09-23 against the old narration and a pinned VoiceDesign.
 MODEL_REPO = 'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'
 
-# How the narrator reads. The voice is not described here -- it comes from the voice-print.
+# How the narrator reads when the reader has set no style of their own. The voice is not
+# described here -- it comes from the voice-print.
 NARRATION_BASE = (
     "Narrate as an accomplished audiobook reader of literary fiction: measured and "
     "unhurried, phrasing that follows the sense of the sentence, understated rather than "
     "performed."
 )
-NARRATION_CRAFT = NARRATION_BASE + " Give the spoken lines a light, distinct colour without acting them out."
+LIGHT_DIALOGUE = " Give the spoken lines a light, distinct colour without acting them out."
+NARRATION_CRAFT = NARRATION_BASE + LIGHT_DIALOGUE
 
 # Direction (slice 3): the page reads how a paragraph's spoken lines should sound from the text
 # around them -- "whispered, hushed", "sharp and angry" -- and it is added to the instruction
 # for that paragraph only. 'thought' is a paragraph that is a character's private thought.
-DIRECTED = NARRATION_BASE + (" Voice the lines in quotation marks as %s, clearly but with "
-                             "restraint, and keep the narration around them measured.")
-THOUGHT = NARRATION_BASE + " This passage is a character's private thought: read it quieter and more inward."
+DIRECTED_SUFFIX = (" Voice the lines in quotation marks as %s, clearly but with restraint, "
+                   "and keep the narration around them measured.")
+THOUGHT_SUFFIX = " This passage is a character's private thought: read it quieter and more inward."
+# Cast (slice 4): a quoted line spoken in a character's own voice, apart from the narration.
+DIALOGUE = "Speak this line of dialogue as the character would say it, naturally and in character."
+DIALOGUE_DIRECTED = "Speak this line of dialogue as the character would say it: %s."
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-# A voice is a voice-print file beside this script plus the style it narrates in. Changing
-# either changes every cache key that used it, which is intended: the audio on disk no
-# longer matches the request.
-VOICES = {
-    'northern-english': {'print': os.path.join(HERE, 'northern-english.npy'), 'style': NARRATION_CRAFT},
+# The voice the narrator shipped with. Others are designed from a description in TypoZen
+# (Narrator settings) and kept in voices/ beside the cache, one folder each.
+BUILTIN_VOICES = {
+    'northern-english': {
+        'name': 'Northern English (original)',
+        'description': ('A British woman with a soft northern English accent, gentle and '
+                        'grounded, with a low steady delivery.'),
+        'print': os.path.join(HERE, 'northern-english.npy'),
+    },
 }
 DEFAULT_VOICE = 'northern-english'
 GROUP_SIZE = 8
+
+# Designing a voice: VoiceDesign turns the description into a speaker reading DESIGN_TEXT
+# (about 12s, as the original reference was); that recording gives the voice-print; the
+# narrator then reads PREVIEW_TEXT in it, which is what the voice will sound like in use.
+VOICEDESIGN_REPO = 'Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign'
+BASE_REPO = 'Qwen/Qwen3-TTS-12Hz-1.7B-Base'
+DESIGN_TEXT = ("The road ran straight across the plain, and the mountains beyond it were pale "
+               "with distance. She had been walking since the morning, and the light had not "
+               "changed at all. There was nothing to mark the hours but the sound of her own steps.")
+PREVIEW_TEXT = ("“You should have waited for me,” she said quietly, and for a while "
+                "neither of them spoke.")
 
 
 # narration.log, beside the cache in the extension folder. Always on: nobody sees this
@@ -106,10 +127,43 @@ def open_log(path):
 class Narrator(object):
     def __init__(self, cache_dir):
         self.cache_dir = cache_dir
+        self.voices_dir = os.path.join(os.path.dirname(os.path.abspath(cache_dir)), 'voices')
         self.lock = threading.Lock()
         self.model = None
+        self.encoder = None
         self.sr = None
+        self.prints = {}
+        self.voice_meta = {}
         os.makedirs(cache_dir, exist_ok=True)
+        os.makedirs(self.voices_dir, exist_ok=True)
+
+    def reload_voices(self):
+        """The built-in voice and every kept one: id -> (voice-print tensor, its hash)."""
+        import numpy as np
+        prints, meta = {}, {}
+        for vid, v in BUILTIN_VOICES.items():
+            raw = np.load(v['print']).astype(np.float32)
+            prints[vid] = (self.torch.from_numpy(raw), hashlib.sha256(raw.tobytes()).hexdigest())
+            meta[vid] = {'id': vid, 'name': v['name'], 'description': v['description'], 'builtin': True,
+                         'preview': ''}
+        for vid in sorted(os.listdir(self.voices_dir)):
+            d = os.path.join(self.voices_dir, vid)
+            if vid.startswith('_') or not os.path.isfile(os.path.join(d, 'print.npy')):
+                continue
+            try:
+                raw = np.load(os.path.join(d, 'print.npy')).astype(np.float32)
+                with open(os.path.join(d, 'meta.json'), encoding='utf-8') as f:
+                    m = json.load(f)
+                prints[vid] = (self.torch.from_numpy(raw), hashlib.sha256(raw.tobytes()).hexdigest())
+                meta[vid] = {'id': vid, 'name': m.get('name') or vid, 'description': m.get('description', ''),
+                             'builtin': False, 'preview': os.path.join(d, 'preview.wav')}
+            except Exception as e:
+                log('voice %s unreadable, skipped: %s' % (vid, e))
+        self.prints, self.voice_meta = prints, meta
+        log('voices: %s' % ', '.join(sorted(prints)))
+
+    def known_voice(self, vid):
+        return vid if vid in self.prints else DEFAULT_VOICE
 
     def load(self):
         # A failure here used to die silently in its thread: /health just never said ready,
@@ -127,11 +181,7 @@ class Narrator(object):
             local = snapshot_download(MODEL_REPO, local_files_only=True)
             self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
                                                        dtype=torch.bfloat16)
-            import numpy as np
-            self.prints = {}
-            for name, v in VOICES.items():
-                raw = np.load(v['print']).astype(np.float32)
-                self.prints[name] = (torch.from_numpy(raw), hashlib.sha256(raw.tobytes()).hexdigest())
+            self.reload_voices()
             self._decode_clips_separately()
             self._stop_when_cancelled()
             log('model ready in %.1fs (%s)' % (time.time() - t, MODEL_REPO))
@@ -200,29 +250,39 @@ class Narrator(object):
         tok.decode = decode_each
 
     @staticmethod
-    def instruction(voice, direction):
-        """The full instruction for one piece: the voice's style, or a directed version of it."""
-        direction = (direction or '').strip()[:80]
-        if not direction:
-            return VOICES[voice]['style']
-        if direction == 'thought':
-            return THOUGHT
-        return DIRECTED % direction
+    def instruction(style, direction, role='narration'):
+        """The full instruction for one piece.
 
-    def key_for(self, text, voice, direction=''):
-        """One piece's cache key: the model, the voice, the instruction and the text."""
+        Narration: the reader's own style if they set one, else the standing one, plus the
+        paragraph's direction. With no style and no direction this is NARRATION_CRAFT exactly,
+        so audio rendered before styles existed stays valid. A cast line (role 'dialogue') is
+        spoken in the character's voice and takes only its own direction.
+        """
+        direction = (direction or '').strip()[:80]
+        style = (style or '').strip()[:300]
+        if role == 'dialogue':
+            return DIALOGUE_DIRECTED % direction if direction and direction != 'thought' else DIALOGUE
+        base = ('Narrate as an audiobook reader of literary fiction. ' + style) if style else NARRATION_BASE
+        if not direction:
+            return base + LIGHT_DIALOGUE
+        if direction == 'thought':
+            return base + THOUGHT_SUFFIX
+        return base + DIRECTED_SUFFIX % direction
+
+    def key_for(self, text, voice, instruction):
+        """One piece's cache key: the model, the voice-print, the instruction and the text."""
         h = hashlib.sha256()
         h.update(MODEL_REPO.encode('utf-8'))
         h.update(b'\x00')
         h.update(self.prints[voice][1].encode('utf-8'))
         h.update(b'\x00')
-        h.update(self.instruction(voice, direction).encode('utf-8'))
+        h.update(instruction.encode('utf-8'))
         h.update(b'\x00')
         h.update(text.encode('utf-8'))
         return h.hexdigest()[:20]
 
-    def generate(self, texts, voice, instructions=None):
-        """One batched generation with the voice-print pinned and an instruction per piece.
+    def generate(self, texts, prints, instructions):
+        """One batched generation, each piece with its own voice-print and instruction.
 
         qwen-tts has no public call for this pairing -- generate_custom_voice takes only its
         nine named speakers, generate_voice_clone takes a voice-print but no instruction --
@@ -231,11 +291,9 @@ class Narrator(object):
         """
         m = self.model
         n = len(texts)
-        vprint = self.prints[voice][0]
-        prompt = dict(ref_code=[None] * n, ref_spk_embedding=[vprint] * n,
+        prompt = dict(ref_code=[None] * n, ref_spk_embedding=list(prints),
                       x_vector_only_mode=[True] * n, icl_mode=[False] * n)
         input_ids = m._tokenize_texts([m._build_assistant_text(t) for t in texts])
-        instructions = instructions or [VOICES[voice]['style']] * n
         tokenized = {}
         for i in set(instructions):
             tokenized[i] = m._tokenize_texts([m._build_instruct_text(i)])[0]
@@ -256,9 +314,10 @@ class Narrator(object):
             log('cached piece %s unreadable (%s), rendering again' % (key, e))
             return None
 
-    def render_group(self, blocks, voice, seed, reading=None):
+    def render_group(self, blocks, voice, seed, reading=None, style=''):
         """Audio for each block, from the cache where it exists; the rest in one batched call.
 
+        Each block may name its own voice (a cast line) and role; the rest use `voice`.
         Returns ([{id, file, seconds}] in the order given, how many came from the cache).
         Raises Cancelled if the reading is cancelled while its batch is being generated;
         nothing from that batch is kept.
@@ -266,7 +325,9 @@ class Narrator(object):
         import numpy as np
         import soundfile as sf
 
-        keys = [self.key_for(b['text'], voice, b.get('direction')) for b in blocks]
+        voices = [self.known_voice(b.get('voice') or voice) for b in blocks]
+        instructions = [self.instruction(style, b.get('direction'), b.get('role') or 'narration') for b in blocks]
+        keys = [self.key_for(b['text'], v, i) for b, v, i in zip(blocks, voices, instructions)]
         have = [self.cached(k) for k in keys]
         todo = [i for i, s in enumerate(have) if s is None]
         if todo:
@@ -290,8 +351,9 @@ class Narrator(object):
                     t = time.time()
                     self.generating_for = reading
                     try:
-                        wavs, sr = self.generate([blocks[i]['text'] for i in todo], voice,
-                                                 [self.instruction(voice, blocks[i].get('direction')) for i in todo])
+                        wavs, sr = self.generate([blocks[i]['text'] for i in todo],
+                                                 [self.prints[voices[i]][0] for i in todo],
+                                                 [instructions[i] for i in todo])
                     finally:
                         self.generating_for = None
                     took = time.time() - t
@@ -320,6 +382,136 @@ class Narrator(object):
         items = [{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3)}
                  for b, k, s in zip(blocks, keys, have)]
         return items, cached
+
+    # ---- the voice library: design from a description, keep, delete, preview ----------------
+
+    def _load_encoder(self):
+        """Base's speaker encoder, which turns a recording into a voice-print. Only Base has one.
+
+        Loaded once, on the first design; everything else in Base is let go at once, so what
+        stays on the card is the encoder alone, not a third model.
+        """
+        import gc
+        from qwen_tts import Qwen3TTSModel
+        from huggingface_hub import snapshot_download
+        t = time.time()
+        base = Qwen3TTSModel.from_pretrained(snapshot_download(BASE_REPO, local_files_only=True),
+                                             device_map='cuda:0', dtype=self.torch.bfloat16)
+        self.encoder = base.model.speaker_encoder
+        del base
+        gc.collect()
+        self.torch.cuda.empty_cache()
+        log('speaker encoder ready in %.1fs' % (time.time() - t))
+
+    def voice_print(self, wav, sr):
+        """A voice-print (2048 floats) from a recording at 24kHz."""
+        import numpy as np
+        from qwen_tts.core.models.modeling_qwen3_tts import mel_spectrogram
+        if self.encoder is None:
+            self._load_encoder()
+        a = np.ascontiguousarray(np.asarray(wav, dtype=np.float32))
+        mels = mel_spectrogram(self.torch.from_numpy(a).unsqueeze(0), n_fft=1024, num_mels=128,
+                               sampling_rate=24000, hop_size=256, win_size=1024, fmin=0,
+                               fmax=12000).transpose(1, 2)
+        p = next(self.encoder.parameters())
+        with self.torch.inference_mode():
+            return self.encoder(mels.to(p.device).to(p.dtype))[0].float().cpu()
+
+    def design(self, description, count=3, style=''):
+        """Candidates for a voice described in words: each is a VoiceDesign recording of
+        DESIGN_TEXT, the voice-print taken from it, and PREVIEW_TEXT read by the narrator in
+        that print -- what the voice will actually sound like. The words make a slightly
+        different speaker every time, which is why there are several; keeping one fixes it.
+        """
+        import gc
+        import shutil
+        import numpy as np
+        import soundfile as sf
+        from qwen_tts import Qwen3TTSModel
+        from huggingface_hub import snapshot_download
+        description = description.strip()[:400]
+        count = max(1, min(int(count or 3), 4))
+        cand_root = os.path.join(self.voices_dir, '_candidates')
+        with self.lock:
+            t = time.time()
+            shutil.rmtree(cand_root, ignore_errors=True)
+            os.makedirs(cand_root, exist_ok=True)
+            # The narrator steps off the card while VoiceDesign is on it. Both at once overfill
+            # 12GB, and Windows then pages GPU memory to system RAM instead of failing: the
+            # first design took two and a half minutes that way. Moving the narrator's
+            # weights out and back costs seconds.
+            self.model.model.to('cpu')
+            gc.collect()
+            self.torch.cuda.empty_cache()
+            try:
+                vd = Qwen3TTSModel.from_pretrained(snapshot_download(VOICEDESIGN_REPO, local_files_only=True),
+                                                   device_map='cuda:0', dtype=self.torch.bfloat16)
+                seed = int(time.time()) % 100000
+                self.torch.manual_seed(seed)
+                self.torch.cuda.manual_seed_all(seed)
+                wavs, sr = vd.generate_voice_design(text=[DESIGN_TEXT] * count, instruct=[description] * count,
+                                                    language='English')
+                del vd
+                gc.collect()
+                self.torch.cuda.empty_cache()
+                t_design = time.time() - t
+                prints = [self.voice_print(w, sr) for w in wavs]
+            finally:
+                gc.collect()
+                self.torch.cuda.empty_cache()
+                self.model.model.to('cuda:0')
+            previews, psr = self.generate([PREVIEW_TEXT] * count, prints,
+                                          [self.instruction(style, '', 'narration')] * count)
+            out = []
+            for k, (w, p, pv) in enumerate(zip(wavs, prints, previews)):
+                cid = 'c%d' % (k + 1)
+                d = os.path.join(cand_root, cid)
+                os.makedirs(d, exist_ok=True)
+                np.save(os.path.join(d, 'print.npy'), p.numpy().astype(np.float32))
+                sf.write(os.path.join(d, 'design.wav'), np.asarray(w, dtype=np.float32), sr)
+                sf.write(os.path.join(d, 'preview.wav'), np.asarray(pv, dtype=np.float32), psr)
+                with open(os.path.join(d, 'meta.json'), 'w', encoding='utf-8') as f:
+                    json.dump({'description': description}, f)
+                out.append({'candidate': cid, 'preview': os.path.join(d, 'preview.wav'),
+                            'design': os.path.join(d, 'design.wav')})
+        log('designed %d candidates in %.1fs (VoiceDesign %.1fs)' % (count, time.time() - t, t_design))
+        return out
+
+    def keep(self, candidate, name):
+        """A candidate becomes a saved voice, named, with its preview kept as its sample."""
+        import re
+        import shutil
+        src = os.path.join(self.voices_dir, '_candidates', os.path.basename(candidate))
+        if not os.path.isfile(os.path.join(src, 'print.npy')):
+            raise ValueError('no such candidate: %s' % candidate)
+        name = (name or '').strip()[:60] or 'Voice'
+        slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or 'voice'
+        vid, n = slug, 2
+        while os.path.exists(os.path.join(self.voices_dir, vid)) or vid in BUILTIN_VOICES:
+            vid, n = '%s-%d' % (slug, n), n + 1
+        dst = os.path.join(self.voices_dir, vid)
+        shutil.copytree(src, dst)
+        with open(os.path.join(dst, 'meta.json'), encoding='utf-8') as f:
+            meta = json.load(f)
+        meta['name'] = name
+        with open(os.path.join(dst, 'meta.json'), 'w', encoding='utf-8') as f:
+            json.dump(meta, f)
+        self.reload_voices()
+        log('kept candidate %s as voice %s' % (candidate, vid))
+        return vid
+
+    def delete_voice(self, vid):
+        import shutil
+        if vid in BUILTIN_VOICES or vid.startswith('_') or '/' in vid or '\\' in vid:
+            raise ValueError('cannot delete %s' % vid)
+        shutil.rmtree(os.path.join(self.voices_dir, vid), ignore_errors=True)
+        self.reload_voices()
+        log('deleted voice %s' % vid)
+
+    def preview(self, voice, style, reading=None):
+        """PREVIEW_TEXT in a voice and style, through the cache like any other piece."""
+        items, _ = self.render_group([{'id': 0, 'text': PREVIEW_TEXT}], voice, 1234, reading, style)
+        return os.path.join(self.cache_dir, items[0]['file']), items[0]['seconds']
 
 
 # Cancellation. A render request carries the id of the reading it belongs to; stopping the
@@ -380,13 +572,44 @@ class Handler(BaseHTTPRequestHandler):
         pass                                    # the server's own chatter is not useful here
 
     def do_GET(self):
+        n = Handler.narrator
         if self.path.startswith('/health'):
-            self._send(200, {'ready': Handler.narrator.model is not None,
+            self._send(200, {'ready': n.model is not None,
                              'model': MODEL_REPO,
-                             'voices': sorted(VOICES),
-                             'cache': Handler.narrator.cache_dir})
+                             'voices': sorted(n.prints),
+                             'cache': n.cache_dir})
+        elif self.path.startswith('/voices'):
+            self._send(200, {'voices': [n.voice_meta[v] for v in sorted(n.voice_meta,
+                                        key=lambda v: (not n.voice_meta[v]['builtin'], n.voice_meta[v]['name'].lower()))],
+                             'default': DEFAULT_VOICE})
         else:
             self._send(404, {'error': 'no such path'})
+
+    def _voice_library(self, body):
+        """Design, keep, delete and preview: the voice library behind Narrator settings."""
+        n = Handler.narrator
+        try:
+            if self.path.startswith('/design'):
+                desc = (body.get('description') or '').strip()
+                if not desc:
+                    self._send(400, {'error': 'describe the voice'})
+                    return
+                log('design requested: %d candidates, %d-char description' % (int(body.get('count') or 3), len(desc)))
+                t = time.time()
+                out = n.design(desc, body.get('count') or 3, body.get('style') or '')
+                self._send(200, {'candidates': out, 'seconds': round(time.time() - t, 1)})
+            elif self.path.startswith('/voices/keep'):
+                self._send(200, {'id': n.keep(body.get('candidate') or '', body.get('name') or '')})
+            elif self.path.startswith('/voices/delete'):
+                n.delete_voice(body.get('id') or '')
+                self._send(200, {'ok': True})
+            elif self.path.startswith('/preview'):
+                path, secs = n.preview(n.known_voice(body.get('voice') or DEFAULT_VOICE), body.get('style') or '')
+                self._send(200, {'file': path, 'seconds': secs})
+        except Exception as e:
+            import traceback
+            log('%s FAILED:\n%s' % (self.path, traceback.format_exc()))
+            self._send(500, {'error': '%s: %s' % (type(e).__name__, e)})
 
     def do_POST(self):
         length = int(self.headers.get('Content-Length') or 0)
@@ -418,17 +641,21 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
 
+        if self.path.startswith(('/design', '/voices/', '/preview')):
+            self._voice_library(body)
+            return
+
         if not self.path.startswith('/render'):
             self._send(404, {'error': 'no such path'})
             return
 
         blocks = body.get('blocks') or []
-        voice = body.get('voice') or DEFAULT_VOICE
+        # A voice that has been deleted since the page last heard falls back to the default
+        # rather than failing the reading.
+        voice = Handler.narrator.known_voice(body.get('voice') or DEFAULT_VOICE)
+        style = body.get('style') or ''
         seed = int(body.get('seed', 1234))
         size = int(body.get('group_size', GROUP_SIZE))
-        if voice not in VOICES:
-            self._send(400, {'error': 'unknown voice %r' % voice, 'voices': sorted(VOICES)})
-            return
         blocks = [b for b in blocks if (b.get('text') or '').strip()]
         if not blocks:
             self._send(400, {'error': 'no blocks with text'})
@@ -455,7 +682,7 @@ class Handler(BaseHTTPRequestHandler):
                         % (reading, len(blocks) - at))
                     self._send(200, {'items': items, 'cancelled': True})
                     return
-                got, cached = Handler.narrator.render_group(blocks[at:at + size], voice, seed, reading)
+                got, cached = Handler.narrator.render_group(blocks[at:at + size], voice, seed, reading, style)
                 items.extend(got)
                 from_cache += cached
         except Cancelled:
