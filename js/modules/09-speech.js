@@ -445,7 +445,7 @@ function narrLog(msg) {
 
 /** "id:chars" for each piece of a batch, for the trace. */
 function batchSummary(batch) {
-    return batch.map(p => p.id + ':' + p.text.length + 'ch').join(' ');
+    return batch.map(p => p.id + ':' + p.text.length + 'ch' + (p.direction ? '[' + p.direction + ']' : '')).join(' ');
 }
 
 /** How much audio is already queued and paid for. */
@@ -483,7 +483,7 @@ async function renderNarration(base, batch, reading) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                blocks: batch.map(p => ({ id: p.id, text: p.text })),
+                blocks: batch.map(p => ({ id: p.id, text: p.text, direction: p.direction || '' })),
                 reading: reading,
                 group_size: batch.length
             })
@@ -556,8 +556,89 @@ function blockPieces(text) {
 }
 
 /**
+ * Direction (docs/qwen-tts-plan.md 4, slice 3): how the spoken lines in a piece should sound,
+ * read from the text around them. '' is plain narration, the narrator's standing style.
+ *
+ * Per paragraph rather than per utterance. Fiction gives each speaker their own paragraph --
+ * the line, the "she snapped", the gesture -- so the paragraph is the unit a direction belongs
+ * to, and keeping it whole keeps the intonation that runs across its sentences. Cutting out
+ * "he said." to voice it apart would lose that and leave fragments too short to sound right.
+ *
+ * Heuristics first, as the plan says; a language model reading the scene is the upgrade if
+ * these prove the ceiling. The verb or adverb that tags a line decides; failing those, the
+ * line's own punctuation. Only outside the quotes, so a character saying "whispered" is not a
+ * whisper.
+ */
+const DIRECTION_VERBS = [
+    [/\b(shout|shouted|shouting|yell|yelled|roar|roared|bellow|bellowed|scream|screamed|cried out)\b/i, 'shouted, loud and forceful'],
+    [/\b(whisper|whispered|whispering|murmur|murmured)\b/i, 'whispered, hushed'],
+    [/\b(snap|snapped|bark|barked|spat|growl|growled|hiss|hissed|snarl|snarled)\b/i, 'sharp and angry'],
+    [/\b(mutter|muttered|grumble|grumbled)\b/i, 'muttered, low and grudging'],
+    [/\b(laugh|laughed|laughing|chuckle|chuckled|giggle|giggled)\b/i, 'amused, with a smile in the voice'],
+    [/\b(sob|sobbed|sobbing|wept)\b/i, 'tearful, the voice breaking'],
+    [/\b(sigh|sighed)\b/i, 'weary, with a sigh'],
+    [/\b(plead|pleaded|beg|begged|implored)\b/i, 'pleading, earnest'],
+    [/\b(gasp|gasped)\b/i, 'breathless, shocked'],
+    [/\b(demand|demanded|insisted)\b/i, 'insistent'],
+    [/\b(stammer|stammered|stuttered)\b/i, 'hesitant, stumbling']
+];
+const DIRECTION_ADVERBS = [
+    [/\b(quietly|softly|gently)\b/i, 'quiet and soft'],
+    [/\b(angrily|furiously|savagely)\b/i, 'angry'],
+    [/\b(coldly|icily|flatly)\b/i, 'cold and clipped'],
+    [/\b(dryly|drily|wryly)\b/i, 'dry and understated'],
+    [/\b(sadly|mournfully|miserably)\b/i, 'sad'],
+    [/\b(nervously|anxiously|uneasily)\b/i, 'nervous'],
+    [/\b(excitedly|eagerly)\b/i, 'excited'],
+    [/\b(wearily|tiredly)\b/i, 'weary'],
+    [/\b(sarcastically|mockingly)\b/i, 'sarcastic'],
+    [/\b(urgently|hurriedly)\b/i, 'urgent']
+];
+
+function narrationDirection(text, el) {
+    const quotes = text.match(/[“"][^”"]+[”"]/g) || [];
+    if (!quotes.length) {
+        // Mostly italic and no dialogue: a character's thought, in most novels.
+        try {
+            let italic = 0;
+            if (el) el.querySelectorAll('em, i').forEach(n => { italic += (n.textContent || '').length; });
+            if (italic > 0 && italic >= 0.7 * text.length) return 'thought';
+        } catch (e) {}
+        return '';
+    }
+    // Only the tag touching each quotation -- '"...," the drone muttered' -- back to the last
+    // sentence end before it and on to the next after it. Searching the whole paragraph made
+    // "quietly snoring" a soft line, and a king who screams later in the paragraph turned his
+    // captor's calm words into a shout.
+    // A tag is part of the quotation's sentence: after it, lowercase ('" the drone muttered')
+    // or a name then a speech verb ('" Ferbin protested angrily'); before it, a clause that
+    // leads in with a comma or colon. The next sentence is not a tag -- '"Hmm." She relaxed
+    // and was quietly snoring' is not a soft line.
+    const SPEECH = /^\s*(\S+\s+){0,3}?(said|asked|replied|protested|continued|began|added|told|cried|called|answered|admitted|agreed|whispered|murmured|muttered|shouted|yelled|snapped|hissed|laughed|sighed|gasped|wept|sobbed|pleaded|begged|demanded|insisted|stammered|growled|barked|roared|screamed)\b/i;
+    const tags = [];
+    const re = /[“"][^”"]+[”"]/g;
+    let m;
+    while ((m = re.exec(text))) {
+        const before = text.slice(Math.max(0, m.index - 60), m.index).split(/[.!?…”"]\s/).pop();
+        if (/[,:]\s*$/.test(before)) tags.push(before);
+        const after = text.slice(m.index + m[0].length, m.index + m[0].length + 60).split(/[.!?…“"]/)[0];
+        if (/^\s*[a-z]/.test(after) || SPEECH.test(after)) tags.push(after);
+    }
+    const outside = tags.join(' | ');
+    const found = [];
+    for (const [re2, words] of DIRECTION_VERBS) { if (re2.test(outside)) { found.push(words); break; } }
+    for (const [re2, words] of DIRECTION_ADVERBS) { if (re2.test(outside)) { found.push(words); break; } }
+    if (!found.length) {
+        const spoken = quotes.join(' ');
+        if (/!/.test(spoken)) found.push('emphatic');
+        else if (/(—|–|\.\.\.|…)\s*[”"]/.test(spoken)) found.push('breaking off');
+    }
+    return found.join(', ');
+}
+
+/**
  * Up to `maxBatches` batches of pieces, starting with the block all[from]. Each piece carries
- * its block's document index as `at`.
+ * its block's document index as `at`, and its direction.
  */
 function narrationBatches(all, from, maxBatches) {
     const pieces = [];
@@ -566,7 +647,9 @@ function narrationBatches(all, from, maxBatches) {
         const at = narrationDocIndex(all[i], i);
         const text = applyTTSOverrides((all[i].innerText || '').trim());
         if (!text) continue;
-        blockPieces(text).forEach((t, k) => pieces.push({ el: all[i], at: at, id: at * 100 + k, text: t }));
+        blockPieces(text).forEach((t, k) => pieces.push({
+            el: all[i], at: at, id: at * 100 + k, text: t, direction: narrationDirection(t, all[i])
+        }));
     }
     const batches = [];
     for (let k = 0; k < pieces.length && batches.length < maxBatches; k += NARRATION_BATCH) {
@@ -719,7 +802,7 @@ async function narrateSelection(base, sel) {
     const i = all.indexOf(sel.el);
     const at = narrationDocIndex(sel.el, i < 0 ? 0 : i);
     const pieces = blockPieces(applyTTSOverrides(sel.text))
-        .map((t, k) => ({ el: sel.el, at: at, id: at * 100 + 50 + k, text: t }));
+        .map((t, k) => ({ el: sel.el, at: at, id: at * 100 + 50 + k, text: t, direction: narrationDirection(t, null) }));
     const reading = ++_narrationReading;
     _narrationBase = base;
     _narrActive = true;

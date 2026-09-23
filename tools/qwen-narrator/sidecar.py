@@ -47,11 +47,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MODEL_REPO = 'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'
 
 # How the narrator reads. The voice is not described here -- it comes from the voice-print.
-NARRATION_CRAFT = (
+NARRATION_BASE = (
     "Narrate as an accomplished audiobook reader of literary fiction: measured and "
     "unhurried, phrasing that follows the sense of the sentence, understated rather than "
-    "performed. Give the spoken lines a light, distinct colour without acting them out."
+    "performed."
 )
+NARRATION_CRAFT = NARRATION_BASE + " Give the spoken lines a light, distinct colour without acting them out."
+
+# Direction (slice 3): the page reads how a paragraph's spoken lines should sound from the text
+# around them -- "whispered, hushed", "sharp and angry" -- and it is added to the instruction
+# for that paragraph only. 'thought' is a paragraph that is a character's private thought.
+DIRECTED = NARRATION_BASE + (" Voice the lines in quotation marks as %s, clearly but with "
+                             "restraint, and keep the narration around them measured.")
+THOUGHT = NARRATION_BASE + " This passage is a character's private thought: read it quieter and more inward."
 HERE = os.path.dirname(os.path.abspath(__file__))
 # A voice is a voice-print file beside this script plus the style it narrates in. Changing
 # either changes every cache key that used it, which is intended: the audio on disk no
@@ -191,20 +199,30 @@ class Narrator(object):
 
         tok.decode = decode_each
 
-    def key_for(self, text, voice):
-        """One piece's cache key: the model, the voice, the style and the text."""
+    @staticmethod
+    def instruction(voice, direction):
+        """The full instruction for one piece: the voice's style, or a directed version of it."""
+        direction = (direction or '').strip()[:80]
+        if not direction:
+            return VOICES[voice]['style']
+        if direction == 'thought':
+            return THOUGHT
+        return DIRECTED % direction
+
+    def key_for(self, text, voice, direction=''):
+        """One piece's cache key: the model, the voice, the instruction and the text."""
         h = hashlib.sha256()
         h.update(MODEL_REPO.encode('utf-8'))
         h.update(b'\x00')
         h.update(self.prints[voice][1].encode('utf-8'))
         h.update(b'\x00')
-        h.update(VOICES[voice]['style'].encode('utf-8'))
+        h.update(self.instruction(voice, direction).encode('utf-8'))
         h.update(b'\x00')
         h.update(text.encode('utf-8'))
         return h.hexdigest()[:20]
 
-    def generate(self, texts, voice):
-        """One batched generation with the voice-print pinned and the style instruction.
+    def generate(self, texts, voice, instructions=None):
+        """One batched generation with the voice-print pinned and an instruction per piece.
 
         qwen-tts has no public call for this pairing -- generate_custom_voice takes only its
         nine named speakers, generate_voice_clone takes a voice-print but no instruction --
@@ -217,8 +235,11 @@ class Narrator(object):
         prompt = dict(ref_code=[None] * n, ref_spk_embedding=[vprint] * n,
                       x_vector_only_mode=[True] * n, icl_mode=[False] * n)
         input_ids = m._tokenize_texts([m._build_assistant_text(t) for t in texts])
-        style = m._tokenize_texts([m._build_instruct_text(VOICES[voice]['style'])])[0]
-        codes, _ = m.model.generate(input_ids=input_ids, instruct_ids=[style] * n,
+        instructions = instructions or [VOICES[voice]['style']] * n
+        tokenized = {}
+        for i in set(instructions):
+            tokenized[i] = m._tokenize_texts([m._build_instruct_text(i)])[0]
+        codes, _ = m.model.generate(input_ids=input_ids, instruct_ids=[tokenized[i] for i in instructions],
                                     voice_clone_prompt=prompt, languages=['English'] * n,
                                     non_streaming_mode=True, **m._merge_generate_kwargs())
         return m.model.speech_tokenizer.decode([{'audio_codes': c} for c in codes])
@@ -245,7 +266,7 @@ class Narrator(object):
         import numpy as np
         import soundfile as sf
 
-        keys = [self.key_for(b['text'], voice) for b in blocks]
+        keys = [self.key_for(b['text'], voice, b.get('direction')) for b in blocks]
         have = [self.cached(k) for k in keys]
         todo = [i for i, s in enumerate(have) if s is None]
         if todo:
@@ -269,7 +290,8 @@ class Narrator(object):
                     t = time.time()
                     self.generating_for = reading
                     try:
-                        wavs, sr = self.generate([blocks[i]['text'] for i in todo], voice)
+                        wavs, sr = self.generate([blocks[i]['text'] for i in todo], voice,
+                                                 [self.instruction(voice, blocks[i].get('direction')) for i in todo])
                     finally:
                         self.generating_for = None
                     took = time.time() - t
@@ -416,7 +438,8 @@ class Handler(BaseHTTPRequestHandler):
         started = time.time()
         log('render request: reading %d, %d pieces [%s]' % (
             reading, len(blocks),
-            ' '.join('%s:%dch' % (b.get('id'), len(b.get('text') or '')) for b in blocks)))
+            ' '.join('%s:%dch%s' % (b.get('id'), len(b.get('text') or ''),
+                                    '[%s]' % b['direction'] if b.get('direction') else '') for b in blocks)))
         if is_cancelled(reading):
             log('reading %d already cancelled, nothing rendered' % reading)
             self._send(200, {'items': [], 'cancelled': True})
