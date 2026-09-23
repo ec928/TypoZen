@@ -476,7 +476,7 @@ async function renderNarration(base, batch, reading) {
     const items = data.items || [];
     narrLog('answer reading ' + reading + ' after ' + Math.round(performance.now() - sent) + 'ms: ' +
             items.length + '/' + batch.length + ' items' + (data.cancelled ? ', CANCELLED' : '') +
-            (data.groups_from_cache ? ', from cache' : '') +
+            (data.from_cache ? ', ' + data.from_cache + ' from cache' : '') +
             ', audio ' + items.map(i => (i.seconds || 0).toFixed(1) + 's').join(' '));
     if (data.cancelled || items.length !== batch.length) return [];
     return batch.map((p, i) => {
@@ -502,12 +502,12 @@ async function renderNarration(base, batch, reading) {
  * split, at sentence ends, never inside a sentence. Cutting pieces short to start sooner is
  * what made the voice change from sentence to sentence; do not bring that back.
  *
- * Groups are fixed by the document, not by where Play was pressed: group n is the blocks
- * whose index falls in [8n, 8n + 8), and its pieces go to the model in batches of eight.
- * The same text therefore always goes in the same batch, which is what lets the cache match
- * on a restart, a replay, or a page rendered ahead of the reader.
+ * Batches start where reading starts. The narrator caches each piece on its own and never
+ * renders one it already has, so a restart, a replay or a page rendered ahead reuses what
+ * exists whichever batch made it. (Batches used to be fixed groups of eight blocks so that
+ * a re-render matched the cache exactly. Starting near the end of a group then rendered the
+ * whole group, mostly unheard, and waited for the next: 117s to first sound.)
  */
-const NARRATION_GROUP = 8;          // blocks in a group
 const NARRATION_BATCH = 8;          // pieces the model renders in one call
 const NARRATION_PIECE_CAP = 400;    // characters; only longer paragraphs are split
 
@@ -532,36 +532,22 @@ function blockPieces(text) {
 }
 
 /**
- * The batches for up to `maxGroups` whole groups, starting with the group that holds
- * all[from]. Each piece carries its block's document index as `at`, so the caller can
- * tell which ones lie before the place reading starts.
+ * Up to `maxBatches` batches of pieces, starting with the block all[from]. Each piece carries
+ * its block's document index as `at`.
  */
-function narrationBatches(all, from, maxGroups) {
-    const groupStart = Math.floor(narrationDocIndex(all[from], from) / NARRATION_GROUP) * NARRATION_GROUP;
-    let i = from;
-    while (i > 0 && narrationDocIndex(all[i - 1], i - 1) >= groupStart) i--;
-
-    const batches = [];
-    let pieces = [];
-    let group = null;
-    let groups = 0;
-    const close = () => {
-        for (let k = 0; k < pieces.length; k += NARRATION_BATCH) batches.push(pieces.slice(k, k + NARRATION_BATCH));
-        pieces = [];
-    };
-    for (; i < all.length; i++) {
+function narrationBatches(all, from, maxBatches) {
+    const pieces = [];
+    const limit = maxBatches * NARRATION_BATCH;
+    for (let i = from; i < all.length && pieces.length < limit; i++) {
         const at = narrationDocIndex(all[i], i);
-        const g = Math.floor(at / NARRATION_GROUP);
-        if (g !== group) {
-            close();
-            if (++groups > maxGroups) return batches;   // only whole groups: a partial one would miss the cache
-            group = g;
-        }
         const text = applyTTSOverrides((all[i].innerText || '').trim());
         if (!text) continue;
         blockPieces(text).forEach((t, k) => pieces.push({ el: all[i], at: at, id: at * 100 + k, text: t }));
     }
-    close();
+    const batches = [];
+    for (let k = 0; k < pieces.length && batches.length < maxBatches; k += NARRATION_BATCH) {
+        batches.push(pieces.slice(k, k + NARRATION_BATCH));
+    }
     return batches;
 }
 
@@ -616,13 +602,13 @@ async function startQwenNarration(base) {
     narrLog('---- narrate: start block ' + startAt + ' (' + why + ', DOM position ' + at + ' of ' + all.length +
             '; DOM holds blocks ' + narrationDocIndex(all[0], 0) + '..' + narrationDocIndex(all[all.length - 1], all.length - 1) +
             ', layout ' + (typeof isPaginatedLayout === 'function' && isPaginatedLayout() ? 'pages' : 'scroll') + ')');
-    narrLog('batches: ' + batches.length + ' in 15 groups, playing from batch ' + first + '; ' +
+    narrLog('batches: ' + batches.length + ', playing from batch ' + first + '; ' +
             batches.map((b, i) => '#' + i + '[' + b[0].at + '..' + b[b.length - 1].at + ', ' + b.length + 'p, max ' +
                 Math.max.apply(null, b.map(p => p.text.length)) + 'ch]').join(' '));
     if (first < 0) { narrLog('nothing to narrate from here'); return; }
     const queue = batches.slice(first);
-    // A batch can hold paragraphs from before the starting one; they are rendered with it,
-    // because the batch has to match the cache, but not played.
+    // Batches begin at the starting block, so this passes everything; it stays so that
+    // nothing from before where the reader asked to start can ever be played.
     const playable = chunks => chunks.filter(c => c.at >= startAt);
 
     const reading = ++_narrationReading;

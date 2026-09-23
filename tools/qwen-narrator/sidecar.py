@@ -4,20 +4,20 @@ Resident because there is no streaming mode in qwen-tts and loading the weights 
 seconds; paying that once per session is the difference between three seconds to first
 sound and eleven.
 
-Renders in groups rather than one utterance at a time, for two measured reasons:
+Renders in batches rather than one piece at a time: a batch of eight paragraphs runs at
+about 0.4-0.65x realtime against 2.1x one at a time (measured 2026-09-23, with each clip
+decoded separately -- see _decode_clips_separately), so batching is what makes narration
+outrun listening at all.
 
-  * a batch of eight paragraphs runs at about 0.65x realtime against 2.1x one at a time
-    (VoiceDesign, measured 2026-09-23, with each clip decoded separately -- see
-    _decode_clips_separately), so grouping is what makes narration outrun listening at
-    all; and
-  * batch composition is part of the input -- the same sentence rendered with different
-    neighbours is a different take -- so a group has to be a fixed, repeatable set if the
-    cache is ever to match a re-render.
+The cache is per piece: its key is the model, the voice-print, the style and the piece's
+text. A piece already on disk is never rendered again, whatever batch asks for it, so a
+batch can start wherever the reader does and replay, restart and render-ahead all reuse
+what exists. The price: a piece's take depends on the batch it was rendered in, so
+clearing the cache and narrating again gives a different take of the same voice.
 
-A group is therefore N consecutive blocks of the document, and its cache key is the hash of
-everything that went into it: the model, the voice, the seed, and every block's text in
-order. Change any of that and the key changes; change nothing and the audio on disk is
-exactly what would be produced again.
+This replaced a cache keyed on fixed groups of eight blocks, which kept re-renders
+identical but made a start near the end of a group render the whole group -- mostly text
+nobody would hear -- and then wait for the next one: 117s to first sound on 2026-09-23.
 
   GET  /health                     is the model up
   POST /render                     {"blocks":[{"id":1,"text":"..."}], "voice":"...", ...}
@@ -158,8 +158,8 @@ class Narrator(object):
 
         tok.decode = decode_each
 
-    def key_for(self, texts, voice, seed):
-        """Everything that decides the audio, and nothing that does not."""
+    def key_for(self, text, voice):
+        """One piece's cache key: the model, the voice, the style and the text."""
         h = hashlib.sha256()
         h.update(MODEL_REPO.encode('utf-8'))
         h.update(b'\x00')
@@ -167,11 +167,8 @@ class Narrator(object):
         h.update(b'\x00')
         h.update(VOICES[voice]['style'].encode('utf-8'))
         h.update(b'\x00')
-        h.update(str(seed).encode('utf-8'))
-        for t in texts:
-            h.update(b'\x00')
-            h.update(t.encode('utf-8'))
-        return h.hexdigest()[:16]
+        h.update(text.encode('utf-8'))
+        return h.hexdigest()[:20]
 
     def generate(self, texts, voice):
         """One batched generation with the voice-print pinned and the style instruction.
@@ -194,68 +191,67 @@ class Narrator(object):
         return m.model.speech_tokenizer.decode([{'audio_codes': c} for c in codes])
 
     def cached(self, key):
-        """The items for a group already on disk, or None."""
-        manifest_path = os.path.join(self.cache_dir, key + '.json')
-        if not os.path.exists(manifest_path):
+        """Seconds of audio for a piece already on disk, or None."""
+        path = os.path.join(self.cache_dir, key + '.wav')
+        if not os.path.exists(path):
             return None
         try:
-            with open(manifest_path, encoding='utf-8') as f:
-                items = json.load(f)
-            if all(os.path.exists(os.path.join(self.cache_dir, i['file'])) for i in items):
-                return items
+            import soundfile as sf
+            return sf.info(path).duration
         except Exception as e:
-            log('cache entry %s unreadable (%s), re-rendering' % (key, e))
-        return None
+            log('cached piece %s unreadable (%s), rendering again' % (key, e))
+            return None
 
     def render_group(self, blocks, voice, seed):
-        """One batched call. Returns [{id, file, seconds}] and whether it was cached."""
+        """Audio for each block, from the cache where it exists; the rest in one batched call.
+
+        Returns ([{id, file, seconds}] in the order given, how many came from the cache).
+        """
         import numpy as np
         import soundfile as sf
 
-        texts = [b['text'] for b in blocks]
-        key = self.key_for(texts, voice, seed)
-        items = self.cached(key)
-        if items is not None:
-            log('group %s from cache: %d pieces, %.1fs of audio'
-                % (key, len(items), sum(i.get('seconds', 0) for i in items)))
-            return items, True
-        waited = time.time()
-
-        with self.lock:
-            # Asked for twice at once -- Narrate pressed on the page being rendered ahead --
-            # the second request waits here and must take the first one's audio, not
-            # render the same group again.
-            items = self.cached(key)
-            if items is not None:
-                log('group %s rendered by another request while this one waited %.1fs'
-                    % (key, time.time() - waited))
-                return items, True
-            if time.time() - waited > 0.5:
-                log('group %s waited %.1fs for the model' % (key, time.time() - waited))
-
-            self.torch.manual_seed(seed)
-            self.torch.cuda.manual_seed_all(seed)
-            t = time.time()
-            wavs, sr = self.generate(texts, voice)
-            took = time.time() - t
-
-            items, total = [], 0.0
-            for block, wav in zip(blocks, wavs):
-                a = np.asarray(wav, dtype=np.float32)
-                name = '%s-%d.wav' % (key, block['id'])
-                sf.write(os.path.join(self.cache_dir, name), a, sr)
-                secs = len(a) / float(sr)
-                total += secs
-                items.append({'id': block['id'], 'file': name, 'seconds': round(secs, 3)})
-
-            # The manifest last, so a group is only ever found complete.
-            with open(os.path.join(self.cache_dir, key + '.json'), 'w', encoding='utf-8') as f:
-                json.dump(items, f)
-        log('group %s rendered: %d pieces, %.1fs of audio in %.1fs (%.2fx realtime, decode %.1fs); clips %s'
-            % (key, len(blocks), total, took, took / total if total else 0,
-               getattr(self, 'last_decode_s', -1),
-               ' '.join('%d:%.1fs' % (i['id'], i['seconds']) for i in items)))
-        return items, False
+        keys = [self.key_for(b['text'], voice) for b in blocks]
+        have = [self.cached(k) for k in keys]
+        todo = [i for i, s in enumerate(have) if s is None]
+        if todo:
+            waited = time.time()
+            with self.lock:
+                # Asked for twice at once -- Narrate pressed on text being rendered ahead --
+                # the second request waits here, then takes whatever the first one made
+                # rather than rendering it again.
+                for i in todo:
+                    have[i] = self.cached(keys[i])
+                before = len(todo)
+                todo = [i for i in todo if have[i] is None]
+                if time.time() - waited > 0.5:
+                    log('waited %.1fs for the model; %d of %d pieces were rendered meanwhile'
+                        % (time.time() - waited, before - len(todo), before))
+                if todo:
+                    self.torch.manual_seed(seed)
+                    self.torch.cuda.manual_seed_all(seed)
+                    t = time.time()
+                    wavs, sr = self.generate([blocks[i]['text'] for i in todo], voice)
+                    took = time.time() - t
+                    total = 0.0
+                    for i, wav in zip(todo, wavs):
+                        a = np.asarray(wav, dtype=np.float32)
+                        path = os.path.join(self.cache_dir, keys[i] + '.wav')
+                        # Written aside and moved into place, so a piece is never found
+                        # half-written by a request that checks the cache meanwhile.
+                        sf.write(path + '.part', a, sr, format='WAV')
+                        os.replace(path + '.part', path)
+                        have[i] = len(a) / float(sr)
+                        total += have[i]
+                    log('rendered %d pieces: %.1fs of audio in %.1fs (%.2fx realtime, decode %.1fs); clips %s'
+                        % (len(todo), total, took, took / total if total else 0,
+                           getattr(self, 'last_decode_s', -1),
+                           ' '.join('%s:%.1fs' % (blocks[i]['id'], have[i]) for i in todo)))
+        cached = len(blocks) - len(todo)
+        if cached:
+            log('%d of %d pieces from the cache' % (cached, len(blocks)))
+        items = [{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3)}
+                 for b, k, s in zip(blocks, keys, have)]
+        return items, cached
 
 
 # Cancellation. A render request carries the id of the reading it belongs to; stopping the
@@ -378,7 +374,7 @@ class Handler(BaseHTTPRequestHandler):
         if Handler.narrator.model is None:
             log('render request before the model is ready')
 
-        items, cached_groups, rendered_groups = [], 0, 0
+        items, from_cache = [], 0
         try:
             for at in range(0, len(blocks), size):
                 if is_cancelled(reading):
@@ -386,24 +382,18 @@ class Handler(BaseHTTPRequestHandler):
                         % (reading, len(blocks) - at))
                     self._send(200, {'items': items, 'cancelled': True})
                     return
-                group = blocks[at:at + size]
-                got, was_cached = Handler.narrator.render_group(group, voice, seed)
+                got, cached = Handler.narrator.render_group(blocks[at:at + size], voice, seed)
                 items.extend(got)
-                if was_cached:
-                    cached_groups += 1
-                else:
-                    rendered_groups += 1
+                from_cache += cached
         except Exception as e:
             import traceback
             log('render FAILED for reading %d:\n%s' % (reading, traceback.format_exc()))
             self._send(500, {'error': '%s: %s' % (type(e).__name__, e)})
             return
 
-        log('render answered: reading %d, %d items in %.1fs (%d cached, %d rendered)'
-            % (reading, len(items), time.time() - started, cached_groups, rendered_groups))
-        self._send(200, {'items': items, 'voice': voice, 'seed': seed,
-                         'groups_from_cache': cached_groups,
-                         'groups_rendered': rendered_groups})
+        log('render answered: reading %d, %d items in %.1fs (%d from the cache)'
+            % (reading, len(items), time.time() - started, from_cache))
+        self._send(200, {'items': items, 'voice': voice, 'seed': seed, 'from_cache': from_cache})
 
 
 # Idle shutdown. TypoZen stops this when it closes, but a crash or a killed process skips
