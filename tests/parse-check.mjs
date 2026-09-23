@@ -89,6 +89,11 @@ console.log('--- no stray control characters in the sources ---');
         const found = [];
         for (let i = 0; i < text.length; i++) {
             const c = text.charCodeAt(i);
+            // ESC then '[' is an ANSI colour code, not damage: the vendored compromise
+            // library (08b-compromise.js) colours its debug printout that way, in ordinary
+            // string literals. No backslash mangling produces it, and without this the whole
+            // gate failed on that file from v0.3.15 on.
+            if (c === 27 && text[i + 1] === '[') continue;
             // Tab (9), LF (10), CR (13) are legitimate; nothing else below 32 is.
             if (c < 9 || (c > 13 && c < 32) || c === 11 || c === 12) {
                 found.push('line ' + (text.slice(0, i).split('\n').length) +
