@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 
 namespace TypoZen
 {
@@ -57,6 +61,135 @@ namespace TypoZen
         public static string CacheDir(string cacheDir)
         {
             return Path.Combine(RootDir(cacheDir), "narration");
+        }
+
+        // ---- Narrator settings and each book's cast ---------------------------------------
+        //
+        // narrator.json in the extension folder holds the narrator's voice and the reader's
+        // style words; cast\<hash of the book's path>.json holds a book's character -> voice
+        // choices and the names they were shown under. Both are sent to the page, which puts
+        // them on every request it makes, before each narration and whenever they change.
+
+        public sealed class Settings
+        {
+            public string Voice = "";
+            public string Style = "";
+        }
+
+        public sealed class Cast
+        {
+            public Dictionary<string, string> Voices = new Dictionary<string, string>();
+            public Dictionary<string, string> Names = new Dictionary<string, string>();
+        }
+
+        private static string SettingsPath(string cacheDir) { return Path.Combine(RootDir(cacheDir), "narrator.json"); }
+
+        private static string CastPath(string cacheDir, string book)
+        {
+            using (var sha = SHA1.Create())
+            {
+                byte[] h = sha.ComputeHash(Encoding.UTF8.GetBytes((book ?? "").ToLowerInvariant()));
+                return Path.Combine(RootDir(cacheDir), "cast", BitConverter.ToString(h).Replace("-", "").Substring(0, 16) + ".json");
+            }
+        }
+
+        private static Dictionary<string, object> ReadJson(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                    return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(path, Encoding.UTF8));
+            }
+            catch { }
+            return new Dictionary<string, object>();
+        }
+
+        private static Dictionary<string, string> StringMap(Dictionary<string, object> d, string key)
+        {
+            var map = new Dictionary<string, string>();
+            object o;
+            var inner = d.TryGetValue(key, out o) ? o as Dictionary<string, object> : null;
+            if (inner != null) foreach (var kv in inner) if (kv.Value is string) map[kv.Key] = (string)kv.Value;
+            return map;
+        }
+
+        public static Settings LoadSettings(string cacheDir)
+        {
+            var d = ReadJson(SettingsPath(cacheDir));
+            object v, s;
+            return new Settings
+            {
+                Voice = d.TryGetValue("voice", out v) ? (v as string ?? "") : "",
+                Style = d.TryGetValue("style", out s) ? (s as string ?? "") : ""
+            };
+        }
+
+        public static void SaveSettings(string cacheDir, Settings s)
+        {
+            var d = new Dictionary<string, object> { { "voice", s.Voice ?? "" }, { "style", s.Style ?? "" } };
+            File.WriteAllText(SettingsPath(cacheDir), new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
+        }
+
+        public static Cast LoadCast(string cacheDir, string book)
+        {
+            if (string.IsNullOrEmpty(book)) return new Cast();
+            var d = ReadJson(CastPath(cacheDir, book));
+            return new Cast { Voices = StringMap(d, "cast"), Names = StringMap(d, "names") };
+        }
+
+        public static void SaveCast(string cacheDir, string book, Cast c)
+        {
+            if (string.IsNullOrEmpty(book)) return;
+            string path = CastPath(cacheDir, book);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var d = new Dictionary<string, object> { { "book", book }, { "cast", c.Voices }, { "names", c.Names } };
+            File.WriteAllText(path, new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
+        }
+
+        /// <summary>What the page is sent: the narrator's voice and style, the reading speed, and this book's cast.</summary>
+        public static string PageSettingsJson(string cacheDir, string book, double speed)
+        {
+            var s = LoadSettings(cacheDir);
+            var d = new Dictionary<string, object>
+            {
+                { "voice", s.Voice }, { "style", s.Style }, { "speed", speed },
+                { "cast", LoadCast(cacheDir, book).Voices }
+            };
+            return new JavaScriptSerializer().Serialize(d);
+        }
+
+        /// <summary>
+        /// One request to the narrator, returning its JSON reply. A reply with an error status
+        /// throws with the narrator's own error text rather than a bare "500".
+        /// </summary>
+        public static string Call(string method, string path, string json, int timeoutMs)
+        {
+            var req = (HttpWebRequest)WebRequest.Create(BaseUrl + path);
+            req.Method = method;
+            req.Timeout = timeoutMs;
+            req.ReadWriteTimeout = timeoutMs;
+            if (json != null)
+            {
+                byte[] body = Encoding.UTF8.GetBytes(json);
+                req.ContentType = "application/json";
+                req.ContentLength = body.Length;
+                using (var s = req.GetRequestStream()) s.Write(body, 0, body.Length);
+            }
+            try
+            {
+                using (var resp = (HttpWebResponse)req.GetResponse())
+                using (var r = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                    return r.ReadToEnd();
+            }
+            catch (WebException ex)
+            {
+                if (ex.Response == null) throw;
+                string text;
+                using (var r = new StreamReader(ex.Response.GetResponseStream(), Encoding.UTF8)) text = r.ReadToEnd();
+                object err;
+                var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(text);
+                throw new Exception(d != null && d.TryGetValue("error", out err) ? Convert.ToString(err) : text);
+            }
         }
 
         private static string PythonPath(string cacheDir)

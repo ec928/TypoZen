@@ -1044,6 +1044,15 @@
                         }
                     } catch (eN) {}
                 }
+                else if (msg.startsWith("cmd:narrator_settings:")) {
+                    // Voice, style, speed and this book's cast, from Narrator settings.
+                    try { if (typeof window.setNarratorSettings === 'function') window.setNarratorSettings(msg.substring(22)); } catch (eS) {}
+                }
+                else if (msg === "cmd:narrator_cast_scan") {
+                    // Narrator settings asks who speaks in this book; the answer goes back as
+                    // host_narrator_cast.
+                    try { if (typeof window.narrationCastScan === 'function') window.narrationCastScan(); } catch (eC) {}
+                }
                 else if (msg.startsWith("cmd:narrator_status:")) {
                     // Starting the narrator can take a minute the first time. Say so, rather
                     // than leave a menu click looking like it did nothing.

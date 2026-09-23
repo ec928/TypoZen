@@ -84,6 +84,7 @@
     <Compile Include="Extensions.cs" />
     <Compile Include="Lexicon.cs" />
     <Compile Include="QwenNarrator.cs" />
+    <Compile Include="NarratorDialog.cs" />
     <Compile Include="SpellCheck.cs" />
     <Compile Include="TypoZen_Launch.cs" />
     <Compile Include="TypoZen_App.cs">

@@ -459,6 +459,8 @@
                                 <MenuItem x:Name="mQwenVoice" Header="_Qwen Narrator (northern English)"
                                           IsCheckable="True" Visibility="Collapsed"
                                           ToolTip="Audiobook narration rendered on this PC's graphics card. Text not yet rendered takes about a minute to start; anything rendered before plays at once."/>
+                                <MenuItem x:Name="mNarratorSettings" Header="Narrator _Settings..." Visibility="Collapsed"
+                                          ToolTip="The Qwen narrator's voice and how it reads, new voices from a description, and voices for this book's characters."/>
                                 <Separator/>
                                 <MenuItem x:Name="mWindowsVoices" Header="Windows _Installed Voices"/>
                                 <Separator/>

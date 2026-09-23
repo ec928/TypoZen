@@ -371,6 +371,9 @@ function playRenderedChunk(url) {
         window.__lastChunkUrl = url;          // what is actually playing, for tests and debug.log
         if (_renderedAudio) { _renderedAudio.pause(); _renderedAudio = null; }
         const a = new Audio(url);
+        // The reading speed from Configure Speed. Chromium keeps the pitch while changing
+        // the rate, so faster is brisker, not squeakier.
+        a.playbackRate = _narrSpeed;
         _renderedAudio = a;
         const began = performance.now();
         a.onplaying = () => {
@@ -414,6 +417,28 @@ let _narrationBase = '';
 let _qwenPending = null;        // a selection to narrate once the host says the narrator is up
 
 /**
+ * The narrator's settings, from the host (File > Read Aloud > Narrator settings): the
+ * narrator's voice, the reader's own style words, the reading speed, and this book's cast --
+ * character key to voice id. Sent before every narration and whenever they change.
+ */
+let _narrVoice = '';
+let _narrStyle = '';
+let _narrSpeed = 1;
+let _narrCast = {};
+window.setNarratorSettings = function (json) {
+    try {
+        const s = typeof json === 'string' ? JSON.parse(json) : json;
+        _narrVoice = s.voice || '';
+        _narrStyle = s.style || '';
+        _narrSpeed = Math.max(0.5, Math.min(2, parseFloat(s.speed) || 1));
+        _narrCast = s.cast || {};
+        if (_renderedAudio) _renderedAudio.playbackRate = _narrSpeed;
+        narrLog('settings: voice ' + (_narrVoice || 'default') + ', style ' + (_narrStyle ? _narrStyle.length + ' chars' : 'standard') +
+                ', speed ' + _narrSpeed + ', cast ' + Object.keys(_narrCast).length);
+    } catch (e) { narrLog('settings unreadable: ' + (e && e.message || e)); }
+};
+
+/**
  * Narration's trace: every decision the page makes, sent to the narrator's narration.log so
  * that one file holds the page and the sidecar side by side. Also kept in window.__narrTrace
  * and the telemetry ring. Ids, counts, lengths and timings only -- never the text.
@@ -445,7 +470,8 @@ function narrLog(msg) {
 
 /** "id:chars" for each piece of a batch, for the trace. */
 function batchSummary(batch) {
-    return batch.map(p => p.id + ':' + p.text.length + 'ch' + (p.direction ? '[' + p.direction + ']' : '')).join(' ');
+    return batch.map(p => p.id + ':' + p.text.length + 'ch' + (p.speaker ? '{' + p.speaker + '}' : '') +
+                          (p.direction ? '[' + p.direction + ']' : '')).join(' ');
 }
 
 /** How much audio is already queued and paid for. */
@@ -483,7 +509,10 @@ async function renderNarration(base, batch, reading) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                blocks: batch.map(p => ({ id: p.id, text: p.text, direction: p.direction || '' })),
+                voice: _narrVoice,
+                style: _narrStyle,
+                blocks: batch.map(p => ({ id: p.id, text: p.text, direction: p.direction || '',
+                                          voice: p.voice || '', role: p.role || 'narration' })),
                 reading: reading,
                 group_size: batch.length
             })
@@ -637,16 +666,184 @@ function narrationDirection(text, el) {
 }
 
 /**
+ * Cast (slice 4): who speaks each quotation, from its tag -- '"...," Ferbin protested',
+ * 'said the drone', '"..." he said' -- so that a character given a voice of their own in this
+ * book's cast speaks their lines while the narrator reads everything else.
+ *
+ * A character is keyed by the last word of their name, lower case: "tyl Loesp" and "Loesp"
+ * are one person, "the King" is "king". A pronoun only resolves when the paragraph names
+ * exactly one known speaker; otherwise the line stays with the narrator, which never sounds
+ * wrong, where a line in the wrong character's voice would. An untagged line in an unbroken
+ * run of dialogue goes to whoever spoke two paragraphs before.
+ */
+const SPEECH_VERB = 'said|says|asked|replied|protested|continued|began|added|told|cried|called|answered|admitted|agreed|' +
+    'whispered|murmured|muttered|shouted|yelled|snapped|hissed|laughed|sighed|gasped|wept|sobbed|pleaded|begged|' +
+    'demanded|insisted|stammered|growled|barked|roared|screamed|announced|explained|observed|remarked|suggested|' +
+    'warned|retorted|exclaimed|responded|conceded|repeated|interrupted|breathed';
+const SPEAKER = "(?:the\\s+)?(?:[a-z]{2,4}\\s+)?[A-Z][\\w’'-]+(?:\\s+[A-Z][\\w’'-]+)?|the\\s+[a-z]+";
+const TAG_SPEAKER_VERB = new RegExp('^[\\s,]*(' + SPEAKER + '|he|she|it|they|I)\\s+(?:[a-z]+ly\\s+)?(?:' + SPEECH_VERB + ')\\b');
+const TAG_VERB_SPEAKER = new RegExp('^[\\s,]*(?:' + SPEECH_VERB + ')\\s+(' + SPEAKER + ')\\b');
+const TAG_BEFORE_QUOTE = new RegExp('(' + SPEAKER + ')\\s+(?:[a-z]+ly\\s+)?(?:' + SPEECH_VERB + ')[^.!?]*[,:]\\s*$');
+
+function speakerKey(who) {
+    if (!who || /^(he|she|it|they|i)$/i.test(who)) return '';
+    return who.replace(/^the\s+/i, '').trim().split(/\s+/).pop().replace(/[’']s$/, '').toLowerCase();
+}
+
+/** The quotations in a paragraph, each with its tag and the speaker the tag names, if any. */
+function narrationQuotes(text) {
+    const out = [];
+    const re = /[“"]([^”"]+)[”"]/g;
+    let m;
+    while ((m = re.exec(text))) {
+        const after = text.slice(m.index + m[0].length, m.index + m[0].length + 80);
+        const before = text.slice(Math.max(0, m.index - 80), m.index);
+        let who = null, tag = '', t;
+        if ((t = TAG_SPEAKER_VERB.exec(after) || TAG_VERB_SPEAKER.exec(after))) {
+            who = t[1]; tag = after.split(/[.!?…“"]/)[0];
+        } else if ((t = TAG_BEFORE_QUOTE.exec(before))) {
+            who = t[1]; tag = before.split(/[.!?…”"]\s/).pop();
+        }
+        out.push({ start: m.index, end: m.index + m[0].length, inner: m[1], who: who, tag: tag, key: speakerKey(who) });
+    }
+    return out;
+}
+
+/**
+ * Speakers for a run of paragraph texts: an array (one per text) of its quotations with `key`
+ * resolved as far as the rules allow. `known` is the set of speaker keys named explicitly
+ * anywhere in the book as loaded, which is what a pronoun may resolve to.
+ */
+function attributeParagraphs(texts, known) {
+    const result = [];
+    const recent = [];                          // speakers of the dialogue paragraphs just before
+    for (const text of texts) {
+        const qs = narrationQuotes(text);
+        if (!qs.length) { result.push(qs); recent.length = 0; continue; }
+        const outside = text.replace(/[“"][^”"]+[”"]/g, ' ');
+        const named = new Set((outside.match(/[A-Z][\w’'-]+/g) || []).map(w => speakerKey(w)).filter(k => known.has(k)));
+        const explicit = new Set(qs.filter(q => q.key).map(q => q.key));
+        for (const q of qs) {
+            if (q.key) continue;
+            if (q.who && named.size === 1) q.key = [...named][0];              // "he said", one candidate
+            else if (explicit.size === 1) q.key = [...explicit][0];           // one speaker per paragraph
+        }
+        if (!qs.some(q => q.key) && !qs.some(q => q.who) && recent.length >= 2 &&
+            recent[recent.length - 1] !== recent[recent.length - 2]) {
+            const k = recent[recent.length - 2];                              // A, B, A, B...
+            qs.forEach(q => { q.key = k; });
+        }
+        const speaker = (qs.find(q => q.key) || {}).key;
+        if (speaker) recent.push(speaker); else recent.length = 0;
+        result.push(qs);
+    }
+    return result;
+}
+
+/** Speaker keys named outright (not by pronoun) anywhere in the loaded book. */
+function knownSpeakers(all) {
+    const known = new Set();
+    for (const el of all) {
+        const t = el.innerText || '';
+        if (!/[“"]/.test(t)) continue;
+        for (const q of narrationQuotes(t)) if (q.key) known.add(q.key);
+    }
+    return known;
+}
+
+/**
+ * The characters in the loaded book with how many lines each speaks, for the cast list in
+ * Narrator settings. Sent to the host as host_narrator_cast.
+ */
+window.narrationCastScan = function () {
+    const all = Array.from(document.querySelectorAll('#editor .block'));
+    const known = knownSpeakers(all);
+    const texts = all.map(el => (el.innerText || '').trim());
+    const counts = {}, names = {};
+    attributeParagraphs(texts, known).forEach(qs => qs.forEach(q => {
+        if (!q.key) return;
+        counts[q.key] = (counts[q.key] || 0) + 1;
+        if (q.who && !/^(he|she|it|they|i)$/i.test(q.who)) {
+            const n = names[q.key] = names[q.key] || {};
+            n[q.who] = (n[q.who] || 0) + 1;
+        }
+    }));
+    const list = Object.keys(counts).filter(k => counts[k] >= 2).map(k => {
+        const forms = names[k] || {};
+        const name = Object.keys(forms).sort((a, b) => forms[b] - forms[a])[0] || k;
+        return { key: k, name: name, lines: counts[k] };
+    }).sort((a, b) => b.lines - a.lines);
+    narrLog('cast scan: ' + list.length + ' characters over ' + all.length + ' blocks');
+    try { window.chrome.webview.postMessage('host_narrator_cast:' + JSON.stringify(list)); } catch (e) {}
+    return list;
+};
+
+/** A cast line's own direction: its tag's verb or adverb, else its punctuation. */
+function quoteDirection(q) {
+    const found = [];
+    for (const [re, words] of DIRECTION_VERBS) { if (re.test(q.tag || '')) { found.push(words); break; } }
+    for (const [re, words] of DIRECTION_ADVERBS) { if (re.test(q.tag || '')) { found.push(words); break; } }
+    if (!found.length) {
+        if (/!/.test(q.inner)) found.push('emphatic');
+        else if (/(—|–|\.\.\.|…)\s*$/.test(q.inner)) found.push('breaking off');
+    }
+    return found.join(', ');
+}
+
+/**
+ * A paragraph cut between voices: each line of a cast character in their voice, and the
+ * narration around them -- including lines by characters with no voice of their own -- in
+ * the narrator's.
+ */
+function castPieces(text, quotes) {
+    const out = [];
+    let cursor = 0, narr = '';
+    const flush = () => {
+        const t = narr.trim();
+        if (/[A-Za-z0-9]/.test(t)) blockPieces(t).forEach(p => out.push({ role: 'narration', text: p, direction: narrationDirection(p, null) }));
+        narr = '';
+    };
+    for (const q of quotes) {
+        const voice = q.key && _narrCast[q.key];
+        if (!voice) continue;
+        narr += text.slice(cursor, q.start);
+        flush();
+        blockPieces(q.inner.trim()).forEach(p => out.push({ role: 'dialogue', text: p, voice: voice, direction: quoteDirection(q), speaker: q.key }));
+        cursor = q.end;
+    }
+    narr += text.slice(cursor);
+    flush();
+    return out;
+}
+
+/**
  * Up to `maxBatches` batches of pieces, starting with the block all[from]. Each piece carries
- * its block's document index as `at`, and its direction.
+ * its block's document index as `at`, and its direction; with a cast, a paragraph where a
+ * cast character speaks is cut between their voice and the narrator's.
  */
 function narrationBatches(all, from, maxBatches) {
     const pieces = [];
     const limit = maxBatches * NARRATION_BATCH;
+    // Speakers, only when this book has a cast. Attributed from a few paragraphs before the
+    // start, so an exchange already under way is recognised.
+    let speakers = null, first = from;
+    if (Object.keys(_narrCast).length) {
+        first = Math.max(0, from - 4);
+        const known = knownSpeakers(all);
+        Object.keys(_narrCast).forEach(k => known.add(k));
+        const texts = all.slice(first, Math.min(all.length, from + limit + 40))
+            .map(el => applyTTSOverrides((el.innerText || '').trim()));
+        speakers = attributeParagraphs(texts, known);
+    }
     for (let i = from; i < all.length && pieces.length < limit; i++) {
         const at = narrationDocIndex(all[i], i);
         const text = applyTTSOverrides((all[i].innerText || '').trim());
         if (!text) continue;
+        const quotes = speakers && speakers[i - first];
+        if (quotes && quotes.some(q => q.key && _narrCast[q.key])) {
+            castPieces(text, quotes).forEach((p, k) => pieces.push(Object.assign({ el: all[i], at: at, id: at * 100 + k }, p)));
+            continue;
+        }
         blockPieces(text).forEach((t, k) => pieces.push({
             el: all[i], at: at, id: at * 100 + k, text: t, direction: narrationDirection(t, all[i])
         }));
