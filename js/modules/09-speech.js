@@ -334,7 +334,12 @@ function playRenderedChunk(url) {
         if (_renderedAudio) { _renderedAudio.pause(); _renderedAudio = null; }
         const a = new Audio(url);
         _renderedAudio = a;
-        a.onended = () => { _renderedAudio = null; if (isPlaying) playNextChunk(); };
+        a.onplaying = () => { try { (window.__narrLog = window.__narrLog || []).push(['play', performance.now()]); } catch (e) {} };
+        a.onended = () => {
+            try { (window.__narrLog = window.__narrLog || []).push(['end', performance.now()]); } catch (e) {}
+            _renderedAudio = null;
+            if (isPlaying) playNextChunk();
+        };
         a.onerror = () => {
             _renderedAudio = null;
             showKokoroStatus('Narration audio could not be played.');
@@ -357,27 +362,6 @@ function playRenderedChunk(url) {
 let _narrationPending = false;
 let _narrationReading = 0;
 let _narrationBase = '';
-
-/**
- * The first sentence or two of a block, and whatever is left of it.
- *
- * Kept short on purpose: this is the only thing standing between pressing Narrate and
- * hearing something, and it is rendered on its own, which is the slow way to render.
- */
-function splitOpener(text, limit) {
-    const max = limit || 200;
-    const t = String(text || '').trim();
-    if (t.length <= max) return { head: t, tail: '' };
-    // Cut at the last sentence end inside the limit, or failing that at a word boundary.
-    const window = t.slice(0, max);
-    let at = Math.max(window.lastIndexOf('. '), window.lastIndexOf('? '), window.lastIndexOf('! '));
-    if (at > 40) at += 1;
-    else {
-        at = window.lastIndexOf(' ');
-        if (at < 40) at = max;
-    }
-    return { head: t.slice(0, at).trim(), tail: t.slice(at).trim() };
-}
 
 /** How much audio is already queued and paid for. */
 function queuedSeconds() {
@@ -411,7 +395,8 @@ async function renderNarration(base, group, blocks, reading) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             blocks: group.map(w => ({ id: w.id, text: w.text })),
-            reading: reading
+            reading: reading,
+            group_size: group.length
         })
     });
     if (!res.ok) throw new Error('sidecar said ' + res.status);
@@ -434,17 +419,62 @@ async function renderNarration(base, group, blocks, reading) {
 }
 
 /**
+ * Break the text into pieces for rendering: sentences where possible, never across a
+ * paragraph, and short at the start.
+ *
+ * Measured, and it is the whole design: rendering a batch takes about as long as its LONGEST
+ * piece, and hardly longer for more pieces -- eight pieces cost roughly what one does. So
+ * what decides how soon the first word is heard is how long the first pieces are, not how
+ * many there are. The first eight are kept to a clause or so; the next eight to a sentence;
+ * after that a paragraph's worth. Each batch then yields more audio than the next one takes
+ * to make, so the reading never waits.
+ */
+function narrationPieces(blocks) {
+    const out = [];
+    let id = 0;
+    const cap = () => out.length < 8 ? 55 : out.length < 16 ? 130 : 250;
+    for (const w of blocks) {
+        const sentences = w.text.match(/[^.!?…]+[.!?…]+["'”’)\]]*\s*|[^.!?…]+$/g)
+            || [w.text];
+        let cur = '';
+        const flush = () => {
+            if (cur.trim()) out.push({ el: w.el, id: id++, text: cur.trim() });
+            cur = '';
+        };
+        for (let sentence of sentences) {
+            // A sentence longer than the cap is cut at a clause, failing that at a word.
+            while (sentence.length > cap()) {
+                const limit = cap();
+                flush();
+                let at = Math.max(sentence.lastIndexOf(', ', limit), sentence.lastIndexOf('; ', limit),
+                                  sentence.lastIndexOf(': ', limit), sentence.lastIndexOf(' — ', limit));
+                if (at < limit * 0.4) at = sentence.lastIndexOf(' ', limit);
+                if (at <= 0) at = limit;
+                out.push({ el: w.el, id: id++, text: sentence.slice(0, at + 1).trim() });
+                sentence = sentence.slice(at + 1);
+            }
+            if (cur && cur.length + sentence.length > cap()) flush();
+            cur += sentence;
+        }
+        flush();
+    }
+    return out;
+}
+
+/**
  * Narrate from where the reader is.
  *
- * The first request is one block, because that is the whole difference between speech in
- * ten seconds and speech in two minutes: a group of eight costs eight blocks of rendering
- * before a single word is heard. Everything after the first block is fetched in groups of
- * eight while the voice is already reading, which is where the speed lives -- a batch runs
- * at 0.34x realtime against 2.2x one at a time, so the queue fills faster than it drains.
+ * Groups grow -- one piece, then two, four, then eight -- and the next is requested the
+ * moment the last one lands, so each arrives while the one before is still being heard.
+ * One piece renders in a few seconds; eight render at about a third of the time they take
+ * to say. The ramp is what gets both a fast start and no gaps.
  */
 async function startQwenNarration(base) {
     const editor = document.getElementById('editor');
     if (!editor) return;
+    // Starting somewhere new stops what was playing and cancels what was still rendering.
+    if (isPlaying) stopReading();
+
     const all = Array.from(editor.querySelectorAll('.block'));
     if (!all.length) return;
 
@@ -452,10 +482,9 @@ async function startQwenNarration(base) {
     let at = caret ? all.indexOf(caret.block) : -1;
     if (at < 0) {
         const host = editor.getBoundingClientRect();
-        // Both axes, exactly as speakSelection has it. The first version tested only the
-        // vertical one, and in Pages the pages already turned sit off to the LEFT of the view
-        // while overlapping it vertically -- so the table of contents counted as "on screen"
-        // and narration started there from the middle of the prologue.
+        // Both axes, exactly as speakSelection has it. Testing only the vertical one let the
+        // pages already turned in Pages -- which sit to the left of the view -- count as on
+        // screen, and narration started at the table of contents.
         at = all.findIndex(b => {
             const r = b.getBoundingClientRect();
             return r.right > host.left && r.left < host.right && r.bottom > host.top && r.top < host.bottom
@@ -464,36 +493,27 @@ async function startQwenNarration(base) {
     }
     if (at < 0) at = 0;
 
-    const wanted = [];
-    for (let i = at; i < all.length && wanted.length < 48; i++) {
-        const el = all[i];
-        const text = (el.innerText || '').trim();
+    const blocks = [];
+    for (let i = at; i < all.length && blocks.length < 120; i++) {
+        let text = (i === at && caret) ? caret.text : (all[i].innerText || '');
+        text = text.trim();
         if (!text) continue;
-        wanted.push({ el: el, id: i, text: applyTTSOverrides(text) });
+        blocks.push({ el: all[i], text: applyTTSOverrides(text) });
     }
-    if (!wanted.length) return;
-
-    // Open with a sentence, not a block.
-    //
-    // "Render one block first" was still hostage to how long that block is: a block alone
-    // runs at about 2.2x realtime, so a single 55-second paragraph is two minutes of silence
-    // before a word is heard -- which is exactly what it did. The opening chunk is now a
-    // sentence or two, a few seconds of work, and the rest of that same block follows it.
-    const opener = splitOpener(wanted[0].text);
-    const head = { el: wanted[0].el, id: wanted[0].id, text: opener.head };
-    const tail = opener.tail
-        ? [{ el: wanted[0].el, id: wanted[0].id, text: opener.tail }]
-        : [];
+    const pieces = narrationPieces(blocks);
+    if (!pieces.length) return;
 
     const reading = ++_narrationReading;
     _narrationBase = base;
+    window.__narrLog = [];
     showKokoroStatus('Preparing the first passage...');
     _narrationPending = true;
     try {
-        const firstChunks = await renderNarration(base, [head], [head], reading);
+        const first = await renderNarration(base, pieces.slice(0, 8), pieces, reading);
         document.getElementById('kokoro-status')?.remove();
-        if (!firstChunks.length) throw new Error('nothing came back');
-        startReadingChunks(firstChunks);
+        if (reading !== _narrationReading) return;          // stopped or restarted meanwhile
+        if (!first.length) throw new Error('nothing came back');
+        startReadingChunks(first);
     } catch (err) {
         _narrationPending = false;
         showKokoroStatus('Narration failed: ' + (err && err.message || err));
@@ -501,33 +521,25 @@ async function startQwenNarration(base) {
         return;
     }
 
-    // The rest, in groups, but only when the queue is running short.
-    //
-    // Rendering everything as fast as the card allows is what pinned the GPU at 99% and
-    // kept it there after Stop: forty-eight blocks of audio nobody was going to hear. A
-    // lead of about a minute is all that is needed to stay ahead of a listener, since a
-    // batch renders three times faster than it plays.
     (async () => {
         try {
-            // The rest of the opening block first, so the sentence that was split off is
-            // followed by the rest of its own paragraph rather than by the next one.
-            const groups = [];
-            if (tail.length) groups.push(tail);
-            for (let i = 1; i < wanted.length; i += 8) groups.push(wanted.slice(i, i + 8));
-
-            for (const group of groups) {
-                while (isPlaying && reading === _narrationReading && queuedSeconds() > 60) {
+            let next = 8;
+            while (next < pieces.length) {
+                // About ninety seconds ahead is plenty; beyond that is work nobody may hear.
+                while (isPlaying && reading === _narrationReading && queuedSeconds() > 90) {
                     await new Promise(r => setTimeout(r, 500));
                 }
                 if (!isPlaying || reading !== _narrationReading) break;
-                const chunks = await renderNarration(base, group, group, reading);
+                const group = pieces.slice(next, next + 8);
+                next += 8;
+                const chunks = await renderNarration(base, group, pieces, reading);
                 if (!isPlaying || reading !== _narrationReading) break;
                 for (const c of chunks) _ttsChunks.push(c);
             }
         } catch (err) {
             try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry('narration: ' + err.message); } catch (e) {}
         } finally {
-            _narrationPending = false;
+            if (reading === _narrationReading) _narrationPending = false;
         }
     })();
 }
