@@ -91,7 +91,7 @@ namespace TypoZen
 
             // ---- style
             root.Children.Add(heading("How the narrator reads"));
-            root.Children.Add(note("In your own words, or start from one of these. Empty is the standard measured reading. Applies to text narrated from now on."));
+            root.Children.Add(note("In your own words, or start from one of these. Empty is the standard measured reading, and keeps each voice exactly as you picked it: style words can change how the voice itself sounds. Applies to text narrated from now on."));
             var styleBox = new TextBox { Text = settings.Style, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 52, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             root.Children.Add(styleBox);
             var presets = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
@@ -245,7 +245,23 @@ namespace TypoZen
                 win.Dispatcher.Invoke((Action)(() => play(Convert.ToString(d["file"]))));
                 say("");
             };
-            playVoice.Click += (s, e) => work("Rendering a sample in this voice...", preview);
+            // A kept voice plays the recording that was picked -- the same take heard as its
+            // candidate. Rendering a fresh one here, with whatever style was in the box, is
+            // what made "the voice I picked" sound like someone else (2026-09-23).
+            playVoice.Click += (s, e) =>
+            {
+                var v = voiceBox.SelectedItem as VoiceItem;
+                if (v != null && !string.IsNullOrEmpty(v.Preview) && System.IO.File.Exists(v.Preview)) { play(v.Preview); return; }
+                string id = v != null ? v.Id : "";
+                work("Rendering a sample in this voice...", () =>
+                {
+                    string json = QwenNarrator.Call("POST", "/preview", new JavaScriptSerializer().Serialize(
+                        new Dictionary<string, object> { { "voice", id }, { "style", "" } }), 120000);
+                    var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+                    win.Dispatcher.Invoke((Action)(() => play(Convert.ToString(d["file"]))));
+                    say("");
+                });
+            };
             previewStyle.Click += (s, e) => work("Rendering a sample with this voice and style...", preview);
 
             deleteVoice.Click += (s, e) =>
@@ -268,7 +284,9 @@ namespace TypoZen
                 string desc = descBox.Text.Trim();
                 if (desc.Length == 0) { say("Describe the voice first."); return; }
                 candidates.Children.Clear();
-                string style = styleBox.Text.Trim();
+                // Candidates are made with no style: what you hear is the voice itself, exactly
+                // as narration will use it with the standard reading.
+                string style = "";
                 work("Creating three candidates from your description. This takes about a minute and a half, and the graphics card is busy meanwhile...", () =>
                 {
                     string json = QwenNarrator.Call("POST", "/design", new JavaScriptSerializer().Serialize(
@@ -292,6 +310,9 @@ namespace TypoZen
                             {
                                 string nm = name.Text.Trim();
                                 if (nm.Length == 0) { say("Give the voice a name first."); return; }
+                                // Once only: a double click kept the same candidate twice.
+                                k.IsEnabled = false;
+                                name.IsEnabled = false;
                                 work("Keeping \"" + nm + "\"...", () =>
                                 {
                                     QwenNarrator.Call("POST", "/voices/keep", new JavaScriptSerializer().Serialize(
