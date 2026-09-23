@@ -322,6 +322,39 @@ The trade-off has to be made inside that constraint, not by changing engine.
 A jump to text not rendered yet still waits for its batch (about twice the longest
 paragraph in it). The first Narrate of a session also pays the model load.
 
+**Measured 2026-09-23, later: VoiceDesign throughput, and a decode trap.** The 0.34x of
+§3e was measured on **CustomVoice** (`qwen_parabatch.py`: speaker Vivian, an 8-word
+instruction, eight paragraphs of similar length). It was carried over to VoiceDesign without
+being re-measured. On VoiceDesign, the first live groups took 137s each, 1.35x to 2.1x
+realtime, so narration could not stay ahead. Bounded probes found the cause:
+
+| | Result |
+| --- | --- |
+| Generation, single piece or batch of 8 | 5.6-6.1 steps/s either way; a 53-word or an 8-word instruction makes no difference |
+| Generation, real group from Matter, 324 steps | 57s, steady rate throughout |
+| Decode to audio, same 8 clips **as one batch** | over a minute (killed) |
+| Decode to audio, same 8 clips **one at a time** | **1.1s** |
+
+qwen-tts decodes a group's clips in one padded batch, in 300-frame chunks, and past 300
+frames that batched decode crawls. The sidecar now decodes each clip separately
+(`_decode_clips_separately`); generation stays batched. End to end on Matter from block
+217, real app, fresh narrator:
+
+| | Before | After |
+| --- | --- | --- |
+| Group of 101s audio | 137.2s | 63.7s (decode 0.9s) |
+| Group of 66s audio | 138.0s | 44.9s (decode 0.6s) |
+| Rate | 1.35-2.1x realtime | **0.63-0.68x realtime** |
+| First sound, narrator loaded | 137s | 64.5s |
+| 100s of listening | stalls | 8 clips, longest gap 0.1s |
+
+**What still limits first sound:** a group takes as long as its longest piece, at about 2.2s
+of compute per second of that piece's audio. So a cold Narrate waits roughly twice the
+longest paragraph in the first group, plus the 16s model load on the first use. Render-ahead
+removes the wait on pages already turned to. The lever that remains is the piece cap (400
+characters). A lower cap shortens the wait but adds voice changes inside long paragraphs.
+That is the owner's trade-off.
+
 **Also found on review:** pieces and groups are counted from wherever Play was pressed. They
 are not fixed points in the document, so pressing Play somewhere else, or stopping and
 restarting, forms different groups and misses the cache (§3c requires composition to be a
