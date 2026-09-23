@@ -54,10 +54,11 @@ if ($running.Count -gt 0) {
     }
 }
 
+# Wait for this exe to be released, not for every TypoZen to exit: the user's own copy
+# stays open and holds nothing here, so waiting on it only added 15s to every build.
 $deadline = (Get-Date).AddSeconds(15)
 while ((Get-Date) -lt $deadline) {
-    $still = @(Get-Process -Name "TypoZen" -ErrorAction SilentlyContinue)
-    if ($still.Count -eq 0 -and (Test-ExeWritable -Path $exePath)) { break }
+    if (Test-ExeWritable -Path $exePath) { break }
     Start-Sleep -Milliseconds 200
 }
 if (-not (Test-ExeWritable -Path $exePath)) {
