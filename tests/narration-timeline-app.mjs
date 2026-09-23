@@ -110,8 +110,11 @@ try {
     const t0 = Date.now();
     await page.evaluate(() => { window.startQwenNarration('http://127.0.0.1:8765'); });
 
+    // Pieces are whole paragraphs, so a cold first batch takes about twice its longest
+    // paragraph -- the price of one voice with context across sentences (plan 3g). 90s is
+    // that ceiling for this document's paragraphs; render-ahead is what makes it instant.
     let firstSound = -1, firstBlock = '';
-    for (let i = 0; i < 120 && firstSound < 0; i++) {
+    for (let i = 0; i < 200 && firstSound < 0; i++) {
         const s = await page.evaluate(() => ({
             n: (window.__narrLog || []).filter(e => e[0] === 'play').length,
             on: (document.querySelector('.tts-active')?.innerText || '').trim().slice(0, 30)
@@ -119,7 +122,7 @@ try {
         if (s.n > 0) { firstSound = (Date.now() - t0) / 1000; firstBlock = s.on; }
         else await sleep(500);
     }
-    check(firstSound > 0 && firstSound < 20, 'first sound comes quickly', firstSound.toFixed(1) + 's');
+    check(firstSound > 0 && firstSound < 90, 'first sound within one batch of paragraphs (under 90s)', firstSound.toFixed(1) + 's');
     check(!/Contents|Prologue/.test(firstBlock) && /Paragraph/.test(firstBlock),
           'it starts on the page being read, not the contents', JSON.stringify(firstBlock));
 
@@ -132,6 +135,11 @@ try {
         for (let i = 0; i < log.length - 1; i++) {
             if (log[i][0] === 'end' && log[i + 1][0] === 'play') gaps.push((log[i + 1][1] - log[i][1]) / 1000);
         }
+        // A silence still going on counts too. Only measuring between clips missed a
+        // narration that had stalled at the end: 8 clips played in 90s, then nothing, and
+        // this test passed.
+        const last = log[log.length - 1];
+        if (last && last[0] === 'end') gaps.push((performance.now() - last[1]) / 1000);
         return {
             clips: log.filter(e => e[0] === 'play').length,
             gaps: gaps,
@@ -145,14 +153,30 @@ try {
         + 's, silences over 1.5s: ' + long);
     console.log('        now reading: ' + JSON.stringify(r.on));
     check(r.playing, 'still reading after 90 seconds, not stopped after one sentence');
-    check(r.clips >= 6, 'it moved on through several clips', r.clips + ' clips');
+    // Clips are paragraphs of 15-30s, so three in 90s is moving on.
+    check(r.clips >= 3, 'it moved on through several clips', r.clips + ' clips');
     check(long === 0, 'no silence between clips longer than 1.5s', 'worst ' + worst.toFixed(1) + 's');
 
     await page.evaluate(() => stopReading());
+    // A failure should say why, and the profile holding narration.log is deleted below.
+    if (fail) {
+        const trace = await page.evaluate(() => window.__narrTrace || []);
+        console.log('        --- page trace');
+        for (const l of trace.filter(l => /narrate:|batch|first sound|waiting|answer|SILENT|FAILED/.test(l)).slice(0, 25)) {
+            console.log('        ' + l.slice(0, 220));
+        }
+    }
 } catch (err) {
     check(false, 'no exception', String(err && err.message || err));
 } finally {
     cleanup();
+    if (fail) {
+        try {
+            const log = fs.readFileSync(path.join(profile, 'extensions', 'QwenTTS', 'narration.log'), 'utf8');
+            console.log('        --- narrator');
+            for (const l of log.split('\n').filter(l => /rendered|answered|model ready/.test(l))) console.log('        ' + l.slice(14, 200));
+        } catch (e) {}
+    }
     try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) {}
 }
 
