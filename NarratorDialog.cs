@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Media;
 using System.Threading;
@@ -77,8 +77,27 @@ namespace TypoZen
                 foreach (var i in items) p.Children.Add(i);
                 return p;
             };
-            var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.85, Margin = new Thickness(0, 12, 0, 0) };
-            Action<string> say = m => win.Dispatcher.BeginInvoke((Action)(() => status.Text = m ?? ""));
+            // What is happening, pinned under the scrolling part so it is in view whichever
+            // button was pressed: a busy bar and a clock while the narrator works.
+            var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.9 };
+            var busyBar = new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 6), Visibility = Visibility.Collapsed };
+            string busyWhat = null;
+            DateTime busySince = DateTime.Now;
+            double busyExpect = 0;
+            var clock = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            Action showClock = () =>
+            {
+                if (busyWhat == null) return;
+                int s = (int)(DateTime.Now - busySince).TotalSeconds;
+                string c = busyExpect <= 0 ? s + "s"
+                         : s <= busyExpect ? s + "s of about " + busyExpect + "s"
+                         : s + "s, longer than the usual " + busyExpect + "s";
+                status.Text = busyWhat + " " + c;
+            };
+            clock.Tick += (s, e) => showClock();
+            // A message from inside a job replaces the running one and stops its clock: the
+            // narrator's start-up reports its own seconds.
+            Action<string> say = m => win.Dispatcher.BeginInvoke((Action)(() => { busyWhat = null; status.Text = m ?? ""; }));
 
             // ---- the narrator's voice
             root.Children.Add(heading("Narrator voice"));
@@ -132,14 +151,21 @@ namespace TypoZen
                 root.Children.Add(castPanel);
             }
 
-            root.Children.Add(status);
             var save = new Button { Content = "Save", Width = 90, Height = 26, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
             var cancel = new Button { Content = "Cancel", Width = 90, Height = 26, IsCancel = true };
             var buttons = row(new UIElement[] { save, cancel });
             buttons.HorizontalAlignment = HorizontalAlignment.Right;
-            buttons.Margin = new Thickness(0, 16, 0, 0);
-            root.Children.Add(buttons);
-            win.Content = scroll;
+            buttons.Margin = new Thickness(0, 10, 0, 0);
+            var footer = new StackPanel { Margin = new Thickness(18, 6, 18, 14) };
+            footer.Children.Add(busyBar);
+            footer.Children.Add(status);
+            footer.Children.Add(buttons);
+            var outer = new DockPanel();
+            DockPanel.SetDock(footer, Dock.Bottom);
+            outer.Children.Add(footer);
+            outer.Children.Add(scroll);
+            scroll.MaxHeight = 760;
+            win.Content = outer;
 
             // ---- behaviour
             Action<string> play = path =>
@@ -221,15 +247,28 @@ namespace TypoZen
             // buttons that would start another such call disabled until it is done.
             var busyButtons = new List<Button> { playVoice, deleteVoice, previewStyle, design };
             if (findCast != null) busyButtons.Add(findCast);
-            Action<string, Action> work = (what, job) =>
+            // `expect` is the usual time in seconds, shown against a running clock; 0 for none.
+            Action<string, double, Action> work = (what, expect, job) =>
             {
                 foreach (var b in busyButtons) b.IsEnabled = false;
-                say(what);
+                busyWhat = what; busySince = DateTime.Now; busyExpect = expect;
+                busyBar.Visibility = Visibility.Visible;
+                showClock();
+                clock.Start();
                 Task.Run(() =>
                 {
                     try { job(); }
                     catch (Exception ex) { say("That did not work: " + ex.Message); }
-                    finally { win.Dispatcher.BeginInvoke((Action)(() => { foreach (var b in busyButtons) b.IsEnabled = true; })); }
+                    finally
+                    {
+                        win.Dispatcher.BeginInvoke((Action)(() =>
+                        {
+                            clock.Stop();
+                            busyBar.Visibility = Visibility.Collapsed;
+                            if (busyWhat != null) { busyWhat = null; status.Text = ""; }
+                            foreach (var b in busyButtons) b.IsEnabled = true;
+                        }));
+                    }
                 });
             };
 
@@ -253,7 +292,7 @@ namespace TypoZen
                 var v = voiceBox.SelectedItem as VoiceItem;
                 if (v != null && !string.IsNullOrEmpty(v.Preview) && System.IO.File.Exists(v.Preview)) { play(v.Preview); return; }
                 string id = v != null ? v.Id : "";
-                work("Rendering a sample in this voice...", () =>
+                work("Rendering a sample in this voice:", 15, () =>
                 {
                     string json = QwenNarrator.Call("POST", "/preview", new JavaScriptSerializer().Serialize(
                         new Dictionary<string, object> { { "voice", id }, { "style", "" } }), 120000);
@@ -262,7 +301,7 @@ namespace TypoZen
                     say("");
                 });
             };
-            previewStyle.Click += (s, e) => work("Rendering a sample with this voice and style...", preview);
+            previewStyle.Click += (s, e) => work("Rendering a sample with this voice and style:", 15, preview);
 
             deleteVoice.Click += (s, e) =>
             {
@@ -271,7 +310,7 @@ namespace TypoZen
                 if (MessageBox.Show(win, "Delete the voice \"" + v.Name + "\"? Characters using it go back to the narrator's voice.",
                                     "Narrator", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
                 string id = v.Id;
-                work("Deleting...", () =>
+                work("Deleting...", 0, () =>
                 {
                     QwenNarrator.Call("POST", "/voices/delete", new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "id", id } }), 10000);
                     loadVoices();
@@ -287,7 +326,7 @@ namespace TypoZen
                 // Candidates are made with no style: what you hear is the voice itself, exactly
                 // as narration will use it with the standard reading.
                 string style = "";
-                work("Creating three candidates from your description. This takes about a minute and a half, and the graphics card is busy meanwhile...", () =>
+                work("Creating three candidates from your description. The graphics card is busy meanwhile.", 90, () =>
                 {
                     string json = QwenNarrator.Call("POST", "/design", new JavaScriptSerializer().Serialize(
                         new Dictionary<string, object> { { "description", desc }, { "count", 3 }, { "style", style } }), 300000);
@@ -313,7 +352,7 @@ namespace TypoZen
                                 // Once only: a double click kept the same candidate twice.
                                 k.IsEnabled = false;
                                 name.IsEnabled = false;
-                                work("Keeping \"" + nm + "\"...", () =>
+                                work("Keeping \"" + nm + "\"...", 0, () =>
                                 {
                                     QwenNarrator.Call("POST", "/voices/keep", new JavaScriptSerializer().Serialize(
                                         new Dictionary<string, object> { { "candidate", cid }, { "name", nm } }), 10000);
@@ -387,8 +426,25 @@ namespace TypoZen
                 addCastRow(kv.Key, cast.Names.TryGetValue(kv.Key, out name) ? name : kv.Key, kv.Value);
             }
 
-            // The narrator is needed for everything here: start it (a no-op when it is up), then list the voices.
-            work("Starting the narrator...", () =>
+            // The saved voices are on disk: list them now, so the choice is there while the
+            // narrator loads. The narrator's own list replaces this once it is up.
+            foreach (var v in QwenNarrator.SavedVoices(cacheDir))
+            {
+                string dir = System.IO.Path.Combine(QwenNarrator.RootDir(cacheDir), "voices", v.Key);
+                string prev = System.IO.Path.Combine(dir, "preview.wav");
+                object d;
+                var meta = QwenNarrator.ReadJson(System.IO.Path.Combine(dir, "meta.json"));
+                voices.Add(new VoiceItem
+                {
+                    Id = v.Key, Name = v.Value,
+                    Description = meta.TryGetValue("description", out d) ? Convert.ToString(d) : "",
+                    Preview = System.IO.File.Exists(prev) ? prev : ""
+                });
+            }
+            fillVoices();
+
+            // The narrator is needed for everything else here: start it (a no-op when it is up), then list the voices.
+            work("Starting the narrator...", 0, () =>
             {
                 bool up = QwenNarrator.EnsureRunning(cacheDir, appDir, m => { if (!string.IsNullOrEmpty(m)) say(m); }, CancellationToken.None).Result;
                 if (!up) { say("The narrator did not start, so nothing here can be changed now."); return; }

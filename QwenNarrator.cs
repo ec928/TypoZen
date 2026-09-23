@@ -93,7 +93,7 @@ namespace TypoZen
             }
         }
 
-        private static Dictionary<string, object> ReadJson(string path)
+        internal static Dictionary<string, object> ReadJson(string path)
         {
             try
             {
@@ -188,9 +188,11 @@ namespace TypoZen
         public static string PageSettingsJson(string cacheDir, string book, double speed)
         {
             var s = LoadSettings(cacheDir);
+            string current = CurrentVoice(cacheDir), name = current;
+            foreach (var v in SavedVoices(cacheDir)) if (v.Key == current) name = v.Value;
             var d = new Dictionary<string, object>
             {
-                { "voice", s.Voice }, { "style", s.Style }, { "speed", speed },
+                { "voice", s.Voice }, { "voiceName", name }, { "style", s.Style }, { "speed", speed },
                 { "cast", LoadCast(cacheDir, book).Voices }
             };
             return new JavaScriptSerializer().Serialize(d);
@@ -341,8 +343,11 @@ namespace TypoZen
                     }
                 }
                 catch { }
-                if (waited == 10) say("Starting the narrator - loading the voice model...");
-                if (waited == 45) say("Still loading the voice model. The first start is the slow one.");
+                // A clock, so a half-minute load reads as progress rather than a hang. It
+                // usually takes about 25s here; after a reboot the first one is slower.
+                if (waited > 0 && waited % 2 == 0)
+                    say("Starting the narrator: loading the voice model onto the graphics card, " + waited + "s" +
+                        (waited < 30 ? " (usually about 25s)." : ". The first start after a reboot is the slow one."));
                 await Task.Delay(1000, cancel).ConfigureAwait(false);
             }
             Log("narrator not ready after " + (DateTime.Now - started).TotalSeconds.ToString("0") + "s; giving up");

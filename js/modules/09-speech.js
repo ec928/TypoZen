@@ -276,6 +276,7 @@ function playNextChunk() {
             if (_narrActive && !_narrSilentSince) {
                 _narrSilentSince = performance.now();
                 narrLog('SILENT: queue empty, waiting for the next batch');
+                narrWait('is catching up with the next passage', 0);
             }
             setTimeout(playNextChunk, 400);
             return;
@@ -287,6 +288,8 @@ function playNextChunk() {
     if (_narrSilentSince) {
         narrLog('sound again after ' + ((performance.now() - _narrSilentSince) / 1000).toFixed(1) + 's of silence');
         _narrSilentSince = 0;
+        narrWaitEnd();
+        narrPhase('reading');
     }
     const chunk = _ttsChunks.shift();
     if (!chunk.text || !chunk.text.trim()) {
@@ -422,6 +425,7 @@ let _qwenPending = null;        // a selection to narrate once the host says the
  * character key to voice id. Sent before every narration and whenever they change.
  */
 let _narrVoice = '';
+let _narrVoiceName = '';
 let _narrStyle = '';
 let _narrSpeed = 1;
 let _narrCast = {};
@@ -430,6 +434,7 @@ window.setNarratorSettings = function (json) {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
         const before = JSON.stringify([_narrVoice, _narrStyle, _narrCast]);
         _narrVoice = s.voice || '';
+        _narrVoiceName = s.voiceName || '';
         _narrStyle = s.style || '';
         _narrSpeed = Math.max(0.5, Math.min(2, parseFloat(s.speed) || 1));
         _narrCast = s.cast || {};
@@ -445,6 +450,37 @@ window.setNarratorSettings = function (json) {
                 ', speed ' + _narrSpeed + ', cast ' + Object.keys(_narrCast).length);
     } catch (e) { narrLog('settings unreadable: ' + (e && e.message || e)); }
 };
+
+/**
+ * What the reader is told while the narrator prepares audio: whose voice, what for, and a
+ * clock against the estimate, so a minute's wait reads as progress rather than a hang. The
+ * status bar is told too (host_narration_phase).
+ */
+let _narrWaitTimer = 0;
+function narrWait(what, estimate) {
+    narrWaitEnd();
+    const t0 = performance.now();
+    const who = _narrVoiceName || 'The narrator';
+    const tick = () => {
+        const s = Math.round((performance.now() - t0) / 1000);
+        let clock = s + 's';
+        if (estimate > 0) clock = s <= estimate ? s + 's of about ' + Math.round(estimate) + 's'
+                                                : s + 's, longer than the usual ' + Math.round(estimate) + 's';
+        showKokoroStatus(who + ' ' + what + ': ' + clock);
+    };
+    tick();
+    _narrWaitTimer = setInterval(tick, 1000);
+    narrPhase('preparing');
+}
+/** Ends the clock and takes its message down. True if one was running. */
+function narrWaitEnd() {
+    if (!_narrWaitTimer) return false;
+    clearInterval(_narrWaitTimer);
+    _narrWaitTimer = 0;
+    document.getElementById('kokoro-status')?.remove();
+    return true;
+}
+function narrPhase(p) { try { window.chrome.webview.postMessage('host_narration_phase:' + p); } catch (e) {} }
 
 /**
  * Narration's trace: every decision the page makes, sent to the narrator's narration.log so
@@ -932,7 +968,9 @@ async function startQwenNarration(base) {
     _narrSilentSince = 0;
     window.__narrLog = [];
     narrLog('reading ' + reading + ' begins');
-    showKokoroStatus('Preparing the first passage...');
+    // A batch takes as long as its longest paragraph, about 2.2s per second of its audio;
+    // anything already rendered comes from the cache and the clock just vanishes sooner.
+    narrWait('is preparing the first passage', batchRenderEstimate(queue[0]));
     _narrationPending = true;
     const secondsOf = chunks => chunks.reduce((n, c) => n + c.seconds, 0);
     let next = 1;
@@ -947,18 +985,24 @@ async function startQwenNarration(base) {
                secondsOf(firstChunks) < batchRenderEstimate(queue[next])) {
             narrLog('only ' + secondsOf(firstChunks).toFixed(1) + 's to play, batch ' + next + ' needs ~' +
                     batchRenderEstimate(queue[next]).toFixed(0) + 's: waiting for it before the first word');
+            if (reading === _narrationReading)
+                narrWait('has ' + Math.round(secondsOf(firstChunks)) + 's ready and is preparing the next passage too, so the reading will not stop partway',
+                         batchRenderEstimate(queue[next]));
             firstChunks = firstChunks.concat(playable(await renderNarration(base, queue[next], reading)));
             next++;
         }
-        document.getElementById('kokoro-status')?.remove();
         if (reading !== _narrationReading) { narrLog('reading ' + reading + ' went stale before its first sound'); return; }
+        narrWaitEnd();
         if (!firstChunks.length) throw new Error('nothing came back');
+        narrPhase('reading');
         narrLog('first sound: ' + firstChunks.length + ' pieces, ' +
                 firstChunks.reduce((n, c) => n + c.seconds, 0).toFixed(1) + 's of audio queued');
         startReadingChunks(firstChunks);
     } catch (err) {
         _narrationPending = false;
         narrLog('narration FAILED before first sound: ' + (err && err.message || err));
+        narrWaitEnd();
+        narrPhase('');
         showKokoroStatus('Narration failed: ' + (err && err.message || err));
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 6000);
         return;
@@ -1014,18 +1058,23 @@ async function narrateSelection(base, sel) {
     _narrSilentSince = 0;
     window.__narrLog = [];
     narrLog('reading ' + reading + ' begins: the selection, ' + pieces.length + ' pieces');
-    showKokoroStatus('Preparing the selection...');
+    let estimate = 0;
+    for (let k = 0; k < pieces.length; k += NARRATION_BATCH) estimate += batchRenderEstimate(pieces.slice(k, k + NARRATION_BATCH));
+    narrWait('is preparing the selection', estimate);
     try {
         const chunks = [];
         for (let k = 0; k < pieces.length; k += NARRATION_BATCH) {
             chunks.push(...await renderNarration(base, pieces.slice(k, k + NARRATION_BATCH), reading));
             if (reading !== _narrationReading) return;
         }
-        document.getElementById('kokoro-status')?.remove();
+        narrWaitEnd();
         if (!chunks.length) throw new Error('nothing came back');
+        narrPhase('reading');
         startReadingChunks(chunks);
     } catch (err) {
         narrLog('narrating the selection FAILED: ' + (err && err.message || err));
+        narrWaitEnd();
+        narrPhase('');
         showKokoroStatus('Narration failed: ' + (err && err.message || err));
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 6000);
     }
@@ -1172,6 +1221,8 @@ function stopReading() {
         narrLog('stopReading, ' + _ttsChunks.length + ' chunks dropped; called from ' + from);
         _narrActive = false;
         _narrSilentSince = 0;
+        narrWaitEnd();
+        narrPhase('');
     }
     _ttsChunks = [];
     _currentTTSChunkIdx = null;
@@ -1329,7 +1380,8 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
         setupKokoro(false, "Kokoro is ready. Voice set to " + displayName + ".");
     } else if (isQwenVoice(voiceId)) {
         // The host starts the narrator on this choice and reports its progress itself.
-        showKokoroStatus("Voice set to the Qwen narrator. Read Aloud, Read and Read from here all use it.");
+        showKokoroStatus("Voice set to " + (friendlyName ? friendlyName + ", a Qwen narrator voice" : "the Qwen narrator") +
+                         ". Read Aloud, Read and Read from here all use it.");
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 3000);
     } else if (!isAutoReset || _isKokoroReady) {
         showKokoroStatus("Voice set to " + displayName);
