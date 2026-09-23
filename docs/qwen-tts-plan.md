@@ -272,6 +272,64 @@ Rejected along the way, and why it is worth remembering: every sample before thi
 checked. It is what made the early takes sound, in Ed's words, like someone talking to a
 baby. Check what a preset is for before building on it.
 
+## 3g. Status, 2026-09-23 -- where slice 2 actually stands
+
+**Last known-good build: commit `9278781`** (VoiceDesign, northern-english). Measured: it
+plays continuously (19 clips, worst gap 0.8s), starts on the page being read, and loads
+offline in 16-18s. **Known fault:** the voice changes from sentence to sentence.
+
+**Cause of that fault -- a regression, not a model limit.** VoiceDesign re-invents the
+speaker on every generation. Paragraph-sized pieces hid it, because one generation means one
+speaker for a whole paragraph. To shorten time to first sound, the opening pieces were cut
+to ~55 characters (the 55/130/250 ramp in `narrationPieces`). More, shorter pieces meant
+more speaker changes. The consistency fixed earlier was undone by that change.
+
+**Uncommitted working tree -- a mistake, to be reverted, never deployed:**
+
+- `tools/qwen-narrator/sidecar.py` was switched to `Qwen3-TTS-12Hz-1.7B-Base`, cloning
+  `narrator-reference.wav`. **That switch was wrong, and it was made without the owner's
+  decision.** It reverses §3f. Base accepts no `instruct`, so a cloned narrator cannot be
+  directed: no emotional beats, no per-line style, no slice 3. Directable emotion is the
+  core requirement of this feature and the reason for choosing Qwen over Kokoro. So the
+  clone path could never have succeeded, however long it was tuned.
+- It also gave up §3e. Cloned paragraphs ran at 3.3x realtime, so pieces were forced down
+  to sentence length, losing the context that carries intonation across sentences.
+- `js/modules/09-speech.js` piece cap changed to 90, then 140. This is part of the same
+  change; revert it with it.
+- The timeline test "passed", yet only 8 clips played in 90s. Its gap metric does not see a
+  stall at the end, so the pass is not evidence.
+
+**Cloning is not an option for this feature.** The measurements taken on it (it slowed
+sharply above ~58 characters, and it reduced the speaker drift between sentences) are not
+recorded here as a basis for decisions. It bought voice consistency by giving up the
+requirement the feature exists for.
+
+**What is settled:** VoiceDesign stays (§3f). Paragraph-sized pieces stay the default (§3e).
+Short pieces were the cause of the voice changing between sentences, not the model.
+
+**The open question (the owner's):** how to get an acceptable first sound while keeping
+paragraph-sized pieces. With VoiceDesign, every piece boundary is a possible voice change.
+The trade-off has to be made inside that constraint, not by changing engine.
+
+**Also found on review:** pieces and groups are counted from wherever Play was pressed. They
+are not fixed points in the document, so pressing Play somewhere else, or stopping and
+restarting, forms different groups and misses the cache (§3c requires composition to be a
+pure function of the document). That is why a restart costs as much as a first start.
+
+**How to test:**
+- Before each run, write down the question it answers and the expected result.
+- Use one piece, and the resident sidecar rather than a fresh load.
+- Enforce a limit of 60 seconds or less inside the process (a generation cap, a script
+  deadline). A tool or shell timeout that only detaches the run is not a limit.
+- Afterwards, confirm that no Python process is left on the GPU.
+
+Batch-of-8 probes with multi-minute timeouts held the GPU at 100% for about an hour and
+answered almost nothing. Many short tests beat one long one.
+
+**Minor, known:** `QwenNarrator.Ready()` reads the response stream twice. There is also a
+4.3GB duplicate model download in the global Hugging Face cache (`~\.cache\huggingface`),
+which nothing uses. It was left in place, for deletion only on request.
+
 ## 4. The emotional beats — a director pass
 
 This is what decides whether it sounds like an audiobook or like a machine reading. The TTS
