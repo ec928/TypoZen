@@ -241,6 +241,28 @@ namespace TypoZen
             return x;
         }
 
+        public const string QwenId = "QwenTTS";
+
+        /// <summary>
+        /// Qwen narration: a Python environment and several gigabytes of model, set up by
+        /// hand (docs/qwen-tts-plan.md). There is nothing here to download it with, so it has
+        /// no files to fetch -- the dialog lists it only while it exists, for its size, its
+        /// narration audio and a way to remove it.
+        /// </summary>
+        public static ExtensionInfo Qwen(string cacheDir)
+        {
+            return new ExtensionInfo
+            {
+                Id = QwenId,
+                Title = "Qwen narration",
+                Blurb = "Audiobook narration by the Qwen3-TTS model, rendered on this PC's graphics card. "
+                      + "It is set up by hand rather than downloaded here. Narration audio is kept so "
+                      + "anything heard before plays at once; clearing it only means rendering again.",
+                Dir = QwenNarrator.RootDir(cacheDir),
+                Marker = Path.Combine("venv", "Scripts", "python.exe")
+            };
+        }
+
         /// <summary>True when the model is there, whichever precision was chosen.</summary>
         public static bool KokoroInstalled(string cacheDir)
         {
@@ -541,11 +563,22 @@ namespace TypoZen
                     Margin = new Thickness(0, 3, 0, 0)
                 });
                 if (info.Id == ExtensionCatalog.KokoroId) panel.Children.Add(quality);
+                bool isQwen = info.Id == ExtensionCatalog.QwenId;
 
-                var state = new TextBlock { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.9 };
+                var state = new TextBlock { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.9, TextWrapping = TextWrapping.Wrap };
                 var button = new Button { Width = 110, Height = 26, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
+                // Qwen narration keeps the audio it renders. Clearing that is the everyday
+                // housekeeping; removing the whole extension is not.
+                var clearAudio = new Button { Content = "Clear audio", Width = 110, Height = 26, Margin = new Thickness(8, 8, 0, 0) };
                 panel.Children.Add(state);
-                panel.Children.Add(button);
+                if (isQwen)
+                {
+                    var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+                    buttons.Children.Add(button);
+                    buttons.Children.Add(clearAudio);
+                    panel.Children.Add(buttons);
+                }
+                else panel.Children.Add(button);
                 box.Child = panel;
                 root.Children.Add(box);
 
@@ -570,8 +603,37 @@ namespace TypoZen
                     }
                     button.Content = on ? (short_ > 0 ? "Update" : "Remove") : "Install";
                     if (info.Id == ExtensionCatalog.KokoroId) quality.IsEnabled = !on;
+                    if (isQwen)
+                    {
+                        long audio = SizeOf(QwenNarrator.CacheDir(cacheDir));
+                        // Nothing here can install it, so once removed there is no button to offer.
+                        state.Text = on
+                            ? "Installed - " + Human(onDisk) + " on disk, of which " + Human(audio) + " is narration audio"
+                            : "Removed. Setting it up again is done by hand.";
+                        button.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+                        clearAudio.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+                        clearAudio.IsEnabled = audio > 0;
+                    }
                 };
                 rows.Add(refresh);
+
+                clearAudio.Click += (s, e) =>
+                {
+                    string audioDir = QwenNarrator.CacheDir(cacheDir);
+                    var ask = MessageBox.Show(win,
+                        "Delete the narration audio? " + Human(SizeOf(audioDir)) + " will be deleted, and "
+                        + "anything narrated again will render again.",
+                        "Extensions", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+                    if (ask != MessageBoxResult.OK) return;
+                    // The narrator writes into this folder; stopped first so nothing is
+                    // half-written into it while it goes. It starts again on the next Narrate.
+                    QwenNarrator.Stop();
+                    ExtensionInstaller.Purge(audioDir, true);
+                    foreach (var r in rows) r();
+                    status.Text = SizeOf(audioDir) > 0
+                        ? "Some narration audio could not be deleted."
+                        : "Narration audio deleted.";
+                };
 
                 button.Click += (s, e) =>
                 {
@@ -585,6 +647,9 @@ namespace TypoZen
                         // Hand it back before deleting it: while the reader has this
                         // dictionary chosen, the application is the thing reading the file.
                         if (changed != null) changed();
+                        // The narrator runs out of this folder; a running python.exe would
+                        // hold its own files and most of the folder would stay behind.
+                        if (isQwen) QwenNarrator.Stop();
                         ExtensionInstaller.Purge(now.Dir, true);
                         foreach (var r in rows) r();
                         if (changed != null) changed();
@@ -638,6 +703,9 @@ namespace TypoZen
             addRow(ExtensionCatalog.Kokoro(cacheDir, false), kokoroChosen);
             var wikt = ExtensionCatalog.Wiktionary(cacheDir);
             addRow(wikt, () => wikt);
+            // Listed only while it exists: nothing here can install it.
+            var qwen = ExtensionCatalog.Qwen(cacheDir);
+            if (qwen.Installed) addRow(qwen, () => qwen);
 
             quality.SelectionChanged += (s, e) => { foreach (var r in rows) r(); };
 
