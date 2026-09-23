@@ -355,6 +355,15 @@ removes the wait on pages already turned to. The lever that remains is the piece
 characters). A lower cap shortens the wait but adds voice changes inside long paragraphs.
 That is the owner's trade-off.
 
+**No silence after the first line.** A start near the end of a group used to play a few
+seconds, then go silent for the whole render of the next group. That was the "one word and it
+stopped" of the first live test. Before the first word, the page now keeps adding batches
+until the queued audio outlasts the estimated render of the next one. That estimate is 2.3s of
+compute per second of the longest piece's audio, at 12 characters a second. The render-behind
+loop also asks early for any batch that will take longer than its usual 90-second lead.
+Verified at block 223 of Matter: it waited for batch 1, then played 60s with no gap over
+0.1s while batch 2 rendered cold at 0.62x realtime.
+
 **Also found on review:** pieces and groups are counted from wherever Play was pressed. They
 are not fixed points in the document, so pressing Play somewhere else, or stopping and
 restarting, forms different groups and misses the cache (§3c requires composition to be a

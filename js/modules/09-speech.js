@@ -565,6 +565,17 @@ function narrationBatches(all, from, maxGroups) {
     return batches;
 }
 
+/**
+ * Seconds the narrator will take over a batch. A batch runs as long as its longest piece, at
+ * about 2.2s of compute per second of that piece's audio (5.6 steps/s against 12 steps per
+ * second of speech, measured 2026-09-23). Audio is estimated at 12 characters a second, the
+ * slow end of what Matter measured, so this errs long.
+ */
+function batchRenderEstimate(batch) {
+    const longest = Math.max.apply(null, batch.map(p => p.text.length));
+    return 2.3 * longest / 12 + 2;
+}
+
 /** The first block on screen: both axes, or the pages already turned in Pages count. */
 function firstVisibleBlock(all, editor) {
     const host = editor.getBoundingClientRect();
@@ -622,8 +633,22 @@ async function startQwenNarration(base) {
     narrLog('reading ' + reading + ' begins');
     showKokoroStatus('Preparing the first passage...');
     _narrationPending = true;
+    const secondsOf = chunks => chunks.reduce((n, c) => n + c.seconds, 0);
+    let next = 1;
     try {
-        const firstChunks = playable(await renderNarration(base, queue[0], reading));
+        let firstChunks = playable(await renderNarration(base, queue[0], reading));
+        // Starting near the end of a group can leave a few seconds to play -- a heading, one
+        // short line -- and then a minute of silence while the next group renders: the "one
+        // word and it stopped" of the first live test. If what is queued will not last until
+        // the next batch is ready, wait for that batch too. One wait before the first word
+        // beats a stop after it.
+        while (next < queue.length && reading === _narrationReading &&
+               secondsOf(firstChunks) < batchRenderEstimate(queue[next])) {
+            narrLog('only ' + secondsOf(firstChunks).toFixed(1) + 's to play, batch ' + next + ' needs ~' +
+                    batchRenderEstimate(queue[next]).toFixed(0) + 's: waiting for it before the first word');
+            firstChunks = firstChunks.concat(playable(await renderNarration(base, queue[next], reading)));
+            next++;
+        }
         document.getElementById('kokoro-status')?.remove();
         if (reading !== _narrationReading) { narrLog('reading ' + reading + ' went stale before its first sound'); return; }
         if (!firstChunks.length) throw new Error('nothing came back');
@@ -640,10 +665,13 @@ async function startQwenNarration(base) {
 
     (async () => {
         try {
-            let n = 1;
+            let n = next;
             for (; n < queue.length; n++) {
                 // About ninety seconds ahead is plenty; beyond that is work nobody may hear.
-                while (isPlaying && reading === _narrationReading && queuedSeconds() > 90) {
+                // Except before a batch that will take longer than that to render -- one long
+                // paragraph is enough -- which is asked for early enough to arrive in time.
+                const ahead = Math.max(90, 1.5 * batchRenderEstimate(queue[n]));
+                while (isPlaying && reading === _narrationReading && queuedSeconds() > ahead) {
                     await new Promise(r => setTimeout(r, 500));
                 }
                 if (!isPlaying || reading !== _narrationReading) {
