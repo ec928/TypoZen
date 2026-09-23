@@ -1691,6 +1691,9 @@ namespace TypoZen
                 UninstallEditorKeyFilter();
                 SaveWindowState();
                 PruneLoadStageDir(maxAgeMinutes: 0);   // nothing is in flight once we are closing
+                // The narrator holds several gigabytes of VRAM while it is up. It was started
+                // for this window's reading and must not outlive it.
+                try { QwenNarrator.Stop(); } catch { }
                 try
                 {
                     if (_webView != null)

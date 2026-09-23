@@ -245,7 +245,11 @@ function clearTTSFocus() {
 function playNextChunk() {
     clearTTSFocus();
 
-    if (!isPlaying || _ttsChunks.length === 0) {
+    if (!isPlaying) { stopReading(); return; }
+    if (_ttsChunks.length === 0) {
+        // Narration renders behind the voice, so an empty queue can mean "the next group
+        // is still coming" rather than "the reading is over".
+        if (_narrationPending) { setTimeout(playNextChunk, 400); return; }
         stopReading();
         return;
     }
@@ -350,6 +354,94 @@ function playRenderedChunk(url) {
  * anything heard before is instant. Blocks are sent with their model index, which is what
  * comes back on each item and what the chunk queue uses to move the highlight.
  */
+let _narrationPending = false;
+let _narrationReading = 0;
+let _narrationBase = '';
+
+/**
+ * The first sentence or two of a block, and whatever is left of it.
+ *
+ * Kept short on purpose: this is the only thing standing between pressing Narrate and
+ * hearing something, and it is rendered on its own, which is the slow way to render.
+ */
+function splitOpener(text, limit) {
+    const max = limit || 200;
+    const t = String(text || '').trim();
+    if (t.length <= max) return { head: t, tail: '' };
+    // Cut at the last sentence end inside the limit, or failing that at a word boundary.
+    const window = t.slice(0, max);
+    let at = Math.max(window.lastIndexOf('. '), window.lastIndexOf('? '), window.lastIndexOf('! '));
+    if (at > 40) at += 1;
+    else {
+        at = window.lastIndexOf(' ');
+        if (at < 40) at = max;
+    }
+    return { head: t.slice(0, at).trim(), tail: t.slice(at).trim() };
+}
+
+/** How much audio is already queued and paid for. */
+function queuedSeconds() {
+    let n = 0;
+    for (const c of _ttsChunks) n += (c.seconds || 0);
+    return n;
+}
+
+/**
+ * Tell the narrator to drop whatever is left of this reading. A group already inside the
+ * model runs to its end -- a CUDA call cannot be interrupted safely -- so this saves the
+ * groups that have not started, which is nearly all of them.
+ */
+function cancelNarration() {
+    if (!_narrationBase || !_narrationReading) return;
+    const reading = _narrationReading;
+    _narrationReading++;                       // anything still in flight is now stale
+    try {
+        fetch(_narrationBase + '/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reading: reading })
+        }).catch(() => {});
+    } catch (e) {}
+}
+
+/** One request to the sidecar; returns chunks ready for the reading queue. */
+async function renderNarration(base, group, blocks, reading) {
+    const res = await fetch(base + '/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            blocks: group.map(w => ({ id: w.id, text: w.text })),
+            reading: reading
+        })
+    });
+    if (!res.ok) throw new Error('sidecar said ' + res.status);
+    const data = await res.json();
+    const byId = new Map(blocks.map(w => [w.id, w]));
+    const chunks = [];
+    for (const item of data.items || []) {
+        const w = byId.get(item.id);
+        if (!w) continue;
+        const idx = parseInt(w.el.getAttribute('data-model-index'), 10);
+        chunks.push({
+            idx: isFinite(idx) ? idx : null,
+            el: w.el,
+            text: w.text,
+            seconds: item.seconds || 0,
+            audioUrl: 'https://localnarration/' + item.file
+        });
+    }
+    return chunks;
+}
+
+/**
+ * Narrate from where the reader is.
+ *
+ * The first request is one block, because that is the whole difference between speech in
+ * ten seconds and speech in two minutes: a group of eight costs eight blocks of rendering
+ * before a single word is heard. Everything after the first block is fetched in groups of
+ * eight while the voice is already reading, which is where the speed lives -- a batch runs
+ * at 0.34x realtime against 2.2x one at a time, so the queue fills faster than it drains.
+ */
 async function startQwenNarration(base) {
     const editor = document.getElementById('editor');
     if (!editor) return;
@@ -367,9 +459,8 @@ async function startQwenNarration(base) {
     }
     if (at < 0) at = 0;
 
-    // Three groups of eight: enough to be listening while the rest renders behind it.
     const wanted = [];
-    for (let i = at; i < all.length && wanted.length < 24; i++) {
+    for (let i = at; i < all.length && wanted.length < 48; i++) {
         const el = all[i];
         const text = (el.innerText || '').trim();
         if (!text) continue;
@@ -377,36 +468,63 @@ async function startQwenNarration(base) {
     }
     if (!wanted.length) return;
 
-    showKokoroStatus('Narrating - rendering the first passage...');
-    try {
-        const res = await fetch(base + '/render', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ blocks: wanted.map(w => ({ id: w.id, text: w.text })) })
-        });
-        if (!res.ok) throw new Error('sidecar said ' + res.status);
-        const data = await res.json();
-        document.getElementById('kokoro-status')?.remove();
+    // Open with a sentence, not a block.
+    //
+    // "Render one block first" was still hostage to how long that block is: a block alone
+    // runs at about 2.2x realtime, so a single 55-second paragraph is two minutes of silence
+    // before a word is heard -- which is exactly what it did. The opening chunk is now a
+    // sentence or two, a few seconds of work, and the rest of that same block follows it.
+    const opener = splitOpener(wanted[0].text);
+    const head = { el: wanted[0].el, id: wanted[0].id, text: opener.head };
+    const tail = opener.tail
+        ? [{ el: wanted[0].el, id: wanted[0].id, text: opener.tail }]
+        : [];
 
-        const byId = new Map(wanted.map(w => [w.id, w]));
-        const chunks = [];
-        for (const item of data.items || []) {
-            const w = byId.get(item.id);
-            if (!w) continue;
-            const idx = parseInt(w.el.getAttribute('data-model-index'), 10);
-            chunks.push({
-                idx: isFinite(idx) ? idx : null,
-                el: w.el,
-                text: w.text,
-                audioUrl: 'https://localnarration/' + item.file
-            });
-        }
-        if (!chunks.length) throw new Error('nothing came back');
-        startReadingChunks(chunks);
+    const reading = ++_narrationReading;
+    _narrationBase = base;
+    showKokoroStatus('Preparing the first passage...');
+    _narrationPending = true;
+    try {
+        const firstChunks = await renderNarration(base, [head], [head], reading);
+        document.getElementById('kokoro-status')?.remove();
+        if (!firstChunks.length) throw new Error('nothing came back');
+        startReadingChunks(firstChunks);
     } catch (err) {
+        _narrationPending = false;
         showKokoroStatus('Narration failed: ' + (err && err.message || err));
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 6000);
+        return;
     }
+
+    // The rest, in groups, but only when the queue is running short.
+    //
+    // Rendering everything as fast as the card allows is what pinned the GPU at 99% and
+    // kept it there after Stop: forty-eight blocks of audio nobody was going to hear. A
+    // lead of about a minute is all that is needed to stay ahead of a listener, since a
+    // batch renders three times faster than it plays.
+    (async () => {
+        try {
+            // The rest of the opening block first, so the sentence that was split off is
+            // followed by the rest of its own paragraph rather than by the next one.
+            const groups = [];
+            if (tail.length) groups.push(tail);
+            for (let i = 1; i < wanted.length; i += 8) groups.push(wanted.slice(i, i + 8));
+
+            for (const group of groups) {
+                while (isPlaying && reading === _narrationReading && queuedSeconds() > 60) {
+                    await new Promise(r => setTimeout(r, 500));
+                }
+                if (!isPlaying || reading !== _narrationReading) break;
+                const chunks = await renderNarration(base, group, group, reading);
+                if (!isPlaying || reading !== _narrationReading) break;
+                for (const c of chunks) _ttsChunks.push(c);
+            }
+        } catch (err) {
+            try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry('narration: ' + err.message); } catch (e) {}
+        } finally {
+            _narrationPending = false;
+        }
+    })();
 }
 
 window.startQwenNarration = startQwenNarration;
@@ -473,6 +591,9 @@ function sendTTSPlay(text) {
 function stopReading() {
     _ttsChunks = [];
     _currentTTSChunkIdx = null;
+    // Stop means stop: the queue stops waiting, and the narrator drops the rest.
+    _narrationPending = false;
+    cancelNarration();
     clearTTSFocus();
     const editor = document.getElementById('editor');
     if (editor) editor.classList.remove('tts-reading-mode');

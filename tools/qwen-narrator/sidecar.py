@@ -130,6 +130,30 @@ class Narrator(object):
         return items, False
 
 
+# Cancellation. A render request carries the id of the reading it belongs to; stopping the
+# reading cancels that id, and any group not yet started is dropped. A group already inside
+# generate() runs to the end -- there is no safe way to interrupt a CUDA call mid-flight --
+# so the worst case is one group of wasted work rather than a queue of them.
+#
+# This exists because the first build had none: Stop stopped the playback, the page kept
+# asking for more, and the card stayed at 99% rendering audio nobody was going to hear.
+_cancelled = set()
+_cancel_lock = threading.Lock()
+
+
+def cancel(reading_id):
+    with _cancel_lock:
+        _cancelled.add(reading_id)
+        if len(_cancelled) > 64:                # ids only ever grow; keep the newest
+            for old in sorted(_cancelled)[:-32]:
+                _cancelled.discard(old)
+
+
+def is_cancelled(reading_id):
+    with _cancel_lock:
+        return reading_id in _cancelled
+
+
 class Handler(BaseHTTPRequestHandler):
     narrator = None
 
@@ -175,6 +199,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {'error': 'bad json: %s' % e})
             return
 
+        touch()
+        if self.path.startswith('/cancel'):
+            rid = int(body.get('reading', 0))
+            cancel(rid)
+            log('reading %d cancelled' % rid)
+            self._send(200, {'cancelled': rid})
+            return
+
         if self.path.startswith('/stop'):
             self._send(200, {'stopping': True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -196,9 +228,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {'error': 'no blocks with text'})
             return
 
+        reading = int(body.get('reading', 0))
+        if is_cancelled(reading):
+            self._send(200, {'items': [], 'cancelled': True})
+            return
+
         items, cached_groups, rendered_groups = [], 0, 0
         try:
             for at in range(0, len(blocks), size):
+                if is_cancelled(reading):
+                    log('reading %d cancelled mid-request, %d blocks dropped'
+                        % (reading, len(blocks) - at))
+                    self._send(200, {'items': items, 'cancelled': True})
+                    return
                 group = blocks[at:at + size]
                 got, was_cached = Handler.narrator.render_group(group, voice, seed)
                 items.extend(got)
@@ -216,10 +258,31 @@ class Handler(BaseHTTPRequestHandler):
                          'groups_rendered': rendered_groups})
 
 
+# Idle shutdown. TypoZen stops this when it closes, but a crash or a killed process skips
+# that, and a narrator left behind holds several gigabytes of VRAM for nothing. So it also
+# stops itself once nobody has asked it for anything in a while.
+_last_used = time.time()
+
+
+def touch():
+    global _last_used
+    _last_used = time.time()
+
+
+def watch_idle(server, minutes):
+    while True:
+        time.sleep(30)
+        if time.time() - _last_used > minutes * 60:
+            log('idle for %d minutes, shutting down to release the GPU' % minutes)
+            server.shutdown()
+            return
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cache', required=True, help='where the audio and manifests go')
     ap.add_argument('--port', type=int, default=8765)
+    ap.add_argument('--idle-minutes', type=int, default=15)
     args = ap.parse_args()
 
     narrator = Narrator(args.cache)
@@ -229,6 +292,7 @@ def main():
     log('listening on 127.0.0.1:%d, cache %s' % (args.port, args.cache))
     # Answer /health before the weights are in, so the host can tell "starting" from "dead".
     threading.Thread(target=narrator.load, daemon=True).start()
+    threading.Thread(target=watch_idle, args=(server, args.idle_minutes), daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
