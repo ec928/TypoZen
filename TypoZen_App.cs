@@ -1570,6 +1570,14 @@ namespace TypoZen
             PopulateWindowsVoicesMenu();
             BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
             BindClick("mQwenVoice", (s, e) => ChooseQwenVoice());
+            BindClick("mNarratorSettings", (s, e) =>
+            {
+                try
+                {
+                    NarratorDialog.Show(this, CacheDir(), _appDir, _currentFilePath, SendMsg, SendNarratorSettings);
+                }
+                catch (Exception ex) { LogFault("narrator settings", ex); }
+            });
             BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
             BindClick("mWordWrap", (s, e) =>
             {
@@ -2080,9 +2088,21 @@ namespace TypoZen
                 bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus,
                                                            CancellationToken.None);
                 if (!up) return;
+                SendNarratorSettings();
                 SendMsg("cmd:narrate:" + QwenNarrator.BaseUrl);
             }
             catch (Exception ex) { LogFault("start narration", ex); }
+        }
+
+        /// <summary>
+        /// The narrator's voice and style, the reading speed and the open book's cast, to the
+        /// page, which puts them on every request. Before each narration, and whenever Narrator
+        /// settings or the speed are saved.
+        /// </summary>
+        private void SendNarratorSettings()
+        {
+            try { SendMsg("cmd:narrator_settings:" + QwenNarrator.PageSettingsJson(CacheDir(), _currentFilePath, _ttsSpeed)); }
+            catch (Exception ex) { LogFault("narrator settings", ex); }
         }
 
         private void NarratorStatus(string m)
@@ -3344,6 +3364,8 @@ namespace TypoZen
                 bool qwen = QwenNarrator.Installed(cache, _appDir);
                 var narrate = FindElement("mQwenVoice") as MenuItem;
                 if (narrate != null) narrate.Visibility = qwen ? Visibility.Visible : Visibility.Collapsed;
+                var narratorSettings = FindElement("mNarratorSettings") as MenuItem;
+                if (narratorSettings != null) narratorSettings.Visibility = qwen ? Visibility.Visible : Visibility.Collapsed;
                 if (kokoro) RebuildKokoroVoiceMenu();
                 TickKokoroVoice();
 
@@ -6297,6 +6319,13 @@ namespace TypoZen
                 _kokoroVoiceId = msg.Substring(27);
                 TickKokoroVoice();
                 UpdateWindowsVoicesCheckmark();
+                return;
+            }
+            else if (msg.StartsWith("host_narrator_cast:"))
+            {
+                // The page's answer to Narrator settings' "Find characters".
+                var cb = NarratorDialog.CastScanArrived;
+                if (cb != null) cb(msg.Substring(19));
                 return;
             }
             else if (msg == "host_qwen_narrate")
@@ -9627,7 +9656,8 @@ namespace TypoZen
                 prefs.TtsVoiceId = _ttsVoiceId;
                 prefs.TtsSpeed = _ttsSpeed;
                 WriteHostPrefs(prefs);
-                
+                SendNarratorSettings();         // the narrator reads at this speed too
+
                 UpdateWindowsVoicesCheckmark();
                 TypoZen_TTS.Stop();
                 win.DialogResult = true;
