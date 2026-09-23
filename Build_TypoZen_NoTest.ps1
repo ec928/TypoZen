@@ -24,16 +24,34 @@ function Test-ExeWritable {
     }
 }
 
-$running = @(Get-Process -Name "TypoZen" -ErrorAction SilentlyContinue)
+# Only this folder's build, and ask before forcing -- the same rule as Build_TypoZen.ps1,
+# which was fixed for this and this script was not. On 2026-09-23 a NoTest build
+# force-killed the user's own TypoZen (the installed copy, which holds no lock on this
+# exe) in the middle of a session: Stop-Process -Force on every TypoZen process, no
+# WM_CLOSE, no save prompt.
+$running = @(Get-Process -Name "TypoZen" -ErrorAction SilentlyContinue | Where-Object {
+    try { $_.MainModule.FileName -eq $exePath } catch { $false }   # denied = not ours
+})
 if ($running.Count -gt 0) {
-    Write-Host "Closing running instance of TypoZen..." -ForegroundColor Yellow
-    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Host "Asking $($running.Count) instance(s) of this build to close..." -ForegroundColor Yellow
+    foreach ($p in $running) { try { $null = $p.CloseMainWindow() } catch {} }
+    $graceDeadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $graceDeadline) {
+        if (@($running | Where-Object { -not $_.HasExited }).Count -eq 0) { break }
+        Start-Sleep -Milliseconds 200
+    }
+    $stubborn = @($running | Where-Object { -not $_.HasExited })
+    if ($stubborn.Count -gt 0) {
+        Write-Host "  Still open after 10s (a save prompt may be waiting) - forcing." -ForegroundColor Yellow
+        $stubborn | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
 }
 
+# Wait for this exe to be released, not for every TypoZen to exit: the user's own copy
+# stays open and holds nothing here.
 $deadline = (Get-Date).AddSeconds(15)
 while ((Get-Date) -lt $deadline) {
-    $still = @(Get-Process -Name "TypoZen" -ErrorAction SilentlyContinue)
-    if ($still.Count -eq 0 -and (Test-ExeWritable -Path $exePath)) { break }
+    if (Test-ExeWritable -Path $exePath) { break }
     Start-Sleep -Milliseconds 200
 }
 if (-not (Test-ExeWritable -Path $exePath)) {
