@@ -385,23 +385,46 @@ class Narrator(object):
 
     # ---- the voice library: design from a description, keep, delete, preview ----------------
 
-    def _load_encoder(self):
-        """Base's speaker encoder, which turns a recording into a voice-print. Only Base has one.
+    @staticmethod
+    def encoder_path():
+        return os.path.join(os.environ.get('HF_HUB_CACHE', ''), 'speaker-encoder.pt')
 
-        Loaded once, on the first design; everything else in Base is let go at once, so what
-        stays on the card is the encoder alone, not a third model.
+    def _load_encoder(self):
+        """The speaker encoder, which turns a recording into a voice-print. Only Base has one.
+
+        It is a small part of Base, so it is kept on its own in models\\speaker-encoder.pt and
+        loaded from there: the rest of Base (4.2GB) is then not needed on disk at all. If the
+        file is missing and Base is present, the encoder is taken from Base once and saved.
         """
         import gc
+        torch = self.torch
+        from qwen_tts.core.models.modeling_qwen3_tts import Qwen3TTSSpeakerEncoder
+        from qwen_tts.core.models.configuration_qwen3_tts import Qwen3TTSSpeakerEncoderConfig
+        t = time.time()
+        path = self.encoder_path()
+        if os.path.isfile(path):
+            saved = torch.load(path, map_location='cpu', weights_only=False)
+            # Only the fields the config takes: to_dict() adds bookkeeping (dtype, versions)
+            # that this class's constructor rejects.
+            import inspect
+            accepted = set(inspect.signature(Qwen3TTSSpeakerEncoderConfig.__init__).parameters)
+            cfg = Qwen3TTSSpeakerEncoderConfig(**{k: v for k, v in saved['config'].items() if k in accepted})
+            enc = Qwen3TTSSpeakerEncoder(cfg)
+            enc.load_state_dict(saved['state'])
+            self.encoder = enc.to('cuda:0', dtype=torch.bfloat16).eval()
+            log('speaker encoder ready in %.1fs (from %s)' % (time.time() - t, os.path.basename(path)))
+            return
         from qwen_tts import Qwen3TTSModel
         from huggingface_hub import snapshot_download
-        t = time.time()
         base = Qwen3TTSModel.from_pretrained(snapshot_download(BASE_REPO, local_files_only=True),
-                                             device_map='cuda:0', dtype=self.torch.bfloat16)
+                                             device_map='cuda:0', dtype=torch.bfloat16)
         self.encoder = base.model.speaker_encoder
+        cfg = base.model.config.speaker_encoder_config.to_dict()
         del base
         gc.collect()
-        self.torch.cuda.empty_cache()
-        log('speaker encoder ready in %.1fs' % (time.time() - t))
+        torch.cuda.empty_cache()
+        torch.save({'config': cfg, 'state': {k: v.detach().cpu() for k, v in self.encoder.state_dict().items()}}, path)
+        log('speaker encoder ready in %.1fs (taken from Base, saved to %s)' % (time.time() - t, os.path.basename(path)))
 
     def voice_print(self, wav, sr):
         """A voice-print (2048 floats) from a recording at 24kHz."""
@@ -663,10 +686,11 @@ class Handler(BaseHTTPRequestHandler):
 
         reading = int(body.get('reading', 0))
         started = time.time()
-        log('render request: reading %d, %d pieces [%s]' % (
-            reading, len(blocks),
-            ' '.join('%s:%dch%s' % (b.get('id'), len(b.get('text') or ''),
-                                    '[%s]' % b['direction'] if b.get('direction') else '') for b in blocks)))
+        log('render request: reading %d, voice %s, %d pieces [%s]' % (
+            reading, voice, len(blocks),
+            ' '.join('%s:%dch%s%s' % (b.get('id'), len(b.get('text') or ''),
+                                      '<%s>' % b['voice'] if b.get('voice') else '',
+                                      '[%s]' % b['direction'] if b.get('direction') else '') for b in blocks)))
         if is_cancelled(reading):
             log('reading %d already cancelled, nothing rendered' % reading)
             self._send(200, {'items': [], 'cancelled': True})
