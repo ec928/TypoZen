@@ -36,22 +36,28 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-MODEL_REPO = 'Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign'
+# CustomVoice, with the narrator's voice-print in the speaker slot (docs/qwen-tts-plan.md 3g).
+#
+# VoiceDesign, used before, invents the speaker afresh on every piece it renders, so the
+# narrator changed from paragraph to paragraph -- "multiple people narrating". CustomVoice
+# holds whatever speaker it is given and still takes a style instruction. It is given the
+# voice-print of the northern-English narrator Ed chose (taken with the Base model's speaker
+# encoder from one VoiceDesign recording of that voice), so the voice is his choice and it
+# stays put. Chosen by ear on 2026-09-23 against the old narration and a pinned VoiceDesign.
+MODEL_REPO = 'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'
 
-# The voices Ed chose, by ear, on 2026-09-22. With VoiceDesign the wording is the voice, so
-# editing these strings changes what the narrator sounds like -- and changes every cache key
-# that used them, which is intended: the audio on disk no longer matches the request.
+# How the narrator reads. The voice is not described here -- it comes from the voice-print.
 NARRATION_CRAFT = (
-    " Narrate as an accomplished audiobook reader of literary fiction: measured and "
+    "Narrate as an accomplished audiobook reader of literary fiction: measured and "
     "unhurried, phrasing that follows the sense of the sentence, understated rather than "
     "performed. Give the spoken lines a light, distinct colour without acting them out."
 )
+HERE = os.path.dirname(os.path.abspath(__file__))
+# A voice is a voice-print file beside this script plus the style it narrates in. Changing
+# either changes every cache key that used it, which is intended: the audio on disk no
+# longer matches the request.
 VOICES = {
-    'northern-english': ("A British woman with a soft northern English accent, gentle and "
-                         "grounded, with a low steady delivery." + NARRATION_CRAFT),
-    'northern-clear': ("A British woman with a light northern English accent, clear and "
-                       "unhurried, with a smooth low register and very even pacing. "
-                       "Understated and composed." + NARRATION_CRAFT),
+    'northern-english': {'print': os.path.join(HERE, 'northern-english.npy'), 'style': NARRATION_CRAFT},
 }
 DEFAULT_VOICE = 'northern-english'
 GROUP_SIZE = 8
@@ -113,6 +119,11 @@ class Narrator(object):
             local = snapshot_download(MODEL_REPO, local_files_only=True)
             self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
                                                        dtype=torch.bfloat16)
+            import numpy as np
+            self.prints = {}
+            for name, v in VOICES.items():
+                raw = np.load(v['print']).astype(np.float32)
+                self.prints[name] = (torch.from_numpy(raw), hashlib.sha256(raw.tobytes()).hexdigest())
             self._decode_clips_separately()
             log('model ready in %.1fs (%s)' % (time.time() - t, MODEL_REPO))
         except Exception:
@@ -152,13 +163,35 @@ class Narrator(object):
         h = hashlib.sha256()
         h.update(MODEL_REPO.encode('utf-8'))
         h.update(b'\x00')
-        h.update(VOICES[voice].encode('utf-8'))
+        h.update(self.prints[voice][1].encode('utf-8'))
+        h.update(b'\x00')
+        h.update(VOICES[voice]['style'].encode('utf-8'))
         h.update(b'\x00')
         h.update(str(seed).encode('utf-8'))
         for t in texts:
             h.update(b'\x00')
             h.update(t.encode('utf-8'))
         return h.hexdigest()[:16]
+
+    def generate(self, texts, voice):
+        """One batched generation with the voice-print pinned and the style instruction.
+
+        qwen-tts has no public call for this pairing -- generate_custom_voice takes only its
+        nine named speakers, generate_voice_clone takes a voice-print but no instruction --
+        so this is generate_custom_voice with the voice-print passed the way
+        generate_voice_clone passes one (x-vector only, no reference audio).
+        """
+        m = self.model
+        n = len(texts)
+        vprint = self.prints[voice][0]
+        prompt = dict(ref_code=[None] * n, ref_spk_embedding=[vprint] * n,
+                      x_vector_only_mode=[True] * n, icl_mode=[False] * n)
+        input_ids = m._tokenize_texts([m._build_assistant_text(t) for t in texts])
+        style = m._tokenize_texts([m._build_instruct_text(VOICES[voice]['style'])])[0]
+        codes, _ = m.model.generate(input_ids=input_ids, instruct_ids=[style] * n,
+                                    voice_clone_prompt=prompt, languages=['English'] * n,
+                                    non_streaming_mode=True, **m._merge_generate_kwargs())
+        return m.model.speech_tokenizer.decode([{'audio_codes': c} for c in codes])
 
     def cached(self, key):
         """The items for a group already on disk, or None."""
@@ -203,8 +236,7 @@ class Narrator(object):
             self.torch.manual_seed(seed)
             self.torch.cuda.manual_seed_all(seed)
             t = time.time()
-            wavs, sr = self.model.generate_voice_design(
-                text=texts, instruct=VOICES[voice], language='English')
+            wavs, sr = self.generate(texts, voice)
             took = time.time() - t
 
             items, total = [], 0.0
