@@ -71,8 +71,14 @@ class Narrator(object):
         import torch
         from qwen_tts import Qwen3TTSModel
         t = time.time()
+        from huggingface_hub import snapshot_download
         self.torch = torch
-        self.model = Qwen3TTSModel.from_pretrained(MODEL_REPO, device_map='cuda:0',
+        # From the local folder, not the repository name. Given a name, the tokenizer loader
+        # asks the Hugging Face API about the model even when every file is on disk -- which
+        # fails offline, and online cost most of a 51-second start. Given a path it asks
+        # nothing: 16 seconds, and no network.
+        local = snapshot_download(MODEL_REPO, local_files_only=True)
+        self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
                                                    dtype=torch.bfloat16)
         log('model ready in %.1fs' % (time.time() - t))
 
@@ -283,7 +289,19 @@ def main():
     ap.add_argument('--cache', required=True, help='where the audio and manifests go')
     ap.add_argument('--port', type=int, default=8765)
     ap.add_argument('--idle-minutes', type=int, default=15)
+    ap.add_argument('--models', default=None,
+                    help='weights folder; defaults to models/ beside the cache')
     args = ap.parse_args()
+
+    # The weights live in the extension's own folder and nowhere else, and the network is
+    # off. Without this the loader fell back to the global Hugging Face cache, downloaded
+    # the model a second time on first start -- outside the extension, where Remove could
+    # never reach it -- and made "no network except while installing" untrue.
+    models = args.models or os.path.join(os.path.dirname(os.path.abspath(args.cache)), 'models')
+    os.environ['HF_HUB_CACHE'] = models
+    os.environ['HF_HOME'] = os.path.dirname(models)
+    os.environ['HF_HUB_OFFLINE'] = '1'
+    os.environ['TRANSFORMERS_OFFLINE'] = '1'
 
     narrator = Narrator(args.cache)
     Handler.narrator = narrator
