@@ -456,8 +456,9 @@
                                 <!-- A voice like the others, so Read Aloud, Read and Read from here
                                      all use it. Hidden unless the narration environment is
                                      installed, like the Kokoro voices above. -->
-                                <MenuItem x:Name="mQwenVoice" Header="_Qwen Narrator (northern English)"
-                                          IsCheckable="True" Visibility="Collapsed"
+                                <!-- Filled in code with the saved narrator voices (QwenNarrator.SavedVoices);
+                                     the one reading is ticked and named in the header. -->
+                                <MenuItem x:Name="mQwenVoice" Header="_Qwen Narrator" Visibility="Collapsed"
                                           ToolTip="Audiobook narration rendered on this PC's graphics card. Text not yet rendered takes about a minute to start; anything rendered before plays at once."/>
                                 <MenuItem x:Name="mNarratorSettings" Header="Narrator _Settings..." Visibility="Collapsed"
                                           ToolTip="The Qwen narrator's voice and how it reads, new voices from a description, and voices for this book's characters."/>
