@@ -452,9 +452,14 @@ async function startQwenNarration(base) {
     let at = caret ? all.indexOf(caret.block) : -1;
     if (at < 0) {
         const host = editor.getBoundingClientRect();
+        // Both axes, exactly as speakSelection has it. The first version tested only the
+        // vertical one, and in Pages the pages already turned sit off to the LEFT of the view
+        // while overlapping it vertically -- so the table of contents counted as "on screen"
+        // and narration started there from the middle of the prologue.
         at = all.findIndex(b => {
             const r = b.getBoundingClientRect();
-            return r.bottom > host.top && r.top < host.bottom && r.bottom > 0 && r.top < window.innerHeight;
+            return r.right > host.left && r.left < host.right && r.bottom > host.top && r.top < host.bottom
+                && r.bottom > 0 && r.top < window.innerHeight;
         });
     }
     if (at < 0) at = 0;
