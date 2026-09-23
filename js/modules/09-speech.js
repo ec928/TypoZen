@@ -389,119 +389,148 @@ function cancelNarration() {
 }
 
 /** One request to the sidecar; returns chunks ready for the reading queue. */
-async function renderNarration(base, group, blocks, reading) {
+async function renderNarration(base, batch, reading) {
     const res = await fetch(base + '/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            blocks: group.map(w => ({ id: w.id, text: w.text })),
+            blocks: batch.map(p => ({ id: p.id, text: p.text })),
             reading: reading,
-            group_size: group.length
+            group_size: batch.length
         })
     });
     if (!res.ok) throw new Error('sidecar said ' + res.status);
     const data = await res.json();
-    const byId = new Map(blocks.map(w => [w.id, w]));
-    const chunks = [];
-    for (const item of data.items || []) {
-        const w = byId.get(item.id);
-        if (!w) continue;
-        const idx = parseInt(w.el.getAttribute('data-model-index'), 10);
-        chunks.push({
+    // Items come back in the order sent, from the cache or not. Matched by position rather
+    // than id, so a manifest written by an older build can never pair audio with other text.
+    const items = data.items || [];
+    if (data.cancelled || items.length !== batch.length) return [];
+    return batch.map((p, i) => {
+        const idx = parseInt(p.el.getAttribute('data-model-index'), 10);
+        return {
             idx: isFinite(idx) ? idx : null,
-            el: w.el,
-            text: w.text,
-            seconds: item.seconds || 0,
-            audioUrl: 'https://localnarration/' + item.file
-        });
-    }
-    return chunks;
+            el: p.el,
+            at: p.at,
+            text: p.text,
+            seconds: items[i].seconds || 0,
+            audioUrl: 'https://localnarration/' + items[i].file
+        };
+    });
 }
 
 /**
- * Break the text into pieces for rendering: sentences where possible, never across a
- * paragraph, and short at the start.
+ * How narration is cut up, and why (docs/qwen-tts-plan.md, 3c, 3e and 3g).
  *
- * Measured, and it is the whole design: rendering a batch takes about as long as its LONGEST
- * piece, and hardly longer for more pieces -- eight pieces cost roughly what one does. So
- * what decides how soon the first word is heard is how long the first pieces are, not how
- * many there are. The first eight are kept to a clause or so; the next eight to a sentence;
- * after that a paragraph's worth. Each batch then yields more audio than the next one takes
- * to make, so the reading never waits.
+ * VoiceDesign invents the speaker afresh on every piece it renders, so every piece boundary
+ * is a possible change of voice. A paragraph is therefore one piece: one voice for it, and
+ * intonation that carries across its sentences. Only a paragraph longer than the cap is
+ * split, at sentence ends, never inside a sentence. Cutting pieces short to start sooner is
+ * what made the voice change from sentence to sentence; do not bring that back.
+ *
+ * Groups are fixed by the document, not by where Play was pressed: group n is the blocks
+ * whose index falls in [8n, 8n + 8), and its pieces go to the model in batches of eight.
+ * The same text therefore always goes in the same batch, which is what lets the cache match
+ * on a restart, a replay, or a page rendered ahead of the reader.
  */
-function narrationPieces(blocks) {
+const NARRATION_GROUP = 8;          // blocks in a group
+const NARRATION_BATCH = 8;          // pieces the model renders in one call
+const NARRATION_PIECE_CAP = 400;    // characters; only longer paragraphs are split
+
+/** Where a block sits in the document: its model index, or failing that its place on the page. */
+function narrationDocIndex(el, i) {
+    const idx = parseInt(el.getAttribute('data-model-index'), 10);
+    return isFinite(idx) ? idx : i;
+}
+
+/** A paragraph as one piece, or several at sentence ends when it is over the cap. */
+function blockPieces(text) {
+    if (text.length <= NARRATION_PIECE_CAP) return [text];
+    const sentences = text.match(/[^.!?…]+[.!?…]+["'”’)\]]*\s*|[^.!?…]+$/g) || [text];
     const out = [];
-    let id = 0;
-    const cap = () => out.length < 8 ? 55 : out.length < 16 ? 130 : 250;
-    for (const w of blocks) {
-        const sentences = w.text.match(/[^.!?…]+[.!?…]+["'”’)\]]*\s*|[^.!?…]+$/g)
-            || [w.text];
-        let cur = '';
-        const flush = () => {
-            if (cur.trim()) out.push({ el: w.el, id: id++, text: cur.trim() });
-            cur = '';
-        };
-        for (let sentence of sentences) {
-            // A sentence longer than the cap is cut at a clause, failing that at a word.
-            while (sentence.length > cap()) {
-                const limit = cap();
-                flush();
-                let at = Math.max(sentence.lastIndexOf(', ', limit), sentence.lastIndexOf('; ', limit),
-                                  sentence.lastIndexOf(': ', limit), sentence.lastIndexOf(' — ', limit));
-                if (at < limit * 0.4) at = sentence.lastIndexOf(' ', limit);
-                if (at <= 0) at = limit;
-                out.push({ el: w.el, id: id++, text: sentence.slice(0, at + 1).trim() });
-                sentence = sentence.slice(at + 1);
-            }
-            if (cur && cur.length + sentence.length > cap()) flush();
-            cur += sentence;
-        }
-        flush();
+    let cur = '';
+    for (const s of sentences) {
+        if (cur && cur.length + s.length > NARRATION_PIECE_CAP) { out.push(cur.trim()); cur = ''; }
+        cur += s;
     }
+    if (cur.trim()) out.push(cur.trim());
     return out;
 }
 
 /**
- * Narrate from where the reader is.
+ * The batches for up to `maxGroups` whole groups, starting with the group that holds
+ * all[from]. Each piece carries its block's document index as `at`, so the caller can
+ * tell which ones lie before the place reading starts.
+ */
+function narrationBatches(all, from, maxGroups) {
+    const groupStart = Math.floor(narrationDocIndex(all[from], from) / NARRATION_GROUP) * NARRATION_GROUP;
+    let i = from;
+    while (i > 0 && narrationDocIndex(all[i - 1], i - 1) >= groupStart) i--;
+
+    const batches = [];
+    let pieces = [];
+    let group = null;
+    let groups = 0;
+    const close = () => {
+        for (let k = 0; k < pieces.length; k += NARRATION_BATCH) batches.push(pieces.slice(k, k + NARRATION_BATCH));
+        pieces = [];
+    };
+    for (; i < all.length; i++) {
+        const at = narrationDocIndex(all[i], i);
+        const g = Math.floor(at / NARRATION_GROUP);
+        if (g !== group) {
+            close();
+            if (++groups > maxGroups) return batches;   // only whole groups: a partial one would miss the cache
+            group = g;
+        }
+        const text = applyTTSOverrides((all[i].innerText || '').trim());
+        if (!text) continue;
+        blockPieces(text).forEach((t, k) => pieces.push({ el: all[i], at: at, id: at * 100 + k, text: t }));
+    }
+    close();
+    return batches;
+}
+
+/** The first block on screen: both axes, or the pages already turned in Pages count. */
+function firstVisibleBlock(all, editor) {
+    const host = editor.getBoundingClientRect();
+    return all.findIndex(b => {
+        const r = b.getBoundingClientRect();
+        return r.right > host.left && r.left < host.right && r.bottom > host.top && r.top < host.bottom
+            && r.bottom > 0 && r.top < window.innerHeight;
+    });
+}
+
+/**
+ * Narrate from where the reader is: the start of the paragraph holding the cursor, or the
+ * first paragraph on screen. Whole paragraphs, so a cursor mid-paragraph starts at its top.
  *
- * Groups grow -- one piece, then two, four, then eight -- and the next is requested the
- * moment the last one lands, so each arrives while the one before is still being heard.
- * One piece renders in a few seconds; eight render at about a third of the time they take
- * to say. The ramp is what gets both a fast start and no gaps.
+ * The batch holding that paragraph is requested first and the rest follow in document
+ * order, each while the one before is being heard. Anything already rendered -- heard
+ * before, or rendered ahead while reading -- comes straight from the cache.
  */
 async function startQwenNarration(base) {
     const editor = document.getElementById('editor');
     if (!editor) return;
     // Starting somewhere new stops what was playing and cancels what was still rendering.
     if (isPlaying) stopReading();
+    cancelNarrationPrefetch();
 
     const all = Array.from(editor.querySelectorAll('.block'));
     if (!all.length) return;
 
     const caret = readingCaret();
     let at = caret ? all.indexOf(caret.block) : -1;
-    if (at < 0) {
-        const host = editor.getBoundingClientRect();
-        // Both axes, exactly as speakSelection has it. Testing only the vertical one let the
-        // pages already turned in Pages -- which sit to the left of the view -- count as on
-        // screen, and narration started at the table of contents.
-        at = all.findIndex(b => {
-            const r = b.getBoundingClientRect();
-            return r.right > host.left && r.left < host.right && r.bottom > host.top && r.top < host.bottom
-                && r.bottom > 0 && r.top < window.innerHeight;
-        });
-    }
+    if (at < 0) at = firstVisibleBlock(all, editor);
     if (at < 0) at = 0;
 
-    const blocks = [];
-    for (let i = at; i < all.length && blocks.length < 120; i++) {
-        let text = (i === at && caret) ? caret.text : (all[i].innerText || '');
-        text = text.trim();
-        if (!text) continue;
-        blocks.push({ el: all[i], text: applyTTSOverrides(text) });
-    }
-    const pieces = narrationPieces(blocks);
-    if (!pieces.length) return;
+    const startAt = narrationDocIndex(all[at], at);
+    const batches = narrationBatches(all, at, 15);
+    const first = batches.findIndex(b => b.some(p => p.at >= startAt));
+    if (first < 0) return;
+    const queue = batches.slice(first);
+    // A batch can hold paragraphs from before the starting one; they are rendered with it,
+    // because the batch has to match the cache, but not played.
+    const playable = chunks => chunks.filter(c => c.at >= startAt);
 
     const reading = ++_narrationReading;
     _narrationBase = base;
@@ -509,11 +538,11 @@ async function startQwenNarration(base) {
     showKokoroStatus('Preparing the first passage...');
     _narrationPending = true;
     try {
-        const first = await renderNarration(base, pieces.slice(0, 8), pieces, reading);
+        const firstChunks = playable(await renderNarration(base, queue[0], reading));
         document.getElementById('kokoro-status')?.remove();
         if (reading !== _narrationReading) return;          // stopped or restarted meanwhile
-        if (!first.length) throw new Error('nothing came back');
-        startReadingChunks(first);
+        if (!firstChunks.length) throw new Error('nothing came back');
+        startReadingChunks(firstChunks);
     } catch (err) {
         _narrationPending = false;
         showKokoroStatus('Narration failed: ' + (err && err.message || err));
@@ -523,16 +552,13 @@ async function startQwenNarration(base) {
 
     (async () => {
         try {
-            let next = 8;
-            while (next < pieces.length) {
+            for (let n = 1; n < queue.length; n++) {
                 // About ninety seconds ahead is plenty; beyond that is work nobody may hear.
                 while (isPlaying && reading === _narrationReading && queuedSeconds() > 90) {
                     await new Promise(r => setTimeout(r, 500));
                 }
                 if (!isPlaying || reading !== _narrationReading) break;
-                const group = pieces.slice(next, next + 8);
-                next += 8;
-                const chunks = await renderNarration(base, group, pieces, reading);
+                const chunks = playable(await renderNarration(base, queue[n], reading));
                 if (!isPlaying || reading !== _narrationReading) break;
                 for (const c of chunks) _ttsChunks.push(c);
             }
@@ -545,6 +571,71 @@ async function startQwenNarration(base) {
 }
 
 window.startQwenNarration = startQwenNarration;
+
+/**
+ * Render ahead of the reader.
+ *
+ * Once narration has been used this session the narrator is resident. While the reader
+ * turns pages with narration stopped, the group on screen and the one after it are rendered
+ * into the cache, so pressing Narrate there starts at once. Bounded on purpose: two groups
+ * per settled view, a view change drops whatever has not started, and nothing runs while
+ * narration is playing -- that renders ahead by itself. If the narrator has gone (it shuts
+ * down after 15 idle minutes) this stops until Narrate is used again, and never starts it.
+ */
+const PREFETCH_READING_BASE = 1000000000;   // prefetch reading ids never meet play ones
+let _prefetchCount = 0;
+let _prefetchReading = 0;                    // the prefetch in flight, 0 when none
+let _prefetchTimer = null;
+
+function cancelNarrationPrefetch() {
+    clearTimeout(_prefetchTimer);
+    const reading = _prefetchReading;
+    _prefetchReading = 0;
+    if (!reading || !_narrationBase) return;
+    try {
+        fetch(_narrationBase + '/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reading: reading })
+        }).catch(() => {});
+    } catch (e) {}
+}
+
+async function prefetchNarration() {
+    if (!_narrationBase || isPlaying || _narrationPending) return;
+    const editor = document.getElementById('editor');
+    if (!editor) return;
+    const all = Array.from(editor.querySelectorAll('.block'));
+    const at = all.length ? firstVisibleBlock(all, editor) : -1;
+    if (at < 0) return;
+    const startAt = narrationDocIndex(all[at], at);
+    const batches = narrationBatches(all, at, 2);
+    const first = batches.findIndex(b => b.some(p => p.at >= startAt));
+    if (first < 0) return;
+
+    cancelNarrationPrefetch();
+    const reading = _prefetchReading = PREFETCH_READING_BASE + (++_prefetchCount);
+    const base = _narrationBase;
+    for (const batch of batches.slice(first)) {
+        if (_prefetchReading !== reading || isPlaying) return;
+        try {
+            await renderNarration(base, batch, reading);
+        } catch (e) {
+            if (_narrationBase === base) _narrationBase = '';
+            return;
+        }
+    }
+    if (_prefetchReading === reading) _prefetchReading = 0;
+}
+
+// Scroll does not bubble, so this listens in the capture phase: a page turn in Pages
+// scrolls #editor, and the scroll layout scrolls its container. Either way, wait for the
+// view to settle before rendering what is on it.
+document.addEventListener('scroll', function () {
+    if (!_narrationBase || isPlaying) return;
+    clearTimeout(_prefetchTimer);
+    _prefetchTimer = setTimeout(prefetchNarration, 1200);
+}, { capture: true, passive: true });
 
 function applyTTSOverrides(text) {
     if (!text) return text;
