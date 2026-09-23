@@ -449,6 +449,36 @@ Start with heuristics and measure how far they get. A local LLM pass for attribu
 emotion is the obvious upgrade, but it is not the first move: the heuristic version is a
 day's work and will show whether the ceiling is the direction or the model.
 
+**Built 2026-09-23 in 0.3.24 (`5fe40e9`), directed per paragraph, not per utterance.**
+Fiction gives each speaker their own paragraph, so a direction belongs to the paragraph. The
+paragraph also stays one piece, keeping its cross-sentence intonation, and fragments like
+"he said." are never voiced alone.
+
+How a direction is chosen:
+- **Tags only.** Speech verbs and adverbs count only in the tag that belongs to a quotation's
+  sentence. After the quote, the tag must start lowercase, or be a name followed by a speech
+  verb. Before the quote, it must lead in with a comma or colon.
+- **Punctuation next.** Failing a tag, a line ending in "!" is emphatic, and one ending in a
+  dash or ellipsis is breaking off.
+- **Thought.** A mostly italic paragraph with no dialogue is read as a private thought.
+- **The instruction.** The direction goes into that paragraph's instruction, and into its
+  cache key.
+
+On Matter's 800 loaded blocks, 459 hold dialogue and 57 get a direction. Searching the whole
+paragraph had made "quietly snoring" into a soft line.
+
+Measured on the King's death scene, rendered with and without direction: the three directed
+lines differ, and the plain paragraphs are identical. The owner judges by ear, from
+`obj/voice-test/E-scene-plain.wav` and `F-scene-directed.wav`.
+
+Known limit: a paragraph with two speakers takes one direction for both.
+
+**Also in 0.3.24:**
+- **Qwen Narrator is a voice in File > Read Aloud.** Read Aloud, Read and Read from here all
+  use it, so jumping is one gesture.
+- **A cancel now stops the batch already in the model.** Before, a one-sentence Read waited
+  41s behind an abandoned batch.
+
 ---
 
 ## 5. Slices, not phases
