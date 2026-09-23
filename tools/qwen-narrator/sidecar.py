@@ -6,8 +6,10 @@ sound and eleven.
 
 Renders in groups rather than one utterance at a time, for two measured reasons:
 
-  * a batch of eight paragraphs runs at 0.34x realtime against 2.2x one at a time, so
-    grouping is what makes narration outrun listening at all; and
+  * a batch of eight paragraphs runs at about 0.65x realtime against 2.1x one at a time
+    (VoiceDesign, measured 2026-09-23, with each clip decoded separately -- see
+    _decode_clips_separately), so grouping is what makes narration outrun listening at
+    all; and
   * batch composition is part of the input -- the same sentence rendered with different
     neighbours is a different take -- so a group has to be a fixed, repeatable set if the
     cache is ever to match a re-render.
@@ -111,10 +113,39 @@ class Narrator(object):
             local = snapshot_download(MODEL_REPO, local_files_only=True)
             self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
                                                        dtype=torch.bfloat16)
+            self._decode_clips_separately()
             log('model ready in %.1fs (%s)' % (time.time() - t, MODEL_REPO))
         except Exception:
             import traceback
             log('model load FAILED:\n' + traceback.format_exc())
+
+    def _decode_clips_separately(self):
+        """Batch the model, never the codec.
+
+        After generating a group, qwen-tts decodes all its clips to audio in one padded call,
+        in 300-frame chunks. Measured on 2026-09-23 with a real group from Matter (clips up to
+        324 frames, 26s): generation took 57s at the expected 5.6 steps/s, and the batched
+        decode then ran for over a minute -- it is most of the 137s each group took in
+        narration.log. The same eight clips decoded one at a time took 1.1s in total. Batching
+        is what makes generation fast; for the decoder it does the opposite.
+        """
+        tok = self.model.model.speech_tokenizer
+        batched = tok.decode
+
+        def decode_each(encoded):
+            t = time.time()
+            if not isinstance(encoded, list) or len(encoded) < 2:
+                out = batched(encoded)
+            else:
+                wavs, sr = [], None
+                for one in encoded:
+                    w, sr = batched([one])
+                    wavs.extend(w)
+                out = (wavs, sr)
+            self.last_decode_s = time.time() - t
+            return out
+
+        tok.decode = decode_each
 
     def key_for(self, texts, voice, seed):
         """Everything that decides the audio, and nothing that does not."""
@@ -188,8 +219,9 @@ class Narrator(object):
             # The manifest last, so a group is only ever found complete.
             with open(os.path.join(self.cache_dir, key + '.json'), 'w', encoding='utf-8') as f:
                 json.dump(items, f)
-        log('group %s rendered: %d pieces, %.1fs of audio in %.1fs (%.2fx realtime); clips %s'
+        log('group %s rendered: %d pieces, %.1fs of audio in %.1fs (%.2fx realtime, decode %.1fs); clips %s'
             % (key, len(blocks), total, took, took / total if total else 0,
+               getattr(self, 'last_decode_s', -1),
                ' '.join('%d:%.1fs' % (i['id'], i['seconds']) for i in items)))
         return items, False
 
