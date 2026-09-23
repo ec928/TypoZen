@@ -58,6 +58,17 @@ if (Test-Path $makeDict) {
     Write-Warning "tools/Make-Dictionary.ps1 not found"
 }
 
+# The narration sidecar and the narrator's voice-print. Inert without the narration
+# extension's Python environment, which is set up by hand; with it, the app runs this copy.
+$narrSrc = Join-Path 'tools' 'qwen-narrator'
+if (Test-Path $narrSrc) {
+    $narrDst = Join-Path $toolsDst 'qwen-narrator'
+    New-Item -ItemType Directory -Force -Path $narrDst | Out-Null
+    Get-ChildItem $narrSrc -File | Where-Object { $_.Extension -in '.py', '.npy' } | Copy-Item -Destination $narrDst -Force
+} else {
+    Write-Warning "tools/qwen-narrator not found"
+}
+
 # Defined here rather than inherited: the block that used to strip the Bookerly
 # @font-face rule set $tpl on its way past, and when that block went with the font the
 # variable went too -- leaving this check bound to $null and the whole script failing
