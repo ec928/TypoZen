@@ -379,8 +379,8 @@ it renders at 0.63x realtime, the same as before.
 
 **Tried and not usable as-is:** conditioning CustomVoice on the recording itself (its codes
 plus transcript, the way Base clones) as well as the voice-print. Short lines collapsed to
-0.2s; the cause is unknown. The longer paragraphs came out normal. This is worth pursuing
-only if those sound clearly closer to the reference than the voice-print alone.
+0.2s; the cause is unknown. The longer paragraphs came out normal, but to the owner they
+were not clearly closer to the reference than the voice-print alone. Dropped: C stays.
 
 **No silence after the first line.** A start near the end of a group used to play a few
 seconds, then go silent for the whole render of the next group. That was the "one word and it
