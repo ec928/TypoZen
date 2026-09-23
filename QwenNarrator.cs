@@ -23,6 +23,8 @@ namespace TypoZen
     internal static class QwenNarrator
     {
         public const int Port = 8765;
+        /// <summary>The narrator's id in the reading-voice list, beside the Kokoro and Windows voices.</summary>
+        public const string VoiceId = "qwen_narrator";
         public const string HostName = "localnarration";
         public static string BaseUrl { get { return "http://127.0.0.1:" + Port; } }
 

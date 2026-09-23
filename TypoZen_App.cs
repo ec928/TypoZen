@@ -1569,7 +1569,7 @@ namespace TypoZen
             var mSpeed = FindElement("mConfigureSpeed") as MenuItem; if (mSpeed != null) mSpeed.Header = "Voice Sampler and Speed..."; BindClick("mConfigureSpeed", (s, e) => ShowConfigureVoiceDialog());
             PopulateWindowsVoicesMenu();
             BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
-            BindClick("mQwenNarrate", (s, e) => StartQwenNarration());
+            BindClick("mQwenVoice", (s, e) => ChooseQwenVoice());
             BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
             BindClick("mWordWrap", (s, e) =>
             {
@@ -2070,22 +2070,37 @@ namespace TypoZen
         /// <summary>
         /// Start the narrator if it is not up, then let the page get on with it: the page
         /// gathers the blocks, asks the sidecar for audio and plays it through the same
-        /// queue everything else reads through.
+        /// queue everything else reads through. Asked for by the page (host_qwen_narrate)
+        /// whenever Read Aloud, Read or Read from here is used with the Qwen voice chosen.
         /// </summary>
         private async void StartQwenNarration()
         {
             try
             {
-                Action<string> say = (m) =>
-                {
-                    try { SendMsg("cmd:narrator_status:" + (m ?? "")); } catch { }
-                };
-                bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, say,
+                bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus,
                                                            CancellationToken.None);
                 if (!up) return;
                 SendMsg("cmd:narrate:" + QwenNarrator.BaseUrl);
             }
             catch (Exception ex) { LogFault("start narration", ex); }
+        }
+
+        private void NarratorStatus(string m)
+        {
+            try { SendMsg("cmd:narrator_status:" + (m ?? "")); } catch { }
+        }
+
+        /// <summary>
+        /// Qwen chosen as the reading voice. The narrator starts now, in the background, so
+        /// the model load (about 20s) is paid while the reader finds their place rather than
+        /// after they press Read. Choosing the voice is the only thing that starts it early:
+        /// launching TypoZen or opening a book never does.
+        /// </summary>
+        private async void ChooseQwenVoice()
+        {
+            SetKokoroVoice(QwenNarrator.VoiceId, "Qwen narrator");
+            try { await QwenNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus, CancellationToken.None); }
+            catch (Exception ex) { LogFault("start narrator", ex); }
         }
 
         /// <summary>
@@ -2148,6 +2163,8 @@ namespace TypoZen
         /// <summary>Moves the tick without telling the page -- for what the page told us.</summary>
         private void TickKokoroVoice()
         {
+            var qwen = FindElement("mQwenVoice") as MenuItem;
+            if (qwen != null) qwen.IsChecked = _kokoroVoiceId == QwenNarrator.VoiceId;
             var menu = FindElement("mKokoroMenu") as MenuItem;
             if (menu == null) return;
             foreach (var o in menu.Items)
@@ -3324,17 +3341,18 @@ namespace TypoZen
                 var menu = FindElement("mKokoroMenu") as MenuItem;
                 if (menu != null) menu.Visibility = kokoro ? Visibility.Visible : Visibility.Collapsed;
 
-                var narrate = FindElement("mQwenNarrate") as MenuItem;
-                if (narrate != null)
-                {
-                    narrate.Visibility = QwenNarrator.Installed(cache, _appDir)
-                        ? Visibility.Visible : Visibility.Collapsed;
-                }
+                bool qwen = QwenNarrator.Installed(cache, _appDir);
+                var narrate = FindElement("mQwenVoice") as MenuItem;
+                if (narrate != null) narrate.Visibility = qwen ? Visibility.Visible : Visibility.Collapsed;
                 if (kokoro) RebuildKokoroVoiceMenu();
+                TickKokoroVoice();
 
                 // A voice that is no longer installed would leave the page trying to speak
-                // with an engine that is gone, so hand it back to the Windows voices.
-                if (!kokoro) SetKokoroVoice("windows_voice", "Windows voice");
+                // with an engine that is gone, so hand it back to the Windows voices. Only
+                // the chosen voice's own engine counts: Kokoro missing must not take the
+                // Qwen narrator away, nor the other way round.
+                bool chosenQwen = _kokoroVoiceId == QwenNarrator.VoiceId;
+                if ((!kokoro && !chosenQwen) || (!qwen && chosenQwen)) SetKokoroVoice("windows_voice", "Windows voice");
 
                 RebuildDictionaryMenu();
                 // A dictionary that has just been removed is still the saved choice.
@@ -6279,6 +6297,13 @@ namespace TypoZen
                 _kokoroVoiceId = msg.Substring(27);
                 TickKokoroVoice();
                 UpdateWindowsVoicesCheckmark();
+                return;
+            }
+            else if (msg == "host_qwen_narrate")
+            {
+                // Read Aloud, Read or Read from here with the Qwen voice chosen: make sure
+                // the narrator is up, then the page narrates what it asked for.
+                StartQwenNarration();
                 return;
             }
             else if (msg == "cmd:kokoro_ready")
@@ -9722,7 +9747,7 @@ namespace TypoZen
             // Nothing here is speaking while a Kokoro voice is chosen, so nothing here
             // is ticked -- including at startup, where the saved Windows voice is still
             // remembered and would otherwise tick itself.
-            bool kokoroSpeaking = IsKokoroVoiceId(_kokoroVoiceId);
+            bool kokoroSpeaking = IsKokoroVoiceId(_kokoroVoiceId) || _kokoroVoiceId == QwenNarrator.VoiceId;
             foreach (var item in VoiceMenuItems(mWinVoices))
             {
                 item.IsChecked = !kokoroSpeaking && (item.Tag.ToString() == _ttsVoiceId);
