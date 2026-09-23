@@ -3,7 +3,7 @@
  * the reading highlight moving on by itself.
  *
  * Needs the Qwen extension installed and the sidecar reachable on 8765 (the app starts it
- * from File > Read Aloud > Narrate from here; obj/start-sidecar.ps1 does it by hand).
+ * when Qwen Narrator is chosen in File > Read Aloud; obj/start-sidecar.ps1 does it by hand).
  *
  * Two things this suite learned the hard way, both worth keeping:
  *   - virtual-host URLs never appear as page network events, because WebView2 serves them

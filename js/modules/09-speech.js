@@ -123,6 +123,29 @@ function speakSelection() {
         selText = window.getSelection().toString().trim();
     }
 
+    // With the Qwen narrator chosen, every way of starting to read comes here -- Read Aloud,
+    // the popover's Read and Read from here -- and goes to the narrator: the selection alone
+    // for Read, otherwise from the cursor or the top of the page. The host makes sure the
+    // narrator is running and answers with cmd:narrate. Source mode has no rendered blocks
+    // to narrate, so it keeps the Windows voice.
+    const sourceShown = (() => {
+        const s = document.getElementById('source-editor');
+        return !!(s && window.getComputedStyle(s).display !== 'none');
+    })();
+    if (isQwenVoice(_kokoroVoice) && !sourceShown) {
+        let el = null;
+        try {
+            const sel = window.getSelection();
+            const node = sel && sel.anchorNode;
+            const e = node && (node.nodeType === 1 ? node : node.parentElement);
+            el = e && e.closest ? e.closest('#editor .block') : null;
+        } catch (e) {}
+        _qwenPending = selText && el ? { text: selText, el: el } : null;
+        narrLog('read requested: ' + (_qwenPending ? 'the selection, ' + selText.length + ' chars' : 'from here'));
+        try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
+        return;
+    }
+
     if (selText) {
         let chunk = { text: selText };
         try {
@@ -388,6 +411,7 @@ function playRenderedChunk(url) {
 let _narrationPending = false;
 let _narrationReading = 0;
 let _narrationBase = '';
+let _qwenPending = null;        // a selection to narrate once the host says the narrator is up
 
 /**
  * Narration's trace: every decision the page makes, sent to the narrator's narration.log so
@@ -586,6 +610,9 @@ async function startQwenNarration(base) {
     // Starting somewhere new stops what was playing and cancels what was still rendering.
     if (isPlaying) stopReading();
     cancelNarrationPrefetch();
+    const pending = _qwenPending;
+    _qwenPending = null;
+    if (pending) { narrateSelection(base, pending); return; }
 
     const all = Array.from(editor.querySelectorAll('.block'));
     if (!all.length) return;
@@ -682,6 +709,39 @@ async function startQwenNarration(base) {
 }
 
 window.startQwenNarration = startQwenNarration;
+
+/**
+ * Read -- the selection and nothing else -- in the narrator's voice. Its pieces are cached
+ * like any others, so reading the same passage again is instant.
+ */
+async function narrateSelection(base, sel) {
+    const all = Array.from(document.querySelectorAll('#editor .block'));
+    const i = all.indexOf(sel.el);
+    const at = narrationDocIndex(sel.el, i < 0 ? 0 : i);
+    const pieces = blockPieces(applyTTSOverrides(sel.text))
+        .map((t, k) => ({ el: sel.el, at: at, id: at * 100 + 50 + k, text: t }));
+    const reading = ++_narrationReading;
+    _narrationBase = base;
+    _narrActive = true;
+    _narrSilentSince = 0;
+    window.__narrLog = [];
+    narrLog('reading ' + reading + ' begins: the selection, ' + pieces.length + ' pieces');
+    showKokoroStatus('Preparing the selection...');
+    try {
+        const chunks = [];
+        for (let k = 0; k < pieces.length; k += NARRATION_BATCH) {
+            chunks.push(...await renderNarration(base, pieces.slice(k, k + NARRATION_BATCH), reading));
+            if (reading !== _narrationReading) return;
+        }
+        document.getElementById('kokoro-status')?.remove();
+        if (!chunks.length) throw new Error('nothing came back');
+        startReadingChunks(chunks);
+    } catch (err) {
+        narrLog('narrating the selection FAILED: ' + (err && err.message || err));
+        showKokoroStatus('Narration failed: ' + (err && err.message || err));
+        setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 6000);
+    }
+}
 
 /**
  * Render ahead of the reader.
@@ -957,6 +1017,8 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
 }
 
 function isKokoroVoice(id) { return /^(af|am|bf|bm)_/.test(id || ''); }
+/** The Qwen narrator, chosen in File > Read Aloud like any other voice. */
+function isQwenVoice(id) { return id === 'qwen_narrator'; }
 
 let _kokoroVoice = localStorage.getItem('kokoro_voice') || 'af_heart';
 let _kokoroVoiceFriendly = '';
@@ -977,6 +1039,10 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
 
     if (isKokoroVoice(voiceId) && !_isKokoroReady) {
         setupKokoro(false, "Kokoro is ready. Voice set to " + displayName + ".");
+    } else if (isQwenVoice(voiceId)) {
+        // The host starts the narrator on this choice and reports its progress itself.
+        showKokoroStatus("Voice set to the Qwen narrator. Read Aloud, Read and Read from here all use it.");
+        setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 3000);
     } else if (!isAutoReset || _isKokoroReady) {
         showKokoroStatus("Voice set to " + displayName);
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 2000);
