@@ -55,8 +55,36 @@ DEFAULT_VOICE = 'northern-english'
 GROUP_SIZE = 8
 
 
-def log(m):
-    print('%s  %s' % (time.strftime('%H:%M:%S'), m), flush=True)
+# narration.log, beside the cache in the extension folder. Always on: nobody sees this
+# process's console, so without the file a failed reading leaves no trace at all. The page
+# writes its side of the story here too (POST /log), so one file holds the whole timeline.
+# Ids, counts, lengths and timings only -- never the text being read.
+LOG_PATH = None
+_log_lock = threading.Lock()
+
+
+def log(m, who='sidecar'):
+    t = time.time()
+    line = '%s.%03d  %-7s %s' % (time.strftime('%H:%M:%S', time.localtime(t)), int(t * 1000) % 1000, who, m)
+    print(line, flush=True)
+    if LOG_PATH:
+        with _log_lock:
+            try:
+                with open(LOG_PATH, 'a', encoding='utf-8') as f:
+                    f.write(line + '\n')
+            except Exception:
+                pass
+
+
+def open_log(path):
+    """Start the log, keeping one previous file so a restart does not lose the last run."""
+    global LOG_PATH
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > 2 * 1024 * 1024:
+            os.replace(path, path + '.1')
+    except Exception:
+        pass
+    LOG_PATH = path
 
 
 class Narrator(object):
@@ -68,19 +96,25 @@ class Narrator(object):
         os.makedirs(cache_dir, exist_ok=True)
 
     def load(self):
-        import torch
-        from qwen_tts import Qwen3TTSModel
-        t = time.time()
-        from huggingface_hub import snapshot_download
-        self.torch = torch
-        # From the local folder, not the repository name. Given a name, the tokenizer loader
-        # asks the Hugging Face API about the model even when every file is on disk -- which
-        # fails offline, and online cost most of a 51-second start. Given a path it asks
-        # nothing: 16 seconds, and no network.
-        local = snapshot_download(MODEL_REPO, local_files_only=True)
-        self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
-                                                   dtype=torch.bfloat16)
-        log('model ready in %.1fs' % (time.time() - t))
+        # A failure here used to die silently in its thread: /health just never said ready,
+        # and the host gave up after three minutes with nothing to say why.
+        try:
+            t = time.time()
+            import torch
+            from qwen_tts import Qwen3TTSModel
+            from huggingface_hub import snapshot_download
+            self.torch = torch
+            # From the local folder, not the repository name. Given a name, the tokenizer
+            # loader asks the Hugging Face API about the model even when every file is on
+            # disk -- which fails offline, and online cost most of a 51-second start. Given
+            # a path it asks nothing: 16 seconds, and no network.
+            local = snapshot_download(MODEL_REPO, local_files_only=True)
+            self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
+                                                       dtype=torch.bfloat16)
+            log('model ready in %.1fs (%s)' % (time.time() - t, MODEL_REPO))
+        except Exception:
+            import traceback
+            log('model load FAILED:\n' + traceback.format_exc())
 
     def key_for(self, texts, voice, seed):
         """Everything that decides the audio, and nothing that does not."""
@@ -118,7 +152,10 @@ class Narrator(object):
         key = self.key_for(texts, voice, seed)
         items = self.cached(key)
         if items is not None:
+            log('group %s from cache: %d pieces, %.1fs of audio'
+                % (key, len(items), sum(i.get('seconds', 0) for i in items)))
             return items, True
+        waited = time.time()
 
         with self.lock:
             # Asked for twice at once -- Narrate pressed on the page being rendered ahead --
@@ -126,7 +163,11 @@ class Narrator(object):
             # render the same group again.
             items = self.cached(key)
             if items is not None:
+                log('group %s rendered by another request while this one waited %.1fs'
+                    % (key, time.time() - waited))
                 return items, True
+            if time.time() - waited > 0.5:
+                log('group %s waited %.1fs for the model' % (key, time.time() - waited))
 
             self.torch.manual_seed(seed)
             self.torch.cuda.manual_seed_all(seed)
@@ -147,8 +188,9 @@ class Narrator(object):
             # The manifest last, so a group is only ever found complete.
             with open(os.path.join(self.cache_dir, key + '.json'), 'w', encoding='utf-8') as f:
                 json.dump(items, f)
-        log('rendered %d blocks: %.1fs of audio in %.1fs (%.2fx realtime)'
-            % (len(blocks), total, took, took / total if total else 0))
+        log('group %s rendered: %d pieces, %.1fs of audio in %.1fs (%.2fx realtime); clips %s'
+            % (key, len(blocks), total, took, took / total if total else 0,
+               ' '.join('%d:%.1fs' % (i['id'], i['seconds']) for i in items)))
         return items, False
 
 
@@ -222,6 +264,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {'error': 'bad json: %s' % e})
             return
 
+        if self.path.startswith('/log'):
+            # The page's side of the timeline. Not a touch(): logging is not use, and must
+            # not keep an idle narrator holding the GPU.
+            for line in (body.get('lines') or [])[:200]:
+                log(str(line)[:500], who='page')
+            self._send(200, {'ok': True})
+            return
+
         touch()
         if self.path.startswith('/cancel'):
             rid = int(body.get('reading', 0))
@@ -231,6 +281,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith('/stop'):
+            log('stop requested by the host')
             self._send(200, {'stopping': True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
@@ -252,9 +303,16 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         reading = int(body.get('reading', 0))
+        started = time.time()
+        log('render request: reading %d, %d pieces [%s]' % (
+            reading, len(blocks),
+            ' '.join('%s:%dch' % (b.get('id'), len(b.get('text') or '')) for b in blocks)))
         if is_cancelled(reading):
+            log('reading %d already cancelled, nothing rendered' % reading)
             self._send(200, {'items': [], 'cancelled': True})
             return
+        if Handler.narrator.model is None:
+            log('render request before the model is ready')
 
         items, cached_groups, rendered_groups = [], 0, 0
         try:
@@ -272,10 +330,13 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     rendered_groups += 1
         except Exception as e:
-            log('render failed: %s: %s' % (type(e).__name__, e))
+            import traceback
+            log('render FAILED for reading %d:\n%s' % (reading, traceback.format_exc()))
             self._send(500, {'error': '%s: %s' % (type(e).__name__, e)})
             return
 
+        log('render answered: reading %d, %d items in %.1fs (%d cached, %d rendered)'
+            % (reading, len(items), time.time() - started, cached_groups, rendered_groups))
         self._send(200, {'items': items, 'voice': voice, 'seed': seed,
                          'groups_from_cache': cached_groups,
                          'groups_rendered': rendered_groups})
@@ -320,10 +381,18 @@ def main():
     os.environ['HF_HUB_OFFLINE'] = '1'
     os.environ['TRANSFORMERS_OFFLINE'] = '1'
 
+    open_log(os.path.join(os.path.dirname(os.path.abspath(args.cache)), 'narration.log'))
+    log('---- sidecar starting: pid %d, python %s, script %s'
+        % (os.getpid(), sys.version.split()[0], os.path.abspath(__file__)))
+
     narrator = Narrator(args.cache)
     Handler.narrator = narrator
 
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
+    try:
+        server = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
+    except Exception as e:
+        log('cannot listen on port %d: %s -- another narrator already running?' % (args.port, e))
+        raise
     log('listening on 127.0.0.1:%d, cache %s' % (args.port, args.cache))
     # Answer /health before the weights are in, so the host can tell "starting" from "dead".
     threading.Thread(target=narrator.load, daemon=True).start()

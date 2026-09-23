@@ -249,9 +249,21 @@ function playNextChunk() {
     if (_ttsChunks.length === 0) {
         // Narration renders behind the voice, so an empty queue can mean "the next group
         // is still coming" rather than "the reading is over".
-        if (_narrationPending) { setTimeout(playNextChunk, 400); return; }
+        if (_narrationPending) {
+            if (_narrActive && !_narrSilentSince) {
+                _narrSilentSince = performance.now();
+                narrLog('SILENT: queue empty, waiting for the next batch');
+            }
+            setTimeout(playNextChunk, 400);
+            return;
+        }
+        if (_narrActive) narrLog('queue empty and nothing still rendering: reading ends');
         stopReading();
         return;
+    }
+    if (_narrSilentSince) {
+        narrLog('sound again after ' + ((performance.now() - _narrSilentSince) / 1000).toFixed(1) + 's of silence');
+        _narrSilentSince = 0;
     }
     const chunk = _ttsChunks.shift();
     if (!chunk.text || !chunk.text.trim()) {
@@ -326,28 +338,42 @@ function playNextChunk() {
 }
 
 let _renderedAudio = null;
+let _narrActive = false;        // a Qwen reading is in progress, for the trace
+let _narrSilentSince = 0;
 
 /** Play one pre-rendered file, then carry on down the queue. */
 function playRenderedChunk(url) {
+    const name = String(url).split('/').pop();
     try {
         window.__lastChunkUrl = url;          // what is actually playing, for tests and debug.log
         if (_renderedAudio) { _renderedAudio.pause(); _renderedAudio = null; }
         const a = new Audio(url);
         _renderedAudio = a;
-        a.onplaying = () => { try { (window.__narrLog = window.__narrLog || []).push(['play', performance.now()]); } catch (e) {} };
+        const began = performance.now();
+        a.onplaying = () => {
+            try { (window.__narrLog = window.__narrLog || []).push(['play', performance.now()]); } catch (e) {}
+            narrLog('play ' + name + ' (' + (isFinite(a.duration) ? a.duration.toFixed(1) + 's' : '?s') +
+                    ', ' + _ttsChunks.length + ' more queued, ' + queuedSeconds().toFixed(1) + 's)');
+        };
         a.onended = () => {
             try { (window.__narrLog = window.__narrLog || []).push(['end', performance.now()]); } catch (e) {}
+            narrLog('ended ' + name + ' after ' + ((performance.now() - began) / 1000).toFixed(1) + 's');
             _renderedAudio = null;
             if (isPlaying) playNextChunk();
         };
         a.onerror = () => {
+            narrLog('audio ERROR on ' + name + ': code ' + (a.error ? a.error.code + ' ' + (a.error.message || '') : '?'));
             _renderedAudio = null;
             showKokoroStatus('Narration audio could not be played.');
             setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 4000);
             if (isPlaying) playNextChunk();
         };
-        a.play().catch(() => { if (isPlaying) playNextChunk(); });
+        a.play().catch(err => {
+            narrLog('play() REFUSED for ' + name + ': ' + (err && (err.name + ' ' + err.message) || err));
+            if (isPlaying) playNextChunk();
+        });
     } catch (e) {
+        narrLog('playRenderedChunk threw on ' + name + ': ' + (e && e.message || e));
         if (isPlaying) playNextChunk();
     }
 }
@@ -362,6 +388,41 @@ function playRenderedChunk(url) {
 let _narrationPending = false;
 let _narrationReading = 0;
 let _narrationBase = '';
+
+/**
+ * Narration's trace: every decision the page makes, sent to the narrator's narration.log so
+ * that one file holds the page and the sidecar side by side. Also kept in window.__narrTrace
+ * and the telemetry ring. Ids, counts, lengths and timings only -- never the text.
+ */
+let _narrTraceOut = [];
+let _narrTraceTimer = null;
+function narrLog(msg) {
+    try {
+        (window.__narrTrace = window.__narrTrace || []).push(msg);
+        if (window.__narrTrace.length > 500) window.__narrTrace.shift();
+        if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry('narration: ' + msg);
+    } catch (e) {}
+    _narrTraceOut.push(msg);
+    if (_narrTraceTimer) return;
+    _narrTraceTimer = setTimeout(() => {
+        _narrTraceTimer = null;
+        const lines = _narrTraceOut;
+        _narrTraceOut = [];
+        const base = _narrationBase || 'http://127.0.0.1:8765';
+        try {
+            fetch(base + '/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lines: lines })
+            }).catch(() => {});
+        } catch (e) {}
+    }, 250);
+}
+
+/** "id:chars" for each piece of a batch, for the trace. */
+function batchSummary(batch) {
+    return batch.map(p => p.id + ':' + p.text.length + 'ch').join(' ');
+}
 
 /** How much audio is already queued and paid for. */
 function queuedSeconds() {
@@ -390,25 +451,39 @@ function cancelNarration() {
 
 /** One request to the sidecar; returns chunks ready for the reading queue. */
 async function renderNarration(base, batch, reading) {
-    const res = await fetch(base + '/render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            blocks: batch.map(p => ({ id: p.id, text: p.text })),
-            reading: reading,
-            group_size: batch.length
-        })
-    });
-    if (!res.ok) throw new Error('sidecar said ' + res.status);
-    const data = await res.json();
+    const sent = performance.now();
+    narrLog('request reading ' + reading + ': ' + batchSummary(batch));
+    let data;
+    try {
+        const res = await fetch(base + '/render', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                blocks: batch.map(p => ({ id: p.id, text: p.text })),
+                reading: reading,
+                group_size: batch.length
+            })
+        });
+        if (!res.ok) throw new Error('sidecar said ' + res.status);
+        data = await res.json();
+    } catch (err) {
+        narrLog('request reading ' + reading + ' FAILED after ' + Math.round(performance.now() - sent) +
+                'ms: ' + (err && err.message || err));
+        throw err;
+    }
     // Items come back in the order sent, from the cache or not. Matched by position rather
     // than id, so a manifest written by an older build can never pair audio with other text.
     const items = data.items || [];
+    narrLog('answer reading ' + reading + ' after ' + Math.round(performance.now() - sent) + 'ms: ' +
+            items.length + '/' + batch.length + ' items' + (data.cancelled ? ', CANCELLED' : '') +
+            (data.groups_from_cache ? ', from cache' : '') +
+            ', audio ' + items.map(i => (i.seconds || 0).toFixed(1) + 's').join(' '));
     if (data.cancelled || items.length !== batch.length) return [];
     return batch.map((p, i) => {
         const idx = parseInt(p.el.getAttribute('data-model-index'), 10);
         return {
             idx: isFinite(idx) ? idx : null,
+            id: p.id,
             el: p.el,
             at: p.at,
             text: p.text,
@@ -520,13 +595,20 @@ async function startQwenNarration(base) {
 
     const caret = readingCaret();
     let at = caret ? all.indexOf(caret.block) : -1;
-    if (at < 0) at = firstVisibleBlock(all, editor);
-    if (at < 0) at = 0;
+    let why = 'cursor';
+    if (at < 0) { at = firstVisibleBlock(all, editor); why = 'first on screen'; }
+    if (at < 0) { at = 0; why = 'nothing on screen, top'; }
 
     const startAt = narrationDocIndex(all[at], at);
     const batches = narrationBatches(all, at, 15);
     const first = batches.findIndex(b => b.some(p => p.at >= startAt));
-    if (first < 0) return;
+    narrLog('---- narrate: start block ' + startAt + ' (' + why + ', DOM position ' + at + ' of ' + all.length +
+            '; DOM holds blocks ' + narrationDocIndex(all[0], 0) + '..' + narrationDocIndex(all[all.length - 1], all.length - 1) +
+            ', layout ' + (typeof isPaginatedLayout === 'function' && isPaginatedLayout() ? 'pages' : 'scroll') + ')');
+    narrLog('batches: ' + batches.length + ' in 15 groups, playing from batch ' + first + '; ' +
+            batches.map((b, i) => '#' + i + '[' + b[0].at + '..' + b[b.length - 1].at + ', ' + b.length + 'p, max ' +
+                Math.max.apply(null, b.map(p => p.text.length)) + 'ch]').join(' '));
+    if (first < 0) { narrLog('nothing to narrate from here'); return; }
     const queue = batches.slice(first);
     // A batch can hold paragraphs from before the starting one; they are rendered with it,
     // because the batch has to match the cache, but not played.
@@ -534,17 +616,23 @@ async function startQwenNarration(base) {
 
     const reading = ++_narrationReading;
     _narrationBase = base;
+    _narrActive = true;
+    _narrSilentSince = 0;
     window.__narrLog = [];
+    narrLog('reading ' + reading + ' begins');
     showKokoroStatus('Preparing the first passage...');
     _narrationPending = true;
     try {
         const firstChunks = playable(await renderNarration(base, queue[0], reading));
         document.getElementById('kokoro-status')?.remove();
-        if (reading !== _narrationReading) return;          // stopped or restarted meanwhile
+        if (reading !== _narrationReading) { narrLog('reading ' + reading + ' went stale before its first sound'); return; }
         if (!firstChunks.length) throw new Error('nothing came back');
+        narrLog('first sound: ' + firstChunks.length + ' pieces, ' +
+                firstChunks.reduce((n, c) => n + c.seconds, 0).toFixed(1) + 's of audio queued');
         startReadingChunks(firstChunks);
     } catch (err) {
         _narrationPending = false;
+        narrLog('narration FAILED before first sound: ' + (err && err.message || err));
         showKokoroStatus('Narration failed: ' + (err && err.message || err));
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 6000);
         return;
@@ -552,18 +640,27 @@ async function startQwenNarration(base) {
 
     (async () => {
         try {
-            for (let n = 1; n < queue.length; n++) {
+            let n = 1;
+            for (; n < queue.length; n++) {
                 // About ninety seconds ahead is plenty; beyond that is work nobody may hear.
                 while (isPlaying && reading === _narrationReading && queuedSeconds() > 90) {
                     await new Promise(r => setTimeout(r, 500));
                 }
-                if (!isPlaying || reading !== _narrationReading) break;
+                if (!isPlaying || reading !== _narrationReading) {
+                    narrLog('render-behind stops before batch ' + n + ': ' + (!isPlaying ? 'not playing' : 'reading ' + reading + ' is stale'));
+                    break;
+                }
+                narrLog('batch ' + n + '/' + (queue.length - 1) + ' requested with ' + queuedSeconds().toFixed(1) + 's queued');
                 const chunks = playable(await renderNarration(base, queue[n], reading));
-                if (!isPlaying || reading !== _narrationReading) break;
+                if (!isPlaying || reading !== _narrationReading) {
+                    narrLog('batch ' + n + ' arrived but ' + (!isPlaying ? 'playback had stopped' : 'reading ' + reading + ' is stale'));
+                    break;
+                }
                 for (const c of chunks) _ttsChunks.push(c);
             }
+            if (n >= queue.length) narrLog('render-behind finished: all ' + (queue.length - 1) + ' later batches requested');
         } catch (err) {
-            try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry('narration: ' + err.message); } catch (e) {}
+            narrLog('render-behind FAILED: ' + (err && err.message || err));
         } finally {
             if (reading === _narrationReading) _narrationPending = false;
         }
@@ -592,6 +689,7 @@ function cancelNarrationPrefetch() {
     const reading = _prefetchReading;
     _prefetchReading = 0;
     if (!reading || !_narrationBase) return;
+    narrLog('render-ahead ' + reading + ' cancelled');
     try {
         fetch(_narrationBase + '/cancel', {
             method: 'POST',
@@ -616,15 +714,23 @@ async function prefetchNarration() {
     cancelNarrationPrefetch();
     const reading = _prefetchReading = PREFETCH_READING_BASE + (++_prefetchCount);
     const base = _narrationBase;
-    for (const batch of batches.slice(first)) {
-        if (_prefetchReading !== reading || isPlaying) return;
+    const todo = batches.slice(first);
+    narrLog('render-ahead ' + reading + ': view starts at block ' + startAt + ', ' + todo.length + ' batches (blocks ' +
+            todo[0][0].at + '..' + todo[todo.length - 1].slice(-1)[0].at + ')');
+    for (const batch of todo) {
+        if (_prefetchReading !== reading || isPlaying) {
+            narrLog('render-ahead ' + reading + ' stops: ' + (isPlaying ? 'narration is playing' : 'the view moved'));
+            return;
+        }
         try {
             await renderNarration(base, batch, reading);
         } catch (e) {
+            narrLog('render-ahead ' + reading + ' lost the narrator; off until Narrate is used again');
             if (_narrationBase === base) _narrationBase = '';
             return;
         }
     }
+    narrLog('render-ahead ' + reading + ' done');
     if (_prefetchReading === reading) _prefetchReading = 0;
 }
 
@@ -697,6 +803,14 @@ function sendTTSPlay(text) {
 }
 
 function stopReading() {
+    if (_narrActive) {
+        // Who stopped it: the Stop button, a new reading, or the queue running dry.
+        let from = '';
+        try { from = (new Error().stack || '').split('\n').slice(2, 4).map(s => s.trim().replace(/\(.*\//, '(')).join(' < '); } catch (e) {}
+        narrLog('stopReading, ' + _ttsChunks.length + ' chunks dropped; called from ' + from);
+        _narrActive = false;
+        _narrSilentSince = 0;
+    }
     _ttsChunks = [];
     _currentTTSChunkIdx = null;
     // Stop means stop: the queue stops waiting, and the narrator drops the rest.
