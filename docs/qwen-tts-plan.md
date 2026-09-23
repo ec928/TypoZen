@@ -355,6 +355,33 @@ removes the wait on pages already turned to. The lever that remains is the piece
 characters). A lower cap shortens the wait but adds voice changes inside long paragraphs.
 That is the owner's trade-off.
 
+**One voice, decided 2026-09-23: CustomVoice with the narrator's voice-print.** Narration on
+VoiceDesign sounded like "multiple people narrating", because VoiceDesign invents the speaker
+afresh on every piece. The consistent voice heard earlier came from test samples: CustomVoice
+with the built-in speaker Vivian, and single-pass VoiceDesign auditions. The app's narrator
+was built on VoiceDesign from the start and never held one voice across pieces.
+
+qwen-tts builds every variant's input the same way, as an instruction followed by a speaker
+slot. So the voice-print of the chosen northern-English narrator can go in the slot while a
+style instruction still applies. The voice-print is 2048 floats, taken with Base's speaker
+encoder from `narrator-reference.wav`, and ships as `tools/qwen-narrator/northern-english.npy`.
+Judged by ear against the old narration:
+
+| Variant | Verdict |
+| --- | --- |
+| VoiceDesign, as narration was | weird |
+| VoiceDesign plus the voice-print | weird |
+| **CustomVoice plus the voice-print** | **ok; built in `140b6f4`** |
+| The reference recording itself | better still |
+
+Direction still works: a shouted line came out 6-7 dB louder than a whispered one. End to end
+it renders at 0.63x realtime, the same as before.
+
+**Tried and not usable as-is:** conditioning CustomVoice on the recording itself (its codes
+plus transcript, the way Base clones) as well as the voice-print. Short lines collapsed to
+0.2s; the cause is unknown. The longer paragraphs came out normal. This is worth pursuing
+only if those sound clearly closer to the reference than the voice-print alone.
+
 **No silence after the first line.** A start near the end of a group used to play a few
 seconds, then go silent for the whole render of the next group. That was the "one word and it
 stopped" of the first live test. Before the first word, the page now keeps adding batches
