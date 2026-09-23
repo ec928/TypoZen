@@ -311,6 +311,17 @@ Short pieces were the cause of the voice changing between sentences, not the mod
 paragraph-sized pieces. With VoiceDesign, every piece boundary is a possible voice change.
 The trade-off has to be made inside that constraint, not by changing engine.
 
+**Decided 2026-09-23: render ahead of the reader.** Built in `463fcca`, not yet heard:
+
+- A paragraph is one piece. Paragraphs over 400 characters are split at sentence ends.
+- Groups are fixed by the document.
+- Narration starts at the top of the cursor's paragraph.
+- After narration has been used once in a session, turning pages with narration stopped
+  renders the group on screen and the next one into the cache.
+
+A jump to text not rendered yet still waits for its batch (about twice the longest
+paragraph in it). The first Narrate of a session also pays the model load.
+
 **Also found on review:** pieces and groups are counted from wherever Play was pressed. They
 are not fixed points in the document, so pressing Play somewhere else, or stopping and
 restarting, forms different groups and misses the cache (§3c requires composition to be a
