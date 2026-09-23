@@ -125,10 +125,43 @@ class Narrator(object):
                 raw = np.load(v['print']).astype(np.float32)
                 self.prints[name] = (torch.from_numpy(raw), hashlib.sha256(raw.tobytes()).hexdigest())
             self._decode_clips_separately()
+            self._stop_when_cancelled()
             log('model ready in %.1fs (%s)' % (time.time() - t, MODEL_REPO))
         except Exception:
             import traceback
             log('model load FAILED:\n' + traceback.format_exc())
+
+    # The reading whose batch is inside the model right now, so a cancel can reach it.
+    generating_for = None
+
+    def _stop_when_cancelled(self):
+        """Stop a batch mid-generation when its reading is cancelled.
+
+        Cancelling used to drop only the batches not yet started; one already in the model ran
+        to its end, up to a minute, holding the model while the reader waited. Measured on
+        2026-09-23: a one-sentence Read queued behind an abandoned batch for 41s. Generation
+        now checks for a cancel at every step and stops at the next one. qwen-tts does not
+        pass a stopping criterion through, so it is added to the talker's generate here.
+        """
+        torch = self.torch
+        from transformers import StoppingCriteria, StoppingCriteriaList
+        narrator = self
+
+        class StopWhenCancelled(StoppingCriteria):
+            def __call__(self, input_ids, scores, **kwargs):
+                r = narrator.generating_for
+                stop = r is not None and is_cancelled(r)
+                return torch.full((input_ids.shape[0],), stop, dtype=torch.bool, device=input_ids.device)
+
+        talker = self.model.model.talker
+        inner = talker.generate
+
+        def generate(*a, **k):
+            crit = k.pop('stopping_criteria', None) or StoppingCriteriaList()
+            crit.append(StopWhenCancelled())
+            return inner(*a, stopping_criteria=crit, **k)
+
+        talker.generate = generate
 
     def _decode_clips_separately(self):
         """Batch the model, never the codec.
@@ -202,10 +235,12 @@ class Narrator(object):
             log('cached piece %s unreadable (%s), rendering again' % (key, e))
             return None
 
-    def render_group(self, blocks, voice, seed):
+    def render_group(self, blocks, voice, seed, reading=None):
         """Audio for each block, from the cache where it exists; the rest in one batched call.
 
         Returns ([{id, file, seconds}] in the order given, how many came from the cache).
+        Raises Cancelled if the reading is cancelled while its batch is being generated;
+        nothing from that batch is kept.
         """
         import numpy as np
         import soundfile as sf
@@ -226,12 +261,23 @@ class Narrator(object):
                 if time.time() - waited > 0.5:
                     log('waited %.1fs for the model; %d of %d pieces were rendered meanwhile'
                         % (time.time() - waited, before - len(todo), before))
+                if todo and reading is not None and is_cancelled(reading):
+                    raise Cancelled()
                 if todo:
                     self.torch.manual_seed(seed)
                     self.torch.cuda.manual_seed_all(seed)
                     t = time.time()
-                    wavs, sr = self.generate([blocks[i]['text'] for i in todo], voice)
+                    self.generating_for = reading
+                    try:
+                        wavs, sr = self.generate([blocks[i]['text'] for i in todo], voice)
+                    finally:
+                        self.generating_for = None
                     took = time.time() - t
+                    if reading is not None and is_cancelled(reading):
+                        # Stopped mid-way: the clips are cut short, so none of them is kept.
+                        log('reading %d cancelled mid-batch; stopped after %.1fs, nothing kept'
+                            % (reading, took))
+                        raise Cancelled()
                     total = 0.0
                     for i, wav in zip(todo, wavs):
                         a = np.asarray(wav, dtype=np.float32)
@@ -263,6 +309,10 @@ class Narrator(object):
 # asking for more, and the card stayed at 99% rendering audio nobody was going to hear.
 _cancelled = []
 _cancel_lock = threading.Lock()
+
+
+class Cancelled(Exception):
+    """The reading was cancelled while its batch was being rendered."""
 
 
 def cancel(reading_id):
@@ -382,9 +432,12 @@ class Handler(BaseHTTPRequestHandler):
                         % (reading, len(blocks) - at))
                     self._send(200, {'items': items, 'cancelled': True})
                     return
-                got, cached = Handler.narrator.render_group(blocks[at:at + size], voice, seed)
+                got, cached = Handler.narrator.render_group(blocks[at:at + size], voice, seed, reading)
                 items.extend(got)
                 from_cache += cached
+        except Cancelled:
+            self._send(200, {'items': items, 'cancelled': True})
+            return
         except Exception as e:
             import traceback
             log('render FAILED for reading %d:\n%s' % (reading, traceback.format_exc()))
