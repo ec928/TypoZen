@@ -95,6 +95,20 @@ class Narrator(object):
             h.update(t.encode('utf-8'))
         return h.hexdigest()[:16]
 
+    def cached(self, key):
+        """The items for a group already on disk, or None."""
+        manifest_path = os.path.join(self.cache_dir, key + '.json')
+        if not os.path.exists(manifest_path):
+            return None
+        try:
+            with open(manifest_path, encoding='utf-8') as f:
+                items = json.load(f)
+            if all(os.path.exists(os.path.join(self.cache_dir, i['file'])) for i in items):
+                return items
+        except Exception as e:
+            log('cache entry %s unreadable (%s), re-rendering' % (key, e))
+        return None
+
     def render_group(self, blocks, voice, seed):
         """One batched call. Returns [{id, file, seconds}] and whether it was cached."""
         import numpy as np
@@ -102,17 +116,18 @@ class Narrator(object):
 
         texts = [b['text'] for b in blocks]
         key = self.key_for(texts, voice, seed)
-        manifest_path = os.path.join(self.cache_dir, key + '.json')
-        if os.path.exists(manifest_path):
-            try:
-                with open(manifest_path, encoding='utf-8') as f:
-                    items = json.load(f)
-                if all(os.path.exists(os.path.join(self.cache_dir, i['file'])) for i in items):
-                    return items, True
-            except Exception as e:
-                log('cache entry %s unreadable (%s), re-rendering' % (key, e))
+        items = self.cached(key)
+        if items is not None:
+            return items, True
 
         with self.lock:
+            # Asked for twice at once -- Narrate pressed on the page being rendered ahead --
+            # the second request waits here and must take the first one's audio, not
+            # render the same group again.
+            items = self.cached(key)
+            if items is not None:
+                return items, True
+
             self.torch.manual_seed(seed)
             self.torch.cuda.manual_seed_all(seed)
             t = time.time()
@@ -120,17 +135,18 @@ class Narrator(object):
                 text=texts, instruct=VOICES[voice], language='English')
             took = time.time() - t
 
-        items, total = [], 0.0
-        for block, wav in zip(blocks, wavs):
-            a = np.asarray(wav, dtype=np.float32)
-            name = '%s-%d.wav' % (key, block['id'])
-            sf.write(os.path.join(self.cache_dir, name), a, sr)
-            secs = len(a) / float(sr)
-            total += secs
-            items.append({'id': block['id'], 'file': name, 'seconds': round(secs, 3)})
+            items, total = [], 0.0
+            for block, wav in zip(blocks, wavs):
+                a = np.asarray(wav, dtype=np.float32)
+                name = '%s-%d.wav' % (key, block['id'])
+                sf.write(os.path.join(self.cache_dir, name), a, sr)
+                secs = len(a) / float(sr)
+                total += secs
+                items.append({'id': block['id'], 'file': name, 'seconds': round(secs, 3)})
 
-        with open(manifest_path, 'w', encoding='utf-8') as f:
-            json.dump(items, f)
+            # The manifest last, so a group is only ever found complete.
+            with open(os.path.join(self.cache_dir, key + '.json'), 'w', encoding='utf-8') as f:
+                json.dump(items, f)
         log('rendered %d blocks: %.1fs of audio in %.1fs (%.2fx realtime)'
             % (len(blocks), total, took, took / total if total else 0))
         return items, False
@@ -143,16 +159,17 @@ class Narrator(object):
 #
 # This exists because the first build had none: Stop stopped the playback, the page kept
 # asking for more, and the card stayed at 99% rendering audio nobody was going to hear.
-_cancelled = set()
+_cancelled = []
 _cancel_lock = threading.Lock()
 
 
 def cancel(reading_id):
     with _cancel_lock:
-        _cancelled.add(reading_id)
-        if len(_cancelled) > 64:                # ids only ever grow; keep the newest
-            for old in sorted(_cancelled)[:-32]:
-                _cancelled.discard(old)
+        _cancelled.append(reading_id)
+        # Keep the newest by arrival, not by value: the page's play and render-ahead
+        # readings count from different bases, so the largest id is not the latest.
+        if len(_cancelled) > 64:
+            del _cancelled[:32]
 
 
 def is_cancelled(reading_id):
