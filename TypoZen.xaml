@@ -702,6 +702,11 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.72">
+                    <!-- The Read Aloud engine and voice, and what the Qwen narrator is doing while
+                         the reader waits for it. Filled by UpdateVoiceStatus. -->
+                    <TextBlock x:Name="lblVoice" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
+                               TextTrimming="CharacterEllipsis" MaxWidth="260" VerticalAlignment="Center"
+                               ToolTip="Read Aloud voice. Change it in File > Read Aloud."/>
                     <TextBlock x:Name="lblChapter" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
                                TextTrimming="CharacterEllipsis" MaxWidth="220"
                                Cursor="Hand" VerticalAlignment="Center"

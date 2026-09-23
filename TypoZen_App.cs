@@ -2110,6 +2110,17 @@ namespace TypoZen
         private void NarratorStatus(string m)
         {
             try { SendMsg("cmd:narrator_status:" + (m ?? "")); } catch { }
+            // Only the narrator's start-up reports through here; the page reports the rest.
+            try
+            {
+                Dispatcher.BeginInvoke((Action)(() =>
+                {
+                    if (!string.IsNullOrEmpty(m)) _narrationPhase = "starting";
+                    else if (_narrationPhase == "starting") _narrationPhase = "";
+                    UpdateVoiceStatus();
+                }));
+            }
+            catch { }
         }
 
         /// <summary>
@@ -2163,6 +2174,7 @@ namespace TypoZen
                 menu.Header = "_Qwen Narrator: " + currentName.Replace("_", "__");
             }
             catch (Exception ex) { LogFault("qwen voice menu", ex); }
+            UpdateVoiceStatus();
         }
 
         /// <summary>
@@ -6369,6 +6381,13 @@ namespace TypoZen
                 if (cb != null) cb(msg.Substring(19));
                 return;
             }
+            else if (msg.StartsWith("host_narration_phase:"))
+            {
+                // The page's side of the narrator's state: preparing, reading, or "" when done.
+                _narrationPhase = msg.Substring(21);
+                UpdateVoiceStatus();
+                return;
+            }
             else if (msg == "host_qwen_narrate")
             {
                 // Read Aloud, Read or Read from here with the Qwen voice chosen: make sure
@@ -9823,6 +9842,52 @@ namespace TypoZen
             {
                 item.IsChecked = !kokoroSpeaking && (item.Tag.ToString() == _ttsVoiceId);
             }
+            UpdateVoiceStatus();
+        }
+
+        /// <summary>What the Qwen narrator is doing: "" (idle), "starting", "preparing" or "reading".</summary>
+        private string _narrationPhase = "";
+
+        /// <summary>
+        /// The status bar's voice label: which engine reads aloud and in which voice, and while
+        /// the Qwen narrator is starting or preparing, that it is -- so a wait is visibly a wait.
+        /// </summary>
+        private void UpdateVoiceStatus()
+        {
+            var lbl = FindElement("lblVoice") as TextBlock;
+            if (lbl == null) return;
+            try
+            {
+                string text;
+                if (_kokoroVoiceId == QwenNarrator.VoiceId)
+                {
+                    string cache = CacheDir(), current = QwenNarrator.CurrentVoice(cache), name = current;
+                    foreach (var v in QwenNarrator.SavedVoices(cache)) if (v.Key == current) name = v.Value;
+                    text = "Qwen: " + name;
+                    if (_narrationPhase == "starting") text += " · starting…";
+                    else if (_narrationPhase == "preparing") text += " · preparing…";
+                    else if (_narrationPhase == "reading") text += " · reading";
+                }
+                else if (IsKokoroVoiceId(_kokoroVoiceId))
+                {
+                    string name = _kokoroVoiceId;
+                    foreach (string row in ExtensionCatalog.Voices)
+                        if (ExtensionCatalog.VoiceId(row) == _kokoroVoiceId) name = ExtensionCatalog.VoiceName(row);
+                    text = "Kokoro: " + name;
+                }
+                else
+                {
+                    // No voice chosen yet reads in whatever Windows has as its default.
+                    string name = "system default";
+                    var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
+                    if (mWinVoices != null)
+                        foreach (var item in VoiceMenuItems(mWinVoices))
+                            if (item.Tag.ToString() == _ttsVoiceId) name = Convert.ToString(item.Header);
+                    text = "Windows: " + name;
+                }
+                lbl.Text = text;
+            }
+            catch (Exception ex) { LogFault("voice status", ex); }
         }
 
         private void SetAutosave(bool on)
