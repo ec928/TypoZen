@@ -512,6 +512,27 @@ time, against slice 2's recording of the same chapter.
 
 **Slice 4 — cast.** Per-character voices, a cast sheet, re-render on change.
 
+*Built 2026-09-23 in 0.3.25, with Narrator settings (File > Read Aloud).*
+- **Voices are designed from words.** VoiceDesign reads a fixed passage for each of three
+  candidates, Base's speaker encoder turns each into a voice-print, and the narrator reads
+  a preview line in it. The one kept is saved in `voices\`. The narrator model moves off
+  the GPU while VoiceDesign is on it, because both together spilled 12GB into system RAM.
+- **Attribution comes from each quotation's tag.** "said X", "X protested", "the drone
+  muttered". A pronoun resolves only when the paragraph names exactly one known speaker, and
+  an unbroken exchange alternates. Otherwise the line stays with the narrator.
+- **A paragraph where a cast character speaks is cut.** Their lines are voiced by them; the
+  tags, the narration and any uncast lines stay with the narrator.
+
+Checked on Matter:
+- The scan finds Ferbin 339, Oramen 268, Holse 207, Anaplian 198 lines, and on down.
+- The King's death scene splits line by line.
+- Demo: `obj/voice-test/G-scene-cast.wav`.
+
+Limits:
+- Find characters sees only the loaded part of the book.
+- Very short lines become pieces of their own.
+- The heuristics miss untagged speakers outside a clear exchange.
+
 **Slice 5 — export.** m4b/opus out, which by then is mostly already done.
 
 Running through all of them, not gating them: it looks like an extension to the reader.
