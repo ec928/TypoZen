@@ -382,6 +382,24 @@ plus transcript, the way Base clones) as well as the voice-print. Short lines co
 0.2s; the cause is unknown. The longer paragraphs came out normal, but to the owner they
 were not clearly closer to the reference than the voice-print alone. Dropped: C stays.
 
+**Per-paragraph cache, 2026-09-23.** The groups of eight blocks fixed by the document
+(3c) are gone. Starting on the last paragraph of a group rendered the whole group, mostly
+unheard, then waited for the next group: 117s to first sound. The narrator now caches
+each piece on its own and renders only what it lacks, so batches start where reading
+starts, and replay, restart and render-ahead reuse any piece already made. 3c's cost comes
+back only if the cache is cleared: a paragraph rendered again is a different take of the
+same voice.
+
+**Slice 2 is closed with 0.3.23**, deployed with the installer on 2026-09-23:
+- The Qwen narration row in File > Extensions shows the extension's size, Clear audio and
+  Remove.
+- The build scripts now stage the sidecar and voice-print.
+- The timeline test catches a stall at the end, and passes.
+
+The per-book cache location was not changed. TypoZen keeps per-book state as lines in
+shared files, not in per-book folders, and the extension folder, which Clear audio and
+Remove manage, serves the same purpose.
+
 **No silence after the first line.** A start near the end of a group used to play a few
 seconds, then go silent for the whole render of the next group. That was the "one word and it
 stopped" of the first live test. Before the first word, the page now keeps adding batches
