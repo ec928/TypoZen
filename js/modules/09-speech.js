@@ -428,11 +428,19 @@ let _narrCast = {};
 window.setNarratorSettings = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
+        const before = JSON.stringify([_narrVoice, _narrStyle, _narrCast]);
         _narrVoice = s.voice || '';
         _narrStyle = s.style || '';
         _narrSpeed = Math.max(0.5, Math.min(2, parseFloat(s.speed) || 1));
         _narrCast = s.cast || {};
         if (_renderedAudio) _renderedAudio.playbackRate = _narrSpeed;
+        // A new voice, style or cast while narrating: start again at the paragraph being read,
+        // in the new voice, rather than play out what was already rendered in the old one.
+        if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrCast]) && _narrActive && isPlaying) {
+            narrLog('settings changed while narrating: restarting at the current paragraph');
+            _qwenPending = null;
+            try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
+        }
         narrLog('settings: voice ' + (_narrVoice || 'default') + ', style ' + (_narrStyle ? _narrStyle.length + ' chars' : 'standard') +
                 ', speed ' + _narrSpeed + ', cast ' + Object.keys(_narrCast).length);
     } catch (e) { narrLog('settings unreadable: ' + (e && e.message || e)); }

@@ -1569,12 +1569,14 @@ namespace TypoZen
             var mSpeed = FindElement("mConfigureSpeed") as MenuItem; if (mSpeed != null) mSpeed.Header = "Voice Sampler and Speed..."; BindClick("mConfigureSpeed", (s, e) => ShowConfigureVoiceDialog());
             PopulateWindowsVoicesMenu();
             BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
-            BindClick("mQwenVoice", (s, e) => ChooseQwenVoice());
+            var qwenMenu = FindElement("mQwenVoice") as MenuItem;
+            if (qwenMenu != null) qwenMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == qwenMenu) RebuildQwenVoiceMenu(); };
             BindClick("mNarratorSettings", (s, e) =>
             {
                 try
                 {
-                    NarratorDialog.Show(this, CacheDir(), _appDir, _currentFilePath, SendMsg, SendNarratorSettings);
+                    NarratorDialog.Show(this, CacheDir(), _appDir, _currentFilePath, SendMsg,
+                                        () => { SendNarratorSettings(); RebuildQwenVoiceMenu(); });
                 }
                 catch (Exception ex) { LogFault("narrator settings", ex); }
             });
@@ -2111,16 +2113,56 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Qwen chosen as the reading voice. The narrator starts now, in the background, so
-        /// the model load (about 20s) is paid while the reader finds their place rather than
-        /// after they press Read. Choosing the voice is the only thing that starts it early:
-        /// launching TypoZen or opening a book never does.
+        /// A Qwen narrator voice chosen from Read Aloud: it becomes the reading voice and the
+        /// narrator's voice at once, and the page is told straight away -- a narration already
+        /// playing restarts at its paragraph in the new voice. The narrator starts now, in the
+        /// background, so its model load is paid while the reader finds their place. Choosing a
+        /// voice is the only thing that starts it early: launching TypoZen or opening a book never does.
         /// </summary>
-        private async void ChooseQwenVoice()
+        private async void ChooseQwenVoice(string voiceId, string name)
         {
-            SetKokoroVoice(QwenNarrator.VoiceId, "Qwen narrator");
+            try
+            {
+                var s = QwenNarrator.LoadSettings(CacheDir());
+                s.Voice = voiceId;
+                QwenNarrator.SaveSettings(CacheDir(), s);
+            }
+            catch (Exception ex) { LogFault("narrator voice", ex); }
+            SetKokoroVoice(QwenNarrator.VoiceId, name);
+            SendNarratorSettings();
+            RebuildQwenVoiceMenu();
             try { await QwenNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus, CancellationToken.None); }
             catch (Exception ex) { LogFault("start narrator", ex); }
+        }
+
+        /// <summary>
+        /// Read Aloud > Qwen Narrator: every saved narrator voice, with the one reading ticked
+        /// and named in the header. Built from disk each time it opens, so a voice kept in
+        /// Narrator settings is there at once, and the label can never show a voice that is not
+        /// the one in use.
+        /// </summary>
+        private void RebuildQwenVoiceMenu()
+        {
+            var menu = FindElement("mQwenVoice") as MenuItem;
+            if (menu == null) return;
+            try
+            {
+                string cache = CacheDir();
+                string current = QwenNarrator.CurrentVoice(cache);
+                bool qwenReading = _kokoroVoiceId == QwenNarrator.VoiceId;
+                string currentName = QwenNarrator.DefaultVoiceName;
+                menu.Items.Clear();
+                foreach (var v in QwenNarrator.SavedVoices(cache))
+                {
+                    if (v.Key == current) currentName = v.Value;
+                    var mi = new MenuItem { Header = v.Value, IsCheckable = true, IsChecked = qwenReading && v.Key == current };
+                    string id = v.Key, name = v.Value;
+                    mi.Click += (s, e) => ChooseQwenVoice(id, name);
+                    menu.Items.Add(mi);
+                }
+                menu.Header = "_Qwen Narrator: " + currentName.Replace("_", "__");
+            }
+            catch (Exception ex) { LogFault("qwen voice menu", ex); }
         }
 
         /// <summary>
@@ -2183,8 +2225,7 @@ namespace TypoZen
         /// <summary>Moves the tick without telling the page -- for what the page told us.</summary>
         private void TickKokoroVoice()
         {
-            var qwen = FindElement("mQwenVoice") as MenuItem;
-            if (qwen != null) qwen.IsChecked = _kokoroVoiceId == QwenNarrator.VoiceId;
+            RebuildQwenVoiceMenu();
             var menu = FindElement("mKokoroMenu") as MenuItem;
             if (menu == null) return;
             foreach (var o in menu.Items)

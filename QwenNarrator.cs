@@ -146,6 +146,44 @@ namespace TypoZen
             File.WriteAllText(path, new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
         }
 
+        /// <summary>The built-in voice's id and name, as the narrator lists it.</summary>
+        public const string DefaultVoiceId = "northern-english";
+        public const string DefaultVoiceName = "Northern English (original)";
+
+        /// <summary>
+        /// Every voice the narrator can read in, (id, name), the built-in one first -- read from
+        /// the voices folder on disk, so a menu can list them without starting the narrator.
+        /// </summary>
+        public static List<KeyValuePair<string, string>> SavedVoices(string cacheDir)
+        {
+            var list = new List<KeyValuePair<string, string>> { new KeyValuePair<string, string>(DefaultVoiceId, DefaultVoiceName) };
+            try
+            {
+                string dir = Path.Combine(RootDir(cacheDir), "voices");
+                if (!Directory.Exists(dir)) return list;
+                var kept = new List<KeyValuePair<string, string>>();
+                foreach (string d in Directory.GetDirectories(dir))
+                {
+                    string id = Path.GetFileName(d);
+                    if (id.StartsWith("_") || !File.Exists(Path.Combine(d, "print.npy"))) continue;
+                    object n;
+                    var meta = ReadJson(Path.Combine(d, "meta.json"));
+                    kept.Add(new KeyValuePair<string, string>(id, meta.TryGetValue("name", out n) && n is string ? (string)n : id));
+                }
+                kept.Sort((a, b) => string.Compare(a.Value, b.Value, StringComparison.OrdinalIgnoreCase));
+                list.AddRange(kept);
+            }
+            catch { }
+            return list;
+        }
+
+        /// <summary>The narrator's current voice id: the saved choice, or the built-in voice.</summary>
+        public static string CurrentVoice(string cacheDir)
+        {
+            string v = LoadSettings(cacheDir).Voice;
+            return string.IsNullOrEmpty(v) ? DefaultVoiceId : v;
+        }
+
         /// <summary>What the page is sent: the narrator's voice and style, the reading speed, and this book's cast.</summary>
         public static string PageSettingsJson(string cacheDir, string book, double speed)
         {
