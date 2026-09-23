@@ -317,6 +317,16 @@ foreach ($f in $assetFiles) {
     $src = Join-Path $appDir $f
     if (Test-Path $src) { Copy-Item $src -Destination $binDir -Force }
 }
+# The narration sidecar, which QwenNarrator.cs runs from tools\qwen-narrator beside the exe:
+# the script and the narrator's voice-print. It was copied into bin\ by hand until
+# 2026-09-23, so nothing guaranteed staging held the current one. Only the files it runs
+# from -- never a __pycache__ that a local run left behind.
+$narrSrc = Join-Path $appDir "tools\qwen-narrator"
+$narrDst = Join-Path $binDir "tools\qwen-narrator"
+if (Test-Path $narrSrc) {
+    New-Item -ItemType Directory -Force -Path $narrDst | Out-Null
+    Get-ChildItem $narrSrc -File | Where-Object { $_.Extension -in '.py', '.npy' } | Copy-Item -Destination $narrDst -Force
+}
 Write-Host "  Copied TypoZen.exe and the runtime assets to staging directory." -ForegroundColor Gray
 
 Write-Host "`n[4/4] Build Complete! TypoZen.exe is ready." -ForegroundColor Green
