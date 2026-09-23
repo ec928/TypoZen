@@ -28,6 +28,23 @@ namespace TypoZen
 
         private static Process _process;
         private static readonly object Gate = new object();
+        private static string _logPath;
+
+        /// <summary>
+        /// The host's lines in narration.log, the file the sidecar and the page also write,
+        /// so starting, running and stopping the narrator read as one timeline. Always on:
+        /// a narration that fails otherwise leaves nothing behind to say why.
+        /// </summary>
+        private static void Log(string msg)
+        {
+            try
+            {
+                if (_logPath == null) return;
+                DateTime t = DateTime.Now;
+                File.AppendAllText(_logPath, t.ToString("HH:mm:ss.fff") + "  host    " + msg + Environment.NewLine);
+            }
+            catch { }
+        }
 
         public static string RootDir(string cacheDir)
         {
@@ -96,9 +113,17 @@ namespace TypoZen
         public static async Task<bool> EnsureRunning(string cacheDir, string appDir,
                                                      Action<string> say, CancellationToken cancel)
         {
-            if (!Installed(cacheDir, appDir)) { say("The narration extension is not installed."); return false; }
-            if (Ready()) return true;
+            _logPath = Path.Combine(RootDir(cacheDir), "narration.log");
+            Log("---- narrate requested; script " + ScriptPath(appDir));
+            if (!Installed(cacheDir, appDir))
+            {
+                Log("not installed: python " + File.Exists(PythonPath(cacheDir)) + ", script " + File.Exists(ScriptPath(appDir)));
+                say("The narration extension is not installed.");
+                return false;
+            }
+            if (Ready()) { Log("narrator already up"); return true; }
 
+            var started = DateTime.Now;
             lock (Gate)
             {
                 if (_process == null || _process.HasExited)
@@ -115,7 +140,9 @@ namespace TypoZen
                         WorkingDirectory = Path.GetDirectoryName(ScriptPath(appDir))
                     };
                     _process = Process.Start(psi);
+                    Log("started narrator process " + _process.Id);
                 }
+                else Log("narrator process " + _process.Id + " exists but is not ready yet");
             }
 
             say("Starting the narrator...");
@@ -123,11 +150,29 @@ namespace TypoZen
             // first CUDA context in a fresh process is not quick. Warm, it is seconds.
             for (int waited = 0; waited < 180 && !cancel.IsCancellationRequested; waited++)
             {
-                if (Ready()) { say(""); return true; }
+                if (Ready())
+                {
+                    Log("narrator ready after " + (DateTime.Now - started).TotalSeconds.ToString("0.0") + "s");
+                    say("");
+                    return true;
+                }
+                Process p;
+                lock (Gate) { p = _process; }
+                try
+                {
+                    if (p != null && p.HasExited)
+                    {
+                        Log("narrator process EXITED with code " + p.ExitCode + " before it was ready");
+                        say("The narrator stopped while starting.");
+                        return false;
+                    }
+                }
+                catch { }
                 if (waited == 10) say("Starting the narrator - loading the voice model...");
                 if (waited == 45) say("Still loading the voice model. The first start is the slow one.");
                 await Task.Delay(1000, cancel).ConfigureAwait(false);
             }
+            Log("narrator not ready after " + (DateTime.Now - started).TotalSeconds.ToString("0") + "s; giving up");
             say("The narrator did not start.");
             return false;
         }
@@ -138,6 +183,7 @@ namespace TypoZen
             Process p;
             lock (Gate) { p = _process; _process = null; }
             if (p == null) return;
+            Log("TypoZen closing: stopping narrator process " + p.Id);
             try
             {
                 var req = (HttpWebRequest)WebRequest.Create(BaseUrl + "/stop");
