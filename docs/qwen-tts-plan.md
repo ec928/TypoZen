@@ -617,6 +617,13 @@ carry on. Everything else in here is a working decision and mine to make.
   voice-print. The narrator model moves off the GPU while it runs.
 - **The speaker encoder** is its own file, `models\speaker-encoder.pt` (24 MB), taken once
   from the Base model. Base itself is no longer installed.
+- **The model files are hard links, not symbolic links.** A Hugging Face snapshot holds each
+  file as a symbolic link to its blob. On 2026-09-24, 4 of 12 narrator starts failed because
+  Windows intermittently refused to open config.json through its link (OSError 22,
+  ERROR_CANT_ACCESS_FILE), for a whole process at a time. The error reads as a missing
+  `model_type`. Both snapshots were converted to hard links: ordinary files, the same bytes,
+  no extra disk. A fresh download would bring the links back; the sidecar retries the load
+  and logs what it could read.
 - **The sidecar** (`tools/qwen-narrator/sidecar.py`) is a resident HTTP server on
   127.0.0.1:8765, started by the host. It loads in about 20s and stops after 15 idle
   minutes. It runs offline, and `/health` reports ready only once everything is loaded.

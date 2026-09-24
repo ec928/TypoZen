@@ -277,10 +277,14 @@ class Narrator(object):
             # disk -- which fails offline, and online cost most of a 51-second start. Given
             # a path it asks nothing: 16 seconds, and no network.
             local = snapshot_download(MODEL_REPO, local_files_only=True)
-            # Retried: on 2026-09-24, 3 of 11 starts failed about 8s in with "Unrecognized
+            # Retried: on 2026-09-24, 4 of 12 starts failed about 8s in with "Unrecognized
             # model ... should have a model_type key in its config.json" -- although the file has
-            # one -- and the same files loaded on the next start. The cause is not known yet;
-            # each failure logs what the config actually looked like, to find it.
+            # one. The logged cause: opening config.json failed with OSError 22 (Windows'
+            # ERROR_CANT_ACCESS_FILE), because every file in a Hugging Face snapshot is a symbolic
+            # link to its blob and Windows intermittently refused to follow it, for a whole
+            # process at a time. The snapshots on the owner's machine were converted to hard links
+            # (ordinary files, same bytes, no extra disk). A fresh download would bring symbolic
+            # links back; the retry and config_facts stay to catch that.
             for attempt in range(1, 4):
                 try:
                     self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
