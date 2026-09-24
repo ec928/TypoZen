@@ -709,9 +709,9 @@ Other measurements:
 
 ### Open
 
-- **Pronunciation overrides:** `applyTTSOverrides` respells some words for the Windows and
-  Kokoro voices, such as verb "lives" to "livz" and Dune names. Qwen reads from context and
-  may do better without them. Clips of both have been rendered for the owner to judge.
+- ~~Pronunciation overrides~~ **Settled in 0.3.37.** By ear, Qwen does better with the text
+  as written: the respelled "Benny Jesserit" came out distorted. Qwen now gets the text
+  unchanged, and the respellings stay for the Windows and Kokoro voices.
 - **Streaming the first sentence:** decoding as frames are generated would cut the 7s jump-in
   wait. It is a larger change, and the warm-up already covers opening a book.
 - **Other hardware:** the render factor is fixed at a value measured on this card. A slower
