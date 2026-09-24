@@ -609,7 +609,7 @@ namespace TypoZen
                         // Nothing here can install it, so once removed there is no button to offer.
                         state.Text = on
                             ? "Installed - " + Human(onDisk) + " on disk, of which " + Human(audio) + " is narration audio"
-                            : "Removed. Setting it up again is done by hand.";
+                            : "Removed. Your voices, casts and narrator settings are kept. Setting it up again is done by hand.";
                         button.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
                         clearAudio.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
                         clearAudio.IsEnabled = audio > 0;
@@ -640,8 +640,17 @@ namespace TypoZen
                     var now = live();
                     if (now.Installed && now.MissingBytes() == 0)
                     {
+                        // Qwen narration's voices cannot be downloaded again -- the same description
+                        // makes a different person -- so Remove takes the program, its models and
+                        // the audio, and keeps the voices, casts and settings for when it is set up
+                        // again. It used to delete the whole folder, voices included, without a word.
+                        long goes = 0;
+                        if (isQwen) foreach (string part in QwenNarrator.RemovableParts) goes += SizeOf(Path.Combine(now.Dir, part));
                         var ask = MessageBox.Show(win,
-                            "Remove " + now.Title + "? " + Human(SizeOf(now.Dir)) + " will be deleted.",
+                            isQwen
+                                ? "Remove " + now.Title + "? The program and its models, " + Human(goes) + ", will be deleted. "
+                                  + "Your voices, casts and narrator settings are kept, and are there again if it is set up again."
+                                : "Remove " + now.Title + "? " + Human(SizeOf(now.Dir)) + " will be deleted.",
                             "Extensions", MessageBoxButton.OKCancel, MessageBoxImage.Question);
                         if (ask != MessageBoxResult.OK) return;
                         // Hand it back before deleting it: while the reader has this
@@ -649,8 +658,13 @@ namespace TypoZen
                         if (changed != null) changed();
                         // The narrator runs out of this folder; a running python.exe would
                         // hold its own files and most of the folder would stay behind.
-                        if (isQwen) QwenNarrator.Stop();
-                        ExtensionInstaller.Purge(now.Dir, true);
+                        if (isQwen)
+                        {
+                            QwenNarrator.Stop();
+                            foreach (string part in QwenNarrator.RemovableParts)
+                                ExtensionInstaller.Purge(Path.Combine(now.Dir, part), true);
+                        }
+                        else ExtensionInstaller.Purge(now.Dir, true);
                         foreach (var r in rows) r();
                         if (changed != null) changed();
                         status.Text = now.Installed

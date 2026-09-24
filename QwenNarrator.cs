@@ -147,6 +147,13 @@ namespace TypoZen
         }
 
         /// <summary>The built-in voice's id and name, as the narrator lists it.</summary>
+        /// <summary>
+        /// What Extensions > Remove deletes from the extension folder: the Python environment, the
+        /// models, the rendered audio and the download cache. Everything else -- voices, casts,
+        /// narrator.json, the reference recording -- is the reader's and stays.
+        /// </summary>
+        public static readonly string[] RemovableParts = { "venv", "models", "narration", "xet" };
+
         public const string DefaultVoiceId = "northern-english";
         public const string DefaultVoiceName = "Northern English (original)";
 
