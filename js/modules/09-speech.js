@@ -886,12 +886,16 @@ function narrationBatches(all, from, maxBatches, graduated) {
         const known = knownSpeakers(all);
         Object.keys(_narrCast).forEach(k => known.add(k));
         const texts = all.slice(first, Math.min(all.length, from + limit + 40))
-            .map(el => applyTTSOverrides((el.innerText || '').trim()));
+            .map(el => (el.innerText || '').trim());
         speakers = attributeParagraphs(texts, known);
     }
     for (let i = from; i < all.length && pieces.length < limit; i++) {
         const at = narrationDocIndex(all[i], i);
-        const text = applyTTSOverrides((all[i].innerText || '').trim());
+        // The text as written, not applyTTSOverrides': those respellings ("livz", "Benny
+        // Jesserit") help the Windows and Kokoro voices, but Qwen reads words from their
+        // context, and by ear it did better without them -- the respelled name came out
+        // distorted (2026-09-24).
+        const text = (all[i].innerText || '').trim();
         if (!text) continue;
         const quotes = speakers && speakers[i - first];
         if (quotes && quotes.some(q => q.key && _narrCast[q.key])) {
@@ -1124,7 +1128,7 @@ async function narrateSelection(base, sel) {
     const all = Array.from(document.querySelectorAll('#editor .block'));
     const i = all.indexOf(sel.el);
     const at = narrationDocIndex(sel.el, i < 0 ? 0 : i);
-    const pieces = blockPieces(applyTTSOverrides(sel.text))
+    const pieces = blockPieces(sel.text)          // as written: see narrationBatches
         .map((t, k) => ({ el: sel.el, at: at, id: at * 100 + 50 + k, text: t, direction: narrationDirection(t, null) }));
     const reading = ++_narrationReading;
     _narrationBase = base;
