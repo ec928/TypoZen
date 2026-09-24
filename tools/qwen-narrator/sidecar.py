@@ -7,7 +7,8 @@ sound and eleven.
 Renders in batches rather than one piece at a time: a batch of eight paragraphs runs at
 about 0.4-0.65x realtime against 2.1x one at a time (measured 2026-09-23, with each clip
 decoded separately -- see _decode_clips_separately), so batching is what makes narration
-outrun listening at all.
+outrun listening at all. Since 2026-09-24 the code predictor runs as a CUDA graph (see
+graph_code_predictor), about 2.7x faster again: one sentence 0.85x realtime, eight 0.14x.
 
 The cache is per piece: its key is the model, the voice-print, the style and the piece's
 text. A piece already on disk is never rendered again, whatever batch asks for it, so a
@@ -124,12 +125,129 @@ def open_log(path):
     LOG_PATH = path
 
 
+def graph_code_predictor(model, torch):
+    """Run each frame's 15 codebook tokens as one CUDA graph instead of a nested generate().
+
+    Every frame of audio (12 a second) is one step of the 28-layer talker plus a complete
+    Hugging Face generate() on the 5-layer code predictor for the other 15 codebooks. That
+    inner loop is almost all overhead: a frame took about 200ms at batch 1 and at batch 8
+    alike, 72% of it in the predictor, while its GPU work is a few milliseconds. Measured on
+    2026-09-24 (RTX 4070 Ti): the predictor went from 138 to 12.9 ms/frame, a sentence from
+    2.39x to 0.85x realtime, a batch of eight from 0.36x to 0.14x, and with sampling off the
+    graph chose the same tokens as generate() in 180 of 180 cases.
+
+    Same sampling as generate() is given here (temperature, then top-k; top-p 1.0 is a no-op).
+    One graph per batch size, captured on first use in about half a second. A call it does
+    not cover, or any failure, goes to the original generate() -- after a failure, for good.
+    """
+    cp = model.model.talker.code_predictor
+    inner = cp.generate
+    hidden = model.model.talker.config.hidden_size
+    n = cp.config.num_code_groups - 1
+    graphs = {}
+    broken = []
+
+    from transformers import StaticCache
+
+    class Graph(object):
+        def __init__(self, B, temperature, top_k):
+            p = next(cp.parameters())
+            self.temperature, self.top_k = temperature, top_k
+            L = n + 1
+            try:
+                self.cache = StaticCache(config=cp.config, max_cache_len=L)
+            except TypeError:
+                self.cache = StaticCache(config=cp.config, max_batch_size=B, max_cache_len=L,
+                                         device=p.device, dtype=p.dtype)
+            self.inp = torch.zeros(B, 2, hidden, device=p.device, dtype=p.dtype)
+            self.out = torch.zeros(B, n, device=p.device, dtype=torch.long)
+            keys = torch.arange(L, device=p.device)
+            # Per step: cache positions, position ids and the causal mask (True = may attend).
+            # Positions 0-1 are the prefill (talker hidden state, first code); then one each.
+            self.steps = []
+            for start, q in [(0, 2)] + [(g + 1, 1) for g in range(1, n)]:
+                cpos = torch.arange(start, start + q, device=p.device)
+                mask = (keys[None, :] <= cpos[:, None])[None, None].expand(B, 1, q, L).contiguous()
+                self.steps.append((cpos, cpos.unsqueeze(0), mask))
+            side = torch.cuda.Stream()
+            side.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(side):
+                for _ in range(2):      # warm up: allocates the cache outside the capture
+                    self.run()
+            torch.cuda.current_stream().wait_stream(side)
+            self.graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self.graph, capture_error_mode='thread_local'):
+                self.run()
+
+        def forward(self, embeds, k):
+            cpos, pids, mask = self.steps[k]
+            h = cp.small_to_mtp_projection(embeds)
+            pe = cp.model.rotary_emb(h, pids)
+            for layer in cp.model.layers[: cp.config.num_hidden_layers]:
+                out = layer(h, attention_mask=mask, position_ids=pids, past_key_values=self.cache,
+                            output_attentions=False, use_cache=True, cache_position=cpos,
+                            position_embeddings=pe)
+                h = out[0] if isinstance(out, tuple) else out
+            return cp.model.norm(h)
+
+        def pick(self, logits):
+            logits = logits.float() / self.temperature
+            kth = torch.topk(logits, self.top_k, dim=-1).values[..., -1:]
+            logits = logits.masked_fill(logits < kth, float('-inf'))
+            return torch.multinomial(torch.softmax(logits, dim=-1), 1)
+
+        def run(self):
+            h = self.forward(self.inp, 0)
+            tok = self.pick(cp.lm_head[0](h[:, -1]))
+            self.out[:, 0:1].copy_(tok)
+            for g in range(1, n):
+                h = self.forward(cp.model.codec_embedding[g - 1](tok), g)
+                tok = self.pick(cp.lm_head[g](h[:, -1]))
+                self.out[:, g:g + 1].copy_(tok)
+
+    def generate(*a, **k):
+        x = k.get('inputs_embeds')
+        top_p = k.get('top_p')
+        covered = (not broken and not a and x is not None and x.dim() == 3 and x.shape[1] == 2
+                   and k.get('max_new_tokens') == n and k.get('do_sample')
+                   and (top_p is None or top_p >= 1.0) and k.get('top_k'))
+        if not covered:
+            return inner(*a, **k)
+        key = (x.shape[0], float(k.get('temperature') or 1.0), int(k['top_k']))
+        try:
+            g = graphs.get(key)
+            if g is None:
+                t = time.time()
+                g = graphs[key] = Graph(*key)
+                log('code predictor: CUDA graph for batch %d captured in %.2fs' % (key[0], time.time() - t))
+            g.inp.copy_(x)
+            g.graph.replay()
+            return _Sequences(g.out.clone())
+        except Exception:
+            import traceback
+            broken.append(True)
+            log('code predictor: CUDA graph FAILED, using generate() from now on:\n' + traceback.format_exc())
+            return inner(*a, **k)
+
+    cp.generate = generate
+
+
+class _Sequences(object):
+    """What the talker reads from the predictor's generate(): the new tokens."""
+    def __init__(self, sequences):
+        self.sequences = sequences
+
+
 class Narrator(object):
     def __init__(self, cache_dir):
         self.cache_dir = cache_dir
         self.voices_dir = os.path.join(os.path.dirname(os.path.abspath(cache_dir)), 'voices')
         self.lock = threading.Lock()
         self.model = None
+        # Set only once load() has finished everything, voices included. /health said ready as
+        # soon as the weights were in, and a render arriving in the moment before the voices
+        # were read failed with KeyError (hit on 2026-09-24 by a probe polling /health).
+        self.ready = False
         self.encoder = None
         self.sr = None
         self.prints = {}
@@ -184,6 +302,8 @@ class Narrator(object):
             self.reload_voices()
             self._decode_clips_separately()
             self._stop_when_cancelled()
+            graph_code_predictor(self.model, torch)
+            self.ready = True
             log('model ready in %.1fs (%s)' % (time.time() - t, MODEL_REPO))
         except Exception:
             import traceback
@@ -469,6 +589,7 @@ class Narrator(object):
             try:
                 vd = Qwen3TTSModel.from_pretrained(snapshot_download(VOICEDESIGN_REPO, local_files_only=True),
                                                    device_map='cuda:0', dtype=self.torch.bfloat16)
+                graph_code_predictor(vd, self.torch)
                 seed = int(time.time()) % 100000
                 self.torch.manual_seed(seed)
                 self.torch.cuda.manual_seed_all(seed)
@@ -597,7 +718,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         n = Handler.narrator
         if self.path.startswith('/health'):
-            self._send(200, {'ready': n.model is not None,
+            self._send(200, {'ready': n.ready,
                              'model': MODEL_REPO,
                              'voices': sorted(n.prints),
                              'cache': n.cache_dir})
@@ -695,7 +816,7 @@ class Handler(BaseHTTPRequestHandler):
             log('reading %d already cancelled, nothing rendered' % reading)
             self._send(200, {'items': [], 'cancelled': True})
             return
-        if Handler.narrator.model is None:
+        if not Handler.narrator.ready:
             log('render request before the model is ready')
 
         items, from_cache = [], 0

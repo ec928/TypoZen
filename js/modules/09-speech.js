@@ -596,7 +596,7 @@ async function renderNarration(base, batch, reading) {
  * A paragraph is one piece, so its intonation carries across its sentences. Only a paragraph
  * longer than the cap is split, at sentence ends.
  *
- * Except at the start of a reading. A batch takes about 2.2s per second of audio of its
+ * Except at the start of a reading. A batch takes about NARRATION_RENDER_FACTOR seconds per second of audio of its
  * LONGEST piece, whatever else is in it (26 batches measured, 2026-09-24), so one long opening
  * paragraph meant two minutes of silence. The opening batch is therefore cut into sentences,
  * and each later batch may hold pieces only as long as the audio already queued can cover
@@ -949,7 +949,7 @@ function graduatedBatches(pieces, maxBatches) {
     let slack = 0;     // seconds of audio queued ahead of the batch being planned
     while (queue.length && batches.length < maxBatches) {
         const cap = batches.length === 0 ? NARRATION_OPENING_CAP
-            : Math.max(NARRATION_OPENING_CAP, Math.min(NARRATION_PIECE_CAP, Math.floor((slack - 2) / 2.3 * 12)));
+            : Math.max(NARRATION_OPENING_CAP, Math.min(NARRATION_PIECE_CAP, Math.floor((slack - 2) / NARRATION_RENDER_FACTOR * 12)));
         const batch = [];
         while (queue.length && batch.length < NARRATION_BATCH) {
             const p = queue.shift();
@@ -969,14 +969,19 @@ function graduatedBatches(pieces, maxBatches) {
 }
 
 /**
- * Seconds the narrator will take over a batch. A batch runs as long as its longest piece, at
- * about 2.2s of compute per second of that piece's audio (5.6 steps/s against 12 steps per
- * second of speech, measured 2026-09-23). Audio is estimated at 12 characters a second, the
- * slow end of what Matter measured, so this errs long.
+ * Seconds of rendering per second of audio in a batch's LONGEST piece. It was 2.2 (measured
+ * over 26 batches, 2026-09-23); with the code predictor as a CUDA graph it is 1.04-1.15
+ * (2026-09-24), so 1.3 errs safe.
+ */
+const NARRATION_RENDER_FACTOR = 1.3;
+
+/**
+ * Seconds the narrator will take over a batch: as long as its longest piece takes. Audio is
+ * estimated at 12 characters a second, the slow end of what Matter measured, so this errs long.
  */
 function batchRenderEstimate(batch) {
     const longest = Math.max.apply(null, batch.map(p => p.text.length));
-    return 2.3 * longest / 12 + 2;
+    return NARRATION_RENDER_FACTOR * longest / 12 + 2;
 }
 
 /** The first block on screen: both axes, or the pages already turned in Pages count. */
@@ -1037,7 +1042,7 @@ async function startQwenNarration(base) {
     _narrSilentSince = 0;
     window.__narrLog = [];
     narrLog('reading ' + reading + ' begins');
-    // A batch takes as long as its longest paragraph, about 2.2s per second of its audio;
+    // A batch takes as long as its longest paragraph (NARRATION_RENDER_FACTOR per second of its audio);
     // anything already rendered comes from the cache and the clock just vanishes sooner.
     narrWait('is preparing the first passage', batchRenderEstimate(queue[0]));
     _narrationPending = true;
