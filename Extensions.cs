@@ -723,19 +723,61 @@ namespace TypoZen
             win.ShowDialog();
         }
 
+        /// <summary>
+        /// Disk used by a folder. A file hard-linked under two names -- the speech tokenizer the
+        /// two Qwen models share -- is on disk once and counted once, by its NTFS file id.
+        /// Only files over a megabyte are checked: that is where sharing is worth the handle.
+        /// </summary>
         private static long SizeOf(string dir)
         {
             try
             {
                 if (!Directory.Exists(dir)) return 0;
                 long n = 0;
+                var seen = new HashSet<string>();
                 foreach (var f in new DirectoryInfo(dir).GetFiles("*", SearchOption.AllDirectories))
                 {
-                    try { n += f.Length; } catch { }
+                    try
+                    {
+                        if (f.Length > (1 << 20))
+                        {
+                            string id = FileId(f.FullName);
+                            if (id != null && !seen.Add(id)) continue;
+                        }
+                        n += f.Length;
+                    }
+                    catch { }
                 }
                 return n;
             }
             catch { return 0; }
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct ByHandleFileInformation
+        {
+            public uint FileAttributes;
+            public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime, LastAccessTime, LastWriteTime;
+            public uint VolumeSerialNumber, FileSizeHigh, FileSizeLow, NumberOfLinks, FileIndexHigh, FileIndexLow;
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, out ByHandleFileInformation info);
+
+        /// <summary>Volume and file index, the same for every name of one file; null if unreadable.</summary>
+        private static string FileId(string path)
+        {
+            try
+            {
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    ByHandleFileInformation info;
+                    if (!GetFileInformationByHandle(fs.SafeFileHandle, out info)) return null;
+                    if (info.NumberOfLinks < 2) return null;
+                    return info.VolumeSerialNumber + ":" + info.FileIndexHigh + ":" + info.FileIndexLow;
+                }
+            }
+            catch { return null; }
         }
 
         private static string Human(long bytes)
