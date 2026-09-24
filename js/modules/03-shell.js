@@ -1052,6 +1052,10 @@
                     // The narrator was started ahead of use: render the passage on screen.
                     try { if (typeof window.warmNarration === 'function') window.warmNarration(msg.substring(17)); } catch (eW) {}
                 }
+                else if (msg === "cmd:narration_stop") {
+                    // Clear Stored Data is about to delete the audio and stop the narrator.
+                    try { if (typeof window.stopNarration === 'function') window.stopNarration(); } catch (eX) {}
+                }
                 else if (msg === "cmd:narrator_cast_scan") {
                     // Narrator settings asks who speaks in this book; the answer goes back as
                     // host_narrator_cast.

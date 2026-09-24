@@ -240,8 +240,12 @@ def recycle(path):
 
 
 class Narrator(object):
-    def __init__(self, cache_dir):
+    def __init__(self, cache_dir, private_dir=None):
         self.cache_dir = cache_dir
+        # Privacy Mode: audio rendered while it is on goes here -- a per-session folder that
+        # TypoZen deletes when Privacy Mode ends or the app closes -- and never into cache_dir,
+        # which is only read from. Without it, private reading left every clip behind.
+        self.private_dir = private_dir
         self.voices_dir = os.path.join(os.path.dirname(os.path.abspath(cache_dir)), 'voices')
         self.lock = threading.Lock()
         self.model = None
@@ -475,9 +479,9 @@ class Narrator(object):
                                     non_streaming_mode=True, **m._merge_generate_kwargs())
         return m.model.speech_tokenizer.decode([{'audio_codes': c} for c in codes])
 
-    def cached(self, key):
+    def cached(self, key, folder=None):
         """Seconds of audio for a piece already on disk, or None."""
-        path = os.path.join(self.cache_dir, key + '.wav')
+        path = os.path.join(folder or self.cache_dir, key + '.wav')
         if not os.path.exists(path):
             return None
         try:
@@ -487,21 +491,39 @@ class Narrator(object):
             log('cached piece %s unreadable (%s), rendering again' % (key, e))
             return None
 
-    def render_group(self, blocks, voice, seed, reading=None, style=''):
+    def find(self, key, private):
+        """(seconds, found in the private folder) for a piece on disk, or (None, False).
+
+        A private reading looks in its own folder first, then in the ordinary cache: audio
+        made before Privacy Mode was turned on is already on disk, and reading it adds nothing.
+        """
+        if private and self.private_dir:
+            s = self.cached(key, self.private_dir)
+            if s is not None:
+                return s, True
+        return self.cached(key), False
+
+    def render_group(self, blocks, voice, seed, reading=None, style='', private=False):
         """Audio for each block, from the cache where it exists; the rest in one batched call.
 
         Each block may name its own voice (a cast line) and role; the rest use `voice`.
-        Returns ([{id, file, seconds}] in the order given, how many came from the cache).
+        Returns ([{id, file, seconds, private}] in the order given, how many came from the
+        cache). `private` puts new pieces in the private folder, never the ordinary cache.
         Raises Cancelled if the reading is cancelled while its batch is being generated;
         nothing from that batch is kept.
         """
         import numpy as np
         import soundfile as sf
 
+        private = bool(private and self.private_dir)
+        if private:
+            os.makedirs(self.private_dir, exist_ok=True)
         voices = [self.known_voice(b.get('voice') or voice) for b in blocks]
         instructions = [self.instruction(style, b.get('direction'), b.get('role') or 'narration') for b in blocks]
         keys = [self.key_for(b['text'], v, i) for b, v, i in zip(blocks, voices, instructions)]
-        have = [self.cached(k) for k in keys]
+        found = [self.find(k, private) for k in keys]
+        have = [f[0] for f in found]
+        where = [f[1] for f in found]
         todo = [i for i, s in enumerate(have) if s is None]
         if todo:
             waited = time.time()
@@ -510,7 +532,7 @@ class Narrator(object):
                 # the second request waits here, then takes whatever the first one made
                 # rather than rendering it again.
                 for i in todo:
-                    have[i] = self.cached(keys[i])
+                    have[i], where[i] = self.find(keys[i], private)
                 before = len(todo)
                 todo = [i for i in todo if have[i] is None]
                 if time.time() - waited > 0.5:
@@ -538,7 +560,9 @@ class Narrator(object):
                     total = 0.0
                     for i, wav in zip(todo, wavs):
                         a = np.asarray(wav, dtype=np.float32)
-                        path = os.path.join(self.cache_dir, keys[i] + '.wav')
+                        path = os.path.join(self.private_dir if private else self.cache_dir,
+                                            keys[i] + '.wav')
+                        where[i] = private
                         # Written aside and moved into place, so a piece is never found
                         # half-written by a request that checks the cache meanwhile.
                         sf.write(path + '.part', a, sr, format='WAV')
@@ -552,8 +576,8 @@ class Narrator(object):
         cached = len(blocks) - len(todo)
         if cached:
             log('%d of %d pieces from the cache' % (cached, len(blocks)))
-        items = [{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3)}
-                 for b, k, s in zip(blocks, keys, have)]
+        items = [{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3), 'private': p}
+                 for b, k, s, p in zip(blocks, keys, have, where)]
         return items, cached
 
     # ---- the voice library: design from a description, keep, delete, preview ----------------
@@ -781,6 +805,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith('/health'):
             self._send(200, {'ready': n.ready,
                              'error': n.load_error,
+                             'private': n.private_dir or '',
                              'model': MODEL_REPO,
                              'voices': sorted(n.prints),
                              'cache': n.cache_dir})
@@ -870,9 +895,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         reading = int(body.get('reading', 0))
+        private = bool(body.get('private'))
         started = time.time()
-        log('render request: reading %d, voice %s, %d pieces [%s]' % (
-            reading, voice, len(blocks),
+        log('render request: reading %d, voice %s,%s %d pieces [%s]' % (
+            reading, voice, ' private,' if private else '', len(blocks),
             ' '.join('%s:%dch%s%s' % (b.get('id'), len(b.get('text') or ''),
                                       '<%s>' % b['voice'] if b.get('voice') else '',
                                       '[%s]' % b['direction'] if b.get('direction') else '') for b in blocks)))
@@ -891,7 +917,8 @@ class Handler(BaseHTTPRequestHandler):
                         % (reading, len(blocks) - at))
                     self._send(200, {'items': items, 'cancelled': True})
                     return
-                got, cached = Handler.narrator.render_group(blocks[at:at + size], voice, seed, reading, style)
+                got, cached = Handler.narrator.render_group(blocks[at:at + size], voice, seed, reading,
+                                                            style, private)
                 items.extend(got)
                 from_cache += cached
         except Cancelled:
@@ -931,6 +958,8 @@ def watch_idle(server, minutes):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cache', required=True, help='where the audio and manifests go')
+    ap.add_argument('--private-cache', default=None,
+                    help='where audio rendered for a request marked private goes')
     ap.add_argument('--port', type=int, default=8765)
     ap.add_argument('--idle-minutes', type=int, default=15)
     ap.add_argument('--models', default=None,
@@ -951,7 +980,7 @@ def main():
     log('---- sidecar starting: pid %d, python %s, script %s'
         % (os.getpid(), sys.version.split()[0], os.path.abspath(__file__)))
 
-    narrator = Narrator(args.cache)
+    narrator = Narrator(args.cache, args.private_cache)
     Handler.narrator = narrator
 
     try:

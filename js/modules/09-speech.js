@@ -429,6 +429,8 @@ let _narrVoiceName = '';
 let _narrStyle = '';
 let _narrSpeed = 1;
 let _narrCast = {};
+// Privacy Mode: new audio goes to this session's private folder, served by localnarrationp.
+let _narrPrivate = false;
 window.setNarratorSettings = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
@@ -438,6 +440,7 @@ window.setNarratorSettings = function (json) {
         _narrStyle = s.style || '';
         _narrSpeed = Math.max(0.5, Math.min(2, parseFloat(s.speed) || 1));
         _narrCast = s.cast || {};
+        _narrPrivate = !!s.private;
         if (_renderedAudio) _renderedAudio.playbackRate = _narrSpeed;
         // A new voice, style or cast while narrating: start again at the paragraph being read,
         // in the new voice, rather than play out what was already rendered in the old one.
@@ -447,7 +450,8 @@ window.setNarratorSettings = function (json) {
             try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
         }
         narrLog('settings: voice ' + (_narrVoice || 'default') + ', style ' + (_narrStyle ? _narrStyle.length + ' chars' : 'standard') +
-                ', speed ' + _narrSpeed + ', cast ' + Object.keys(_narrCast).length);
+                ', speed ' + _narrSpeed + ', cast ' + Object.keys(_narrCast).length +
+                (_narrPrivate ? ', private' : ''));
     } catch (e) { narrLog('settings unreadable: ' + (e && e.message || e)); }
 };
 
@@ -558,7 +562,8 @@ async function renderNarration(base, batch, reading) {
                 blocks: batch.map(p => ({ id: p.id, text: p.text, direction: p.direction || '',
                                           voice: p.voice || '', role: p.role || 'narration' })),
                 reading: reading,
-                group_size: batch.length
+                group_size: batch.length,
+                private: _narrPrivate
             })
         });
         if (!res.ok) throw new Error('sidecar said ' + res.status);
@@ -586,7 +591,8 @@ async function renderNarration(base, batch, reading) {
             at: p.at,
             text: p.text,
             seconds: items[i].seconds || 0,
-            audioUrl: 'https://localnarration/' + items[i].file
+            // Per item: a private reading still plays pieces already in the lasting cache.
+            audioUrl: (items[i].private ? 'https://localnarrationp/' : 'https://localnarration/') + items[i].file
         };
     });
 }
@@ -1335,6 +1341,16 @@ function sendTTSPlay(text) {
         })); 
     } catch(e){}
 }
+
+/**
+ * The host is about to stop the narrator and delete its audio (Clear Stored Data): end any
+ * reading, and stop rendering ahead on page turns until the narrator is started again.
+ */
+window.stopNarration = function () {
+    if (isPlaying) stopReading();
+    clearTimeout(_prefetchTimer);
+    _narrationBase = '';
+};
 
 function stopReading() {
     if (_narrActive) {

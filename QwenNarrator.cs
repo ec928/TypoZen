@@ -30,6 +30,16 @@ namespace TypoZen
         /// <summary>The narrator's id in the reading-voice list, beside the Kokoro and Windows voices.</summary>
         public const string VoiceId = "qwen_narrator";
         public const string HostName = "localnarration";
+        /// <summary>Serves PrivateCacheDir: audio rendered while Privacy Mode is on.</summary>
+        public const string PrivateHostName = "localnarrationp";
+
+        /// <summary>
+        /// This session's folder for audio rendered in Privacy Mode, inside the private load
+        /// folder, so it goes wherever that goes: emptied when Privacy Mode ends, deleted at
+        /// exit, swept at the next launch after a crash. Set once at start-up, before the
+        /// narrator is started, and handed to it as --private-cache.
+        /// </summary>
+        public static string PrivateCacheDir;
         public static string BaseUrl { get { return "http://127.0.0.1:" + Port; } }
 
         private static Process _process;
@@ -193,7 +203,7 @@ namespace TypoZen
         }
 
         /// <summary>What the page is sent: the narrator's voice and style, the reading speed, and this book's cast.</summary>
-        public static string PageSettingsJson(string cacheDir, string book, double speed)
+        public static string PageSettingsJson(string cacheDir, string book, double speed, bool privateMode)
         {
             var s = LoadSettings(cacheDir);
             string current = CurrentVoice(cacheDir), name = current;
@@ -201,7 +211,9 @@ namespace TypoZen
             var d = new Dictionary<string, object>
             {
                 { "voice", s.Voice }, { "voiceName", name }, { "style", s.Style }, { "speed", speed },
-                { "cast", LoadCast(cacheDir, book).Voices }
+                { "cast", LoadCast(cacheDir, book).Voices },
+                // Render into this session's private folder, not the lasting cache.
+                { "private", privateMode }
             };
             return new JavaScriptSerializer().Serialize(d);
         }
@@ -328,7 +340,24 @@ namespace TypoZen
                 say("The narration extension is not installed.");
                 return false;
             }
-            if (Ready()) { Log("narrator already up"); return true; }
+            if (Ready())
+            {
+                // A narrator left running by an earlier TypoZen -- one that crashed, so never
+                // stopped it -- writes private audio into that session's folder, which this one
+                // neither serves nor deletes. Replace it rather than use it.
+                object had;
+                var h = Health();
+                string theirs = h != null && h.TryGetValue("private", out had) ? had as string ?? "" : "";
+                if (string.Equals(theirs, PrivateCacheDir ?? "", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log("narrator already up");
+                    return true;
+                }
+                Log("narrator already up but belongs to another session; replacing it");
+                say("Restarting the narrator...");
+                PostStop();
+                for (int i = 0; i < 20 && Health() != null; i++) await Task.Delay(250);
+            }
 
             var started = DateTime.Now;
             lock (Gate)
@@ -341,6 +370,8 @@ namespace TypoZen
                         FileName = PythonPath(cacheDir),
                         Arguments = "\"" + ScriptPath(appDir) + "\""
                                   + " --cache \"" + CacheDir(cacheDir) + "\""
+                                  + (string.IsNullOrEmpty(PrivateCacheDir) ? ""
+                                     : " --private-cache \"" + PrivateCacheDir + "\"")
                                   + " --port " + Port,
                         UseShellExecute = false,
                         CreateNoWindow = true,
@@ -405,6 +436,14 @@ namespace TypoZen
             lock (Gate) { p = _process; _process = null; }
             if (p == null) return;
             Log("stopping narrator process " + p.Id);
+            PostStop();
+            try { if (!p.WaitForExit(3000)) p.Kill(); }
+            catch { }
+        }
+
+        /// <summary>Ask whatever narrator answers on the port to shut itself down.</summary>
+        private static void PostStop()
+        {
             try
             {
                 var req = (HttpWebRequest)WebRequest.Create(BaseUrl + "/stop");
@@ -414,8 +453,6 @@ namespace TypoZen
                 using (var s = req.GetRequestStream()) { s.WriteByte((byte)'{'); s.WriteByte((byte)'}'); }
                 using (req.GetResponse()) { }
             }
-            catch { }
-            try { if (!p.WaitForExit(3000)) p.Kill(); }
             catch { }
         }
     }

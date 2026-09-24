@@ -222,11 +222,37 @@ namespace TypoZen
             {
                 string dir = DefaultCacheDir();
                 Directory.CreateDirectory(dir);
-                File.AppendAllText(Path.Combine(dir, "debug.log"),
+                AppendBoundedLog(Path.Combine(dir, "debug.log"),
                     string.Format("[{0:yyyy-MM-dd HH:mm:ss.fff}] FAULT {1}: {2}{3}",
                         DateTime.Now, where,
                         ex != null ? ex.ToString() : "",
                         Environment.NewLine));
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Append to a log in the profile and keep it bounded: past 2 MB the file becomes
+        /// name.1, replacing any older one, and a new file starts -- so a log never holds more
+        /// than about 4 MB. debug.log had no limit at all (418 KB on 2026-09-24, mostly
+        /// playback lines and paths of documents opened in --debug runs).
+        /// </summary>
+        internal static void AppendBoundedLog(string path, string text)
+        {
+            try
+            {
+                var fi = new FileInfo(path);
+                if (fi.Exists && fi.Length > 2L * 1024 * 1024)
+                {
+                    string old = path + ".1";
+                    try
+                    {
+                        if (File.Exists(old)) File.Delete(old);
+                        File.Move(path, old);
+                    }
+                    catch { }
+                }
+                File.AppendAllText(path, text);
             }
             catch { }
         }
@@ -2103,7 +2129,8 @@ namespace TypoZen
         /// </summary>
         private void SendNarratorSettings()
         {
-            try { SendMsg("cmd:narrator_settings:" + QwenNarrator.PageSettingsJson(CacheDir(), _currentFilePath, _ttsSpeed)); }
+            try { SendMsg("cmd:narrator_settings:" + QwenNarrator.PageSettingsJson(CacheDir(), _currentFilePath, _ttsSpeed,
+                                                                                   SuppressDocumentTraces())); }
             catch (Exception ex) { LogFault("narrator settings", ex); }
         }
 
@@ -4495,7 +4522,7 @@ namespace TypoZen
             try
             {
                 Directory.CreateDirectory(CacheDir());
-                File.AppendAllText(Path.Combine(CacheDir(), "debug.log"),
+                Program.AppendBoundedLog(Path.Combine(CacheDir(), "debug.log"),
                     string.Format("[{0:yyyy-MM-dd HH:mm:ss.fff}] FAULT {1}: {2}{3}",
                         DateTime.Now, where,
                         ex != null ? ex.ToString() : "",
@@ -4954,7 +4981,33 @@ namespace TypoZen
         {
             public bool SessionText, OpenTabs, RecentFiles, RecentSearches, PastedImages;
             public bool WebStorage, ReadingPositions, ExtractedBooks, Bookmarks;
-            public bool AddedWords, CustomThemes;
+            public bool AddedWords, CustomThemes, Narration, DiagnosticLogs;
+        }
+
+        /// <summary>
+        /// The Qwen narrator's traces of what was read: rendered audio (the lasting cache and
+        /// this session's private one), its logs, and each book's cast, which is keyed by the
+        /// book's path. Voices are not in it -- they are things the reader made, and are
+        /// deleted one by one in Narrator settings.
+        /// </summary>
+        private List<string> NarrationTraceFiles(out List<string> dirs)
+        {
+            string root = QwenNarrator.RootDir(CacheDir());
+            dirs = new List<string> { QwenNarrator.CacheDir(CacheDir()), Path.Combine(root, "cast") };
+            if (!string.IsNullOrEmpty(QwenNarrator.PrivateCacheDir)) dirs.Add(QwenNarrator.PrivateCacheDir);
+            var files = new List<string>();
+            foreach (string f in new[] { "narration.log", "narration.log.1", "install.log" })
+                files.Add(Path.Combine(root, f));
+            return files;
+        }
+
+        /// <summary>debug.log, its previous file, and perf.log.</summary>
+        private List<string> DiagnosticLogFiles()
+        {
+            var files = new List<string>();
+            foreach (string f in new[] { "debug.log", "debug.log.1", "perf.log" })
+                files.Add(Path.Combine(CacheDir(), f));
+            return files;
         }
 
         /// <summary>
@@ -5080,11 +5133,27 @@ namespace TypoZen
             var cbMarks    = add("Bookmarks", CountLines(BookmarksPath()) + " document(s) with marks", false);
             var cbWords    = add("Words you added to the dictionary", UserWordCountLabel(), false);
             var cbThemes   = add("Custom themes", HumanSize(SizeOfFile(Path.Combine(cache, "TypoZen_Themes.json"))), false);
+            long logBytes = 0;
+            foreach (string f in DiagnosticLogFiles()) logBytes += SizeOfFile(f);
+            var cbLogs     = add("Diagnostic logs", HumanSize(logBytes) + ", may name files you opened", true);
+            // Only offered once the narrator has been installed; there is nothing to clear before.
+            CheckBox cbNarr = null;
+            if (Directory.Exists(QwenNarrator.RootDir(cache)))
+            {
+                List<string> narrDirs;
+                long narrBytes = 0;
+                foreach (string f in NarrationTraceFiles(out narrDirs)) narrBytes += SizeOfFile(f);
+                foreach (string d in narrDirs) narrBytes += SizeOfDir(d);
+                cbNarr = add("Narration: audio, logs and book casts",
+                             HumanSize(narrBytes) + "; voices are kept", false);
+            }
 
             root.Children.Add(new TextBlock
             {
                 Text = "Bookmarks, added words and custom themes are things you made, so they "
-                     + "start unticked. A book that is open stays unpacked. Extensions you installed -- the Kokoro voices, the Wiktionary dictionary -- are removed in File > Extensions, "
+                     + "start unticked; so does narration, which takes minutes to render again and "
+                     + "holds the casts you chose. A book that is open stays unpacked. "
+                     + "Extensions you installed -- the Kokoro voices, the Wiktionary dictionary -- are removed in File > Extensions, "
                      + "which shows what each one is using.",
                 TextWrapping = TextWrapping.Wrap,
                 Opacity = 0.75,
@@ -5120,7 +5189,9 @@ namespace TypoZen
                 ExtractedBooks   = cbBooks.IsChecked == true,
                 Bookmarks        = cbMarks.IsChecked == true,
                 AddedWords       = cbWords.IsChecked == true,
-                CustomThemes     = cbThemes.IsChecked == true
+                CustomThemes     = cbThemes.IsChecked == true,
+                DiagnosticLogs   = cbLogs.IsChecked == true,
+                Narration        = cbNarr != null && cbNarr.IsChecked == true
             };
         }
 
@@ -5228,6 +5299,26 @@ namespace TypoZen
                 try { File.WriteAllText(Path.Combine(cache, "purge_webstorage.flag"), "1"); } catch { }
                 try { SendMsg("cmd:clear_local_storage"); } catch { }
                 done.Add("web storage (next launch)");
+            }
+
+            if (want.DiagnosticLogs)
+            {
+                foreach (string f in DiagnosticLogFiles()) try { File.Delete(f); } catch { }
+                done.Add("diagnostic logs");
+            }
+
+            if (want.Narration)
+            {
+                // The narrator writes into these folders and its log; it is stopped first so
+                // nothing is half-written while they go, and the page stops reading and
+                // rendering ahead. It starts again on the next Read Aloud.
+                try { SendMsg("cmd:narration_stop"); } catch { }
+                try { QwenNarrator.Stop(); } catch { }
+                List<string> narrDirs;
+                foreach (string f in NarrationTraceFiles(out narrDirs)) try { File.Delete(f); } catch { }
+                // Folders are emptied but kept: two are mapped as virtual hosts for the page.
+                foreach (string d in narrDirs) ExtensionInstaller.Purge(d, false);
+                done.Add("narration audio, logs and casts");
             }
 
             string booksLine = "";
@@ -6169,6 +6260,14 @@ namespace TypoZen
                     Directory.CreateDirectory(narration);
                     _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
                         QwenNarrator.HostName, narration, CoreWebView2HostResourceAccessKind.Allow);
+                    // And what is rendered in Privacy Mode, from inside the private load folder
+                    // so it shares that folder's lifetime: deleted at exit, swept after a crash.
+                    // Mapped now whether or not Privacy Mode is on, for the same reason.
+                    QwenNarrator.PrivateCacheDir = Path.Combine(PrivateLoadDir(), "narration");
+                    Directory.CreateDirectory(QwenNarrator.PrivateCacheDir);
+                    _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        QwenNarrator.PrivateHostName, QwenNarrator.PrivateCacheDir,
+                        CoreWebView2HostResourceAccessKind.Allow);
                 }
                 catch (Exception ex) { LogFault("map extensions host", ex); }
                 MapBookHosts();
@@ -6337,7 +6436,7 @@ namespace TypoZen
                 try
                 {
                     string logPath = System.IO.Path.Combine(CacheDir(), "debug.log");
-                    System.IO.File.AppendAllText(logPath, string.Format("[{0:HH:mm:ss.fff}] {1}\n", DateTime.Now, msg.Substring(10)));
+                    Program.AppendBoundedLog(logPath, string.Format("[{0:HH:mm:ss.fff}] {1}\n", DateTime.Now, msg.Substring(10)));
                 }
                 catch { }
                 return;
@@ -6408,7 +6507,7 @@ namespace TypoZen
                     {
                         try
                         {
-                            File.AppendAllText(Path.Combine(logDir, "debug.log"),
+                            Program.AppendBoundedLog(Path.Combine(logDir, "debug.log"),
                                 string.Format("[{0:HH:mm:ss.fff}] {1}\n", DateTime.Now, line));
                         }
                         catch { }
@@ -10098,6 +10197,10 @@ namespace TypoZen
             // itself stays: its virtual host was mapped before the page navigated and
             // cannot be re-mapped now, so the path has to survive the whole process.
             if (!on) EmptyPrivateLoadDir();
+            // Narration renders into the private folder while this is on. Its audio is kept
+            // when Privacy Mode ends, for the same reason as the books above -- the reader may
+            // be listening to it -- and goes with the folder at exit.
+            SendNarratorSettings();
 
             if (!_applyingRestoredSettings) SaveWindowState();
         }
