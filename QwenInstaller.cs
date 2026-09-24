@@ -8,8 +8,9 @@ namespace TypoZen
     /// <summary>
     /// Extensions > Qwen narration > Install: sets the narrator up from nothing.
     ///
-    /// TypoZen's part is small: check the machine, create the extension's Python environment
-    /// from an installed Python 3.11, and run tools\qwen-narrator\install.py with it. That script
+    /// TypoZen's part is small: check the machine, fetch a Python of its own into the extension
+    /// folder, create the extension's environment from it, and run tools\qwen-narrator\install.py
+    /// with that. The script
     /// does the rest -- the pinned packages, the two models at pinned revisions, the speaker
     /// encoder, hard links -- and reports line by line (STEP, PROGRESS, NOTE, ERROR, DONE), which
     /// is relayed here. Everything it prints also goes to install.log in the extension folder.
@@ -23,6 +24,21 @@ namespace TypoZen
         /// <summary>Downloads, measured 2026-09-24: packages 4.8 GB, models 8.4 GB.</summary>
         public const long DownloadBytes = 13L * 1024 * 1024 * 1024;
         private const long NeedFree = 16L * 1024 * 1024 * 1024;
+
+        /// <summary>
+        /// The Python the narrator runs on, fetched into the extension folder rather than taken
+        /// from the PC: nothing to install first, nothing registered with Windows, and an
+        /// uninstalled system Python cannot break narration (an environment made from one would
+        /// stop working). A python-build-standalone build -- portable CPython, with venv and
+        /// pip -- pinned and checked. python.org's "embeddable" package has neither.
+        /// </summary>
+        private const string PythonUrl = "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.11.16%2B20260924-x86_64-pc-windows-msvc-install_only_stripped.tar.gz";
+        private const string PythonSha256 = "f86b3cbd425e1c446b56aa24e20a7be1223c1a8146e5e3a68c8e18d08b76e810";
+
+        public static string OwnPython(string cacheDir)
+        {
+            return Path.Combine(QwenNarrator.RootDir(cacheDir), "python", "python.exe");
+        }
 
         private volatile bool _cancel;
         private Process _proc;
@@ -39,10 +55,9 @@ namespace TypoZen
             return Path.Combine(QwenNarrator.RootDir(cacheDir), "install.part");
         }
 
-        /// <summary>Why this machine cannot install it now, or null. Finds the Python to use.</summary>
-        public static string Preflight(string cacheDir, out string python)
+        /// <summary>Why this machine cannot install it now, or null.</summary>
+        public static string Preflight(string cacheDir)
         {
-            python = null;
             string smi = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "nvidia-smi.exe");
             if (!File.Exists(smi))
                 return "Qwen narration needs an NVIDIA graphics card, and no NVIDIA driver was found on this PC.";
@@ -59,47 +74,84 @@ namespace TypoZen
                          + " and there is " + (drive.AvailableFreeSpace >> 30) + " GB.";
             }
             catch { }
-            python = FindPython();
-            if (python == null)
-                return "Qwen narration needs Python 3.11, which is not installed. Install it from python.org "
-                     + "(the 64-bit Windows installer), then press Install again.";
+            string tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
+            if (!File.Exists(tar))
+                return "This version of Windows has no tar.exe (Windows 10 1803 and later do), which the install needs.";
             return null;
         }
 
-        /// <summary>An installed Python 3.11: through the py launcher, else where python.org puts it.</summary>
-        public static string FindPython()
+        /// <summary>
+        /// The extension's own Python, fetched and checked if it is not there yet. Null when it
+        /// is ready, "cancelled", or why not.
+        /// </summary>
+        private string EnsurePython(string root, ExtensionInstaller.Progress report, Action<string> note)
         {
-            try
+            string dir = Path.Combine(root, "python");
+            string exe = Path.Combine(dir, "python.exe");
+            if (File.Exists(exe)) return null;
+            string archive = Path.Combine(root, "python.tar.gz");
+            report(0, 0, "Downloading Python");
+            Download(PythonUrl, archive, (done, total) => report(done, total, "Downloading Python"));
+            if (_cancel) return "cancelled";
+            string sha;
+            using (var h = System.Security.Cryptography.SHA256.Create())
+            using (var s = File.OpenRead(archive))
+                sha = BitConverter.ToString(h.ComputeHash(s)).Replace("-", "").ToLowerInvariant();
+            if (sha != PythonSha256)
             {
-                string py = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "py.exe");
-                if (File.Exists(py))
+                File.Delete(archive);
+                return "The Python download did not match its checksum, so it was discarded.";
+            }
+            report(0, 0, "Unpacking Python");
+            string part = Path.Combine(root, "python.part");
+            if (Directory.Exists(part)) Directory.Delete(part, true);
+            Directory.CreateDirectory(part);
+            string tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
+            int code = Run(tar, "-xzf \"" + archive + "\" -C \"" + part + "\"", root, note, null);
+            if (_cancel) return "cancelled";
+            string unpacked = Path.Combine(part, "python");      // the archive holds one folder, python\
+            if (code != 0 || !File.Exists(Path.Combine(unpacked, "python.exe")))
+                return "Python could not be unpacked (see install.log).";
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            Directory.Move(unpacked, dir);
+            Directory.Delete(part, true);
+            File.Delete(archive);
+            code = Run(exe, "-c \"import sys, venv, ensurepip; print(sys.version)\"", root, note, null);
+            if (code != 0) return "The downloaded Python does not run (see install.log).";
+            note("python ready: " + exe);
+            return null;
+        }
+
+        /// <summary>A plain download, stopping when cancelled. report(done, total).</summary>
+        private void Download(string url, string dest, Action<long, long> report)
+        {
+            System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
+            var req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(url);
+            req.UserAgent = "TypoZen";
+            req.Timeout = 30000;
+            req.ReadWriteTimeout = 60000;
+            using (var resp = req.GetResponse())
+            using (var src = resp.GetResponseStream())
+            using (var dst = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+            {
+                long total = resp.ContentLength, n = 0;
+                var buf = new byte[1 << 16];
+                int read;
+                while ((read = src.Read(buf, 0, buf.Length)) > 0)
                 {
-                    var psi = new ProcessStartInfo(py, "-3.11 -c \"import sys; print(sys.executable)\"")
-                    {
-                        UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
-                    };
-                    using (var p = Process.Start(psi))
-                    {
-                        string o = p.StandardOutput.ReadToEnd().Trim();
-                        if (p.WaitForExit(10000) && p.ExitCode == 0 && File.Exists(o)) return o;
-                    }
+                    if (_cancel) return;
+                    dst.Write(buf, 0, read);
+                    n += read;
+                    report(n, total > 0 ? total : 0);
                 }
             }
-            catch { }
-            foreach (string c in new[]
-            {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Python", "Python311", "python.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python311", "python.exe")
-            })
-                if (File.Exists(c)) return c;
-            return null;
         }
 
         /// <summary>
         /// Runs the install. report(done, total, text): bytes when total &gt; 0, otherwise just
         /// what is happening. Returns null when it is ready, "cancelled", or why it failed.
         /// </summary>
-        public string Install(string cacheDir, string appDir, string python, ExtensionInstaller.Progress report)
+        public string Install(string cacheDir, string appDir, ExtensionInstaller.Progress report)
         {
             string root = QwenNarrator.RootDir(cacheDir);
             string log = Path.Combine(root, "install.log");
@@ -114,11 +166,14 @@ namespace TypoZen
                     try { File.AppendAllText(log, DateTime.Now.ToString("HH:mm:ss ") + line + Environment.NewLine, new UTF8Encoding(false)); }
                     catch { }
                 };
-                note("---- install: python " + python + ", app " + appDir);
+                note("---- install: app " + appDir);
 
                 string venvPython = Path.Combine(root, "venv", "Scripts", "python.exe");
                 if (!File.Exists(venvPython))
                 {
+                    string why = EnsurePython(root, report, note);
+                    if (why != null) return why;
+                    string python = OwnPython(cacheDir);
                     report(0, 0, "Creating the Python environment");
                     int code = Run(python, "-m venv \"" + Path.Combine(root, "venv") + "\"", root, note, null);
                     if (_cancel) return "cancelled";

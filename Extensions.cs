@@ -270,8 +270,8 @@ namespace TypoZen
                       + "and the whole extension is about 13 GB on disk. It takes about 20 seconds to load — in the background when a book is "
                       + "opened with a Qwen voice chosen \u2014 and gives the card back after 15 minutes unused. "
                       + "Designing a new voice swaps in a second model of the same size for about 20 seconds.\n\n"
-                      + "Install downloads and sets it all up, about 13 GB, in a few minutes on a fast "
-                      + "connection; it needs Python 3.11 from python.org installed first. Narration audio is "
+                      + "Install downloads and sets up everything it needs, its own Python included: about "
+                      + "13 GB, a few minutes on a fast connection. Narration audio is "
                       + "kept so anything heard before plays at once; clearing it only means rendering again. "
                       + "Removing the extension keeps your voices, casts and narrator settings.",
                 Dir = QwenNarrator.RootDir(cacheDir),
@@ -631,8 +631,8 @@ namespace TypoZen
                             ? "Installed - " + Human(onDisk) + " on disk, of which " + Human(audio) + " is narration audio"
                             : partway
                                 ? "Not finished - " + Human(onDisk) + " downloaded so far. Install continues where it stopped."
-                                : "Not installed - about " + Human(QwenInstaller.DownloadBytes) + " to download. Needs an NVIDIA "
-                                  + "graphics card and Python 3.11." + (voices ? " Your voices, casts and settings are kept for it." : "");
+                                : "Not installed - about " + Human(QwenInstaller.DownloadBytes) + " to download, Python included. "
+                                  + "Needs an NVIDIA graphics card." + (voices ? " Your voices, casts and settings are kept for it." : "");
                         if (qwenRunning == null) button.Content = on ? "Remove" : "Install";
                         clearAudio.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
                         clearAudio.IsEnabled = audio > 0;
@@ -699,8 +699,7 @@ namespace TypoZen
                     if (isQwen)
                     {
                         if (qwenRunning != null) { qwenRunning.Cancel(); status.Text = "Stopping..."; return; }
-                        string python;
-                        string why = QwenInstaller.Preflight(cacheDir, out python);
+                        string why = QwenInstaller.Preflight(cacheDir);
                         if (why != null) { status.Text = why; return; }
                         var qi = new QwenInstaller();
                         qwenRunning = qi;
@@ -711,7 +710,7 @@ namespace TypoZen
                         string appDir = AppDomain.CurrentDomain.BaseDirectory;
                         var qworker = new Thread(() =>
                         {
-                            string problem = qi.Install(cacheDir, appDir, python, (done, total, what) =>
+                            string problem = qi.Install(cacheDir, appDir, (done, total, what) =>
                             {
                                 win.Dispatcher.BeginInvoke((Action)(() =>
                                 {
