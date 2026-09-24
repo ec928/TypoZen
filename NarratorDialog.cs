@@ -145,6 +145,8 @@ namespace TypoZen
             {
                 root.Children.Add(heading("Cast for this book"));
                 root.Children.Add(note("Give characters voices of their own; their lines are then spoken in that voice and the narrator reads the rest. Characters left on the narrator's voice stay with the narrator. Who speaks is read from the text (\"said Ferbin\"), so an untagged or ambiguous line stays with the narrator."));
+                if (QwenNarrator.PrivateMode)
+                    root.Children.Add(note("Privacy Mode is on: this book's cast is kept until TypoZen closes and is not saved to disk."));
                 findCast = button("Find characters");
                 findCast.HorizontalAlignment = HorizontalAlignment.Left;
                 root.Children.Add(findCast);

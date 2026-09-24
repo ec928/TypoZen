@@ -51,7 +51,7 @@ function setFlag(name, on) {
     fs.writeFileSync(STATE, j);
 }
 const read = (f) => { try { return fs.readFileSync(path.join(CACHE, f), 'utf8'); } catch (e) { return ''; } };
-const wipe = () => ['tabs_session.txt', 'bookmarks.txt', 'book_positions.txt', 'recent_files.json']
+const wipe = () => ['tabs_session.txt', 'bookmarks.txt', 'book_positions.txt', 'recent_files.json', 'debug.log']
     .forEach(f => { try { fs.unlinkSync(path.join(CACHE, f)); } catch (e) {} });
 
 /** Close the window rather than killing it: the cleanup runs in the Closed handler, and
@@ -72,6 +72,8 @@ async function exercise(app) {
         toggleMarkAtBlock(markTargetBlock());
         const i = document.getElementById('sidebarSearchInput');
         if (i) { i.value = 'secret'; i.dispatchEvent(new Event('input', { bubbles: true })); }
+        // A debug.log line naming the document, as the --debug telemetry writes them.
+        window.chrome.webview.postMessage('telemetry:probe opened _privacy_fixture.md');
     });
     await sleep(3500);   // past the search debounce and the position report
 }
@@ -88,7 +90,7 @@ try { await exercise(app); } finally { await app.close(); }
 await sleep(1200);
 const normal = {
     tabs: read('tabs_session.txt'), marks: read('bookmarks.txt'),
-    recent: read('recent_files.json'), settings: read('settings.json')
+    recent: read('recent_files.json'), settings: read('settings.json'), log: read('debug.log')
 };
 info('tabs=' + (normal.tabs.length > 0) + ' marks=' + (normal.marks.length > 0) +
     ' recent=' + /_privacy_fixture/.test(normal.recent) +
@@ -99,6 +101,7 @@ assert(normal.marks.length > 0, 'control: bookmarks are written');
 assert(/_privacy_fixture/.test(normal.recent), 'control: the document reaches recent files');
 assert(/_privacy_fixture/.test(normal.settings), 'control: and settings.json records it');
 assert(/secret/.test(normal.settings), 'control: and the search query is kept');
+assert(/_privacy_fixture/.test(normal.log), 'control: debug.log names the document');
 
 console.log('\n=== with Privacy Mode on, none of it is ===');
 wipe(); setFlag('privacyMode', true);
@@ -108,7 +111,7 @@ await sleep(1200);
 const priv = {
     tabs: read('tabs_session.txt'), marks: read('bookmarks.txt'),
     recent: read('recent_files.json'), settings: read('settings.json'),
-    state: read('window_state.json')
+    state: read('window_state.json'), log: read('debug.log')
 };
 info('settings.json: ' + JSON.stringify(priv.settings.slice(0, 160)));
 assert(priv.tabs.length === 0, 'no tab session');
@@ -116,6 +119,7 @@ assert(priv.marks.length === 0, 'no bookmarks file');
 assert(!/_privacy_fixture/.test(priv.recent), 'no recent-files entry');
 assert(!/_privacy_fixture/.test(priv.settings), 'no last-file path');
 assert(!/secret/.test(priv.settings), 'no search history');
+assert(priv.log.length === 0, 'no debug.log at all' + (priv.log ? ': ' + priv.log.slice(0, 160) : ''));
 assert(/"themeName"|"margin"/.test(priv.settings),
     'but the view settings are still kept, as documented');
 assert(/"privacyMode"\s*:\s*true/.test(priv.state), 'and the mode itself persists');

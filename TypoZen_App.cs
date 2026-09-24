@@ -231,6 +231,9 @@ namespace TypoZen
             catch { }
         }
 
+        /// <summary>Set with Privacy Mode: debug.log is not written at all.</summary>
+        internal static volatile bool DebugLogSuppressed;
+
         /// <summary>
         /// Append to a log in the profile and keep it bounded: past 2 MB the file becomes
         /// name.1, replacing any older one, and a new file starts -- so a log never holds more
@@ -239,6 +242,9 @@ namespace TypoZen
         /// </summary>
         internal static void AppendBoundedLog(string path, string text)
         {
+            // Privacy Mode: nothing is logged. Fault lines carry stack traces and the speech
+            // and --debug lines carry document paths, so any of them is a trace of what was open.
+            if (DebugLogSuppressed) return;
             try
             {
                 var fi = new FileInfo(path);
@@ -5318,6 +5324,7 @@ namespace TypoZen
                 foreach (string f in NarrationTraceFiles(out narrDirs)) try { File.Delete(f); } catch { }
                 // Folders are emptied but kept: two are mapped as virtual hosts for the page.
                 foreach (string d in narrDirs) ExtensionInstaller.Purge(d, false);
+                QwenNarrator.ForgetSessionCasts();
                 done.Add("narration audio, logs and casts");
             }
 
@@ -10172,6 +10179,8 @@ namespace TypoZen
 
             _privacyMode = on;
             EpubReader.PrivateMode = on;
+            QwenNarrator.PrivateMode = on;          // casts held in memory, not saved
+            Program.DebugLogSuppressed = on;        // no debug.log lines at all
             SetMenuChecked("mPrivacyMode", on);
             // The switches it subsumes are disabled rather than merely overridden: a tick
             // that does nothing is a lie about what the app will do.

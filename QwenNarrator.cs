@@ -140,9 +140,33 @@ namespace TypoZen
             File.WriteAllText(SettingsPath(cacheDir), new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
         }
 
+        /// <summary>
+        /// Set with Privacy Mode. A cast file names the book it belongs to, so while this is on a
+        /// saved cast is held in SessionCasts instead: it still applies to the reading, and is
+        /// gone when TypoZen closes. Kept past Privacy Mode being turned off, for the same reason
+        /// as the private audio -- the reader may still be listening in it.
+        /// </summary>
+        public static bool PrivateMode;
+        private static readonly Dictionary<string, Cast> SessionCasts =
+            new Dictionary<string, Cast>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Clear Stored Data: casts held for this session go with the saved ones.</summary>
+        public static void ForgetSessionCasts()
+        {
+            lock (SessionCasts) SessionCasts.Clear();
+        }
+
+        private static Cast Copy(Cast c)
+        {
+            return new Cast { Voices = new Dictionary<string, string>(c.Voices), Names = new Dictionary<string, string>(c.Names) };
+        }
+
         public static Cast LoadCast(string cacheDir, string book)
         {
             if (string.IsNullOrEmpty(book)) return new Cast();
+            Cast held;
+            lock (SessionCasts)
+                if (SessionCasts.TryGetValue(CastPath(cacheDir, book), out held)) return Copy(held);
             var d = ReadJson(CastPath(cacheDir, book));
             return new Cast { Voices = StringMap(d, "cast"), Names = StringMap(d, "names") };
         }
@@ -151,6 +175,13 @@ namespace TypoZen
         {
             if (string.IsNullOrEmpty(book)) return;
             string path = CastPath(cacheDir, book);
+            if (PrivateMode)
+            {
+                lock (SessionCasts) SessionCasts[path] = Copy(c);
+                return;
+            }
+            // Saved for good now, so the session's copy no longer stands in front of the file.
+            lock (SessionCasts) SessionCasts.Remove(path);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             var d = new Dictionary<string, object> { { "book", book }, { "cast", c.Voices }, { "names", c.Names } };
             File.WriteAllText(path, new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
