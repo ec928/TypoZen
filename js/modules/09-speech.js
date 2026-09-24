@@ -593,11 +593,20 @@ async function renderNarration(base, batch, reading) {
 /**
  * How narration is cut up, and why (docs/qwen-tts-plan.md, 3c, 3e and 3g).
  *
- * VoiceDesign invents the speaker afresh on every piece it renders, so every piece boundary
- * is a possible change of voice. A paragraph is therefore one piece: one voice for it, and
- * intonation that carries across its sentences. Only a paragraph longer than the cap is
- * split, at sentence ends, never inside a sentence. Cutting pieces short to start sooner is
- * what made the voice change from sentence to sentence; do not bring that back.
+ * A paragraph is one piece, so its intonation carries across its sentences. Only a paragraph
+ * longer than the cap is split, at sentence ends.
+ *
+ * Except at the start of a reading. A batch takes about 2.2s per second of audio of its
+ * LONGEST piece, whatever else is in it (26 batches measured, 2026-09-24), so one long opening
+ * paragraph meant two minutes of silence. The opening batch is therefore cut into sentences,
+ * and each later batch may hold pieces only as long as the audio already queued can cover
+ * while it renders -- growing back to whole paragraphs within a few batches. See
+ * graduatedBatches.
+ *
+ * (Short pieces were once banned because VoiceDesign invented the speaker afresh for every
+ * piece, so each boundary could change the voice. Every piece is now read with the chosen
+ * voice-print, so a boundary costs some flow between sentences, not the voice. The faster
+ * start was chosen over that flow on 2026-09-24.)
  *
  * Batches start where reading starts. The narrator caches each piece on its own and never
  * renders one it already has, so a restart, a replay or a page rendered ahead reuses what
@@ -607,6 +616,7 @@ async function renderNarration(base, batch, reading) {
  */
 const NARRATION_BATCH = 8;          // pieces the model renders in one call
 const NARRATION_PIECE_CAP = 400;    // characters; only longer paragraphs are split
+const NARRATION_OPENING_CAP = 90;   // characters per piece in the opening batch: ~20s to first sound
 
 /** Where a block sits in the document: its model index, or failing that its place on the page. */
 function narrationDocIndex(el, i) {
@@ -865,7 +875,7 @@ function castPieces(text, quotes) {
  * its block's document index as `at`, and its direction; with a cast, a paragraph where a
  * cast character speaks is cut between their voice and the narrator's.
  */
-function narrationBatches(all, from, maxBatches) {
+function narrationBatches(all, from, maxBatches, graduated) {
     const pieces = [];
     const limit = maxBatches * NARRATION_BATCH;
     // Speakers, only when this book has a cast. Attributed from a few paragraphs before the
@@ -892,9 +902,68 @@ function narrationBatches(all, from, maxBatches) {
             el: all[i], at: at, id: at * 100 + k, text: t, direction: narrationDirection(t, all[i])
         }));
     }
+    if (graduated) return graduatedBatches(pieces, maxBatches);
     const batches = [];
     for (let k = 0; k < pieces.length && batches.length < maxBatches; k += NARRATION_BATCH) {
         batches.push(pieces.slice(k, k + NARRATION_BATCH));
+    }
+    return batches;
+}
+
+/**
+ * Text cut into parts of at most `cap` characters: whole sentences joined while they fit, and
+ * a sentence longer than the cap cut at its clause breaks (, ; : and dashes). A clause still
+ * longer than the cap stays whole -- nothing is cut mid-phrase.
+ */
+function splitToCap(text, cap) {
+    if (text.length <= cap) return [text];
+    const units = [];
+    for (const s of text.match(/[^.!?…]+[.!?…]+["'”’)\]]*\s*|[^.!?…]+$/g) || [text]) {
+        if (s.length <= cap) { units.push(s); continue; }
+        units.push(...(s.match(/[^,;:—–]+[,;:—–]+\s*|[^,;:—–]+$/g) || [s]));
+    }
+    const out = [];
+    let cur = '';
+    for (const u of units) {
+        if (cur && cur.length + u.length > cap) { out.push(cur.trim()); cur = ''; }
+        cur += u;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out.filter(t => /[A-Za-z0-9]/.test(t));
+}
+
+/**
+ * Batches for the start of a reading, sized so that it starts soon and never stalls.
+ *
+ * The opening batch holds pieces of at most NARRATION_OPENING_CAP characters, so the first
+ * sound waits on a short piece rather than a long paragraph. Each later batch is rendered
+ * while the audio before it plays, so its pieces may be only as long as that audio covers:
+ * the cap grows with the audio queued ahead of it (`slack`), back up to whole paragraphs.
+ * A piece over its batch's cap goes in as its first part; the rest waits for the next batch,
+ * whose cap is larger. Estimates err safe: audio at 15 characters a second (Matter runs
+ * 12-15), render time as batchRenderEstimate.
+ */
+function graduatedBatches(pieces, maxBatches) {
+    const queue = pieces.slice();
+    const batches = [];
+    let slack = 0;     // seconds of audio queued ahead of the batch being planned
+    while (queue.length && batches.length < maxBatches) {
+        const cap = batches.length === 0 ? NARRATION_OPENING_CAP
+            : Math.max(NARRATION_OPENING_CAP, Math.min(NARRATION_PIECE_CAP, Math.floor((slack - 2) / 2.3 * 12)));
+        const batch = [];
+        while (queue.length && batch.length < NARRATION_BATCH) {
+            const p = queue.shift();
+            if (p.text.length <= cap) { batch.push(p); continue; }
+            const parts = splitToCap(p.text, cap);
+            if (parts.length < 2) { batch.push(p); continue; }
+            // Ids are labels for the logs: a paragraph's parts are 20101, 20101.1, 20101.2...
+            const base = p.base || p.id, n = p.part || 0;
+            batch.push(Object.assign({}, p, { text: parts[0], id: n ? base + '.' + n : base }));
+            queue.unshift(Object.assign({}, p, { text: parts.slice(1).join(' '), base: base, part: n + 1, id: base + '.' + (n + 1) }));
+        }
+        if (batches.length) slack -= batchRenderEstimate(batch);
+        slack += batch.reduce((s, p) => s + p.text.length / 15, 0);
+        batches.push(batch);
     }
     return batches;
 }
@@ -948,7 +1017,7 @@ async function startQwenNarration(base) {
     if (at < 0) { at = 0; why = 'nothing on screen, top'; }
 
     const startAt = narrationDocIndex(all[at], at);
-    const batches = narrationBatches(all, at, 15);
+    const batches = narrationBatches(all, at, 15, true);
     const first = batches.findIndex(b => b.some(p => p.at >= startAt));
     narrLog('---- narrate: start block ' + startAt + ' (' + why + ', DOM position ' + at + ' of ' + all.length +
             '; DOM holds blocks ' + narrationDocIndex(all[0], 0) + '..' + narrationDocIndex(all[all.length - 1], all.length - 1) +
@@ -1118,7 +1187,8 @@ async function prefetchNarration() {
     const at = all.length ? firstVisibleBlock(all, editor) : -1;
     if (at < 0) return;
     const startAt = narrationDocIndex(all[at], at);
-    const batches = narrationBatches(all, at, 2);
+    // Cut exactly as Narrate cuts from here, so starting here finds it all in the cache.
+    const batches = narrationBatches(all, at, 2, true);
     const first = batches.findIndex(b => b.some(p => p.at >= startAt));
     if (first < 0) return;
 
@@ -1372,6 +1442,9 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
     _kokoroVoiceFriendly = friendlyName;
     localStorage.setItem('kokoro_voice', voiceId);
     if (unchanged) return;
+    // The page decides which engine reads, so the host's copy -- the menu ticks and the
+    // status bar -- is told of every change, whoever made it.
+    try { window.chrome.webview.postMessage("host_kokoro_voice_restored:" + voiceId); } catch (e) {}
 
     let displayName = friendlyName || voiceId;
     const isAutoReset = (voiceId === 'windows_voice' && friendlyName === 'Windows voice');

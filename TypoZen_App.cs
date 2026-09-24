@@ -9877,8 +9877,9 @@ namespace TypoZen
                 }
                 else
                 {
-                    // No voice chosen yet reads in whatever Windows has as its default.
-                    string name = "system default";
+                    // No voice chosen yet reads in Windows' default voice: name it.
+                    string name = "Windows voice";
+                    try { name = global::Windows.Media.SpeechSynthesis.SpeechSynthesizer.DefaultVoice.DisplayName; } catch { }
                     var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
                     if (mWinVoices != null)
                         foreach (var item in VoiceMenuItems(mWinVoices))
