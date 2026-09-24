@@ -132,6 +132,19 @@ def open_log(path):
     LOG_PATH = path
 
 
+def config_facts(folder):
+    """What config.json in `folder` holds right now: for a failed load's log line."""
+    try:
+        p = os.path.join(folder, 'config.json')
+        with open(p, 'rb') as f:
+            raw = f.read()
+        d = json.loads(raw.decode('utf-8'))
+        return 'config.json %d bytes via %s, model_type %r, keys %s' % (
+            len(raw), os.path.realpath(p), d.get('model_type'), ','.join(sorted(d)[:12]))
+    except Exception as e:
+        return 'config.json unreadable: %s: %s' % (type(e).__name__, e)
+
+
 def backup_dir():
     """Where kept voices are copied: OneDrive, so that losing this PC does not lose them.
 
@@ -188,6 +201,7 @@ class Narrator(object):
         # soon as the weights were in, and a render arriving in the moment before the voices
         # were read failed with KeyError (hit on 2026-09-24 by a probe polling /health).
         self.ready = False
+        self.load_error = ''         # why the model did not load, once that is known
         self.encoder = None
         self.sr = None
         self.prints = {}
@@ -263,8 +277,21 @@ class Narrator(object):
             # disk -- which fails offline, and online cost most of a 51-second start. Given
             # a path it asks nothing: 16 seconds, and no network.
             local = snapshot_download(MODEL_REPO, local_files_only=True)
-            self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
-                                                       dtype=torch.bfloat16)
+            # Retried: on 2026-09-24, 3 of 11 starts failed about 8s in with "Unrecognized
+            # model ... should have a model_type key in its config.json" -- although the file has
+            # one -- and the same files loaded on the next start. The cause is not known yet;
+            # each failure logs what the config actually looked like, to find it.
+            for attempt in range(1, 4):
+                try:
+                    self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
+                                                               dtype=torch.bfloat16)
+                    break
+                except ValueError as e:
+                    log('model load attempt %d failed: %s | %s'
+                        % (attempt, str(e).splitlines()[0][:160], config_facts(local)))
+                    if attempt == 3:
+                        raise
+                    time.sleep(2)
             self.reload_voices()
             self._decode_clips_separately()
             # CUDA graphs (graphs.py): a whole frame as one graph, the predictor's own graph as
@@ -276,8 +303,11 @@ class Narrator(object):
             self._stop_when_cancelled()
             self.ready = True
             log('model ready in %.1fs (%s)' % (time.time() - t, MODEL_REPO))
-        except Exception:
+        except Exception as e:
             import traceback
+            # Said on /health, so the host stops waiting and tells the reader, rather than
+            # showing "starting" for its three-minute limit (2026-09-24).
+            self.load_error = (str(e).splitlines() or [type(e).__name__])[0][:200]
             log('model load FAILED:\n' + traceback.format_exc())
 
     # The reading whose batch is inside the model right now, so a cancel can reach it.
@@ -697,6 +727,7 @@ class Handler(BaseHTTPRequestHandler):
         n = Handler.narrator
         if self.path.startswith('/health'):
             self._send(200, {'ready': n.ready,
+                             'error': n.load_error,
                              'model': MODEL_REPO,
                              'voices': sorted(n.prints),
                              'cache': n.cache_dir})

@@ -274,18 +274,32 @@ namespace TypoZen
         /// <summary>True once the model answers, not merely once the process exists.</summary>
         public static bool Ready()
         {
+            object ready;
+            var h = Health();
+            return h != null && h.TryGetValue("ready", out ready) && ready is bool && (bool)ready;
+        }
+
+        /// <summary>The narrator's own report that its model failed to load; null when it has none.</summary>
+        public static string LoadError()
+        {
+            object error;
+            var h = Health();
+            return h != null && h.TryGetValue("error", out error) && error is string && ((string)error).Length > 0
+                ? (string)error : null;
+        }
+
+        /// <summary>/health, parsed; null when the narrator does not answer.</summary>
+        private static Dictionary<string, object> Health()
+        {
             try
             {
                 var req = (HttpWebRequest)WebRequest.Create(BaseUrl + "/health");
                 req.Timeout = 2000;
                 using (var resp = (HttpWebResponse)req.GetResponse())
                 using (var reader = new StreamReader(resp.GetResponseStream()))
-                {
-                    return reader.ReadToEnd().IndexOf("\"ready\": true", StringComparison.OrdinalIgnoreCase) >= 0
-                        || reader.ReadToEnd().IndexOf("\"ready\":true", StringComparison.OrdinalIgnoreCase) >= 0;
-                }
+                    return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(reader.ReadToEnd());
             }
-            catch { return false; }
+            catch { return null; }
         }
 
         /// <summary>
@@ -338,6 +352,17 @@ namespace TypoZen
                     say("");
                     return true;
                 }
+                // A failed model load leaves the process up but never ready. Waiting out the
+                // three-minute limit showed "starting" all that time (2026-09-24). Say so now,
+                // and stop that process so the next attempt starts a fresh one.
+                string failed = LoadError();
+                if (failed != null)
+                {
+                    Log("narrator could not load its model: " + failed + "; stopping it so the next attempt starts fresh");
+                    Stop();
+                    say("The narrator could not load its model. Press Read Aloud to try again. (" + failed + ")");
+                    return false;
+                }
                 Process p;
                 lock (Gate) { p = _process; }
                 try
@@ -368,7 +393,7 @@ namespace TypoZen
             Process p;
             lock (Gate) { p = _process; _process = null; }
             if (p == null) return;
-            Log("TypoZen closing: stopping narrator process " + p.Id);
+            Log("stopping narrator process " + p.Id);
             try
             {
                 var req = (HttpWebRequest)WebRequest.Create(BaseUrl + "/stop");

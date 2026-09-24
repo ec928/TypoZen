@@ -2089,7 +2089,7 @@ namespace TypoZen
             {
                 bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus,
                                                            CancellationToken.None);
-                if (!up) return;
+                if (!up) { NarratorFailed(); return; }
                 SendNarratorSettings();
                 SendMsg("cmd:narrate:" + QwenNarrator.BaseUrl);
             }
@@ -2107,14 +2107,21 @@ namespace TypoZen
             catch (Exception ex) { LogFault("narrator settings", ex); }
         }
 
+        /// <summary>
+        /// The narrator's start-up, told to the page and the status bar. Called from the start-up's
+        /// background thread, so posted to the UI thread: SendMsg touches the WebView, which
+        /// throws off it -- and the try/catch here swallowed that, so every message after the
+        /// first ("Starting the narrator..."), the clock and the failure included, silently
+        /// never arrived (found 2026-09-24).
+        /// </summary>
         private void NarratorStatus(string m)
         {
-            try { SendMsg("cmd:narrator_status:" + (m ?? "")); } catch { }
-            // Only the narrator's start-up reports through here; the page reports the rest.
             try
             {
                 Dispatcher.BeginInvoke((Action)(() =>
                 {
+                    try { SendMsg("cmd:narrator_status:" + (m ?? "")); } catch (Exception ex) { LogFault("narrator status", ex); }
+                    // Only the narrator's start-up reports through here; the page reports the rest.
                     if (!string.IsNullOrEmpty(m)) _narrationPhase = "starting";
                     else if (_narrationPhase == "starting") _narrationPhase = "";
                     UpdateVoiceStatus();
@@ -2139,7 +2146,8 @@ namespace TypoZen
                 if (_kokoroVoiceId != QwenNarrator.VoiceId || !IsBookPath(book)) return;
                 if (!QwenNarrator.Installed(CacheDir(), _appDir)) return;
                 bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, WarmStatus, CancellationToken.None);
-                if (!up || _currentFilePath != book || _kokoroVoiceId != QwenNarrator.VoiceId) return;
+                if (!up) { NarratorFailed(); return; }
+                if (_currentFilePath != book || _kokoroVoiceId != QwenNarrator.VoiceId) return;
                 SendNarratorSettings();
                 SendMsg("cmd:narrate_warm:" + QwenNarrator.BaseUrl);
             }
@@ -2149,6 +2157,16 @@ namespace TypoZen
         private static bool IsBookPath(string path)
         {
             return !string.IsNullOrEmpty(path) && path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// The narrator did not start: the status bar says so, rather than "starting" left behind.
+        /// Queued behind the start-up's own status updates, so it is the last word.
+        /// </summary>
+        private void NarratorFailed()
+        {
+            try { Dispatcher.BeginInvoke((Action)(() => { _narrationPhase = "failed"; UpdateVoiceStatus(); })); }
+            catch { }
         }
 
         /// <summary>The narrator's start-up during a warm-up: the status bar, not the page.</summary>
@@ -2188,7 +2206,8 @@ namespace TypoZen
             try
             {
                 bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus, CancellationToken.None);
-                if (up && IsBookPath(_currentFilePath)) WarmNarrator();
+                if (!up) NarratorFailed();
+                else if (IsBookPath(_currentFilePath)) WarmNarrator();
             }
             catch (Exception ex) { LogFault("start narrator", ex); }
         }
@@ -9917,6 +9936,7 @@ namespace TypoZen
                     if (_narrationPhase == "starting") text += " · starting…";
                     else if (_narrationPhase == "preparing") text += " · preparing…";
                     else if (_narrationPhase == "reading") text += " · reading";
+                    else if (_narrationPhase == "failed") text += " · could not start";
                 }
                 else if (IsKokoroVoiceId(_kokoroVoiceId))
                 {
