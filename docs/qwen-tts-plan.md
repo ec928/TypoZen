@@ -1,6 +1,9 @@
 # Qwen3-TTS narration — design and plan
 
-Status: **proposed, nothing built.** Written 2026-09-22.
+Status: **built and in daily use.** Slices 1–4 are deployed; the current build is 0.3.36
+(2026-09-24). **§8 is the current state.** Sections 1–7 were written 2026-09-22/23 and keep
+the history as it happened, including decisions later reversed; where one still reads as
+current, a note says so and points to §8.
 
 Goal: narrate ebooks with the quality and the emotional beats of a decent audiobook.
 Quality outranks startup speed. Opt-in extension, primarily for one machine.
@@ -24,6 +27,13 @@ Checked on Hugging Face rather than assumed:
 ("an older man, dry and unhurried"; "speak in a hushed, urgent tone"), which is exactly the
 control surface an audiobook needs. CustomVoice clones a voice from a reference sample and
 is the fallback if described voices prove inconsistent between chapters.
+
+> **Superseded 2026-09-23 (§3g, §8).** It is the other way round. VoiceDesign invents a new
+> speaker on every generation, so narration on it changed voice from piece to piece.
+> Narration runs on **CustomVoice**, given a fixed voice-print (2048 floats) in its speaker
+> slot and the style and direction as its instruction. VoiceDesign is used only to design
+> new voices. The separate `Tokenizer-12Hz` download is not needed either: each model
+> carries its own codec in `speech_tokenizer\`.
 
 12Hz means twelve codec frames per second of speech, so a minute of audio is ~720 steps of
 autoregression. That is cheap by LLM standards and is why the latency claim is plausible.
@@ -307,6 +317,10 @@ requirement the feature exists for.
 **What is settled:** VoiceDesign stays (§3f). Paragraph-sized pieces stay the default (§3e).
 Short pieces were the cause of the voice changing between sentences, not the model.
 
+> **Reversed later the same day** ("One voice", below): narration moved to CustomVoice with
+> a voice-print, which holds one speaker across pieces. That also removed the reason short
+> pieces were banned; the opening of a reading is now cut into sentences (§8).
+
 **The open question (the owner's):** how to get an acceptable first sound while keeping
 paragraph-sized pieces. With VoiceDesign, every piece boundary is a possible voice change.
 The trade-off has to be made inside that constraint, not by changing engine.
@@ -354,6 +368,10 @@ longest paragraph in the first group, plus the 16s model load on the first use. 
 removes the wait on pages already turned to. The lever that remains is the piece cap (400
 characters). A lower cap shortens the wait but adds voice changes inside long paragraphs.
 That is the owner's trade-off.
+
+> **Since:** a batch takes about 1.1x, not 2.2x, its longest piece's audio (CUDA graphs), and
+> the opening batch is cut into sentences. First sound at the King's death scene went from
+> about 125s to 7s. See §8.
 
 **One voice, decided 2026-09-23: CustomVoice with the narrator's voice-print.** Narration on
 VoiceDesign sounded like "multiple people narrating", because VoiceDesign invents the speaker
@@ -427,6 +445,9 @@ answered almost nothing. Many short tests beat one long one.
 **Minor, known:** `QwenNarrator.Ready()` reads the response stream twice. There is also a
 4.3GB duplicate model download in the global Hugging Face cache (`~\.cache\huggingface`),
 which nothing uses. It was left in place, for deletion only on request.
+
+> **2026-09-24:** the duplicate, the standalone tokenizer and the Base model (whose speaker
+> encoder is now its own 24 MB file) were moved out, 9.08 GB in all, for the owner to delete.
 
 ## 4. The emotional beats — a director pass
 
@@ -550,6 +571,11 @@ Slice 1 can skip the dialog entirely; by slice 2 it belongs there.
 
 ## 6. Risks, and what is not known
 
+> **As of 2026-09-24:** throughput is measured (§8). Described voices were indeed not
+> stable, and the answer was as predicted: CustomVoice with a fixed voice-print per voice.
+> The install is about 12.7 GB, not 7. It is still set up by hand, not from the Extensions
+> dialog, and still not something for the Store.
+
 - **Throughput is unmeasured.** Slice 1 produces the number; nothing after it is schedulable until then. If a
   ten-hour book takes ten hours to render, the feature still works — it just becomes an
   overnight job, and that should be a deliberate decision rather than a surprise.
@@ -571,3 +597,122 @@ Slice 1 can skip the dialog entirely; by slice 2 it belongs there.
 
 Only one thing, and only when slice 1 has produced a wav: whether it sounds good enough to
 carry on. Everything else in here is a working decision and mine to make.
+
+> **In practice** the owner has decided by ear throughout: the engine and voice-print
+> (§3g), each voice kept, the cast, cutting the opening into sentences, and shipping the
+> talker's CUDA graph. The open questions are listed at the end of §8.
+
+---
+
+## 8. As built, 2026-09-24 (0.3.36)
+
+### Engine
+
+- **CustomVoice 1.7B** narrates. Each voice is a voice-print: 2048 floats, taken by the
+  speaker encoder from a recording of the voice. It goes in the speaker slot, while the
+  instruction carries the reading style and the paragraph's direction. The voice stays the
+  same from piece to piece.
+- **VoiceDesign** is used only by Narrator Settings > New voice. It reads a fixed passage in
+  three candidate voices from the description, and the encoder turns each into a
+  voice-print. The narrator model moves off the GPU while it runs.
+- **The speaker encoder** is its own file, `models\speaker-encoder.pt` (24 MB), taken once
+  from the Base model. Base itself is no longer installed.
+- **The sidecar** (`tools/qwen-narrator/sidecar.py`) is a resident HTTP server on
+  127.0.0.1:8765, started by the host. It loads in about 20s and stops after 15 idle
+  minutes. It runs offline, and `/health` reports ready only once everything is loaded.
+
+### Speed: CUDA graphs (`tools/qwen-narrator/graphs.py`)
+
+Each frame of audio (12 per second) is one step of the 28-layer talker plus 15 tokens from
+the 5-layer code predictor, each through a generic `generate()` loop. A frame took about
+200 ms at batch 1 and at batch 8 alike, which is overhead, not compute. A CUDA graph records
+the GPU work once and replays it.
+
+| | One sentence (realtime factor) | 8 clips (realtime factor) | Batch time ÷ longest clip |
+| --- | --- | --- | --- |
+| Before (0.3.30) | 2.39x | 0.36x | about 2.2 |
+| Predictor as a graph (0.3.31) | 0.85x | 0.14x | about 1.1 |
+| Whole frame as a graph (0.3.33) | 0.62x | 0.09x | 0.6–0.7 |
+
+The right-hand column is what the page's render estimate uses. `NARRATION_RENDER_FACTOR` is
+1.3, which errs safe against the 1.04–1.15 measured with the predictor graph. It is not a
+realtime factor.
+
+- The talker graph pads every batch to 8 rows, over a static cache of 1024 positions. That
+  is about 1 GB of graphics memory.
+- Both graphs fingerprint the weight addresses and recapture when those change. The model
+  moves to the CPU and back during voice design, and a stale graph read the wrong memory:
+  measured, entirely different tokens. That was fixed in 0.3.32.
+- Deterministic runs match `generate()` until bf16 rounding in the attention kernel flips a
+  near-tie. The talker chose the same code for the first 5–8 frames, and both versions end
+  at the same length.
+
+**Tried and rejected:**
+- **`torch.compile` with Triton** (triton-windows 3.8): 1.13–1.20x faster, but a 92-second
+  compile each session and 2 GB more graphics memory.
+- **Flash Attention 2:** not installed, and attention is not the bottleneck.
+
+What bounds speed now is about 3,500 small kernels per frame, about 43 ms, against about
+10 ms of arithmetic.
+
+### Reading
+
+- **A paragraph is one piece.** Only paragraphs over 400 characters are split, at
+  sentence ends.
+- **The opening batch is cut into sentences** of at most 90 characters. Each later batch may
+  hold pieces only as long as the audio queued ahead of it covers (`graduatedBatches`).
+- **A wait rule before the first word** holds back until the queued audio outlasts the next
+  batch's render.
+- **Render-ahead** fills the cache while pages are turned.
+- **Warm-up:** when a book is opened with a Qwen voice chosen, the narrator starts and
+  renders the passage on screen. Read Aloud there then plays from the cache.
+- **Direction** comes from each quotation's tag and punctuation, per paragraph.
+- **Cast:** a cast character's lines are cut out and read in their voice.
+
+| First sound, measured at Matter's King death scene | |
+| --- | --- |
+| Paragraph pieces, before CUDA graphs | about 125s |
+| Opening cut into sentences (0.3.28) | 23s |
+| Predictor graph (0.3.31) | 10s |
+| Whole-frame graph (0.3.33) | 7s |
+| After warm-up, at the page opened | about 1s |
+
+Other measurements:
+- Voice design: 63s, then 31s with the predictor graph, then 20s with the whole-frame graph.
+- Stop interrupts a render within 0.7s.
+
+### Resources (RTX 4070 Ti, 12 GB)
+
+- **Graphics memory, as the card reports it:** 4.3 GB while loaded, 5.8 GB at peak while
+  rendering.
+- **Disk:** about 12.7 GB. That is the Python environment (4.8), CustomVoice (4.2) and
+  VoiceDesign (4.2), with the 0.64 GB codec shared between the two models by a hard link.
+
+### Voices and settings
+
+- **Where they live:** voices are in `extensions\QwenTTS\voices\<id>\`, as `print.npy`, the
+  two samples and `meta.json`. Casts are in `cast\<book hash>.json`, and the narrator's
+  voice and style in `narrator.json`.
+- **Extensions > Remove** deletes only the program, the models and the audio. Voices, casts
+  and settings stay.
+- **Delete** goes to the Recycle Bin.
+- **Backup:** kept voices are copied to `OneDrive\TypoZen\Narrator voices\`. A voice the
+  backup has and this PC lacks is restored when the narrator starts.
+- **Matter's cast:** the King, tyl Loesp and Ferbin, each with a designed voice of their own.
+
+### In the app
+
+- The status bar shows the engine and voice, and what the narrator is doing: starting,
+  preparing, reading.
+- Waits show a clock against an estimate.
+- Read Aloud > Qwen Narrator lists the voices and ticks the one in use.
+
+### Open
+
+- **Pronunciation overrides:** `applyTTSOverrides` respells some words for the Windows and
+  Kokoro voices, such as verb "lives" to "livz" and Dune names. Qwen reads from context and
+  may do better without them. Clips of both have been rendered for the owner to judge.
+- **Streaming the first sentence:** decoding as frames are generated would cut the 7s jump-in
+  wait. It is a larger change, and the warm-up already covers opening a book.
+- **Other hardware:** the render factor is fixed at a value measured on this card. A slower
+  card would want it measured at run time.
