@@ -38,7 +38,11 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import graphs
+# This script and graphs.py ship beside TypoZen.exe, where nothing may be written: an MSIX
+# install folder is read-only, and the uninstaller removes only what it installed. Importing
+# graphs would otherwise leave a __pycache__ folder there. Reading existing .pyc is unaffected.
+sys.dont_write_bytecode = True
+import graphs  # noqa: E402
 
 # CustomVoice, with the narrator's voice-print in the speaker slot (docs/qwen-tts-plan.md 3g).
 #
