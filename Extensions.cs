@@ -264,7 +264,7 @@ namespace TypoZen
                       + "characters voices of their own (File > Read Aloud > Narrator Settings).\n\n"
                       + "Demanding: it needs an NVIDIA graphics card with CUDA. On an RTX 4070 Ti (12 GB) it "
                       + "holds about 4.3 GB of the card's memory while loaded and about 6 GB while rendering, "
-                      + "and the whole extension is about 13 GB on disk. It takes about 20 seconds to load -- in the background when a book is "
+                      + "and the whole extension is about 13 GB on disk. It takes about 20 seconds to load — in the background when a book is "
                       + "opened with a Qwen voice chosen \u2014 and gives the card back after 15 minutes unused. "
                       + "Designing a new voice swaps in a second model of the same size for about 20 seconds.\n\n"
                       + "It is set up by hand rather than downloaded here. Narration audio is kept so anything "
