@@ -255,9 +255,21 @@ namespace TypoZen
             {
                 Id = QwenId,
                 Title = "Qwen narration",
-                Blurb = "Audiobook narration by the Qwen3-TTS model, rendered on this PC's graphics card. "
-                      + "It is set up by hand rather than downloaded here. Narration audio is kept so "
-                      + "anything heard before plays at once; clearing it only means rendering again.",
+                // What it is and what it costs, in measured numbers (RTX 4070 Ti, 2026-09-24):
+                // a reader deciding whether to keep a 13 GB extension that takes over the graphics
+                // card deserves more than "rendered on this PC's graphics card".
+                Blurb = "Audiobook narration by Qwen3-TTS, a 1.7-billion-parameter speech model built like a "
+                      + "large language model, running entirely on this PC; nothing is sent anywhere. It reads "
+                      + "with expression taken from the text, in voices you describe in words, and can give "
+                      + "characters voices of their own (File > Read Aloud > Narrator Settings).\n\n"
+                      + "Demanding: it needs an NVIDIA graphics card with CUDA. On an RTX 4070 Ti (12 GB) it "
+                      + "holds about 4.3 GB of the card's memory while loaded and about 6 GB while rendering, "
+                      + "and the whole extension is about 13 GB on disk. It takes about 20 seconds to load -- in the background when a book is "
+                      + "opened with a Qwen voice chosen -- and gives the card back after 15 minutes unused. "
+                      + "Designing a new voice swaps in a second model of the same size for about 20 seconds.\n\n"
+                      + "It is set up by hand rather than downloaded here. Narration audio is kept so anything "
+                      + "heard before plays at once; clearing it only means rendering again. Removing the "
+                      + "extension keeps your voices, casts and narrator settings.",
                 Dir = QwenNarrator.RootDir(cacheDir),
                 Marker = Path.Combine("venv", "Scripts", "python.exe")
             };
