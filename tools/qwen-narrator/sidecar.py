@@ -7,8 +7,9 @@ sound and eleven.
 Renders in batches rather than one piece at a time: a batch of eight paragraphs runs at
 about 0.4-0.65x realtime against 2.1x one at a time (measured 2026-09-23, with each clip
 decoded separately -- see _decode_clips_separately), so batching is what makes narration
-outrun listening at all. Since 2026-09-24 the code predictor runs as a CUDA graph (see
-graph_code_predictor), about 2.7x faster again: one sentence 0.85x realtime, eight 0.14x.
+outrun listening at all. Since 2026-09-24 generation runs as CUDA graphs (graphs.py): the
+code predictor alone made it 2.7x faster (one sentence 0.85x realtime, eight 0.14x), and a
+whole frame as one graph 1.3-1.5x more (0.62x and 0.09x).
 
 The cache is per piece: its key is the model, the voice-print, the style and the piece's
 text. A piece already on disk is never rendered again, whatever batch asks for it, so a
@@ -36,6 +37,8 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import graphs
 
 # CustomVoice, with the narrator's voice-print in the speaker slot (docs/qwen-tts-plan.md 3g).
 #
@@ -125,133 +128,6 @@ def open_log(path):
     LOG_PATH = path
 
 
-def graph_code_predictor(model, torch):
-    """Run each frame's 15 codebook tokens as one CUDA graph instead of a nested generate().
-
-    Every frame of audio (12 a second) is one step of the 28-layer talker plus a complete
-    Hugging Face generate() on the 5-layer code predictor for the other 15 codebooks. That
-    inner loop is almost all overhead: a frame took about 200ms at batch 1 and at batch 8
-    alike, 72% of it in the predictor, while its GPU work is a few milliseconds. Measured on
-    2026-09-24 (RTX 4070 Ti): the predictor went from 138 to 12.9 ms/frame, a sentence from
-    2.39x to 0.85x realtime, a batch of eight from 0.36x to 0.14x, and with sampling off the
-    graph chose the same tokens as generate() in 180 of 180 cases.
-
-    Same sampling as generate() is given here (temperature, then top-k; top-p 1.0 is a no-op).
-    One graph per batch size, captured on first use in about half a second. A call it does
-    not cover, or any failure, goes to the original generate() -- after a failure, for good.
-
-    A graph holds the addresses of the weights it was captured with. design() moves the model
-    to the CPU and back, which puts the weights somewhere new, and a graph replayed after that
-    reads whatever now occupies the old memory: measured 2026-09-24, entirely different tokens.
-    So the graphs are dropped whenever the weights have moved, and recaptured on next use;
-    generate.release() drops them on purpose, to free their memory before a design.
-    """
-    cp = model.model.talker.code_predictor
-    inner = cp.generate
-    hidden = model.model.talker.config.hidden_size
-    n = cp.config.num_code_groups - 1
-    graphs = {}
-    broken = []
-    captured_at = [None]     # the weights' address when the graphs were captured
-
-    from transformers import StaticCache
-
-    class Graph(object):
-        def __init__(self, B, temperature, top_k):
-            p = next(cp.parameters())
-            self.temperature, self.top_k = temperature, top_k
-            L = n + 1
-            try:
-                self.cache = StaticCache(config=cp.config, max_cache_len=L)
-            except TypeError:
-                self.cache = StaticCache(config=cp.config, max_batch_size=B, max_cache_len=L,
-                                         device=p.device, dtype=p.dtype)
-            self.inp = torch.zeros(B, 2, hidden, device=p.device, dtype=p.dtype)
-            self.out = torch.zeros(B, n, device=p.device, dtype=torch.long)
-            keys = torch.arange(L, device=p.device)
-            # Per step: cache positions, position ids and the causal mask (True = may attend).
-            # Positions 0-1 are the prefill (talker hidden state, first code); then one each.
-            self.steps = []
-            for start, q in [(0, 2)] + [(g + 1, 1) for g in range(1, n)]:
-                cpos = torch.arange(start, start + q, device=p.device)
-                mask = (keys[None, :] <= cpos[:, None])[None, None].expand(B, 1, q, L).contiguous()
-                self.steps.append((cpos, cpos.unsqueeze(0), mask))
-            side = torch.cuda.Stream()
-            side.wait_stream(torch.cuda.current_stream())
-            with torch.cuda.stream(side):
-                for _ in range(2):      # warm up: allocates the cache outside the capture
-                    self.run()
-            torch.cuda.current_stream().wait_stream(side)
-            self.graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(self.graph, capture_error_mode='thread_local'):
-                self.run()
-
-        def forward(self, embeds, k):
-            cpos, pids, mask = self.steps[k]
-            h = cp.small_to_mtp_projection(embeds)
-            pe = cp.model.rotary_emb(h, pids)
-            for layer in cp.model.layers[: cp.config.num_hidden_layers]:
-                out = layer(h, attention_mask=mask, position_ids=pids, past_key_values=self.cache,
-                            output_attentions=False, use_cache=True, cache_position=cpos,
-                            position_embeddings=pe)
-                h = out[0] if isinstance(out, tuple) else out
-            return cp.model.norm(h)
-
-        def pick(self, logits):
-            logits = logits.float() / self.temperature
-            kth = torch.topk(logits, self.top_k, dim=-1).values[..., -1:]
-            logits = logits.masked_fill(logits < kth, float('-inf'))
-            return torch.multinomial(torch.softmax(logits, dim=-1), 1)
-
-        def run(self):
-            h = self.forward(self.inp, 0)
-            tok = self.pick(cp.lm_head[0](h[:, -1]))
-            self.out[:, 0:1].copy_(tok)
-            for g in range(1, n):
-                h = self.forward(cp.model.codec_embedding[g - 1](tok), g)
-                tok = self.pick(cp.lm_head[g](h[:, -1]))
-                self.out[:, g:g + 1].copy_(tok)
-
-    def generate(*a, **k):
-        x = k.get('inputs_embeds')
-        top_p = k.get('top_p')
-        covered = (not broken and not a and x is not None and x.dim() == 3 and x.shape[1] == 2
-                   and k.get('max_new_tokens') == n and k.get('do_sample')
-                   and (top_p is None or top_p >= 1.0) and k.get('top_k'))
-        if not covered:
-            return inner(*a, **k)
-        key = (x.shape[0], float(k.get('temperature') or 1.0), int(k['top_k']))
-        try:
-            where = hash(tuple(p.data_ptr() for p in cp.parameters()))
-            if captured_at[0] != where:
-                if graphs:
-                    log('code predictor: weights moved, recapturing the CUDA graphs')
-                graphs.clear()
-                captured_at[0] = where
-            g = graphs.get(key)
-            if g is None:
-                t = time.time()
-                g = graphs[key] = Graph(*key)
-                log('code predictor: CUDA graph for batch %d captured in %.2fs' % (key[0], time.time() - t))
-            g.inp.copy_(x)
-            g.graph.replay()
-            return _Sequences(g.out.clone())
-        except Exception:
-            import traceback
-            broken.append(True)
-            log('code predictor: CUDA graph FAILED, using generate() from now on:\n' + traceback.format_exc())
-            return inner(*a, **k)
-
-    generate.release = graphs.clear
-    cp.generate = generate
-
-
-class _Sequences(object):
-    """What the talker reads from the predictor's generate(): the new tokens."""
-    def __init__(self, sequences):
-        self.sequences = sequences
-
-
 class Narrator(object):
     def __init__(self, cache_dir):
         self.cache_dir = cache_dir
@@ -315,8 +191,13 @@ class Narrator(object):
                                                        dtype=torch.bfloat16)
             self.reload_voices()
             self._decode_clips_separately()
+            # CUDA graphs (graphs.py): a whole frame as one graph, the predictor's own graph as
+            # its fallback. Before the cancel hook, which wraps whatever generate() is in place.
+            graphs.graph_talker(self.model, torch, log)
+            graphs.graph_code_predictor(self.model, torch, log)
+            talker = self.model.model.talker
+            self.release_graphs = [talker.generate.release, talker.code_predictor.generate.release]
             self._stop_when_cancelled()
-            graph_code_predictor(self.model, torch)
             self.ready = True
             log('model ready in %.1fs (%s)' % (time.time() - t, MODEL_REPO))
         except Exception:
@@ -597,9 +478,9 @@ class Narrator(object):
             # 12GB, and Windows then pages GPU memory to system RAM instead of failing: the
             # first design took two and a half minutes that way. Moving the narrator's
             # weights out and back costs seconds.
-            # Its CUDA graphs go too: they point at where the weights are now.
-            release = getattr(self.model.model.talker.code_predictor.generate, 'release', None)
-            if release:
+            # Its CUDA graphs go too: they point at where the weights are now, and the talker's
+            # holds a gigabyte of static cache that VoiceDesign needs more.
+            for release in getattr(self, 'release_graphs', []):
                 release()
             self.model.model.to('cpu')
             gc.collect()
@@ -607,7 +488,8 @@ class Narrator(object):
             try:
                 vd = Qwen3TTSModel.from_pretrained(snapshot_download(VOICEDESIGN_REPO, local_files_only=True),
                                                    device_map='cuda:0', dtype=self.torch.bfloat16)
-                graph_code_predictor(vd, self.torch)
+                graphs.graph_talker(vd, self.torch, log)
+                graphs.graph_code_predictor(vd, self.torch, log)
                 seed = int(time.time()) % 100000
                 self.torch.manual_seed(seed)
                 self.torch.cuda.manual_seed_all(seed)
