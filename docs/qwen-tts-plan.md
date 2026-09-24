@@ -1,6 +1,6 @@
 # Qwen3-TTS narration — design and plan
 
-Status: **built and in daily use.** Slices 1–4 are deployed; the current build is 0.3.39
+Status: **built and in daily use.** Slices 1–4 are deployed; the current build is 0.3.40
 (2026-09-24). **§8 is the current state.** Sections 1–7 were written 2026-09-22/23 and keep
 the history as it happened, including decisions later reversed; where one still reads as
 current, a note says so and points to §8.
@@ -622,8 +622,8 @@ carry on. Everything else in here is a working decision and mine to make.
   Windows intermittently refused to open config.json through its link (OSError 22,
   ERROR_CANT_ACCESS_FILE), for a whole process at a time. The error reads as a missing
   `model_type`. Both snapshots were converted to hard links: ordinary files, the same bytes,
-  no extra disk. A fresh download would bring the links back; the sidecar retries the load
-  and logs what it could read.
+  no extra disk. Since 0.3.40 the sidecar does this itself before every load (`harden_snapshot`),
+  so a fresh download is converted on first use; it still retries and logs what it could read.
 - **The sidecar** (`tools/qwen-narrator/sidecar.py`) is a resident HTTP server on
   127.0.0.1:8765, started by the host. It loads in about 20s and stops after 15 idle
   minutes. It runs offline, and `/health` reports ready only once everything is loaded.
