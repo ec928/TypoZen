@@ -307,7 +307,8 @@ namespace TypoZen
             {
                 var v = voiceBox.SelectedItem as VoiceItem;
                 if (v == null || string.IsNullOrEmpty(v.Preview)) return;
-                if (MessageBox.Show(win, "Delete the voice \"" + v.Name + "\"? Characters using it go back to the narrator's voice.",
+                if (MessageBox.Show(win, "Delete the voice \"" + v.Name + "\"? It goes to the Recycle Bin, with its backup copy, "
+                                    + "so it can be restored from there. Characters using it go back to the narrator's voice.",
                                     "Narrator", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
                 string id = v.Id;
                 work("Deleting...", 0, () =>
@@ -354,10 +355,14 @@ namespace TypoZen
                                 name.IsEnabled = false;
                                 work("Keeping \"" + nm + "\"...", 0, () =>
                                 {
-                                    QwenNarrator.Call("POST", "/voices/keep", new JavaScriptSerializer().Serialize(
+                                    string kept = QwenNarrator.Call("POST", "/voices/keep", new JavaScriptSerializer().Serialize(
                                         new Dictionary<string, object> { { "candidate", cid }, { "name", nm } }), 10000);
+                                    object backup;
+                                    var kd = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(kept);
+                                    string where = kd != null && kd.TryGetValue("backup", out backup) ? Convert.ToString(backup) : "";
                                     loadVoices();
-                                    say("Kept \"" + nm + "\". Choose it above for the narrator, or below for a character.");
+                                    say("Kept \"" + nm + "\". Choose it above for the narrator, or below for a character."
+                                        + (where.Length > 0 ? " A copy is saved in " + where + "." : ""));
                                 });
                             };
                             candidates.Children.Add(row(new UIElement[] { label, p, name, k }));
