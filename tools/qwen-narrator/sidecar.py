@@ -139,6 +139,12 @@ def graph_code_predictor(model, torch):
     Same sampling as generate() is given here (temperature, then top-k; top-p 1.0 is a no-op).
     One graph per batch size, captured on first use in about half a second. A call it does
     not cover, or any failure, goes to the original generate() -- after a failure, for good.
+
+    A graph holds the addresses of the weights it was captured with. design() moves the model
+    to the CPU and back, which puts the weights somewhere new, and a graph replayed after that
+    reads whatever now occupies the old memory: measured 2026-09-24, entirely different tokens.
+    So the graphs are dropped whenever the weights have moved, and recaptured on next use;
+    generate.release() drops them on purpose, to free their memory before a design.
     """
     cp = model.model.talker.code_predictor
     inner = cp.generate
@@ -146,6 +152,7 @@ def graph_code_predictor(model, torch):
     n = cp.config.num_code_groups - 1
     graphs = {}
     broken = []
+    captured_at = [None]     # the weights' address when the graphs were captured
 
     from transformers import StaticCache
 
@@ -215,6 +222,12 @@ def graph_code_predictor(model, torch):
             return inner(*a, **k)
         key = (x.shape[0], float(k.get('temperature') or 1.0), int(k['top_k']))
         try:
+            where = hash(tuple(p.data_ptr() for p in cp.parameters()))
+            if captured_at[0] != where:
+                if graphs:
+                    log('code predictor: weights moved, recapturing the CUDA graphs')
+                graphs.clear()
+                captured_at[0] = where
             g = graphs.get(key)
             if g is None:
                 t = time.time()
@@ -229,6 +242,7 @@ def graph_code_predictor(model, torch):
             log('code predictor: CUDA graph FAILED, using generate() from now on:\n' + traceback.format_exc())
             return inner(*a, **k)
 
+    generate.release = graphs.clear
     cp.generate = generate
 
 
@@ -583,6 +597,10 @@ class Narrator(object):
             # 12GB, and Windows then pages GPU memory to system RAM instead of failing: the
             # first design took two and a half minutes that way. Moving the narrator's
             # weights out and back costs seconds.
+            # Its CUDA graphs go too: they point at where the weights are now.
+            release = getattr(self.model.model.talker.code_predictor.generate, 'release', None)
+            if release:
+                release()
             self.model.model.to('cpu')
             gc.collect()
             self.torch.cuda.empty_cache()
