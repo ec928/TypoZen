@@ -1,6 +1,6 @@
 # Qwen3-TTS narration — design and plan
 
-Status: **built and in daily use.** Slices 1–4 are deployed; the current build is 0.3.36
+Status: **built and in daily use.** Slices 1–4 are deployed; the current build is 0.3.39
 (2026-09-24). **§8 is the current state.** Sections 1–7 were written 2026-09-22/23 and keep
 the history as it happened, including decisions later reversed; where one still reads as
 current, a note says so and points to §8.
@@ -634,9 +634,11 @@ the GPU work once and replays it.
 | Predictor as a graph (0.3.31) | 0.85x | 0.14x | about 1.1 |
 | Whole frame as a graph (0.3.33) | 0.62x | 0.09x | 0.6–0.7 |
 
-The right-hand column is what the page's render estimate uses. `NARRATION_RENDER_FACTOR` is
-1.3, which errs safe against the 1.04–1.15 measured with the predictor graph. It is not a
-realtime factor.
+The right-hand column is why a batch's wait follows its longest piece. It is not a realtime
+factor. Since 0.3.39 the page learns that rate from the batches it renders, as seconds per
+character of the longest piece (0.034-0.046 on this card), remembers it between sessions,
+and adds 15%. A fixed factor had gone stale twice: the clock showed about 14s for a first
+passage that took 6.
 
 - The talker graph pads every batch to 8 rows, over a static cache of 1024 positions. That
   is about 1 GB of graphics memory.

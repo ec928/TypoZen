@@ -576,6 +576,7 @@ async function renderNarration(base, batch, reading) {
             (data.from_cache ? ', ' + data.from_cache + ' from cache' : '') +
             ', audio ' + items.map(i => (i.seconds || 0).toFixed(1) + 's').join(' '));
     if (data.cancelled || items.length !== batch.length) return [];
+    if (!data.from_cache) learnRenderRate(batch, (performance.now() - sent) / 1000);
     return batch.map((p, i) => {
         const idx = parseInt(p.el.getAttribute('data-model-index'), 10);
         return {
@@ -596,7 +597,7 @@ async function renderNarration(base, batch, reading) {
  * A paragraph is one piece, so its intonation carries across its sentences. Only a paragraph
  * longer than the cap is split, at sentence ends.
  *
- * Except at the start of a reading. A batch takes about NARRATION_RENDER_FACTOR seconds per second of audio of its
+ * Except at the start of a reading. A batch takes as long as its
  * LONGEST piece, whatever else is in it (26 batches measured, 2026-09-24), so one long opening
  * paragraph meant two minutes of silence. The opening batch is therefore cut into sentences,
  * and each later batch may hold pieces only as long as the audio already queued can cover
@@ -953,7 +954,7 @@ function graduatedBatches(pieces, maxBatches) {
     let slack = 0;     // seconds of audio queued ahead of the batch being planned
     while (queue.length && batches.length < maxBatches) {
         const cap = batches.length === 0 ? NARRATION_OPENING_CAP
-            : Math.max(NARRATION_OPENING_CAP, Math.min(NARRATION_PIECE_CAP, Math.floor((slack - 2) / NARRATION_RENDER_FACTOR * 12)));
+            : Math.max(NARRATION_OPENING_CAP, Math.min(NARRATION_PIECE_CAP, renderableChars(slack)));
         const batch = [];
         while (queue.length && batch.length < NARRATION_BATCH) {
             const p = queue.shift();
@@ -973,19 +974,47 @@ function graduatedBatches(pieces, maxBatches) {
 }
 
 /**
- * Seconds of rendering per second of audio in a batch's LONGEST piece. It was 2.2 (measured
- * over 26 batches, 2026-09-23); with the code predictor as a CUDA graph it is 1.04-1.15
- * (2026-09-24), so 1.3 errs safe.
+ * Seconds of rendering per character of a batch's LONGEST piece -- a batch takes as long as
+ * that piece does -- learned from the batches this narrator actually renders and remembered
+ * between sessions. A fixed factor went stale twice: 2.2s per second of audio before the CUDA
+ * graphs, then half that, and a reader saw "about 14s" for a first passage that took 6.
+ * Starts at what this RTX 4070 Ti measured with both graphs: 0.043-0.046 (2026-09-24).
  */
-const NARRATION_RENDER_FACTOR = 1.3;
+const NARRATION_RATE_KEY = 'narr_render_rate';
+let _narrRenderRate = (() => {
+    try {
+        const v = parseFloat(localStorage.getItem(NARRATION_RATE_KEY));
+        if (v > 0.005 && v < 0.5) return v;
+    } catch (e) {}
+    return 0.045;
+})();
+const NARRATION_RENDER_MARGIN = 1.15;    // estimates err long by this much; waiting a little beats a gap
 
-/**
- * Seconds the narrator will take over a batch: as long as its longest piece takes. Audio is
- * estimated at 12 characters a second, the slow end of what Matter measured, so this errs long.
- */
+/** Seconds the narrator will take over a batch, with the margin: its longest piece decides. */
 function batchRenderEstimate(batch) {
     const longest = Math.max.apply(null, batch.map(p => p.text.length));
-    return NARRATION_RENDER_FACTOR * longest / 12 + 2;
+    return NARRATION_RENDER_MARGIN * _narrRenderRate * longest + 1;
+}
+
+/** The longest piece a batch may hold if it must render within `seconds`. */
+function renderableChars(seconds) {
+    return Math.floor((seconds - 1) / (NARRATION_RENDER_MARGIN * _narrRenderRate));
+}
+
+/**
+ * Learn from a batch the narrator rendered in full (none of it from the cache, whose answers
+ * are instant). Short pieces say little about the rate, so only batches whose longest piece is
+ * 40 characters or more count; half the weight goes to the newest, so a change of card or
+ * build shows within a batch or two.
+ */
+function learnRenderRate(batch, seconds) {
+    const longest = Math.max.apply(null, batch.map(p => p.text.length));
+    if (longest < 40 || !(seconds > 0)) return;
+    const seen = Math.min(0.5, Math.max(0.005, (seconds - 1) / longest));
+    _narrRenderRate = 0.5 * _narrRenderRate + 0.5 * seen;
+    try { localStorage.setItem(NARRATION_RATE_KEY, String(_narrRenderRate)); } catch (e) {}
+    narrLog('render rate: this batch ' + seen.toFixed(3) + 's per character of its longest piece; now using ' +
+            _narrRenderRate.toFixed(3));
 }
 
 /** The first block on screen: both axes, or the pages already turned in Pages count. */
@@ -1046,7 +1075,7 @@ async function startQwenNarration(base) {
     _narrSilentSince = 0;
     window.__narrLog = [];
     narrLog('reading ' + reading + ' begins');
-    // A batch takes as long as its longest paragraph (NARRATION_RENDER_FACTOR per second of its audio);
+    // A batch takes as long as its longest paragraph (see batchRenderEstimate);
     // anything already rendered comes from the cache and the clock just vanishes sooner.
     narrWait('is preparing the first passage', batchRenderEstimate(queue[0]));
     _narrationPending = true;
