@@ -1048,6 +1048,10 @@
                     // Voice, style, speed and this book's cast, from Narrator settings.
                     try { if (typeof window.setNarratorSettings === 'function') window.setNarratorSettings(msg.substring(22)); } catch (eS) {}
                 }
+                else if (msg.startsWith("cmd:narrate_warm:")) {
+                    // The narrator was started ahead of use: render the passage on screen.
+                    try { if (typeof window.warmNarration === 'function') window.warmNarration(msg.substring(17)); } catch (eW) {}
+                }
                 else if (msg === "cmd:narrator_cast_scan") {
                     // Narrator settings asks who speaks in this book; the answer goes back as
                     // host_narrator_cast.

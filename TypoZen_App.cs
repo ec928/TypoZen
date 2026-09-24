@@ -2124,11 +2124,54 @@ namespace TypoZen
         }
 
         /// <summary>
+        /// Warm-up: with a Qwen voice reading and a book open, start the narrator now and have
+        /// the page render the passage on screen, so Read Aloud there starts at once instead of
+        /// after a model load and a first render. Runs when a book opens, when TypoZen restores
+        /// a Qwen voice at launch, and when a Qwen voice is chosen. Markdown documents and other
+        /// voices start nothing. Said in the status bar only: a book opening should not pop up
+        /// a message. The narrator still stops itself after 15 idle minutes.
+        /// </summary>
+        private async void WarmNarrator()
+        {
+            try
+            {
+                string book = _currentFilePath;
+                if (_kokoroVoiceId != QwenNarrator.VoiceId || !IsBookPath(book)) return;
+                if (!QwenNarrator.Installed(CacheDir(), _appDir)) return;
+                bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, WarmStatus, CancellationToken.None);
+                if (!up || _currentFilePath != book || _kokoroVoiceId != QwenNarrator.VoiceId) return;
+                SendNarratorSettings();
+                SendMsg("cmd:narrate_warm:" + QwenNarrator.BaseUrl);
+            }
+            catch (Exception ex) { LogFault("warm narrator", ex); }
+        }
+
+        private static bool IsBookPath(string path)
+        {
+            return !string.IsNullOrEmpty(path) && path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>The narrator's start-up during a warm-up: the status bar, not the page.</summary>
+        private void WarmStatus(string m)
+        {
+            try
+            {
+                Dispatcher.BeginInvoke((Action)(() =>
+                {
+                    if (!string.IsNullOrEmpty(m)) _narrationPhase = "starting";
+                    else if (_narrationPhase == "starting") _narrationPhase = "";
+                    UpdateVoiceStatus();
+                }));
+            }
+            catch { }
+        }
+
+        /// <summary>
         /// A Qwen narrator voice chosen from Read Aloud: it becomes the reading voice and the
         /// narrator's voice at once, and the page is told straight away -- a narration already
         /// playing restarts at its paragraph in the new voice. The narrator starts now, in the
-        /// background, so its model load is paid while the reader finds their place. Choosing a
-        /// voice is the only thing that starts it early: launching TypoZen or opening a book never does.
+        /// background, so its model load is paid while the reader finds their place; with a
+        /// book open, the passage on screen is rendered too (WarmNarrator).
         /// </summary>
         private async void ChooseQwenVoice(string voiceId, string name)
         {
@@ -2142,7 +2185,11 @@ namespace TypoZen
             SetKokoroVoice(QwenNarrator.VoiceId, name);
             SendNarratorSettings();
             RebuildQwenVoiceMenu();
-            try { await QwenNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus, CancellationToken.None); }
+            try
+            {
+                bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus, CancellationToken.None);
+                if (up && IsBookPath(_currentFilePath)) WarmNarrator();
+            }
             catch (Exception ex) { LogFault("start narrator", ex); }
         }
 
@@ -6369,9 +6416,12 @@ namespace TypoZen
             }
             else if (msg.StartsWith("host_kokoro_voice_restored:"))
             {
+                bool wasQwen = _kokoroVoiceId == QwenNarrator.VoiceId;
                 _kokoroVoiceId = msg.Substring(27);
                 TickKokoroVoice();
                 UpdateWindowsVoicesCheckmark();
+                // A Qwen voice restored at launch, or switched to: warm up if a book is open.
+                if (!wasQwen && _kokoroVoiceId == QwenNarrator.VoiceId) WarmNarrator();
                 return;
             }
             else if (msg.StartsWith("host_narrator_cast:"))
@@ -13722,6 +13772,8 @@ namespace TypoZen
                 RefreshEditingAvailability();
 
                 RebuildTabStrip();
+                // With a Qwen voice reading, start the narrator while the book opens.
+                WarmNarrator();
 
                 string fileName = "book_" + Guid.NewGuid().ToString("N") + ".json";
                 string bookUrl = StageLoadPayload(fileName, payload);

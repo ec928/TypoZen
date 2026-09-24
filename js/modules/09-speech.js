@@ -1215,6 +1215,21 @@ async function prefetchNarration() {
     if (_prefetchReading === reading) _prefetchReading = 0;
 }
 
+/**
+ * Warm-up (the host's WarmNarrator): a book is open with a Qwen voice reading and the narrator
+ * is now up, before anyone pressed Read Aloud. Render the passage on screen -- cut exactly as
+ * Read Aloud from there will cut it -- so pressing it plays from the cache. From here on,
+ * turning pages renders ahead as it does after a first narration. A short delay lets a book
+ * that has only just opened settle at its remembered position first.
+ */
+window.warmNarration = function (base) {
+    if (!isQwenVoice(_kokoroVoice) || !base) return;
+    _narrationBase = base;
+    narrLog('warm-up: narrator is up; rendering the passage on screen ahead of Read Aloud');
+    clearTimeout(_prefetchTimer);
+    _prefetchTimer = setTimeout(prefetchNarration, 1500);
+};
+
 // Scroll does not bubble, so this listens in the capture phase: a page turn in Pages
 // scrolls #editor, and the scroll layout scrolls its container. Either way, wait for the
 // view to settle before rendering what is on it.
