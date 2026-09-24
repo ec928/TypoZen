@@ -132,6 +132,54 @@ def open_log(path):
     LOG_PATH = path
 
 
+def harden_snapshot(folder):
+    """Replace the symbolic links in a Hugging Face snapshot with hard links to the same blobs.
+
+    A snapshot holds each file as a symbolic link to its blob, and Windows intermittently
+    refused to open files through those links -- OSError 22 on config.json, for a whole process
+    at a time, which is how 4 of 12 narrator starts failed on 2026-09-24. A hard link is an
+    ordinary file to Windows: the same bytes, no extra disk.
+
+    Safe to interrupt: the hard link is made under a temporary name first, and a start that
+    finds one left behind finishes the swap. A file that cannot be hard-linked (another
+    volume, a file system without them) stays a symbolic link and is logged; nothing is
+    copied, which would double gigabytes silently.
+    """
+    converted = 0
+    for dirpath, _, names in os.walk(folder):
+        for name in names:
+            p = os.path.join(dirpath, name)
+            if not os.path.lexists(p):
+                continue                         # renamed away earlier in this pass
+            try:
+                if name.endswith('.hardlink'):
+                    orig = p[:-len('.hardlink')]
+                    if not os.path.lexists(orig):
+                        os.rename(p, orig)       # a swap interrupted after the link was removed
+                        log('snapshot: finished an interrupted swap for %s' % orig)
+                    elif not os.path.islink(orig):
+                        os.remove(p)             # the swap had finished; this is a spare name
+                    continue
+                if not os.path.islink(p):
+                    continue
+                blob = os.path.normpath(os.path.join(dirpath, os.readlink(p)))
+                if not os.path.isfile(blob):
+                    log('snapshot: %s links to a missing blob, left as it is' % p)
+                    continue
+                tmp = p + '.hardlink'
+                if os.path.lexists(tmp):
+                    os.remove(tmp)
+                os.link(blob, tmp)
+                os.unlink(p)                     # the symbolic link itself, not its blob
+                os.rename(tmp, p)
+                converted += 1
+            except OSError as e:
+                log('snapshot: could not make %s a hard link (%s); left as it is' % (p, e))
+    if converted:
+        log('snapshot: %d symbolic links in %s replaced by hard links' % (converted, folder))
+    return converted
+
+
 def config_facts(folder):
     """What config.json in `folder` holds right now: for a failed load's log line."""
     try:
@@ -277,14 +325,14 @@ class Narrator(object):
             # disk -- which fails offline, and online cost most of a 51-second start. Given
             # a path it asks nothing: 16 seconds, and no network.
             local = snapshot_download(MODEL_REPO, local_files_only=True)
+            harden_snapshot(local)
             # Retried: on 2026-09-24, 4 of 12 starts failed about 8s in with "Unrecognized
             # model ... should have a model_type key in its config.json" -- although the file has
             # one. The logged cause: opening config.json failed with OSError 22 (Windows'
             # ERROR_CANT_ACCESS_FILE), because every file in a Hugging Face snapshot is a symbolic
             # link to its blob and Windows intermittently refused to follow it, for a whole
-            # process at a time. The snapshots on the owner's machine were converted to hard links
-            # (ordinary files, same bytes, no extra disk). A fresh download would bring symbolic
-            # links back; the retry and config_facts stay to catch that.
+            # process at a time. harden_snapshot (above) now replaces them with hard links before
+            # every load; the retry and config_facts stay in case a file cannot be converted.
             for attempt in range(1, 4):
                 try:
                     self.model = Qwen3TTSModel.from_pretrained(local, device_map='cuda:0',
@@ -596,8 +644,9 @@ class Narrator(object):
             gc.collect()
             self.torch.cuda.empty_cache()
             try:
-                vd = Qwen3TTSModel.from_pretrained(snapshot_download(VOICEDESIGN_REPO, local_files_only=True),
-                                                   device_map='cuda:0', dtype=self.torch.bfloat16)
+                vd_local = snapshot_download(VOICEDESIGN_REPO, local_files_only=True)
+                harden_snapshot(vd_local)
+                vd = Qwen3TTSModel.from_pretrained(vd_local, device_map='cuda:0', dtype=self.torch.bfloat16)
                 graphs.graph_talker(vd, self.torch, log)
                 graphs.graph_code_predictor(vd, self.torch, log)
                 seed = int(time.time()) % 100000
