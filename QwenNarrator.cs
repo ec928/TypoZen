@@ -255,7 +255,17 @@ namespace TypoZen
         /// </summary>
         public static bool Installed(string cacheDir, string appDir)
         {
-            try { return File.Exists(PythonPath(cacheDir)) && File.Exists(ScriptPath(appDir)); }
+            try { return EnvironmentReady(cacheDir) && File.Exists(ScriptPath(appDir)); }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// The environment in the data folder is there and finished: an install still under way,
+        /// or stopped part-way, leaves install.part behind (QwenInstaller) and does not count.
+        /// </summary>
+        public static bool EnvironmentReady(string cacheDir)
+        {
+            try { return File.Exists(PythonPath(cacheDir)) && !File.Exists(QwenInstaller.InstallFlag(cacheDir)); }
             catch { return false; }
         }
 

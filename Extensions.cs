@@ -50,11 +50,14 @@ namespace TypoZen
         /// <summary>Written into the folder as LICENSE.txt, for anything downloaded.</summary>
         public string Notice;
         public List<ExtensionFile> Files = new List<ExtensionFile>();
+        /// <summary>When set, decides Installed instead of the marker file.</summary>
+        public Func<bool> Check;
 
         public bool Installed
         {
             get
             {
+                if (Check != null) return Check();
                 try { return File.Exists(System.IO.Path.Combine(Dir, Marker)); }
                 catch { return false; }
             }
@@ -267,11 +270,13 @@ namespace TypoZen
                       + "and the whole extension is about 13 GB on disk. It takes about 20 seconds to load — in the background when a book is "
                       + "opened with a Qwen voice chosen \u2014 and gives the card back after 15 minutes unused. "
                       + "Designing a new voice swaps in a second model of the same size for about 20 seconds.\n\n"
-                      + "It is set up by hand rather than downloaded here. Narration audio is kept so anything "
-                      + "heard before plays at once; clearing it only means rendering again. Removing the "
-                      + "extension keeps your voices, casts and narrator settings.",
+                      + "Install downloads and sets it all up, about 13 GB, in a few minutes on a fast "
+                      + "connection; it needs Python 3.11 from python.org installed first. Narration audio is "
+                      + "kept so anything heard before plays at once; clearing it only means rendering again. "
+                      + "Removing the extension keeps your voices, casts and narrator settings.",
                 Dir = QwenNarrator.RootDir(cacheDir),
-                Marker = Path.Combine("venv", "Scripts", "python.exe")
+                Marker = Path.Combine("venv", "Scripts", "python.exe"),
+                Check = () => QwenNarrator.EnvironmentReady(cacheDir)
             };
         }
 
@@ -541,6 +546,7 @@ namespace TypoZen
 
             var rows = new List<Action>();          // re-read state after an install or removal
             ExtensionInstaller running = null;
+            QwenInstaller qwenRunning = null;       // Qwen narration installs its own way
 
             // Kokoro's two precisions are one extension with a choice, not two extensions.
             var quality = new ComboBox { Width = 210, Margin = new Thickness(0, 6, 0, 0) };
@@ -618,11 +624,16 @@ namespace TypoZen
                     if (isQwen)
                     {
                         long audio = SizeOf(QwenNarrator.CacheDir(cacheDir));
-                        // Nothing here can install it, so once removed there is no button to offer.
+                        bool partway = File.Exists(QwenInstaller.InstallFlag(cacheDir));
+                        bool voices = Directory.Exists(Path.Combine(now.Dir, "voices"))
+                                      && Directory.GetDirectories(Path.Combine(now.Dir, "voices")).Length > 0;
                         state.Text = on
                             ? "Installed - " + Human(onDisk) + " on disk, of which " + Human(audio) + " is narration audio"
-                            : "Removed. Your voices, casts and narrator settings are kept. Setting it up again is done by hand.";
-                        button.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+                            : partway
+                                ? "Not finished - " + Human(onDisk) + " downloaded so far. Install continues where it stopped."
+                                : "Not installed - about " + Human(QwenInstaller.DownloadBytes) + " to download. Needs an NVIDIA "
+                                  + "graphics card and Python 3.11." + (voices ? " Your voices, casts and settings are kept for it." : "");
+                        if (qwenRunning == null) button.Content = on ? "Remove" : "Install";
                         clearAudio.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
                         clearAudio.IsEnabled = audio > 0;
                     }
@@ -685,6 +696,61 @@ namespace TypoZen
                         return;
                     }
 
+                    if (isQwen)
+                    {
+                        if (qwenRunning != null) { qwenRunning.Cancel(); status.Text = "Stopping..."; return; }
+                        string python;
+                        string why = QwenInstaller.Preflight(cacheDir, out python);
+                        if (why != null) { status.Text = why; return; }
+                        var qi = new QwenInstaller();
+                        qwenRunning = qi;
+                        button.Content = "Cancel";
+                        bar.Visibility = Visibility.Visible;
+                        bar.IsIndeterminate = true;
+                        status.Text = "Starting...";
+                        string appDir = AppDomain.CurrentDomain.BaseDirectory;
+                        var qworker = new Thread(() =>
+                        {
+                            string problem = qi.Install(cacheDir, appDir, python, (done, total, what) =>
+                            {
+                                win.Dispatcher.BeginInvoke((Action)(() =>
+                                {
+                                    if (total > 0)
+                                    {
+                                        bar.IsIndeterminate = false;
+                                        bar.Value = (double)done / total * 1000.0;
+                                        status.Text = what + "   " + Human(done) + " of " + Human(total);
+                                    }
+                                    else
+                                    {
+                                        bar.IsIndeterminate = true;
+                                        status.Text = what;
+                                    }
+                                }));
+                            });
+                            win.Dispatcher.BeginInvoke((Action)(() =>
+                            {
+                                qwenRunning = null;
+                                bar.IsIndeterminate = false;
+                                bar.Visibility = Visibility.Collapsed;
+                                foreach (var r in rows) r();
+                                if (problem == null)
+                                {
+                                    status.Text = "Qwen narration is ready. Choose a Qwen voice in File > Read Aloud.";
+                                    if (changed != null) changed();
+                                    if (installed != null) installed(ExtensionCatalog.QwenId);
+                                }
+                                else if (problem == "cancelled")
+                                    status.Text = "Install stopped. What was downloaded is kept; Install continues from there.";
+                                else
+                                    status.Text = "Install failed: " + problem + " Details are in install.log in the extension folder.";
+                            }));
+                        });
+                        qworker.IsBackground = true;
+                        qworker.Start();
+                        return;
+                    }
+
                     if (running != null) { running.Cancel(); return; }
 
                     var installer = new ExtensionInstaller();
@@ -729,9 +795,9 @@ namespace TypoZen
             addRow(ExtensionCatalog.Kokoro(cacheDir, false), kokoroChosen);
             var wikt = ExtensionCatalog.Wiktionary(cacheDir);
             addRow(wikt, () => wikt);
-            // Listed only while it exists: nothing here can install it.
+            // Always listed: Install sets it up (QwenInstaller), Remove keeps the voices.
             var qwen = ExtensionCatalog.Qwen(cacheDir);
-            if (qwen.Installed) addRow(qwen, () => qwen);
+            addRow(qwen, () => qwen);
 
             quality.SelectionChanged += (s, e) => { foreach (var r in rows) r(); };
 
@@ -743,7 +809,7 @@ namespace TypoZen
             win.Content = root;
 
             foreach (var r in rows) r();
-            win.Closing += (s, e) => { if (running != null) running.Cancel(); };
+            win.Closing += (s, e) => { if (running != null) running.Cancel(); if (qwenRunning != null) qwenRunning.Cancel(); };
             // Not swallowed: a dialog that fails to open is invisible twice over if the
             // reason is thrown away, which cost an afternoon the first time.
             win.ShowDialog();
