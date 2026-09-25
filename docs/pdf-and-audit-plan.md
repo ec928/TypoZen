@@ -8,7 +8,7 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 |---|---|---|
 | 0 — audit fixes | **Done.** 0.1 bookmarks/positions kept (LRU, 5000), 0.2 drop to open, 0.3 Help over every tab, 0.4 autosave-off indicator, and 1.4 image paste into untitled. Git tag `baseline-before-pdf` marks the state before Phase 1. | 0.5.8 |
 | 1 — PDF reading core | **Done, in testing with Ed.** See below. | 0.6.0, 0.6.1 |
-| 2 — reader features | Not started. Read Aloud, Bookmark This Page and Return from Jump are greyed on a PDF until then. The selection popup (Play / Look up) does not appear over a PDF yet either. | — |
+| 2 — reader features | **Done, in testing with Ed.** See below. | 0.6.2 |
 | 2b — save as images | Not started. | — |
 | 3 — OCR | Not started. `tests/Test_PDF_printed.pdf` (a print of `Test_PDF.pdf`, no text layer) is a ready test file. | — |
 | 4 — annotate, forms | Not started. | — |
@@ -22,6 +22,18 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 - Tests: `tests/pdf-reader-app.mjs` (26 checks) instead of an extension to core-smoke. **Not done:** `packaged-smoke-app` and `privacy-app` do not open a PDF yet. Whether Privacy Mode stops a PDF's page being remembered is unverified.
 - Fixed after Ed's first look (0.6.1): the text layer sat about 3% right of and below the ink, so Find's highlight and selections landed on the line below. The cause was the app-wide `box-sizing: border-box`. Also fixed: a fitted page not refitting after the window was maximised or restored (seen as 164% after switching columns), and a PDF with no text showing 22 characters.
 - Open questions: Reset Zoom returns to the fit, which at a given window size can read 99% rather than 100%. Printing landscape pages rotated them onto portrait pages. This is probably the print dialog's orientation setting (not yet checked with Landscape chosen).
+
+**Phase 2 as built (0.6.2):**
+
+- Paragraphs are worked out from the text's layout (10-pdf.js): a new paragraph where the gap to the next line is over 1.6 lines, where the text size changes, or where the next line is higher on the page. Each is a detached `.block` element carrying its page and span, so Read Aloud (09-speech.js) and marks (02-layout.js) use their existing code with a PDF branch at the few places that looked for `#editor .block`.
+- Read Aloud with Windows voices and Qwen narration read from the paragraph with the cursor, or the first on screen, highlighting each on the page. Render-ahead works on a PDF as in a book.
+- The selection popup appears on a PDF: Look up, Read, Read from here, Find, Search the web, Highlight. Formatting and Link are hidden.
+- Bookmarks and highlights anchor to paragraphs by the same fingerprints as documents, are stored by path like any document's, and list with "p N". There is no margin ribbon on a PDF page (documents have one).
+- Also done: the password prompt from the Security section. A PDF that cannot be opened says so in the view, not in the document "Load failed" dialog.
+- Tests: `tests/pdf-reader-features-app.mjs` (14 checks; speech and the narrator stubbed, so nothing is heard and no GPU is used). `tests/pdf-locked.pdf` comes from `tests/make-locked-pdf.mjs`.
+- Word count and reading time came with Phase 1.
+- Not checked: real Qwen audio on a PDF (the stubbed test covers what the PDF hands the narrator), and reading order on two-column academic papers (the plan's stated risk).
+- Known: letter-spaced headings ("W E L C O M E") come out of the PDF as separate letters, so a voice spells them out. The word boundaries are not in the PDF's text.
 
 ## Decisions
 

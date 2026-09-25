@@ -88,8 +88,12 @@ A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing download
 - **Your place is remembered** and the PDF reopens on the page you left.
 - **View → PDF Pages in Theme Colours** redraws pages in the theme's colours. It is off by default because it recolours pictures too.
 - The status bar shows the PDF's word count and **Page N/M**.
+- **Read Aloud and narration** read the PDF paragraph by paragraph from the one on screen (or the one you clicked in), highlighting each on the page. PDF text has no paragraphs of its own, so they are worked out from the layout: headings, list items and captions stand alone.
+- **Select text** for the same popup as in a book: Look up, Read, Find in document, Highlight.
+- **Bookmarks and highlights** are kept with the PDF and listed in the Marks pane with their page.
+- **A password-protected PDF** asks for its password.
 - **Print** prints the original file through Edge's PDF printing, so the output is the PDF, not a screen capture. **File → Open in Default App** hands it to your usual PDF program.
-- Not yet: Read Aloud, bookmarks and marks on PDFs (greyed); OCR of scanned pages; saving pages or pictures as images; annotations.
+- Not yet: OCR of scanned pages; saving pages or pictures as images; annotating the PDF file itself. Letter-spaced headings ("W E L C O M E") come out of a PDF as separate letters, so a voice spells them.
 
 ### Reading web, images, and media
 Open these **read-only** on a Chromium surface (same tab strip). No document scrubber on these tabs — that control belongs to paginated engine/book reading.
