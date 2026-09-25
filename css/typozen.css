@@ -2137,6 +2137,15 @@
         #editor a {
             cursor: pointer;
         }
+        /* Books bring their own link colours -- Dune's contents page is pure dark blue --
+           which all but vanish on a dark theme. In the editor a link is the theme's link
+           colour, whatever the publisher's stylesheet says. */
+        #editor a[href], #editor a[href] * {
+            color: var(--accent, #3B82F6) !important;
+        }
+        #editor a[href]:hover, #editor a[href]:hover * {
+            color: var(--hi, var(--accent, #60A5FA)) !important;
+        }
 
         hr {
             border: 0;
