@@ -92,8 +92,10 @@ A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing download
 - **Select text** for the same popup as in a book: Look up, Read, Find in document, Highlight.
 - **Bookmarks and highlights** are kept with the PDF and listed in the Marks pane with their page.
 - **A password-protected PDF** asks for its password.
+- **File → Save Pages as Images...** saves pages as PNG or JPEG at 150, 300 or 600 DPI (or your own figure): all pages, this page, or a range like `1-5, 8`. The DPI is written into each file, so a page opens at its paper size.
+- **File → Save All Images in PDF...** saves every picture as its own file, at the size it is stored in the PDF. Photos stored as JPEG keep their original bytes, so nothing is re-compressed; the rest are saved as PNG with any transparency. Small icons are skipped and a picture repeated on many pages (a logo) is saved once, both optional; one subfolder per page if you like. Page text is never included.
 - **Print** prints the original file through Edge's PDF printing, so the output is the PDF, not a screen capture. **File → Open in Default App** hands it to your usual PDF program.
-- Not yet: OCR of scanned pages; saving pages or pictures as images; annotating the PDF file itself. Letter-spaced headings ("W E L C O M E") come out of a PDF as separate letters, so a voice spells them.
+- Not yet: OCR of scanned pages; annotating the PDF file itself. Letter-spaced headings ("W E L C O M E") come out of a PDF as separate letters, so a voice spells them.
 
 ### Reading web, images, and media
 Open these **read-only** on a Chromium surface (same tab strip). No document scrubber on these tabs — that control belongs to paginated engine/book reading.

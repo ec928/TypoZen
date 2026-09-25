@@ -9,7 +9,7 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 | 0 — audit fixes | **Done.** 0.1 bookmarks/positions kept (LRU, 5000), 0.2 drop to open, 0.3 Help over every tab, 0.4 autosave-off indicator, and 1.4 image paste into untitled. Git tag `baseline-before-pdf` marks the state before Phase 1. | 0.5.8 |
 | 1 — PDF reading core | **Done, in testing with Ed.** See below. | 0.6.0, 0.6.1 |
 | 2 — reader features | **Done, in testing with Ed.** See below. | 0.6.2 |
-| 2b — save as images | Not started. | — |
+| 2b — save as images | **Done, in testing with Ed.** See below. Right-click Save Image As not built. | 0.6.3 |
 | 3 — OCR | Not started. `tests/Test_PDF_printed.pdf` (a print of `Test_PDF.pdf`, no text layer) is a ready test file. | — |
 | 4 — annotate, forms | Not started. | — |
 | Audit 1.3 — Source colouring | Waiting on Ed: CodeMirror 6 or the mirror approach. | — |
@@ -38,6 +38,17 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 - Word count and reading time came with Phase 1.
 - Not checked: real Qwen audio on a PDF (the stubbed test covers what the PDF hands the narrator), and reading order on two-column academic papers (the plan's stated risk).
 - Known: letter-spaced headings ("W E L C O M E") come out of the PDF as separate letters, so a voice spells them out. The word boundaries are not in the PDF's text.
+
+**Phase 2b as built (0.6.3):**
+
+- File > Save Pages as Images... and Save All Images in PDF..., live only on a PDF tab. Native WPF dialogs on the app's colours; the modern Windows folder picker (`FolderPicker`, IFileOpenDialog in pick-folders mode), starting in the PDF's folder. A progress window with Cancel; at the end, what was saved and an offer to open the folder.
+- The page does the work one page at a time from **its own copy of the document** (not the viewer's, whose cached pictures an export must not clean up), and POSTs each file to `https://localpdf/export/<job>/<name>`. The host writes it only for a job it started, only inside that job's folder (one subfolder at most, names sanitised), and never over an existing file (" (2)").
+- Pages: PNG or JPEG (quality), 150/300/600/other DPI, the pixel size of page 1 shown in the dialog. The DPI is written into the file (PNG pHYs, JPEG JFIF density). Pages past a browser canvas's limits are drawn smaller, and the result says so.
+- Pictures: PDF.js's operator list gives each picture as drawn; JPEG pictures are found in the file's own bytes (DCTDecode streams) and matched to the picture by comparing pixels, so they are saved byte for byte; anything else, or anything that does not match, is a PNG with its transparency. Skips under 32x32, saves repeats once (by object and by content hash), optional subfolder per page. Pictures that cannot be read are counted and reported, never dropped silently.
+- Tests: `tests/pdf-export-app.mjs` (11 checks, using `tests/pdf-pictures.pdf` from `tests/make-pdf-pictures.mjs`). A `pdf_export_test` message, honoured only with --debug and only into the temp folder, runs an export without the dialog and picker. The dialogs and the picker were checked by screenshot, not by a test.
+- Found on the way, fixed: a PDF reloaded every time the TypoZen window was activated again (switching back to it). The on-disk change check treated a PDF tab as a document with text to compare; it now skips PDFs as it skips books. This stopped Read Aloud or an export mid-page.
+- Not built: right-click **Save Image As...** on one picture. A picture on a PDF page is not an element to click; it needs hit-testing against the drawing operations' positions. "This page" in Save All Images covers one page's pictures meanwhile.
+- Not checked: a large real-world PDF (hundreds of pages, big scans) for time and memory; CMYK JPEGs (they are saved as PNG by design).
 
 ## Decisions
 
