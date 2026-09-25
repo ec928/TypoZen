@@ -28,7 +28,10 @@ $errFile = [System.IO.Path]::GetTempFileName()
 $allSuites = @(Get-ChildItem ".\tests\*.mjs" | Sort-Object Name)
 # Helpers / generators, not suites.
 $helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
-             'fonts-ab.mjs', 'scripts-ab.mjs')
+             'fonts-ab.mjs', 'scripts-ab.mjs',
+             # Fixture generators: run by hand. Run as suites they rewrote the committed
+             # PDFs on every gate (new timestamps inside, so git saw a change each time).
+             'make-pdf-fixture.mjs', 'make-locked-pdf.mjs')
 $allSuites = @($allSuites | Where-Object { $helpers -notcontains $_.Name })
 
 # *-app.mjs launch TypoZen.exe and drive it over the DevTools port --debug opens. They
