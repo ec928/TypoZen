@@ -963,10 +963,20 @@
             _markFpIndexCache = null;
             _markCacheLen = -1;
             _markCacheKind = '';
+            _markCacheSrc = null;
         }
 
         /** How many blocks the model holds, without copying anything out of it. */
+        /* A PDF's marks are made on its paragraphs (10-pdf.js), which stand in for blocks:
+           the same fingerprints and offsets, a different source of text. */
+        function pdfMarks() {
+            return !!(window.tzPdfActive && typeof window.tzPdfBlockRaws === 'function');
+        }
+
         function modelBlockCount() {
+            // Zero until the PDF's text is all in, so marks resolve against the whole of it.
+            if (pdfMarks()) return (typeof window.tzPdfTextReady === 'function' && window.tzPdfTextReady())
+                ? window.tzPdfBlocks().length : 0;
             try {
                 return (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
                     ? DocumentModel.blocks.length : 0;
@@ -974,7 +984,20 @@
         }
 
         /** Raw text of every block, for fingerprinting. Cached; treat as read-only. */
+        let _markCacheSrc = null;
         function markBlockRaws() {
+            if (pdfMarks()) {
+                // Keyed by the paragraph list itself: two PDFs can have the same count.
+                const src = window.tzPdfBlocks();
+                if (_markRawsCache && _markCacheKind === 'pdf' && _markCacheSrc === src) return _markRawsCache;
+                _markRawsCache = window.tzPdfBlockRaws();
+                _markFpIndexCache = null;
+                _markCacheLen = _markRawsCache.length;
+                _markCacheKind = 'pdf';
+                _markCacheSrc = src;
+                return _markRawsCache;
+            }
+            if (_markCacheKind === 'pdf') invalidateMarkCaches();
             let n, kind;
             try {
                 if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return [];
@@ -1166,6 +1189,7 @@
 
         /** Where a mark sits, said in whatever unit this document has: page, or line. */
         function markWhereText(bi) {
+            if (pdfMarks()) { const p = window.tzPdfBlockPage(bi); return p ? 'p ' + p : ''; }
             try {
                 if (isPaginatedLayout() && typeof PageMap !== 'undefined' && PageMap.pageOfBlock) {
                     const p = PageMap.pageOfBlock(bi);
@@ -1364,6 +1388,8 @@
          * another.
          */
         function markTargetBlock() {
+            // A PDF: the first paragraph on screen.
+            if (pdfMarks()) return window.tzPdfReadStart(true);
             let here = -1;
             try { here = currentReadingBlock(); } catch (e) { return -1; }
             if (!(here >= 0)) return -1;
@@ -1566,7 +1592,7 @@
                 where.className = 'mark-where';
                 let chapter = '';
                 try {
-                    if (!lost && typeof chapterTitleForBlock === 'function') {
+                    if (!lost && !pdfMarks() && typeof chapterTitleForBlock === 'function') {
                         chapter = chapterTitleForBlock(m.block) || '';
                     }
                 } catch (e) {}
@@ -1847,6 +1873,7 @@
 
         /** True when there is text selected inside one block -- the thing to annotate. */
         function selectionInsideOneBlock() {
+            if (pdfMarks()) { try { return window.tzPdfSelectionSpan(); } catch (e) { return null; } }
             try {
                 const sel = window.getSelection();
                 if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
@@ -1898,6 +1925,24 @@
             try { CSSH = (window.CSS && CSS.highlights) ? CSS.highlights : null; } catch (e) {}
             if (!CSSH || typeof Highlight === 'undefined') return;
             const ranges = [];
+            if (pdfMarks()) {
+                // On the text layers of the pages that are drawn; a page drawn later calls
+                // back through tzPdfMarksRepaint. Its own highlight name: the document's
+                // style would show the text layer's invisible text.
+                for (let i = 0; i < _marks.length; i++) {
+                    const m = _marks[i];
+                    if (!(m.block >= 0) || !(m.e > m.s)) continue;
+                    const r = window.tzPdfBlockRange(m.block, m.s, m.e);
+                    if (r) ranges.push(r);
+                }
+                try {
+                    CSSH.delete('typozen-mark');
+                    if (ranges.length) CSSH.set('typozen-pdf-mark', new Highlight(...ranges));
+                    else CSSH.delete('typozen-pdf-mark');
+                } catch (e3) {}
+                return;
+            }
+            try { CSSH.delete('typozen-pdf-mark'); } catch (e4) {}
             for (let i = 0; i < _marks.length; i++) {
                 const m = _marks[i];
                 if (!(m.block >= 0) || !(m.e > m.s)) continue;
@@ -1911,6 +1956,10 @@
                 else CSSH.delete('typozen-mark');
             } catch (e2) {}
         }
+
+        /** 10-pdf.js: a page's text layer was drawn, or the PDF's text is all in. */
+        window.tzPdfMarksRepaint = function () { try { paintAnnotations(); } catch (e) {} };
+        window.tzPdfMarksResolve = function () { try { resolveMarksAfterDocumentLoad(); } catch (e) {} };
 
         /* ---- Selection popover and dictionary lookup ---------------------------
            Reading a novel and not being able to ask what a word means is a real gap,
@@ -2159,6 +2208,9 @@
         function occurrenceCount(word) {
             if (!word) return 0;
             let n = 0;
+            // A PDF's words are its text, not the (empty) document behind it.
+            const pdfText = (window.tzPdfActive && typeof window.tzPdfFindSurface === 'function')
+                ? window.tzPdfFindSurface().haystack : null;
             try {
                 // A function replacement, deliberately, where the idiomatic escape would be
                 // the string '\\$&'. Every tool that inlines this engine into an HTML fixture
@@ -2168,6 +2220,7 @@
                 // sanity check failing in a different file.
                 const re = new RegExp('\\b' + word.replace(/[.*+?^${}()|[\]\\]/g,
                     function (ch) { return '\\' + ch; }) + '\\b', 'giu');
+                if (pdfText != null) { const m = pdfText.match(re); return m ? m.length : 0; }
                 const blocks = DocumentModel.blocks;
                 for (let i = 0; i < blocks.length; i++) {
                     const m = String(blocks[i].raw || '').match(re);
@@ -2223,7 +2276,10 @@
                 const r = sel.getRangeAt(0);
                 const host = r.startContainer.nodeType === 1
                     ? r.startContainer : r.startContainer.parentElement;
-                if (!host || !editor || !editor.contains(host)) { hideSelPop(); return; }
+                // The document, or a PDF's text layer (10-pdf.js), which is where a PDF's
+                // words can be selected.
+                const onPdf = !!(window.tzPdfActive && host && host.closest && host.closest('#pdfView .textLayer'));
+                if (!host || !editor || !(editor.contains(host) || onPdf)) { hideSelPop(); return; }
                 rect = r.getBoundingClientRect();
                 if (!rect || (!rect.width && !rect.height)) { hideSelPop(); return; }
                 text = r.toString();
@@ -2253,8 +2309,9 @@
             if (lookup) lookup.hidden = !_selPopWord;
             try { fillSpellSuggestions(_selPopWord); } catch (eSp) {}
             
-            // Formatting and Links are bugs in a read-only book, hide them
-            const isEpub = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
+            // Formatting and Links are bugs in a read-only book or PDF, hide them
+            const isEpub = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
+                || !!window.tzPdfActive;
             const editBtns = ['selPopBold', 'selPopItalic', 'selPopStrike', 'selPopCode', 'selPopLink', 'selPopDivFormat'];
             editBtns.forEach(id => {
                 const btn = document.getElementById(id);
@@ -3145,6 +3202,7 @@
         function goToReadingBlock(bi) {
             bi = bi | 0;
             if (bi < 0) return false;
+            if (pdfMarks()) return window.tzPdfGotoBlock(bi);
             try {
                 if (typeof DocumentModel !== 'undefined' && DocumentModel.blocks
                     && bi >= DocumentModel.blocks.length) {
@@ -3182,7 +3240,7 @@
         }
 
         function captureReturnJump() {
-            const bi = currentReadingBlockIndex();
+            const bi = pdfMarks() ? window.tzPdfReadStart(true) : currentReadingBlockIndex();
             if (bi >= 0) _returnJumpBlock = bi;
         }
 
@@ -6872,9 +6930,6 @@
                     return;
                 }
                 if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
-                    // Bookmarks and Return from Jump act on the editor's document, which a PDF
-                    // on screen does not use (10-pdf.js); their menu items are greyed there too.
-                    if (window.tzPdfActive && /^[mjMJ]$/.test(e.key)) { e.preventDefault(); return; }
                     if (e.key === 'M' || e.key === 'm') {
                         e.preventDefault();
                         e.stopPropagation();

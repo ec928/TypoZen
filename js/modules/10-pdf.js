@@ -93,6 +93,12 @@
 
     function teardown() {
         clearTimeout(S.reportTimer);
+        // Reading this PDF aloud ends with it: its paragraphs are about to stop existing.
+        try {
+            if (typeof isPlaying !== 'undefined' && isPlaying && typeof _currentTTSBlockEl !== 'undefined'
+                && _currentTTSBlockEl && _currentTTSBlockEl.dataset && _currentTTSBlockEl.dataset.pdfPage != null
+                && typeof stopReading === 'function') stopReading();
+        } catch (e) { }
         try { if (S.viewer) S.viewer.setDocument(null); } catch (e) { }
         try { if (S.linkService) S.linkService.setDocument(null); } catch (e) { }
         try { if (S.doc) S.doc.destroy(); } catch (e) { }
@@ -101,7 +107,9 @@
         S.haystack = '';
         S.findMatches = [];
         S.pendingReveal = false;
+        S.blocks = null; S.blocksKey = ''; S.readEl = null; S.flashEl = null; S.textReady = false;
         try { CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch (e) { }
+        try { CSS.highlights.delete('typozen-tts'); CSS.highlights.delete('typozen-pdf-flash'); } catch (e) { }
         const host = document.getElementById('pdfView');
         if (host) host.innerHTML = '';
     }
@@ -182,7 +190,7 @@
             eventBus.on('pagechanging', (e) => { if (seq === S.seq) reportPage(e.pageNumber); });
             eventBus.on('textlayerrendered', () => { if (seq === S.seq) onTextLayer(); });
 
-            const doc = await lib.getDocument({
+            const task = lib.getDocument({
                 url,
                 cMapUrl: BASE + 'cmaps/', cMapPacked: true,
                 standardFontDataUrl: BASE + 'standard_fonts/',
@@ -190,7 +198,28 @@
                 iccUrl: BASE + 'iccs/',
                 isEvalSupported: false,
                 enableXfa: false
-            }).promise;
+            });
+            // A password-protected PDF: ask, and ask again if it was wrong. Cancelling leaves
+            // a note in the view with a way to try again (see the catch below).
+            let cancelled = false;
+            task.onPassword = (update, reason) => {
+                if (seq !== S.seq) { task.destroy(); return; }
+                const wrong = lib.PasswordResponses && reason === lib.PasswordResponses.INCORRECT_PASSWORD;
+                const pw = window.prompt((wrong ? 'That password is not right.\n\n' : '')
+                    + 'This PDF is protected. Enter its password to open it:', '');
+                if (pw == null) { cancelled = true; task.destroy(); return; }
+                update(pw);
+            };
+            let doc;
+            try { doc = await task.promise; }
+            catch (err) {
+                if (seq !== S.seq) return;
+                showProblem(cancelled || (err && err.name === 'PasswordException')
+                    ? 'This PDF is protected by a password.' : 'This PDF could not be read.',
+                    cancelled ? '' : String(err && err.message ? err.message : err),
+                    { retry: () => window.tzOpenPdf(url, page) });
+                return;
+            }
             if (seq !== S.seq) { try { doc.destroy(); } catch (e) { } return; }
             S.doc = doc;
             viewer.setDocument(doc);
@@ -209,6 +238,37 @@
             try { postMsg('load_failed:' + String(err && err.message ? err.message : err)); } catch (e) { }
         }
     };
+
+    /**
+     * A PDF that could not be opened, said in the view where it would have been. Not the
+     * host's "Load failed" dialog: its advice (the tab still holds the file text) is about
+     * documents, and a PDF tab holds no text.
+     */
+    function showProblem(title, detail, opts) {
+        const host = hostEl();
+        host.innerHTML = '';
+        const box = document.createElement('div');
+        box.className = 'pdf-problem';
+        const h = document.createElement('p');
+        h.className = 'pdf-problem-title';
+        h.textContent = title;
+        box.appendChild(h);
+        if (detail) { const d = document.createElement('p'); d.textContent = detail; box.appendChild(d); }
+        const row = document.createElement('p');
+        if (opts && opts.retry) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = 'Enter password';
+            if (!/password/i.test(title)) b.textContent = 'Try again';
+            b.addEventListener('click', opts.retry);
+            row.appendChild(b);
+        }
+        const hint = document.createElement('span');
+        hint.textContent = ' File > Open in Default App opens it in your usual PDF program.';
+        row.appendChild(hint);
+        box.appendChild(row);
+        host.appendChild(box);
+    }
 
     /** Leave the PDF: another document is loading into the page. */
     window.tzClosePdf = function () {
@@ -402,7 +462,11 @@
                     const str = it.str || '';
                     // The text layer draws one span per non-empty item, in this order, so an
                     // offset into this text maps onto its text nodes by counting items.
-                    if (str.length) items.push({ start: text.length, len: str.length });
+                    // Where it sits (baseline y, font height) is what splits paragraphs.
+                    if (str.length) items.push({
+                        start: text.length, len: str.length,
+                        y: it.transform ? it.transform[5] : 0, h: it.height || 0
+                    });
                     text += str;
                     if (it.hasEOL) text += '\n';
                 }
@@ -411,7 +475,10 @@
             } catch (e) { S.pageTexts[p - 1] = ''; S.pageItems[p - 1] = []; }
         }
         rebuildHaystack();
+        S.textReady = true;
         refreshStats();
+        // Marks resolve against the paragraphs now they are all known (02-layout.js).
+        try { if (typeof window.tzPdfMarksResolve === 'function') window.tzPdfMarksResolve(); } catch (e) { }
         // A search typed while the text was still coming in is answered now it is all here.
         try {
             if (typeof findState !== 'undefined' && findState.query && typeof runFind === 'function')
@@ -519,10 +586,232 @@
     // Pages draw their text layers as they scroll into view: paint (and finish a pending
     // reveal) when one arrives.
     function onTextLayer() {
+        paintRead();
+        paintFlash();
+        try { if (typeof window.tzPdfMarksRepaint === 'function') window.tzPdfMarksRepaint(); } catch (e) { }
         if (!S.findMatches || !S.findMatches.length) return;
         const cur = paintFind();
         if (cur && S.pendingReveal) { S.pendingReveal = false; revealRange(cur); }
     }
+
+    // ---- Paragraphs: the unit Read Aloud and marks work in ------------------------------
+    //
+    // PDF text has lines, not paragraphs. A paragraph ends where the gap to the next line is
+    // clearly more than a line's spacing, where the text size changes (a heading), or where
+    // the next line is higher on the page (another column or box). Each paragraph is a
+    // detached <div class="block"> holding its text, with its page and its span of that
+    // page's text on data attributes: Read Aloud (09-speech.js) and marks (02-layout.js)
+    // work on blocks, so a PDF hands them these and they need to know little more.
+
+    /** [start, end) spans of page p's text, one per paragraph. */
+    function paragraphSpans(p) {
+        const text = S.pageTexts && S.pageTexts[p];
+        const items = S.pageItems && S.pageItems[p];
+        if (!text || !items || !items.length) return [];
+        const out = [];
+        let start = items[0].start, prev = items[0];
+        for (let k = 1; k < items.length; k++) {
+            const it = items[k];
+            const h = Math.max(prev.h || 0, it.h || 0) || 10;
+            if (Math.abs(it.y - prev.y) > 0.5 * h) {                 // a new line
+                const gap = prev.y - it.y;                           // PDF y grows upwards
+                const resized = prev.h && it.h && Math.abs(prev.h - it.h) > 0.2 * h;
+                if (gap > 1.6 * h || gap < -0.5 * h || resized) { out.push([start, it.start]); start = it.start; }
+            }
+            prev = it;
+        }
+        out.push([start, text.length]);
+        return out;
+    }
+
+    /** A paragraph's text as it should be read: lines joined, hyphenated words mended. */
+    function readable(raw) {
+        return raw.replace(/(\p{L})-\n(\p{Ll})/gu, '$1$2').replace(/\s+/g, ' ').trim();
+    }
+
+    /** Every paragraph of the PDF, as blocks; the same objects until more text arrives. */
+    function blocks() {
+        const texts = S.pageTexts || [];
+        const key = texts.map(t => (t == null ? '-' : 'y')).join('');
+        if (S.blocks && S.blocksKey === key) return S.blocks;
+        const list = [];
+        for (let p = 0; p < texts.length; p++) {
+            for (const [a, b] of paragraphSpans(p)) {
+                const raw = texts[p].slice(a, b);
+                const text = readable(raw);
+                if (!/[\p{L}\p{N}]/u.test(text)) continue;
+                const el = document.createElement('div');
+                el.className = 'block';
+                el.textContent = text;
+                el.dataset.pdfPage = String(p);
+                el.dataset.pdfStart = String(a);
+                el.dataset.pdfEnd = String(b);
+                el.__pdfRaw = raw;
+                list.push(el);
+            }
+        }
+        S.blocks = list;
+        S.blocksKey = key;
+        return list;
+    }
+    window.tzPdfBlocks = function () { return S.active ? blocks() : []; };
+    window.tzPdfTextReady = function () { return !!(S.active && S.textReady); };
+
+    /** Page (0-based) and offset into that page's text of a DOM point on a text layer. */
+    function pointOnPage(node, offset) {
+        const el = node && (node.nodeType === 1 ? node : node.parentElement);
+        const pageEl = el && el.closest ? el.closest('#pdfView .page') : null;
+        const layer = pageEl && pageEl.querySelector('.textLayer');
+        if (!pageEl || !layer || !layer.contains(node)) return null;
+        const p = parseInt(pageEl.getAttribute('data-page-number'), 10) - 1;
+        const items = S.pageItems && S.pageItems[p];
+        if (!items) return null;
+        const tw = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+        let t, k = 0;
+        while ((t = tw.nextNode())) {
+            if (k >= items.length) break;
+            if (t === node) return { page: p, off: items[k].start + Math.min(offset || 0, items[k].len) };
+            if (node.nodeType === 1 && node.contains(t)) return { page: p, off: items[k].start };
+            k++;
+        }
+        return null;
+    }
+
+    /** Index of the block holding a page offset, or the next one on that page. */
+    function blockIndexAt(page, off) {
+        const list = blocks();
+        let next = -1;
+        for (let i = 0; i < list.length; i++) {
+            const bp = +list[i].dataset.pdfPage;
+            if (bp < page) continue;
+            if (bp > page) return next >= 0 ? next : i;
+            if (off < +list[i].dataset.pdfEnd) return i;
+        }
+        return next;
+    }
+
+    /** The block the selection (or cursor) is in, or null. */
+    window.tzPdfBlockAtSelection = function () {
+        const sel = window.getSelection();
+        if (!S.active || !sel || !sel.rangeCount) return null;
+        const at = pointOnPage(sel.anchorNode, sel.anchorOffset);
+        if (!at) return null;
+        const i = blockIndexAt(at.page, at.off);
+        return i >= 0 ? blocks()[i] : null;
+    };
+
+    /**
+     * Where reading starts: the paragraph holding the cursor or selection, or the first
+     * paragraph on screen. `ignoreCaret` for "what is on screen" (render-ahead, marks).
+     */
+    window.tzPdfReadStart = function (ignoreCaret) {
+        const list = blocks();
+        if (!list.length || !S.viewer) return -1;
+        if (!ignoreCaret) {
+            const el = window.tzPdfBlockAtSelection();
+            if (el) return list.indexOf(el);
+        }
+        const host = document.getElementById('pdfView');
+        const top = host ? host.getBoundingClientRect().top : 0;
+        const cur = (S.viewer.currentPageNumber || 1) - 1;
+        for (let i = 0; i < list.length; i++) {
+            const p = +list[i].dataset.pdfPage;
+            if (p < cur) continue;
+            const r = rangeOnPage(p, +list[i].dataset.pdfStart, +list[i].dataset.pdfEnd);
+            if (!r) return i;                                  // not drawn yet: its page's first
+            if (r.getBoundingClientRect().bottom > top + 4) return i;
+        }
+        return list.length - 1;
+    };
+
+    /** The paragraph being read: paint it, and bring it into view (09-speech.js). */
+    window.tzPdfReadFocus = function (el) {
+        S.readEl = el;
+        bringIntoView(el);
+        paintRead();
+    };
+    window.tzPdfReadClear = function () {
+        S.readEl = null;
+        try { CSS.highlights.delete('typozen-tts'); } catch (e) { }
+    };
+    function paintRead() {
+        const el = S.readEl;
+        try { CSS.highlights.delete('typozen-tts'); } catch (e) { }
+        if (!el || !window.Highlight) return;
+        const r = rangeOnPage(+el.dataset.pdfPage, +el.dataset.pdfStart, +el.dataset.pdfEnd);
+        if (!r) return;
+        try { CSS.highlights.set('typozen-tts', new Highlight(r)); } catch (e) { }
+        if (S.revealRead) { S.revealRead = false; revealRange(r); }
+    }
+
+    /**
+     * Turn to a block's page and scroll it into view. Its text layer may not be drawn yet,
+     * so the scroll into place finishes when it is (onTextLayer -> paintRead / paintFlash).
+     */
+    function bringIntoView(el) {
+        const v = S.viewer;
+        if (!v || !el) return;
+        const want = +el.dataset.pdfPage + 1;
+        const r = rangeOnPage(want - 1, +el.dataset.pdfStart, +el.dataset.pdfEnd);
+        if (S.scroll === 'pagination' || !r) {
+            if (v.currentPageNumber !== want) v.currentPageNumber = want;
+        }
+        if (r) revealRange(r); else S.revealRead = true;
+    }
+
+    /** Jump to a block (a mark in the Marks pane) and wash it briefly. */
+    window.tzPdfGotoBlock = function (i) {
+        const el = blocks()[i];
+        if (!el) return false;
+        S.flashEl = el;
+        S.revealFlash = true;
+        bringIntoView(el);
+        paintFlash();
+        clearTimeout(S.flashTimer);
+        S.flashTimer = setTimeout(() => { S.flashEl = null; try { CSS.highlights.delete('typozen-pdf-flash'); } catch (e) { } }, 1600);
+        return true;
+    };
+    function paintFlash() {
+        const el = S.flashEl;
+        if (!el || !window.Highlight) return;
+        const r = rangeOnPage(+el.dataset.pdfPage, +el.dataset.pdfStart, +el.dataset.pdfEnd);
+        if (!r) return;
+        try { CSS.highlights.set('typozen-pdf-flash', new Highlight(r)); } catch (e) { }
+        if (S.revealFlash) { S.revealFlash = false; revealRange(r); }
+    }
+
+    /** A range over [s, e) of block i's raw text, if its page is drawn (marks' highlights). */
+    window.tzPdfBlockRange = function (i, s, e) {
+        const el = blocks()[i];
+        if (!el) return null;
+        const a = +el.dataset.pdfStart;
+        return rangeOnPage(+el.dataset.pdfPage, a + (s || 0), a + (e == null ? el.__pdfRaw.length : e));
+    };
+    /** The page (1-based) a block is on, for "p N" in the Marks pane. */
+    window.tzPdfBlockPage = function (i) {
+        const el = blocks()[i];
+        return el ? +el.dataset.pdfPage + 1 : 0;
+    };
+    /** Block and offsets into its raw text of the current selection, for a highlight mark. */
+    window.tzPdfSelectionSpan = function () {
+        const sel = window.getSelection();
+        if (!S.active || !sel || sel.isCollapsed || !sel.rangeCount) return null;
+        const r = sel.getRangeAt(0);
+        const a = pointOnPage(r.startContainer, r.startOffset);
+        const b = pointOnPage(r.endContainer, r.endOffset);
+        if (!a) return null;
+        const i = blockIndexAt(a.page, a.off);
+        const el = blocks()[i];
+        if (!el) return null;
+        const start = +el.dataset.pdfStart, end = +el.dataset.pdfEnd;
+        // A highlight stays inside one paragraph, as it does in a document.
+        const s = Math.max(0, a.off - start);
+        const e = (b && b.page === a.page) ? Math.min(end, b.off) - start : end - start;
+        if (e <= s) return null;
+        return { block: i, s: s, e: e, text: el.__pdfRaw.slice(s, e) };
+    };
+    /** Raw text of every block, for marks' fingerprints. */
+    window.tzPdfBlockRaws = function () { return blocks().map(el => el.__pdfRaw); };
 
     // ---- Outline, for the sidebar -------------------------------------------------------
 

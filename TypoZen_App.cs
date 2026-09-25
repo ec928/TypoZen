@@ -9655,12 +9655,6 @@ namespace TypoZen
                 LockWithTip("mExportHtml", native, why);
                 LockWithTip("mOpenExternal", string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath),
                     "This document has not been saved to a file yet");
-                // Read Aloud and bookmarks work from the editor's document, which a PDF does
-                // not use; they come to PDFs with Phase 2 of docs/pdf-and-audit-plan.md.
-                bool pdf = !native && IsPdfPath(_currentFilePath);
-                LockWithTip("btnReadAloud", pdf, "Read Aloud is not available for PDFs yet");
-                LockWithTip("mMarkToggle", pdf, "Bookmarks are not available for PDFs yet");
-                LockWithTip("mReturnJump", pdf, "Not available for PDFs yet");
             }
             catch { }
         }
@@ -14507,6 +14501,9 @@ namespace TypoZen
 
                 int page = RememberedBookPosition(path);
                 SendMsg("load_pdf:" + PdfUrlFor(path) + (page > 1 ? "|page=" + page : ""));
+                // Its bookmarks and highlights, made on its paragraphs (10-pdf.js); the page
+                // resolves them once the PDF's text is in.
+                SendBookmarksForCurrentDocument();
 
                 Dispatcher.BeginInvoke(new Action(() =>
                 {

@@ -1268,6 +1268,20 @@
             color: transparent;
             background-color: color-mix(in srgb, var(--accent, #f59e0b) 45%, transparent);
         }
+        /* The paragraph being read aloud, a mark's highlight, and the wash after jumping to
+           a mark (10-pdf.js). The text layer's own text stays invisible; only the fill shows. */
+        #pdfView .textLayer span::highlight(typozen-tts) {
+            color: transparent;
+            background-color: color-mix(in srgb, var(--accent, #f59e0b) 18%, transparent);
+        }
+        #pdfView .textLayer span::highlight(typozen-pdf-mark) {
+            color: transparent;
+            background-color: color-mix(in srgb, var(--mark-ink, #E8A33D) 30%, transparent);
+        }
+        #pdfView .textLayer span::highlight(typozen-pdf-flash) {
+            color: transparent;
+            background-color: color-mix(in srgb, var(--mark-ink, #E8A33D) 40%, transparent);
+        }
         /* Windows spell checker hits in Preview. Wavy underline if the Highlight
            API will paint it; a light wash if not. Not dictionary.tsv — that file
            is definitions. */
@@ -2170,6 +2184,24 @@
            a selection landed on the line beneath. Zero specificity, so it only undoes
            that rule. */
         :where(#pdfView) * { box-sizing: content-box; }
+        #pdfView .pdf-problem {
+            max-width: 34em;
+            margin: 18vh auto 0;
+            padding: 0 16px;
+            color: var(--tx, #F4F4F5);
+            font-family: var(--ui-font, inherit);
+            line-height: 1.5;
+        }
+        #pdfView .pdf-problem-title { font-size: 1.15em; font-weight: 600; }
+        #pdfView .pdf-problem button {
+            font: inherit;
+            padding: 4px 12px;
+            border-radius: 6px;
+            border: 1px solid color-mix(in srgb, var(--tx, #F4F4F5) 30%, transparent);
+            background: color-mix(in srgb, var(--tx, #F4F4F5) 8%, transparent);
+            color: inherit;
+            cursor: pointer;
+        }
         #pdfView .pdfViewer .page {
             box-shadow: 0 0 0 1px color-mix(in srgb, var(--tx, #F4F4F5) 12%, transparent);
             border-color: transparent;

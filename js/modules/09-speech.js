@@ -100,6 +100,19 @@ function readingCaret() {
     } catch (e) { return null; }
 }
 
+/**
+ * The blocks reading works over: the document's, or on a PDF its paragraphs (10-pdf.js),
+ * which are detached elements carrying their page and text offsets.
+ */
+function pdfReading() {
+    return !!(window.tzPdfActive && typeof window.tzPdfBlocks === 'function');
+}
+function readingBlocks() {
+    if (pdfReading()) return window.tzPdfBlocks();
+    const editor = document.getElementById('editor');
+    return editor ? Array.from(editor.querySelectorAll('.block')) : [];
+}
+
 let _currentTTSBlockEl = null;
 let _currentTTSChunkIdx = null;
 
@@ -135,14 +148,32 @@ function speakSelection() {
     if (isQwenVoice(_kokoroVoice) && !sourceShown) {
         let el = null;
         try {
-            const sel = window.getSelection();
-            const node = sel && sel.anchorNode;
-            const e = node && (node.nodeType === 1 ? node : node.parentElement);
-            el = e && e.closest ? e.closest('#editor .block') : null;
+            if (pdfReading()) el = window.tzPdfBlockAtSelection();
+            else {
+                const sel = window.getSelection();
+                const node = sel && sel.anchorNode;
+                const e = node && (node.nodeType === 1 ? node : node.parentElement);
+                el = e && e.closest ? e.closest('#editor .block') : null;
+            }
         } catch (e) {}
         _qwenPending = selText && el ? { text: selText, el: el } : null;
         narrLog('read requested: ' + (_qwenPending ? 'the selection, ' + selText.length + ' chars' : 'from here'));
         try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
+        return;
+    }
+
+    // A PDF: its paragraphs, from the one the cursor is in or the first on screen, each
+    // highlighted on the page as it is read.
+    if (pdfReading()) {
+        const all = readingBlocks();
+        if (selText) {
+            const el = window.tzPdfBlockAtSelection();
+            startReadingChunks([el ? { text: selText, el: el } : { text: selText }]);
+            return;
+        }
+        const at = window.tzPdfReadStart();
+        if (at < 0) return;
+        startReadingChunks(all.slice(at).map(el => ({ el: el, text: el.textContent })));
         return;
     }
 
@@ -259,6 +290,7 @@ function startReadingChunks(chunks) {
 }
 
 function clearTTSFocus() {
+    try { if (typeof window.tzPdfReadClear === 'function') window.tzPdfReadClear(); } catch (e) {}
     if (_currentTTSBlockEl) {
         _currentTTSBlockEl.classList.remove('tts-active');
         _currentTTSBlockEl = null;
@@ -338,7 +370,12 @@ function playNextChunk() {
                 targetEl = ensureModelBlockVisible(chunk.idx, { topPad: 60 });
             }
         }
-        if (targetEl) {
+        if (targetEl && targetEl.dataset && targetEl.dataset.pdfPage != null
+            && typeof window.tzPdfReadFocus === 'function') {
+            // A PDF paragraph is not in the document: the PDF paints and scrolls to it.
+            window.tzPdfReadFocus(targetEl);
+            _currentTTSBlockEl = targetEl;
+        } else if (targetEl) {
             if (typeof targetEl.scrollIntoView === 'function' && !(typeof isPaginatedLayout === 'function' && isPaginatedLayout())) {
                 targetEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
             }
@@ -1051,13 +1088,19 @@ async function startQwenNarration(base) {
     _qwenPending = null;
     if (pending) { narrateSelection(base, pending); return; }
 
-    const all = Array.from(editor.querySelectorAll('.block'));
+    const all = readingBlocks();
     if (!all.length) return;
 
-    const caret = readingCaret();
-    let at = caret ? all.indexOf(caret.block) : -1;
-    let why = 'cursor';
-    if (at < 0) { at = firstVisibleBlock(all, editor); why = 'first on screen'; }
+    let at, why;
+    if (pdfReading()) {
+        at = window.tzPdfReadStart();
+        why = 'PDF: cursor or first on screen';
+    } else {
+        const caret = readingCaret();
+        at = caret ? all.indexOf(caret.block) : -1;
+        why = 'cursor';
+        if (at < 0) { at = firstVisibleBlock(all, editor); why = 'first on screen'; }
+    }
     if (at < 0) { at = 0; why = 'nothing on screen, top'; }
 
     const startAt = narrationDocIndex(all[at], at);
@@ -1160,7 +1203,7 @@ window.startQwenNarration = startQwenNarration;
  * like any others, so reading the same passage again is instant.
  */
 async function narrateSelection(base, sel) {
-    const all = Array.from(document.querySelectorAll('#editor .block'));
+    const all = readingBlocks();
     const i = all.indexOf(sel.el);
     const at = narrationDocIndex(sel.el, i < 0 ? 0 : i);
     const pieces = blockPieces(sel.text)          // as written: see narrationBatches
@@ -1227,8 +1270,8 @@ async function prefetchNarration() {
     if (!_narrationBase || isPlaying || _narrationPending) return;
     const editor = document.getElementById('editor');
     if (!editor) return;
-    const all = Array.from(editor.querySelectorAll('.block'));
-    const at = all.length ? firstVisibleBlock(all, editor) : -1;
+    const all = readingBlocks();
+    const at = !all.length ? -1 : pdfReading() ? window.tzPdfReadStart(true) : firstVisibleBlock(all, editor);
     if (at < 0) return;
     const startAt = narrationDocIndex(all[at], at);
     // Cut exactly as Narrate cuts from here, so starting here finds it all in the cache.
