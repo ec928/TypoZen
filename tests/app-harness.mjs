@@ -26,7 +26,7 @@
  * options.env is merged into the child environment (TYPOZEN_PROFILE_DIR still wins).
  * Used by disk-conflict-app.mjs for TYPOZEN_DISK_PROMPT=Yes|No|Cancel.
  */
-import { spawn, execSync } from 'child_process';
+import { spawn, execSync, execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -199,7 +199,7 @@ export async function evalPatiently(app, fn, arg, opts) {
  *
  * Returns a { pid, kill } shim so killOwn() and close() work unchanged.
  */
-function spawnOnHiddenDesktop(args, env) {
+function spawnOnHiddenDesktop(args, env, exe) {
     const script = path.join(appDir, 'tools', 'Start-OnHiddenDesktop.ps1');
     if (!fs.existsSync(script)) throw new Error('Start-OnHiddenDesktop.ps1 not found at ' + script);
 
@@ -207,7 +207,7 @@ function spawnOnHiddenDesktop(args, env) {
     const argsArg = Buffer.from(JSON.stringify(args), 'utf8').toString('base64');
 
     const cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + script + '"'
-        + ' -Exe "' + EXE + '"'
+        + ' -Exe "' + (exe || EXE) + '"'
         + ' -ArgsBase64 ' + argsArg
         + ' -WorkingDirectory "' + appDir + '"'
         + ' -EnvBase64 ' + envArg;
@@ -220,6 +220,42 @@ function spawnOnHiddenDesktop(args, env) {
     const pid = parseInt(String(out).trim().split(/\r?\n/).pop(), 10);
     if (!pid) throw new Error('hidden-desktop launch returned no pid: ' + out);
     return { pid, kill: () => {} };
+}
+
+const POWERSHELL = path.join(process.env.SystemRoot || 'C:\\Windows',
+    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+
+/** process.kill(pid, 0) throws once the process has exited. */
+function isAlive(pid) {
+    try { process.kill(pid, 0); return true; } catch (e) { return false; }
+}
+
+async function waitForExit(pid, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (!isAlive(pid)) return true;
+        await sleep(100);
+    }
+    return !isAlive(pid);
+}
+
+/**
+ * Close the window the way a user does, so the Closed handler runs.
+ *
+ * close() kills, which is the crash path: anything the app does on exit never happens.
+ * Finding the window goes through EnumWindows, which only sees the calling thread's
+ * desktop -- so from here nothing on the hidden desktop is visible, and the old
+ * CloseMainWindow call silently did nothing. For a hidden launch Close-AppWindow.ps1 runs
+ * in a PowerShell started on that same desktop. Only the PID this harness launched is
+ * touched, never a TypoZen the user has open.
+ */
+function requestClose(pid, hidden) {
+    const psArgs = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+        path.join(appDir, 'tools', 'Close-AppWindow.ps1'), '-ProcessId', String(pid)];
+    try {
+        if (hidden) spawnOnHiddenDesktop(psArgs, {}, POWERSHELL);
+        else execFileSync(POWERSHELL, psArgs, { stdio: 'ignore' });
+    } catch (e) { }
 }
 
 /**
@@ -256,7 +292,8 @@ export async function launchApp(options) {
 
     ensureProfile();
     const childEnv = Object.assign({}, options.env || {}, { TYPOZEN_PROFILE_DIR: profileDir });
-    const child = hiddenDesktopWanted(options)
+    const hidden = hiddenDesktopWanted(options);
+    const child = hidden
         ? spawnOnHiddenDesktop(args, childEnv)
         : spawn(EXE, args, {
             cwd: appDir,
@@ -345,6 +382,15 @@ export async function launchApp(options) {
             try { child.kill(); } catch (e) { }
             // Only our own process tree, so a session opened alongside is left alone.
             killOwn(child);
+        },
+        /** Ask the window to close and wait for the process to exit. True if it exited on
+         *  its own; false if it was still running at the deadline and had to be killed. */
+        closeGracefully: async (timeoutMs) => {
+            try { await browser.disconnect(); } catch (e) { }
+            requestClose(child.pid, hidden);
+            const exited = await waitForExit(child.pid, timeoutMs || 10000);
+            if (!exited) killOwn(child);
+            return exited;
         }
     };
 }

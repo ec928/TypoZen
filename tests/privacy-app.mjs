@@ -16,7 +16,6 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { launchApp, sleep, profileDir } from './app-harness.mjs';
 
@@ -53,17 +52,6 @@ function setFlag(name, on) {
 const read = (f) => { try { return fs.readFileSync(path.join(CACHE, f), 'utf8'); } catch (e) { return ''; } };
 const wipe = () => ['tabs_session.txt', 'bookmarks.txt', 'book_positions.txt', 'recent_files.json', 'debug.log']
     .forEach(f => { try { fs.unlinkSync(path.join(CACHE, f)); } catch (e) {} });
-
-/** Close the window rather than killing it: the cleanup runs in the Closed handler, and
- *  app.close() kills, so a kill measures the crash path and nothing else. */
-function closeGracefully() {
-    try {
-        execFileSync('powershell', ['-NoProfile', '-Command',
-            "Get-Process TypoZen -ErrorAction SilentlyContinue | " +
-            "ForEach-Object { $_.CloseMainWindow() } | Out-Null; Start-Sleep -Seconds 4"],
-            { encoding: 'utf8' });
-    } catch (e) {}
-}
 
 /** Do the things that normally leave traces. */
 async function exercise(app) {
@@ -154,6 +142,22 @@ assert(!savedPrivately, 'Privacy Mode holds autosave off even when autosave is o
 console.log('\n=== an extracted book leaves nothing named behind ===');
 const tempSessions = () => fs.readdirSync(os.tmpdir()).filter(n => /^tz-[0-9a-f]{32}$/.test(n));
 const BOOK = fs.readdirSync(path.join(appDir, 'tests')).find(f => /\.epub$/i.test(f));
+/** Wait for the book model itself, not for launchApp's settle: in a full run that returned
+ *  with 0 blocks, while the same book launched alone had 8571 blocks 3.6s after launch. */
+async function waitForBook(a, timeoutMs) {
+    const t0 = Date.now();
+    let r;
+    do {
+        r = await a.eval(() => ({
+            kind: DocumentModel.kind, blocks: DocumentModel.blocks.length,
+            img: (document.querySelector('#editor img') || {}).src || ''
+        }));
+        if (r.kind === 'epub' && r.blocks > 100) break;
+        await sleep(200);
+    } while (Date.now() - t0 < timeoutMs);
+    r.ms = Date.now() - t0;
+    return r;
+}
 if (!BOOK) {
     info('no .epub in tests/ — skipping the book half');
 } else {
@@ -162,9 +166,9 @@ if (!BOOK) {
     app = await launchApp({ file: 'tests/' + BOOK, settleMs: 12000 });
     let normalDirs = [];
     try {
+        const r = await waitForBook(app, 20000);
         normalDirs = fs.existsSync(BOOKS) ? fs.readdirSync(BOOKS) : [];
-        const r = await app.eval(() => ({ kind: DocumentModel.kind, blocks: DocumentModel.blocks.length }));
-        info('control: ' + JSON.stringify(normalDirs) + ', ' + r.blocks + ' blocks');
+        info('control: ' + JSON.stringify(normalDirs) + ', ' + r.blocks + ' blocks after ' + r.ms + 'ms');
         assert(r.kind === 'epub' && r.blocks > 100, 'control: the book opens');
         assert(normalDirs.length > 0, 'control: extraction lands in the book cache, by name');
     } finally { await app.close(); }
@@ -174,23 +178,25 @@ if (!BOOK) {
     const before = tempSessions().length;
     setFlag('privacyMode', true);
     app = await launchApp({ file: 'tests/' + BOOK, settleMs: 12000 });
+    let closed = false;
     try {
-        const r = await app.eval(() => ({
-            kind: DocumentModel.kind, blocks: DocumentModel.blocks.length,
-            img: (document.querySelector('#editor img') || {}).src || ''
-        }));
+        const r = await waitForBook(app, 20000);
         const during = tempSessions().length;
         const appDirs = fs.existsSync(BOOKS) ? fs.readdirSync(BOOKS) : [];
-        info('privacy: app dirs=' + JSON.stringify(appDirs) + ', temp sessions +' + (during - before));
+        info('privacy: ' + r.blocks + ' blocks after ' + r.ms + 'ms, app dirs=' +
+            JSON.stringify(appDirs) + ', temp sessions +' + (during - before));
         assert(r.kind === 'epub' && r.blocks > 100, 'the book still opens');
         assert(/localbooks/.test(r.img) || r.img === '', 'assets are served from the book host');
         assert(appDirs.length === 0, 'nothing named appears in the book cache');
         assert(during > before, 'a disposable directory holds it while open');
     } finally {
-        closeGracefully();     // the exit path, which is what triggers the cleanup
-        await app.close();
+        // The exit path, which is what triggers the cleanup. app.close() kills, so a kill
+        // would measure the crash path and nothing else.
+        closed = await app.closeGracefully();
     }
-    await sleep(2500);
+    // The control for the next line: without it, a close that never happened reads as a
+    // cleanup that did not run.
+    assert(closed, 'the window closes when asked, rather than being killed');
     assert(tempSessions().length <= before, 'and it is gone once the window closes');
 }
 
