@@ -4110,6 +4110,9 @@ namespace TypoZen
             if (tab == null || string.IsNullOrEmpty(tab.FilePath)) return false;
             if (tab.Kind == DocKind.Book || tab.Kind == DocKind.Native) return false;
             if (tab.FilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)) return false;
+            // A PDF has no text stamp to compare, so it always looked changed: coming back to
+            // the window reloaded it, which stopped Read Aloud and an export mid-page.
+            if (tab.Kind == DocKind.Pdf || IsPdfPath(tab.FilePath)) return false;
             return true;
         }
 
