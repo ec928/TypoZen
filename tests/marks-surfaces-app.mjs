@@ -1,8 +1,8 @@
 /**
  * The surfaces a bookmark is reached through, and the rule they all broke.
  *
- * Bookmarks are set from four places -- the gutter ribbon, the toolbar, the pane button and
- * the keyboard -- and every defect in them so far was the same shape: two things deciding
+ * Bookmarks are set from three places -- the toolbar, the pane button and the keyboard (a
+ * fourth, clicking the margin, was removed on 2026-09-21) -- and every defect in them so far was the same shape: two things deciding
  * one answer. The button asked whether currentReadingBlock() was marked while the action
  * snapped that block to one with ink first, so it described one thing and did another. The
  * label was then computed in renderMarks and again in refreshMarkState, and only one of
@@ -77,7 +77,10 @@ try {
             r.where + ': pressing it did what it said (' + r.said + ')');
     }
 
-    console.log('\n=== the gutter marks the paragraph beside it, and only there ===');
+    // Clicking the margin used to mark the paragraph beside it. That was removed on
+    // 2026-09-21 (f673fc2, "Fix unwanted margin highlight"): it marked paragraphs by accident.
+    // What is checked now is that neither the margin nor the text marks on a click.
+    console.log('\n=== a click beside or in a paragraph does not mark it ===');
     const gutter = await app.eval(async () => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         _marks = []; persistMarks(); await sleep(200);
@@ -96,21 +99,24 @@ try {
         await sleep(400);
         return { mi, afterGutter, afterText: _marks.length, wasN: n };
     });
-    info('clicked the gutter of block ' + gutter.mi + ' -> ' + JSON.stringify(gutter.afterGutter.marks));
-    assert(gutter.afterGutter.marks.includes(gutter.mi), 'the gutter marks that block');
-    assert(gutter.afterGutter.ribbon, 'and the ribbon is painted on it');
+    info('clicked the margin of block ' + gutter.mi + ' -> ' + JSON.stringify(gutter.afterGutter.marks));
+    assert(!gutter.afterGutter.marks.length && !gutter.afterGutter.ribbon, 'a click in the margin does not mark');
     assert(gutter.afterText === gutter.wasN, 'a click in the text does not mark');
 
     console.log('\n=== a ribbon survives the block being unmounted and remounted ===');
-    const remount = await app.eval(async () => {
+    const remount = await app.eval(async (mi) => {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        // Marked the way the toolbar and keyboard mark (the margin click that used to set
+        // this mark is gone, see above).
+        if (!_marks.length) toggleMarkAtBlock(mi);
+        await sleep(300);
         const target = _marks[0].block;
         goToModelBlock(3200); await sleep(1200);   // far enough to unmount it
         const gone = !document.querySelector('[data-model-index="' + target + '"]');
         goToModelBlock(target); await sleep(1500);
         const el = document.querySelector('[data-model-index="' + target + '"]');
         return { target, gone, back: !!el, marked: el ? el.classList.contains('tz-marked') : false };
-    });
+    }, gutter.mi);
     info('block ' + remount.target + ': unmounted=' + remount.gone + ', remounted=' + remount.back);
     assert(remount.back && remount.marked,
         'the ribbon is repainted when the block comes back');
