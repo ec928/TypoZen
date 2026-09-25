@@ -86,6 +86,8 @@ BUILTIN_VOICES = {
     },
 }
 DEFAULT_VOICE = 'northern-english'
+# A voice-print is the speaker encoder's x-vector: this many float32 values.
+VOICE_PRINT_SIZE = 2048
 GROUP_SIZE = 8
 
 # Designing a voice: VoiceDesign turns the description into a speaker reading DESIGN_TEXT
@@ -727,6 +729,71 @@ class Narrator(object):
         log('kept candidate %s as voice %s' % (candidate, vid))
         return vid
 
+    def import_voice(self, path):
+        """A voice saved with Export (a .tzvoice file) or a voice folder, from wherever it is.
+
+        Returns (id, name, already): `already` when the same voice is installed, under any name.
+        Only the files a voice has are read, and each is checked before anything is written: the
+        voice-print must be a plain array of VOICE_PRINT_SIZE finite numbers of a speaker
+        encoder's scale, so a file that merely has the right name is refused rather than loaded.
+        """
+        import io
+        import re
+        import zipfile
+        import numpy as np
+        limits = {'print.npy': 64 << 10, 'meta.json': 64 << 10,
+                  'preview.wav': 20 << 20, 'design.wav': 20 << 20}
+        got = {}
+        if os.path.isdir(path) or os.path.basename(path).lower() in limits:
+            folder = path if os.path.isdir(path) else os.path.dirname(path)
+            for name, cap in limits.items():
+                p = os.path.join(folder, name)
+                if os.path.isfile(p) and os.path.getsize(p) <= cap:
+                    with open(p, 'rb') as f:
+                        got[name] = f.read()
+        else:
+            try:
+                with zipfile.ZipFile(path) as z:
+                    for info in z.infolist():
+                        name = info.filename.replace('\\', '/').split('/')[-1]
+                        if name in limits and info.file_size <= limits[name]:
+                            got[name] = z.read(info)
+            except zipfile.BadZipFile:
+                raise ValueError('this is not a saved TypoZen voice')
+        if 'print.npy' not in got or 'meta.json' not in got:
+            raise ValueError('this is not a saved TypoZen voice (no voice-print in it)')
+        try:
+            raw = np.load(io.BytesIO(got['print.npy']), allow_pickle=False)
+            meta = json.loads(got['meta.json'].decode('utf-8'))
+        except Exception:
+            raise ValueError('this voice is damaged and cannot be read')
+        if (raw.shape != (VOICE_PRINT_SIZE,) or raw.dtype.kind != 'f' or not np.all(np.isfinite(raw))
+                or not 1.0 < float(np.linalg.norm(raw)) < 100.0 or not isinstance(meta, dict)):
+            raise ValueError('this file does not hold a voice this narrator can use')
+        raw = raw.astype(np.float32)
+        digest = hashlib.sha256(raw.tobytes()).hexdigest()
+        for vid, (_, h) in self.prints.items():
+            if h == digest:
+                return vid, self.voice_meta.get(vid, {}).get('name', vid), True
+        name = str(meta.get('name') or os.path.splitext(os.path.basename(path.rstrip('\\/')))[0])
+        name = name.strip()[:60] or 'Voice'
+        slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or 'voice'
+        vid, n = slug, 2
+        while os.path.exists(os.path.join(self.voices_dir, vid)) or vid in BUILTIN_VOICES:
+            vid, n = '%s-%d' % (slug, n), n + 1
+        dst = os.path.join(self.voices_dir, vid)
+        os.makedirs(dst)
+        np.save(os.path.join(dst, 'print.npy'), raw)
+        with open(os.path.join(dst, 'meta.json'), 'w', encoding='utf-8') as f:
+            json.dump({'name': name, 'description': str(meta.get('description') or '')[:2000]}, f)
+        for wav in ('preview.wav', 'design.wav'):
+            if got.get(wav, b'')[:4] == b'RIFF':
+                with open(os.path.join(dst, wav), 'wb') as f:
+                    f.write(got[wav])
+        self.reload_voices()                 # which also copies it to the backup
+        log('imported voice %s' % vid)
+        return vid, name, False
+
     def delete_voice(self, vid):
         """To the Recycle Bin, here and in the backup: restorable, and not brought back by the backup."""
         if vid in BUILTIN_VOICES or vid.startswith('_') or '/' in vid or '\\' in vid:
@@ -833,12 +900,19 @@ class Handler(BaseHTTPRequestHandler):
                 vid = n.keep(body.get('candidate') or '', body.get('name') or '')
                 b = backup_dir()
                 self._send(200, {'id': vid, 'backup': b if b and os.path.isfile(os.path.join(b, vid, 'print.npy')) else ''})
+            elif self.path.startswith('/voices/import'):
+                vid, name, already = n.import_voice(body.get('path') or '')
+                self._send(200, {'id': vid, 'name': name, 'already': already})
             elif self.path.startswith('/voices/delete'):
                 n.delete_voice(body.get('id') or '')
                 self._send(200, {'ok': True})
             elif self.path.startswith('/preview'):
                 path, secs = n.preview(n.known_voice(body.get('voice') or DEFAULT_VOICE), body.get('style') or '')
                 self._send(200, {'file': path, 'seconds': secs})
+        except ValueError as e:
+            # Said to the reader as it stands: "this is not a saved TypoZen voice".
+            log('%s refused: %s' % (self.path, e))
+            self._send(400, {'error': str(e)})
         except Exception as e:
             import traceback
             log('%s FAILED:\n%s' % (self.path, traceback.format_exc()))

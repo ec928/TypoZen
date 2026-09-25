@@ -107,6 +107,13 @@ namespace TypoZen
             var deleteVoice = button("Delete");
             root.Children.Add(row(new UIElement[] { voiceBox, playVoice, deleteVoice }));
             root.Children.Add(voiceDesc);
+            // A designed voice cannot be made again -- the same description gives a different
+            // person -- so it has to be something the reader can keep where they like and bring
+            // back, not only a folder of the extension's they would have to know about.
+            var exportVoice = button("Export...");
+            var importVoice = button("Import...");
+            root.Children.Add(row(new UIElement[] { exportVoice, importVoice }));
+            root.Children.Add(note("Export saves the chosen voice as one .tzvoice file wherever you like; Import brings one back, on this PC or another."));
 
             // ---- style
             root.Children.Add(heading("How the narrator reads"));
@@ -243,11 +250,12 @@ namespace TypoZen
                 var v = voiceBox.SelectedItem as VoiceItem;
                 voiceDesc.Text = v != null ? v.Description : "";
                 deleteVoice.IsEnabled = v != null && !string.IsNullOrEmpty(v.Preview);
+                exportVoice.IsEnabled = deleteVoice.IsEnabled;     // the built-in voice ships with TypoZen
             };
 
             // Anything that needs the narrator goes through here: off the UI thread, with the
             // buttons that would start another such call disabled until it is done.
-            var busyButtons = new List<Button> { playVoice, deleteVoice, previewStyle, design };
+            var busyButtons = new List<Button> { playVoice, deleteVoice, previewStyle, design, importVoice };
             if (findCast != null) busyButtons.Add(findCast);
             // `expect` is the usual time in seconds, shown against a running clock; 0 for none.
             Action<string, double, Action> work = (what, expect, job) =>
@@ -318,6 +326,82 @@ namespace TypoZen
                     QwenNarrator.Call("POST", "/voices/delete", new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "id", id } }), 10000);
                     loadVoices();
                     say("Deleted \"" + v.Name + "\".");
+                });
+            };
+
+            // Export is the voice's own folder in one zip, written aside and moved into place so a
+            // failed write never leaves half a file where the reader chose to keep their voice.
+            exportVoice.Click += (s, e) =>
+            {
+                var v = voiceBox.SelectedItem as VoiceItem;
+                if (v == null || string.IsNullOrEmpty(v.Preview)) return;
+                string dir = System.IO.Path.GetDirectoryName(v.Preview);
+                string file = v.Name;
+                foreach (char c in System.IO.Path.GetInvalidFileNameChars()) file = file.Replace(c, '-');
+                var dlg = new Microsoft.Win32.SaveFileDialog
+                {
+                    Title = "Export voice",
+                    FileName = file + ".tzvoice",
+                    DefaultExt = ".tzvoice",
+                    Filter = "TypoZen voice (*.tzvoice)|*.tzvoice"
+                };
+                if (dlg.ShowDialog(win) != true) return;
+                string target = dlg.FileName, part = target + ".part";
+                try
+                {
+                    if (System.IO.File.Exists(part)) System.IO.File.Delete(part);
+                    using (var z = System.IO.Compression.ZipFile.Open(part, System.IO.Compression.ZipArchiveMode.Create))
+                        foreach (string f in new[] { "print.npy", "meta.json", "preview.wav", "design.wav" })
+                        {
+                            string p = System.IO.Path.Combine(dir, f);
+                            if (System.IO.File.Exists(p)) System.IO.Compression.ZipFileExtensions.CreateEntryFromFile(z, p, f);
+                        }
+                    if (System.IO.File.Exists(target)) System.IO.File.Delete(target);
+                    System.IO.File.Move(part, target);
+                    say("Exported \"" + v.Name + "\" to " + target + ".");
+                }
+                catch (Exception ex)
+                {
+                    try { System.IO.File.Delete(part); } catch { }
+                    say("Could not export the voice: " + ex.Message);
+                }
+            };
+
+            // Import is the narrator's: it checks the voice-print is a real one before keeping it.
+            importVoice.Click += (s, e) =>
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "Import voices",
+                    Multiselect = true,
+                    Filter = "Saved voices (*.tzvoice, or print.npy in a voice folder)|*.tzvoice;print.npy"
+                };
+                if (dlg.ShowDialog(win) != true) return;
+                string[] files = dlg.FileNames;
+                work("Importing...", 0, () =>
+                {
+                    // The narrator's voice is left as it is: selecting what was imported would make
+                    // it the narrator's voice at the next Save, which nobody asked for.
+                    var said = new List<string>();
+                    foreach (string f in files)
+                    {
+                        try
+                        {
+                            var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                                QwenNarrator.Call("POST", "/voices/import", new JavaScriptSerializer().Serialize(
+                                    new Dictionary<string, object> { { "path", f } }), 30000));
+                            string nm = Convert.ToString(d["name"]);
+                            said.Add(d["already"] is bool && (bool)d["already"]
+                                ? "\"" + nm + "\" is already installed"
+                                : "imported \"" + nm + "\"");
+                        }
+                        catch (Exception ex) { said.Add(System.IO.Path.GetFileName(f) + ": " + ex.Message); }
+                    }
+                    loadVoices();
+                    string all = string.Join("; ", said.ToArray());
+                    bool any = said.Exists(x => x.StartsWith("imported"));
+                    say(all.Substring(0, 1).ToUpper() + all.Substring(1) + "."
+                        + (any ? " Choose it in the lists above or below to use it." : ""));
                 });
             };
 
