@@ -45,6 +45,37 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Keyboard shortcuts did nothing while typing — **fixed** (0.5.7)
+
+Ctrl+S, Ctrl+Shift+S, Ctrl+N, Ctrl+O, Ctrl+P and F11 were handled only by `Window.KeyDown`,
+which never sees a key while the editor has focus: the WebView's HWND belongs to the browser
+process, so the key goes to the page and nowhere else. Save therefore worked only after
+clicking outside the text. The page now forwards them (`save_shortcut`, `shortcut:*`) and the
+host runs them on the next dispatcher turn -- called inside the WebView's message callback,
+saving read nothing from the editor and silently wrote nothing. Ctrl+Shift+D also sat on the
+`else` of the Ctrl check, so it could not run at all. Guarded by `save-shortcut-app` (app
+tier). A host-side key filter does **not** fix this; that was tried and measured to do nothing.
+
+### Menus offered what the tab could not do — **fixed** (0.5.7)
+
+On a book or in Reader, Undo/Redo/Cut/Paste/Spelling were live and Insert Table stayed bright
+(the lock list named `tableMenu`, which does not exist; the button is `btnTable`). On a book,
+Save and Save As led to an export that wrote an empty file; both are greyed. On a PDF, image or
+media tab, Save, Save As and Export as HTML are greyed. **Book export to Markdown is broken**
+and is only hidden, not fixed.
+
+### Book links unreadable on dark themes — **fixed** (0.5.6)
+
+Dune's stylesheet sets its contents links `color: blue` (`#0000FF`): about 1.7:1 on a dark
+theme. Links in the editor now take the theme accent. A book link has no `href` when shown
+(06-render-epub.js moves it to `data-book-href`), so a rule on `a[href]` matched none of them
+-- 0.5.5 shipped that and changed nothing.
+
+### Pasting into a line — **fixed** (0.5.5)
+
+A paste lost its own leading and trailing spaces, and `**bold**` pasted into bold text saved as
+unnestable `**a **b** c**`, showing stray asterisks. Guarded by `paste-inline-browser`.
+
 ### A book opened on the other tab's page — **fixed** (0.2.49–0.2.51)
 
 One symptom, three causes, each hidden behind the one before, which is why it survived
