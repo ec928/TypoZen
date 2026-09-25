@@ -1260,25 +1260,25 @@
            page image. Colouring that text drew a second, misaligned copy of the word, and a
            solid fill hid the page's own glyphs -- so here the text stays invisible and the
            fill is a see-through tint over the page. */
-        #pdfView .textLayer span::highlight(typozen-find) {
+        #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-find) {
             color: transparent;
             background-color: rgba(255, 180, 0, 0.30);
         }
-        #pdfView .textLayer span::highlight(typozen-find-current) {
+        #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-find-current) {
             color: transparent;
             background-color: color-mix(in srgb, var(--accent, #f59e0b) 45%, transparent);
         }
         /* The paragraph being read aloud, a mark's highlight, and the wash after jumping to
            a mark (10-pdf.js). The text layer's own text stays invisible; only the fill shows. */
-        #pdfView .textLayer span::highlight(typozen-tts) {
+        #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-tts) {
             color: transparent;
             background-color: color-mix(in srgb, var(--accent, #f59e0b) 18%, transparent);
         }
-        #pdfView .textLayer span::highlight(typozen-pdf-mark) {
+        #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-pdf-mark) {
             color: transparent;
             background-color: color-mix(in srgb, var(--mark-ink, #E8A33D) 30%, transparent);
         }
-        #pdfView .textLayer span::highlight(typozen-pdf-flash) {
+        #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-pdf-flash) {
             color: transparent;
             background-color: color-mix(in srgb, var(--mark-ink, #E8A33D) 40%, transparent);
         }
@@ -2184,6 +2184,30 @@
            a selection landed on the line beneath. Zero specificity, so it only undoes
            that rule. */
         :where(#pdfView) * { box-sizing: content-box; }
+        /* Words recognised on a scanned page (10-pdf.js, Phase 3): invisible over the scan,
+           placed and stretched like PDF.js's own text layer, and selectable. */
+        #pdfView .tzOcrLayer {
+            position: absolute;
+            inset: 0;
+            z-index: 3;
+            line-height: 1;
+            overflow: clip;
+            text-align: initial;
+            forced-color-adjust: none;
+        }
+        #pdfView .tzOcrLayer span {
+            position: absolute;
+            white-space: pre;
+            color: transparent;
+            font-family: sans-serif;
+            transform-origin: 0 0;
+            cursor: text;
+        }
+        #pdfView .tzOcrLayer br { user-select: none; }
+        #pdfView .tzOcrLayer span::selection {
+            color: transparent;
+            background: color-mix(in srgb, #3B82F6 32%, transparent);
+        }
         #pdfView .pdf-problem {
             max-width: 34em;
             margin: 18vh auto 0;

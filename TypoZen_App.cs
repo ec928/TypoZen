@@ -1648,6 +1648,7 @@ namespace TypoZen
             });
             BindClick("mStatusBarToggle", (s, e) => SetStatusBarVisible(!_statusBarVisible));
             BindClick("mPdfThemeColours", (s, e) => SetPdfThemeColours(!_pdfThemeColours));
+            BindClick("mPdfOcr", (s, e) => SetPdfOcr(!_pdfOcr));
             BindClick("mSessionRestoreContent", (s, e) => SetSessionRestoreContent(!_sessionRestoreContent));
             BindClick("mRecentEnabled", (s, e) => SetRecentFilesEnabled(!_recentFilesEnabled));
             BindClick("mClearSearchHistory", (s, e) =>
@@ -5091,7 +5092,7 @@ namespace TypoZen
         /// </summary>
         private sealed class ClearChoices
         {
-            public bool SessionText, OpenTabs, RecentFiles, RecentSearches, PastedImages;
+            public bool SessionText, OpenTabs, RecentFiles, RecentSearches, PastedImages, OcrText;
             public bool WebStorage, ReadingPositions, ExtractedBooks, Bookmarks;
             public bool AddedWords, CustomThemes, Narration, DiagnosticLogs;
         }
@@ -5237,6 +5238,8 @@ namespace TypoZen
             var cbRecent   = add("Recent files list", CountLines(RecentFilesPath()) > 0 ? "" : "empty", true);
             var cbSearch   = add("Recent search queries", null, true);
             var cbImages   = add("Pasted images held in the cache", HumanSize(SizeOfDir(Path.Combine(cache, "assets"))), true);
+            // The words read from scanned PDF pages: document text, so it is offered here.
+            var cbOcr      = add("Text read from scanned PDF pages", HumanSize(SizeOfDir(Path.Combine(cache, "ocr"))), true);
             var cbWeb      = add("Saved web storage", "cleared on next launch", true);
             var cbPos      = add("Reading positions", CountLines(BookPositionsPath()) + " remembered", true);
             var cbBooks    = add("Extracted book data",
@@ -5296,6 +5299,7 @@ namespace TypoZen
                 RecentFiles      = cbRecent.IsChecked == true,
                 RecentSearches   = cbSearch.IsChecked == true,
                 PastedImages     = cbImages.IsChecked == true,
+                OcrText          = cbOcr.IsChecked == true,
                 WebStorage       = cbWeb.IsChecked == true,
                 ReadingPositions = cbPos.IsChecked == true,
                 ExtractedBooks   = cbBooks.IsChecked == true,
@@ -5356,6 +5360,14 @@ namespace TypoZen
                 }
                 catch { }
                 done.Add("pasted images");
+            }
+
+            if (want.OcrText)
+            {
+                try { string ocr = Path.Combine(cache, "ocr"); if (Directory.Exists(ocr)) Directory.Delete(ocr, true); } catch { }
+                try { string ocrP = Path.Combine(PrivateLoadDir(), "ocr"); if (Directory.Exists(ocrP)) Directory.Delete(ocrP, true); } catch { }
+                _pdfContentHashes.Clear();
+                done.Add("text read from scanned pages");
             }
 
             // Reading positions and bookmarks live in their own files and were never
@@ -5620,7 +5632,7 @@ namespace TypoZen
                     "\"blockHover\":{28},\"fontType\":{29},\"fontFamily\":\"{30}\",\"fontSize\":{31}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
-                    "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20},\"dictionary\":\"{32}\",\"pdfThemeColours\":{33}}}",
+                    "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20},\"dictionary\":\"{32}\",\"pdfThemeColours\":{33},\"pdfOcr\":{34}}}",
                     stateStr, w, h, l, t, _zoomFactor,
                     _chromeAutoHide ? "auto" : "always", _wordWrap ? "true" : "false", _statusBarVisible ? "true" : "false",
                     _sessionRestoreContent ? "true" : "false", _recentFilesEnabled ? "true" : "false",
@@ -5637,7 +5649,8 @@ namespace TypoZen
                     _autosave ? "true" : "false", _privacyMode ? "true" : "false",
                     _blockHover, _fontType, _customFontFamily.Replace("\"", "\\\""), _fontSize,
                     (_dictionaryChoice ?? "").Replace("\\", "\\\\").Replace("\"", "\\\""),
-                    _pdfThemeColours ? "true" : "false");
+                    _pdfThemeColours ? "true" : "false",
+                    _pdfOcr ? "true" : "false");
 
                 WriteStateFileAtomic(path, json);
             }
@@ -5751,6 +5764,8 @@ namespace TypoZen
                 if (mSb.Success) _statusBarVisible = mSb.Groups[1].Value == "true";
                 var mPdfTc = Regex.Match(json, @"\""pdfThemeColours\""\s*:\s*(true|false)");
                 if (mPdfTc.Success) _pdfThemeColours = mPdfTc.Groups[1].Value == "true";
+                var mPdfOcr = Regex.Match(json, @"\""pdfOcr\""\s*:\s*(true|false)");
+                if (mPdfOcr.Success) _pdfOcr = mPdfOcr.Groups[1].Value == "true";
                 var mScrub = Regex.Match(json, @"\""scrubber\""\s*:\s*(true|false)");
                 if (mScrub.Success) _scrubberVisible = mScrub.Groups[1].Value == "true";
                 var mLine = Regex.Match(json, @"\""lineSpacing\""\s*:\s*(\d+)");
@@ -6777,6 +6792,13 @@ namespace TypoZen
                 // Out of the WebView's message callback before a modal dialog opens.
                 string info = msg.Substring(16);
                 Dispatcher.BeginInvoke(new Action(() => ShowPdfExportDialog(info)));
+                return;
+            }
+            if (msg.StartsWith("pdf_ocr_status:"))
+            {
+                // "Reading scanned pages 3 of 12", or why they cannot be read (10-pdf.js).
+                string text = msg.Substring(15);
+                if (_lblChapter != null && ActiveIsPdf()) _lblChapter.Text = text;
                 return;
             }
             if (msg.StartsWith("pdf_export_test:"))
@@ -10801,6 +10823,7 @@ namespace TypoZen
                 if (includePageSettings)
                 {
                     SetPdfThemeColours(_pdfThemeColours);
+                    SetPdfOcr(_pdfOcr);
                     SetWordWrap(_wordWrap);
                     SetLineSpacing(_lineSpacing);
                     SetParaSpacing(_paraSpacing);
@@ -14473,6 +14496,11 @@ namespace TypoZen
                     WritePdfExportFile(core, e, rest.Substring(7));
                     return;
                 }
+                if (rest.StartsWith("ocr/", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandleOcrRequest(core, e, rest.Substring(4));
+                    return;
+                }
                 int slash = rest.IndexOf('/');
                 string token = slash > 0 ? rest.Substring(0, slash) : rest;
                 string path;
@@ -14492,6 +14520,168 @@ namespace TypoZen
                 LogFault("serve pdf", ex);
                 try { e.Response = core.Environment.CreateWebResourceResponse(null, 500, "Error", ""); } catch { }
             }
+        }
+
+        // ---- Text in scanned PDF pages (docs/pdf-and-audit-plan.md, Phase 3) ----------------
+        //
+        // A page with no text is drawn by the page and sent here; Windows' own text
+        // recognition (Windows.Media.Ocr, on this computer, in the languages Windows has
+        // installed) returns its words and their boxes, which the page lays over the scan as
+        // its text. See HandleOcrRequest for the three requests. The result the page keeps is
+        // cached per file by content hash -- it is the document's text, so in Privacy Mode it
+        // lives in the session's temp folder, and Clear Stored Data offers to remove it.
+
+        /// <summary>View > Read Text in Scanned PDF Pages. On unless turned off.</summary>
+        private bool _pdfOcr = true;
+
+        private void SetPdfOcr(bool on)
+        {
+            _pdfOcr = on;
+            SetMenuChecked("mPdfOcr", on);
+            SendMsg("pdf_ocr:" + (on ? "1" : "0"));
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
+
+        private string OcrCacheRoot()
+        {
+            return SuppressDocumentTraces() ? Path.Combine(PrivateLoadDir(), "ocr") : Path.Combine(CacheDir(), "ocr");
+        }
+
+        // path|length|write time -> content hash, so a file is read for hashing once.
+        private readonly Dictionary<string, string> _pdfContentHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        private async Task<string> PdfContentHashAsync(string path)
+        {
+            var fi = new FileInfo(path);
+            string key = fi.FullName + "|" + fi.Length + "|" + fi.LastWriteTimeUtc.Ticks;
+            string hash;
+            if (_pdfContentHashes.TryGetValue(key, out hash)) return hash;
+            hash = await Task.Run(() =>
+            {
+                using (var sha = System.Security.Cryptography.SHA256.Create())
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    var b = sha.ComputeHash(fs);
+                    var sb = new StringBuilder();
+                    for (int i = 0; i < 16; i++) sb.Append(b[i].ToString("x2"));
+                    return sb.ToString();
+                }
+            });
+            _pdfContentHashes[key] = hash;
+            return hash;
+        }
+
+        private static Windows.Media.Ocr.OcrEngine _ocrEngine;
+        private static bool _ocrEngineTried;
+
+        /// <summary>Words and boxes as JSON, or null when Windows has no OCR language.</summary>
+        private static async Task<string> RecognizeAsync(byte[] image)
+        {
+            if (!_ocrEngineTried)
+            {
+                _ocrEngineTried = true;
+                try { _ocrEngine = Windows.Media.Ocr.OcrEngine.TryCreateFromUserProfileLanguages(); } catch { _ocrEngine = null; }
+            }
+            if (_ocrEngine == null) return null;
+            var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            var writer = new Windows.Storage.Streams.DataWriter(stream);
+            writer.WriteBytes(image);
+            await writer.StoreAsync();
+            await writer.FlushAsync();
+            writer.DetachStream();
+            stream.Seek(0);
+            var decoder = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream);
+            var bitmap = await decoder.GetSoftwareBitmapAsync();
+            uint max = Windows.Media.Ocr.OcrEngine.MaxImageDimension;
+            if (bitmap.PixelWidth > max || bitmap.PixelHeight > max)
+                throw new InvalidOperationException("the page image is larger than text recognition accepts (" + max + " px)");
+            var result = await _ocrEngine.RecognizeAsync(bitmap);
+            var lines = new List<object>();
+            foreach (var line in result.Lines)
+            {
+                var words = new List<object>();
+                foreach (var w in line.Words)
+                {
+                    var r = w.BoundingRect;
+                    words.Add(new object[] { w.Text, Math.Round(r.X, 1), Math.Round(r.Y, 1), Math.Round(r.Width, 1), Math.Round(r.Height, 1) });
+                }
+                lines.Add(words);
+            }
+            var outp = new Dictionary<string, object>
+            {
+                { "lang", _ocrEngine.RecognizerLanguage != null ? _ocrEngine.RecognizerLanguage.LanguageTag : "" },
+                { "w", bitmap.PixelWidth }, { "h", bitmap.PixelHeight },
+                { "angle", result.TextAngle.HasValue ? result.TextAngle.Value : 0.0 },
+                { "lines", lines }
+            };
+            bitmap.Dispose();
+            return new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(outp);
+        }
+
+        private async void HandleOcrRequest(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, string rest)
+        {
+            Func<int, string, string, CoreWebView2WebResourceResponse> reply = (code, text, json) =>
+                core.Environment.CreateWebResourceResponse(
+                    json == null ? null : new MemoryStream(Encoding.UTF8.GetBytes(json)), code, text,
+                    "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store");
+            CoreWebView2Deferral deferral = null;
+            try
+            {
+                // <token>/<page>            GET: the saved result, or 404
+                // <token>/<page>/recognize    POST a picture: its words (not saved -- the page may
+                //                             try the page turned, and keeps the best)
+                // <token>/<page>/save         POST the result the page chose: saved for next time
+                string[] parts = rest.Split('/');
+                string path;
+                int page;
+                string action = parts.Length == 3 ? parts[2] : "";
+                if (parts.Length < 2 || parts.Length > 3 || !_pdfTokens.TryGetValue(parts[0], out path)
+                    || !int.TryParse(parts[1], out page) || page < 1 || !File.Exists(path)
+                    || (action != "" && action != "recognize" && action != "save"))
+                {
+                    e.Response = reply(404, "Not Found", null);
+                    return;
+                }
+                bool post = string.Equals(e.Request.Method, "POST", StringComparison.OrdinalIgnoreCase);
+                if (post != (action != "")) { e.Response = reply(405, "Method Not Allowed", null); return; }
+                byte[] body = null;
+                if (post)
+                {
+                    if (e.Request.Content == null) { e.Response = reply(400, "Bad Request", null); return; }
+                    using (var ms = new MemoryStream()) { e.Request.Content.CopyTo(ms); body = ms.ToArray(); }
+                }
+                deferral = e.GetDeferral();
+                if (action == "recognize")
+                {
+                    string json = await RecognizeAsync(body);
+                    if (json == null) { e.Response = reply(503, "No OCR language", "{\"error\":\"no-language\"}"); return; }
+                    e.Response = reply(200, "OK", json);
+                    return;
+                }
+                string hash = await PdfContentHashAsync(path);
+                string dir = Path.Combine(OcrCacheRoot(), hash);
+                string file = Path.Combine(dir, "p" + page + ".json");
+                if (action == "save")
+                {
+                    if (body.Length > 8 * 1024 * 1024) { e.Response = reply(413, "Too Large", null); return; }
+                    Directory.CreateDirectory(dir);
+                    File.WriteAllBytes(file, body);
+                    e.Response = reply(200, "OK", "{}");
+                    return;
+                }
+                if (File.Exists(file)) { e.Response = reply(200, "OK", File.ReadAllText(file, Encoding.UTF8)); return; }
+                e.Response = reply(404, "Not Found", null);
+            }
+            catch (Exception ex)
+            {
+                LogFault("pdf ocr", ex);
+                try
+                {
+                    e.Response = reply(500, "Error", "{\"error\":" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(ex.Message) + "}");
+                }
+                catch { }
+            }
+            finally { if (deferral != null) deferral.Complete(); }
         }
 
         // ---- Saving pages and pictures from a PDF (docs/pdf-and-audit-plan.md, Phase 2b) ----

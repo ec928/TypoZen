@@ -110,6 +110,7 @@
         S.findMatches = [];
         S.pendingReveal = false;
         S.blocks = null; S.blocksKey = ''; S.readEl = null; S.flashEl = null; S.textReady = false; S.password = null;
+        S.ocrRun++; S.ocrPages = {}; S.ocrBoxes = {}; S.ocrSize = {}; S.ocrStats = null;
         try { CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch (e) { }
         try { CSS.highlights.delete('typozen-tts'); CSS.highlights.delete('typozen-pdf-flash'); } catch (e) { }
         const host = document.getElementById('pdfView');
@@ -193,7 +194,12 @@
                 postView();
             });
             eventBus.on('pagechanging', (e) => { if (seq === S.seq) reportPage(e.pageNumber); });
-            eventBus.on('textlayerrendered', () => { if (seq === S.seq) onTextLayer(); });
+            eventBus.on('textlayerrendered', (ev) => {
+                if (seq !== S.seq) return;
+                // A scanned page's words go back on before anything paints over them.
+                if (ev && ev.pageNumber && S.ocrPages[ev.pageNumber - 1]) paintOcrLayer(ev.pageNumber - 1);
+                onTextLayer();
+            });
 
             const task = lib.getDocument({
                 url,
@@ -486,6 +492,8 @@
         refreshStats();
         // Marks resolve against the paragraphs now they are all known (02-layout.js).
         try { if (typeof window.tzPdfMarksResolve === 'function') window.tzPdfMarksResolve(); } catch (e) { }
+        // Pages that are pictures of text get their words read (Phase 3).
+        if (seq === S.seq) startOcr();
         // A search typed while the text was still coming in is answered now it is all here.
         try {
             if (typeof findState !== 'undefined' && findState.query && typeof runFind === 'function')
@@ -519,7 +527,7 @@
 
     /** A DOM Range over [start, end) of a page's text, on its text layer; null if not drawn. */
     function rangeOnPage(p, start, end) {
-        const layer = document.querySelector('#pdfView .page[data-page-number="' + (p + 1) + '"] .textLayer');
+        const layer = document.querySelector('#pdfView .page[data-page-number="' + (p + 1) + '"] ' + (S.ocrPages[p] ? '.tzOcrLayer' : '.textLayer'));
         const items = S.pageItems && S.pageItems[p];
         if (!layer || !items) return null;
         const nodes = [];
@@ -639,7 +647,7 @@
     /** Every paragraph of the PDF, as blocks; the same objects until more text arrives. */
     function blocks() {
         const texts = S.pageTexts || [];
-        const key = texts.map(t => (t == null ? '-' : 'y')).join('');
+        const key = texts.map(t => (t == null ? '-' : t.length)).join(',');
         if (S.blocks && S.blocksKey === key) return S.blocks;
         const list = [];
         for (let p = 0; p < texts.length; p++) {
@@ -668,7 +676,8 @@
     function pointOnPage(node, offset) {
         const el = node && (node.nodeType === 1 ? node : node.parentElement);
         const pageEl = el && el.closest ? el.closest('#pdfView .page') : null;
-        const layer = pageEl && pageEl.querySelector('.textLayer');
+        const pn = pageEl ? parseInt(pageEl.getAttribute('data-page-number'), 10) - 1 : -1;
+        const layer = pageEl && pageEl.querySelector(S.ocrPages[pn] ? '.tzOcrLayer' : '.textLayer');
         if (!pageEl || !layer || !layer.contains(node)) return null;
         const p = parseInt(pageEl.getAttribute('data-page-number'), 10) - 1;
         const items = S.pageItems && S.pageItems[p];
@@ -819,6 +828,229 @@
     };
     /** Raw text of every block, for marks' fingerprints. */
     window.tzPdfBlockRaws = function () { return blocks().map(el => el.__pdfRaw); };
+
+    // ---- Text in scanned pages (Phase 3) ------------------------------------------------
+    //
+    // A page whose text has no letters or digits is a picture of a page. Once the PDF's
+    // text is in, such pages are drawn from the export's kind of private copy of the
+    // document and sent to the host, which asks Windows' text recognition for the words
+    // and their boxes (TypoZen_App.cs, HandleOcrRequest; cached per file). The words become
+    // the page's text and items -- so Find, Search, Read Aloud and marks see them like any
+    // other -- and an invisible word layer (.tzOcrLayer) over the scan, which selection,
+    // the popup and every highlight use for that page. On unless View > Read Text in
+    // Scanned PDF Pages is turned off.
+
+    let ocrOn = true;
+    S.ocrPages = {}; S.ocrBoxes = {}; S.ocrSize = {}; S.ocrRun = 0;
+
+    window.tzPdfSetOcr = function (on) {
+        on = !!on;
+        if (on === ocrOn) return;
+        ocrOn = on;
+        if (on) startOcr();
+        else { S.ocrRun++; ocrStatus(''); }          // stop; text already read stays
+    };
+
+    function ocrStatus(text) { try { postMsg('pdf_ocr_status:' + text); } catch (e) { } }
+
+    function needsOcr(p) {
+        const t = S.pageTexts && S.pageTexts[p];
+        return t != null && !S.ocrPages[p] && !/[\p{L}\p{N}]/u.test(t);
+    }
+
+    /**
+     * Page p (0-based) of `doc` as a JPEG for recognition, turned clockwise by `rot` degrees:
+     * about 2600 px on its long side, at most 300 DPI.
+     */
+    async function ocrImage(doc, p, rot) {
+        const page = await doc.getPage(p + 1);
+        const vp1 = page.getViewport({ scale: 1 });
+        const scale = Math.min(300 / 72, 2600 / Math.max(vp1.width, vp1.height));
+        const vp = page.getViewport({ scale, rotation: (page.rotate + (rot || 0)) % 360 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(vp.width);
+        canvas.height = Math.floor(vp.height);
+        await page.render({ canvas, viewport: vp, background: '#ffffff' }).promise;
+        const bytes = await canvasBytes(canvas, true, 92);
+        canvas.width = canvas.height = 0;
+        try { page.cleanup(); } catch (e) { }
+        return { bytes, w: vp1.width, h: vp1.height };
+    }
+
+    /**
+     * How much of what came back is words: letters in words of three letters or more, out of
+     * all letters. A page read sideways comes back as "00 on o o"; a real page mostly as words.
+     */
+    function ocrScore(data) {
+        let all = 0, good = 0;
+        for (const line of (data && data.lines) || []) for (const w of line) {
+            const t = String(w[0]);
+            const letters = (t.match(/\p{L}/gu) || []).length;
+            all += letters;
+            const bare = t.replace(/^[("“‘'\[]+/u, '').replace(/[.,;:!?)"”’'\]]+$/u, '');
+            if (letters >= 3 && /^\p{L}[\p{L}'’-]*\p{L}$/u.test(bare)) good += letters;
+        }
+        return { all, good, ratio: all ? good / all : 0 };
+    }
+
+    /**
+     * The host's words and boxes as page p's text, items and word layer. Boxes are in the
+     * picture the host read, which was the page turned by data.rot degrees; they are mapped
+     * back onto the page, and each word keeps that turn so it lies along the printed line.
+     */
+    function applyOcr(p, data, wPt, hPt) {
+        const rot = ((data.rot || 0) % 360 + 360) % 360;
+        const sideways = rot === 90 || rot === 270;
+        const Wr = sideways ? hPt : wPt, Hr = sideways ? wPt : hPt;   // the turned page, in points
+        const k = Wr / data.w;
+        // A point in the turned picture -> the same point on the page as it is drawn.
+        const back = (u, v) => rot === 90 ? [v, hPt - u] : rot === 180 ? [wPt - u, hPt - v] : rot === 270 ? [wPt - v, u] : [u, v];
+        const lines = (data.lines || []).filter(l => l && l.length);
+        // One height per line, the page's usual one unless the line is clearly bigger (a
+        // heading): word boxes vary with ascenders and descenders, and paragraphs split
+        // on changes of height (paragraphSpans).
+        const heights = lines.map(l => Math.max(...l.map(w => w[2] + w[4])) - Math.min(...l.map(w => w[2]))).sort((a, b) => a - b);
+        const median = heights.length ? heights[heights.length >> 1] : 10;
+        let text = '';
+        const items = [], boxes = [];
+        lines.forEach((line, li) => {
+            if (li) text += '\n';
+            const top = Math.min(...line.map(w => w[2])), bottom = Math.max(...line.map(w => w[2] + w[4]));
+            const lh = (bottom - top) > 1.4 * median ? (bottom - top) : median;
+            line.forEach((w, wi) => {
+                if (wi) text += ' ';
+                const t = String(w[0]);
+                // Paragraphs are worked out in the turned picture's frame, where lines run across.
+                items.push({ start: text.length, len: t.length, y: Hr - bottom * k, h: lh * k });
+                const [x, y] = back(w[1] * k, w[2] * k);
+                boxes.push({ t, x, y, w: w[3] * k, h: w[4] * k, rot, eol: wi === line.length - 1 });
+                text += t;
+            });
+        });
+        S.pageTexts[p] = text;
+        S.pageItems[p] = items;
+        S.ocrBoxes[p] = boxes;
+        S.ocrSize[p] = { w: wPt, h: hPt };
+        S.ocrPages[p] = true;
+        paintOcrLayer(p);
+    }
+
+    let measureCtx = null;
+    /** The invisible words over a scanned page, each stretched to its box like PDF.js's own text layer. */
+    function paintOcrLayer(p) {
+        const boxes = S.ocrBoxes[p], size = S.ocrSize[p];
+        const pageEl = document.querySelector('#pdfView .page[data-page-number="' + (p + 1) + '"]');
+        if (!boxes || !size || !pageEl) return;
+        const old = pageEl.querySelector('.tzOcrLayer');
+        if (old) old.remove();
+        if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+        measureCtx.font = '100px sans-serif';
+        const layer = document.createElement('div');
+        layer.className = 'tzOcrLayer';
+        for (const b of boxes) {
+            const span = document.createElement('span');
+            // The trailing space makes a copied selection read as words; the highlight
+            // offsets never reach it (one span per word, as rangeOnPage counts them).
+            span.textContent = b.t + (b.eol ? '' : ' ');
+            span.style.left = (b.x / size.w * 100) + '%';
+            span.style.top = (b.y / size.h * 100) + '%';
+            span.style.fontSize = 'calc(var(--total-scale-factor, 1) * ' + b.h.toFixed(2) + 'px)';
+            const natural = measureCtx.measureText(b.t).width * b.h / 100;
+            const turn = b.rot ? 'rotate(' + (-b.rot) + 'deg) ' : '';
+            if (natural > 0) span.style.transform = turn + 'scaleX(' + (b.w / natural).toFixed(4) + ')';
+            else if (turn) span.style.transform = turn;
+            layer.appendChild(span);
+            if (b.eol) layer.appendChild(document.createElement('br'));
+        }
+        pageEl.appendChild(layer);
+    }
+
+    async function startOcr() {
+        if (!ocrOn || !S.active || !S.doc || !S.pageTexts || !S.url) return;
+        const n = S.pageTexts.length;
+        const cur = (S.viewer ? S.viewer.currentPageNumber : 1) - 1;
+        const todo = [];
+        for (let i = 0; i < n; i++) { const p = (cur + i) % n; if (needsOcr(p)) todo.push(p); }
+        if (!todo.length) return;
+        const run = ++S.ocrRun, seq = S.seq, url = S.url, password = S.password;
+        const alive = () => run === S.ocrRun && seq === S.seq && S.active;
+        const base = 'https://localpdf/ocr/' + url.slice('https://localpdf/'.length).split('/')[0] + '/';
+        let task = null, doc = null, done = 0, failed = 0, fromCache = 0;
+        S.ocrStats = { todo: todo.length, done: 0, failed: 0, fromCache: 0, ms: [], finished: false };
+        try {
+            for (const p of todo) {
+                if (!alive()) return;
+                ocrStatus('Reading scanned pages: ' + (done + 1) + ' of ' + todo.length);
+                const t0 = performance.now();
+                try {
+                    let data = null;
+                    const res = await fetch(base + (p + 1));
+                    if (res.ok) { data = await res.json(); fromCache++; }
+                    else if (res.status !== 404) throw new Error('status ' + res.status);
+                    else {
+                        if (!doc) {
+                            task = S.lib.getDocument({
+                                url, password: password || undefined,
+                                cMapUrl: BASE + 'cmaps/', cMapPacked: true, standardFontDataUrl: BASE + 'standard_fonts/',
+                                wasmUrl: BASE + 'wasm/', iccUrl: BASE + 'iccs/', isEvalSupported: false, enableXfa: false
+                            });
+                            doc = await task.promise;
+                        }
+                        // Upright first; a page that does not read as words is tried turned --
+                        // scans are often sideways or upside down -- and the best kept.
+                        let best = null, bestScore = null;
+                        for (const rot of [0, 90, 270, 180]) {
+                            const img = await ocrImage(doc, p, rot);
+                            if (!alive()) return;
+                            const r = await fetch(base + (p + 1) + '/recognize', { method: 'POST', body: img.bytes.buffer });
+                            const got = await r.json().catch(() => null);
+                            if (r.status === 503) {
+                                ocrStatus('Scanned pages cannot be read: Windows has no text recognition language installed');
+                                S.ocrStats.error = 'no-language';
+                                return;
+                            }
+                            if (!r.ok || !got) throw new Error((got && got.error) || ('status ' + r.status));
+                            got.rot = rot;
+                            const sc = ocrScore(got);
+                            if (!bestScore || sc.good > bestScore.good) { best = got; bestScore = sc; }
+                            if (sc.ratio >= 0.6 && sc.good >= 6) break;
+                        }
+                        // Nothing that reads as words (a photograph, a blank page): no text, so
+                        // a search or a voice never meets "00 on o o".
+                        if (!bestScore || bestScore.good < 3 || bestScore.ratio < 0.3) best = { w: best ? best.w : 1, h: best ? best.h : 1, rot: 0, lines: [], empty: true };
+                        data = best;
+                        try { await fetch(base + (p + 1) + '/save', { method: 'POST', body: JSON.stringify(data) }); } catch (e) { }
+                    }
+                    if (!alive()) return;
+                    const vp = (await S.doc.getPage(p + 1)).getViewport({ scale: 1 });
+                    applyOcr(p, data, vp.width, vp.height);
+                    rebuildHaystack();
+                    refreshStats();
+                    try {
+                        if (typeof findState !== 'undefined' && findState.query && typeof runFind === 'function')
+                            runFind(findState.query, true, { navigate: false });
+                    } catch (e) { }
+                } catch (e) {
+                    failed++;
+                    (window.__tzOcrTrace = window.__tzOcrTrace || []).push('p' + (p + 1) + ': ' + (e && e.message || e));
+                }
+                done++;
+                S.ocrStats.done = done; S.ocrStats.failed = failed; S.ocrStats.fromCache = fromCache;
+                S.ocrStats.ms.push(Math.round(performance.now() - t0));
+            }
+            // Marks made on recognised text find their paragraphs now it is all here.
+            try { if (typeof window.tzPdfMarksResolve === 'function') window.tzPdfMarksResolve(); } catch (e) { }
+            ocrStatus(failed ? failed + (failed === 1 ? ' scanned page' : ' scanned pages') + ' could not be read' : '');
+        } finally {
+            if (S.ocrStats) S.ocrStats.finished = true;
+            try { if (task) await task.destroy(); } catch (e) { }
+        }
+    }
+
+    /** For tests: how recognition went. */
+    window.tzPdfOcrState = function () {
+        return Object.assign({ pages: Object.keys(S.ocrPages).map(k => +k + 1) }, S.ocrStats || {});
+    };
 
     // ---- Saving pages and pictures as images (Phase 2b) ---------------------------------
     //

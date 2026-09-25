@@ -913,6 +913,11 @@
                     if (typeof window.tzPdfSetThemed === 'function') window.tzPdfSetThemed(msg.substring(18) === '1');
                     return;
                 }
+                else if (msg.startsWith("pdf_ocr:")) {
+                    // View > Read Text in Scanned PDF Pages (10-pdf.js).
+                    if (typeof window.tzPdfSetOcr === 'function') window.tzPdfSetOcr(msg.substring(8) === '1');
+                    return;
+                }
                 else if (msg.startsWith("pdf_export_ask:")) {
                     // File > Save Pages as Images / Save All Images in PDF (10-pdf.js).
                     if (typeof window.tzPdfExportAsk === 'function') window.tzPdfExportAsk(msg.substring(15));

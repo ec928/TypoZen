@@ -2278,7 +2278,7 @@
                     ? r.startContainer : r.startContainer.parentElement;
                 // The document, or a PDF's text layer (10-pdf.js), which is where a PDF's
                 // words can be selected.
-                const onPdf = !!(window.tzPdfActive && host && host.closest && host.closest('#pdfView .textLayer'));
+                const onPdf = !!(window.tzPdfActive && host && host.closest && host.closest('#pdfView .textLayer, #pdfView .tzOcrLayer'));
                 if (!host || !editor || !(editor.contains(host) || onPdf)) { hideSelPop(); return; }
                 rect = r.getBoundingClientRect();
                 if (!rect || (!rect.width && !rect.height)) { hideSelPop(); return; }
