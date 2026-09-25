@@ -2139,11 +2139,15 @@
         }
         /* Books bring their own link colours -- Dune's contents page is pure dark blue --
            which all but vanish on a dark theme. In the editor a link is the theme's link
-           colour, whatever the publisher's stylesheet says. */
-        #editor a[href], #editor a[href] * {
+           colour, whatever the publisher's stylesheet says. A link inside a book has no
+           href by the time it is shown -- 06-render-epub.js moves it to data-book-href so
+           nothing navigates away from the book -- so both forms are named here. */
+        #editor a[href], #editor a[href] *,
+        #editor a[data-book-href], #editor a[data-book-href] * {
             color: var(--accent, #3B82F6) !important;
         }
-        #editor a[href]:hover, #editor a[href]:hover * {
+        #editor a[href]:hover, #editor a[href]:hover *,
+        #editor a[data-book-href]:hover, #editor a[data-book-href]:hover * {
             color: var(--hi, var(--accent, #60A5FA)) !important;
         }
 
