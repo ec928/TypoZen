@@ -111,6 +111,7 @@
         S.pendingReveal = false;
         S.blocks = null; S.blocksKey = ''; S.readEl = null; S.flashEl = null; S.textReady = false; S.password = null;
         S.ocrRun++; S.ocrPages = {}; S.ocrBoxes = {}; S.ocrSize = {}; S.ocrStats = null;
+        S.editMode = 'none'; window.tzPdfEditing = false; S.modified = false;
         try { CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch (e) { }
         try { CSS.highlights.delete('typozen-tts'); CSS.highlights.delete('typozen-pdf-flash'); } catch (e) { }
         const host = document.getElementById('pdfView');
@@ -159,8 +160,17 @@
             if (seq !== S.seq) return;
             // Redrawn in place (a theme change) keeps its password; opened afresh, it asks.
             const knownPassword = (url === S.url) ? S.password : null;
+            // ...and keeps annotations and form entries not yet saved: reopened from the PDF
+            // as it stands, not from the file.
+            let keepBytes = null;
+            try {
+                if (url === S.url && S.doc && (S.modified || S.editedCopy))
+                    keepBytes = await S.doc.saveDocument();
+            } catch (e) { keepBytes = null; }
+            if (seq !== S.seq) return;
             teardown();
             S.password = knownPassword;
+            S.editedCopy = !!keepBytes;
             // Empty the editor's document first. It stays in the page, hidden, and without
             // this still held the previous document: the status bar counted its words, and
             // Read Aloud or Bookmark This Page acted on text that was not on screen. From a
@@ -182,12 +192,28 @@
                 eventBus, linkService, findController,
                 pageColors: themePageColors(),
                 annotationMode: lib.AnnotationMode.ENABLE_FORMS,
+                // The highlight tool's colours, PDF.js's own defaults. Its app supplies these;
+                // without them making a highlight threw (the colour's name is looked up here).
+                annotationEditorHighlightColors: 'yellow=#FFFF98,green=#53FFBC,blue=#80EBFF,pink=#FFCBE6,red=#FF4F5F',
                 removePageBorders: false
             });
             linkService.setViewer(viewer);
             Object.assign(S, { eventBus, linkService, findController, viewer, url });
 
             eventBus.on('scalechanging', (ev) => { if (seq === S.seq) postZoom(ev && ev.scale); });
+            // PDF.js's editor asks for a change of tool itself (highlighting a selection from
+            // reading mode, say); in its own app the app answers, so here the page does.
+            // (PDF.js 6 asks with showannotationeditorui; older builds with switchannotationeditormode.)
+            const answerMode = (ev) => { if (seq === S.seq && ev && ev.mode != null) { try { viewer.annotationEditorMode = { mode: ev.mode, editId: ev.editId, isFromKeyboard: ev.isFromKeyboard, mustEnterInEditMode: ev.mustEnterInEditMode, editComment: ev.editComment }; } catch (e) { } } };
+            eventBus.on('showannotationeditorui', answerMode);
+            eventBus.on('switchannotationeditormode', answerMode);
+            eventBus.on('annotationeditormodechanged', (ev) => {
+                if (seq !== S.seq || !ev) return;
+                const name = Object.keys(EDIT_MODES).find(k => EDIT_MODES[k] === ev.mode) || 'none';
+                S.editMode = name;
+                window.tzPdfEditing = name !== 'none';
+                try { postMsg('pdf_edit_mode:' + name); } catch (e) { }
+            });
             eventBus.on('pagesinit', () => {
                 applyView();
                 if (page > 1) viewer.currentPageNumber = Math.min(page, viewer.pagesCount);
@@ -202,7 +228,8 @@
             });
 
             const task = lib.getDocument({
-                url,
+                url: keepBytes ? undefined : url,
+                data: keepBytes || undefined,
                 password: knownPassword || undefined,
                 cMapUrl: BASE + 'cmaps/', cMapPacked: true,
                 standardFontDataUrl: BASE + 'standard_fonts/',
@@ -235,6 +262,7 @@
             }
             if (seq !== S.seq) { try { doc.destroy(); } catch (e) { } return; }
             S.doc = doc;
+            watchEdits(doc);
             viewer.setDocument(doc);
             linkService.setDocument(doc, null);
             try { host.focus({ preventScroll: true }); } catch (e) { }
@@ -445,6 +473,8 @@
         return S.viewer ? {
             pages: S.viewer.pagesCount, page: S.viewer.currentPageNumber, url: S.url,
             textPages: S.pageTexts ? S.pageTexts.filter(t => t != null).length : 0,
+            modified: !!S.modified,
+            editMode: S.editMode,
             outline: S.outline ? S.outline.length : 0
         } : null;
     };
@@ -1050,6 +1080,115 @@
     /** For tests: how recognition went. */
     window.tzPdfOcrState = function () {
         return Object.assign({ pages: Object.keys(S.ocrPages).map(k => +k + 1) }, S.ocrStats || {});
+    };
+
+    // ---- Annotating and filling in, and saving back to a file (Phase 4) -----------------
+    //
+    // PDF.js's own annotation editor, switched by Edit > Annotate PDF in the host: highlight,
+    // text, drawing and pictures; form fields are filled in place (annotationMode
+    // ENABLE_FORMS). What changes is held by the document's annotationStorage until saved;
+    // saveDocument() writes the PDF with it all in. The host decides where a save goes and
+    // receives the bytes as a POST to https://localpdf/write/<job> (TypoZen_App.cs,
+    // SavePdfTab / StashActivePdf).
+
+    const EDIT_MODES = { none: 0, text: 3, highlight: 9, picture: 13, draw: 15 };
+    S.editMode = 'none';
+
+    function watchEdits(doc) {
+        try {
+            // Unsaved changes: the host marks the tab and guards closing it.
+            // (AnnotationStorage keeps its own flag private, so the page keeps one too.)
+            doc.annotationStorage.onSetModified = () => { if (S.doc === doc) S.modified = true; try { postMsg('pdf_modified:1'); } catch (e) { } };
+            doc.annotationStorage.onResetModified = () => { if (S.doc === doc) S.modified = false; try { postMsg('pdf_modified:0'); } catch (e) { } };
+        } catch (e) { }
+    }
+
+    /** Edit > Annotate PDF: "highlight", "text", "draw", "picture", or "none" to read again. */
+    window.tzPdfEditMode = function (name) {
+        const v = S.viewer;
+        if (!S.active || !v) return;
+        const mode = EDIT_MODES[name] != null ? EDIT_MODES[name] : 0;
+        S.editMode = mode ? name : 'none';
+        window.tzPdfEditing = !!mode;
+        try { if (typeof hideSelPop === 'function') hideSelPop(); } catch (e) { }
+        try { v.annotationEditorMode = { mode }; } catch (e) { }
+        if (name === 'picture') {
+            // A picture is placed at once: PDF.js asks for the image file itself.
+            const add = () => { try { S.eventBus.dispatch('switchannotationeditorparams', { source: null, type: 2 /* CREATE */, value: true }); } catch (e) { } };
+            const once = (ev) => { if (ev && ev.mode === mode) { S.eventBus.off('annotationeditormodechanged', once); add(); } };
+            S.eventBus.on('annotationeditormodechanged', once);
+        }
+        try { postMsg('pdf_edit_mode:' + S.editMode); } catch (e) { }
+    };
+
+    /** Undo, redo, delete, selectAll in the annotation editor (Edit menu). */
+    window.tzPdfEditAction = function (name) {
+        try { S.eventBus.dispatch('editingaction', { source: null, name }); } catch (e) { }
+    };
+
+    /**
+     * Write the PDF with its changes to the host at `url`. The host polls window.__tzPdfSave
+     * ('busy', 'ok' or 'error:...') while it waits, so a save is synchronous for it.
+     */
+    window.tzPdfSaveTo = async function (url) {
+        window.__tzPdfSave = 'busy';
+        try {
+            if (!S.active || !S.doc) throw new Error('the PDF is not open');
+            await commitEdits();
+            const bytes = await S.doc.saveDocument();
+            const res = await fetch(url, { method: 'POST', body: bytes.buffer.byteLength === bytes.length ? bytes.buffer : bytes.slice().buffer });
+            if (!res.ok) throw new Error('the host refused it (' + res.status + ')');
+            // "ok-clean": written, but nothing had changed after all (a tool picked up and
+            // put down) -- the host need not keep it as unsaved work.
+            window.__tzPdfSave = (S.modified || S.editedCopy) ? 'ok' : 'ok-clean';
+        } catch (e) {
+            window.__tzPdfSave = 'error:' + (e && e.message ? e.message : e);
+        }
+    };
+
+    /**
+     * Finish whatever is being edited, so it is in the document: a text box being typed in
+     * is committed by losing focus, and a drawing only becomes an annotation when its
+     * drawing session ends -- which is when the tool is put down.
+     */
+    async function commitEdits() {
+        try { const ae = document.activeElement; if (ae && document.getElementById('pdfView').contains(ae)) ae.blur(); } catch (e) { }
+        if (S.editMode !== 'none' && S.viewer && S.eventBus) {
+            await new Promise((resolve) => {
+                const t = setTimeout(done, 2000);
+                function done() { clearTimeout(t); try { S.eventBus.off('annotationeditormodechanged', once); } catch (e) { } resolve(); }
+                function once(ev) { if (ev && ev.mode === 0) done(); }
+                S.eventBus.on('annotationeditormodechanged', once);
+                try { S.viewer.annotationEditorMode = { mode: 0 }; } catch (e) { done(); }
+            });
+        }
+        await new Promise(r => setTimeout(r, 30));
+    }
+
+    /**
+     * For the host before any tab change: is there anything that must be kept? Changes made,
+     * a copy carrying unsaved ones, or a tool in hand whose work may not be committed yet.
+     */
+    window.tzPdfPending = function () {
+        if (!S.active || !S.doc) return '0';
+        return (S.modified || S.editedCopy || S.editMode !== 'none') ? '1' : '0';
+    };
+
+    // A stroke drawn is a change straight away, though PDF.js only commits the drawing when
+    // the tool is put down: otherwise Save stayed greyed after drawing.
+    try {
+        document.addEventListener('pointerup', (e) => {
+            if (S.active && S.editMode === 'draw' && e.target && e.target.closest && e.target.closest('#pdfView')) {
+                try { postMsg('pdf_modified:1'); } catch (x) { }
+            }
+        }, true);
+    } catch (e) { }
+
+    /** Saved to a file: the PDF on screen is now that file, with nothing unsaved. */
+    window.tzPdfSaved = function (url) {
+        if (url) S.url = url;
+        S.editedCopy = false;
+        try { S.doc.annotationStorage.resetModified(); } catch (e) { }
     };
 
     // ---- Saving pages and pictures as images (Phase 2b) ---------------------------------

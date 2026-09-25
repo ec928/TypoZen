@@ -913,6 +913,15 @@
                     if (typeof window.tzPdfSetThemed === 'function') window.tzPdfSetThemed(msg.substring(18) === '1');
                     return;
                 }
+                else if (msg.startsWith("pdf_edit_mode:")) {
+                    // Edit > Annotate PDF (10-pdf.js).
+                    if (typeof window.tzPdfEditMode === 'function') window.tzPdfEditMode(msg.substring(14));
+                    return;
+                }
+                else if (msg.startsWith("pdf_saved:")) {
+                    if (typeof window.tzPdfSaved === 'function') window.tzPdfSaved(msg.substring(10));
+                    return;
+                }
                 else if (msg.startsWith("pdf_ocr:")) {
                     // View > Read Text in Scanned PDF Pages (10-pdf.js).
                     if (typeof window.tzPdfSetOcr === 'function') window.tzPdfSetOcr(msg.substring(8) === '1');
@@ -2224,7 +2233,9 @@
                 postViewFlags();
                 scheduleSavePreferences();
             }
-            if (cmd === "undo") { if (typeof HistoryManager !== 'undefined') HistoryManager.undo(); else document.execCommand('undo'); }
+            // On a PDF, Undo and Redo are the annotation editor's (10-pdf.js).
+            if ((cmd === "undo" || cmd === "redo") && window.tzPdfActive && typeof window.tzPdfEditAction === 'function') window.tzPdfEditAction(cmd);
+            else if (cmd === "undo") { if (typeof HistoryManager !== 'undefined') HistoryManager.undo(); else document.execCommand('undo'); }
             else if (cmd === "redo") { if (typeof HistoryManager !== 'undefined') HistoryManager.redo(); else document.execCommand('redo'); }
             else if (cmd === "cut") { document.execCommand('cut'); }
             else if (cmd === "copy") { document.execCommand('copy'); }

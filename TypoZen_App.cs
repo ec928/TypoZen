@@ -710,12 +710,21 @@ namespace TypoZen
             public long DiskLength = -1;
             public int DiskFingerprint;
             public bool DiskConflict; // dirty + disk newer; prompt when the tab is shown
+            /// <summary>
+            /// A PDF with annotations or form entries not yet saved (Phase 4). Separate from
+            /// IsDirty, which every read-only rule forces false for a PDF.
+            /// </summary>
+            public bool PdfEdited;
+            /// <summary>The PDF with its unsaved changes, kept while another tab is shown.</summary>
+            public string PdfStashPath;
+            /// <summary>A PDF this tab saved this session: Save goes straight back to it.</summary>
+            public string PdfSavedPath;
             public string Title
             {
                 get
                 {
                     string name = string.IsNullOrEmpty(FilePath) ? "Untitled.md" : Path.GetFileName(FilePath);
-                    return IsDirty ? name + " *" : name;
+                    return (IsDirty || PdfEdited) ? name + " *" : name;
                 }
             }
         }
@@ -1530,6 +1539,11 @@ namespace TypoZen
             BindClick("mExportHtml", (s, e) => SendMsg("export_html"));
             BindClick("mExportPdf", (s, e) => ExportPdf());
             BindClick("mOpenExternal", (s, e) => OpenInDefaultApp());
+            BindClick("mAnnHighlight", (s, e) => SetPdfEditMode("highlight"));
+            BindClick("mAnnText", (s, e) => SetPdfEditMode("text"));
+            BindClick("mAnnDraw", (s, e) => SetPdfEditMode("draw"));
+            BindClick("mAnnPicture", (s, e) => SetPdfEditMode("picture"));
+            BindClick("mAnnStop", (s, e) => SetPdfEditMode("none"));
             BindClick("mSavePdfPages", (s, e) => AskPdfExport("pages"));
             BindClick("mSavePdfImages", (s, e) => AskPdfExport("images"));
             BindClick("mExit", (s, e) => this.Close());
@@ -2939,6 +2953,9 @@ namespace TypoZen
             var list = new List<DocTab>();
             for (int i = 0; i < _tabs.Count; i++)
             {
+                // A PDF with unsaved annotations or form entries is the one read-only kind
+                // with something to write back.
+                if (_tabs[i] != null && IsPdfTab(_tabs[i]) && _tabs[i].PdfEdited) { list.Add(_tabs[i]); continue; }
                 if (_tabs[i] == null || !_tabs[i].IsDirty) continue;
                 // Books and native files cannot be dirty: read-only, nothing to write back.
                 if (IsReadOnlyTab(_tabs[i]))
@@ -3081,6 +3098,8 @@ namespace TypoZen
         private bool SaveTabNow(DocTab tab, bool forceSaveAs)
         {
             if (tab == null) return false;
+            // A PDF saves its annotations and form entries into a PDF (Phase 4).
+            if (IsPdfTab(tab)) return SavePdfTab(tab, forceSaveAs);
 
             string path = tab.FilePath;
 
@@ -4047,6 +4066,7 @@ namespace TypoZen
         private void DiscardTabEdits(DocTab tab)
         {
             if (tab == null) return;
+            if (IsPdfTab(tab)) { DiscardPdfEdits(tab); return; }
             if (!string.IsNullOrEmpty(tab.FilePath) && File.Exists(tab.FilePath))
             {
                 try
@@ -6792,6 +6812,34 @@ namespace TypoZen
                 // Out of the WebView's message callback before a modal dialog opens.
                 string info = msg.Substring(16);
                 Dispatcher.BeginInvoke(new Action(() => ShowPdfExportDialog(info)));
+                return;
+            }
+            if (msg.StartsWith("pdf_modified:"))
+            {
+                // The first annotation or form entry since opening or saving (10-pdf.js).
+                if (_tabOpInProgress || msg.Substring(13) != "1" || !ActiveIsPdf()) return;
+                var edited = _tabs[_activeTabIndex];
+                _pdfStashStale = true;
+                if (!edited.PdfEdited)
+                {
+                    edited.PdfEdited = true;
+                    RebuildTabStrip();
+                    UpdateStatusDisplay();
+                    RefreshEditingAvailability();
+                }
+                return;
+            }
+            if (msg.StartsWith("pdf_edit_mode:"))
+            {
+                _pdfEditMode = msg.Substring(14);
+                SetAnnotateChecks(_pdfEditMode);
+                return;
+            }
+            if (msg.StartsWith("pdf_save_test:"))
+            {
+                // Not inline: the save waits on the page, which cannot answer until this returns.
+                string p = msg.Substring(14);
+                Dispatcher.BeginInvoke(new Action(() => SavePdfForTest(p)), DispatcherPriority.Normal);
                 return;
             }
             if (msg.StartsWith("pdf_ocr_status:"))
@@ -9676,6 +9724,17 @@ namespace TypoZen
                     SetControlLocked(c, !editable);
                     c.ToolTip = editable ? _formatTips[name] : why;
                 }
+                // On a PDF, Undo and Redo are the annotation editor's (10-pdf.js).
+                if (ActiveIsPdf())
+                {
+                    foreach (string name in new[] { "mUndo", "mRedo" })
+                    {
+                        var c = FindElement(name) as Control;
+                        if (c == null) continue;
+                        SetControlLocked(c, false);
+                        if (_formatTips.ContainsKey(name)) c.ToolTip = _formatTips[name];
+                    }
+                }
                 // Nothing to replace in a read-only document, so the item says what it does.
                 var find = FindElement("mFind") as MenuItem;
                 if (find != null) find.Header = editable ? "_Find & Replace..." : "_Find...";
@@ -9699,15 +9758,22 @@ namespace TypoZen
             {
                 bool native, book;
                 ActiveDocumentKind(out native, out book);
+                bool pdfTab = ActiveIsPdf();
                 string why = native ? "This file is read-only" : "A book is read-only";
-                LockWithTip("mSave", native || book, why);
-                LockWithTip("mSaveAs", native || book, why);
+                // A PDF saves its annotations and form entries: Save once there are some,
+                // Save As (a copy) always.
+                LockWithTip("mSave", native || (book && !(pdfTab && ActivePdfEdited())),
+                    pdfTab ? "Nothing changed in this PDF yet" : why);
+                LockWithTip("mSaveAs", native || (book && !pdfTab), why);
                 LockWithTip("mExportHtml", native, why);
                 LockWithTip("mOpenExternal", string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath),
                     "This document has not been saved to a file yet");
-                bool pdfTab = ActiveIsPdf();
                 LockWithTip("mSavePdfPages", !pdfTab, "Only for a PDF");
                 LockWithTip("mSavePdfImages", !pdfTab, "Only for a PDF");
+                var ann = FindElement("menuAnnotate") as UIElement;
+                if (ann != null) ann.Visibility = pdfTab ? Visibility.Visible : Visibility.Collapsed;
+                var annSep = FindElement("sepAnnotate") as UIElement;
+                if (annSep != null) annSep.Visibility = pdfTab ? Visibility.Visible : Visibility.Collapsed;
             }
             catch { }
         }
@@ -11320,6 +11386,17 @@ namespace TypoZen
             bool activeIsNative = IsNativeTab(activeTab)
                 || IsNativePath(_currentFilePath)
                 || IsNativePath(activeTab.FilePath);
+            // A PDF's unsaved annotations live in the page's PDF.js, which the next document
+            // replaces: keep them in a file first, as a document's unsaved text is kept in
+            // its tab. Failing that, the tab operation does not go ahead.
+            // Asked of the page, not only taken from pdf_modified: a text box being typed in
+            // or a drawing not yet finished has not reported itself yet.
+            if (IsPdfTab(activeTab) && _scriptBlockDepth == 0)
+            {
+                bool pending = (activeTab.PdfEdited && _pdfStashStale)
+                    || ExecuteScriptBlocking("(function(){ try { return window.tzPdfPending ? window.tzPdfPending() : '0'; } catch (e) { return '0'; } })()", 1500) == "1";
+                if (pending && !StashActivePdf(activeTab)) return false;
+            }
             if (activeIsBook || activeIsNative)
             {
                 if (!string.IsNullOrEmpty(_currentFilePath)) activeTab.FilePath = _currentFilePath;
@@ -13878,6 +13955,19 @@ namespace TypoZen
             }
 
             var tab = _tabs[index];
+            // A PDF with unsaved annotations or form entries asks, like a document.
+            if (IsPdfTab(tab) && tab.PdfEdited)
+            {
+                var pres = WinForms.MessageBox.Show(
+                    "Save your changes to " + Path.GetFileName(tab.FilePath) + "?\n\n" +
+                    "They are saved as a new PDF unless you choose the original.",
+                    "Unsaved Changes",
+                    WinForms.MessageBoxButtons.YesNoCancel,
+                    WinForms.MessageBoxIcon.Warning);
+                if (pres == WinForms.DialogResult.Cancel) return;
+                if (pres == WinForms.DialogResult.Yes && !SavePdfTab(tab, false)) return;
+                if (pres == WinForms.DialogResult.No) DiscardPdfEdits(tab);
+            }
             // Books and native files are read-only. Never offer Save on close.
             if (IsReadOnlyTab(tab))
             {
@@ -14501,6 +14591,11 @@ namespace TypoZen
                     HandleOcrRequest(core, e, rest.Substring(4));
                     return;
                 }
+                if (rest.StartsWith("write/", StringComparison.OrdinalIgnoreCase))
+                {
+                    WritePdfJob(core, e, rest.Substring(6));
+                    return;
+                }
                 int slash = rest.IndexOf('/');
                 string token = slash > 0 ? rest.Substring(0, slash) : rest;
                 string path;
@@ -14520,6 +14615,284 @@ namespace TypoZen
                 LogFault("serve pdf", ex);
                 try { e.Response = core.Environment.CreateWebResourceResponse(null, 500, "Error", ""); } catch { }
             }
+        }
+
+        // ---- Annotating a PDF and saving it (docs/pdf-and-audit-plan.md, Phase 4) -----------
+        //
+        // The annotations and form entries live in the page's PDF.js until saved. The page
+        // reports the first change (pdf_modified:1) and the tab counts as unsaved (PdfEdited,
+        // separate from IsDirty, which every read-only rule forces false for a PDF). Saving
+        // asks the page to write the PDF with its changes to https://localpdf/write/<job>,
+        // where WritePdfJob puts it, atomically, at the path that job was given. Leaving the
+        // tab stashes the same way into a temp file, and coming back reopens from it.
+        //
+        // Save writes a new file by default -- "<name>-annotated.pdf" -- and overwriting the
+        // original is the reader's explicit choice in the Save dialog. Autosave never writes a
+        // PDF: it only ever looks at IsDirty.
+
+        private bool _pdfStashStale;
+        private readonly Dictionary<string, string> _pdfWriteJobs = new Dictionary<string, string>();
+
+        private bool ActivePdfEdited()
+        {
+            return _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                && IsPdfTab(_tabs[_activeTabIndex]) && _tabs[_activeTabIndex].PdfEdited;
+        }
+
+        /// <summary>Tick the Annotate PDF item for the page's current tool.</summary>
+        private void SetAnnotateChecks(string mode)
+        {
+            SetMenuChecked("mAnnHighlight", mode == "highlight");
+            SetMenuChecked("mAnnText", mode == "text");
+            SetMenuChecked("mAnnDraw", mode == "draw");
+        }
+
+        private string _pdfEditMode = "none";
+
+        /// <summary>Choosing the tool already in use puts it down again.</summary>
+        private void SetPdfEditMode(string mode)
+        {
+            if (!ActiveIsPdf()) return;
+            if (mode != "picture" && mode == _pdfEditMode) mode = "none";
+            SendMsg("pdf_edit_mode:" + mode);
+            SetAnnotateChecks(mode);
+        }
+
+        /// <summary>Let the dispatcher run for a while (for waits that poll the page).</summary>
+        private void PumpFor(int ms)
+        {
+            var frame = new DispatcherFrame();
+            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ms) };
+            t.Tick += (s, e) => { t.Stop(); frame.Continue = false; };
+            t.Start();
+            Dispatcher.PushFrame(frame);
+        }
+
+        /// <summary>
+        /// Have the page write the PDF on screen, with its changes, to `target`, and wait for
+        /// it. The bytes come back through WritePdfJob while this pumps.
+        /// </summary>
+        private bool WriteActivePdfTo(string target, int timeoutMs, out string error)
+        {
+            bool clean;
+            return WriteActivePdfTo(target, timeoutMs, out error, out clean);
+        }
+
+        /// <summary>`clean`: written, but nothing had actually changed.</summary>
+        private bool WriteActivePdfTo(string target, int timeoutMs, out string error, out bool clean)
+        {
+            error = null;
+            clean = false;
+            string job = Guid.NewGuid().ToString("N");
+            _pdfWriteJobs[job] = target;
+            try
+            {
+                string started = ExecuteScriptBlocking(
+                    "(function(){ if (typeof window.tzPdfSaveTo !== 'function') return 'no';" +
+                    " window.tzPdfSaveTo('" + PdfHost + "write/" + job + "'); return 'started'; })()", 3000);
+                if (started != "started") { error = "the PDF is not ready"; return false; }
+                var sw = Stopwatch.StartNew();
+                while (sw.ElapsedMilliseconds < timeoutMs)
+                {
+                    PumpFor(80);
+                    string st = ExecuteScriptBlocking("String(window.__tzPdfSave || '')", 2000) ?? "";
+                    if (st == "ok") return true;
+                    if (st == "ok-clean") { clean = true; return true; }
+                    if (st.StartsWith("error:")) { error = st.Substring(6); return false; }
+                }
+                error = "it took longer than " + (timeoutMs / 1000) + " seconds";
+                return false;
+            }
+            finally { _pdfWriteJobs.Remove(job); }
+        }
+
+        /// <summary>A PDF the page is handing over for a save or a stash: written atomically.</summary>
+        private void WritePdfJob(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, string job)
+        {
+            Func<int, string, CoreWebView2WebResourceResponse> reply = (code, text) =>
+                core.Environment.CreateWebResourceResponse(null, code, text,
+                    "Access-Control-Allow-Origin: *\r\nCache-Control: no-store");
+            string target;
+            if (!string.Equals(e.Request.Method, "POST", StringComparison.OrdinalIgnoreCase)
+                || !_pdfWriteJobs.TryGetValue(job ?? "", out target) || e.Request.Content == null)
+            {
+                e.Response = reply(403, "Forbidden");
+                return;
+            }
+            string tmp = null;
+            try
+            {
+                // Beside the target, so the swap is a rename on one volume; never over the
+                // original until the whole new file is on disk.
+                tmp = Path.Combine(Path.GetDirectoryName(target), "." + Path.GetFileName(target) + "." + job + ".tmp");
+                using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write))
+                    e.Request.Content.CopyTo(fs);
+                if (new FileInfo(tmp).Length < 8) throw new IOException("the PDF came back empty");
+                if (File.Exists(target)) File.Replace(tmp, target, null);
+                else File.Move(tmp, target);
+                tmp = null;
+                e.Response = reply(200, "OK");
+            }
+            catch (Exception ex)
+            {
+                LogFault("pdf write", ex);
+                try { e.Response = reply(500, "Error"); } catch { }
+            }
+            finally
+            {
+                if (tmp != null) try { File.Delete(tmp); } catch { }
+            }
+        }
+
+        private static bool CopyFileAtomic(string from, string to, out string error)
+        {
+            error = null;
+            string tmp = Path.Combine(Path.GetDirectoryName(to), "." + Path.GetFileName(to) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+            try
+            {
+                File.Copy(from, tmp);
+                if (File.Exists(to)) File.Replace(tmp, to, null);
+                else File.Move(tmp, to);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+                return false;
+            }
+        }
+
+        /// <summary>Keep the active PDF's unsaved changes in a temp file before it is replaced.</summary>
+        private bool StashActivePdf(DocTab tab)
+        {
+            string dir = Path.Combine(PrivateLoadDir(), "pdf-edits");
+            try { Directory.CreateDirectory(dir); } catch { }
+            string path = Path.Combine(dir, "tab" + tab.Id + ".pdf");
+            string error;
+            bool clean;
+            if (!WriteActivePdfTo(path, 30000, out error, out clean))
+            {
+                if (!_e2eMode)
+                    WinForms.MessageBox.Show(
+                        "Your unsaved changes to " + Path.GetFileName(tab.FilePath) + " could not be kept (" + error + ").\n\n" +
+                        "Stay on it and save them with File > Save As first.",
+                        "Unsaved changes", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                return false;
+            }
+            _pdfStashStale = false;
+            if (clean && !tab.PdfEdited)
+            {
+                // A tool was in hand, but nothing was made with it: nothing to keep.
+                try { File.Delete(path); } catch { }
+                return true;
+            }
+            tab.PdfStashPath = path;
+            if (!tab.PdfEdited)
+            {
+                // Work the page had not reported yet (a text box, a drawing): unsaved now.
+                tab.PdfEdited = true;
+                RebuildTabStrip();
+            }
+            return true;
+        }
+
+        private void DiscardPdfEdits(DocTab tab)
+        {
+            if (tab == null) return;
+            tab.PdfEdited = false;
+            if (!string.IsNullOrEmpty(tab.PdfStashPath)) { try { File.Delete(tab.PdfStashPath); } catch { } }
+            tab.PdfStashPath = null;
+        }
+
+        /// <summary>
+        /// Save a PDF's annotations and form entries. The first save of a file goes to a new
+        /// file (the Save dialog suggests "<name>-annotated.pdf"); later saves go straight
+        /// back to the file this tab saved. Choosing the original in the dialog overwrites it
+        /// -- the dialog asks first -- and the write is atomic.
+        /// </summary>
+        private bool SavePdfTab(DocTab tab, bool saveAs)
+        {
+            if (tab == null || string.IsNullOrEmpty(tab.FilePath)) return false;
+            bool active = _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && _tabs[_activeTabIndex] == tab;
+            if (!tab.PdfEdited && !saveAs) return true;               // nothing to write
+            if (!active && tab.PdfEdited && (string.IsNullOrEmpty(tab.PdfStashPath) || !File.Exists(tab.PdfStashPath)))
+            {
+                WinForms.MessageBox.Show("The changes to " + Path.GetFileName(tab.FilePath) + " are no longer available to save.",
+                    "Save", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                return false;
+            }
+            string target = null;
+            if (!saveAs && !string.IsNullOrEmpty(tab.PdfSavedPath)
+                && string.Equals(tab.PdfSavedPath, tab.FilePath, StringComparison.OrdinalIgnoreCase))
+                target = tab.FilePath;
+            if (target == null)
+            {
+                using (var dlg = new WinForms.SaveFileDialog())
+                {
+                    dlg.Filter = "PDF (*.pdf)|*.pdf";
+                    dlg.DefaultExt = "pdf";
+                    dlg.Title = tab.PdfEdited ? "Save PDF with Your Changes" : "Save a Copy of the PDF";
+                    dlg.OverwritePrompt = true;
+                    string stem = Path.GetFileNameWithoutExtension(tab.FilePath);
+                    dlg.FileName = stem.EndsWith("-annotated", StringComparison.OrdinalIgnoreCase) ? stem + ".pdf" : stem + "-annotated.pdf";
+                    try { dlg.InitialDirectory = Path.GetDirectoryName(tab.FilePath); } catch { }
+                    if (dlg.ShowDialog() != WinForms.DialogResult.OK) return false;
+                    target = Path.GetFullPath(dlg.FileName);
+                }
+                int other = IndexOfTabPath(target);
+                if (other >= 0 && _tabs[other] != tab)
+                {
+                    WinForms.MessageBox.Show("That PDF is open in another tab. Close it first, or choose another name.",
+                        "Save", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                    return false;
+                }
+            }
+            return SavePdfTabTo(tab, target, active);
+        }
+
+        private bool SavePdfTabTo(DocTab tab, string target, bool active)
+        {
+            string error;
+            bool ok = active ? WriteActivePdfTo(target, 60000, out error)
+                    : (tab.PdfEdited ? CopyFileAtomic(tab.PdfStashPath, target, out error)
+                                     : CopyFileAtomic(tab.FilePath, target, out error));
+            if (!ok)
+            {
+                WinForms.MessageBox.Show("The PDF could not be saved: " + error, "Save",
+                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                return false;
+            }
+            // The tab is now the saved file, with nothing unsaved.
+            tab.FilePath = target;
+            tab.PdfSavedPath = target;
+            DiscardPdfEdits(tab);
+            if (active)
+            {
+                _currentFilePath = target;
+                SendMsg("pdf_saved:" + PdfUrlFor(target));
+            }
+            try { AddRecentFile(target); } catch { }
+            RebuildTabStrip();
+            UpdateStatusDisplay();
+            RefreshEditingAvailability();
+            try { PersistTabSession(); } catch { }
+            return true;
+        }
+
+        // Tests (--debug only): save the active PDF to a path in the temp folder, without the
+        // dialog. Answers with pdf_test_saved:<1|0> through the page.
+        private void SavePdfForTest(string path)
+        {
+            if (!Program.DebugLogEnabled || !ActiveIsPdf()) return;
+            try
+            {
+                path = Path.GetFullPath(path);
+                if (!path.StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase)) return;
+                bool ok = SavePdfTabTo(_tabs[_activeTabIndex], path, true);
+                SendMsg("cmd:pdf_test_saved:" + (ok ? "1" : "0"));
+            }
+            catch (Exception ex) { LogFault("pdf save test", ex); }
         }
 
         // ---- Text in scanned PDF pages (docs/pdf-and-audit-plan.md, Phase 3) ----------------
@@ -15200,7 +15573,13 @@ namespace TypoZen
                 BumpDocGen();
 
                 int page = RememberedBookPosition(path);
-                SendMsg("load_pdf:" + PdfUrlFor(path) + (page > 1 ? "|page=" + page : ""));
+                // Coming back to a PDF with unsaved changes: open the copy that holds them.
+                string serve = (tab.PdfEdited && !string.IsNullOrEmpty(tab.PdfStashPath) && File.Exists(tab.PdfStashPath))
+                    ? tab.PdfStashPath : path;
+                _pdfStashStale = false;
+                SendMsg("load_pdf:" + PdfUrlFor(serve) + (page > 1 ? "|page=" + page : ""));
+                SendMsg("pdf_edit_mode:none");
+                SetAnnotateChecks("none");
                 // Its bookmarks and highlights, made on its paragraphs (10-pdf.js); the page
                 // resolves them once the PDF's text is in.
                 SendBookmarksForCurrentDocument();
@@ -15893,7 +16272,9 @@ namespace TypoZen
         {
             bool native, book;
             ActiveDocumentKind(out native, out book);
-            if (native || book) return;
+            if (native || (book && !ActiveIsPdf())) return;
+            // A PDF with nothing changed has nothing for Save to do (its menu item is greyed).
+            if (!asNew && ActiveIsPdf() && !ActivePdfEdited()) return;
             if (asNew) SaveFileAs(); else SaveFile();
         }
 
@@ -16151,7 +16532,7 @@ namespace TypoZen
 
             if (_lblStatus != null)
             {
-                if (_isDirty)
+                if (_isDirty || ActivePdfEdited())
                 {
                     _lblStatus.Text = "Unsaved *";
                     _lblStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F59E0B"));

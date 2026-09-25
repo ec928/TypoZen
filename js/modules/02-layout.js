@@ -2263,6 +2263,8 @@
             const pop = document.getElementById('selPop');
             if (!pop) return;
 
+            // Annotating a PDF: a selection is the highlight tool's, not the popup's.
+            if (window.tzPdfEditing) { hideSelPop(); return; }
             const inSource = state.mode === 'source';
             let rect = anchor || null;
             let text = '';

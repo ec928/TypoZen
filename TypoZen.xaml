@@ -501,6 +501,22 @@
                             <MenuItem x:Name="mUndo" Header="_Undo" InputGestureText="Ctrl+Z"/>
                             <MenuItem x:Name="mRedo" Header="_Redo" InputGestureText="Ctrl+Y"/>
                             <Separator/>
+                            <!-- Shown on a PDF only (RefreshFileMenuAvailability). Changes go into
+                                 the PDF when it is saved, unlike marks, which TypoZen keeps. -->
+                            <MenuItem x:Name="menuAnnotate" Header="A_nnotate PDF" Visibility="Collapsed">
+                                <MenuItem x:Name="mAnnHighlight" Header="_Highlight" IsCheckable="True"
+                                          ToolTip="Drag across text to highlight it in the PDF"/>
+                                <MenuItem x:Name="mAnnText" Header="Add _Text" IsCheckable="True"
+                                          ToolTip="Click on the page to type a note onto it"/>
+                                <MenuItem x:Name="mAnnDraw" Header="_Draw" IsCheckable="True"
+                                          ToolTip="Draw on the page with the mouse or a pen"/>
+                                <MenuItem x:Name="mAnnPicture" Header="Add _Picture..."
+                                          ToolTip="Place an image on the page"/>
+                                <Separator/>
+                                <MenuItem x:Name="mAnnStop" Header="_Stop Annotating"
+                                          ToolTip="Back to reading: select text, look words up"/>
+                            </MenuItem>
+                            <Separator x:Name="sepAnnotate" Visibility="Collapsed"/>
                             <MenuItem x:Name="mCut" Header="Cu_t" InputGestureText="Ctrl+X"/>
                             <MenuItem x:Name="mCopy" Header="_Copy" InputGestureText="Ctrl+C"/>
                             <MenuItem x:Name="mPaste" Header="_Paste" InputGestureText="Ctrl+V"/>

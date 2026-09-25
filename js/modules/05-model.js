@@ -2355,6 +2355,9 @@
             // Ctrl+Z / Ctrl+Y: run HistoryManager here. Host may also send cmd:undo when
             // focus is outside WebView; HistoryManager._navCoalesceMs collapses doubles.
             // (Host-only was completely broken when preprocess did not see the key.)
+            // On a PDF, PDF.js's annotation editor has these keys (10-pdf.js); the hidden
+            // document behind it has nothing to undo.
+            if (window.tzPdfActive && (e.ctrlKey || e.metaKey) && /^[zy]$/i.test(e.key)) return;
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
                 e.stopPropagation();
