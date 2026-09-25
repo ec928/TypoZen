@@ -5,10 +5,10 @@ Product truth lives here and in the README; `docs/archive/` is history.
 
 ## What TypoZen is
 
-- **Windows prose editor + reader**: WPF shell + WebView2; Markdown/text in Preview/Source; epubs in Reader; PDF/images/media as native read-only tabs.
+- **Windows prose editor + reader**: WPF shell + WebView2; Markdown/text in Preview/Source; epubs in Reader; PDFs in the editor page via PDF.js (`js/modules/10-pdf.js`, DocKind.Pdf, read-only; the native WebView is used only to print the original); images/media as native read-only tabs.
 - **Not a code editor.** A developer/code surface was attempted and **parked** (file corruption via contenteditable). See `docs/developer-editor-analysis.md`. Do not revive code-kind / fence-as-document editing unless the user explicitly reopens that work.
 - **Not ZenSeek.** CLI hooks (`--reader`, `--search`, …) exist for ZenSeek; do not merge the two apps.
-- **Native Reader:** PDF, HTML, images, media — second WebView. HTML Mode: **Source** = edit markup; **Reader** = read-only real page; **Preview locked** (Preview is Markdown editor mode, not HTML). CSS/XML/XAML → editor Source. See `docs/native-reader-plan.md`.
+- **Native Reader:** HTML, images, media — second WebView. HTML Mode: **Source** = edit markup; **Reader** = read-only real page; **Preview locked** (Preview is Markdown editor mode, not HTML). CSS/XML/XAML → editor Source. See `docs/native-reader-plan.md`.
 
 ## Where truth lives
 

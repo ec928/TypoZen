@@ -42,6 +42,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said.
 - **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
 - **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
+- **A PDF reader:** real, selectable text, Find and Search across pages, the PDF's outline, two-page spreads, and your place remembered.
 - **Read everything else safely:** PDF, HTML, images, and media open read-only. Never dirty, never saved over.
 
 ### Look, Session & Privacy
@@ -78,27 +79,39 @@ TypoZen opens by document _type_, not size — Markdown of any size opens in Liv
 
 Virtualized Preview keeps a per-block height map, estimated from the raw Markdown and refined from real measurements as blocks mount, with **scroll anchoring** so correcting a height never moves the content under your cursor. `.txt` / `.log` / `.csv` open in Source, which is the Notepad-class path.
 
-### Reading PDFs, web, images, and media
+### Reading PDFs
+A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing downloaded), and is read-only.
+
+- **Real text:** select and copy it; **Find** (`Ctrl+F`) and the **Search** sidebar work across every page, with hits listed by page.
+- **The PDF's own outline** fills the sidebar; click an entry to turn to it. **Go to Page** works as it does for books.
+- **The view buttons apply:** **2 Columns** shows a two-page spread; **Pages** shows one page at a time (wheel and arrow keys turn it). `Ctrl`+wheel zooms and redraws the page sharp.
+- **Your place is remembered** and the PDF reopens on the page you left.
+- **View → PDF Pages in Theme Colours** redraws pages in the theme's colours. It is off by default because it recolours pictures too.
+- The status bar shows the PDF's word count and **Page N/M**.
+- **Print** prints the original file through Edge's PDF printing, so the output is the PDF, not a screen capture. **File → Open in Default App** hands it to your usual PDF program.
+- Not yet: Read Aloud, bookmarks and marks on PDFs (greyed); OCR of scanned pages; saving pages or pictures as images; annotations.
+
+### Reading web, images, and media
 Open these **read-only** on a Chromium surface (same tab strip). No document scrubber on these tabs — that control belongs to paginated engine/book reading.
 
 | Type | Behaviour |
 | --- | --- |
-| **PDF** | Chromium PDF viewer |
 | **HTML** (`.html` / `.htm` / `.xhtml`) | **Source** = edit markup. **Reader** = real page (read-only). **Preview** is off for HTML — it is Markdown WYSIWYG, not an HTML editor |
 | **CSS / XML / XAML / JSON** (and `.txt` / logs) | Normal **editor** document in **Source** |
 | **Images** | Fit-to-pane shell; **right‑click → Magnify** (Edge) for zoom/pan |
 | **Video / audio** | Browser controls; missing codecs (often **HEVC / HVC1**) show a clear error (audio-only black frame is explained too) |
 
 **Menus that cannot apply are greyed, not left looking live.** A native tab is not a
-document, so **Edit** and **Help** grey out whole — every item in them acts on the editor —
+document, so **Edit** greys out whole — every item in it acts on the editor —
 and **View** loses only its document-shaped half: the Sidebar group, Focus Mode, Typewriter
 Scrolling, Reveal Markdown on Focus, Font Appearance, Spacing & Margins, Bookmark Gutter
 Hover and Justified. Scrubber, Status Bar, Auto-hide, Fullscreen and Reset View Settings
-stay, because they are the window's and still mean something over a PDF. They were all
-still live once, and pressing Toggle Sidebar on a PDF collapsed the sidebar of the document
-you were *not* looking at, silently, so you found it shut when you switched back.
+stay, because they are the window's and still mean something over a picture. They were all
+still live once, and pressing Toggle Sidebar on a native tab collapsed the sidebar of the document
+you were *not* looking at, silently, so you found it shut when you switched back. **Help**
+opens over the native tab.
 
-**Zoom applies where zooming does something.** PDFs, HTML pages and video scale; a still
+**Zoom applies where zooming does something.** HTML pages and video scale; a still
 image is shown at its own size (use **right-click → Magnify**) and audio is a fixed
 control, so **Zoom is greyed for images and audio** — in the menu, on the keyboard, and for
 Ctrl+wheel alike, since greying a menu is not the same as disabling a feature.
