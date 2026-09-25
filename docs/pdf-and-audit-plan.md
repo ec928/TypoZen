@@ -11,7 +11,7 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 | 2 — reader features | **Done, in testing with Ed.** See below. | 0.6.2 |
 | 2b — save as images | **Done, in testing with Ed.** See below. Right-click Save Image As not built. | 0.6.3 |
 | 3 — OCR | **Done, in testing with Ed.** See below. | 0.6.4 |
-| 4 — annotate, forms | Not started. | — |
+| 4 — annotate, forms | **Done, in testing with Ed.** See below. Signatures and page operations not built. | 0.6.5 |
 | Audit 1.3 — Source colouring | Waiting on Ed: CodeMirror 6 or the mirror approach. | — |
 
 **Outstanding, to come back to (not PDF-specific):**
@@ -61,6 +61,18 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 - Tests: `tests/pdf-ocr-app.mjs` (12 checks) on `tests/pdf-scanned.pdf` from `tests/make-pdf-scanned.mjs`. Needs an OCR language in Windows.
 - Not checked: Privacy Mode's temp-folder cache (by reading only), non-English scans, a PDF with hundreds of scanned pages (reading runs in the background page by page; untested at that size), and whether a machine with no OCR language shows its status line (the message exists; this machine has English).
 - Known: recognition errors on real scans ("E86,OOO" for "£86,000" on Ed's printed PDF). Skew beyond what Windows corrects, and handwriting, read badly.
+
+**Phase 4 as built (0.6.5):**
+
+- **Tools:** Edit > Annotate PDF (a native submenu, shown on a PDF only, per AGENTS.md): Highlight, Add Text, Draw, Add Picture..., Stop Annotating. The tick follows PDF.js's actual mode (`annotationeditormodechanged`). PDF.js's own per-annotation toolbar (delete, highlight colour) is used as it comes. Undo/Redo in the Edit menu and Ctrl+Z/Y go to the annotation editor (`editingaction`).
+- **Forms:** filled in place (`AnnotationMode.ENABLE_FORMS`), saved with the rest.
+- **Integration fixes PDF.js's component needed:** its app, not its viewer, answers the editor's request to change tool (`showannotationeditorui` in PDF.js 6), so the page does; and its app supplies the highlight colours (`annotationEditorHighlightColors`), without which making a highlight threw. `AnnotationStorage` keeps its modified flag private, so the page tracks it from `onSetModified` / `onResetModified`.
+- **Unsaved state:** `DocTab.PdfEdited` (not `IsDirty`, which every read-only rule forces false for a PDF): the tab's `*`, the status bar, File > Save, closing the tab and closing TypoZen all use it. Autosave only looks at `IsDirty`, so it never writes a PDF.
+- **Saving:** Save asks the first time, suggesting `<name>-annotated.pdf`; choosing the original overwrites it after the dialog's own confirmation. The page commits any edit in progress (a text box, a drawing session), writes `saveDocument()` to `https://localpdf/write/<job>`, and the host writes it beside the target and swaps it in (`File.Replace`). The tab becomes the saved file, and later saves go straight back to it. Save As always offers a copy.
+- **Switching tabs:** before any tab change the host asks the page whether anything is pending (changes, a copy carrying them, or a tool in hand) and, if so, has it written to a temp file (the session's temp folder, `PrivateLoadDir()/pdf-edits`); coming back opens that copy. A theme change with page colours on reopens from the unsaved bytes too.
+- **Tests:** `tests/pdf-annotate-app.mjs` (15 checks; `tests/pdf-form.pdf` from `tests/make-pdf-form.mjs`): highlight from a selection, Undo/Redo through the menu command, the highlight kept across a tab switch, Save to a new file with the original byte-for-byte unchanged, a form value saved, a drawing kept when switching tabs with the Draw tool still in hand. The Annotate menu and the Save dialog were checked by screenshot; Add Text by a probe (click, type, click away).
+- **Not checked:** Add Picture (it opens a file picker), the close-tab and quit prompts for an edited PDF (message boxes), overwriting the original through the dialog, and very large PDFs (each save and each tab switch while annotating writes the whole PDF).
+- **Not built:** signatures (PDF.js's signature tool needs its app's signature dialog), page operations (would need pdf-lib), and a check that the original changed on disk before overwriting it.
 
 ## Decisions
 

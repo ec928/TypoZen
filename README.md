@@ -80,7 +80,7 @@ TypoZen opens by document _type_, not size — Markdown of any size opens in Liv
 Virtualized Preview keeps a per-block height map, estimated from the raw Markdown and refined from real measurements as blocks mount, with **scroll anchoring** so correcting a height never moves the content under your cursor. `.txt` / `.log` / `.csv` open in Source, which is the Notepad-class path.
 
 ### Reading PDFs
-A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing downloaded), and is read-only.
+A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing downloaded). Its text is never edited; annotations and form entries can be added and saved (below).
 
 - **Real text:** select and copy it; **Find** (`Ctrl+F`) and the **Search** sidebar work across every page, with hits listed by page.
 - **The PDF's own outline** fills the sidebar; click an entry to turn to it. **Go to Page** works as it does for books.
@@ -96,7 +96,9 @@ A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing download
 - **File → Save All Images in PDF...** saves every picture as its own file, at the size it is stored in the PDF. Photos stored as JPEG keep their original bytes, so nothing is re-compressed; the rest are saved as PNG with any transparency. Small icons are skipped and a picture repeated on many pages (a logo) is saved once, both optional; one subfolder per page if you like. Page text is never included.
 - **Print** prints the original file through Edge's PDF printing, so the output is the PDF, not a screen capture. **File → Open in Default App** hands it to your usual PDF program.
 - **Scanned pages are read.** A page that is only a picture of text has its words recognised by Windows' own text recognition, on your computer, in the languages Windows has installed: they can then be found, selected, looked up and read aloud like any other text. Pages scanned sideways or upside down are turned until they read. The words are kept for next time (in Privacy Mode only for the session), and Clear Stored Data can remove them. About half a second a page; a picture with no words stays a picture. Handwriting and poor scans read badly. **View → Read Text in Scanned PDF Pages** turns it off.
-- Not yet: annotating the PDF file itself. Letter-spaced headings ("W E L C O M E") come out of a PDF as separate letters, so a voice spells them.
+- **Annotate and fill in.** **Edit → Annotate PDF** offers Highlight (drag across text), Add Text, Draw and Add Picture; **Stop Annotating** goes back to reading. Each annotation has PDF.js's small toolbar when selected (delete; colour for a highlight), and **Undo/Redo** step through them. Form fields are filled in where they are. These go *into the PDF* when saved -- unlike TypoZen's own bookmarks and highlights from the selection popup, which TypoZen keeps.
+- **Saving a changed PDF.** The tab shows `*` and **Save** asks where: it suggests `<name>-annotated.pdf` beside the original, so the original is only replaced if you choose it (the dialog asks first). The file is written whole and then swapped in. Later saves go straight back to the file you saved. Switching to another tab keeps unsaved changes, and closing the tab or TypoZen asks, as for a document. Autosave never writes a PDF.
+- Not built: signatures, and page operations (delete, reorder, rotate, merge). Letter-spaced headings ("W E L C O M E") come out of a PDF as separate letters, so a voice spells them.
 
 ### Reading web, images, and media
 Open these **read-only** on a Chromium surface (same tab strip). No document scrubber on these tabs — that control belongs to paginated engine/book reading.
