@@ -103,7 +103,7 @@ image is shown at its own size (use **right-click → Magnify**) and audio is a 
 control, so **Zoom is greyed for images and audio** — in the menu, on the keyboard, and for
 Ctrl+wheel alike, since greying a menu is not the same as disabling a feature.
 
-Format tools and Source/Preview are locked; the file is never marked dirty and never saved over. **Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native WebView; document tab → editor). **It refuses on a document too large to lay out whole**, rather than print part of one: TypoZen renders long documents a piece at a time, the print engine can only take what is on the page, and a PDF containing a fifth of a document with nothing to say so is worse than no PDF — you keep it, and you may send it to someone. Save the file and print it elsewhere. **Privacy Mode** (File menu) already applies — see [Session & privacy](#session--privacy). Details: `docs/native-reader-plan.md`.
+Format tools and Source/Preview are locked; the file is never marked dirty and never saved over. **Print / Export PDF** prints the surface you are looking at (native tab → native WebView; document tab → editor). **It refuses on a document too large to lay out whole**, rather than print part of one: TypoZen renders long documents a piece at a time, the print engine can only take what is on the page, and a PDF containing a fifth of a document with nothing to say so is worse than no PDF — you keep it, and you may send it to someone. Save the file and print it elsewhere. **Privacy Mode** (File menu) already applies — see [Session & privacy](#session--privacy). Details: `docs/native-reader-plan.md`.
 
 ### Reading epubs
 Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the book's own table of contents in the outline.
@@ -289,7 +289,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
   - `#heading` jumps within the document, through the same path an outline click uses. Slugs follow the usual Markdown convention — lower-cased, punctuation dropped, each remaining space becoming its own hyphen, so `## Look & feel` is `#look--feel` — and letters in any script are kept, so `## 日本語` is `#日本語`. An anchor that matches no heading does nothing rather than guessing.
   - A plain click still places the caret — this is an editor, and link text has to stay editable. `Ctrl+click` opens directly.
 - Table insert (`Ctrl+T`)
-- Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
+- Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps. Grouped in View with Line Spacing and Paragraph Spacing, because all three set the shape of the text block
 - **Block Hover** (View) — whether hovering a paragraph previews its bookmark in the gutter. **On** by default. Turning it off removes the preview only: bookmarks you have set are always drawn. There is deliberately no wash or edge under the pointer — hovering a paragraph does one thing, which is arm the gutter, so the gutter is the only thing that answers
 - **Justified** (View) — **off by default, including for books.** Every test book asks for it — _Xeelee_ on 96 rules, _Matter_ on 7 — and those declarations are rewritten to read this switch rather than dropped, so they keep their selectors and the publisher's _centred_ and _right-aligned_ rules are untouched
@@ -306,7 +306,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 ### Tabs
 Full multi-document editing, with the tab strip living in the title bar.
 
-- **New** with the `+` button or `Ctrl+N`; close with the tab's own button or `Ctrl+W`
+- **New** with the `+` button; close with the tab's own button or `Ctrl+W`
 - Cycle with `Ctrl+Tab` / `Ctrl+Shift+Tab`
 - **Scroll arrows** appear only when the strip overflows, and the active tab is always scrolled into view
 - **Per-tab unsaved indicator**, tracked independently of every other tab
@@ -337,7 +337,7 @@ The status bar updates continuously with word count, character count (both group
 - **Reload when the file changes on disk** — engine documents only (not books or PDF/images). A stamp of write-time, size and a cheap fingerprint is taken on load and after Save. Coming back to the window, switching to the tab, a watcher on the file's folder, or Save / Autosave, compares that stamp. If the tab is **clean**, it reloads quietly. If it is **dirty**, a prompt offers Reload (discard edits), Keep editing (the next Save overwrites disk), or Save As. Autosave will not overwrite an external edit: it shows the same prompt instead. OneDrive touching mtime without changing bytes is ignored; TypoZen's own atomic save is ignored for two seconds so the temp/`Replace` dance does not look like someone else's write. Untitled buffers have no path and are not watched.
 - **Standalone HTML export** — self-contained, with the active theme's styles embedded
 - **Select All copies the whole document**, not the part of it currently laid out. On a long file only a window of paragraphs exists in the page at a time, and copying what was on screen put one per cent of a 205,842-character document on the clipboard with nothing to say so
-- Print / Export PDF (`Ctrl+P`) — Chromium print UI; refuses rather than truncate a document too large to lay out whole (see [Reading PDFs, web, images, and media](#reading-pdfs-web-images-and-media))
+- Print / Export PDF — Chromium print UI; refuses rather than truncate a document too large to lay out whole (see [Reading PDFs, web, images, and media](#reading-pdfs-web-images-and-media))
 - CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path` (Phase 6 — done)
 
 ### Session & privacy
@@ -383,7 +383,7 @@ Removing it entirely requires something outside the app — a firewall rule on `
 
 TypoZen includes built-in tools to help diagnose layout and focus issues:
 
-- **Developer Debug HUD (`Ctrl+Shift+D`)**: Toggle a real-time, on-screen HUD (also accessible via `Help -> Toggle Debug HUD`). It overlays current focus state, exact layout metrics (pagination, scroll position, page width), and search state. When toggled off, it has zero performance overhead.
+- **Developer Debug HUD**: Toggle a real-time, on-screen HUD (also accessible via `Help -> Toggle Debug HUD`). It overlays current focus state, exact layout metrics (pagination, scroll position, page width), and search state. When toggled off, it has zero performance overhead.
 - **Telemetry Logging (`TypoZen_Debug.bat`)**: Launching TypoZen via this script passes the `--debug` flag, which records high-volume layout telemetry (such as progressive rendering and column measurements) to a `debug.log` file in the application directory.
 
 ---
@@ -510,11 +510,6 @@ The reasoning behind these decisions — including the failure modes that motiva
 ## Keyboard shortcuts
 | Action | Shortcut |
 | --- | --- |
-| New | `Ctrl+N` |
-| Open | `Ctrl+O` |
-| Save | `Ctrl+S` |
-| Save As | `Ctrl+Shift+S` |
-| Print / Export PDF | `Ctrl+P` |
 | Sidebar (Outline/Search) | `Alt+\` |
 | Find | `Ctrl+F` |
 | Go to page (paginated) | `Ctrl+G` |
@@ -537,7 +532,6 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Reveal Markdown | `F7` |
 | Focus mode | `F8` |
 | Typewriter scroll | `F9` |
-| Fullscreen | `F11` |
 
 **Menus (no default shortcut):** Themes → Customise Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → Auto-hide, Side Panel Auto-hide · File → Privacy
 
