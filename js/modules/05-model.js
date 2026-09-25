@@ -1865,7 +1865,11 @@
          */
         function insertPastedPlainText(text) {
             if (text == null || text === '') return;
+            // A paste into the middle of a line keeps its own spaces: " Pasted" after a word
+            // arrived as "wordPasted", because the clean-up trims every paste.
+            const lead = /^[ \t]+/.exec(String(text)), trail = /[ \t]+$/.exec(String(text));
             text = stripClipboardLeadRepeat(text);
+            if (text && text.indexOf('\n') < 0) text = (lead ? lead[0] : '') + text + (trail ? trail[0] : '');
 
             if (state.mode === 'source') {
                 if (!sourceEditor) return;
@@ -1952,6 +1956,19 @@
                         if (off && off.start != null) startOff = off.start | 0;
                     }
                 } catch (eOff) {}
+
+                // Bold pasted into bold text is just bold. Left in, the block saved as
+                // "**... **bold** ...**", which Markdown cannot nest, and the reader saw
+                // stray asterisks.
+                try {
+                    let n = sel && sel.anchorNode;
+                    for (; n && n !== active && n !== editor; n = n.parentNode) {
+                        if (n.nodeType === 1 && (n.tagName === 'STRONG' || n.tagName === 'B')) {
+                            blockTexts[0] = blockTexts[0].replace(/\*\*(.+?)\*\*|__(.+?)__/g, '$1$2');
+                            break;
+                        }
+                    }
+                } catch (eB) {}
 
                 document.execCommand('insertText', false, blockTexts[0]);
                 if (active && active.classList && active.classList.contains('block')) {
