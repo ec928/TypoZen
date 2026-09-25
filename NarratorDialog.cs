@@ -277,6 +277,10 @@ namespace TypoZen
                             busyBar.Visibility = Visibility.Collapsed;
                             if (busyWhat != null) { busyWhat = null; status.Text = ""; }
                             foreach (var b in busyButtons) b.IsEnabled = true;
+                            // Delete and Export stay off for the built-in voice, which ships
+                            // with TypoZen; re-enabling every button left them live on it.
+                            var sv = voiceBox.SelectedItem as VoiceItem;
+                            deleteVoice.IsEnabled = exportVoice.IsEnabled = sv != null && !string.IsNullOrEmpty(sv.Preview);
                         }));
                     }
                 });
