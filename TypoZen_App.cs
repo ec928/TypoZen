@@ -1530,6 +1530,8 @@ namespace TypoZen
             BindClick("mExportHtml", (s, e) => SendMsg("export_html"));
             BindClick("mExportPdf", (s, e) => ExportPdf());
             BindClick("mOpenExternal", (s, e) => OpenInDefaultApp());
+            BindClick("mSavePdfPages", (s, e) => AskPdfExport("pages"));
+            BindClick("mSavePdfImages", (s, e) => AskPdfExport("images"));
             BindClick("mExit", (s, e) => this.Close());
 
             BindClick("mUndo", (s, e) => SendHistoryCmd("cmd:undo"));
@@ -6770,6 +6772,29 @@ namespace TypoZen
                 ResetZoom();
                 return;
             }
+            if (msg.StartsWith("pdf_export_info:"))
+            {
+                // Out of the WebView's message callback before a modal dialog opens.
+                string info = msg.Substring(16);
+                Dispatcher.BeginInvoke(new Action(() => ShowPdfExportDialog(info)));
+                return;
+            }
+            if (msg.StartsWith("pdf_export_test:"))
+            {
+                StartPdfExportForTest(msg.Substring(16));
+                return;
+            }
+            if (msg.StartsWith("pdf_export_progress:"))
+            {
+                PdfExportProgress(msg.Substring(20));
+                return;
+            }
+            if (msg.StartsWith("pdf_export_done:"))
+            {
+                string done = msg.Substring(16);
+                Dispatcher.BeginInvoke(new Action(() => PdfExportDone(done)));
+                return;
+            }
             if (msg.StartsWith("pdf_zoom:"))
             {
                 int pct;
@@ -9658,6 +9683,9 @@ namespace TypoZen
                 LockWithTip("mExportHtml", native, why);
                 LockWithTip("mOpenExternal", string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath),
                     "This document has not been saved to a file yet");
+                bool pdfTab = ActiveIsPdf();
+                LockWithTip("mSavePdfPages", !pdfTab, "Only for a PDF");
+                LockWithTip("mSavePdfImages", !pdfTab, "Only for a PDF");
             }
             catch { }
         }
@@ -14440,6 +14468,11 @@ namespace TypoZen
                 string uri = e.Request.Uri;
                 if (!uri.StartsWith(PdfHost, StringComparison.OrdinalIgnoreCase)) return;
                 string rest = uri.Substring(PdfHost.Length);
+                if (rest.StartsWith("export/", StringComparison.OrdinalIgnoreCase))
+                {
+                    WritePdfExportFile(core, e, rest.Substring(7));
+                    return;
+                }
                 int slash = rest.IndexOf('/');
                 string token = slash > 0 ? rest.Substring(0, slash) : rest;
                 string path;
@@ -14459,6 +14492,480 @@ namespace TypoZen
                 LogFault("serve pdf", ex);
                 try { e.Response = core.Environment.CreateWebResourceResponse(null, 500, "Error", ""); } catch { }
             }
+        }
+
+        // ---- Saving pages and pictures from a PDF (docs/pdf-and-audit-plan.md, Phase 2b) ----
+        //
+        // File > Save Pages as Images / Save All Images in PDF. The host asks the page what it
+        // needs for the dialog (pdf_export_ask -> pdf_export_info), shows it and a folder
+        // picker, then starts a job in the page (pdf_export_run). The page does the drawing and
+        // POSTs each file to https://localpdf/export/<job>/<name>, written here into that
+        // job's folder and nowhere else; progress and the end come back as messages.
+
+        private sealed class PdfExportJob
+        {
+            public string Id, Kind, Folder;
+            public int Files;
+            public bool Finished;
+            public Window Progress;
+            public TextBlock Label;
+            public ProgressBar Bar;
+            public Button Cancel;
+        }
+        private readonly Dictionary<string, PdfExportJob> _pdfExportJobs = new Dictionary<string, PdfExportJob>();
+
+        // The last choices, offered again next time in this session.
+        private bool _pdfExportJpeg = false;
+        private int _pdfExportDpi = 300, _pdfExportQuality = 90;
+        private bool _pdfExportSkipSmall = true, _pdfExportDedupe = true, _pdfExportPerPage = false;
+        private string _pdfExportFolder;
+
+        private void AskPdfExport(string kind)
+        {
+            if (!ActiveIsPdf()) return;
+            SendMsg("pdf_export_ask:" + kind);
+        }
+
+        private static double JsonNumber(Dictionary<string, object> d, string key)
+        {
+            object v;
+            if (d == null || !d.TryGetValue(key, out v) || v == null) return 0;
+            try { return Convert.ToDouble(v, System.Globalization.CultureInfo.InvariantCulture); } catch { return 0; }
+        }
+
+        /// <summary>"1-5, 8" -> [1..5, 8] within 1..n, in order, each once; null if unreadable.</summary>
+        private static List<int> ParsePageList(string text, int n)
+        {
+            var seen = new HashSet<int>();
+            var list = new List<int>();
+            foreach (string raw in (text ?? "").Split(','))
+            {
+                string part = raw.Trim().Replace('–', '-');
+                if (part.Length == 0) continue;
+                int a, b;
+                int dash = part.IndexOf('-');
+                if (dash > 0)
+                {
+                    if (!int.TryParse(part.Substring(0, dash).Trim(), out a) || !int.TryParse(part.Substring(dash + 1).Trim(), out b)) return null;
+                }
+                else
+                {
+                    if (!int.TryParse(part, out a)) return null;
+                    b = a;
+                }
+                if (a < 1 || b < a || b > n) return null;
+                for (int p = a; p <= b; p++) if (seen.Add(p)) list.Add(p);
+            }
+            if (list.Count == 0) return null;
+            list.Sort();
+            return list;
+        }
+
+        private void ShowPdfExportDialog(string json)
+        {
+            if (!ActiveIsPdf()) return;
+            Dictionary<string, object> info = null;
+            try { info = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json); } catch { }
+            string kind = info != null && info.ContainsKey("kind") ? Convert.ToString(info["kind"]) : "pages";
+            bool pages = kind != "images";
+            int n = (int)JsonNumber(info, "pages");
+            int current = Math.Max(1, (int)JsonNumber(info, "page"));
+            double wPt = JsonNumber(info, "w"), hPt = JsonNumber(info, "h");
+            if (n <= 0)
+            {
+                WinForms.MessageBox.Show("The PDF has not finished opening yet. Try again in a moment.",
+                    pages ? "Save Pages as Images" : "Save All Images in PDF",
+                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                return;
+            }
+
+            var win = new Window
+            {
+                Title = pages ? "Save Pages as Images" : "Save All Images in PDF",
+                SizeToContent = SizeToContent.Height,
+                Width = 480,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Background = this.Background,
+                Foreground = this.Foreground
+            };
+            try { win.Owner = this; } catch { }
+            var root = new StackPanel { Margin = new Thickness(18) };
+            Func<string, TextBlock> heading = (text) =>
+            {
+                var t = new TextBlock { Text = text, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, root.Children.Count == 0 ? 0 : 12, 0, 2) };
+                root.Children.Add(t);
+                return t;
+            };
+            Func<string, string, bool, RadioButton> radio = (group, label, on) =>
+            {
+                var r = new RadioButton { GroupName = group, IsChecked = on, Margin = new Thickness(0, 4, 0, 0), Foreground = win.Foreground, Content = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap } };
+                return r;
+            };
+            Func<string, int, TextBox> box = (text, width) => new TextBox
+            {
+                Text = text, Width = width, Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(3, 1, 3, 1),
+                Background = win.Background, Foreground = win.Foreground, CaretBrush = win.Foreground,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Func<UIElement, UIElement, StackPanel> line = (a, b) =>
+            {
+                var sp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+                sp.Children.Add(a);
+                if (b != null) sp.Children.Add(b);
+                root.Children.Add(sp);
+                return sp;
+            };
+
+            RadioButton rbPng = null, rbJpg = null, rb150 = null, rb300 = null, rb600 = null, rbDpi = null;
+            TextBox tbQuality = null, tbDpi = null;
+            TextBlock sizeNote = null;
+            CheckBox cbSmall = null, cbDedupe = null, cbPerPage = null;
+            if (pages)
+            {
+                heading("Format");
+                rbPng = radio("fmt", "PNG -- lossless; best for text and diagrams", !_pdfExportJpeg);
+                root.Children.Add(rbPng);
+                rbJpg = radio("fmt", "JPEG -- smaller; best for photos.  Quality", _pdfExportJpeg);
+                tbQuality = box(_pdfExportQuality.ToString(), 44);
+                line(rbJpg, tbQuality);
+
+                heading("Resolution");
+                int d = _pdfExportDpi;
+                bool preset = d == 150 || d == 300 || d == 600;
+                rb150 = radio("dpi", "150 DPI -- screen and sharing", d == 150); root.Children.Add(rb150);
+                rb300 = radio("dpi", "300 DPI -- print", d == 300); root.Children.Add(rb300);
+                rb600 = radio("dpi", "600 DPI -- archival, fine text", d == 600); root.Children.Add(rb600);
+                rbDpi = radio("dpi", "Other:", !preset);
+                tbDpi = box(preset ? "" : d.ToString(), 56);
+                line(rbDpi, tbDpi).Children.Add(new TextBlock { Text = "  DPI", VerticalAlignment = VerticalAlignment.Center });
+                sizeNote = new TextBlock { Opacity = 0.75, Margin = new Thickness(0, 6, 0, 0), TextWrapping = TextWrapping.Wrap };
+                root.Children.Add(sizeNote);
+            }
+
+            heading("Pages");
+            var rbAll = radio("pages", n == 1 ? "The page" : "All " + n + " pages", true); root.Children.Add(rbAll);
+            var rbThis = radio("pages", "This page (p. " + current + ")", false);
+            if (n > 1) root.Children.Add(rbThis);
+            var rbRange = radio("pages", "Pages:", false);
+            var tbRange = box("", 140);
+            if (n > 1) line(rbRange, tbRange).Children.Add(new TextBlock { Text = "  e.g. 1-5, 8", Opacity = 0.65, VerticalAlignment = VerticalAlignment.Center });
+            tbRange.GotFocus += (s2, e2) => { rbRange.IsChecked = true; };
+
+            if (!pages)
+            {
+                heading("Options");
+                cbSmall = new CheckBox { IsChecked = _pdfExportSkipSmall, Margin = new Thickness(0, 4, 0, 0), Foreground = win.Foreground, Content = new TextBlock { Text = "Skip small pictures (under 32 x 32 pixels: icons, bullets)", TextWrapping = TextWrapping.Wrap } };
+                cbDedupe = new CheckBox { IsChecked = _pdfExportDedupe, Margin = new Thickness(0, 4, 0, 0), Foreground = win.Foreground, Content = new TextBlock { Text = "Save a picture used on several pages once (a logo in every header)", TextWrapping = TextWrapping.Wrap } };
+                cbPerPage = new CheckBox { IsChecked = _pdfExportPerPage, Margin = new Thickness(0, 4, 0, 0), Foreground = win.Foreground, Content = new TextBlock { Text = "One subfolder per page", TextWrapping = TextWrapping.Wrap } };
+                root.Children.Add(cbSmall); root.Children.Add(cbDedupe); root.Children.Add(cbPerPage);
+                root.Children.Add(new TextBlock
+                {
+                    Text = "Each picture is saved at the size it is stored in the PDF. Photos stored as JPEG keep "
+                         + "their original bytes; the rest are saved as PNG. Page text is never included -- a PDF "
+                         + "keeps text and pictures apart.",
+                    TextWrapping = TextWrapping.Wrap, Opacity = 0.75, Margin = new Thickness(0, 12, 0, 0)
+                });
+            }
+
+            Func<int> chosenDpi = () =>
+            {
+                if (!pages) return 0;
+                if (rb150.IsChecked == true) return 150;
+                if (rb300.IsChecked == true) return 300;
+                if (rb600.IsChecked == true) return 600;
+                int v; return int.TryParse(tbDpi.Text.Trim(), out v) ? v : -1;
+            };
+            Action updateSize = () =>
+            {
+                if (sizeNote == null) return;
+                int dv = chosenDpi();
+                if (dv < 36 || dv > 1200) { sizeNote.Text = "Choose a resolution from 36 to 1200 DPI."; return; }
+                sizeNote.Text = "Page 1 will be " + Math.Floor(wPt / 72.0 * dv) + " x " + Math.Floor(hPt / 72.0 * dv) + " pixels.";
+            };
+            if (pages)
+            {
+                foreach (var r in new[] { rb150, rb300, rb600, rbDpi }) { r.Checked += (s2, e2) => updateSize(); }
+                tbDpi.TextChanged += (s2, e2) => { if (tbDpi.IsKeyboardFocused) rbDpi.IsChecked = true; updateSize(); };
+                tbQuality.GotFocus += (s2, e2) => { rbJpg.IsChecked = true; };
+                updateSize();
+            }
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
+            var ok = new Button { Content = "Choose Folder...", MinWidth = 120, Height = 26, IsDefault = true, Padding = new Thickness(10, 0, 10, 0) };
+            var cancel = new Button { Content = "Cancel", Width = 90, Height = 26, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+            row.Children.Add(ok); row.Children.Add(cancel);
+            root.Children.Add(row);
+            win.Content = root;
+
+            List<int> list = null;
+            int dpi = 0, quality = 90;
+            ok.Click += (s2, e2) =>
+            {
+                string title = win.Title;
+                if (rbAll.IsChecked == true) { list = new List<int>(); for (int p = 1; p <= n; p++) list.Add(p); }
+                else if (rbThis.IsChecked == true) list = new List<int> { current };
+                else list = ParsePageList(tbRange.Text, n);
+                if (list == null)
+                {
+                    WinForms.MessageBox.Show("Pages must be numbers from 1 to " + n + ", like 1-5, 8.", title,
+                        WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                    return;
+                }
+                if (pages)
+                {
+                    dpi = chosenDpi();
+                    if (dpi < 36 || dpi > 1200)
+                    {
+                        WinForms.MessageBox.Show("Choose a resolution from 36 to 1200 DPI.", title,
+                            WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                        return;
+                    }
+                    if (rbJpg.IsChecked == true && (!int.TryParse(tbQuality.Text.Trim(), out quality) || quality < 1 || quality > 100))
+                    {
+                        WinForms.MessageBox.Show("JPEG quality is a number from 1 to 100 (90 is a good choice).", title,
+                            WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                        return;
+                    }
+                }
+                win.DialogResult = true;
+            };
+            bool? shown = null;
+            try { shown = win.ShowDialog(); } catch { return; }
+            if (shown != true || list == null) return;
+
+            if (pages)
+            {
+                _pdfExportJpeg = rbJpg.IsChecked == true;
+                _pdfExportDpi = dpi;
+                if (_pdfExportJpeg) _pdfExportQuality = quality;
+            }
+            else
+            {
+                _pdfExportSkipSmall = cbSmall.IsChecked == true;
+                _pdfExportDedupe = cbDedupe.IsChecked == true;
+                _pdfExportPerPage = cbPerPage.IsChecked == true;
+            }
+
+            string start = _pdfExportFolder;
+            if (string.IsNullOrEmpty(start) || !Directory.Exists(start))
+            {
+                try { start = Path.GetDirectoryName(_currentFilePath); } catch { start = null; }
+            }
+            string folder = FolderPicker.Pick(this, pages ? "Save the pages in" : "Save the pictures in", start);
+            if (string.IsNullOrEmpty(folder)) return;
+            _pdfExportFolder = folder;
+            StartPdfExport(pages ? "pages" : "images", folder, list, _pdfExportJpeg ? "jpeg" : "png", _pdfExportDpi,
+                _pdfExportQuality, _pdfExportSkipSmall, _pdfExportDedupe, _pdfExportPerPage);
+        }
+
+        private void StartPdfExport(string kind, string folder, List<int> pages, string format, int dpi, int quality,
+                                    bool skipSmall, bool dedupe, bool perPage)
+        {
+            var job = new PdfExportJob { Id = Guid.NewGuid().ToString("N"), Kind = kind, Folder = folder };
+            _pdfExportJobs[job.Id] = job;
+            ShowPdfExportProgress(job, pages.Count);
+            var run = new Dictionary<string, object>
+            {
+                { "job", job.Id }, { "kind", kind }, { "pages", pages }, { "format", format }, { "dpi", dpi },
+                { "quality", quality }, { "skipSmall", skipSmall }, { "dedupe", dedupe }, { "perPage", perPage },
+                { "base", Path.GetFileNameWithoutExtension(_currentFilePath ?? "PDF") }
+            };
+            SendMsg("pdf_export_run:" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(run));
+        }
+
+        private void ShowPdfExportProgress(PdfExportJob job, int total)
+        {
+            var win = new Window
+            {
+                Title = job.Kind == "pages" ? "Saving pages" : "Saving pictures",
+                SizeToContent = SizeToContent.Height,
+                Width = 420,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Background = this.Background,
+                Foreground = this.Foreground
+            };
+            try { win.Owner = this; } catch { }
+            var root = new StackPanel { Margin = new Thickness(18) };
+            job.Label = new TextBlock { Text = "Starting...", TextWrapping = TextWrapping.Wrap };
+            job.Bar = new ProgressBar { Height = 8, Minimum = 0, Maximum = Math.Max(1, total), Margin = new Thickness(0, 10, 0, 0) };
+            job.Cancel = new Button { Content = "Cancel", Width = 90, Height = 26, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0), IsCancel = true };
+            root.Children.Add(job.Label); root.Children.Add(job.Bar); root.Children.Add(job.Cancel);
+            win.Content = root;
+            Action stop = () =>
+            {
+                if (job.Finished) return;
+                SendMsg("pdf_export_cancel:" + job.Id);
+                job.Label.Text = "Stopping after this page...";
+                job.Cancel.IsEnabled = false;
+            };
+            job.Cancel.Click += (s, e) => stop();
+            win.Closing += (s, e) => { if (!job.Finished) { e.Cancel = true; stop(); } };
+            job.Progress = win;
+            try { win.Show(); } catch { }
+        }
+
+        private void PdfExportProgress(string body)
+        {
+            // "<job>|<pages done>|<pages in all>|<files saved>"
+            string[] p = body.Split('|');
+            PdfExportJob job;
+            if (p.Length < 4 || !_pdfExportJobs.TryGetValue(p[0], out job) || job.Label == null) return;
+            int done, total, files;
+            int.TryParse(p[1], out done); int.TryParse(p[2], out total); int.TryParse(p[3], out files);
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    if (job.Finished) return;
+                    job.Bar.Value = Math.Min(job.Bar.Maximum, done);
+                    if (job.Cancel.IsEnabled)
+                        job.Label.Text = "Page " + Math.Min(total, done + 1) + " of " + total + " -- "
+                            + files + (files == 1 ? " file" : " files") + " saved";
+                }
+                catch { }
+            }));
+        }
+
+        private void PdfExportDone(string json)
+        {
+            Dictionary<string, object> r = null;
+            try { r = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json); } catch { }
+            if (r == null || !r.ContainsKey("job")) return;
+            PdfExportJob job;
+            string id = Convert.ToString(r["job"]);
+            if (!_pdfExportJobs.TryGetValue(id, out job)) return;
+            _pdfExportJobs.Remove(id);
+            job.Finished = true;
+            try { if (job.Progress != null) job.Progress.Close(); } catch { }
+
+            int files = job.Files;                        // what was actually written here
+            bool pages = job.Kind == "pages";
+            string error = r.ContainsKey("error") ? Convert.ToString(r["error"]) : "";
+            bool cancelled = r.ContainsKey("cancelled") && Convert.ToBoolean(r["cancelled"]);
+            string what = pages ? (files == 1 ? "page" : "pages") : (files == 1 ? "picture" : "pictures");
+            var sb = new StringBuilder();
+            if (!string.IsNullOrEmpty(error)) sb.Append("Saving stopped: " + error + "\n\n");
+            else if (cancelled) sb.Append("Cancelled.\n\n");
+            if (files == 0 && !pages && string.IsNullOrEmpty(error) && !cancelled)
+                sb.Append("No pictures were found on those pages.");
+            else
+                sb.Append("Saved " + files + " " + what + " to\n" + job.Folder);
+            int reduced = (int)JsonNumber(r, "reduced"), originals = (int)JsonNumber(r, "originals");
+            int small = (int)JsonNumber(r, "small"), repeats = (int)JsonNumber(r, "repeats");
+            if (reduced > 0) sb.Append("\n\n" + reduced + (reduced == 1 ? " page was" : " pages were") + " too large to draw at that resolution and "
+                                       + (reduced == 1 ? "was" : "were") + " saved smaller.");
+            if (!pages)
+            {
+                var notes = new List<string>();
+                if (originals > 0) notes.Add(originals + " kept " + (originals == 1 ? "its" : "their") + " original JPEG bytes");
+                if (small > 0) notes.Add(small + " small " + (small == 1 ? "picture was" : "pictures were") + " skipped");
+                if (repeats > 0) notes.Add(repeats + " repeated " + (repeats == 1 ? "picture was" : "pictures were") + " saved once");
+                int unreadable = (int)JsonNumber(r, "unreadable");
+                if (unreadable > 0) notes.Add(unreadable + (unreadable == 1 ? " picture" : " pictures") + " could not be read and " + (unreadable == 1 ? "was" : "were") + " left out");
+                if (notes.Count > 0) sb.Append("\n\n" + string.Join("; ", notes) + ".");
+            }
+            // A test run keeps quiet; the page reports the result to the test itself.
+            if (_e2eMode || _pdfExportTestMode) return;
+            if (files > 0)
+            {
+                sb.Append("\n\nOpen the folder?");
+                var ans = WinForms.MessageBox.Show(sb.ToString(), pages ? "Save Pages as Images" : "Save All Images in PDF",
+                    WinForms.MessageBoxButtons.YesNo, WinForms.MessageBoxIcon.Information);
+                if (ans == WinForms.DialogResult.Yes)
+                {
+                    try { Process.Start("explorer.exe", "\"" + job.Folder + "\""); } catch { }
+                }
+            }
+            else
+            {
+                WinForms.MessageBox.Show(sb.ToString(), pages ? "Save Pages as Images" : "Save All Images in PDF",
+                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+            }
+        }
+
+        // Tests (--debug only): run an export without the dialog or the folder picker, into a
+        // folder under the temp directory, and keep the result instead of showing it.
+        private bool _pdfExportTestMode;
+
+        private void StartPdfExportForTest(string json)
+        {
+            if (!Program.DebugLogEnabled) return;
+            try
+            {
+                var d = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+                string folder = Path.GetFullPath(Convert.ToString(d["folder"]));
+                if (!folder.StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase)) return;
+                var pages = new List<int>();
+                foreach (object o in (System.Collections.IEnumerable)d["pages"]) pages.Add(Convert.ToInt32(o));
+                _pdfExportTestMode = true;
+                Directory.CreateDirectory(folder);
+                StartPdfExport(Convert.ToString(d["kind"]), folder, pages, Convert.ToString(d["format"]),
+                    (int)JsonNumber(d, "dpi"), (int)JsonNumber(d, "quality"),
+                    Convert.ToBoolean(d["skipSmall"]), Convert.ToBoolean(d["dedupe"]), Convert.ToBoolean(d["perPage"]));
+            }
+            catch (Exception ex) { LogFault("pdf export test", ex); }
+        }
+
+        /// <summary>A file the page is handing over for an export job.</summary>
+        private void WritePdfExportFile(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, string rest)
+        {
+            Func<int, string, CoreWebView2WebResourceResponse> reply = (code, text) =>
+                core.Environment.CreateWebResourceResponse(null, code, text,
+                    "Access-Control-Allow-Origin: *\r\nCache-Control: no-store");
+            try
+            {
+                int slash = rest.IndexOf('/');
+                PdfExportJob job;
+                if (slash <= 0 || !string.Equals(e.Request.Method, "POST", StringComparison.OrdinalIgnoreCase)
+                    || !_pdfExportJobs.TryGetValue(Uri.UnescapeDataString(rest.Substring(0, slash)), out job)
+                    || job.Finished || e.Request.Content == null)
+                {
+                    e.Response = reply(403, "Forbidden");
+                    return;
+                }
+                // At most one subfolder, each part a plain file name: nothing can climb out
+                // of the folder the reader chose.
+                string[] parts = rest.Substring(slash + 1).Split('/');
+                if (parts.Length > 2) { e.Response = reply(400, "Bad Request"); return; }
+                string dir = job.Folder;
+                for (int i = 0; i < parts.Length - 1; i++)
+                {
+                    string d = SafeExportName(Uri.UnescapeDataString(parts[i]));
+                    if (d.Length == 0) { e.Response = reply(400, "Bad Request"); return; }
+                    dir = Path.Combine(dir, d);
+                }
+                string name = SafeExportName(Uri.UnescapeDataString(parts[parts.Length - 1]));
+                string ext = Path.GetExtension(name).ToLowerInvariant();
+                if (name.Length == 0 || (ext != ".png" && ext != ".jpg")) { e.Response = reply(400, "Bad Request"); return; }
+                Directory.CreateDirectory(dir);
+                // Never over an existing file: a second export beside the first gets " (2)".
+                string path = Path.Combine(dir, name);
+                for (int k = 2; File.Exists(path); k++)
+                    path = Path.Combine(dir, Path.GetFileNameWithoutExtension(name) + " (" + k + ")" + ext);
+                using (var fs = new FileStream(path, FileMode.CreateNew, FileAccess.Write))
+                    e.Request.Content.CopyTo(fs);
+                job.Files++;
+                e.Response = reply(200, "OK");
+            }
+            catch (Exception ex)
+            {
+                LogFault("pdf export write", ex);
+                try { e.Response = reply(500, "Error"); } catch { }
+            }
+        }
+
+        private static string SafeExportName(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            var bad = Path.GetInvalidFileNameChars();
+            var sb = new StringBuilder();
+            foreach (char c in s) sb.Append(Array.IndexOf(bad, c) >= 0 ? '_' : c);
+            string r = sb.ToString().Trim().TrimEnd('.').Trim();
+            return r.Length > 150 ? r.Substring(0, 150) : r;
         }
 
         private void OpenPdf(string path, bool forceLoad = false)
@@ -15568,6 +16075,109 @@ namespace TypoZen
     }
 
     /// <summary>Theme model shared by the app and the basic theme editor.</summary>
+    /// <summary>
+    /// Windows' own folder picker (the Explorer-style dialog), not WinForms'
+    /// FolderBrowserDialog, whose tree cannot take a typed or pasted path and has no Quick
+    /// access. IFileOpenDialog in pick-folders mode, through a minimal COM declaration.
+    /// </summary>
+    internal static class FolderPicker
+    {
+        [System.Runtime.InteropServices.ComImport, System.Runtime.InteropServices.Guid("DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7")]
+        private class FileOpenDialogCoClass { }
+
+        [System.Runtime.InteropServices.ComImport, System.Runtime.InteropServices.Guid("42f85136-db7e-439c-85f1-e4075d135fc8"),
+         System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IFileDialog
+        {
+            [System.Runtime.InteropServices.PreserveSig] int Show(IntPtr parent);
+            void SetFileTypes(uint cFileTypes, IntPtr rgFilterSpec);
+            void SetFileTypeIndex(uint iFileType);
+            void GetFileTypeIndex(out uint piFileType);
+            void Advise(IntPtr pfde, out uint pdwCookie);
+            void Unadvise(uint dwCookie);
+            void SetOptions(uint fos);
+            void GetOptions(out uint pfos);
+            void SetDefaultFolder(IShellItem psi);
+            void SetFolder(IShellItem psi);
+            void GetFolder(out IShellItem ppsi);
+            void GetCurrentSelection(out IShellItem ppsi);
+            void SetFileName([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszName);
+            void GetFileName([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] out string pszName);
+            void SetTitle([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszTitle);
+            void SetOkButtonLabel([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszText);
+            void SetFileNameLabel([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszLabel);
+            void GetResult(out IShellItem ppsi);
+            void AddPlace(IShellItem psi, int fdap);
+            void SetDefaultExtension([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszDefaultExtension);
+            void Close(int hr);
+            void SetClientGuid(ref Guid guid);
+            void ClearClientData();
+            void SetFilter(IntPtr pFilter);
+        }
+
+        [System.Runtime.InteropServices.ComImport, System.Runtime.InteropServices.Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"),
+         System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IShellItem
+        {
+            void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+            void GetParent(out IShellItem ppsi);
+            void GetDisplayName(uint sigdnName, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] out string ppszName);
+            void GetAttributes(uint sfgaoMask, out uint psfgaoAttribs);
+            void Compare(IShellItem psi, uint hint, out int piOrder);
+        }
+
+        [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, PreserveSig = false)]
+        private static extern void SHCreateItemFromParsingName(string pszPath, IntPtr pbc,
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPStruct)] Guid riid,
+            out IShellItem ppv);
+
+        private const uint FOS_PICKFOLDERS = 0x20, FOS_FORCEFILESYSTEM = 0x40, FOS_PATHMUSTEXIST = 0x800;
+        private const uint SIGDN_FILESYSPATH = 0x80058000;
+
+        /// <summary>The folder chosen, or null if cancelled.</summary>
+        public static string Pick(Window owner, string title, string startIn)
+        {
+            IFileDialog dlg = null;
+            try
+            {
+                dlg = (IFileDialog)new FileOpenDialogCoClass();
+                uint opts;
+                dlg.GetOptions(out opts);
+                dlg.SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+                if (!string.IsNullOrEmpty(title)) dlg.SetTitle(title);
+                dlg.SetOkButtonLabel("Save Here");
+                if (!string.IsNullOrEmpty(startIn) && Directory.Exists(startIn))
+                {
+                    try
+                    {
+                        IShellItem folder;
+                        SHCreateItemFromParsingName(startIn, IntPtr.Zero, typeof(IShellItem).GUID, out folder);
+                        dlg.SetFolder(folder);
+                    }
+                    catch { }
+                }
+                IntPtr hwnd = owner != null ? new WindowInteropHelper(owner).Handle : IntPtr.Zero;
+                if (dlg.Show(hwnd) != 0) return null;                 // cancelled (or failed)
+                IShellItem result;
+                dlg.GetResult(out result);
+                string path;
+                result.GetDisplayName(SIGDN_FILESYSPATH, out path);
+                return path;
+            }
+            catch (Exception ex)
+            {
+                // Fall back to the old dialog rather than leave the reader with nothing.
+                try { Program.LogFault("folder picker", ex); } catch { }
+                using (var fb = new WinForms.FolderBrowserDialog { Description = title, SelectedPath = startIn ?? "" })
+                    return fb.ShowDialog() == WinForms.DialogResult.OK ? fb.SelectedPath : null;
+            }
+            finally
+            {
+                if (dlg != null) try { System.Runtime.InteropServices.Marshal.ReleaseComObject(dlg); } catch { }
+            }
+        }
+    }
+
     public class ThemeInfo
     {
         public string Name;

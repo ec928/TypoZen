@@ -93,6 +93,8 @@
 
     function teardown() {
         clearTimeout(S.reportTimer);
+        // An export of this PDF stops with it (runExport reports it cancelled).
+        try { for (const k in exportJobs) exportJobs[k].cancelled = true; } catch (e) { }
         // Reading this PDF aloud ends with it: its paragraphs are about to stop existing.
         try {
             if (typeof isPlaying !== 'undefined' && isPlaying && typeof _currentTTSBlockEl !== 'undefined'
@@ -107,7 +109,7 @@
         S.haystack = '';
         S.findMatches = [];
         S.pendingReveal = false;
-        S.blocks = null; S.blocksKey = ''; S.readEl = null; S.flashEl = null; S.textReady = false;
+        S.blocks = null; S.blocksKey = ''; S.readEl = null; S.flashEl = null; S.textReady = false; S.password = null;
         try { CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch (e) { }
         try { CSS.highlights.delete('typozen-tts'); CSS.highlights.delete('typozen-pdf-flash'); } catch (e) { }
         const host = document.getElementById('pdfView');
@@ -154,7 +156,10 @@
         try {
             await ensureLib();
             if (seq !== S.seq) return;
+            // Redrawn in place (a theme change) keeps its password; opened afresh, it asks.
+            const knownPassword = (url === S.url) ? S.password : null;
             teardown();
+            S.password = knownPassword;
             // Empty the editor's document first. It stays in the page, hidden, and without
             // this still held the previous document: the status bar counted its words, and
             // Read Aloud or Bookmark This Page acted on text that was not on screen. From a
@@ -192,6 +197,7 @@
 
             const task = lib.getDocument({
                 url,
+                password: knownPassword || undefined,
                 cMapUrl: BASE + 'cmaps/', cMapPacked: true,
                 standardFontDataUrl: BASE + 'standard_fonts/',
                 wasmUrl: BASE + 'wasm/',
@@ -208,6 +214,7 @@
                 const pw = window.prompt((wrong ? 'That password is not right.\n\n' : '')
                     + 'This PDF is protected. Enter its password to open it:', '');
                 if (pw == null) { cancelled = true; task.destroy(); return; }
+                S.password = pw;              // kept in memory while open, for exports' own copy
                 update(pw);
             };
             let doc;
@@ -812,6 +819,345 @@
     };
     /** Raw text of every block, for marks' fingerprints. */
     window.tzPdfBlockRaws = function () { return blocks().map(el => el.__pdfRaw); };
+
+    // ---- Saving pages and pictures as images (Phase 2b) ---------------------------------
+    //
+    // The host asks (pdf_export_ask:<kind>), shows its dialog with what the page answers,
+    // and sends a job (pdf_export_run:<json>). The page does the work one page at a time and
+    // hands each file to the host as a POST to https://localpdf/export/<job>/<name> --
+    // binary, not base64 across the message bridge -- and the host writes it into the folder
+    // the reader chose. Always the PDF's own colours, never the theme's.
+
+    const exportJobs = {};
+
+    function pad(n, width) { return String(n).padStart(width, '0'); }
+
+    const CRC_TABLE = (() => {
+        const t = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+        return t;
+    })();
+    function crc32(bytes) {
+        let c = 0xFFFFFFFF;
+        for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 255] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    /**
+     * The resolution written into the file, so a 300 DPI page opens at its paper size in a
+     * word processor rather than at 96 DPI and three times too big. PNG: a pHYs chunk
+     * (replaced if the encoder wrote one); JPEG: the JFIF header's density.
+     */
+    function withDpi(bytes, dpi, jpeg) {
+        if (jpeg) {
+            if (bytes[2] === 0xFF && bytes[3] === 0xE0 && String.fromCharCode(...bytes.subarray(6, 10)) === 'JFIF') {
+                bytes[13] = 1;
+                bytes[14] = dpi >> 8; bytes[15] = dpi & 255;
+                bytes[16] = dpi >> 8; bytes[17] = dpi & 255;
+            }
+            return bytes;
+        }
+        const ppm = Math.round(dpi / 0.0254);
+        const chunk = new Uint8Array(21);
+        const dv = new DataView(chunk.buffer);
+        dv.setUint32(0, 9);
+        chunk.set([0x70, 0x48, 0x59, 0x73], 4);            // pHYs
+        dv.setUint32(8, ppm); dv.setUint32(12, ppm); chunk[16] = 1;
+        dv.setUint32(17, crc32(chunk.subarray(4, 17)));
+        let at = 8;
+        while (at + 8 <= bytes.length) {
+            const len = new DataView(bytes.buffer, bytes.byteOffset + at).getUint32(0);
+            const type = String.fromCharCode(...bytes.subarray(at + 4, at + 8));
+            if (type === 'pHYs') { const out = bytes.slice(); out.set(chunk, at); return out; }
+            if (type === 'IDAT') break;
+            at += 12 + len;
+        }
+        const out = new Uint8Array(bytes.length + 21);
+        out.set(bytes.subarray(0, at)); out.set(chunk, at); out.set(bytes.subarray(at), at + 21);
+        return out;
+    }
+
+    function canvasBytes(canvas, jpeg, quality) {
+        return new Promise((resolve) => canvas.toBlob(async (b) => {
+            resolve(b ? new Uint8Array(await b.arrayBuffer()) : null);
+        }, jpeg ? 'image/jpeg' : 'image/png', jpeg ? quality / 100 : undefined));
+    }
+
+    /** Hand one file to the host. Throws if it did not take it. */
+    async function upload(job, rel, bytes) {
+        const res = await fetch(PdfExportBase + encodeURIComponent(job) + '/' + rel.split('/').map(encodeURIComponent).join('/'),
+            { method: 'POST', body: bytes.buffer.byteLength === bytes.length ? bytes.buffer : bytes.slice().buffer });
+        if (!res.ok) throw new Error('the host refused ' + rel + ' (' + res.status + ')');
+    }
+    const PdfExportBase = 'https://localpdf/export/';
+
+    /** Page p (1-based) drawn at `dpi`, as PNG or JPEG bytes. Very large pages are drawn smaller. */
+    async function renderPage(doc, p, dpi, jpeg, quality) {
+        const page = await doc.getPage(p);
+        let scale = dpi / 72;
+        let vp = page.getViewport({ scale });
+        // A browser canvas has limits (about 16,384 px a side); an A0 poster at 600 DPI is past
+        // them. Such a page is drawn at the largest size that fits, and the result says so.
+        const k = Math.min(1, 16000 / vp.width, 16000 / vp.height, Math.sqrt(180e6 / (vp.width * vp.height)));
+        if (k < 1) { scale *= k; vp = page.getViewport({ scale }); }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(vp.width);
+        canvas.height = Math.floor(vp.height);
+        await page.render({ canvas, viewport: vp, background: '#ffffff' }).promise;
+        let bytes = await canvasBytes(canvas, jpeg, quality);
+        canvas.width = canvas.height = 0;
+        try { page.cleanup(); } catch (e) { }
+        if (!bytes) throw new Error('page ' + p + ' could not be encoded');
+        bytes = withDpi(bytes, Math.round(scale * 72), jpeg);
+        return { bytes, reduced: k < 1 };
+    }
+
+    // -- Pictures ------------------------------------------------------------------------
+
+    /**
+     * JPEG pictures, found in the file itself so they can be saved with their original bytes
+     * (PDF.js hands over decoded pixels only). A picture stored as a JPEG is a stream object
+     * with /Filter /DCTDecode; streams are never inside compressed object streams, so a byte
+     * scan finds them all. Skipped: encrypted files (their streams are enciphered), a JPEG with
+     * a further filter, a soft mask (the transparency would be lost) or a /Decode array.
+     */
+    function findJpegStreams(data) {
+        const out = [];
+        const n = data.length;
+        const DCT = [0x2F, 0x44, 0x43, 0x54, 0x44, 0x65, 0x63, 0x6F, 0x64, 0x65];   // /DCTDecode
+        const text = (a, b) => { let s = ''; for (let i = a; i < b && i < n; i++) s += String.fromCharCode(data[i]); return s; };
+        const find = (pat, from, back) => {
+            if (back) {
+                for (let i = from; i >= 0; i--) { let k = 0; while (k < pat.length && data[i + k] === pat[k]) k++; if (k === pat.length) return i; }
+            } else {
+                for (let i = from; i <= n - pat.length; i++) { let k = 0; while (k < pat.length && data[i + k] === pat[k]) k++; if (k === pat.length) return i; }
+            }
+            return -1;
+        };
+        const bytesOf = (s) => Array.from(s, ch => ch.charCodeAt(0));
+        const OBJ = bytesOf(' obj'), STREAM = bytesOf('stream'), ENDSTREAM = bytesOf('endstream');
+        let at = 0;
+        while ((at = find(DCT, at, false)) >= 0) {
+            const objAt = find(OBJ, at, true);
+            const streamAt = find(STREAM, at, false);
+            if (objAt < 0 || streamAt < 0 || streamAt - objAt > 4000) { at += DCT.length; continue; }
+            const dict = text(objAt, streamAt);
+            at = streamAt;
+            if (!/\/Subtype\s*\/Image/.test(dict)) continue;
+            if (/\/SMask|\/Decode\s*\[|\/Filter\s*\[[^\]]*\/(Flate|LZW|ASCII|RunLength)|\/DeviceCMYK|\/Indexed/.test(dict)) continue;
+            const w = +(dict.match(/\/Width\s+(\d+)/) || [])[1];
+            const h = +(dict.match(/\/Height\s+(\d+)/) || [])[1];
+            let start = streamAt + STREAM.length;
+            if (data[start] === 0x0D) start++;
+            if (data[start] === 0x0A) start++;
+            const end = find(ENDSTREAM, start, false);
+            if (!w || !h || end < 0) continue;
+            let stop = end;
+            while (stop > start && data[stop - 1] !== 0xD9) stop--;          // trailing end-of-line
+            if (data[start] !== 0xFF || data[start + 1] !== 0xD8) continue;
+            out.push({ w, h, bytes: data.subarray(start, stop) });
+            at = end;
+        }
+        return out;
+    }
+
+    /** Wait for a PDF.js object (a picture) to arrive on the main thread. */
+    function objectOf(store, id) {
+        return new Promise((resolve) => {
+            let done = false;
+            const t = setTimeout(() => { if (!done) { done = true; resolve(null); } }, 10000);
+            try { store.get(id, (o) => { if (!done) { done = true; clearTimeout(t); resolve(o); } }); }
+            catch (e) { clearTimeout(t); resolve(null); }
+        });
+    }
+
+    /** A decoded PDF.js picture on a canvas, whatever form it came in. */
+    function pictureCanvas(img) {
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        if (img.bitmap) { ctx.drawImage(img.bitmap, 0, 0); return c; }
+        if (!img.data) return null;
+        const d = ctx.createImageData(img.width, img.height);
+        const src = img.data, dst = d.data, px = img.width * img.height;
+        const K = S.lib.ImageKind || { GRAYSCALE_1BPP: 1, RGB_24BPP: 2, RGBA_32BPP: 3 };
+        if (img.kind === K.RGBA_32BPP) dst.set(src.subarray(0, px * 4));
+        else if (img.kind === K.RGB_24BPP) {
+            for (let i = 0, j = 0; i < px; i++, j += 3) { dst[i * 4] = src[j]; dst[i * 4 + 1] = src[j + 1]; dst[i * 4 + 2] = src[j + 2]; dst[i * 4 + 3] = 255; }
+        } else if (img.kind === K.GRAYSCALE_1BPP) {
+            const row = (img.width + 7) >> 3;
+            for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) {
+                const v = (src[y * row + (x >> 3)] >> (7 - (x & 7))) & 1 ? 255 : 0;
+                const i = (y * img.width + x) * 4; dst[i] = dst[i + 1] = dst[i + 2] = v; dst[i + 3] = 255;
+            }
+        } else return null;
+        ctx.putImageData(d, 0, 0);
+        return c;
+    }
+
+    /**
+     * Whether a JPEG from the file is this picture: decode it and compare pixels on a grid.
+     * Size alone is not enough -- a document can hold several photos the same size -- and a
+     * wrong match would save the wrong picture under this one's name.
+     */
+    async function sameAsJpeg(canvas, jpegBytes) {
+        let bmp;
+        try { bmp = await createImageBitmap(new Blob([jpegBytes], { type: 'image/jpeg' })); } catch (e) { return false; }
+        if (bmp.width !== canvas.width || bmp.height !== canvas.height) { bmp.close(); return false; }
+        const c = document.createElement('canvas');
+        c.width = bmp.width; c.height = bmp.height;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(bmp, 0, 0); bmp.close();
+        const a = canvas.getContext('2d', { willReadFrequently: true });
+        let far = 0, n = 0;
+        for (let gy = 1; gy < 8; gy++) for (let gx = 1; gx < 8; gx++) {
+            const x = Math.floor(gx * c.width / 8), y = Math.floor(gy * c.height / 8);
+            const p = ctx.getImageData(x, y, 1, 1).data, q = a.getImageData(x, y, 1, 1).data;
+            n++;
+            if (Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) + Math.abs(p[2] - q[2]) > 30) far++;
+        }
+        c.width = c.height = 0;
+        return far <= Math.floor(n / 10);
+    }
+
+    async function sha(bytes) {
+        const h = await crypto.subtle.digest('SHA-256', bytes);
+        return Array.from(new Uint8Array(h), b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    /** Every picture page p (1-based) draws: [{ id, img }] in drawing order. */
+    async function picturesOn(doc, p) {
+        const page = await doc.getPage(p);
+        const ops = await page.getOperatorList();
+        const OPS = S.lib.OPS;
+        const list = [];
+        for (let i = 0; i < ops.fnArray.length; i++) {
+            const fn = ops.fnArray[i];
+            if (fn === OPS.paintImageXObject || fn === OPS.paintImageXObjectRepeat) {
+                const id = ops.argsArray[i][0];
+                // Pictures used on more than one page are shared ("g_" ids), and held by the
+                // page proxy's commonObjs -- the document proxy has none.
+                const store = String(id).startsWith('g_') ? page.commonObjs : page.objs;
+                const img = await objectOf(store, id);
+                list.push({ id: String(id), img });
+            } else if (fn === OPS.paintInlineImageXObject) {
+                const img = ops.argsArray[i][0];
+                if (img && img.width) list.push({ id: 'inline-' + p + '-' + i, img });
+            }
+        }
+        return { page, list };
+    }
+
+    async function runExport(job) {
+        const state = exportJobs[job.job] = { cancelled: false };
+        const url = S.url, password = S.password, pages = S.doc ? S.doc.numPages : 1;
+        const base = String(job.base || 'PDF').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'PDF';
+        const width = Math.max(3, String(pages).length);
+        const result = { job: job.job, kind: job.kind, files: 0, small: 0, repeats: 0, originals: 0, unreadable: 0, reduced: 0, error: '', cancelled: false };
+        const report = (done) => { try { postMsg('pdf_export_progress:' + job.job + '|' + done + '|' + job.pages.length + '|' + result.files); } catch (e) { } };
+        // The export reads its own copy of the document, never the viewer's. Cleaning up the
+        // viewer's pages after each one threw away pictures it still had cached, and the next
+        // export then waited on objects that never came (runs 2, 4 and 5 of the suite came
+        // back empty). Its own copy can be cleaned page by page and destroyed at the end, so a
+        // long export does not hold every page's pictures in memory either.
+        let task = null, doc = null;
+        try {
+            if (!S.active || !url) throw new Error('the PDF is no longer open');
+            task = S.lib.getDocument({
+                url, password: password || undefined,
+                cMapUrl: BASE + 'cmaps/', cMapPacked: true,
+                standardFontDataUrl: BASE + 'standard_fonts/',
+                wasmUrl: BASE + 'wasm/', iccUrl: BASE + 'iccs/',
+                isEvalSupported: false, enableXfa: false
+            });
+            doc = await task.promise;
+            const jpeg = job.format === 'jpeg';
+            let jpegs = null;
+            const seenIds = new Set(), seenHashes = new Set();
+            let done = 0;
+            report(0);
+            for (const p of job.pages) {
+                if (state.cancelled || S.url !== url) { result.cancelled = true; break; }
+                if (job.kind === 'pages') {
+                    const r = await renderPage(doc, p, job.dpi, jpeg, job.quality);
+                    if (state.cancelled || S.url !== url) { result.cancelled = true; break; }
+                    await upload(job.job, base + ' - p' + pad(p, width) + (jpeg ? '.jpg' : '.png'), r.bytes);
+                    result.files++;
+                    if (r.reduced) result.reduced++;
+                } else {
+                    if (!jpegs) {
+                        // Only an unencrypted file has its JPEGs readable as they are.
+                        const data = await doc.getData();
+                        const tail = new TextDecoder('latin1').decode(data.subarray(Math.max(0, data.length - 4096)));
+                        const encrypted = /\/Encrypt\s/.test(tail) || !!password;
+                        jpegs = encrypted ? [] : findJpegStreams(data);
+                    }
+                    const { page, list } = await picturesOn(doc, p);
+                    let k = 0;
+                    for (const { id, img } of list) {
+                        if (state.cancelled) break;
+                        // A picture that cannot be read is counted and reported, never dropped
+                        // silently; the reasons go to the page for diagnosis.
+                        const unreadable = (why) => { result.unreadable++; (window.__tzExportTrace = window.__tzExportTrace || []).push('p' + p + ' ' + id + ': ' + why); };
+                        if (!img) { unreadable('no picture object'); continue; }
+                        if (job.skipSmall && (img.width < 32 || img.height < 32)) { result.small++; continue; }
+                        if (job.dedupe && seenIds.has(id)) { result.repeats++; continue; }
+                        seenIds.add(id);
+                        let canvas = null;
+                        try { canvas = pictureCanvas(img); } catch (e) { unreadable(String(e && e.message || e)); continue; }
+                        if (!canvas) { unreadable('unknown picture format (kind ' + img.kind + ')'); continue; }
+                        let bytes = null, ext = '.png';
+                        for (const c of jpegs) {
+                            if (c.w === img.width && c.h === img.height && await sameAsJpeg(canvas, c.bytes)) { bytes = c.bytes; ext = '.jpg'; break; }
+                        }
+                        if (bytes) result.originals++;
+                        else bytes = await canvasBytes(canvas, false);
+                        canvas.width = canvas.height = 0;
+                        if (!bytes) { unreadable('could not be encoded'); continue; }
+                        if (job.dedupe) {
+                            const h = await sha(bytes);
+                            if (seenHashes.has(h)) { result.repeats++; continue; }
+                            seenHashes.add(h);
+                        }
+                        k++;
+                        const name = base + ' - p' + pad(p, width) + ' - img' + pad(k, 2) + ext;
+                        await upload(job.job, job.perPage ? 'p' + pad(p, width) + '/' + name : name, bytes);
+                        result.files++;
+                    }
+                    try { page.cleanup(); } catch (e) { }
+                }
+                done++;
+                report(done);
+            }
+        } catch (err) {
+            result.error = String(err && err.message ? err.message : err);
+        } finally {
+            try { if (task) await task.destroy(); } catch (e) { }
+            delete exportJobs[job.job];
+            try { postMsg('pdf_export_done:' + JSON.stringify(result)); } catch (e) { }
+        }
+    }
+
+    /** The host's dialog needs the page count, where the reader is, and page 1's size. */
+    window.tzPdfExportAsk = async function (kind) {
+        const info = { kind: kind, pages: 0, page: 1, w: 0, h: 0 };
+        try {
+            if (S.active && S.doc) {
+                info.pages = S.doc.numPages;
+                info.page = S.viewer ? S.viewer.currentPageNumber : 1;
+                const vp = (await S.doc.getPage(1)).getViewport({ scale: 1 });
+                info.w = vp.width; info.h = vp.height;
+            }
+        } catch (e) { }
+        try { postMsg('pdf_export_info:' + JSON.stringify(info)); } catch (e) { }
+    };
+    window.tzPdfExportRun = function (json) {
+        let job = null;
+        try { job = JSON.parse(json); } catch (e) { return; }
+        if (!job || !job.job || !Array.isArray(job.pages)) return;
+        runExport(job);
+    };
+    window.tzPdfExportCancel = function (id) { if (exportJobs[id]) exportJobs[id].cancelled = true; };
 
     // ---- Outline, for the sidebar -------------------------------------------------------
 

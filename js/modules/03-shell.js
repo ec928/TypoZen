@@ -913,6 +913,19 @@
                     if (typeof window.tzPdfSetThemed === 'function') window.tzPdfSetThemed(msg.substring(18) === '1');
                     return;
                 }
+                else if (msg.startsWith("pdf_export_ask:")) {
+                    // File > Save Pages as Images / Save All Images in PDF (10-pdf.js).
+                    if (typeof window.tzPdfExportAsk === 'function') window.tzPdfExportAsk(msg.substring(15));
+                    return;
+                }
+                else if (msg.startsWith("pdf_export_run:")) {
+                    if (typeof window.tzPdfExportRun === 'function') window.tzPdfExportRun(msg.substring(15));
+                    return;
+                }
+                else if (msg.startsWith("pdf_export_cancel:")) {
+                    if (typeof window.tzPdfExportCancel === 'function') window.tzPdfExportCancel(msg.substring(18));
+                    return;
+                }
                 else if (msg.startsWith("pdf_zoom:")) {
                     // Zoom on a PDF scales the PDF, not the page (host ZoomBy).
                     if (typeof window.tzPdfZoom === 'function') window.tzPdfZoom(msg.substring(9));

@@ -434,6 +434,10 @@
                             <Separator/>
                             <MenuItem x:Name="mExportHtml" Header="Export as _HTML..."/>
                             <MenuItem x:Name="mExportPdf" Header="_Print / Export PDF..." InputGestureText="Ctrl+P"/>
+                            <MenuItem x:Name="mSavePdfPages" Header="Save Pa_ges as Images..."
+                                      ToolTip="Save pages of this PDF as PNG or JPEG pictures, at the resolution you choose"/>
+                            <MenuItem x:Name="mSavePdfImages" Header="Save All _Images in PDF..."
+                                      ToolTip="Save every picture in this PDF as its own file -- photos keep their original quality"/>
                             <Separator/>
                             <!-- Off by default: with it on, closing without saving stops
                                  being a way to discard an experiment, which is a decision
