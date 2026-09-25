@@ -14,6 +14,10 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 | 4 — annotate, forms | Not started. | — |
 | Audit 1.3 — Source colouring | Waiting on Ed: CodeMirror 6 or the mirror approach. | — |
 
+**Outstanding, to come back to (not PDF-specific):**
+
+- **Look up's speaker uses a different voice from the narrator** (Ed, 2026-09-25). With a Qwen voice chosen, the dictionary's speaker button reads through `host_tts_play` with `_ttsVoiceId`, which is the last *Windows* voice picked (choosing Qwen leaves it alone, `TypoZen_App.cs` voice dialog OK handler). So a British narrator can be followed by an American word. Workaround today: pick a British Windows voice, then switch back to Qwen. Options: (a) Qwen says the word too (consistent; the first time per word waits seconds on the GPU narrator); (b) show and choose the "words looked up" Windows voice under the Qwen entry in the Read Aloud menu (instant). Recommended: (b). Awaiting Ed's choice.
+
 **Phase 1 as built, against the plan:**
 
 - Built as planned: outline, Find and Search by page, Go to Page, remembered page, zoom through the existing commands, two-page view on the column toggle, Print of the original file, book menu rules.
