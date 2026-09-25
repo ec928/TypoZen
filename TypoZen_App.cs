@@ -654,7 +654,8 @@ namespace TypoZen
         {
             Engine = 0,  // Markdown / text — Preview / Source / Reader
             Book = 1,    // .epub — engine HTML, Reader locked
-            Native = 2   // PDF / image / media — Chromium surface, Reader chrome
+            Native = 2,  // image / media / HTML page — Chromium surface, Reader chrome
+            Pdf = 3      // .pdf — PDF.js in the editor page (10-pdf.js), read-only like a book
         }
 
         private enum NativeRole
@@ -1528,6 +1529,7 @@ namespace TypoZen
             BindClick("mSaveAs", (s, e) => SaveFileAs());
             BindClick("mExportHtml", (s, e) => SendMsg("export_html"));
             BindClick("mExportPdf", (s, e) => ExportPdf());
+            BindClick("mOpenExternal", (s, e) => OpenInDefaultApp());
             BindClick("mExit", (s, e) => this.Close());
 
             BindClick("mUndo", (s, e) => SendHistoryCmd("cmd:undo"));
@@ -1568,7 +1570,7 @@ namespace TypoZen
             BindClick("mMarginWide", (s, e) => SendMsg("cmd:set_margin_wide"));
             BindClick("mZoomIn", (s, e) => ZoomBy(+ZoomStep));
             BindClick("mZoomOut", (s, e) => ZoomBy(-ZoomStep));
-            BindClick("mZoomReset", (s, e) => SetZoom(1.0));
+            BindClick("mZoomReset", (s, e) => ResetZoom());
             BindClick("mFullscreen", (s, e) => ToggleFullscreen());
 
             // Chrome visibility, word wrap, status bar, print
@@ -1643,6 +1645,7 @@ namespace TypoZen
                 SetWordWrap(!_wordWrap);
             });
             BindClick("mStatusBarToggle", (s, e) => SetStatusBarVisible(!_statusBarVisible));
+            BindClick("mPdfThemeColours", (s, e) => SetPdfThemeColours(!_pdfThemeColours));
             BindClick("mSessionRestoreContent", (s, e) => SetSessionRestoreContent(!_sessionRestoreContent));
             BindClick("mRecentEnabled", (s, e) => SetRecentFilesEnabled(!_recentFilesEnabled));
             BindClick("mClearSearchHistory", (s, e) =>
@@ -2683,7 +2686,7 @@ namespace TypoZen
                 }
                 else if (e.Key == Key.OemPlus || e.Key == Key.Add) { ZoomBy(+ZoomStep); e.Handled = true; }
                 else if (e.Key == Key.OemMinus || e.Key == Key.Subtract) { ZoomBy(-ZoomStep); e.Handled = true; }
-                else if (e.Key == Key.D0 || e.Key == Key.NumPad0) { SetZoom(1.0); e.Handled = true; }
+                else if (e.Key == Key.D0 || e.Key == Key.NumPad0) { ResetZoom(); e.Handled = true; }
                 // Inside the Ctrl branch: it sat on the else of `if (Ctrl held)`, so it could
                 // only run with Ctrl up and Ctrl+Shift+D never reached it.
                 else if (e.Key == Key.D && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
@@ -2861,10 +2864,20 @@ namespace TypoZen
             return tab != null && (tab.Kind == DocKind.Native || tab.NativeRole != NativeRole.None);
         }
 
-        /// <summary>Book or native: never dirty, never save-over, Reader chrome.</summary>
+        /// <summary>Book, PDF or native: never dirty, never save-over, Reader chrome.</summary>
         private static bool IsReadOnlyTab(DocTab tab)
         {
-            return IsBookTab(tab) || IsNativeTab(tab);
+            return IsBookTab(tab) || IsPdfTab(tab) || IsNativeTab(tab);
+        }
+
+        private static bool IsPdfPath(string path)
+        {
+            return !string.IsNullOrEmpty(path) && path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPdfTab(DocTab tab)
+        {
+            return tab != null && (tab.Kind == DocKind.Pdf || IsPdfPath(tab.FilePath));
         }
 
         private static bool IsNativePath(string path)
@@ -2878,7 +2891,8 @@ namespace TypoZen
             string ext = Path.GetExtension(path);
             if (string.IsNullOrEmpty(ext)) return NativeRole.None;
             ext = ext.ToLowerInvariant();
-            if (ext == ".pdf") return NativeRole.Pdf;
+            // A PDF is not native any more: it opens in the editor page through PDF.js
+            // (DocKind.Pdf, OpenPdf). NativeRole.Pdf remains only for printing the original.
             if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif"
                 || ext == ".webp" || ext == ".bmp" || ext == ".ico" || ext == ".svg"
                 || ext == ".avif" || ext == ".jfif")
@@ -2899,6 +2913,7 @@ namespace TypoZen
         {
             if (string.IsNullOrEmpty(path)) return DocKind.Engine;
             if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)) return DocKind.Book;
+            if (IsPdfPath(path)) return DocKind.Pdf;
             if (ClassifyNativeRole(path) != NativeRole.None) return DocKind.Native;
             return DocKind.Engine;
         }
@@ -3124,8 +3139,9 @@ namespace TypoZen
 
             try { path = Path.GetFullPath(path); } catch { }
 
-            // Belt and braces: never write engine text over a book or native file.
-            if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) || IsNativePath(path))
+            // Belt and braces: never write engine text over a book, a PDF or a native file.
+            // A PDF used to be caught by IsNativePath; it is named now it is not native.
+            if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) || IsPdfPath(path) || IsNativePath(path))
             {
                 WinForms.MessageBox.Show(
                     "TypoZen will not write text over that file type." +
@@ -5599,7 +5615,7 @@ namespace TypoZen
                     "\"blockHover\":{28},\"fontType\":{29},\"fontFamily\":\"{30}\",\"fontSize\":{31}," +
                     "\"sessionBodies\":{9},\"recentFiles\":{10},\"encodingWarn\":{11}," +
                     "\"isTwoCol\":{12},\"w2\":{13},\"h2\":{14},\"l2\":{15},\"t2\":{16}," +
-                    "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20},\"dictionary\":\"{32}\"}}",
+                    "\"w1\":{17},\"h1\":{18},\"l1\":{19},\"t1\":{20},\"dictionary\":\"{32}\",\"pdfThemeColours\":{33}}}",
                     stateStr, w, h, l, t, _zoomFactor,
                     _chromeAutoHide ? "auto" : "always", _wordWrap ? "true" : "false", _statusBarVisible ? "true" : "false",
                     _sessionRestoreContent ? "true" : "false", _recentFilesEnabled ? "true" : "false",
@@ -5615,7 +5631,8 @@ namespace TypoZen
                     _justified ? "true" : "false", _sidebarAutoHide ? "true" : "false",
                     _autosave ? "true" : "false", _privacyMode ? "true" : "false",
                     _blockHover, _fontType, _customFontFamily.Replace("\"", "\\\""), _fontSize,
-                    (_dictionaryChoice ?? "").Replace("\\", "\\\\").Replace("\"", "\\\""));
+                    (_dictionaryChoice ?? "").Replace("\\", "\\\\").Replace("\"", "\\\""),
+                    _pdfThemeColours ? "true" : "false");
 
                 WriteStateFileAtomic(path, json);
             }
@@ -5727,6 +5744,8 @@ namespace TypoZen
                 if (mWrap.Success) _wordWrap = mWrap.Groups[1].Value == "true";
                 var mSb = Regex.Match(json, @"\""statusBar\""\s*:\s*(true|false)");
                 if (mSb.Success) _statusBarVisible = mSb.Groups[1].Value == "true";
+                var mPdfTc = Regex.Match(json, @"\""pdfThemeColours\""\s*:\s*(true|false)");
+                if (mPdfTc.Success) _pdfThemeColours = mPdfTc.Groups[1].Value == "true";
                 var mScrub = Regex.Match(json, @"\""scrubber\""\s*:\s*(true|false)");
                 if (mScrub.Success) _scrubberVisible = mScrub.Groups[1].Value == "true";
                 var mLine = Regex.Match(json, @"\""lineSpacing\""\s*:\s*(\d+)");
@@ -5781,6 +5800,9 @@ namespace TypoZen
             // only because Chromium's PDF viewer has its own zoom controls, and those were
             // what was being used.
             if (!RoleAllowsZoom(ActiveNativeRole)) return;
+            // A PDF zooms itself (10-pdf.js), redrawing its pages sharp; scaling the whole
+            // WebView would magnify the drawn pages and the sidebar with them.
+            if (ActiveIsPdf()) { SendMsg("pdf_zoom:" + (delta > 0 ? "in" : "out")); return; }
             double current = _zoomFactor;
             try
             {
@@ -5793,6 +5815,21 @@ namespace TypoZen
             catch { }
             SetZoom(current + delta);
         }
+
+        /// <summary>Zoom > Reset and Ctrl+0: a PDF goes back to its fit, anything else to 100%.</summary>
+        private void ResetZoom()
+        {
+            if (ActiveIsPdf()) { SendMsg("pdf_zoom:reset"); return; }
+            SetZoom(1.0);
+        }
+
+        private bool ActiveIsPdf()
+        {
+            return _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsPdfTab(_tabs[_activeTabIndex]);
+        }
+
+        /// <summary>The PDF's own scale as the page last reported it (pdf_zoom:), for the status bar.</summary>
+        private int _pdfZoomPct;
 
         private void SetZoom(double factor)
         {
@@ -5862,6 +5899,7 @@ namespace TypoZen
                     && _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
                     && _tabs[_activeTabIndex] != null
                     && !IsBookTab(_tabs[_activeTabIndex])
+                    && !IsPdfTab(_tabs[_activeTabIndex])
                     && !IsNativeTab(_tabs[_activeTabIndex]))
                 {
                     string m = NormalizeTabViewMode(value);
@@ -6141,6 +6179,7 @@ namespace TypoZen
                 Dispatcher.BeginInvoke(new Action(UpdateZoomLabel));
                 return;
             }
+            if (ActiveIsPdf() && _pdfZoomPct > 0) pct = _pdfZoomPct;
             _lblZoom.Text = pct + "%";
         }
 
@@ -6231,7 +6270,7 @@ namespace TypoZen
             // attach to the real WebView2, with the real WPF host, real window size and real
             // focus behaviour. Off unless --debug, so an ordinary run never opens a port.
             string extraArgs =
-                "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1, MAP localbooks 127.0.0.1, MAP localview 127.0.0.1, MAP localload 127.0.0.1\""
+                "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1, MAP localbooks 127.0.0.1, MAP localview 127.0.0.1, MAP localload 127.0.0.1, MAP localpdf 127.0.0.1\""
                 + " --disable-background-networking"
                 + " --disable-component-update"
                 + " --disable-sync"
@@ -6376,6 +6415,15 @@ namespace TypoZen
                 MapDocumentFolder(_currentFilePath);
                 AttachEditorNavigationGuards(_webView.CoreWebView2);
                 _webView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
+
+                // PDF bytes for PDF.js, streamed from disk on request (see OpenPdf).
+                try
+                {
+                    var pdfCore = _webView.CoreWebView2;
+                    pdfCore.AddWebResourceRequestedFilter(PdfHost + "*", CoreWebView2WebResourceContext.All);
+                    pdfCore.WebResourceRequested += (s, e) => ServePdfRequest(pdfCore, e);
+                }
+                catch (Exception ex) { LogFault("pdf host", ex); }
 
                 // Native Ctrl+wheel still mutates ZoomFactor — mirror it into the status bar.
                 try { _webView.ZoomFactorChanged += WebView_ZoomFactorChanged; } catch { }
@@ -6716,7 +6764,14 @@ namespace TypoZen
             }
             if (msg == "zoom:reset")
             {
-                SetZoom(1.0);
+                ResetZoom();
+                return;
+            }
+            if (msg.StartsWith("pdf_zoom:"))
+            {
+                int pct;
+                if (int.TryParse(msg.Substring(9), out pct) && pct > 0) _pdfZoomPct = pct;
+                UpdateZoomLabel();
                 return;
             }
 
@@ -7128,7 +7183,9 @@ namespace TypoZen
                         // the search sidebar prints the same number raw in its gutter.
                         // Grouping here made one line read as "1,037" in the status bar
                         // and "1037" three inches to the left.
-                        _lblLineCount.Text = "Ln " + caret + "/" + total;
+                        // A PDF reports its page in these fields (9th field "pdf").
+                        bool pdfStats = parts.Length >= 9 && parts[8] == "pdf";
+                        _lblLineCount.Text = (pdfStats ? "Page " : "Ln ") + caret + "/" + total;
                     }
                     UpdateStatusDisplay();
                 }
@@ -9379,6 +9436,7 @@ namespace TypoZen
         private static string DocKindToken(DocTab tab)
         {
             if (tab == null) return "engine";
+            if (IsPdfTab(tab)) return "pdf";
             if (IsNativeTab(tab) || tab.Kind == DocKind.Native) return "native";
             if (IsBookTab(tab) || tab.Kind == DocKind.Book) return "book";
             return "engine";
@@ -9387,6 +9445,13 @@ namespace TypoZen
         private static void ApplyDocKindFromSession(DocTab tab, string kindTok)
         {
             if (tab == null) return;
+            // A PDF saved as "native" by a version before PDF.js reads as a PDF now.
+            if (IsPdfPath(tab.FilePath))
+            {
+                tab.Kind = DocKind.Pdf;
+                tab.NativeRole = NativeRole.None;
+                return;
+            }
             if (string.Equals(kindTok, "native", StringComparison.OrdinalIgnoreCase))
             {
                 tab.Kind = DocKind.Native;
@@ -9485,7 +9550,7 @@ namespace TypoZen
             try
             {
                 bool html = IsHtmlPath(_currentFilePath);
-                bool book = IsEpubPath(_currentFilePath);
+                bool book = IsEpubPath(_currentFilePath) || IsPdfPath(_currentFilePath);
                 bool nativeNonHtml = ActiveTabIsNativeSurface() && !html;
                 Button segSource, segPreview;
                 if (_segments.TryGetValue("btnModeSource", out segSource))
@@ -9546,6 +9611,8 @@ namespace TypoZen
                 bool editable = IsDocumentEditable();
                 string why = IsEpubPath(_currentFilePath)
                     ? "A book is read-only"
+                    : IsPdfPath(_currentFilePath)
+                    ? "A PDF is read-only"
                     : (IsNativePath(_currentFilePath) || (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsNativeTab(_tabs[_activeTabIndex])))
                         ? "This file is read-only — open a Markdown or text document to edit"
                         : "Reader is read-only — switch to Preview or Source to edit";
@@ -9586,6 +9653,14 @@ namespace TypoZen
                 LockWithTip("mSave", native || book, why);
                 LockWithTip("mSaveAs", native || book, why);
                 LockWithTip("mExportHtml", native, why);
+                LockWithTip("mOpenExternal", string.IsNullOrEmpty(_currentFilePath) || !File.Exists(_currentFilePath),
+                    "This document has not been saved to a file yet");
+                // Read Aloud and bookmarks work from the editor's document, which a PDF does
+                // not use; they come to PDFs with Phase 2 of docs/pdf-and-audit-plan.md.
+                bool pdf = !native && IsPdfPath(_currentFilePath);
+                LockWithTip("btnReadAloud", pdf, "Read Aloud is not available for PDFs yet");
+                LockWithTip("mMarkToggle", pdf, "Bookmarks are not available for PDFs yet");
+                LockWithTip("mReturnJump", pdf, "Not available for PDFs yet");
             }
             catch { }
         }
@@ -9610,6 +9685,7 @@ namespace TypoZen
             RefreshWordWrapMenuAvailability();
             RefreshFormatAvailability();
             RefreshFileMenuAvailability();
+            UpdateZoomLabel();       // a PDF shows its own scale, anything else the window's
         }
 
         private void SetStatusBarVisible(bool on)
@@ -10658,6 +10734,22 @@ namespace TypoZen
 
         private bool _wordWrap = true;
         private bool _statusBarVisible = true;
+
+        /// <summary>
+        /// View > PDF Pages in Theme Colours. Off by default: PDF.js's theme colouring redraws
+        /// everything on the page in the theme's paper and ink, pictures included -- an orange
+        /// and navy figure came out beige and cream -- so a designed PDF is shown as its author
+        /// made it unless the reader asks. A text PDF reads better with it on.
+        /// </summary>
+        private bool _pdfThemeColours = false;
+
+        private void SetPdfThemeColours(bool on)
+        {
+            _pdfThemeColours = on;
+            SetMenuChecked("mPdfThemeColours", on);
+            SendMsg("pdf_theme_colours:" + (on ? "1" : "0"));
+            if (!_applyingRestoredSettings) SaveWindowState();
+        }
         private bool _applyingRestoredSettings;
 
         /// <summary>
@@ -10683,6 +10775,7 @@ namespace TypoZen
                 SetMenuChecked("mRecentEnabled", _recentFilesEnabled);
                 if (includePageSettings)
                 {
+                    SetPdfThemeColours(_pdfThemeColours);
                     SetWordWrap(_wordWrap);
                     SetLineSpacing(_lineSpacing);
                     SetParaSpacing(_paraSpacing);
@@ -11170,9 +11263,12 @@ namespace TypoZen
             // leaving a book tab either stalled for six seconds or failed and abandoned the
             // switch entirely.
             var activeTab = _tabs[_activeTabIndex];
-            bool activeIsBook = IsBookTab(activeTab)
+            // A PDF tab has no text in the editor either; syncing one would read whatever
+            // the hidden editor last held into the PDF's tab.
+            bool activeIsBook = IsBookTab(activeTab) || IsPdfTab(activeTab)
                 || (!string.IsNullOrEmpty(_currentFilePath)
-                    && _currentFilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase));
+                    && (_currentFilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)
+                        || IsPdfPath(_currentFilePath)));
             bool activeIsNative = IsNativeTab(activeTab)
                 || IsNativePath(_currentFilePath)
                 || IsNativePath(activeTab.FilePath);
@@ -11246,10 +11342,11 @@ namespace TypoZen
             var tab = _tabs[_activeTabIndex];
             tab.Content = content;
             tab.FilePath = _currentFilePath;
-            // Books never dirty, even if the page snapshot disagrees with lastSavedContent.
-            if (IsBookTab(tab)
+            // Books and PDFs never dirty, even if the page snapshot disagrees with lastSavedContent.
+            if (IsBookTab(tab) || IsPdfTab(tab)
                 || (!string.IsNullOrEmpty(_currentFilePath)
-                    && _currentFilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)))
+                    && (_currentFilePath.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)
+                        || IsPdfPath(_currentFilePath))))
             {
                 dirty = false;
             }
@@ -13266,7 +13363,24 @@ namespace TypoZen
                 return;
             }
 
-            // PDF / image / media — Chromium native surface, not DocumentModel.
+            // A PDF is read in the editor page by PDF.js; like a book, it carries no text and
+            // is loaded again from its file.
+            if (IsPdfPath(tab.FilePath))
+            {
+                tab.Kind = DocKind.Pdf;
+                tab.NativeRole = NativeRole.None;
+                ShowEditorSurface();
+                _currentFilePath = tab.FilePath;
+                _isDirty = false;
+                InvalidateEnginePageLoad();
+                RefreshEditingAvailability();
+                RebuildTabStrip();
+                Dispatcher.BeginInvoke(new Action(() => OpenPdf(tab.FilePath, true)),
+                    DispatcherPriority.Normal);
+                return;
+            }
+
+            // Image / media / HTML page — Chromium native surface, not DocumentModel.
             if (IsNativeTab(tab) || IsNativePath(tab.FilePath))
             {
                 tab.Kind = DocKind.Native;
@@ -13427,6 +13541,7 @@ namespace TypoZen
         {
             if (tab == null) return;
             if (IsNativeTab(tab)) return;
+            if (IsPdfTab(tab)) return;       // the PDF viewer keeps its own view
 
             if (IsBookTab(tab))
             {
@@ -13934,6 +14049,12 @@ namespace TypoZen
                     return;
                 }
 
+                if (IsPdfPath(path))
+                {
+                    OpenPdf(path);
+                    return;
+                }
+
                 // HTML defaults to rendered native page; forceEditorText = View Source path.
                 if (!forceEditorText && IsNativePath(path))
                 {
@@ -14295,8 +14416,116 @@ namespace TypoZen
             DrainPendingOpen();
         }
 
+        // ---- PDF: read in the editor page by PDF.js -------------------------------------
+        //
+        // The page fetches the file from https://localpdf/<token>/<name>, answered by
+        // ServePdfRequest straight from disk: no copy, and no virtual host to re-map (a host
+        // mapped after navigation never reaches the page -- TypoZen CLAUDE.md). The token
+        // keeps the file's path out of the URL. Reading position is the page number, kept
+        // in the same recency-ordered store as books.
+
+        private readonly Dictionary<string, string> _pdfTokens = new Dictionary<string, string>(StringComparer.Ordinal);
+        private const string PdfHost = "https://localpdf/";
+
+        private string PdfUrlFor(string path)
+        {
+            string token = null;
+            foreach (var kv in _pdfTokens)
+                if (string.Equals(kv.Value, path, StringComparison.OrdinalIgnoreCase)) { token = kv.Key; break; }
+            if (token == null) { token = Guid.NewGuid().ToString("N"); _pdfTokens[token] = path; }
+            return PdfHost + token + "/" + Uri.EscapeDataString(Path.GetFileName(path));
+        }
+
+        private void ServePdfRequest(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e)
+        {
+            try
+            {
+                string uri = e.Request.Uri;
+                if (!uri.StartsWith(PdfHost, StringComparison.OrdinalIgnoreCase)) return;
+                string rest = uri.Substring(PdfHost.Length);
+                int slash = rest.IndexOf('/');
+                string token = slash > 0 ? rest.Substring(0, slash) : rest;
+                string path;
+                if (!_pdfTokens.TryGetValue(token, out path) || !File.Exists(path))
+                {
+                    e.Response = core.Environment.CreateWebResourceResponse(null, 404, "Not Found", "");
+                    return;
+                }
+                var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                                            FileShare.ReadWrite | FileShare.Delete);
+                e.Response = core.Environment.CreateWebResourceResponse(stream, 200, "OK",
+                    "Content-Type: application/pdf\r\nContent-Length: " + stream.Length +
+                    "\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store");
+            }
+            catch (Exception ex)
+            {
+                LogFault("serve pdf", ex);
+                try { e.Response = core.Environment.CreateWebResourceResponse(null, 500, "Error", ""); } catch { }
+            }
+        }
+
+        private void OpenPdf(string path, bool forceLoad = false)
+        {
+            path = Path.GetFullPath(path);
+            int existing = -1;
+            for (int i = 0; i < _tabs.Count; i++)
+            {
+                if (!string.IsNullOrEmpty(_tabs[i].FilePath) &&
+                    string.Equals(Path.GetFullPath(_tabs[i].FilePath), path, StringComparison.OrdinalIgnoreCase))
+                { existing = i; break; }
+            }
+            if (!forceLoad && existing >= 0 && existing == _activeTabIndex && _editorReady
+                && string.Equals(_currentFilePath, path, StringComparison.OrdinalIgnoreCase))
+                return;                                   // already the document on screen
+
+            if (existing < 0 || existing != _activeTabIndex)
+            {
+                if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
+                {
+                    NotifyEditorSyncFailedForTabOp();
+                    return;
+                }
+                SnapshotActiveTabView();
+            }
+
+            _tabOpInProgress = true;
+            try
+            {
+                DocTab tab = ActivateTabForOpen(existing);
+                tab.FilePath = path;
+                tab.Content = "";
+                tab.IsDirty = false;
+                tab.Kind = DocKind.Pdf;
+                tab.NativeRole = NativeRole.None;
+                tab.SourceEncoding = "PDF";
+                ShowEditorSurface();
+                _currentFilePath = path;
+                _isDirty = false;
+                RefreshEditingAvailability();
+                RebuildTabStrip();
+                BumpDocGen();
+
+                int page = RememberedBookPosition(path);
+                SendMsg("load_pdf:" + PdfUrlFor(path) + (page > 1 ? "|page=" + page : ""));
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try { AddRecentFile(path); } catch { }
+                    try { PersistTabSession(); } catch { }
+                }), DispatcherPriority.Background);
+            }
+            catch (Exception ex)
+            {
+                WinForms.MessageBox.Show("Could not open the PDF: " + ex.Message,
+                    "Open PDF", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+            }
+            finally { _tabOpInProgress = false; }
+
+            DrainPendingOpen();
+        }
+
         /// <summary>
-        /// Open a PDF / image / media file on the native Chromium surface (read-only).
+        /// Open an image / media file or HTML page on the native Chromium surface (read-only).
         /// See docs/native-reader-plan.md.
         /// </summary>
         private void OpenNative(string path, bool forceLoad = false)
@@ -14976,7 +15205,9 @@ namespace TypoZen
         {
             DocTab tab = _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex] : null;
             native = ActiveTabIsNativeSurface() || (tab != null && IsNativeTab(tab));
-            book = !native && (IsEpubPath(_currentFilePath) || (tab != null && IsBookTab(tab)));
+            // "book" here means read-only reading matter: an ePub or a PDF.
+            book = !native && (IsEpubPath(_currentFilePath) || IsPdfPath(_currentFilePath)
+                               || (tab != null && (IsBookTab(tab) || IsPdfTab(tab))));
         }
 
         /// <summary>
@@ -15028,8 +15259,61 @@ namespace TypoZen
         /// native WebView for PDF/image/media tabs, editor WebView otherwise.
         /// Printing the hidden editor while a PDF is up looks like a broken Print.
         /// </summary>
+        /// <summary>
+        /// Print a PDF as itself. PDF.js prints by drawing each page as an image; Edge's viewer
+        /// prints the PDF's own vector content, so the file is loaded into the second WebView,
+        /// out of sight, and printed from there with the Windows print dialog.
+        /// </summary>
+        private async void PrintOriginalPdf(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+                EnsureNativeWebViewAsync();
+                for (int i = 0; i < 60 && (_nativeWebView == null || _nativeWebView.CoreWebView2 == null); i++)
+                    await Task.Delay(50);
+                if (_nativeWebView == null || _nativeWebView.CoreWebView2 == null) return;
+                var core = _nativeWebView.CoreWebView2;
+                MapNativeFolder(path);
+                var done = new TaskCompletionSource<bool>();
+                EventHandler<CoreWebView2NavigationCompletedEventArgs> onDone = (s, e) => done.TrySetResult(e.IsSuccess);
+                core.NavigationCompleted += onDone;
+                try
+                {
+                    core.Navigate("https://localview/" + Uri.EscapeDataString(Path.GetFileName(path)));
+                    var first = await Task.WhenAny(done.Task, Task.Delay(10000));
+                    if (first != done.Task || !done.Task.Result) return;
+                }
+                finally { core.NavigationCompleted -= onDone; }
+                await Task.Delay(600);               // let the viewer lay the document out
+                core.ShowPrintUI(CoreWebView2PrintDialogKind.System);
+            }
+            catch (Exception ex) { LogFault("print pdf", ex); }
+        }
+
+        /// <summary>File > Open in Default App: hand the file to whatever Windows opens it with.</summary>
+        private void OpenInDefaultApp()
+        {
+            try
+            {
+                string p = _currentFilePath;
+                if (string.IsNullOrEmpty(p) || !File.Exists(p)) return;
+                Process.Start(new ProcessStartInfo(p) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                WinForms.MessageBox.Show("Windows could not open the file: " + ex.Message, "Open in Default App",
+                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+            }
+        }
+
         private void ExportPdf()
         {
+            if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsPdfTab(_tabs[_activeTabIndex]))
+            {
+                PrintOriginalPdf(_currentFilePath);
+                return;
+            }
             try
             {
                 bool nativeActive = _nativeSurfaceVisible

@@ -90,6 +90,16 @@
             if (_statsTimer) { clearTimeout(_statsTimer); _statsTimer = null; }
             _statsLastRun = Date.now();
 
+            // A PDF on screen: count its text, and report the page where the line would go.
+            if (window.tzPdfActive && typeof window.tzPdfStats === 'function') {
+                const p = window.tzPdfStats();
+                if (p) {
+                    const rt = p.words === 0 ? 0 : Math.max(1, Math.ceil(p.words / 200));
+                    postMsg(`stats:${p.words},${p.chars},${rt},false,${p.pages},${p.page},0,0,pdf`);
+                    return;
+                }
+            }
+
             // Pure read: this runs on a timer and must never disturb the caret.
             // Source mode: always prefer the live textarea — a stale _contentCache from
             // Preview/open can be far shorter and clamp Ln 16 → Ln 11 (poisoning sticky).
@@ -447,6 +457,12 @@
 
         function updateOutline() {
             if (!outlineList) return;
+            // A PDF on screen shows its own outline (10-pdf.js).
+            if (window.tzPdfActive && typeof window.tzPdfOutline === 'function') {
+                _chapterEntries = [];
+                window.tzPdfOutline(outlineList);
+                return;
+            }
             outlineList.innerHTML = '';
             let found = 0;
             _chapterEntries = [];

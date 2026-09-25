@@ -104,6 +104,7 @@
         }
 
         function isReadOnlyFindSurface() {
+            if (window.tzPdfActive) return true;
             return typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub';
         }
 
@@ -210,6 +211,8 @@
                 // Always select + scroll the hit in Source so the list and the text agree.
                 scrollSourceMatchIntoView(m.start, m.end, true);
                 paintSourceHighlights();
+            } else if (findState.kind === 'pdf') {
+                window.tzPdfShowMatches(findState.matches, findState.index, true);
             } else if (findState.kind === 'model') {
                 revealModelMatch(findState.matches[findState.index], true, !findBarOpen);
             } else {
@@ -464,7 +467,10 @@
             // what the status bar reports.
             const kind = surface.kind;
             let lines;
-            if (kind === 'source' || typeof DocumentModel === 'undefined') {
+            if (kind === 'pdf') {
+                // A PDF's results are labelled by page, not line.
+                lines = offsets.map(function (off) { return 'p. ' + window.tzPdfPageOfOffset(off); });
+            } else if (kind === 'source' || typeof DocumentModel === 'undefined') {
                 lines = lineNumbersForOffsets(haystack, offsets);
             } else {
                 // The visual path needs the char -> node map to find a block. Build it
@@ -524,9 +530,9 @@
 
                 const active = (i === findState.index) ? ' active' : '';
                 const tip = img
-                    ? ('Line ' + lines[i] + ' — image (match in path) — click to jump · '
+                    ? ((kind === 'pdf' ? '' : 'Line ') + lines[i] + ' — image (match in path) — click to jump · '
                         + (i + 1) + ' of ' + findState.matches.length)
-                    : ('Line ' + lines[i] + ' — match ' + (i + 1) + ' of ' + findState.matches.length);
+                    : ((kind === 'pdf' ? '' : 'Line ') + lines[i] + ' — match ' + (i + 1) + ' of ' + findState.matches.length);
                 html += '<div class="search-item' + rowExtra + active + '" onclick="window.findJumpTo(' + i + '); try { this.closest(\'#search-results-list\').focus({preventScroll:true}); } catch(e) {}"' +
                     ' title="' + tip.replace(/"/g, '&quot;') + '">' +
                     '<span class="search-line">' + lines[i] + '</span>' +
@@ -3744,6 +3750,7 @@
          * the display shows two leaf numbers per spread; the user enters a leaf.
          */
         function openGoToPageDialog() {
+            if (window.tzPdfActive && typeof window.tzPdfGotoPrompt === 'function') { window.tzPdfGotoPrompt(); return; }
             if (!isPaginatedLayout() || !PageMap.ensure()) return;
             const twoCol = !!(editor && editor.classList.contains('two-col-layout'));
             const d = pageDisplayFromSpread(PageMap.current(), PageMap.count(), twoCol);
@@ -6020,6 +6027,8 @@
          * Replace always rewrites full markdown via getMarkdownContent().
          */
         function getFindHaystack() {
+            // A PDF on screen is searched by its pages' text (10-pdf.js).
+            if (window.tzPdfActive && typeof window.tzPdfFindSurface === 'function') return window.tzPdfFindSurface();
             if (isSourceSurfaceActive()) {
                 return { haystack: sourceEditor ? sourceEditor.value : '', map: null, kind: 'source' };
             }
@@ -6628,6 +6637,8 @@
                 // Paint on recount as well as on navigate: the count changing is exactly
                 // when the set of marks changed.
                 paintSourceHighlights();
+            } else if (findState.kind === 'pdf') {
+                window.tzPdfShowMatches(findState.matches, findState.index, navigate);
             } else if (findState.kind === 'model') {
                 if (findState.index >= 0) {
                     if (navigate) revealModelMatch(findState.matches[findState.index], true);
@@ -6751,6 +6762,8 @@
                 // which is the mouse path. Without this the ring stayed on whichever hit
                 // was last clicked while the count and the list moved on.
                 paintSourceHighlights();
+            } else if (findState.kind === 'pdf') {
+                window.tzPdfShowMatches(findState.matches, findState.index, true);
             } else if (findState.kind === 'model') {
                 revealModelMatch(findState.matches[findState.index], true, !isFindBarOpen());
             } else {
@@ -6859,6 +6872,9 @@
                     return;
                 }
                 if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey) {
+                    // Bookmarks and Return from Jump act on the editor's document, which a PDF
+                    // on screen does not use (10-pdf.js); their menu items are greyed there too.
+                    if (window.tzPdfActive && /^[mjMJ]$/.test(e.key)) { e.preventDefault(); return; }
                     if (e.key === 'M' || e.key === 'm') {
                         e.preventDefault();
                         e.stopPropagation();

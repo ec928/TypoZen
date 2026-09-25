@@ -909,6 +909,26 @@
                     const content = msg.substring(13);
                     finishLoadContent(content, false, false);
                 }
+                else if (msg.startsWith("pdf_theme_colours:")) {
+                    if (typeof window.tzPdfSetThemed === 'function') window.tzPdfSetThemed(msg.substring(18) === '1');
+                    return;
+                }
+                else if (msg.startsWith("pdf_zoom:")) {
+                    // Zoom on a PDF scales the PDF, not the page (host ZoomBy).
+                    if (typeof window.tzPdfZoom === 'function') window.tzPdfZoom(msg.substring(9));
+                    return;
+                }
+                else if (msg.startsWith("load_pdf:")) {
+                    // A PDF, read here by PDF.js (10-pdf.js). "<url>" or "<url>|page=<n>".
+                    try { cancelPositionReport(); } catch (eCP) {}
+                    try { cancelResumeAt(); } catch (eCR) {}
+                    let spec = msg.substring(9);
+                    let page = 1;
+                    const pAt = spec.indexOf('|page=');
+                    if (pAt >= 0) { page = parseInt(spec.substring(pAt + 6), 10) || 1; spec = spec.substring(0, pAt); }
+                    if (typeof window.tzOpenPdf === 'function') window.tzOpenPdf(spec, page);
+                    return;
+                }
                 else if (msg.startsWith("fetch_and_load_book:")) {
                     // This document is being replaced; a position report armed by the
                     // one on screen must not be attributed to the one arriving.
@@ -1624,6 +1644,12 @@
                 // "view_set:<selector>:<value>" from one of the segmented controls.
                 const bits = cmd.substring(9).split(':');
                 const which = bits[0], value = bits[1];
+                // On a PDF, columns and Pages drive the PDF viewer (10-pdf.js).
+                if (window.tzPdfActive && typeof window.tzPdfViewSet === 'function'
+                    && (which === 'columns' || which === 'scroll')) {
+                    window.tzPdfViewSet(which, value);
+                    return;
+                }
                 const change = {};
                 if (which === 'mode') change.mode = value;
                 else if (which === 'columns') change.columns = parseInt(value, 10) === 2 ? 2 : 1;

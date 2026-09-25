@@ -11,6 +11,7 @@
     "07-stats-host.js",
     "08-code.js",
     "08b-compromise.js",
-    "09-speech.js"
+    "09-speech.js",
+    "10-pdf.js"
   ]
 }

@@ -423,6 +423,8 @@
                         <MenuItem Header="_File">
                             <MenuItem x:Name="mNew" Header="_New" InputGestureText="Ctrl+N"/>
                             <MenuItem x:Name="mOpen" Header="_Open..." InputGestureText="Ctrl+O"/>
+                            <MenuItem x:Name="mOpenExternal" Header="Open in _Default App"
+                                      ToolTip="Open this file in whatever Windows uses for it -- for a PDF, your usual PDF reader"/>
                             <MenuItem x:Name="mRecentMenu" Header="Open _Recent">
                                 <MenuItem Header="(none)" IsEnabled="False"/>
                             </MenuItem>
@@ -525,6 +527,8 @@
 
                             <MenuItem x:Name="mScrubberToggle" Header="Scr_ubber" IsCheckable="True" IsChecked="True"/>
                             <MenuItem x:Name="mStatusBarToggle" Header="Status _Bar" IsCheckable="True" IsChecked="True"/>
+                            <MenuItem x:Name="mPdfThemeColours" Header="PDF Pages in _Theme Colours" IsCheckable="True"
+                                      ToolTip="Draw PDF pages in the theme's colours. Good for text; pictures are recoloured too."/>
                             <MenuItem x:Name="mChromeAutoHide" Header="Auto-hide UI (_Zen)" IsCheckable="True"/>
                             <MenuItem x:Name="mSidebarAutoHide" Header="Side Panel Auto-_hide" IsCheckable="True" IsChecked="False"/>
                             <Separator/>

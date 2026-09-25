@@ -75,8 +75,9 @@ async function untilUi(cmd, pred, timeoutMs) {
     return last;
 }
 
+// No PDF: since 0.6.0 a PDF is read in the editor page by PDF.js, not on the native
+// surface (tests/pdf-reader-app.mjs covers it).
 const NATIVES = [
-    { file: 'native-sample.pdf', label: 'PDF', zooms: true },
     // Zoom is expected to do nothing here: a still image is shown at its own size, so a
     // working zoom control would move a number and change nothing visible.
     { file: 'native-sample.png', label: 'Image', zooms: false },

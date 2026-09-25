@@ -1256,6 +1256,18 @@
             background-color: var(--accent, #f59e0b);
             color: var(--accent-tx, #111);
         }
+        /* On a PDF the highlight lands on PDF.js's text layer: invisible text laid over the
+           page image. Colouring that text drew a second, misaligned copy of the word, and a
+           solid fill hid the page's own glyphs -- so here the text stays invisible and the
+           fill is a see-through tint over the page. */
+        #pdfView .textLayer span::highlight(typozen-find) {
+            color: transparent;
+            background-color: rgba(255, 180, 0, 0.30);
+        }
+        #pdfView .textLayer span::highlight(typozen-find-current) {
+            color: transparent;
+            background-color: color-mix(in srgb, var(--accent, #f59e0b) 45%, transparent);
+        }
         /* Windows spell checker hits in Preview. Wavy underline if the Highlight
            API will paint it; a light wash if not. Not dictionary.tsv — that file
            is definitions. */
@@ -2136,6 +2148,27 @@
            you can press it. */
         #editor a {
             cursor: pointer;
+        }
+
+        /* A PDF, read by PDF.js (10-pdf.js). PDF.js requires its container to be absolutely
+           positioned; #main-container is the positioned box the editor sits in. The pages
+           are drawn in the theme's colours (pageColors), so the gutter between them takes
+           the theme's paper too. */
+        #pdfView {
+            position: absolute;
+            inset: 0;
+            overflow: auto;
+            outline: none;
+            background: var(--bg, #18181B);
+        }
+        #pdfView[hidden] { display: none; }
+        #pdfView .pdfViewer .page {
+            box-shadow: 0 0 0 1px color-mix(in srgb, var(--tx, #F4F4F5) 12%, transparent);
+            border-color: transparent;
+        }
+        /* View > PDF Pages in Theme Colours: the page itself takes the theme's paper. */
+        html.tz-pdf-themed #pdfView .pdfViewer .page {
+            background-color: var(--bg, #18181B);
         }
         /* Books bring their own link colours -- Dune's contents page is pure dark blue --
            which all but vanish on a dark theme. In the editor a link is the theme's link

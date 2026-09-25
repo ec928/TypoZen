@@ -41,6 +41,8 @@
          * @param {number} [resumeAt]  block to open at, if the reader has been here before
          */
         function loadBookPayload(payload, resumeAt) {
+            // A book replaces a PDF on screen (10-pdf.js).
+            try { if (window.tzPdfActive && typeof window.tzClosePdf === 'function') window.tzClosePdf(); } catch (eP) {}
             let data = payload;
             if (typeof data === 'string') {
                 try { data = JSON.parse(data); } catch (e) { data = null; }

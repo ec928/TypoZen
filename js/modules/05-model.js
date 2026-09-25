@@ -1248,6 +1248,8 @@
          */
         function loadMarkdownContent(markdown, opts) {
             opts = opts || {};
+            // A document replaces a PDF on screen (10-pdf.js hides the editor while one is shown).
+            try { if (window.tzPdfActive && typeof window.tzClosePdf === 'function') window.tzClosePdf(); } catch (eP) {}
             _contentCache = null;
             try { if (typeof clearWarmPageChunk === 'function') clearWarmPageChunk(); } catch (eW) {}
             try { releaseDocumentStateForHost(); } catch (e0) {}
@@ -2417,6 +2419,10 @@
         let lastPageScrollTime = 0;
         let currentTwoColPage = 0;
         window.addEventListener('wheel', function (e) {
+            // A PDF on screen handles its own wheel (10-pdf.js). The editor behind it can be
+            // left in Pages mode by a book, and then this handler cancelled every wheel on
+            // the page -- the PDF would not scroll at all.
+            if (window.tzPdfActive) return;
             if (e.ctrlKey || e.metaKey) {
                 e.preventDefault();
                 if (e.deltaY < 0) postMsg('zoom:in');
