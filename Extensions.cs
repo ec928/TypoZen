@@ -573,6 +573,14 @@ namespace TypoZen
                 };
                 var panel = new StackPanel();
                 panel.Children.Add(new TextBlock { Text = info.Title, FontWeight = FontWeights.SemiBold });
+                if (info.Id == ExtensionCatalog.QwenId)
+                    panel.Children.Add(new TextBlock
+                    {
+                        Text = "Experimental — download and use at your own risk.",
+                        FontWeight = FontWeights.SemiBold,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 3, 0, 0)
+                    });
                 panel.Children.Add(new TextBlock
                 {
                     Text = info.Blurb,
@@ -701,6 +709,18 @@ namespace TypoZen
                         if (qwenRunning != null) { qwenRunning.Cancel(); status.Text = "Stopping..."; return; }
                         string why = QwenInstaller.Preflight(cacheDir);
                         if (why != null) { status.Text = why; return; }
+                        // Asked on a fresh install, not when carrying on from a cancelled one.
+                        if (!File.Exists(QwenInstaller.InstallFlag(cacheDir)))
+                        {
+                            var risk = MessageBox.Show(win,
+                                "Qwen narration is experimental.\n\n"
+                                + "Install downloads about " + Human(QwenInstaller.DownloadBytes) + " from other parties' "
+                                + "servers (github.com, pypi.org, download.pytorch.org and huggingface.co) and runs a "
+                                + "large speech model on your graphics card. It has been tested on one PC only.\n\n"
+                                + "Download and use it at your own risk. Install?",
+                                "Qwen narration", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                            if (risk != MessageBoxResult.OK) return;
+                        }
                         var qi = new QwenInstaller();
                         qwenRunning = qi;
                         button.Content = "Cancel";
