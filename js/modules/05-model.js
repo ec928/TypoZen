@@ -2236,6 +2236,35 @@
             sendImageToHost(img);
         });
 
+        // Files dropped anywhere on the page open as tabs, as dropping a file on an editor
+        // does everywhere else. Before this a dropped .md or .epub did nothing: only images
+        // were handled, and the navigation guard cancelled the browser's own file load.
+        // The page cannot see a dropped file's path, so the files themselves go to the
+        // host, which gets their paths from WebView2. The one exception is images dropped
+        // into a document that can take them: the handlers above insert those, as before.
+        window.addEventListener('dragover', (e) => {
+            const types = e.dataTransfer && e.dataTransfer.types;
+            if (types && Array.prototype.indexOf.call(types, 'Files') >= 0) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+            }
+        }, true);
+        window.addEventListener('drop', (e) => {
+            const files = e.dataTransfer && e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+            if (!files.length) return;
+            const allImages = files.every(f => /^image\//i.test(f.type || ''));
+            const t = e.target;
+            const inText = t && (t === sourceEditor || (editor && editor.contains(t)));
+            const editable = state.mode === 'source'
+                ? !!(sourceEditor && !sourceEditor.readOnly)
+                : !!(editor && editor.isContentEditable);
+            if (allImages && inText && editable) return;
+            e.preventDefault();
+            e.stopPropagation();
+            try { window.chrome.webview.postMessageWithAdditionalObjects('host_open_dropped', files); }
+            catch (err) { }
+        }, true);
+
         // Alt reveals hidden chrome. The page is the ONLY component that sees this key
         // while the editor has focus: the WebView's HWND belongs to the browser process,
         // so it never reaches the host's message loop or WPF's KeyDown.

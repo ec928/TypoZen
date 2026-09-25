@@ -699,6 +699,11 @@
                     <TextBlock x:Name="lblFilePath" Text="Untitled.md" FontSize="11" Opacity="0.75"
                                TextTrimming="CharacterEllipsis" MaxWidth="280"
                                Cursor="Hand" VerticalAlignment="Center"/>
+                    <!-- Shown for the rest of the run once an unexpected error has switched
+                         autosave and session restore off (Program.DocumentStateSuspect). -->
+                    <TextBlock x:Name="lblAutosaveOff" Text="&#x26A0; Autosave and session restore are off after an error"
+                               FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"
+                               ToolTip="An unexpected error stopped TypoZen trusting what is in memory to overwrite your files. Save anything you need with File &gt; Save As, then restart TypoZen."/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.72">

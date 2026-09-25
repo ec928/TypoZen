@@ -1197,6 +1197,24 @@
                     } catch (eInv) {}
                     updateStatsNow();
                 }
+                else if (msg.startsWith("rewrite_image_links:")) {
+                    // The first save moved images pasted while untitled beside the document:
+                    // "<old>\t<new>" per line. Rewrite them in the model and on screen before
+                    // save_success records this text as saved.
+                    const pairs = msg.substring(20).split('\n').map(l => l.split('\t')).filter(p => p.length === 2 && p[0]);
+                    const swap = (s) => { let t = s; for (const p of pairs) t = t.split(p[0]).join(p[1]); return t; };
+                    try {
+                        if (state.mode === 'source' && sourceEditor) sourceEditor.value = swap(sourceEditor.value);
+                        for (let i = 0; i < DocumentModel.blocks.length; i++) {
+                            const raw = String(DocumentModel.blocks[i].raw == null ? '' : DocumentModel.blocks[i].raw);
+                            const next = swap(raw);
+                            if (next === raw) continue;
+                            DocumentModel.setBlockRaw(i, next);
+                            const el = document.querySelector('#editor .block[data-model-index="' + i + '"]');
+                            if (el) { el.setAttribute('data-raw', next); renderBlockPreview(el, next); }
+                        }
+                    } catch (eR) {}
+                }
                 else if (msg == "save_success") {
                     state.lastSavedContent = getMarkdownContent(false);
                     updateStatsNow();
@@ -2356,6 +2374,8 @@
             modal.classList.remove('open');
             modal.hidden = true;
             if (!wasOpen) return;
+            // The host may have shown this page over a native tab just for this panel.
+            try { postMsg('overlay_closed'); } catch (eP) {}
             try {
                 if (state.mode === 'source' && sourceEditor) sourceEditor.focus();
                 else if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();

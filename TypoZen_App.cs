@@ -231,6 +231,25 @@ namespace TypoZen
             catch { }
         }
 
+        /// <summary>Show the status-bar note that autosave is off, from whichever thread faulted.</summary>
+        private static void ShowSuspectIndicator()
+        {
+            try
+            {
+                var app = Application.Current;
+                if (app == null) return;
+                app.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    foreach (Window w in app.Windows)
+                    {
+                        var tz = w as TypoZenWindow;
+                        if (tz != null) tz.RefreshSuspectIndicator();
+                    }
+                }));
+            }
+            catch { }
+        }
+
         /// <summary>Set with Privacy Mode: debug.log is not written at all.</summary>
         internal static volatile bool DebugLogSuppressed;
 
@@ -271,6 +290,7 @@ namespace TypoZen
                 LogFault("dispatcher", e.Exception);
                 DocumentStateSuspect = true;
                 e.Handled = true;
+                ShowSuspectIndicator();
                 if (SuppressFaultUi) return;
                 try
                 {
@@ -458,6 +478,7 @@ namespace TypoZen
                 // thread can land here with the UI still up and autosave still armed. Same
                 // rule as the dispatcher: stop writing over the reader's files.
                 DocumentStateSuspect = true;
+                ShowSuspectIndicator();
             };
 
             string initialFile = launch.FilePath;
@@ -652,6 +673,8 @@ namespace TypoZen
         {
             public int Id;
             public string FilePath;   // null = untitled
+            /// <summary>Folder key for images pasted before the document had a path.</summary>
+            public string PendingKey;
             public string Content;   // last known markdown (empty for Book / Native)
             public bool IsDirty;
             public string SourceEncoding; // encoding the file was read as (display only)
@@ -1652,10 +1675,10 @@ namespace TypoZen
             }
             catch { }
 
-            BindClick("mHelpSyntax", (s, e) => SendMsg("cmd:help_syntax"));
+            BindClick("mHelpSyntax", (s, e) => ShowHelpPanel("cmd:help_syntax"));
             BindClick("mToggleDebug", (s, e) => SendMsg("cmd:toggle_debug_hud"));
             // About is an in-page themed panel (same shell as F1 help), not a system MessageBox.
-            BindClick("mAbout", (s, e) => SendMsg("cmd:help_about"));
+            BindClick("mAbout", (s, e) => ShowHelpPanel("cmd:help_about"));
 
             // Formatting buttons
             BindClick("btnH1", (s, e) => SendMsg("fmt:h1"));
@@ -3174,6 +3197,19 @@ namespace TypoZen
             }
             if (overwritingOwnFile && !ConfirmOverwriteLoss(tab, path, outText)) return false;
 
+            // Images pasted while the document was untitled move beside it now; see
+            // AdoptPendingImages. After every prompt, so nothing is copied for a save the
+            // reader then cancels.
+            var imgRewrites = new List<KeyValuePair<string, string>>();
+            var imgAdopted = new List<string>();
+            string contentBeforeAdopt = tab.Content;
+            try
+            {
+                tab.Content = AdoptPendingImages(tab.Content, path, imgRewrites, imgAdopted);
+                if (imgRewrites.Count > 0) outText = ComposeFileText(tab);
+            }
+            catch (Exception ex) { LogFault("adopt pending images", ex); }
+
             try
             {
                 _ignoreDiskWatchUntil = DateTime.UtcNow.AddSeconds(2);
@@ -3181,6 +3217,15 @@ namespace TypoZen
             }
             catch (Exception ex)
             {
+                // Put the text back and take the copies away: the pending images are still
+                // where the document's links point.
+                tab.Content = contentBeforeAdopt;
+                try
+                {
+                    string dir = Path.GetDirectoryName(Path.GetFullPath(path));
+                    foreach (var kv in imgRewrites) { try { File.Delete(Path.Combine(dir, kv.Value.Replace('/', '\\'))); } catch { } }
+                }
+                catch { }
                 WinForms.MessageBox.Show("Error saving file: " + ex.Message, "Error",
                     WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                 return false;
@@ -3194,6 +3239,10 @@ namespace TypoZen
             PruneOrphanedAssets(path, tab.Content);
 
             bool isActive = (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && _tabs[_activeTabIndex] == tab);
+            // The page's own copy of the text still has the pending links; rewrite them
+            // before save_success records it as clean, or the next save writes them back.
+            // An inactive tab reloads from tab.Content, which is already rewritten.
+            FinishAdoptingPendingImages(imgRewrites, imgAdopted, isActive);
             if (isActive)
             {
                 _currentFilePath = path;
@@ -3272,22 +3321,27 @@ namespace TypoZen
         // a book's tab carries no text for a caret to sit in. So this is its own small
         // store, keyed by the book's path.
         //
-        // Newest first, capped, so a reader who opens a hundred books does not accumulate a
-        // hundred lines forever.
-        private const int MaxRememberedBooks = 64;
+        // Newest first, capped, so the file does not grow forever. The cap was 64, and the
+        // order on disk was "the book just read, then whatever order the dictionary gave",
+        // which after any removal is not recency: the 65th book evicted an arbitrary one,
+        // not the one left longest. A line per book is tiny, so the cap is now generous and
+        // the order is kept explicitly (RecencyOrder).
+        private const int MaxRememberedBooks = 5000;
         private Dictionary<string, int> _bookPositions;
+        private readonly RecencyOrder _bookPositionsOrder = new RecencyOrder();
 
         private void LoadBookPositions()
         {
             if (_bookPositions != null) return;
             _bookPositions = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            _bookPositionsOrder.Clear();
             try
             {
                 string path = BookPositionsPath();
                 if (!File.Exists(path)) return;
                 foreach (string line in File.ReadAllLines(path))
                 {
-                    // "<block>\t<path>"
+                    // "<block>\t<path>", newest first
                     int tab = line.IndexOf('\t');
                     if (tab <= 0) continue;
                     int block;
@@ -3295,6 +3349,7 @@ namespace TypoZen
                     string bookPath = line.Substring(tab + 1);
                     if (bookPath.Length == 0 || _bookPositions.ContainsKey(bookPath)) continue;
                     _bookPositions[bookPath] = block;
+                    _bookPositionsOrder.Append(bookPath);
                     if (_bookPositions.Count >= MaxRememberedBooks) break;
                 }
             }
@@ -3306,25 +3361,61 @@ namespace TypoZen
             try
             {
                 LoadBookPositions();
-                var sb = new StringBuilder();
-                var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                // The book just read goes first, so the cap evicts what has been untouched
-                // longest rather than whatever happens to hash first.
                 if (!string.IsNullOrEmpty(mostRecent) && _bookPositions.ContainsKey(mostRecent))
-                {
-                    sb.AppendLine(_bookPositions[mostRecent] + "\t" + mostRecent);
-                    written.Add(mostRecent);
-                }
-                foreach (var kv in _bookPositions)
-                {
-                    if (written.Count >= MaxRememberedBooks) break;
-                    if (written.Contains(kv.Key)) continue;
-                    sb.AppendLine(kv.Value + "\t" + kv.Key);
-                    written.Add(kv.Key);
-                }
+                    _bookPositionsOrder.Touch(mostRecent);
+                var sb = new StringBuilder();
+                foreach (string key in _bookPositionsOrder.Newest(_bookPositions.Keys, MaxRememberedBooks))
+                    sb.AppendLine(_bookPositions[key] + "\t" + key);
                 WriteStateFileAtomic(BookPositionsPath(), sb.ToString());
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Keys in the order they were last used, newest first. The order is the file's line
+        /// order on load, and a key moves to the front whenever it is saved.
+        /// </summary>
+        private sealed class RecencyOrder
+        {
+            private readonly List<string> _keys = new List<string>();
+
+            private int IndexOf(string key)
+            {
+                return _keys.FindIndex(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
+            }
+
+            /// <summary>A store reloading from disk (after Clear Stored Data, too) starts over.</summary>
+            public void Clear() { _keys.Clear(); }
+
+            /// <summary>Loading: the file is already newest first, so add to the end.</summary>
+            public void Append(string key)
+            {
+                if (IndexOf(key) < 0) _keys.Add(key);
+            }
+
+            public void Touch(string key)
+            {
+                int i = IndexOf(key);
+                if (i >= 0) _keys.RemoveAt(i);
+                _keys.Insert(0, key);
+            }
+
+            /// <summary>
+            /// The live keys, newest first, at most <paramref name="cap"/>. A key the store
+            /// holds but this order has never seen (added without a Touch) counts as newest
+            /// rather than being dropped.
+            /// </summary>
+            public List<string> Newest(IEnumerable<string> live, int cap)
+            {
+                var liveSet = new HashSet<string>(live, StringComparer.OrdinalIgnoreCase);
+                var result = new List<string>();
+                foreach (string k in liveSet)
+                    if (IndexOf(k) < 0) result.Add(k);
+                foreach (string k in _keys)
+                    if (liveSet.Contains(k)) result.Add(k);
+                if (result.Count > cap) result.RemoveRange(cap, result.Count - cap);
+                return result;
+            }
         }
 
         private int RememberedBookPosition(string bookPath)
@@ -3740,13 +3831,17 @@ namespace TypoZen
         // ever opened is a slow leak. Marks *within* a document are not capped -- a limit
         // on how many places you may mark in a book is a limit on how carefully you are
         // allowed to read it.
-        private const int MaxBookmarkDocs = 64;
+        // 64 until 2026-09-25, with the same arbitrary eviction as reading positions --
+        // and these are marks the reader made. See RecencyOrder.
+        private const int MaxBookmarkDocs = 5000;
         private Dictionary<string, string> _bookmarks;
+        private readonly RecencyOrder _bookmarksOrder = new RecencyOrder();
 
         private void LoadBookmarks()
         {
             if (_bookmarks != null) return;
             _bookmarks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _bookmarksOrder.Clear();
             try
             {
                 string path = BookmarksPath();
@@ -3762,6 +3857,7 @@ namespace TypoZen
                     string payload = line.Substring(tab + 1);
                     if (docPath.Length == 0 || _bookmarks.ContainsKey(docPath)) continue;
                     _bookmarks[docPath] = payload;
+                    _bookmarksOrder.Append(docPath);
                     if (_bookmarks.Count >= MaxBookmarkDocs) break;
                 }
             }
@@ -3773,22 +3869,11 @@ namespace TypoZen
             try
             {
                 LoadBookmarks();
-                var sb = new StringBuilder();
-                var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                // Most recently touched first, so the cap evicts the document left alone
-                // longest rather than whichever happens to hash first.
                 if (!string.IsNullOrEmpty(mostRecent) && _bookmarks.ContainsKey(mostRecent))
-                {
-                    sb.AppendLine(mostRecent + "\t" + _bookmarks[mostRecent]);
-                    written.Add(mostRecent);
-                }
-                foreach (var kv in _bookmarks)
-                {
-                    if (written.Count >= MaxBookmarkDocs) break;
-                    if (written.Contains(kv.Key)) continue;
-                    sb.AppendLine(kv.Key + "\t" + kv.Value);
-                    written.Add(kv.Key);
-                }
+                    _bookmarksOrder.Touch(mostRecent);
+                var sb = new StringBuilder();
+                foreach (string key in _bookmarksOrder.Newest(_bookmarks.Keys, MaxBookmarkDocs))
+                    sb.AppendLine(key + "\t" + _bookmarks[key]);
                 WriteStateFileAtomic(BookmarksPath(), sb.ToString());
             }
             catch { }
@@ -5219,6 +5304,8 @@ namespace TypoZen
                         foreach (string f in Directory.GetFiles(bodyDir)) try { File.Delete(f); } catch { }
                         try { Directory.Delete(bodyDir); } catch { }
                     }
+                    // Images pasted into unsaved documents belong with their unsaved text.
+                    ExtensionInstaller.Purge(PendingImagesDir(false), true);
                 }
                 catch { }
                 done.Add("unsaved session text");
@@ -6279,6 +6366,7 @@ namespace TypoZen
                 catch (Exception ex) { LogFault("map extensions host", ex); }
                 MapBookHosts();
                 SweepAbandonedLoadDirs();
+                SweepPendingImages();
                 // At launch, which is what both sweeps' comments always claimed but only
                 // the load one did: the book sweep ran on privacy-off and on clean exit,
                 // so a copy that is repeatedly killed rather than closed never cleared
@@ -6427,6 +6515,38 @@ namespace TypoZen
         {
             string msg = e.TryGetWebMessageAsString();
             if (string.IsNullOrEmpty(msg)) return;
+
+            // Files dropped on the page, to open as tabs. The page cannot see a dropped
+            // file's path; it passes the files themselves (postMessageWithAdditionalObjects)
+            // and WebView2 hands them over as CoreWebView2File with Path. A WPF AllowDrop on
+            // the window cannot do this: the document area belongs to the browser process.
+            if (msg == "overlay_closed")
+            {
+                EndHelpOverNative();
+                return;
+            }
+            if (msg == "host_open_dropped")
+            {
+                var paths = new List<string>();
+                try
+                {
+                    var objs = e.AdditionalObjects;
+                    if (objs != null)
+                        foreach (object o in objs)
+                        {
+                            var f = o as CoreWebView2File;
+                            if (f != null && !string.IsNullOrEmpty(f.Path) && File.Exists(f.Path)) paths.Add(f.Path);
+                        }
+                }
+                catch (Exception ex) { LogFault("dropped files", ex); }
+                if (paths.Count > 0)
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        foreach (string p in paths) EnqueuePendingOpen(p);
+                        DrainPendingOpen();
+                    }), DispatcherPriority.Normal);
+                return;
+            }
 
             // Page-side startup marks, batched and flushed at "ready". Format: perf:<ms>|<label>
             // The page clock starts at navigation, so these are offsets within template load.
@@ -7038,6 +7158,12 @@ namespace TypoZen
                 try
                 {
                     string rel = msg.Substring(15);
+                    string pendingFile = ResolvePendingImage(rel);
+                    if (pendingFile != null)
+                    {
+                        SendMsg("image_data:" + rel + "\n" + ImageDataUri(pendingFile));
+                        return;
+                    }
                     if (string.IsNullOrEmpty(_currentFilePath)) return;
                     // Reject path traversal early
                     if (rel.IndexOf("..", StringComparison.Ordinal) >= 0) return;
@@ -7081,15 +7207,14 @@ namespace TypoZen
                     int sep = body.IndexOf(':');
                     string ext = sep > 0 ? body.Substring(0, sep) : "png";
                     string b64 = sep > 0 ? body.Substring(sep + 1) : "";
-                    if (string.IsNullOrEmpty(_currentFilePath))
-                    {
-                        WinForms.MessageBox.Show(
-                            "Save the document first.\n\nImages are stored next to the file, so TypoZen needs to know where it lives.",
-                            "Paste image", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
-                        return;
-                    }
                     byte[] bytes = Convert.FromBase64String(b64);
-                    string rel = SaveImageBesideDocument(bytes, ext);
+                    // An untitled document has nowhere to keep images yet. They wait in a
+                    // pending folder and move beside the document at its first save
+                    // (AdoptPendingImages). This used to stop the paste with "Save the
+                    // document first".
+                    string rel = string.IsNullOrEmpty(_currentFilePath)
+                        ? SavePendingImage(bytes, ext)
+                        : SaveImageBesideDocument(bytes, ext);
                     if (!string.IsNullOrEmpty(rel)) SendMsg("insert_image:" + rel);
                 }
                 catch (Exception ex)
@@ -8528,6 +8653,123 @@ namespace TypoZen
             string safe = Regex.Replace(baseName, @"[^A-Za-z0-9._-]+", "_").Trim('_');
             if (safe.Length == 0) safe = "document";
             return safe + "-assets";
+        }
+
+        // ---- Images pasted into an untitled document -----------------------------------
+        //
+        // The link carries its own folder key -- typozen-pending/<key>/image-....png -- so a
+        // document restored next session still finds its images, and the first save finds
+        // exactly the files the text references, whichever tab they were pasted in. Private
+        // Mode keeps them in the session's temp folder, deleted at exit.
+
+        private const string PendingPrefix = "typozen-pending/";
+        private static readonly Regex PendingImageLink =
+            new Regex(@"typozen-pending/([0-9a-f]{32})/(image-[A-Za-z0-9_.\-]{1,80})", RegexOptions.Compiled);
+
+        private string PendingImagesDir(bool privateMode)
+        {
+            return privateMode ? Path.Combine(PrivateLoadDir(), "pending_images")
+                               : Path.Combine(CacheDir(), "pending_images");
+        }
+
+        private string SavePendingImage(byte[] bytes, string extension)
+        {
+            if (bytes == null || bytes.Length == 0) return null;
+            DocTab tab = _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex] : null;
+            if (tab == null) return null;
+            if (string.IsNullOrEmpty(tab.PendingKey)) tab.PendingKey = Guid.NewGuid().ToString("N");
+            string dir = Path.Combine(PendingImagesDir(SuppressDocumentTraces()), tab.PendingKey);
+            Directory.CreateDirectory(dir);
+            string ext = string.IsNullOrEmpty(extension) ? "png" : extension.TrimStart('.').ToLowerInvariant();
+            if (!Regex.IsMatch(ext, "^[a-z0-9]{1,5}$")) ext = "png";
+            string name = "image-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "." + ext;
+            for (int i = 2; File.Exists(Path.Combine(dir, name)) && i < 500; i++)
+                name = "image-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + i + "." + ext;
+            File.WriteAllBytes(Path.Combine(dir, name), bytes);
+            return PendingPrefix + tab.PendingKey + "/" + name;
+        }
+
+        /// <summary>The file behind a pending link, or null. Private folder first.</summary>
+        private string ResolvePendingImage(string rel)
+        {
+            if (string.IsNullOrEmpty(rel) || !rel.StartsWith(PendingPrefix, StringComparison.Ordinal)) return null;
+            var m = PendingImageLink.Match(rel);
+            if (!m.Success || m.Index != 0 || m.Length != rel.Length) return null;
+            foreach (bool priv in new[] { true, false })
+            {
+                string f = Path.Combine(PendingImagesDir(priv), m.Groups[1].Value, m.Groups[2].Value);
+                if (File.Exists(f)) return f;
+            }
+            return null;
+        }
+
+        private static string ImageDataUri(string file)
+        {
+            string ext = (Path.GetExtension(file) ?? "").TrimStart('.').ToLowerInvariant();
+            string mime = ext == "jpg" || ext == "jpeg" ? "image/jpeg" : ext == "gif" ? "image/gif"
+                        : ext == "webp" ? "image/webp" : ext == "bmp" ? "image/bmp"
+                        : ext == "svg" ? "image/svg+xml" : "image/png";
+            return "data:" + mime + ";base64," + Convert.ToBase64String(File.ReadAllBytes(file));
+        }
+
+        /// <summary>
+        /// At a document's first save: copy each pending image the text references into the
+        /// document's image folder and rewrite its link. Copies, not moves: the pending files
+        /// are deleted only once the save has succeeded (FinishAdoptingPendingImages), so a
+        /// failed save leaves everything as it was.
+        /// </summary>
+        private string AdoptPendingImages(string text, string docPath,
+                                          List<KeyValuePair<string, string>> rewrites, List<string> adopted)
+        {
+            if (string.IsNullOrEmpty(text) || text.IndexOf(PendingPrefix, StringComparison.Ordinal) < 0) return text;
+            string docDir = Path.GetDirectoryName(Path.GetFullPath(docPath));
+            string assetDirName = AssetFolderName(docPath);
+            string assetDir = Path.Combine(docDir, assetDirName);
+            var done = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (Match m in PendingImageLink.Matches(text))
+            {
+                if (done.ContainsKey(m.Value)) continue;
+                string src = ResolvePendingImage(m.Value);
+                if (src == null) continue;                 // leave a link we cannot back with a file
+                Directory.CreateDirectory(assetDir);
+                string name = m.Groups[2].Value;
+                string stem = Path.GetFileNameWithoutExtension(name), ext = Path.GetExtension(name);
+                for (int i = 2; File.Exists(Path.Combine(assetDir, name)) && i < 500; i++) name = stem + "-" + i + ext;
+                File.Copy(src, Path.Combine(assetDir, name));
+                string rel = assetDirName + "/" + name;
+                done[m.Value] = rel;
+                rewrites.Add(new KeyValuePair<string, string>(m.Value, rel));
+                adopted.Add(src);
+            }
+            foreach (var kv in done) text = text.Replace(kv.Key, kv.Value);
+            return text;
+        }
+
+        private void FinishAdoptingPendingImages(List<KeyValuePair<string, string>> rewrites, List<string> adopted, bool tellPage)
+        {
+            foreach (string f in adopted) { try { File.Delete(f); } catch { } }
+            if (tellPage && rewrites.Count > 0)
+            {
+                var sb = new StringBuilder("rewrite_image_links:");
+                foreach (var kv in rewrites) sb.Append(kv.Key).Append('\t').Append(kv.Value).Append('\n');
+                SendMsg(sb.ToString());
+            }
+        }
+
+        /// <summary>
+        /// Pending images nothing will come back for: folders untouched for 30 days (a tab
+        /// closed unsaved, a session not kept). Run at launch.
+        /// </summary>
+        private void SweepPendingImages()
+        {
+            try
+            {
+                var root = new DirectoryInfo(PendingImagesDir(false));
+                if (!root.Exists) return;
+                foreach (var d in root.GetDirectories())
+                    if ((DateTime.UtcNow - d.LastWriteTimeUtc).TotalDays > 30) { try { d.Delete(true); } catch { } }
+            }
+            catch { }
         }
 
         private string SaveImageBesideDocument(byte[] bytes, string extension)
@@ -10490,6 +10732,39 @@ namespace TypoZen
             if (msg.StartsWith("fmt:", StringComparison.Ordinal)) return true;
             if (msg.StartsWith("export_html", StringComparison.Ordinal)) return true;
             return false;
+        }
+
+        /// <summary>
+        /// Help > Syntax &amp; Shortcuts and About, on any tab. Both are panels in the editor
+        /// page, which a native tab (image, media, HTML page) hides -- so Help was greyed
+        /// there whole. Over a native tab the page is shown on top for as long as the panel
+        /// is open, and hidden again when the page reports it closed (overlay_closed). Only
+        /// visibility changes: the tab stays a native tab, its menus and status bar untouched.
+        /// </summary>
+        private bool _helpOverNative;
+        private void ShowHelpPanel(string cmd)
+        {
+            if (_nativeSurfaceVisible && _webView != null && _webView.CoreWebView2 != null)
+            {
+                _helpOverNative = true;
+                try { _webView.Visible = true; _webView.BringToFront(); _webView.Focus(); } catch { }
+                try { _webView.CoreWebView2.PostWebMessageAsString(cmd); } catch { }
+                return;
+            }
+            SendMsg(cmd);
+        }
+
+        private void EndHelpOverNative()
+        {
+            if (!_helpOverNative) return;
+            _helpOverNative = false;
+            if (!_nativeSurfaceVisible) return;          // the reader switched tabs meanwhile
+            try
+            {
+                if (_webView != null) _webView.Visible = false;
+                if (_nativeWebView != null) { _nativeWebView.Visible = true; _nativeWebView.BringToFront(); }
+            }
+            catch { }
         }
 
         private void SendMsg(string msg)
@@ -14128,7 +14403,9 @@ namespace TypoZen
             get
             {
                 yield return "menuEdit";
-                yield return "menuHelp";
+                // Help stays: ShowHelpPanel shows its panels over a native tab. Only the
+                // Debug HUD goes -- it overlays the editor page, which a native tab hides.
+                yield return "mToggleDebug";
                 foreach (string n in NativeDeadViewItems) yield return n;
             }
         }
@@ -14844,8 +15121,24 @@ namespace TypoZen
             }
         }
 
+        /// <summary>
+        /// The error box says autosave is off once; this keeps saying it. Called when the
+        /// flag is set and on every status refresh.
+        /// </summary>
+        internal void RefreshSuspectIndicator()
+        {
+            try
+            {
+                var lbl = FindElement("lblAutosaveOff") as TextBlock;
+                if (lbl != null)
+                    lbl.Visibility = Program.DocumentStateSuspect ? Visibility.Visible : Visibility.Collapsed;
+            }
+            catch { }
+        }
+
         private void UpdateStatusDisplay()
         {
+            RefreshSuspectIndicator();
             if (_lblFilePath != null)
             {
                 if (!string.IsNullOrEmpty(_currentFilePath))
