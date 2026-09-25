@@ -1,6 +1,6 @@
 # TypoZen Privacy Policy
 
-_Last updated: 6 September 2026 — applies to TypoZen 0.2.37 and later._
+_Last updated: 25 September 2026._
 
 **Short version: TypoZen sends nothing anywhere. Everything it remembers stays on your
 computer, and you can delete all of it from inside the app.**
@@ -16,8 +16,11 @@ beyond what the Microsoft Store reports to any publisher.
 TypoZen keeps its settings and reading state in a folder on your own computer:
 
 ```
-%LOCALAPPDATA%\TypoZen_Cache
+%LOCALAPPDATA%\TypoZen_Cache_Portable
 ```
+
+(The Microsoft Store version uses a folder of its own, which Windows keeps inside the app's
+package data.)
 
 | File | What it holds |
 | --- | --- |
@@ -26,9 +29,25 @@ TypoZen keeps its settings and reading state in a folder on your own computer:
 | `tabs_session.txt` | Which documents were open when you last closed the app |
 | `book_positions.txt` | How far through each epub you have read |
 | `bookmarks.txt` | Bookmarks you have placed |
-| `user_words.txt` | Words you added to the spelling dictionary |
+| `typozen_user.lex` | Words you added to the spelling dictionary |
 | `window_state.json` | Window size and position |
-| `debug.log`, `perf.log` | Diagnostic output, written only when you run with `--debug` |
+| `debug.log` | Diagnostic output: errors, and the steps of each read-aloud (voice, timings — never the text). Run with `--debug` it also records the editor's own diagnostics, which can include file paths. Kept to about 4 MB |
+| `perf.log` | Start-up timings, written only when the `TYPOZEN_PERF` environment variable is set |
+
+If you install the optional extensions in **File → Extensions**, they keep their files in
+`extensions\` and `dictionaries\` in the same folder. Qwen narration adds, in
+`extensions\QwenTTS\`:
+
+| File | What it holds |
+| --- | --- |
+| `narration\` | Audio of text you have had narrated, kept so it plays at once next time |
+| `cast\` | For each book you gave characters voices: the book's path, and which voice each character has |
+| `voices\`, `narrator.json` | Voices you designed, with the descriptions you wrote, and the narrator's voice and style |
+| `narration.log`, `install.log` | Timings and steps; no book text and no file paths |
+
+Voices you design are also copied to `OneDrive\TypoZen\Narrator voices` when OneDrive is set
+up, because a voice cannot be made again if the PC is lost. OneDrive syncs that folder to
+your Microsoft account like any other file in it.
 
 Your documents themselves are saved wherever you choose to save them. TypoZen does not
 copy them anywhere else.
@@ -43,24 +62,36 @@ exist.
 Under **File → Privacy**:
 
 - **Privacy Mode** — stops TypoZen writing anything that names a document: no session, no
-  reading positions, no bookmarks, no recent files, no autosave. It is forward-looking:
-  it prevents new writes but does not delete what is already stored.
+  reading positions, no bookmarks, no recent files, no autosave, no `debug.log`. Books are
+  unpacked, and narration audio rendered, into a temporary folder deleted when TypoZen
+  closes; a narrator cast you save is kept only until then. It is forward-looking: it
+  prevents new writes but does not delete what is already stored.
 - **Remember unsaved documents between sessions** — turn off to stop unsaved content being
   kept between runs.
 - **Keep recent files list** — turn off to stop recording opened documents.
 - **Clear Recent Searches** — erases the stored search terms.
-- **Clear Stored Data…** — deletes the stored data described above.
+- **Clear Stored Data…** — deletes the stored data described above, including the
+  diagnostic logs and, if you choose, narration audio, logs and casts. Voices are kept;
+  delete them one at a time in Narrator Settings. Extensions are removed in
+  **File → Extensions**.
 
-You can also simply delete the `%LOCALAPPDATA%\TypoZen_Cache` folder.
+You can also simply delete that folder.
 
 ## Network activity
 
-TypoZen makes no network requests of its own. Fonts are bundled with the app rather than
+TypoZen makes no network requests of its own unless you install an extension. Fonts are bundled with the app rather than
 fetched, the editor page is served from local disk, and the dictionary and thesaurus are
 local files.
 
-Two things can still cause network traffic, and you should know about both:
+Three things can still cause network traffic, and you should know about all of them:
 
+- **Extensions you install.** **File → Extensions** downloads only while an install you
+  started is running, and nothing about you or your documents is sent. Kokoro voices come
+  from cdn.jsdelivr.net and huggingface.co; the Wiktionary dictionary from this project's
+  GitHub releases. Qwen narration fetches Python from github.com, its libraries from
+  pypi.org and download.pytorch.org, and its models from huggingface.co, each at a pinned
+  version. Once installed, the narrator runs with the network off and answers only
+  programs on the same PC.
 - **Documents you open.** If a document references a remote image (`![](https://…)`), that
   image is fetched when the document is displayed. That is the document's request, made
   because you opened it — not something TypoZen initiates on its own. Links you click are
