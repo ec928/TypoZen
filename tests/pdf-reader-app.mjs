@@ -44,6 +44,24 @@ try {
     const text = await waitFor(app, () => { const t = document.querySelector('#pdfView .page[data-page-number="1"] .textLayer'); return t && /page one/.test(t.textContent) ? t.textContent : null; }, 8000);
     ok(!!text, 'page 1 has real, selectable text', text ? JSON.stringify(text.slice(0, 50)) : 'no text layer');
 
+    // The invisible text layer must lie exactly over the drawn page, or Find's highlight and
+    // a selection land beside the words (the app's "* { box-sizing: border-box }" once made
+    // it 18px wider than the canvas).
+    const geo = await app.eval(() => {
+        const p = document.querySelector('#pdfView .page[data-page-number="1"]');
+        const a = p.querySelector('canvas').getBoundingClientRect(), b = p.querySelector('.textLayer').getBoundingClientRect();
+        return [a.x, a.y, a.width, a.height, b.x, b.y, b.width, b.height].map(Math.round);
+    });
+    ok(Math.abs(geo[0] - geo[4]) <= 1 && Math.abs(geo[1] - geo[5]) <= 1 && Math.abs(geo[2] - geo[6]) <= 1 && Math.abs(geo[3] - geo[7]) <= 1,
+        'the text layer lies exactly over the drawn page', 'canvas ' + geo.slice(0, 4) + ' / layer ' + geo.slice(4));
+
+    // A fitted page refits when its space changes (window restored, sidebar opened).
+    const fitW = await app.eval(() => document.querySelector('#pdfView .page').getBoundingClientRect().width);
+    await app.eval((w) => { window.__tzFitW = w; document.getElementById('pdfView').style.right = '300px'; }, fitW);
+    ok(await waitFor(app, () => document.querySelector('#pdfView .page').getBoundingClientRect().width < window.__tzFitW * 0.8, 2000), 'a narrower view refits the page');
+    await app.eval(() => { document.getElementById('pdfView').style.right = ''; });
+    ok(await waitFor(app, () => Math.abs(document.querySelector('#pdfView .page').getBoundingClientRect().width - window.__tzFitW) < 3, 2000), 'and widening it fits it back');
+
     // The sidebar: the PDF's own outline, and Find / Search over its text.
     const outline = await waitFor(app, () => { const rows = Array.from(document.querySelectorAll('.outline-item')).map(r => r.innerText.trim()); return rows.includes('Chapter Three') ? rows : null; }, 8000);
     ok(!!outline, 'the sidebar shows the PDF\'s outline', JSON.stringify(outline));

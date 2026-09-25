@@ -2162,6 +2162,14 @@
             background: var(--bg, #18181B);
         }
         #pdfView[hidden] { display: none; }
+        /* PDF.js is built for the browser's default content-box, and sets border-box itself
+           only where it wants it (pdf_viewer.css, loaded after this file, so it still wins).
+           This file's opening "* { box-sizing: border-box }" put each page's 9px border
+           inside its width, so the drawn page was 18px narrower than the text layer over
+           it: every word sat about 3% right of and below its ink -- Find's highlight and
+           a selection landed on the line beneath. Zero specificity, so it only undoes
+           that rule. */
+        :where(#pdfView) * { box-sizing: content-box; }
         #pdfView .pdfViewer .page {
             box-shadow: 0 0 0 1px color-mix(in srgb, var(--tx, #F4F4F5) 12%, transparent);
             border-color: transparent;

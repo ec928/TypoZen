@@ -75,6 +75,7 @@
             host.tabIndex = 0;
             host.hidden = true;
             (document.getElementById('main-container') || document.body).appendChild(host);
+            watchSize(host);
         }
         return host;
     }
@@ -119,7 +120,9 @@
         }
         return {
             words: S.statsWords || 0,
-            chars: (S.haystack || '').length,
+            // The page texts, not the search haystack: its page separators are not the
+            // PDF's characters (a PDF with no text showed "22 chars" -- 11 separators).
+            chars: (S.pageTexts || []).reduce((n, t) => n + (t ? t.length : 0), 0),
             page: S.viewer.currentPageNumber || 1,
             pages: S.viewer.pagesCount || 0
         };
@@ -326,6 +329,28 @@
         else handled = false;
         if (handled) e.preventDefault();
     }
+    // A fitted page refits when its space changes: the window maximised or restored, the
+    // sidebar opened. PDF.js leaves that to its own app, which is not used here, so a page
+    // fitted in a maximised window stayed that size when the window was restored (reported
+    // as 164% after switching columns). A zoom set by hand is left alone.
+    let refitQueued = false;
+    function refitIfFitted() {
+        refitQueued = false;
+        const v = S.viewer;
+        if (!S.active || !v) return;
+        const mode = v.currentScaleValue;
+        if (mode === 'page-width' || mode === 'page-fit' || mode === 'auto') v.currentScaleValue = mode;
+    }
+    /** Called by hostEl() when it creates #pdfView, which does not exist at load. */
+    function watchSize(host) {
+        try {
+            if (typeof ResizeObserver !== 'function') return;
+            new ResizeObserver(() => {
+                if (!refitQueued) { refitQueued = true; requestAnimationFrame(refitIfFitted); }
+            }).observe(host);
+        } catch (e) { }
+    }
+
     try {
         document.addEventListener('wheel', onWheel, { capture: true, passive: false });
         document.addEventListener('keydown', onKey, true);
