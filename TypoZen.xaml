@@ -427,8 +427,8 @@
                                 <MenuItem Header="(none)" IsEnabled="False"/>
                             </MenuItem>
                             <Separator/>
-                            <MenuItem x:Name="mSave" Header="_Save"/>
-                            <MenuItem x:Name="mSaveAs" Header="Save _As..."/>
+                            <MenuItem x:Name="mSave" Header="_Save" InputGestureText="Ctrl+S"/>
+                            <MenuItem x:Name="mSaveAs" Header="Save _As..." InputGestureText="Ctrl+Shift+S"/>
                             <Separator/>
                             <MenuItem x:Name="mExportHtml" Header="Export as _HTML..."/>
                             <MenuItem x:Name="mExportPdf" Header="_Print / Export PDF..."/>
@@ -502,7 +502,7 @@
                             <Separator/>
                             <MenuItem x:Name="mFind" Header="_Find &amp; Replace..." InputGestureText="Ctrl+F"/>
                             <MenuItem x:Name="mGoToPage" Header="_Go to Page..." InputGestureText="Ctrl+G"/>
-                            <MenuItem Header="S_pelling">
+                            <MenuItem x:Name="menuSpelling" Header="S_pelling">
                                 <MenuItem x:Name="mSpellCheck" Header="_Check Document"/>
                                 <MenuItem x:Name="mSpellNext" Header="_Next Issue"/>
                             </MenuItem>

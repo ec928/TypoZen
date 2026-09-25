@@ -512,6 +512,8 @@ The reasoning behind these decisions — including the failure modes that motiva
 | --- | --- |
 | Sidebar (Outline/Search) | `Alt+\` |
 | Find | `Ctrl+F` |
+| Save | `Ctrl+S` |
+| Save As | `Ctrl+Shift+S` |
 | Go to page (paginated) | `Ctrl+G` |
 | Search sidebar | `Alt+S` |
 | Previous / next search result (when matches exist) | `Up` / `Down`, or `F3` / `Shift+F3` |

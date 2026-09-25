@@ -2267,6 +2267,14 @@
 
         window.addEventListener('keydown', (e) => {
             if (window.isComposing || e.isComposing || e.keyCode === 229) return;
+            // Ctrl+S / Ctrl+Shift+S: the host's Save and Save As. The host never sees the key
+            // while the page has focus, so the shortcut did nothing while typing.
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                e.stopPropagation();
+                postMsg(e.shiftKey ? 'save_as_shortcut' : 'save_shortcut');
+                return;
+            }
             // Do not handle editor shortcuts while typing in Find
             if (isFindBarOpen()) {
                 const t = e.target;

@@ -2575,8 +2575,7 @@ namespace TypoZen
                 else if (e.Key == Key.O) { OpenFile(); e.Handled = true; }
                 else if (e.Key == Key.S)
                 {
-                    if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift) SaveFileAs();
-                    else SaveFile();
+                    SaveFromShortcut((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift);
                     e.Handled = true;
                 }
                 else if (e.Key == Key.P && (Keyboard.Modifiers & ModifierKeys.Shift) != ModifierKeys.Shift)
@@ -7268,6 +7267,17 @@ namespace TypoZen
                     try { if (_webView != null) _webView.Focus(); } catch { }
                 }), DispatcherPriority.Input);
             }
+            else if (msg == "save_shortcut" || msg == "save_as_shortcut")
+            {
+                // Ctrl+S / Ctrl+Shift+S from the page. While the editor has focus the key
+                // never reaches Window.KeyDown (the WebView's HWND is the browser process's),
+                // so without this the shortcut did nothing at all while typing.
+                // Deferred, as debug_save is: saving reads the editor synchronously, which
+                // cannot complete inside the WebView's own message callback -- called inline
+                // it silently saved nothing.
+                bool asNew = msg == "save_as_shortcut";
+                Dispatcher.BeginInvoke(new Action(() => SaveFromShortcut(asNew)), DispatcherPriority.Normal);
+            }
             else if (msg == "reveal_chrome")
             {
                 // Alt, forwarded from the page. Neither Window.KeyDown nor the message
@@ -9242,12 +9252,18 @@ namespace TypoZen
 
         // The format controls, and the Edit items that duplicate three of them. Menus are
         // Controls too, so the three dropdowns lock the same way the buttons do.
+        // "tableMenu" was listed here and exists nowhere -- the toolbar's table button is
+        // btnTable -- so FindElement returned null, the loop skipped it, and Insert Table
+        // stayed bright on every book. The Edit items that change the document (Undo, Redo,
+        // Cut, Paste) and the Spelling group lock with them; Copy, Select All, Find, Go to
+        // Page and the bookmark items read the document and stay.
         private static readonly string[] FormatControls =
         {
             "headingMenu", "btnQuote", "listMenu",
-            "tableMenu",
+            "btnTable",
             "mInsertLink", "mInsertTable", "mStrike",
-            "mSpellCheck", "mSpellNext",
+            "menuSpelling", "mSpellCheck", "mSpellNext",
+            "mUndo", "mRedo", "mCut", "mPaste",
         };
         private readonly Dictionary<string, object> _formatTips = new Dictionary<string, object>();
 
@@ -9271,10 +9287,10 @@ namespace TypoZen
             {
                 bool editable = IsDocumentEditable();
                 string why = IsEpubPath(_currentFilePath)
-                    ? "A book is read-only — formatting applies to documents you can edit"
+                    ? "A book is read-only"
                     : (IsNativePath(_currentFilePath) || (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsNativeTab(_tabs[_activeTabIndex])))
-                        ? "This file is read-only — open a Markdown or text document to format"
-                        : "Reader is read-only — switch to Preview or Source to format text";
+                        ? "This file is read-only — open a Markdown or text document to edit"
+                        : "Reader is read-only — switch to Preview or Source to edit";
                 foreach (string name in FormatControls)
                 {
                     var c = FindElement(name) as Control;
@@ -9285,8 +9301,44 @@ namespace TypoZen
                     SetControlLocked(c, !editable);
                     c.ToolTip = editable ? _formatTips[name] : why;
                 }
+                // Nothing to replace in a read-only document, so the item says what it does.
+                var find = FindElement("mFind") as MenuItem;
+                if (find != null) find.Header = editable ? "_Find & Replace..." : "_Find...";
             }
             catch { }
+        }
+
+        /// <summary>
+        /// File items that write the document, by what the active tab is.
+        ///
+        /// A book is never written. Save and Save As both led to an "Export Book As" dialog,
+        /// and on 2026-09-25 that export wrote nothing (Dune, 30s, no file, nothing logged),
+        /// so both are greyed rather than offered under a name that promises an export. A
+        /// native file (PDF, image, media) has no document text at all: Save refused with a
+        /// message box, Save As went on to a dialog with nothing behind it, and Export as
+        /// HTML was dropped silently. Print stays for both -- it prints what is on screen.
+        /// </summary>
+        private void RefreshFileMenuAvailability()
+        {
+            try
+            {
+                bool native, book;
+                ActiveDocumentKind(out native, out book);
+                string why = native ? "This file is read-only" : "A book is read-only";
+                LockWithTip("mSave", native || book, why);
+                LockWithTip("mSaveAs", native || book, why);
+                LockWithTip("mExportHtml", native, why);
+            }
+            catch { }
+        }
+
+        private void LockWithTip(string name, bool locked, string why)
+        {
+            var c = FindElement(name) as Control;
+            if (c == null) return;
+            if (!_formatTips.ContainsKey(name)) _formatTips[name] = c.ToolTip;
+            SetControlLocked(c, locked);
+            c.ToolTip = locked ? why : _formatTips[name];
         }
 
         /// <summary>
@@ -9299,6 +9351,7 @@ namespace TypoZen
         {
             RefreshWordWrapMenuAvailability();
             RefreshFormatAvailability();
+            RefreshFileMenuAvailability();
         }
 
         private void SetStatusBarVisible(bool on)
@@ -14610,6 +14663,27 @@ namespace TypoZen
         private void SaveFileAs()
         {
             SaveActiveTab(true);
+        }
+
+        /// <summary>
+        /// Ctrl+S and Ctrl+Shift+S, from the page or the window: the same as the File menu,
+        /// including what the menu has greyed. A shortcut that still ran Save on a book --
+        /// which opens the export dialog -- would contradict the greyed item it stands for.
+        /// </summary>
+        private void SaveFromShortcut(bool asNew)
+        {
+            bool native, book;
+            ActiveDocumentKind(out native, out book);
+            if (native || book) return;
+            if (asNew) SaveFileAs(); else SaveFile();
+        }
+
+        /// <summary>What the active tab is, for the menus: a native file, a book, or neither.</summary>
+        private void ActiveDocumentKind(out bool native, out bool book)
+        {
+            DocTab tab = _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex] : null;
+            native = ActiveTabIsNativeSurface() || (tab != null && IsNativeTab(tab));
+            book = !native && (IsEpubPath(_currentFilePath) || (tab != null && IsBookTab(tab)));
         }
 
         /// <summary>
