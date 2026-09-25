@@ -512,7 +512,7 @@
                             <MenuItem x:Name="mReturnJump" Header="_Return from Jump" InputGestureText="Ctrl+Shift+J"/>
                             <Separator/>
                             <MenuItem x:Name="mInsertLink" Header="Insert _Link" InputGestureText="Ctrl+K"/>
-                            <MenuItem x:Name="mInsertTable" Header="Insert _Table" InputGestureText="Ctrl+T"/>
+                            <MenuItem x:Name="mInsertTable" Header="Insert _Table"/>
                             <MenuItem x:Name="mStrike" Header="Strike_through" InputGestureText="Ctrl+Shift+X"/>
                         </MenuItem>
                         <MenuItem Header="_View">
@@ -638,7 +638,7 @@
                     <!-- Inserts -->
                     <Button x:Name="btnTable" Style="{StaticResource GhostToolbarButton}" 
                             Content="&#xE80A;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                            Margin="0,0,4,0" ToolTip="Insert Table (Ctrl+T)"/>
+                            Margin="0,0,4,0" ToolTip="Insert Table"/>
                 </StackPanel>
 
                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">

@@ -288,7 +288,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
   - `http`, `https` and `mailto` open in the default browser and carry a `↗`. **Only** those three schemes are handed to the shell: a link's address comes out of document content, and without that restriction a `file:` or custom-scheme link would be a way to make opening a note launch a program. Everything path-shaped is opened as a *document*, which reads a file and cannot run one.
   - `#heading` jumps within the document, through the same path an outline click uses. Slugs follow the usual Markdown convention — lower-cased, punctuation dropped, each remaining space becoming its own hyphen, so `## Look & feel` is `#look--feel` — and letters in any script are kept, so `## 日本語` is `#日本語`. An anchor that matches no heading does nothing rather than guessing.
   - A plain click still places the caret — this is an editor, and link text has to stay editable. `Ctrl+click` opens directly.
-- Table insert (`Ctrl+T`)
+- Table insert
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps. Grouped in View with Line Spacing and Paragraph Spacing, because all three set the shape of the text block
 - **Block Hover** (View) — whether hovering a paragraph previews its bookmark in the gutter. **On** by default. Turning it off removes the preview only: bookmarks you have set are always drawn. There is deliberately no wash or edge under the pointer — hovering a paragraph does one thing, which is arm the gutter, so the gutter is the only thing that answers
@@ -341,12 +341,12 @@ The status bar updates continuously with word count, character count (both group
 - CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path` (Phase 6 — done)
 
 ### Session & privacy
-Preferences live under `%LocalAppData%\TypoZen_Cache\`, and so does everything else the app
+Preferences live under `%LocalAppData%\TypoZen_Cache_Portable\` (the Store version keeps a folder of its own), and so does everything else the app
 writes: extracted books, staged payloads, `debug.log`, and any themes you save. **Nothing is
 written beside the executable**, so TypoZen runs correctly from a read-only or protected location.
 
 Themes are shipped and saved separately. `TypoZen_Themes.json` beside the app is the read-only
-set that ships; **Save as New** writes your copy to `%LocalAppData%\TypoZen_Cache\`, which is
+set that ships; **Save as New** writes your copy to `%LocalAppData%\TypoZen_Cache_Portable\`, which is
 preferred on load once it exists. An update replaces the shipped file and cannot touch yours.
 
 | Setting | Default | Meaning |
@@ -522,7 +522,6 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Bookmark this page (toggle) | `Ctrl+Shift+M` |
 | Show bookmarks | `Ctrl+Shift+P` |
 | Return from jump (search/outline/goto) | `Ctrl+Shift+J` |
-| Insert table | `Ctrl+T` |
 | Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
 | Strikethrough | `Ctrl+Shift+X` |
 | Close tab | `Ctrl+W` |
@@ -634,7 +633,7 @@ Set `TYPOZEN_PERF` to write a startup timeline:
 ```powershell
 $env:TYPOZEN_PERF = '1'        # this shell only — never set it persistently
 .\TypoZen.exe "some\file.md"
-Get-Content "$env:LOCALAPPDATA\TypoZen_Cache\perf.log"
+Get-Content "$env:LOCALAPPDATA\TypoZen_Cache_Portable\perf.log"
 ```
 
 Marks are milliseconds from entry to `Main`; the log is appended, so delete it between runs.
@@ -658,7 +657,7 @@ three permit commercial use and redistribution:
 | Dictionary and thesaurus data | Open English WordNet (CC BY 4.0), derived from Princeton WordNet | `WORDNET-LICENSE.txt` |
 
 **Privacy:** [PRIVACY.md](PRIVACY.md) — TypoZen sends nothing anywhere; everything it
-remembers is in `%LOCALAPPDATA%\TypoZen_Cache` and can be cleared from **File → Privacy**.
+remembers is in `%LOCALAPPDATA%\TypoZen_Cache_Portable` and can be cleared from **File → Privacy**.
 
 The OFL allows these faces to be bundled, redistributed and sold with software, on
 the condition that the notice and licence go with them — which is why `fonts/OFL.txt`

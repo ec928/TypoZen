@@ -198,8 +198,7 @@ looking takes less time than arguing about why a test did not see it.
 Each is one action. The whole pass is under a minute, and every release since 0.3.10 that
 went out with a defect would have failed one of these lines: 0.3.12 (a highlight in the
 margin), 0.3.13-0.3.15 (the read-aloud highlight on large documents), 0.3.16 (raw markdown
-after a paste, and typing latency). Step 8 is currently expected to fail -- see the
-selection popover entry in `known-issues.md`.
+after a paste, and typing latency).
 
 ---
 
