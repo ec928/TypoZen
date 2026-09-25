@@ -2275,6 +2275,23 @@
                 postMsg(e.shiftKey ? 'save_as_shortcut' : 'save_shortcut');
                 return;
             }
+            // The rest of the File and View shortcuts, for the same reason: New, Open, Print
+            // and Fullscreen belong to the host; the Debug HUD is the page's own.
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key) {
+                const k = e.key.toLowerCase();
+                const hostKey = !e.shiftKey && (k === 'n' ? 'new' : k === 'o' ? 'open' : k === 'p' ? 'print' : null);
+                if (hostKey) { e.preventDefault(); e.stopPropagation(); postMsg('shortcut:' + hostKey); return; }
+                if (e.shiftKey && k === 'd') {
+                    e.preventDefault(); e.stopPropagation();
+                    if (typeof window.toggleDebugHUD === 'function') window.toggleDebugHUD();
+                    return;
+                }
+            }
+            if (e.key === 'F11' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                e.preventDefault();
+                postMsg('shortcut:fullscreen');
+                return;
+            }
             // Do not handle editor shortcuts while typing in Find
             if (isFindBarOpen()) {
                 const t = e.target;

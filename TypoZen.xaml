@@ -421,8 +421,8 @@
                             ToolTip="Toggle Outline and Search Sidebar (Alt+\)"/>
                     <Menu x:Name="topMenu" Background="Transparent" Padding="2,0" VerticalAlignment="Center">
                         <MenuItem Header="_File">
-                            <MenuItem x:Name="mNew" Header="_New"/>
-                            <MenuItem x:Name="mOpen" Header="_Open..."/>
+                            <MenuItem x:Name="mNew" Header="_New" InputGestureText="Ctrl+N"/>
+                            <MenuItem x:Name="mOpen" Header="_Open..." InputGestureText="Ctrl+O"/>
                             <MenuItem x:Name="mRecentMenu" Header="Open _Recent">
                                 <MenuItem Header="(none)" IsEnabled="False"/>
                             </MenuItem>
@@ -431,7 +431,7 @@
                             <MenuItem x:Name="mSaveAs" Header="Save _As..." InputGestureText="Ctrl+Shift+S"/>
                             <Separator/>
                             <MenuItem x:Name="mExportHtml" Header="Export as _HTML..."/>
-                            <MenuItem x:Name="mExportPdf" Header="_Print / Export PDF..."/>
+                            <MenuItem x:Name="mExportPdf" Header="_Print / Export PDF..." InputGestureText="Ctrl+P"/>
                             <Separator/>
                             <!-- Off by default: with it on, closing without saving stops
                                  being a way to discard an experiment, which is a decision
@@ -581,7 +581,7 @@
                                 <MenuItem x:Name="mZoomOut" Header="Zoom _Out" InputGestureText="Ctrl+-"/>
                                 <MenuItem x:Name="mZoomReset" Header="_Reset Zoom" InputGestureText="Ctrl+0"/>
                             </MenuItem>
-                            <MenuItem x:Name="mFullscreen" Header="_Fullscreen"/>
+                            <MenuItem x:Name="mFullscreen" Header="_Fullscreen" InputGestureText="F11"/>
                             <Separator/>
                             <MenuItem x:Name="mResetView" Header="_Reset View Settings"/>
                         </MenuItem>
@@ -590,7 +590,7 @@
                         </MenuItem>
                         <MenuItem x:Name="menuHelp" Header="_Help">
                             <MenuItem x:Name="mHelpSyntax" Header="Syntax &amp; _Shortcuts" InputGestureText="F1"/>
-                            <MenuItem x:Name="mToggleDebug" Header="_Debug HUD"/>
+                            <MenuItem x:Name="mToggleDebug" Header="_Debug HUD" InputGestureText="Ctrl+Shift+D"/>
                             <Separator/>
                             <MenuItem x:Name="mAbout" Header="_About TypoZen"/>
                         </MenuItem>

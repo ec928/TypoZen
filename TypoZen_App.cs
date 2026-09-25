@@ -2661,12 +2661,13 @@ namespace TypoZen
                 else if (e.Key == Key.OemPlus || e.Key == Key.Add) { ZoomBy(+ZoomStep); e.Handled = true; }
                 else if (e.Key == Key.OemMinus || e.Key == Key.Subtract) { ZoomBy(-ZoomStep); e.Handled = true; }
                 else if (e.Key == Key.D0 || e.Key == Key.NumPad0) { SetZoom(1.0); e.Handled = true; }
-            }
-            // Alt+S opens the search sidebar. The page claims this itself while the WebView
-            else if (e.Key == Key.D && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) == (ModifierKeys.Control | ModifierKeys.Shift))
-            {
-                SendMsg("cmd:toggle_debug_hud");
-                e.Handled = true;
+                // Inside the Ctrl branch: it sat on the else of `if (Ctrl held)`, so it could
+                // only run with Ctrl up and Ctrl+Shift+D never reached it.
+                else if (e.Key == Key.D && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    SendMsg("cmd:toggle_debug_hud");
+                    e.Handled = true;
+                }
             }
             else if (e.Key == Key.F1) { SendMsg("cmd:help_syntax"); e.Handled = true; }
             else if (e.Key == Key.F7) { SendMsg("cmd:toggle_reveal"); e.Handled = true; }
@@ -7277,6 +7278,21 @@ namespace TypoZen
                 // it silently saved nothing.
                 bool asNew = msg == "save_as_shortcut";
                 Dispatcher.BeginInvoke(new Action(() => SaveFromShortcut(asNew)), DispatcherPriority.Normal);
+            }
+            else if (msg.StartsWith("shortcut:"))
+            {
+                // Ctrl+N / Ctrl+O / Ctrl+P / F11 from the page, which is the only thing that
+                // sees them while the editor has focus. Deferred like the save shortcut: each
+                // opens a dialog or reshapes the window, which must not happen inside the
+                // WebView's message callback.
+                string which = msg.Substring(9);
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (which == "new") NewTab();
+                    else if (which == "open") OpenFile();
+                    else if (which == "print") ExportPdf();
+                    else if (which == "fullscreen") ToggleFullscreen();
+                }), DispatcherPriority.Normal);
             }
             else if (msg == "reveal_chrome")
             {
