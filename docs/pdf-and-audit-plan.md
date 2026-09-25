@@ -10,7 +10,7 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 | 1 — PDF reading core | **Done, in testing with Ed.** See below. | 0.6.0, 0.6.1 |
 | 2 — reader features | **Done, in testing with Ed.** See below. | 0.6.2 |
 | 2b — save as images | **Done, in testing with Ed.** See below. Right-click Save Image As not built. | 0.6.3 |
-| 3 — OCR | Not started. `tests/Test_PDF_printed.pdf` (a print of `Test_PDF.pdf`, no text layer) is a ready test file. | — |
+| 3 — OCR | **Done, in testing with Ed.** See below. | 0.6.4 |
 | 4 — annotate, forms | Not started. | — |
 | Audit 1.3 — Source colouring | Waiting on Ed: CodeMirror 6 or the mirror approach. | — |
 
@@ -49,6 +49,18 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 - Found on the way, fixed: a PDF reloaded every time the TypoZen window was activated again (switching back to it). The on-disk change check treated a PDF tab as a document with text to compare; it now skips PDFs as it skips books. This stopped Read Aloud or an export mid-page.
 - Not built: right-click **Save Image As...** on one picture. A picture on a PDF page is not an element to click; it needs hit-testing against the drawing operations' positions. "This page" in Save All Images covers one page's pictures meanwhile.
 - Not checked: a large real-world PDF (hundreds of pages, big scans) for time and memory; CMYK JPEGs (they are saved as PNG by design).
+
+**Phase 3 as built (0.6.4):**
+
+- A page whose text has no letters or digits is read once the PDF's text is in, starting at the page on screen. On by default (D3); View > Read Text in Scanned PDF Pages turns it off (window state `pdfOcr`).
+- The page draws the page from its own copy of the document (about 2600 px on the long side, at most 300 DPI, JPEG) and POSTs it to `https://localpdf/ocr/<token>/<page>/recognize`; the host runs `Windows.Media.Ocr` (`TryCreateFromUserProfileLanguages`) and returns words and boxes. It is not saved there: the page scores the result (letters in real words out of all letters) and, if poor, tries the page turned 90, 270 and 180 degrees, keeping the best -- scans are often sideways (Ed's `Test_PDF_printed.pdf` is: its pages read as "00 on o o" upright and correctly turned). A result with no words (a photograph) is kept as no text. The chosen result is POSTed to `.../save` and cached per file content hash; `GET .../<page>` answers from the cache.
+- The words become the page's text and items (lines of one height unless clearly bigger, so paragraphs split on gaps and headings) and an invisible word layer, `.tzOcrLayer`, laid over the scan like PDF.js's text layer, rotated to match a turned page. Find, the Search sidebar, selection and the popup, Read Aloud, narration and marks all use it through the same code as real text.
+- Cache in the profile (`ocr/<hash>/p<n>.json`); in Privacy Mode in the session's temp folder. Clear Stored Data: "Text read from scanned PDF pages".
+- **Measured:** 0.2-0.4 s a page upright, 0.4-0.8 s when a page needs turning (12 sideways pages in 4.2 s), 20-40 ms from the cache.
+- The host project now references `System.Runtime.WindowsRuntime` (for WinRT's `Rect`), a .NET Framework part on every Windows 10/11, not shipped.
+- Tests: `tests/pdf-ocr-app.mjs` (12 checks) on `tests/pdf-scanned.pdf` from `tests/make-pdf-scanned.mjs`. Needs an OCR language in Windows.
+- Not checked: Privacy Mode's temp-folder cache (by reading only), non-English scans, a PDF with hundreds of scanned pages (reading runs in the background page by page; untested at that size), and whether a machine with no OCR language shows its status line (the message exists; this machine has English).
+- Known: recognition errors on real scans ("E86,OOO" for "£86,000" on Ed's printed PDF). Skew beyond what Windows corrects, and handwriting, read badly.
 
 ## Decisions
 
