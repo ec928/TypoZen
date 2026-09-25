@@ -195,18 +195,11 @@ def config_facts(folder):
         return 'config.json unreadable: %s: %s' % (type(e).__name__, e)
 
 
-def backup_dir():
-    """Where kept voices are copied: OneDrive, so that losing this PC does not lose them.
-
-    A voice cannot be made again -- the same description gives a different person -- and the
-    extension's own folder is not synced anywhere. TYPOZEN_VOICE_BACKUP overrides the place
-    (for tests); set to '' it turns the backup off.
-    """
-    b = os.environ.get('TYPOZEN_VOICE_BACKUP')
-    if b is None:
-        od = os.environ.get('OneDrive') or os.environ.get('OneDriveConsumer')
-        b = os.path.join(od, 'TypoZen', 'Narrator voices') if od else ''
-    return b
+# Voices are kept in voices/ and nowhere else. Until 2026-09-25 every kept voice was also
+# copied, silently, into the reader's OneDrive folder -- and so to their cloud account --
+# and brought back from it at every start. Keeping a copy is now the reader's choice:
+# Narrator settings exports a voice to a .tzvoice file wherever they like, and imports it
+# back (import_voice). Copies the old behaviour left in OneDrive are not touched.
 
 
 def recycle(path):
@@ -263,35 +256,9 @@ class Narrator(object):
         os.makedirs(cache_dir, exist_ok=True)
         os.makedirs(self.voices_dir, exist_ok=True)
 
-    def sync_backup(self):
-        """Every kept voice in the backup, and every backed-up voice here.
-
-        Copies out any voice the backup lacks, and brings back any it holds that this folder
-        lacks -- after the extension is set up again, or on another PC. Deleting a voice takes
-        it out of both, so a deletion is not undone by this.
-        """
-        import shutil
-        b = backup_dir()
-        if not b:
-            return
-        try:
-            os.makedirs(b, exist_ok=True)
-            here = lambda root, vid: os.path.isfile(os.path.join(root, vid, 'print.npy'))
-            for vid in os.listdir(self.voices_dir):
-                if not vid.startswith('_') and here(self.voices_dir, vid) and not here(b, vid):
-                    shutil.copytree(os.path.join(self.voices_dir, vid), os.path.join(b, vid), dirs_exist_ok=True)
-                    log('voice %s backed up to %s' % (vid, b))
-            for vid in os.listdir(b):
-                if not vid.startswith('_') and here(b, vid) and not here(self.voices_dir, vid):
-                    shutil.copytree(os.path.join(b, vid), os.path.join(self.voices_dir, vid), dirs_exist_ok=True)
-                    log('voice %s restored from %s' % (vid, b))
-        except Exception as e:
-            log('voice backup failed: %s' % e)
-
     def reload_voices(self):
         """The built-in voice and every kept one: id -> (voice-print tensor, its hash)."""
         import numpy as np
-        self.sync_backup()
         prints, meta = {}, {}
         for vid, v in BUILTIN_VOICES.items():
             raw = np.load(v['print']).astype(np.float32)
@@ -725,7 +692,7 @@ class Narrator(object):
         meta['name'] = name
         with open(os.path.join(dst, 'meta.json'), 'w', encoding='utf-8') as f:
             json.dump(meta, f)
-        self.reload_voices()                 # which also copies it to the backup
+        self.reload_voices()
         log('kept candidate %s as voice %s' % (candidate, vid))
         return vid
 
@@ -790,17 +757,15 @@ class Narrator(object):
             if got.get(wav, b'')[:4] == b'RIFF':
                 with open(os.path.join(dst, wav), 'wb') as f:
                     f.write(got[wav])
-        self.reload_voices()                 # which also copies it to the backup
+        self.reload_voices()
         log('imported voice %s' % vid)
         return vid, name, False
 
     def delete_voice(self, vid):
-        """To the Recycle Bin, here and in the backup: restorable, and not brought back by the backup."""
+        """To the Recycle Bin, so it can be restored. Exported copies are the reader's and untouched."""
         if vid in BUILTIN_VOICES or vid.startswith('_') or '/' in vid or '\\' in vid:
             raise ValueError('cannot delete %s' % vid)
         recycle(os.path.join(self.voices_dir, vid))
-        if backup_dir():
-            recycle(os.path.join(backup_dir(), vid))
         self.reload_voices()
         log('deleted voice %s (to the Recycle Bin)' % vid)
 
@@ -898,8 +863,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {'candidates': out, 'seconds': round(time.time() - t, 1)})
             elif self.path.startswith('/voices/keep'):
                 vid = n.keep(body.get('candidate') or '', body.get('name') or '')
-                b = backup_dir()
-                self._send(200, {'id': vid, 'backup': b if b and os.path.isfile(os.path.join(b, vid, 'print.npy')) else ''})
+                self._send(200, {'id': vid})
             elif self.path.startswith('/voices/import'):
                 vid, name, already = n.import_voice(body.get('path') or '')
                 self._send(200, {'id': vid, 'name': name, 'already': already})

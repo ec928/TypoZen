@@ -45,9 +45,11 @@ If you install the optional extensions in **File → Extensions**, they keep the
 | `voices\`, `narrator.json` | Voices you designed, with the descriptions you wrote, and the narrator's voice and style |
 | `narration.log`, `install.log` | Timings and steps; no book text and no file paths |
 
-Voices you design are also copied to `OneDrive\TypoZen\Narrator voices` when OneDrive is set
-up, because a voice cannot be made again if the PC is lost. OneDrive syncs that folder to
-your Microsoft account like any other file in it.
+Voices you design stay in that folder. A voice cannot be made again, so Narrator Settings
+can **Export** one to a `.tzvoice` file wherever you choose, and **Import** it back. TypoZen
+makes no copy of its own. (Versions 0.5.2 and earlier copied each voice to
+`OneDrive\TypoZen\Narrator voices` when OneDrive was set up; those copies are left where
+they are.)
 
 Your documents themselves are saved wherever you choose to save them. TypoZen does not
 copy them anywhere else.
