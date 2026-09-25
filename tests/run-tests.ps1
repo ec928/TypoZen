@@ -28,11 +28,10 @@ $errFile = [System.IO.Path]::GetTempFileName()
 $allSuites = @(Get-ChildItem ".\tests\*.mjs" | Sort-Object Name)
 # Helpers / generators, not suites.
 $helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
-             'fonts-ab.mjs', 'scripts-ab.mjs',
-             # Fixture generators: run by hand. Run as suites they rewrote the committed
-             # PDFs on every gate (new timestamps inside, so git saw a change each time).
-             'make-pdf-fixture.mjs', 'make-locked-pdf.mjs')
-$allSuites = @($allSuites | Where-Object { $helpers -notcontains $_.Name })
+             'fonts-ab.mjs', 'scripts-ab.mjs')
+# make-*.mjs build fixtures (run by hand; as suites they rewrote the committed PDFs on every
+# gate) and _*.mjs are scratch files. Build_TypoZen.ps1 applies the same rule.
+$allSuites = @($allSuites | Where-Object { $helpers -notcontains $_.Name -and $_.Name -notlike 'make-*.mjs' -and $_.Name -notlike '_*' })
 
 # *-app.mjs launch TypoZen.exe and drive it over the DevTools port --debug opens. They
 # need a desktop session and take ~40s, so they are opt-in via RUN_APP_E2E=1 -- but they

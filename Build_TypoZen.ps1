@@ -100,7 +100,10 @@ else {
                  'fonts-ab.mjs', 'scripts-ab.mjs')
     $suites = @(Get-ChildItem (Join-Path $appDir "tests\*.mjs") -ErrorAction SilentlyContinue |
                 Where-Object { $_.Name -notlike "*-pending.mjs" -and $_.Name -notlike "*-app.mjs" `
+                               -and $_.Name -notlike "make-*.mjs" -and $_.Name -notlike "_*" `
                                -and ($helpers -notcontains $_.Name) } | Sort-Object Name)
+    # make-*.mjs build fixtures (run by hand; as suites they rewrote committed PDFs on every
+    # build) and _*.mjs are scratch files. tests\run-tests.ps1 applies the same rule.
     if ($suites.Count -eq 0) {
         Write-Host "  [WARN] no tests\*.mjs found - skip" -ForegroundColor Yellow
     }
