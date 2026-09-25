@@ -1,11 +1,30 @@
 # PDF reading and the audit fixes: implementation plan
 
-_Draft for Ed, 25 September 2026. No code written yet. Local only; not tracked._
+_Written 25 September 2026. Progress is kept in the next section; update it with each version._
 
-## Decisions needed before building
+## Progress
 
-| # | Question | Recommendation |
+| Phase | State | Version |
 |---|---|---|
+| 0 — audit fixes | **Done.** 0.1 bookmarks/positions kept (LRU, 5000), 0.2 drop to open, 0.3 Help over every tab, 0.4 autosave-off indicator, and 1.4 image paste into untitled. Git tag `baseline-before-pdf` marks the state before Phase 1. | 0.5.8 |
+| 1 — PDF reading core | **Done, in testing with Ed.** See below. | 0.6.0, 0.6.1 |
+| 2 — reader features | Not started. Read Aloud, Bookmark This Page and Return from Jump are greyed on a PDF until then. The selection popup (Play / Look up) does not appear over a PDF yet either. | — |
+| 2b — save as images | Not started. | — |
+| 3 — OCR | Not started. `tests/Test_PDF_printed.pdf` (a print of `Test_PDF.pdf`, no text layer) is a ready test file. | — |
+| 4 — annotate, forms | Not started. | — |
+| Audit 1.3 — Source colouring | Waiting on Ed: CodeMirror 6 or the mirror approach. | — |
+
+**Phase 1 as built, against the plan:**
+
+- Built as planned: outline, Find and Search by page, Go to Page, remembered page, zoom through the existing commands, two-page view on the column toggle, Print of the original file, book menu rules.
+- Also built: Pages (one page at a time) on the scroll toggle; status bar word count and Page N/M; File > Open in Default App; refit when the window or sidebar changes size.
+- Changed from the plan: theme colours are **opt-in** (View > PDF Pages in Theme Colours) because `pageColors` recolours pictures too. The position is the page only, without a scroll offset. The file is streamed through `WebResourceRequested` rather than a mapped host.
+- Tests: `tests/pdf-reader-app.mjs` (26 checks) instead of an extension to core-smoke. **Not done:** `packaged-smoke-app` and `privacy-app` do not open a PDF yet. Whether Privacy Mode stops a PDF's page being remembered is unverified.
+- Fixed after Ed's first look (0.6.1): the text layer sat about 3% right of and below the ink, so Find's highlight and selections landed on the line below. The cause was the app-wide `box-sizing: border-box`. Also fixed: a fitted page not refitting after the window was maximised or restored (seen as 164% after switching columns), and a PDF with no text showing 22 characters.
+- Open questions: Reset Zoom returns to the fit, which at a given window size can read 99% rather than 100%. Printing landscape pages rotated them onto portrait pages. This is probably the print dialog's orientation setting (not yet checked with Landscape chosen).
+
+## Decisions
+
 Decided with Ed, 25 September 2026:
 
 | # | Question | Decision |
@@ -90,7 +109,7 @@ PDF becomes a **read-only document kind inside the editor page**, beside `epub` 
 | Outline in the sidebar | `pdfDocument.getOutline()` feeds the existing Outline tab. |
 | Find and sidebar search | PDF.js find controller for Ctrl+F; the Search sidebar lists hits across pages from each page's text. |
 | Go to Page | Straight to a page number. |
-| Zoom / fit | The existing zoom commands drive the viewer's scale. No new controls. |
+| Zoom / fit | The existing zoom commands drive the viewer's scale. No new controls. Reset returns to the fit. |
 | Two-page view | The existing column toggle maps to the viewer's spread mode. |
 | Print | Prints the **original file** (loaded into the hidden native WebView and printed with `ShowPrintUI`), so print output is exactly the PDF, not a re-render. |
 | Menus | PDF is a read-only kind: the book rules apply unchanged. |
