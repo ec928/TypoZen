@@ -295,6 +295,7 @@ MSIX.
 | TypoZen | MIT | `LICENSE` |
 | Inter, Literata, Merriweather, Source Sans 3 | SIL OFL 1.1 | `fonts/OFL.txt` |
 | Dictionary and thesaurus data | Open English WordNet (CC BY 4.0), derived from Princeton WordNet | `WORDNET-LICENSE.txt` |
+| PDF.js (pdfjs-dist, the PDF reader) | Apache 2.0 | `js/vendor/pdfjs/LICENSE` |
 
 Extensions are downloaded, not bundled, so their licences travel with the download rather
 than with the build:

@@ -12,5 +12,8 @@
     "jsdom": "^30.0.1",
     "puppeteer": "^25.4.0",
     "puppeteer-core": "^25.5.0"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "6.3.289"
   }
 }
