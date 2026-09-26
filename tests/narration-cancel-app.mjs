@@ -104,7 +104,7 @@ try {
     if (settledAt >= 0) {
         const after = await peak(15);
         const more = renders() - last;
-        console.log('  GPU over the next 10s: ' + after + '% (information only)');
+        console.log('  GPU over the next 15s: ' + after + '% (information only)');
         check(more === 0, 'and no further groups are started', more + ' more');
     }
 
