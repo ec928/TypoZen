@@ -94,7 +94,7 @@
         }
         .sidebar-tab:hover {
             color: var(--tx, #F4F4F5);
-            background: rgba(128, 128, 128, 0.15);
+            background: var(--tint-hover);
         }
         .sidebar-tab.active {
             color: var(--accent, #3B82F6);
@@ -230,7 +230,7 @@
            accent now reaches the selected row, so the two are separated by hue as well as
            by weight -- which is what keeping two greys apart by alpha alone could not do. */
         .outline-item:hover, .search-item:hover {
-            background-color: rgba(128, 128, 128, 0.16);
+            background-color: var(--tint-hover);
             color: var(--tx, #F4F4F5);
         }
         /* --- Bookmarks -----------------------------------------------------------
@@ -249,19 +249,34 @@
             --mark-bg: color-mix(in srgb, #E8A33D 16%, transparent);
             --mark-focus-bg: color-mix(in srgb, #E8A33D 30%, transparent);
             --mark-annot-bg: color-mix(in srgb, #E8A33D 24%, transparent);
+            /* The tint scale: washes of the theme's own TEXT colour, so every state takes
+               the palette's character (Catppuccin's lavender-white, Gruvbox's warm beige)
+               without taking the accent, which in the document means "search match", or
+               the amber, which means "marked". States differ by strength, not hue:
+               hover 6% < focused paragraph 8% (--fill-quiet, set with the theme) <
+               paragraph being read 12% < selection 22%. Before, hover was a fixed grey,
+               selection the browser's own blue in every theme, and reading borrowed the
+               marks' amber. */
+            --tint-hover: color-mix(in srgb, var(--tx, #888888) 6%, transparent);
+            --read-bg: color-mix(in srgb, var(--tx, #888888) 12%, transparent);
+            --select-bg: color-mix(in srgb, var(--tx, #888888) 22%, transparent);
         }
+        #editor ::selection { background-color: var(--select-bg); }
+        /* PDF.js paints its own selection from the system accent; the theme's tint instead. */
+        #pdfView .textLayer ::selection { background: var(--select-bg); }
         #sidebar { --mark: var(--mark-ink); }
         .mark-add {
             display: flex; align-items: center; gap: 7px;
             margin: 6px 8px 4px; padding: 6px 10px;
             font-family: var(--ui-font); font-size: var(--ui-fs); font-weight: 600;
             color: var(--tx, #F4F4F5);
-            background: rgba(128, 128, 128, 0.12);
+            background: var(--fill-quiet, rgba(128, 128, 128, 0.12));
             border: 1px solid var(--border, #3F3F46);
             border-radius: 4px; cursor: pointer;
             transition: background-color 0.12s ease, border-color 0.12s ease;
         }
-        .mark-add:hover { background: rgba(128, 128, 128, 0.2); }
+        /* Filled at rest, so its hover has to clear that fill, not just the plain hover. */
+        .mark-add:hover { background: color-mix(in srgb, var(--tx, #888888) 16%, transparent); }
         .mark-add:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 1px; }
         .mark-add .mark-rib { color: var(--mark); font-size: 12px; }
 
@@ -278,7 +293,7 @@
             color: var(--tx-muted, #A1A1AA); cursor: pointer;
             transition: background-color 0.12s ease, color 0.12s ease;
         }
-        .mark-item:hover { background-color: rgba(128, 128, 128, 0.16); color: var(--tx, #F4F4F5); }
+        .mark-item:hover { background-color: var(--tint-hover); color: var(--tx, #F4F4F5); }
         /* Active mark uses mark amber (not search accent) so list ↔ page share one language. */
         .mark-item.active {
             background: var(--mark-bg, rgba(232, 163, 61, 0.16));
@@ -454,7 +469,7 @@
             transition: background-color 0.12s ease, color 0.12s ease;
         }
         .search-opt:hover {
-            background: rgba(128, 128, 128, 0.18);
+            background: var(--tint-hover);
             color: var(--tx, #F4F4F5);
         }
         .search-opt[aria-pressed="true"] {
@@ -556,7 +571,7 @@
         }
         .sidebar-search-hist-btn:hover {
             color: var(--tx, #F4F4F5);
-            background: rgba(128, 128, 128, 0.16);
+            background: var(--tint-hover);
         }
         .sidebar-search-hist-btn:disabled {
             opacity: 0.35;
@@ -616,7 +631,7 @@
         .sidebar-search-hist-remove:hover {
             opacity: 1;
             color: var(--tx, #F4F4F5);
-            background: rgba(128, 128, 128, 0.2);
+            background: var(--tint-hover);
         }
         .sidebar-search-hist-clear {
             display: block;
@@ -635,7 +650,7 @@
         }
         .sidebar-search-hist-clear:hover {
             color: var(--tx, #F4F4F5);
-            background: rgba(128, 128, 128, 0.14);
+            background: var(--tint-hover);
         }
         .sidebar-search-hist-empty {
             padding: 8px 10px;
@@ -1262,7 +1277,7 @@
            fill is a see-through tint over the page. */
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-find) {
             color: transparent;
-            background-color: rgba(255, 180, 0, 0.30);
+            background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
         }
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-find-current) {
             color: transparent;
@@ -1270,11 +1285,10 @@
         }
         /* The paragraph being read aloud, a mark's highlight, and the wash after jumping to
            a mark (10-pdf.js). The text layer's own text stays invisible; only the fill shows. */
-        /* The same reading colour a book's paragraph gets (.block.tts-active below), not the
-           accent: in Catppuccin that read as lavender on a PDF and amber in a book. */
+        /* The same reading tint a book's paragraph gets (.block.tts-active), from the theme. */
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-tts) {
             color: transparent;
-            background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
+            background-color: var(--read-bg);
         }
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-pdf-mark) {
             color: transparent;
@@ -1763,8 +1777,8 @@
            and Look up stayed visible for a whole-paragraph selection, which has no
            definition. Both were written as hiding and neither hid. */
         .selpop-btn[hidden] { display: none; }
-        .selpop-btn:hover { background: rgba(128,128,128,0.18); color: var(--tx, #F4F4F5); }
-        .selpop-btn.active { background: rgba(128,128,128,0.30); color: var(--tx, #F4F4F5); }
+        .selpop-btn:hover { background: var(--tint-hover); color: var(--tx, #F4F4F5); }
+        .selpop-btn.active { background: var(--select-bg); color: var(--tx, #F4F4F5); }
         .selpop-btn:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: -2px; }
         
         .selpop-body {
@@ -1954,7 +1968,7 @@
         #editor.tts-reading-mode .block.focused.tts-active {
             opacity: 1;
             border-left: 2px solid var(--accent, #3B82F6);
-            background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
+            background-color: var(--read-bg);
             transition: background-color 0.2s;
         }
 
@@ -2208,7 +2222,7 @@
         #pdfView .tzOcrLayer br { user-select: none; }
         #pdfView .tzOcrLayer span::selection {
             color: transparent;
-            background: color-mix(in srgb, #3B82F6 32%, transparent);
+            background: var(--select-bg);
         }
         #pdfView .pdf-problem {
             max-width: 34em;
@@ -2424,9 +2438,9 @@
             background-color: var(--surface, rgba(255,255,255,0.03));
         }
         .zen-table tbody tr:hover {
-            /* Quieter than the header it sits under, and the same neutral hover language
+            /* Quieter than the header it sits under (--fill-quiet), and the same hover
                the sidebar lists use. */
-            background-color: rgba(128, 128, 128, 0.10);
+            background-color: var(--tint-hover);
         }
 
         /* --- TTS Player --- */
@@ -2462,7 +2476,7 @@
         }
         .tts-btn:hover {
             opacity: 1;
-            background-color: rgba(128, 128, 128, 0.2);
+            background-color: var(--tint-hover);
         }
         .tts-div {
             width: 1px;

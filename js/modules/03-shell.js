@@ -1391,8 +1391,17 @@
             // washes of one hue in one surface saying two different things. Neutral here
             // is a choice, not a leftover: the focused band marks a block's extent, which
             // is structure, not emphasis.
-            root.setProperty('--fill-quiet',
-                isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)');
+            //
+            // It is the theme's own text colour at low alpha, not black or white: the
+            // second step of the tint scale in typozen.css (hover < focused < paragraph
+            // being read < selection), which is all one wash of --tx at rising strength.
+            // Pure black on Solarized Light's cream reads grey-green; its own ink does not.
+            root.setProperty('--fill-quiet', (function () {
+                const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(tx);
+                const a = 0.08;
+                if (!m) return isLight ? 'rgba(0, 0, 0, ' + a + ')' : 'rgba(255, 255, 255, ' + a + ')';
+                return 'rgba(' + parseInt(m[1], 16) + ', ' + parseInt(m[2], 16) + ', ' + parseInt(m[3], 16) + ', ' + a + ')';
+            })());
 
             // The selected row: the accent at the shell's own selection alpha, so a
             // selected row in the sidebar and a selected button in the toolbar are the
