@@ -182,6 +182,14 @@ namespace TypoZen
             var cuePanel = new StackPanel();
             cuePanel.Children.Add(cueBox);
             cuePanel.Children.Add(note("Added after the instruction when a line has a cue. {cue} becomes the cue itself."));
+            // The original wording is always one click away, so trying another loses nothing.
+            var restoreCue = button("Restore default wording");
+            restoreCue.HorizontalAlignment = HorizontalAlignment.Left;
+            restoreCue.Click += (s, e) => cueBox.Text = QwenNarrator.DefaultCue;
+            Action refreshRestore = () => restoreCue.IsEnabled = cueBox.Text.Trim() != QwenNarrator.DefaultCue;
+            cueBox.TextChanged += (s, e) => refreshRestore();
+            refreshRestore();
+            cuePanel.Children.Add(restoreCue);
             var cueFold = fold("Cue wording", cuePanel);
             cueFold.Margin = new Thickness(22, 2, 0, 2);
             left.Children.Add(cueFold);
