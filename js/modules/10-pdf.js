@@ -509,10 +509,12 @@
                     const str = it.str || '';
                     // The text layer draws one span per non-empty item, in this order, so an
                     // offset into this text maps onto its text nodes by counting items.
-                    // Where it sits (baseline y, font height) is what splits paragraphs.
+                    // Where it sits (baseline y, left x, width, font height) is what splits
+                    // paragraphs: line spacing, indents and short last lines.
                     if (str.length) items.push({
                         start: text.length, len: str.length,
-                        y: it.transform ? it.transform[5] : 0, h: it.height || 0
+                        y: it.transform ? it.transform[5] : 0, h: it.height || 0,
+                        x: it.transform ? it.transform[4] : 0, w: it.width || 0
                     });
                     text += str;
                     if (it.hasEOL) text += '\n';
@@ -645,29 +647,99 @@
 
     // ---- Paragraphs: the unit Read Aloud and marks work in ------------------------------
     //
-    // PDF text has lines, not paragraphs. A paragraph ends where the gap to the next line is
-    // clearly more than a line's spacing, where the text size changes (a heading), or where
-    // the next line is higher on the page (another column or box). Each paragraph is a
-    // detached <div class="block"> holding its text, with its page and its span of that
-    // page's text on data attributes: Read Aloud (09-speech.js) and marks (02-layout.js)
-    // work on blocks, so a PDF hands them these and they need to know little more.
+    // PDF text has lines, not paragraphs. A paragraph starts where a line
+    //   - sits clearly further below the one before than this page's lines usually do,
+    //   - starts indented from the page's left margin (a first-line indent),
+    //   - follows a line that stopped well short of the right margin (a paragraph's end),
+    //   - is set in a different size (a heading), or
+    //   - is higher on the page than the one before (another column or box).
+    // Spacing and margins are learnt from the page itself. Judging the gap against the
+    // text's height instead split a generously leaded book at every line, and missed its
+    // paragraphs entirely, which are marked by indents with no extra space (2026-09-26).
+    // An indented block whose lines all run full -- a quotation -- stays one paragraph.
+    //
+    // Each paragraph is a detached <div class="block"> holding its text, with its page and
+    // its span of that page's text on data attributes: Read Aloud (09-speech.js) and marks
+    // (02-layout.js) work on blocks, so a PDF hands them these and they need to know little
+    // more.
+
+    /** Page p's items gathered into lines: baseline, height, left and right edges, start. */
+    function pageLines(items) {
+        const lines = [];
+        let cur = null;
+        for (const it of items) {
+            const h = Math.max(cur ? cur.h : 0, it.h || 0) || 10;
+            if (!cur || Math.abs(it.y - cur.y) > 0.5 * h) {
+                cur = { y: it.y, h: it.h || 0, x0: it.x || 0, x1: (it.x || 0) + (it.w || 0), start: it.start };
+                lines.push(cur);
+            } else {
+                cur.h = Math.max(cur.h, it.h || 0);
+                cur.x0 = Math.min(cur.x0, it.x || 0);
+                cur.x1 = Math.max(cur.x1, (it.x || 0) + (it.w || 0));
+            }
+        }
+        return lines;
+    }
+
+    const median = (a) => { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
     /** [start, end) spans of page p's text, one per paragraph. */
     function paragraphSpans(p) {
         const text = S.pageTexts && S.pageTexts[p];
         const items = S.pageItems && S.pageItems[p];
         if (!text || !items || !items.length) return [];
+        const lines = pageLines(items);
+        const hTyp = median(lines.map(l => l.h).filter(h => h > 0)) || 10;
+        // The page's usual line spacing: baseline to baseline between neighbouring lines.
+        const pitches = [];
+        for (let k = 1; k < lines.length; k++) {
+            const g = lines[k - 1].y - lines[k].y;               // PDF y grows upwards
+            if (g > 0.5 * hTyp && g < 3 * hTyp) pitches.push(g);
+        }
+        // The lower quartile, from at least three gaps: ordinary line breaks outnumber
+        // paragraph gaps, but on a page of a few lines the one gap measured may BE the
+        // paragraph gap, which then looked ordinary (a scanned test page, 2026-09-26).
+        const ps = pitches.slice().sort((u, v) => u - v);
+        const pitch = ps.length >= 3 ? ps[Math.floor(ps.length / 4)] : 1.2 * hTyp;
+        // Margins, per column: lines are grouped by where they start (a jump of a quarter of
+        // the text's width is another column; an indent is far less), and each column's left
+        // margin is where most of its lines start, its right where its full lines end. On a
+        // two-column page one set of margins made every line of the other column look
+        // indented or short. A column of few lines -- a centred heading, a caption -- has no
+        // margins to trust and falls back to spacing and size alone.
+        const minX = Math.min(...lines.map(l => l.x0)), maxX = Math.max(...lines.map(l => l.x1));
+        const byX = lines.slice().sort((u, v) => u.x0 - v.x0);
+        const cols = [];
+        for (const l of byX) {
+            let c = cols[cols.length - 1];
+            if (!c || l.x0 - c.from > 0.25 * (maxX - minX)) { c = { from: l.x0, lines: [] }; cols.push(c); }
+            c.lines.push(l);
+        }
+        for (const c of cols) {
+            c.enough = c.lines.length >= 4;
+            // The lower fifth, not the median: on a page of dialogue most lines are the
+            // indented first lines of one-line paragraphs.
+            const xs = c.lines.map(l => l.x0).sort((u, v) => u - v);
+            c.left = xs[Math.floor(xs.length / 5)];
+            c.right = Math.max(...c.lines.map(l => l.x1));
+            for (const l of c.lines) l.col = c;
+        }
+        const indented = (l) => l.col.enough && l.x0 - l.col.left > 0.8 * hTyp;
+        const full = (l) => !l.col.enough || l.col.right - l.x1 < 2.5 * hTyp;
+
         const out = [];
-        let start = items[0].start, prev = items[0];
-        for (let k = 1; k < items.length; k++) {
-            const it = items[k];
-            const h = Math.max(prev.h || 0, it.h || 0) || 10;
-            if (Math.abs(it.y - prev.y) > 0.5 * h) {                 // a new line
-                const gap = prev.y - it.y;                           // PDF y grows upwards
-                const resized = prev.h && it.h && Math.abs(prev.h - it.h) > 0.2 * h;
-                if (gap > 1.6 * h || gap < -0.5 * h || resized) { out.push([start, it.start]); start = it.start; }
-            }
-            prev = it;
+        let start = lines[0].start;
+        for (let k = 1; k < lines.length; k++) {
+            const a = lines[k - 1], b = lines[k];
+            const gap = a.y - b.y;
+            const h = Math.max(a.h, b.h) || hTyp;
+            const spaced = gap > 1.4 * pitch;
+            const upward = gap < -0.5 * h;
+            const resized = a.h && b.h && Math.abs(a.h - b.h) > 0.2 * h;
+            // A new indent, not the next line of an indented block that runs full.
+            const indent = indented(b) && !(indented(a) && Math.abs(a.x0 - b.x0) < 0.3 * hTyp && full(a));
+            const endedShort = !full(a);
+            if (spaced || upward || resized || indent || endedShort) { out.push([start, b.start]); start = b.start; }
         }
         out.push([start, text.length]);
         return out;
@@ -955,7 +1027,7 @@
                 if (wi) text += ' ';
                 const t = String(w[0]);
                 // Paragraphs are worked out in the turned picture's frame, where lines run across.
-                items.push({ start: text.length, len: t.length, y: Hr - bottom * k, h: lh * k });
+                items.push({ start: text.length, len: t.length, y: Hr - bottom * k, h: lh * k, x: w[1] * k, w: w[3] * k });
                 const [x, y] = back(w[1] * k, w[2] * k);
                 boxes.push({ t, x, y, w: w[3] * k, h: w[4] * k, rot, eol: wi === line.length - 1 });
                 text += t;
