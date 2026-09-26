@@ -84,6 +84,11 @@ namespace TypoZen
         {
             public string Voice = "";
             public string Style = "";
+            // Emotion cues from speech tags ("he whispered" -> whispered, hushed). Off by default:
+            // compared side by side on ten Dune paragraphs (2026-09-26), the model reading the
+            // scene itself was as good or better in nearly every case, and the cue flattened
+            // the sarcasm out of one.
+            public bool Direct = false;
         }
 
         public sealed class Cast
@@ -126,17 +131,18 @@ namespace TypoZen
         public static Settings LoadSettings(string cacheDir)
         {
             var d = ReadJson(SettingsPath(cacheDir));
-            object v, s;
+            object v, s, c;
             return new Settings
             {
                 Voice = d.TryGetValue("voice", out v) ? (v as string ?? "") : "",
-                Style = d.TryGetValue("style", out s) ? (s as string ?? "") : ""
+                Style = d.TryGetValue("style", out s) ? (s as string ?? "") : "",
+                Direct = d.TryGetValue("direct", out c) && c is bool && (bool)c
             };
         }
 
         public static void SaveSettings(string cacheDir, Settings s)
         {
-            var d = new Dictionary<string, object> { { "voice", s.Voice ?? "" }, { "style", s.Style ?? "" } };
+            var d = new Dictionary<string, object> { { "voice", s.Voice ?? "" }, { "style", s.Style ?? "" }, { "direct", s.Direct } };
             File.WriteAllText(SettingsPath(cacheDir), new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
         }
 
@@ -263,7 +269,7 @@ namespace TypoZen
             foreach (var v in SavedVoices(cacheDir)) if (v.Key == current) name = v.Value;
             var d = new Dictionary<string, object>
             {
-                { "voice", s.Voice }, { "voiceName", name }, { "style", s.Style }, { "speed", speed },
+                { "voice", s.Voice }, { "voiceName", name }, { "style", s.Style }, { "direct", s.Direct }, { "speed", speed },
                 { "cast", LoadCast(cacheDir, book).Voices },
                 // Render into this session's private folder, not the lasting cache.
                 { "private", privateMode }

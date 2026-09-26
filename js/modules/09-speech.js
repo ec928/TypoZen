@@ -489,28 +489,33 @@ let _narrVoiceName = '';
 let _narrStyle = '';
 let _narrSpeed = 1;
 let _narrCast = {};
+// Emotion cues from speech tags, sent as each piece's direction. Off unless the reader turns
+// them on (Narrator settings): the model reads the scene better than the keyword rules do.
+let _narrDirect = false;
 // Privacy Mode: new audio goes to this session's private folder, served by localnarrationp.
 let _narrPrivate = false;
 window.setNarratorSettings = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
-        const before = JSON.stringify([_narrVoice, _narrStyle, _narrCast]);
+        const before = JSON.stringify([_narrVoice, _narrStyle, _narrCast, _narrDirect]);
         _narrVoice = s.voice || '';
         _narrVoiceName = s.voiceName || '';
         _narrStyle = s.style || '';
+        _narrDirect = s.direct === true;
         _narrSpeed = Math.max(0.5, Math.min(2, parseFloat(s.speed) || 1));
         _narrCast = s.cast || {};
         _narrPrivate = !!s.private;
         if (_renderedAudio) _renderedAudio.playbackRate = _narrSpeed;
         // A new voice, style or cast while narrating: start again at the paragraph being read,
         // in the new voice, rather than play out what was already rendered in the old one.
-        if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrCast]) && _narrActive && isPlaying) {
+        if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrCast, _narrDirect]) && _narrActive && isPlaying) {
             narrLog('settings changed while narrating: restarting at the current paragraph');
             _qwenPending = null;
             try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
         }
         narrLog('settings: voice ' + (_narrVoice || 'default') + ', style ' + (_narrStyle ? _narrStyle.length + ' chars' : 'standard') +
                 ', speed ' + _narrSpeed + ', cast ' + Object.keys(_narrCast).length +
+                (_narrDirect ? ', emotion cues' : '') +
                 (_narrPrivate ? ', private' : ''));
     } catch (e) { narrLog('settings unreadable: ' + (e && e.message || e)); }
 };
@@ -579,7 +584,7 @@ function narrLog(msg) {
 /** "id:chars" for each piece of a batch, for the trace. */
 function batchSummary(batch) {
     return batch.map(p => p.id + ':' + p.text.length + 'ch' + (p.speaker ? '{' + p.speaker + '}' : '') +
-                          (p.direction ? '[' + p.direction + ']' : '')).join(' ');
+                          (_narrDirect && p.direction ? '[' + p.direction + ']' : '')).join(' ');
 }
 
 /** How much audio is already queued and paid for. */
@@ -619,7 +624,7 @@ async function renderNarration(base, batch, reading) {
             body: JSON.stringify({
                 voice: _narrVoice,
                 style: _narrStyle,
-                blocks: batch.map(p => ({ id: p.id, text: p.text, direction: p.direction || '',
+                blocks: batch.map(p => ({ id: p.id, text: p.text, direction: _narrDirect ? (p.direction || '') : '',
                                           voice: p.voice || '', role: p.role || 'narration' })),
                 reading: reading,
                 group_size: batch.length,

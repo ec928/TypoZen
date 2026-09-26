@@ -131,6 +131,13 @@ namespace TypoZen
             var previewStyle = button("Preview voice and style");
             presets.Children.Add(previewStyle);
             root.Children.Add(presets);
+            var directBox = new CheckBox
+            {
+                Content = "Add emotion cues from speech tags (\"she whispered\", \"he snapped\")",
+                IsChecked = settings.Direct, Margin = new Thickness(0, 8, 0, 0)
+            };
+            root.Children.Add(directBox);
+            root.Children.Add(note("Off, the narrator reads the emotion from the scene itself, which usually sounds more natural."));
 
             // ---- designing a voice
             root.Children.Add(heading("New voice"));
@@ -497,6 +504,7 @@ namespace TypoZen
                     var v = voiceBox.SelectedItem as VoiceItem;
                     settings.Voice = v != null ? v.Id : settings.Voice;
                     settings.Style = styleBox.Text.Trim();
+                    settings.Direct = directBox.IsChecked == true;
                     QwenNarrator.SaveSettings(cacheDir, settings);
                     foreach (var r in castRows)
                     {
