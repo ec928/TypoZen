@@ -16,8 +16,8 @@ namespace TypoZen
     ///
     /// Three tabs, by how often each is used. Reading holds what shapes every narration -- the
     /// voice, the whole instruction, emotion cues -- on the left, and Try it on the right, always
-    /// in view, so a change is made and heard without scrolling: A plays the settings on screen,
-    /// B a set kept for comparison, each labelled with what it is. Voices is the library (play,
+    /// in view, so a change is made and heard without scrolling: Current plays the settings on
+    /// screen, Previous the last different ones played, each labelled with what it is. Voices is the library (play,
     /// import, export, delete, design new ones), which acts at once. Cast is this book's
     /// characters, shown only with a book open. Save and Cancel cover Reading and Cast.
     ///
@@ -85,7 +85,7 @@ namespace TypoZen
             var cast = QwenNarrator.LoadCast(cacheDir, book);
             var voices = new List<VoiceItem>();
             SoundPlayer player = null;
-            Trial kept = null;              // Try it: B, the reading kept for comparison
+            Trial kept = null;              // Try it: Previous, the last different settings played
 
             var win = new Window
             {
@@ -199,27 +199,28 @@ namespace TypoZen
             useSelection.Margin = new Thickness(0, 6, 0, 10);
             tryTop.Children.Add(useSelection);
 
-            // A and B: what each is, and a Play for each.
+            // Current and Previous: what each is, and a Play for each. Previous fills itself -- the
+            // last different settings played -- so comparing is play, change, play, then switch.
+            // ("Keep A as B", a step of its own, was not understood.)
             var ab = new Grid { Margin = new Thickness(0, 0, 0, 6) };
             ab.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             ab.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             ab.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             ab.RowDefinitions.Add(new RowDefinition());
             ab.RowDefinitions.Add(new RowDefinition());
-            Func<string, TextBlock> slot = t => new TextBlock { Text = t, FontWeight = FontWeights.Bold, FontSize = 15, Width = 24, VerticalAlignment = VerticalAlignment.Center };
+            Func<string, TextBlock> slot = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, Width = 70, VerticalAlignment = VerticalAlignment.Center };
             var aSummary = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 4) };
-            var bSummary = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 4), Opacity = 0.72, Text = "Nothing kept yet. Keep A here, change something, then play each." };
-            var playA = button("▶ Play A");
-            var playB = button("▶ Play B");
+            var bSummary = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 4), Opacity = 0.72, Text = "Play, change something on the left, and play again: what you heard before appears here." };
+            var playA = button("▶ Play");
+            var playB = button("▶ Play");
             playA.Margin = playB.Margin = new Thickness(0, 3, 0, 3);
             playB.IsEnabled = false;
             Action<UIElement, int, int> put = (el, r, c) => { Grid.SetRow(el, r); Grid.SetColumn(el, c); ab.Children.Add(el); };
-            put(slot("A"), 0, 0); put(aSummary, 0, 1); put(playA, 0, 2);
-            put(slot("B"), 1, 0); put(bSummary, 1, 1); put(playB, 1, 2);
+            put(slot("Current"), 0, 0); put(aSummary, 0, 1); put(playA, 0, 2);
+            put(slot("Previous"), 1, 0); put(bSummary, 1, 1); put(playB, 1, 2);
             tryTop.Children.Add(ab);
-            var keepTry = button("Keep A as B");
             var stopTry = button("■ Stop");
-            tryTop.Children.Add(row(new UIElement[] { keepTry, stopTry }));
+            tryTop.Children.Add(row(new UIElement[] { stopTry }));
 
             var toldBox = new TextBox
             {
@@ -490,26 +491,34 @@ namespace TypoZen
                 refreshPresetButtons();
             };
 
-            // ---- Try it: A is the settings on screen, B a set kept for comparison
+            // ---- Try it: Current is the settings on screen, Previous the last different ones played
             TaskCompletionSource<string> pendingTrial = null;
+            Trial lastPlayed = null;
             Func<Trial> current = () =>
             {
                 var v = voiceBox.SelectedItem as VoiceItem;
                 var p = presetBox.SelectedItem as PresetItem;
                 string instr = instructionBox.Text.Trim();
+                // Enough of the reader's own words to tell two of them apart.
+                string[] w = instr.Split(new[] { ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                 string words = instr.Length == 0 ? "no instruction"
                              : p != null ? "the " + p.Name + " instruction"
-                             : "your own instruction";
+                             : "your instruction “" + string.Join(" ", w, 0, Math.Min(6, w.Length)) + (w.Length > 6 ? "…" : "") + "”";
+                string cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue;
+                bool direct = directBox.IsChecked == true;
                 return new Trial
                 {
                     Voice = v != null ? v.Id : settings.Voice,
                     VoiceName = v != null ? v.Name : "the narrator's voice",
                     Instruction = instr,
-                    Cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue,
-                    Direct = directBox.IsChecked == true,
-                    Label = (v != null ? v.Name : "Narrator's voice") + ", " + words + ", cues " + (directBox.IsChecked == true ? "on" : "off")
+                    Cue = cue,
+                    Direct = direct,
+                    Label = (v != null ? v.Name : "Narrator's voice") + ", " + words + ", cues "
+                          + (!direct ? "off" : cue == QwenNarrator.DefaultCue ? "on" : "on in your wording")
                 };
             };
+            Func<Trial, Trial, bool> sameSettings = (x, y) => x != null && y != null && x.Voice == y.Voice
+                && x.Instruction == y.Instruction && x.Direct == y.Direct && (!x.Direct || x.Cue == y.Cue);
             Action updateA = () => { aSummary.Text = current().Label; };
 
             presetBox.SelectionChanged += (s, e) =>
@@ -667,22 +676,26 @@ namespace TypoZen
                     say("Playing " + which + " (" + secs.ToString("0") + "s).");
                 });
             };
-            playA.Click += (s, e) => runTrial(current(), "A");
-            playB.Click += (s, e) => { if (kept != null) runTrial(kept, "B"); };
+            playA.Click += (s, e) =>
+            {
+                var t = current();
+                // What was heard before becomes Previous, once the settings differ from it.
+                if (lastPlayed != null && !sameSettings(lastPlayed, t))
+                {
+                    kept = lastPlayed;
+                    bSummary.Text = kept.Label;
+                    bSummary.Opacity = 1;
+                }
+                lastPlayed = t;
+                runTrial(t, "Current");
+            };
+            playB.Click += (s, e) => { if (kept != null) runTrial(kept, "Previous"); };
             stopTry.Click += (s, e) =>
             {
                 sendToPage("cmd:narrator_trial_stop");
                 var p = pendingTrial;
                 if (p != null) p.TrySetResult("{\"kind\":\"stopped\"}");
                 say("");
-            };
-            keepTry.Click += (s, e) =>
-            {
-                kept = current();
-                bSummary.Text = kept.Label;
-                bSummary.Opacity = 1;
-                playB.IsEnabled = playA.IsEnabled;
-                say("A is kept as B. Change anything on the left, then play A and B in turn.");
             };
             useSelection.Click += (s, e) => sendToPage("cmd:narrator_trial_selection");
             TrialArrived = json =>
