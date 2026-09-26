@@ -493,7 +493,7 @@ let _narrCue = '';
 let _narrSpeed = 1;
 let _narrCast = {};
 // Emotion cues from speech tags, sent as each piece's direction. Off unless the reader turns
-// them on (Narrator settings, Emotion): the model reads the scene better than the keyword rules do.
+// them on (Narrator settings, Emotion).
 let _narrDirect = false;
 // Privacy Mode: new audio goes to this session's private folder, served by localnarrationp.
 let _narrPrivate = false;

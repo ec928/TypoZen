@@ -109,10 +109,10 @@ namespace TypoZen
             public string Voice = "";
             public string Instruction = StandardBase + LightDialogue;
             public string Cue = DefaultCue;
-            // Emotion cues from speech tags ("he whispered" -> whispered, hushed). Off by default:
-            // compared side by side on ten Dune paragraphs (2026-09-26), the model reading the
-            // scene itself was as good or better in nearly every case, and the cue flattened
-            // the sarcasm out of one.
+            // Emotion cues from speech tags ("he whispered" -> whispered, hushed). Off by default.
+            // A scripted A/B on ten Dune paragraphs (2026-09-26) sounded worse with cues, but Try
+            // it did not bear that out -- both ways read well there -- and rendering the same
+            // paragraphs batched or alone did not explain the difference. The reader decides by ear.
             public bool Direct = false;
         }
 
