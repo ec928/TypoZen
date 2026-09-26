@@ -86,6 +86,20 @@ Root: HKA; Subkey: "Software\Classes\TypoZen.Book\DefaultIcon"; ValueType: strin
 Root: HKA; Subkey: "Software\Classes\TypoZen.Book\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: assocepub
 Root: HKA; Subkey: "Software\Classes\.epub\OpenWithProgids"; ValueType: string; ValueName: "TypoZen.Book"; ValueData: ""; Flags: uninsdeletevalue; Tasks: assocepub
 
+; "Open with > TypoZen". Windows keeps one such entry per exe NAME, pointing at whichever
+; TypoZen.exe was last chosen by hand -- so a default set that way (a .pdf, a .txt) kept
+; launching an old copy after every update (0.5.1 from a stale folder, 2026-09-26). Written
+; on every install, it follows the installed copy, and it carries a name and an icon instead
+; of showing as "TypoZen.exe". Not written by the installer test, which selects no tasks.
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "TypoZen"; Flags: uninsdeletekey; Tasks: assocmd or assocepub
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: assocmd or assocepub
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: assocmd or assocepub
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".md"; ValueData: ""; Tasks: assocmd or assocepub
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".markdown"; ValueData: ""; Tasks: assocmd or assocepub
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".txt"; ValueData: ""; Tasks: assocmd or assocepub
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".epub"; ValueData: ""; Tasks: assocmd or assocepub
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".pdf"; ValueData: ""; Tasks: assocmd or assocepub
+
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start TypoZen"; Flags: nowait postinstall skipifsilent
 
