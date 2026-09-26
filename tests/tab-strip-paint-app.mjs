@@ -85,7 +85,8 @@ console.log('\n=== a restored session of untitled tabs is all on the strip ===')
 let app = await launchApp({ settleMs: 6000, visible: true });
 try {
     const strip = paintedTabs();
-    info('session restored ' + sessionCount() + ' tabs; strip painted ' + strip.count);
+    info('session restored ' + sessionCount() + ' tabs; strip painted ' + strip.count
+        + ' ' + JSON.stringify((strip.tabs || []).map(t => t.name)));
     assert(sessionCount() === N, 'the session still holds ' + N + ' tabs after restore');
     assert(strip.count === N,
         'the strip paints one chip per tab (' + strip.count + ' of ' + N + ')');

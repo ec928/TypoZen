@@ -17,8 +17,9 @@
  *   RUN_APP_E2E=1 node tests/format-availability-app.mjs
  */
 import { execFileSync } from 'child_process';
+import fs from 'fs';
 import path from 'path';
-import { launchApp, sleep, appDir } from './app-harness.mjs';
+import { launchApp, sleep, appDir, profileDir } from './app-harness.mjs';
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -39,10 +40,10 @@ function shell(command, arg) {
 // nothing on its own. The three dropdowns are Menus in the XAML and the header MenuItem
 // inside each is what UI Automation surfaces -- WPF propagates IsEnabled down, so
 // locking the Menu is visible on its item.
-const FORMAT = [
-    'btnBold', 'btnItalic', 'btnStrike', 'btnCode',
-    'miHeadings', 'btnQuote', 'miLists', 'btnLink', 'miTable',
-];
+// Bold, Italic, Strikethrough, Code, Link and Table left the toolbar in 0.3.11, for the
+// selection popup (hidden there on a book or PDF: source-popover-app, pdf-reader-features-app).
+// These three are what the toolbar still has.
+const FORMAT = ['miHeadings', 'btnQuote', 'miLists'];
 
 /** Report each formatting control's enabled state, plus what could not be found. */
 function formatState() {
@@ -105,6 +106,13 @@ try {
         'the status bar carries no permanent version label');
     assert(status.some(s => /^Theme:/i.test(s)),
         'control: the theme pill is still there (it was kept deliberately)');
+
+    // A fault the app caught still turns autosave off ("off after an error"), which this
+    // suite's status bar showed on 2026-09-26: fail on it, with its cause.
+    let faults = [];
+    try { faults = fs.readFileSync(path.join(profileDir, 'debug.log'), 'utf8').split(/\r?\n/).filter(l => /FAULT/.test(l)); } catch (e) { }
+    for (const l of faults.slice(0, 3)) info(l.slice(0, 700));
+    assert(faults.length === 0, 'no fault was caught along the way' + (faults.length ? ' (' + faults.length + ')' : ''));
 } finally {
     await app.close();
 }

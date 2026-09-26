@@ -58,6 +58,11 @@ function Get-TabElements($root) {
     $texts = Find-ByType $root 'Text'
     $out = @()
     foreach ($t in $texts) {
+        if ($t.Current.IsOffscreen) { continue }
+        # A chip's tooltip ("Untitled document") is text in the same band while the pointer
+        # rests on the strip, and was counted as a seventh tab (2026-09-26).
+        $parent = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($t)
+        if ($parent -and $parent.Current.ControlType -eq [System.Windows.Automation.ControlType]::ToolTip) { continue }
         $r = $t.Current.BoundingRectangle
         if ($r.Width -lt 24 -or $r.Height -lt 8) { continue }
         if ($r.Y -gt ($win.Y + 60)) { continue }
@@ -321,7 +326,13 @@ switch ($Command) {
         $texts = Find-ByType $root 'Text'
         $out = @()
         foreach ($t in $texts) {
+            # A collapsed element has an empty rectangle -- infinite coordinates -- which
+            # passed the position test below, so hidden labels were reported as showing:
+            # "Autosave and session restore are off after an error" on every run, and the
+            # text of a closed Help panel (2026-09-26). Only what is on screen counts.
+            if ($t.Current.IsOffscreen) { continue }
             $r = $t.Current.BoundingRectangle
+            if ($r.IsEmpty -or [double]::IsInfinity($r.Y)) { continue }
             if ($r.Y -lt ($win.Y + $win.Height - 60)) { continue }
             $n = $t.Current.Name
             if ($n) { $out += $n }
