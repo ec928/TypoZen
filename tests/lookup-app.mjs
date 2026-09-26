@@ -86,35 +86,27 @@ try {
     assert(spoke.button, 'a pronounce button sits by the word');
     assert(spoke.sent.some(m => m === 'host_tts_play:' + JSON.stringify({ text: 'ran' })),
         'and speaks the word as selected ("ran"), not the entry it was answered from');
-    // With the Qwen narrator chosen, the word is said in the narrator's voice, not a Windows
-    // one. The host's start of the narrator and the narrator itself are stubbed: no GPU work,
-    // no sound; what is checked is what would be asked for and played.
-    const narrated = await app.eval(async () => {
-        const wv = window.chrome.webview, real = wv.postMessage, sent = [], asked = [], played = [];
-        const realFetch = window.fetch, realPlay = window.playRenderedChunk, voice = _kokoroVoice;
+    // With the Qwen narrator chosen, the word is NOT said by the narrator -- it took about 25s
+    // to start for one word -- but by the quick voice closest to it: same country and gender.
+    // The message is caught before the host, so nothing is heard; the host's choice is asked
+    // for separately (host_word_voice?, --debug only).
+    const quick = await app.eval(async () => {
+        const wv = window.chrome.webview, real = wv.postMessage, sent = [], voice = _kokoroVoice;
         wv.postMessage = (m) => { sent.push(String(m)); };
-        window.fetch = async (url, init) => {
-            if (!String(url).startsWith('http://narrator.stub/')) return realFetch(url, init);
-            const body = init && init.body ? JSON.parse(init.body) : { blocks: [] };
-            (body.blocks || []).forEach(b => asked.push(b.text));
-            return new Response(JSON.stringify({ items: (body.blocks || []).map((b, i) => ({ file: 'w' + i + '.wav', seconds: 0.5 })) }));
-        };
-        window.playRenderedChunk = (u) => { played.push(u); setTimeout(() => { if (isPlaying) stopReading(); }, 50); };
         try {
             _kokoroVoice = 'qwen_narrator';
             document.querySelector('#selPopBody .selpop-speak').click();
-            const askedHost = sent.includes('host_qwen_narrate');
-            await startQwenNarration('http://narrator.stub');   // what the host does once the narrator is up
-            await new Promise(r => setTimeout(r, 300));
-            return { askedHost, windowsVoice: sent.some(m => m.startsWith('host_tts_play:')), asked, played: played.length };
-        } finally {
-            _kokoroVoice = voice; wv.postMessage = real; window.fetch = realFetch; window.playRenderedChunk = realPlay;
-            try { stopReading(); } catch (e) {}
-        }
+        } finally { _kokoroVoice = voice; wv.postMessage = real; }
+        window.__tzWordVoice = '';
+        postMsg('host_word_voice?');
+        for (let i = 0; i < 40 && !window.__tzWordVoice; i++) await new Promise(r => setTimeout(r, 100));
+        return { sent, choice: window.__tzWordVoice };
     });
-    assert(narrated.askedHost && !narrated.windowsVoice && narrated.asked.join() === 'ran' && narrated.played === 1,
-        'with the Qwen narrator chosen, the word is said by the narrator, not a Windows voice');
-    if (!(narrated.askedHost && narrated.played === 1)) console.log('  ..   ' + JSON.stringify(narrated));
+    assert(quick.sent.includes('host_word_play:' + JSON.stringify({ text: 'ran' })) && !quick.sent.includes('host_qwen_narrate'),
+        'with the Qwen narrator chosen, the word goes to a quick voice, not the narrator');
+    const [, culture, gender] = (quick.choice || '').split('|');
+    console.log('  ..   word voice for the built-in narrator (a British woman): ' + quick.choice);
+    assert(culture === 'en-GB' && gender === 'Female', 'and that voice is British and female, like the narrator');
     const comp = await app.eval(ask, 'compositing');
     assert(comp.via === 'composite', 'compositing: answered as "composite", and says so');
 

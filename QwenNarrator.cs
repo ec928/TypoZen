@@ -233,6 +233,28 @@ namespace TypoZen
             return string.IsNullOrEmpty(v) ? DefaultVoiceId : v;
         }
 
+        /// <summary>The built-in voice as sidecar.py describes it (BUILTIN_VOICES).</summary>
+        public const string DefaultVoiceDescription =
+            "A British woman with a soft northern English accent, gentle and grounded, with a low steady delivery.";
+
+        /// <summary>
+        /// A voice's description -- what it was designed from -- and name, for matching it to
+        /// a quick voice (Look up's speaker says a word in one of those, not in the narrator).
+        /// </summary>
+        public static string VoiceDescription(string cacheDir, string id)
+        {
+            if (string.IsNullOrEmpty(id) || id == DefaultVoiceId) return DefaultVoiceDescription;
+            try
+            {
+                var meta = ReadJson(Path.Combine(RootDir(cacheDir), "voices", id, "meta.json"));
+                object d, n;
+                string desc = meta.TryGetValue("description", out d) && d is string ? (string)d : "";
+                string name = meta.TryGetValue("name", out n) && n is string ? (string)n : "";
+                return (desc + " " + name).Trim();
+            }
+            catch { return ""; }
+        }
+
         /// <summary>What the page is sent: the narrator's voice and style, the reading speed, and this book's cast.</summary>
         public static string PageSettingsJson(string cacheDir, string book, double speed, bool privateMode)
         {

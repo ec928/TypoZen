@@ -269,16 +269,30 @@ function speakSelection() {
  */
 function startReading(text) {
     if (!text) return;
-    // In the voice chosen, whichever it is: with the Qwen narrator chosen the word went to
-    // a Windows voice, so a British narrator was followed by an American word (Ed,
-    // 2026-09-25). The narrator caches each piece, so a word heard before is instant.
+    // With the Qwen narrator chosen, a word is said by the quick voice closest to it -- same
+    // country and gender -- which the host picks (PickWordVoice). The narrator itself took
+    // about 25 seconds to say one word when it had to start (Ed, 2026-09-26); before that,
+    // the last Windows voice picked said it, so a British narrator got an American word.
     if (isQwenVoice(_kokoroVoice)) {
-        _qwenPending = { text: text, el: null };
-        narrLog('read requested: a single piece, ' + text.length + ' chars');
-        try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
+        if (isPlaying) stopReading();
+        try { window.chrome.webview.postMessage('host_word_play:' + JSON.stringify({ text: text })); } catch (e) {}
         return;
     }
     startReadingChunks([{ text: text }]);
+}
+
+/**
+ * One word in a Kokoro voice, the reading voice left as it is (the host's PickWordVoice chose
+ * it as closest to the narrator). Kokoro loads its model on first use.
+ */
+async function speakWordKokoro(voice, text) {
+    if (!text) return;
+    if (!_isKokoroReady) { try { await setupKokoro(true); } catch (e) {} }
+    if (!_isKokoroReady || !isKokoroVoice(voice)) return;
+    const keep = _kokoroVoice;
+    _kokoroVoice = voice;                  // read once, synchronously, by sendTTSPlay
+    try { startReadingChunks([{ text: text }]); }
+    finally { _kokoroVoice = keep; }
 }
 
 function startReadingChunks(chunks) {

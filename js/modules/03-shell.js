@@ -1568,6 +1568,13 @@
         try { wireSidebarEdgePointerGuard(); } catch (eW) {}
 
         function handleCommand(cmd) {
+            if (cmd.startsWith("word_voice:")) { window.__tzWordVoice = cmd.substring(11); return; }   // tests
+            if (cmd.startsWith("speak_word_kokoro:")) {
+                // Look up's speaker, when the closest quick voice is a Kokoro one (09-speech.js).
+                const rest = cmd.substring(18), bar = rest.indexOf('|');
+                if (bar > 0 && typeof speakWordKokoro === 'function') speakWordKokoro(rest.substring(0, bar), rest.substring(bar + 1));
+                return;
+            }
             if (cmd === "read_aloud_doc") {
                 if (typeof isPlaying !== 'undefined' && isPlaying) {
                     if (typeof stopReading === 'function') stopReading();

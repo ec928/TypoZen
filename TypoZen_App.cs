@@ -6695,6 +6695,56 @@ namespace TypoZen
                 SendMsg("eval:populateWinRTVoices('" + json.Replace("'", "\\'").Replace("\n", "") + "')");
                 return;
             }
+            else if (msg == "host_word_voice?")
+            {
+                // Tests (--debug only): which voice would Look up's speaker use, and what it is.
+                if (!Program.DebugLogEnabled) return;
+                bool k;
+                string id = PickWordVoice(out k);
+                string culture = "", gender = "";
+                if (k)
+                {
+                    foreach (string row in ExtensionCatalog.Voices)
+                        if (ExtensionCatalog.VoiceId(row) == id)
+                        {
+                            string g = ExtensionCatalog.VoiceGroup(row);
+                            culture = g.StartsWith("British") ? "en-GB" : "en-US";
+                            gender = g.EndsWith("female") ? "Female" : "Male";
+                        }
+                }
+                else
+                {
+                    foreach (var v in TypoZen_TTS.GetVoices())
+                        if (v.Id == id) { culture = v.Culture; gender = v.Gender; }
+                }
+                SendMsg("cmd:word_voice:" + id + "|" + culture + "|" + gender + "|" + (k ? "kokoro" : "windows"));
+                return;
+            }
+            else if (msg.StartsWith("host_word_play:"))
+            {
+                // Look up's speaker with the Qwen narrator chosen: the word in the closest quick
+                // voice, not the narrator (seconds to start, for one word). Ed, 2026-09-26.
+                string wjson = msg.Substring("host_word_play:".Length);
+                string word = "";
+                try
+                {
+                    var wd = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(wjson);
+                    word = wd.ContainsKey("text") ? Convert.ToString(wd["text"]) : "";
+                }
+                catch { }
+                if (string.IsNullOrWhiteSpace(word)) return;
+                bool kokoro;
+                string voice = PickWordVoice(out kokoro);
+                if (kokoro)
+                {
+                    SendMsg("cmd:speak_word_kokoro:" + voice + "|" + word);
+                    return;
+                }
+                // Not the reading's state: a word is not a reading, and its end must not stop one.
+                TypoZen_TTS.OnPlaybackFinished = null;
+                _ = TypoZen_TTS.PlayAsync(word, voice, _ttsSpeed);
+                return;
+            }
             else if (msg.StartsWith("host_tts_play:"))
             {
                 string json = msg.Substring("host_tts_play:".Length);
@@ -14616,6 +14666,64 @@ namespace TypoZen
                 LogFault("serve pdf", ex);
                 try { e.Response = core.Environment.CreateWebResourceResponse(null, 500, "Error", ""); } catch { }
             }
+        }
+
+        // ---- Look up's speaker with the Qwen narrator chosen ----------------------------------
+
+        /// <summary>
+        /// The quick voice closest to the narrator's: the same country (British, American...)
+        /// and gender, read from the words the narrator voice was designed from ("A British
+        /// woman with a soft northern English accent"). Only voices on this computer -- an
+        /// "Online" voice would send the word to Microsoft. Neural voices beat classic ones,
+        /// and a Windows voice beats Kokoro on a tie: it answers at once, Kokoro loads a model
+        /// first. `kokoro` says which kind the answer is. Falls back to the Windows voice last
+        /// chosen.
+        /// </summary>
+        private string PickWordVoice(out bool kokoro)
+        {
+            kokoro = false;
+            string desc = "";
+            try { desc = QwenNarrator.VoiceDescription(CacheDir(), QwenNarrator.CurrentVoice(CacheDir())) ?? ""; } catch { }
+            string d = " " + desc.ToLowerInvariant() + " ";
+            // Female words first: "woman" contains "man".
+            string gender = Regex.IsMatch(d, @"\b(female|woman|girl|lady|she|her)\b") ? "Female"
+                          : Regex.IsMatch(d, @"\b(male|man|boy|gentleman|he|his)\b") ? "Male" : "";
+            string country = Regex.IsMatch(d, @"\b(american|usa|u\.s\.)\b") ? "en-US"
+                           : Regex.IsMatch(d, @"\b(australian)\b") ? "en-AU"
+                           : Regex.IsMatch(d, @"\b(british|english|england|scottish|scotland|welsh|irish|rp|received pronunciation|northern|london|yorkshire)\b") ? "en-GB"
+                           : "";
+            Func<string, string, double> fit = (culture, g) =>
+                (country != "" && string.Equals(culture, country, StringComparison.OrdinalIgnoreCase) ? 4 : 0)
+                + (gender != "" && string.Equals(g, gender, StringComparison.OrdinalIgnoreCase) ? 2 : 0);
+
+            string best = _ttsVoiceId;
+            double bestScore = -1;
+            try
+            {
+                foreach (var v in TypoZen_TTS.GetVoices())
+                {
+                    if (v.Kind == "cloud") continue;
+                    double s = fit(v.Culture ?? "", v.Gender ?? "") + (v.Kind == "local" ? 1 : 0);
+                    if (s > bestScore) { bestScore = s; best = v.Id; }
+                }
+            }
+            catch { }
+            try
+            {
+                if (ExtensionCatalog.KokoroInstalled(CacheDir()))
+                {
+                    foreach (string row in ExtensionCatalog.Voices)
+                    {
+                        string group = ExtensionCatalog.VoiceGroup(row);          // "British female"
+                        string c = group.StartsWith("British") ? "en-GB" : group.StartsWith("American") ? "en-US" : "";
+                        string g = group.EndsWith("female") ? "Female" : group.EndsWith("male") ? "Male" : "";
+                        double s = fit(c, g) + 1 - 0.5;                            // neural, but loads first
+                        if (s > bestScore) { bestScore = s; best = ExtensionCatalog.VoiceId(row); kokoro = true; }
+                    }
+                }
+            }
+            catch { }
+            return best;
         }
 
         // ---- Annotating a PDF and saving it (docs/pdf-and-audit-plan.md, Phase 4) -----------

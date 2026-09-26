@@ -16,7 +16,7 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 
 **Outstanding, to come back to (not PDF-specific):**
 
-- ~~**Look up's speaker uses a different voice from the narrator**~~ (Ed, 2026-09-25). **Done in 0.6.6, Ed's choice:** the speaker says the word in the voice chosen, whichever it is -- with the Qwen narrator chosen, the narrator says it (`startReading` in 09-speech.js). The first word after starting TypoZen waits for the narrator to start, as Read Aloud does; a word heard before comes from its cache.
+- ~~**Look up's speaker uses a different voice from the narrator**~~ (Ed, 2026-09-25). **Done in 0.6.6, then changed in 0.6.8 (Ed):** 0.6.6 had the narrator say the word, which took about 25 seconds when the narrator had to start -- Qwen is for long-form reading only. Now, with the Qwen narrator chosen, the word is said by the quick voice on this computer closest to the narrator: same country and gender, read from the voice's description (`PickWordVoice` in TypoZen_App.cs; local voices only, neural preferred, a Windows voice over Kokoro on a tie). For the built-in narrator that is Microsoft Sonia. Other voices say words in themselves, as before.
 
 **Phase 1 as built, against the plan:**
 

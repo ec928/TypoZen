@@ -25,6 +25,12 @@ namespace TypoZen
         /// this does not.
         /// </summary>
         public string Kind { get; set; }
+
+        /// <summary>Language and country, e.g. "en-GB"; "" if the voice does not say.</summary>
+        public string Culture { get; set; }
+
+        /// <summary>"Female", "Male", or "" if the voice does not say.</summary>
+        public string Gender { get; set; }
     }
 
     public static class TypoZen_TTS
@@ -191,7 +197,8 @@ namespace TypoZen
             
             // 1. WinRT (OneCore) Voices
             voices.AddRange(Windows.Media.SpeechSynthesis.SpeechSynthesizer.AllVoices
-                .Select(v => new VoiceInfo { Id = "winrt:" + v.Id, Name = v.DisplayName, IsSapi = false, Kind = "" }));
+                .Select(v => new VoiceInfo { Id = "winrt:" + v.Id, Name = v.DisplayName, IsSapi = false, Kind = "",
+                                             Culture = v.Language ?? "", Gender = v.Gender.ToString() }));
                 
             // 2. SAPI5 (Desktop / IVONA / 3rd Party) Voices
             try 
@@ -203,7 +210,10 @@ namespace TypoZen
                         Id = "sapi:" + v.VoiceInfo.Name,
                         Name = v.VoiceInfo.Name,
                         IsSapi = true,
-                        Kind = KindOf(v.VoiceInfo)
+                        Kind = KindOf(v.VoiceInfo),
+                        Culture = v.VoiceInfo.Culture != null ? v.VoiceInfo.Culture.Name : "",
+                        Gender = v.VoiceInfo.Gender == System.Speech.Synthesis.VoiceGender.Female ? "Female"
+                               : v.VoiceInfo.Gender == System.Speech.Synthesis.VoiceGender.Male ? "Male" : ""
                     }));
             } catch {}
 
