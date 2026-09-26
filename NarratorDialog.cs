@@ -61,6 +61,11 @@ namespace TypoZen
         {
             public string Voice, VoiceName, Instruction, Cue, Label;
             public bool Direct;
+            // Which rendering of these settings: take 1 is narration's own (seed 1234); each
+            // further take is another seed, so one take can be told from the settings' effect.
+            public int Take = 1;
+            public int Seed { get { return 1234 + Take - 1; } }
+            public string Describe() { return Label + ", take " + Take; }
         }
 
         // Narration, a line tagged as said quietly, one tagged as snapped, and an amount: each of
@@ -199,7 +204,7 @@ namespace TypoZen
             var tryTop = new StackPanel();
             DockPanel.SetDock(tryTop, Dock.Top);
             tryTop.Children.Add(heading("Try it"));
-            tryTop.Children.Add(note("Plays this text with the settings on the left, saved or not, prepared exactly as narration prepares it. One paragraph per line."));
+            tryTop.Children.Add(note("Plays this text with the settings on the left, saved or not, prepared exactly as narration prepares it. One paragraph per line. Each rendering is one take of many; New take renders the same settings afresh, so you can tell a setting's effect from one take's luck. Narration uses take 1."));
             var sampleBox = new TextBox { Text = _sample, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             tryTop.Children.Add(sampleBox);
             var useSelection = button("Use text selected in the document");
@@ -214,6 +219,7 @@ namespace TypoZen
             ab.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             ab.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             ab.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            ab.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             ab.RowDefinitions.Add(new RowDefinition());
             ab.RowDefinitions.Add(new RowDefinition());
             Func<string, TextBlock> slot = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, Width = 70, VerticalAlignment = VerticalAlignment.Center };
@@ -221,11 +227,14 @@ namespace TypoZen
             var bSummary = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 4), Opacity = 0.72, Text = "Play, change something on the left, and play again: what you heard before appears here." };
             var playA = button("▶ Play");
             var playB = button("▶ Play");
-            playA.Margin = playB.Margin = new Thickness(0, 3, 0, 3);
-            playB.IsEnabled = false;
+            var takeA = button("↻ New take");
+            var takeB = button("↻ New take");
+            playA.Margin = playB.Margin = new Thickness(0, 3, 6, 3);
+            takeA.Margin = takeB.Margin = new Thickness(0, 3, 0, 3);
+            playB.IsEnabled = takeB.IsEnabled = false;
             Action<UIElement, int, int> put = (el, r, c) => { Grid.SetRow(el, r); Grid.SetColumn(el, c); ab.Children.Add(el); };
-            put(slot("Current"), 0, 0); put(aSummary, 0, 1); put(playA, 0, 2);
-            put(slot("Previous"), 1, 0); put(bSummary, 1, 1); put(playB, 1, 2);
+            put(slot("Current"), 0, 0); put(aSummary, 0, 1); put(playA, 0, 2); put(takeA, 0, 3);
+            put(slot("Previous"), 1, 0); put(bSummary, 1, 1); put(playB, 1, 2); put(takeB, 1, 3);
             tryTop.Children.Add(ab);
             var stopTry = button("■ Stop");
             tryTop.Children.Add(row(new UIElement[] { stopTry }));
@@ -445,13 +454,13 @@ namespace TypoZen
 
             // Anything that needs the narrator goes through here: off the UI thread, with the
             // buttons that would start another such call disabled until it is done.
-            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, design, importVoice, playA };
+            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, design, importVoice, playA, takeA };
             if (findCast != null) busyButtons.Add(findCast);
             // `expect` is the usual time in seconds, shown against a running clock; 0 for none.
             Action<string, double, Action> work = (what, expect, job) =>
             {
                 foreach (var b in busyButtons) b.IsEnabled = false;
-                playB.IsEnabled = false;
+                playB.IsEnabled = takeB.IsEnabled = false;
                 busyWhat = what; busySince = DateTime.Now; busyExpect = expect;
                 busyBar.Visibility = Visibility.Visible;
                 showClock();
@@ -468,7 +477,7 @@ namespace TypoZen
                             busyBar.Visibility = Visibility.Collapsed;
                             if (busyWhat != null) { busyWhat = null; status.Text = ""; }
                             foreach (var b in busyButtons) b.IsEnabled = true;
-                            playB.IsEnabled = kept != null;
+                            playB.IsEnabled = takeB.IsEnabled = kept != null;
                             refreshLibButtons();
                         }));
                     }
@@ -502,6 +511,8 @@ namespace TypoZen
             // ---- Try it: Current is the settings on screen, Previous the last different ones played
             TaskCompletionSource<string> pendingTrial = null;
             Trial lastPlayed = null;
+            int currentTake = 1;            // Current's take; back to 1 whenever a setting changes
+            Trial onScreen = null;
             Func<Trial> current = () =>
             {
                 var v = voiceBox.SelectedItem as VoiceItem;
@@ -522,12 +533,19 @@ namespace TypoZen
                     Cue = cue,
                     Direct = direct,
                     Label = (v != null ? v.Name : "Narrator's voice") + ", " + words + ", cues "
-                          + (!direct ? "off" : cue == QwenNarrator.DefaultCue ? "on" : "on in your wording")
+                          + (!direct ? "off" : cue == QwenNarrator.DefaultCue ? "on" : "on in your wording"),
+                    Take = currentTake
                 };
             };
             Func<Trial, Trial, bool> sameSettings = (x, y) => x != null && y != null && x.Voice == y.Voice
                 && x.Instruction == y.Instruction && x.Direct == y.Direct && (!x.Direct || x.Cue == y.Cue);
-            Action updateA = () => { aSummary.Text = current().Label; };
+            Action updateA = () =>
+            {
+                var t = current();
+                if (onScreen != null && !sameSettings(onScreen, t)) { currentTake = 1; t = current(); }
+                onScreen = t;
+                aSummary.Text = t.Describe();
+            };
 
             presetBox.SelectionChanged += (s, e) =>
             {
@@ -646,7 +664,7 @@ namespace TypoZen
                 string json = new JavaScriptSerializer().Serialize(new Dictionary<string, object>
                 {
                     { "base", QwenNarrator.BaseUrl }, { "text", text }, { "voice", t.Voice },
-                    { "instruction", t.Instruction }, { "cue", t.Cue }, { "direct", t.Direct }
+                    { "instruction", t.Instruction }, { "cue", t.Cue }, { "direct", t.Direct }, { "seed", t.Seed }
                 });
                 work("Preparing " + which + ":", 15, () =>
                 {
@@ -666,7 +684,7 @@ namespace TypoZen
                     if (kind == "error") { say("That did not work: " + Convert.ToString(d["message"])); return; }
                     if (kind != "ready") { say(""); return; }
                     var sb = new System.Text.StringBuilder();
-                    sb.Append(which).Append(": ").Append(t.Label).Append("\r\n\r\n");
+                    sb.Append(which).Append(": ").Append(t.Describe()).Append("\r\n\r\n");
                     string last = null;
                     double secs = 0;
                     int n = 0;
@@ -684,20 +702,30 @@ namespace TypoZen
                     say("Playing " + which + " (" + secs.ToString("0") + "s).");
                 });
             };
-            playA.Click += (s, e) =>
+            Action playCurrent = () =>
             {
                 var t = current();
-                // What was heard before becomes Previous, once the settings differ from it.
+                // What was heard before becomes Previous, once the settings differ from it --
+                // another take of the same settings does not.
                 if (lastPlayed != null && !sameSettings(lastPlayed, t))
                 {
                     kept = lastPlayed;
-                    bSummary.Text = kept.Label;
+                    bSummary.Text = kept.Describe();
                     bSummary.Opacity = 1;
                 }
                 lastPlayed = t;
                 runTrial(t, "Current");
             };
+            playA.Click += (s, e) => playCurrent();
+            takeA.Click += (s, e) => { currentTake++; updateA(); playCurrent(); };
             playB.Click += (s, e) => { if (kept != null) runTrial(kept, "Previous"); };
+            takeB.Click += (s, e) =>
+            {
+                if (kept == null) return;
+                kept.Take++;
+                bSummary.Text = kept.Describe();
+                runTrial(kept, "Previous");
+            };
             stopTry.Click += (s, e) =>
             {
                 sendToPage("cmd:narrator_trial_stop");

@@ -48,14 +48,15 @@ namespace TypoZen
 
         /// <summary>
         /// The host's lines in narration.log, the file the sidecar and the page also write,
-        /// so starting, running and stopping the narrator read as one timeline. Always on:
-        /// a narration that fails otherwise leaves nothing behind to say why.
+        /// so starting, running and stopping the narrator read as one timeline. On except in
+        /// Privacy Mode, when nothing is written by anyone (SetLogging): a narration that fails
+        /// otherwise leaves nothing behind to say why.
         /// </summary>
         private static void Log(string msg)
         {
             try
             {
-                if (_logPath == null) return;
+                if (_logPath == null || PrivateMode) return;
                 DateTime t = DateTime.Now;
                 File.AppendAllText(_logPath, t.ToString("HH:mm:ss.fff") + "  host    " + msg + Environment.NewLine);
             }
@@ -217,6 +218,17 @@ namespace TypoZen
         /// as the private audio -- the reader may still be listening in it.
         /// </summary>
         public static bool PrivateMode;
+
+        /// <summary>
+        /// Tells a running narrator whether to write narration.log: off in Privacy Mode. A
+        /// narrator not running yet is started with --quiet instead (EnsureRunning). Quick and
+        /// silent when nothing is listening.
+        /// </summary>
+        public static void SetLogging(bool on)
+        {
+            try { Call("POST", "/logging", "{\"on\":" + (on ? "true" : "false") + "}", 2000); }
+            catch { }
+        }
         private static readonly Dictionary<string, Cast> SessionCasts =
             new Dictionary<string, Cast>(StringComparer.OrdinalIgnoreCase);
 
@@ -489,6 +501,7 @@ namespace TypoZen
                 if (string.Equals(theirs, PrivateCacheDir ?? "", StringComparison.OrdinalIgnoreCase))
                 {
                     Log("narrator already up");
+                    SetLogging(!PrivateMode);       // in case Privacy Mode changed while it ran
                     return true;
                 }
                 Log("narrator already up but belongs to another session; replacing it");
@@ -510,6 +523,7 @@ namespace TypoZen
                                   + " --cache \"" + CacheDir(cacheDir) + "\""
                                   + (string.IsNullOrEmpty(PrivateCacheDir) ? ""
                                      : " --private-cache \"" + PrivateCacheDir + "\"")
+                                  + (PrivateMode ? " --quiet" : "")
                                   + " --port " + Port,
                         UseShellExecute = false,
                         CreateNoWindow = true,

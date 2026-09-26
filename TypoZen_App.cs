@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.6.20";
+        internal const string AppVersion = "0.6.21";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -10736,7 +10736,8 @@ namespace TypoZen
 
             _privacyMode = on;
             EpubReader.PrivateMode = on;
-            QwenNarrator.PrivateMode = on;          // casts held in memory, not saved
+            QwenNarrator.PrivateMode = on;          // casts held in memory, not saved; no narration.log
+            System.Threading.Tasks.Task.Run(() => QwenNarrator.SetLogging(!on));
             Program.DebugLogSuppressed = on;        // no debug.log lines at all
             SetMenuChecked("mPrivacyMode", on);
             // The switches it subsumes are disabled rather than merely overridden: a tick

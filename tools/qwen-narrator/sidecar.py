@@ -117,8 +117,10 @@ PREVIEW_TEXT = ("“You should have waited for me,” she said quietly, and for 
 # narration.log, beside the cache in the extension folder. Always on: nobody sees this
 # process's console, so without the file a failed reading leaves no trace at all. The page
 # writes its side of the story here too (POST /log), so one file holds the whole timeline.
-# Ids, counts, lengths and timings only -- never the text being read.
+# Ids, counts, lengths and timings only -- never the text being read. Nothing at all while
+# TypoZen's Privacy Mode is on: --quiet at start, POST /logging {on} when it changes.
 LOG_PATH = None
+LOG_ON = True
 _log_lock = threading.Lock()
 
 
@@ -126,7 +128,7 @@ def log(m, who='sidecar'):
     t = time.time()
     line = '%s.%03d  %-7s %s' % (time.strftime('%H:%M:%S', time.localtime(t)), int(t * 1000) % 1000, who, m)
     print(line, flush=True)
-    if LOG_PATH:
+    if LOG_PATH and LOG_ON:
         with _log_lock:
             try:
                 with open(LOG_PATH, 'a', encoding='utf-8') as f:
@@ -451,8 +453,10 @@ class Narrator(object):
             return base + THOUGHT_SUFFIX
         return base + DIRECTED_SUFFIX % direction
 
-    def key_for(self, text, voice, instruction):
-        """One piece's cache key: the model, the voice-print, the instruction and the text."""
+    def key_for(self, text, voice, instruction, seed=1234):
+        """One piece's cache key: the model, the voice-print, the instruction and the text --
+        and the seed when it is not narration's own, so another take (Narrator Settings, Try
+        it) is its own file while every key made before takes existed stays as it was."""
         h = hashlib.sha256()
         h.update(MODEL_REPO.encode('utf-8'))
         h.update(b'\x00')
@@ -461,6 +465,8 @@ class Narrator(object):
         h.update(instruction.encode('utf-8'))
         h.update(b'\x00')
         h.update(text.encode('utf-8'))
+        if seed != 1234:
+            h.update(b'\x00seed ' + str(seed).encode('ascii'))
         return h.hexdigest()[:20]
 
     def generate(self, texts, prints, instructions):
@@ -527,7 +533,7 @@ class Narrator(object):
             os.makedirs(self.private_dir, exist_ok=True)
         voices = [self.known_voice(b.get('voice') or voice) for b in blocks]
         instructions = [self.instruction(style, b.get('direction'), b.get('role') or 'narration', whole, cue) for b in blocks]
-        keys = [self.key_for(b['text'], v, i) for b, v, i in zip(blocks, voices, instructions)]
+        keys = [self.key_for(b['text'], v, i, seed) for b, v, i in zip(blocks, voices, instructions)]
         found = [self.find(k, private) for k in keys]
         have = [f[0] for f in found]
         where = [f[1] for f in found]
@@ -930,6 +936,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {'error': 'bad json: %s' % e})
             return
 
+        if self.path.startswith('/logging'):
+            # Privacy Mode turned on or off in TypoZen. Not itself logged: that would record
+            # when Privacy Mode was used.
+            global LOG_ON
+            LOG_ON = bool(body.get('on', True))
+            self._send(200, {'logging': LOG_ON})
+            return
+
         if self.path.startswith('/log'):
             # The page's side of the timeline. Not a touch(): logging is not use, and must
             # not keep an idle narrator holding the GPU.
@@ -1047,7 +1061,11 @@ def main():
     ap.add_argument('--idle-minutes', type=int, default=15)
     ap.add_argument('--models', default=None,
                     help='weights folder; defaults to models/ beside the cache')
+    ap.add_argument('--quiet', action='store_true',
+                    help='write nothing to narration.log (TypoZen Privacy Mode) until POST /logging')
     args = ap.parse_args()
+    global LOG_ON
+    LOG_ON = not args.quiet
 
     # The weights live in the extension's own folder and nowhere else, and the network is
     # off. Without this the loader fell back to the global Hugging Face cache, downloaded

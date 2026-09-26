@@ -571,6 +571,8 @@ function narrLog(msg) {
         if (window.__narrTrace.length > 500) window.__narrTrace.shift();
         if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry('narration: ' + msg);
     } catch (e) {}
+    // Privacy Mode: nothing reaches narration.log -- kept in memory only, gone with the page.
+    if (_narrPrivate) return;
     _narrTraceOut.push(msg);
     if (_narrTraceTimer) return;
     _narrTraceTimer = setTimeout(() => {
@@ -625,7 +627,7 @@ function cancelNarration() {
  * narrationDirection -- so what is heard is what narrating that text would sound like. The
  * dialog's own shortcut used to skip all three, so the emotion cues could never be heard there.
  *
- * `o`: {base, text, voice, instruction, cue, direct}. Each line is a paragraph. Tells the host
+ * `o`: {base, text, voice, instruction, cue, direct, seed}. Each line is a paragraph. Tells the host
  * host_narrator_trial:{kind:'ready', pieces:[{text, cue, instruction, seconds}]} before playing,
  * {kind:'ended'} after, or {kind:'error', message}.
  */
@@ -658,7 +660,9 @@ window.narrationTrial = async function (json) {
                 body: JSON.stringify({
                     voice: o.voice || '', instruction: String(o.instruction || ''), cue: o.cue || '',
                     blocks: batch.map((p, i) => ({ id: k + i, text: p.text, direction: o.direct ? p.direction : '' })),
-                    reading: 900000 + run, group_size: batch.length, private: _narrPrivate
+                    reading: 900000 + run, group_size: batch.length, private: _narrPrivate,
+                    // Another take is another seed; take 1 is narration's own (1234).
+                    seed: parseInt(o.seed, 10) || 1234
                 })
             });
             const data = await res.json().catch(() => ({}));
