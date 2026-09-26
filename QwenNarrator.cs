@@ -94,12 +94,12 @@ namespace TypoZen
         private const string StylePrefix = "Narrate as an audiobook reader of literary fiction. ";
         /// <summary>
         /// How an emotion cue is worded when it is added; {cue} is the cue ("whispered, hushed").
-        /// It aims the cue at the dialogue, since the instruction covers the whole paragraph, and
-        /// says nothing else. The first wording added "clearly but with restraint, and keep the
-        /// narration around them measured" -- never tested, and the same hold-back language that
-        /// was found to flatten the cues when it was in the instruction (2026-09-26).
+        /// The plain "Voice the lines in quotation marks as {cue}." was the default in 0.6.19, on
+        /// the reasoning that "restraint" fights the cue; by ear it came out less angry than this
+        /// wording on "I know," she snapped, against the same cues-off clip (2026-09-26, one take
+        /// each). Kept until more listening says otherwise.
         /// </summary>
-        public const string DefaultCue = "Voice the lines in quotation marks as {cue}.";
+        public const string DefaultCue = "Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured.";
 
         /// <summary>
         /// The starting points offered in Narrator Settings, in order. Not editable in place; save a
