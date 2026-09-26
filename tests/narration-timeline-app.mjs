@@ -7,18 +7,19 @@
  * earlier check looked at one instant. This records each clip starting and ending and
  * reports the silences between them, which is the number that decides whether it works.
  *
- * Runs in a throwaway profile, so nothing changes Ed's own layout or tabs. The narrator is
- * started by the test with its cache inside that profile and the weights read from the
- * installed extension. Everything it starts, it stops -- even when a check fails.
+ * Runs in the harness's throwaway profile and on its hidden desktop, so nothing changes
+ * Ed's own layout or tabs and no window takes his screen -- though the narration is heard.
+ * The narrator is started by the test with its cache inside that profile and the weights
+ * read from the installed extension. Everything it starts, it stops -- even when a check
+ * fails -- and it stops nothing else: a narrator already on the port is a reason to refuse.
  *
- *   node tests/narration-timeline-app.mjs
+ *   RUN_APP_E2E=1 node tests/narration-timeline-app.mjs
  */
 import { spawn, execSync } from 'child_process';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import puppeteer from 'puppeteer-core';
+import { launchApp, profileDir } from './app-harness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -33,7 +34,7 @@ const realModels = path.join(process.env.LOCALAPPDATA, 'TypoZen_Cache_Portable',
                              'extensions', 'QwenTTS', 'models');
 const python = path.join(process.env.LOCALAPPDATA, 'TypoZen_Cache_Portable',
                          'extensions', 'QwenTTS', 'venv', 'Scripts', 'python.exe');
-const profile = path.join(os.tmpdir(), 'typozen-narr-' + process.pid);
+const profile = profileDir;
 const narrCache = path.join(profile, 'extensions', 'QwenTTS', 'narration');
 fs.mkdirSync(narrCache, { recursive: true });
 
@@ -53,18 +54,24 @@ if (execSync('tasklist /FI "IMAGENAME eq TypoZen.exe" /NH', { encoding: 'utf8' }
     process.exit(2);
 }
 
-let sidecar = null, app = null, browser = null;
-const cleanup = () => {
-    try { if (browser) browser.disconnect(); } catch (e) {}
-    try { if (app) execSync('taskkill /PID ' + app.pid + ' /T /F', { stdio: 'ignore' }); } catch (e) {}
+let sidecar = null, app = null;
+const cleanup = async () => {
+    try { if (app) await app.close(); } catch (e) {}
     try { if (sidecar) execSync('taskkill /PID ' + sidecar.pid + ' /T /F', { stdio: 'ignore' }); } catch (e) {}
 };
+// Whole-run budget: model load, first sound and 90s of listening fit well inside it.
+const killer = setTimeout(async () => { console.log('BUDGET HIT (8 min)'); await cleanup(); process.exit(3); }, 8 * 60000);
+
+// A narrator already on 8765 belongs to someone else -- a TypoZen session, or a run by
+// hand. It used to be force-killed here, whoever's it was; now the test stops instead.
+let taken = false;
+try { taken = !!(await fetch('http://127.0.0.1:8765/health')); } catch (e) {}
+if (taken) {
+    console.log('A narrator is already running on 8765 - stop it first (it is not this test\'s to stop).');
+    process.exit(2);
+}
 
 try {
-    // Whatever is on 8765 now is not ours and points at another cache; stop it.
-    try { execSync('powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'python.exe\'\\" | Where-Object { $_.CommandLine -like \'*sidecar.py*\' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"', { stdio: 'ignore' }); } catch (e) {}
-    await sleep(1500);
-
     const tc = Date.now();
     sidecar = spawn(python, [path.join(appDir, 'tools', 'qwen-narrator', 'sidecar.py'),
         '--cache', narrCache, '--models', realModels, '--port', '8765'],
@@ -79,23 +86,9 @@ try {
     if (!up) throw new Error('narrator never became ready');
     console.log('        model load: ' + ((Date.now() - tc) / 1000).toFixed(0) + 's');
 
-    app = spawn(path.join(appDir, 'TypoZen.exe'), ['--debug', doc], {
-        cwd: appDir, stdio: 'ignore',
-        env: Object.assign({}, process.env, { TYPOZEN_PROFILE_DIR: profile })
-    });
-    for (let i = 0; i < 90 && !browser; i++) {
-        try { browser = await puppeteer.connect({ browserURL: 'http://127.0.0.1:9333', defaultViewport: null, protocolTimeout: 600000 }); }
-        catch (e) { await sleep(500); }
-    }
-    let page = (await browser.pages()).find(p => p.url().includes('localapp')) || (await browser.pages())[0];
-    await sleep(3000);
-
-    // Ed's layout. Changing it can reload the page, so find the page again afterwards.
-    await page.evaluate(() => handleCommand('view_set:columns:2'));
-    await sleep(2000);
-    await page.evaluate(() => handleCommand('view_set:scroll:pagination'));
-    await sleep(3000);
-    page = (await browser.pages()).find(p => p.url().includes('localapp')) || page;
+    // Ed's layout, set through the harness, which waits for each change to settle.
+    app = await launchApp({ file: doc, settleMs: 8000, view: { columns: 2, scroll: 'pagination' } });
+    const page = app.page;
 
     // Put paragraph 9 on screen, with no cursor anywhere -- as when simply reading.
     await page.evaluate(() => {
@@ -169,7 +162,8 @@ try {
 } catch (err) {
     check(false, 'no exception', String(err && err.message || err));
 } finally {
-    cleanup();
+    await cleanup();
+    clearTimeout(killer);
     if (fail) {
         try {
             const log = fs.readFileSync(path.join(profile, 'extensions', 'QwenTTS', 'narration.log'), 'utf8');
