@@ -11,14 +11,18 @@ using System.Windows.Media;
 namespace TypoZen
 {
     /// <summary>
-    /// File > Read Aloud > Narrator settings: the Qwen narrator's voice, how it reads, new voices
-    /// designed from a description, and this book's cast.
+    /// File > Read Aloud > Narrator settings: the Qwen narrator's voice, what it is told, emotion
+    /// cues, a place to try all of it on your own text, new voices designed from a description,
+    /// and this book's cast.
     ///
     /// Everything is words, not sliders. A voice is made by describing it; the narrator renders
     /// three candidates, because the same words make a slightly different person each time, and
-    /// keeping one saves its voice-print so it is that same person from then on. Style is how
-    /// the narrator reads ("warmer, a little brisker"). The cast gives this book's characters
-    /// voices of their own from the same library.
+    /// keeping one saves its voice-print so it is that same person from then on. The instruction
+    /// is shown whole and edited as it stands -- nothing hidden is added to it -- with presets as
+    /// starting points and the reader's own saved beside them. Try it reads text through
+    /// narration's own preparation and can keep one reading to compare against the next, so a
+    /// setting is judged by ear rather than assumed. The cast gives this book's characters voices
+    /// of their own from the same library.
     ///
     /// The narrator does the work over its loopback API; this window only asks and plays what
     /// comes back. Calls that take time run off the UI thread and say what they are doing.
@@ -37,13 +41,30 @@ namespace TypoZen
             public override string ToString() { return Name; }
         }
 
-        private static readonly Dictionary<string, string> StylePresets = new Dictionary<string, string>
+        /// <summary>Set while the dialog is open: the page's answers to Try it (host_narrator_trial).</summary>
+        public static Action<string> TrialArrived;
+
+        private sealed class PresetItem
         {
-            { "Measured", "" },
-            { "Warm", "Warm and close, as if reading to one listener, unhurried, with a gentle smile in the voice where the text allows." },
-            { "Brisk", "Brisk and clear, keeping the story moving, crisp at the ends of sentences, never rushed." },
-            { "Dramatic", "Vivid and engaged, giving tension and emotion their full weight, with bold contrasts between quiet and intense moments." }
-        };
+            public string Name;
+            public string Text;
+            public bool Mine;
+            public override string ToString() { return Mine ? Name : Name + "  (built in)"; }
+        }
+
+        /// <summary>Everything a Try it reading depends on, so one can be kept and compared.</summary>
+        private sealed class Trial
+        {
+            public string Voice, VoiceName, Instruction, Cue, Label;
+            public bool Direct;
+        }
+
+        // Narration, a line tagged as said quietly, one tagged as snapped, and an amount: each of
+        // the things the settings above change is in it. Kept for the session once edited.
+        private static string _sample =
+            "The rain had not stopped for three days, and the harbour lights were smeared across the black water. Mara pushed the door open and stood there, dripping.\r\n"
+            + "“You said you’d be back by Tuesday,” Tom said quietly. “It’s Friday.”\r\n"
+            + "“I know,” she snapped. “The ferry cost me £86 and it still ran four hours late.”";
 
         public static void Show(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved)
         {
@@ -51,11 +72,12 @@ namespace TypoZen
             var cast = QwenNarrator.LoadCast(cacheDir, book);
             var voices = new List<VoiceItem>();
             SoundPlayer player = null;
+            Trial kept = null;              // Try it: the reading kept for comparison
 
             var win = new Window
             {
                 Title = "Narrator",
-                Width = 620,
+                Width = 660,
                 SizeToContent = SizeToContent.Height,
                 MaxHeight = 900,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -103,7 +125,8 @@ namespace TypoZen
             root.Children.Add(heading("Narrator voice"));
             var voiceBox = new ComboBox { Width = 330, Margin = new Thickness(0, 0, 6, 0) };
             var voiceDesc = note("");
-            var playVoice = button("Play sample");
+            // The take heard when the voice was designed, not narration: that is Try it, below.
+            var playVoice = button("Play original sample");
             var deleteVoice = button("Delete");
             root.Children.Add(row(new UIElement[] { voiceBox, playVoice, deleteVoice }));
             root.Children.Add(voiceDesc);
@@ -115,32 +138,59 @@ namespace TypoZen
             root.Children.Add(row(new UIElement[] { exportVoice, importVoice }));
             root.Children.Add(note("Export saves the chosen voice as one .tzvoice file wherever you like; Import brings one back, on this PC or another."));
 
-            // ---- style
-            root.Children.Add(heading("How the narrator reads"));
-            root.Children.Add(note("In your own words, or start from one of these. Empty is the standard measured reading, and keeps each voice exactly as you picked it: style words can change how the voice itself sounds. Applies to text narrated from now on."));
-            var styleBox = new TextBox { Text = settings.Style, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 52, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            root.Children.Add(styleBox);
-            var presets = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-            foreach (var kv in StylePresets)
-            {
-                var b = button(kv.Key);
-                string text = kv.Value;
-                b.Click += (s, e) => styleBox.Text = text;
-                presets.Children.Add(b);
-            }
-            var previewStyle = button("Preview voice and style");
-            presets.Children.Add(previewStyle);
-            root.Children.Add(presets);
-            // Its own heading, and a label that says what ticking it does: "Off, ..." under a
-            // box read as the box's label, so it looked like ticking it turned something off.
+            // ---- what the narrator is told: all of it, in the open (QwenNarrator, Settings)
+            root.Children.Add(heading("What the narrator is told"));
+            root.Children.Add(note("The whole instruction the narrator reads each paragraph by. Nothing is added to it except an emotion cue, and only if you tick that below. Start from a preset or write your own. These words can change how the voice itself sounds, so try them below before saving. Applies to text narrated from now on."));
+            var presetBox = new ComboBox { Width = 330, Margin = new Thickness(0, 0, 6, 0) };
+            var deletePreset = button("Delete preset");
+            root.Children.Add(row(new UIElement[] { new TextBlock { Text = "Start from", Width = 80, VerticalAlignment = VerticalAlignment.Center }, presetBox, deletePreset }));
+            var instructionBox = new TextBox { Text = settings.Instruction, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 70, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, 4, 0, 0) };
+            root.Children.Add(instructionBox);
+            var presetName = new TextBox { Width = 330, Margin = new Thickness(0, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center };
+            var savePreset = button("Save as preset");
+            root.Children.Add(row(new UIElement[] { new TextBlock { Text = "Name", Width = 80, VerticalAlignment = VerticalAlignment.Center }, presetName, savePreset }));
+
+            // ---- emotion cues: off unless ticked, and their wording editable too
             root.Children.Add(heading("Emotion"));
-            root.Children.Add(note("The narrator judges the emotion of each scene from the text itself, which usually sounds most natural."));
+            root.Children.Add(note("The narrator judges the emotion of each scene from the text itself."));
             var directBox = new CheckBox
             {
-                Content = "Also tell it how tagged lines should sound (\"she whispered\" means whisper)",
+                Content = "Also add a cue to lines tagged with how they are said (\"she whispered\" adds: whispered, hushed)",
                 IsChecked = settings.Direct, Foreground = win.Foreground, Margin = new Thickness(0, 2, 0, 0)
             };
             root.Children.Add(directBox);
+            var cueBox = new TextBox { Text = settings.Cue, TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 40, Margin = new Thickness(22, 4, 0, 0), IsEnabled = settings.Direct };
+            root.Children.Add(cueBox);
+            var cueNote = note("The cue's wording, added after the instruction above; {cue} becomes the cue itself.");
+            cueNote.Margin = new Thickness(22, 2, 0, 6);
+            root.Children.Add(cueNote);
+            directBox.Checked += (s, e) => cueBox.IsEnabled = true;
+            directBox.Unchecked += (s, e) => cueBox.IsEnabled = false;
+
+            // ---- try it: the reader's own text, through narration's own path
+            root.Children.Add(heading("Try it"));
+            root.Children.Add(note("Read with the settings on this screen, saved or not, and prepared exactly as narration prepares text: numbers as words, cues if ticked, long paragraphs cut. Each line is a paragraph. To compare, keep one reading, change anything above, then play each in turn."));
+            var sampleBox = new TextBox { Text = _sample, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 92, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            root.Children.Add(sampleBox);
+            var playTry = button("Play");
+            var stopTry = button("Stop");
+            var useSelection = button("Use text selected in the document");
+            var trialRow = row(new UIElement[] { playTry, stopTry, useSelection });
+            trialRow.Margin = new Thickness(0, 6, 0, 2);
+            root.Children.Add(trialRow);
+            var keepTry = button("Keep these settings for comparison");
+            var playKept = button("Play kept");
+            playKept.IsEnabled = false;
+            root.Children.Add(row(new UIElement[] { keepTry, playKept }));
+            var keptLabel = note("");
+            root.Children.Add(keptLabel);
+            root.Children.Add(note("What the narrator was told, piece by piece, for the last reading:"));
+            var toldBox = new TextBox
+            {
+                IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Height = 110, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                FontSize = 11.5, Opacity = 0.85
+            };
+            root.Children.Add(toldBox);
 
             // ---- designing a voice
             root.Children.Add(heading("New voice"));
@@ -161,7 +211,7 @@ namespace TypoZen
             if (!string.IsNullOrEmpty(book))
             {
                 root.Children.Add(heading("Cast for this book"));
-                root.Children.Add(note("Give characters voices of their own; their lines are then spoken in that voice and the narrator reads the rest. Characters left on the narrator's voice stay with the narrator. Who speaks is read from the text (\"said Ferbin\"), so an untagged or ambiguous line stays with the narrator."));
+                root.Children.Add(note("Give characters voices of their own; their lines are then spoken in that voice and the narrator reads the rest. Characters left on the narrator's voice stay with the narrator. Who speaks is read from the text (\"said Ferbin\"), so an untagged or ambiguous line stays with the narrator. A character's line is told only: \"Speak this line of dialogue as the character would say it, naturally and in character.\""));
                 if (QwenNarrator.PrivateMode)
                     root.Children.Add(note("Privacy Mode is on: this book's cast is kept until TypoZen closes and is not saved to disk."));
                 findCast = button("Find characters");
@@ -178,6 +228,9 @@ namespace TypoZen
             var footer = new StackPanel { Margin = new Thickness(18, 6, 18, 14) };
             footer.Children.Add(busyBar);
             footer.Children.Add(status);
+            var keptNow = note("Voices and presets are kept as soon as you make them. Save applies the rest; Cancel leaves it as it was.");
+            keptNow.Margin = new Thickness(0, 8, 0, 0);
+            footer.Children.Add(keptNow);
             footer.Children.Add(buttons);
             var outer = new DockPanel();
             DockPanel.SetDock(footer, Dock.Bottom);
@@ -265,7 +318,7 @@ namespace TypoZen
 
             // Anything that needs the narrator goes through here: off the UI thread, with the
             // buttons that would start another such call disabled until it is done.
-            var busyButtons = new List<Button> { playVoice, deleteVoice, previewStyle, design, importVoice };
+            var busyButtons = new List<Button> { playVoice, deleteVoice, design, importVoice, playTry };
             if (findCast != null) busyButtons.Add(findCast);
             // `expect` is the usual time in seconds, shown against a running clock; 0 for none.
             Action<string, double, Action> work = (what, expect, job) =>
@@ -291,23 +344,197 @@ namespace TypoZen
                             // with TypoZen; re-enabling every button left them live on it.
                             var sv = voiceBox.SelectedItem as VoiceItem;
                             deleteVoice.IsEnabled = exportVoice.IsEnabled = sv != null && !string.IsNullOrEmpty(sv.Preview);
+                            playKept.IsEnabled = kept != null;
                         }));
                     }
                 });
             };
 
-            Func<string> currentStyle = () => (string)win.Dispatcher.Invoke((Func<string>)(() => styleBox.Text.Trim()));
-            Func<string> currentVoice = () => (string)win.Dispatcher.Invoke((Func<string>)(() =>
-                voiceBox.SelectedItem is VoiceItem ? ((VoiceItem)voiceBox.SelectedItem).Id : ""));
-
-            Action preview = () =>
+            // ---- presets: the built-in starting points, then the reader's own
+            var presetItems = new List<PresetItem>();
+            bool syncing = false;
+            Action<string> fillPresets = select =>
             {
-                string json = QwenNarrator.Call("POST", "/preview",
-                    new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "voice", currentVoice() }, { "style", currentStyle() } }), 120000);
-                var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
-                win.Dispatcher.Invoke((Action)(() => play(Convert.ToString(d["file"]))));
+                presetItems.Clear();
+                foreach (var kv in QwenNarrator.BuiltInPresets) presetItems.Add(new PresetItem { Name = kv.Key, Text = kv.Value });
+                foreach (var kv in QwenNarrator.LoadPresets(cacheDir)) presetItems.Add(new PresetItem { Name = kv.Key, Text = kv.Value, Mine = true });
+                syncing = true;
+                presetBox.Items.Clear();
+                foreach (var p in presetItems) presetBox.Items.Add(p);
+                syncing = false;
+                // The preset the box's text is, if any: which one is in use shows, and an edit
+                // shows as no preset rather than as the one it started from.
+                string text = instructionBox.Text.Trim();
+                PresetItem hit = presetItems.Find(p => p.Name == select && p.Text.Trim() == text) ?? presetItems.Find(p => p.Text.Trim() == text);
+                syncing = true;
+                presetBox.SelectedItem = hit;
+                syncing = false;
+                var sel = presetBox.SelectedItem as PresetItem;
+                deletePreset.IsEnabled = sel != null && sel.Mine;
+            };
+            presetBox.SelectionChanged += (s, e) =>
+            {
+                var p = presetBox.SelectedItem as PresetItem;
+                deletePreset.IsEnabled = p != null && p.Mine;
+                if (syncing || p == null) return;
+                syncing = true;
+                instructionBox.Text = p.Text;
+                syncing = false;
+                if (p.Mine) presetName.Text = p.Name;
+            };
+            instructionBox.TextChanged += (s, e) =>
+            {
+                if (syncing) return;
+                var p = presetBox.SelectedItem as PresetItem;
+                string text = instructionBox.Text.Trim();
+                if (p != null && p.Text.Trim() == text) return;
+                var hit = presetItems.Find(x => x.Text.Trim() == text);
+                syncing = true;
+                presetBox.SelectedItem = hit;
+                syncing = false;
+                deletePreset.IsEnabled = hit != null && hit.Mine;
+            };
+            savePreset.Click += (s, e) =>
+            {
+                string name = presetName.Text.Trim();
+                if (name.Length == 0) { say("Give the preset a name first."); return; }
+                foreach (var kv in QwenNarrator.BuiltInPresets)
+                    if (string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase)) { say("\"" + kv.Key + "\" is a built-in preset; choose another name."); return; }
+                try
+                {
+                    var mine = QwenNarrator.LoadPresets(cacheDir);
+                    int at = mine.FindIndex(kv => string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase));
+                    var entry = new KeyValuePair<string, string>(name, instructionBox.Text.Trim());
+                    if (at >= 0) mine[at] = entry; else mine.Add(entry);
+                    QwenNarrator.SavePresets(cacheDir, mine);
+                    fillPresets(name);
+                    say((at >= 0 ? "Updated" : "Saved") + " the preset \"" + name + "\".");
+                }
+                catch (Exception ex) { say("Could not save the preset: " + ex.Message); }
+            };
+            deletePreset.Click += (s, e) =>
+            {
+                var p = presetBox.SelectedItem as PresetItem;
+                if (p == null || !p.Mine) return;
+                if (MessageBox.Show(win, "Delete the preset \"" + p.Name + "\"? The text in the box stays as it is.", "Narrator",
+                                    MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+                try
+                {
+                    var mine = QwenNarrator.LoadPresets(cacheDir);
+                    mine.RemoveAll(kv => kv.Key == p.Name);
+                    QwenNarrator.SavePresets(cacheDir, mine);
+                    fillPresets(null);
+                    say("Deleted the preset \"" + p.Name + "\".");
+                }
+                catch (Exception ex) { say("Could not delete the preset: " + ex.Message); }
+            };
+            fillPresets(null);
+
+            // ---- try it: the page prepares and plays the text (narrationTrial, 09-speech.js), so
+            // it goes through what narration does; this side chooses the settings and shows what
+            // the narrator was told.
+            TaskCompletionSource<string> pendingTrial = null;
+            Func<Trial> current = () =>
+            {
+                var v = voiceBox.SelectedItem as VoiceItem;
+                var p = presetBox.SelectedItem as PresetItem;
+                string instr = instructionBox.Text.Trim();
+                string words = instr.Length == 0 ? "no instruction"
+                             : p != null ? "\"" + p.Name + "\""
+                             : "your own instruction (" + instr.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length + " words)";
+                return new Trial
+                {
+                    Voice = v != null ? v.Id : settings.Voice,
+                    VoiceName = v != null ? v.Name : "the narrator's voice",
+                    Instruction = instr,
+                    Cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue,
+                    Direct = directBox.IsChecked == true,
+                    Label = (v != null ? v.Name : "narrator's voice") + ", " + words + ", cues " + (directBox.IsChecked == true ? "on" : "off")
+                };
+            };
+            Action<Trial> runTrial = t =>
+            {
+                string text = sampleBox.Text;
+                if (text.Trim().Length == 0) { say("Type or paste something to read first."); return; }
+                _sample = text;
+                string json = new JavaScriptSerializer().Serialize(new Dictionary<string, object>
+                {
+                    { "base", QwenNarrator.BaseUrl }, { "text", text }, { "voice", t.Voice },
+                    { "instruction", t.Instruction }, { "cue", t.Cue }, { "direct", t.Direct }
+                });
+                work("Reading it with " + t.Label + ":", 15, () =>
+                {
+                    bool up = QwenNarrator.EnsureRunning(cacheDir, appDir, m => { }, CancellationToken.None).Result;
+                    if (!up) { say("The narrator is not running, so nothing can be tried now."); return; }
+                    var tcs = new TaskCompletionSource<string>();
+                    pendingTrial = tcs;
+                    win.Dispatcher.Invoke((Action)(() => sendToPage("cmd:narrator_trial:" + json)));
+                    if (!tcs.Task.Wait(180000))
+                    {
+                        win.Dispatcher.Invoke((Action)(() => sendToPage("cmd:narrator_trial_stop")));
+                        say("No answer after three minutes; stopped.");
+                        return;
+                    }
+                    var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(tcs.Task.Result);
+                    string kind = Convert.ToString(d["kind"]);
+                    if (kind == "error") { say("That did not work: " + Convert.ToString(d["message"])); return; }
+                    if (kind != "ready") { say(""); return; }
+                    var sb = new System.Text.StringBuilder();
+                    string last = null;
+                    double secs = 0;
+                    int n = 0;
+                    foreach (var o in (d["pieces"] as System.Collections.IEnumerable) ?? new object[0])
+                    {
+                        var piece = (Dictionary<string, object>)o;
+                        string ptext = Convert.ToString(piece["text"]), cue = Convert.ToString(piece["cue"]), ins = Convert.ToString(piece["instruction"]);
+                        secs += Convert.ToDouble(piece["seconds"]);
+                        sb.Append(++n).Append(". ").Append(ptext.Length > 70 ? ptext.Substring(0, 70) + "..." : ptext);
+                        if (cue.Length > 0) sb.Append("   [cue: ").Append(cue).Append("]");
+                        sb.Append("\r\n    ").Append(ins == last ? "(the same as above)" : ins.Length == 0 ? "(no instruction)" : ins).Append("\r\n");
+                        last = ins;
+                    }
+                    win.Dispatcher.Invoke((Action)(() => toldBox.Text = sb.ToString()));
+                    say("Playing " + t.Label + " (" + secs.ToString("0") + "s).");
+                });
+            };
+            playTry.Click += (s, e) => runTrial(current());
+            playKept.Click += (s, e) => { if (kept != null) runTrial(kept); };
+            stopTry.Click += (s, e) =>
+            {
+                sendToPage("cmd:narrator_trial_stop");
+                var p = pendingTrial;
+                if (p != null) p.TrySetResult("{\"kind\":\"stopped\"}");
                 say("");
             };
+            keepTry.Click += (s, e) =>
+            {
+                kept = current();
+                playKept.IsEnabled = playTry.IsEnabled;
+                keptLabel.Text = "Kept for comparison: " + kept.Label + ".";
+            };
+            useSelection.Click += (s, e) => sendToPage("cmd:narrator_trial_selection");
+            TrialArrived = json =>
+            {
+                try
+                {
+                    var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+                    string kind = Convert.ToString(d["kind"]);
+                    if (kind == "selection")
+                    {
+                        string t = Convert.ToString(d["text"]).Trim();
+                        win.Dispatcher.BeginInvoke((Action)(() =>
+                        {
+                            if (t.Length == 0) { status.Text = "Select some text in the document first, then press this again."; return; }
+                            sampleBox.Text = t.Length > 3000 ? t.Substring(0, 3000) : t;
+                            status.Text = t.Length > 3000 ? "The selection is long; its first 3000 characters are in the box." : "";
+                        }));
+                    }
+                    else if (kind == "ended") say("");
+                    else { var p = pendingTrial; if (p != null) p.TrySetResult(json); }
+                }
+                catch { }
+            };
+
             // A kept voice plays the recording that was picked -- the same take heard as its
             // candidate. Rendering a fresh one here, with whatever style was in the box, is
             // what made "the voice I picked" sound like someone else (2026-09-23).
@@ -325,7 +552,6 @@ namespace TypoZen
                     say("");
                 });
             };
-            previewStyle.Click += (s, e) => work("Rendering a sample with this voice and style:", 15, preview);
 
             deleteVoice.Click += (s, e) =>
             {
@@ -506,7 +732,8 @@ namespace TypoZen
                 {
                     var v = voiceBox.SelectedItem as VoiceItem;
                     settings.Voice = v != null ? v.Id : settings.Voice;
-                    settings.Style = styleBox.Text.Trim();
+                    settings.Instruction = instructionBox.Text.Trim();
+                    settings.Cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue;
                     settings.Direct = directBox.IsChecked == true;
                     QwenNarrator.SaveSettings(cacheDir, settings);
                     foreach (var r in castRows)
@@ -555,7 +782,16 @@ namespace TypoZen
                 say("");
             });
 
-            win.Closed += (s, e) => { CastScanArrived = null; try { if (player != null) player.Stop(); } catch { } };
+            win.Closed += (s, e) =>
+            {
+                CastScanArrived = null;
+                TrialArrived = null;
+                _sample = sampleBox.Text;
+                try { sendToPage("cmd:narrator_trial_stop"); } catch { }
+                var p = pendingTrial;
+                if (p != null) p.TrySetResult("{\"kind\":\"stopped\"}");
+                try { if (player != null) player.Stop(); } catch { }
+            };
             win.ShowDialog();
         }
     }

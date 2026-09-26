@@ -1108,6 +1108,16 @@
                     // host_narrator_cast.
                     try { if (typeof window.narrationCastScan === 'function') window.narrationCastScan(); } catch (eC) {}
                 }
+                else if (msg.startsWith("cmd:narrator_trial:")) {
+                    // Narrator settings' Try it; answers come back as host_narrator_trial.
+                    try { window.narrationTrial(msg.substring(19)); } catch (eT) {}
+                }
+                else if (msg === "cmd:narrator_trial_stop") {
+                    try { window.narrationTrialStop(); } catch (eT) {}
+                }
+                else if (msg === "cmd:narrator_trial_selection") {
+                    try { window.narrationTrialSelection(); } catch (eT) {}
+                }
                 else if (msg.startsWith("cmd:narrator_status:")) {
                     // Starting the narrator can take a minute the first time. Say so, rather
                     // than leave a menu click looking like it did nothing.

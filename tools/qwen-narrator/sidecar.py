@@ -396,18 +396,29 @@ class Narrator(object):
         tok.decode = decode_each
 
     @staticmethod
-    def instruction(style, direction, role='narration'):
+    def instruction(style, direction, role='narration', whole=None, cue=None):
         """The full instruction for one piece.
 
-        Narration: the reader's own style if they set one, else the standing one, plus the
-        paragraph's direction. With no style and no direction this is NARRATION_CRAFT exactly,
-        so audio rendered before styles existed stays valid. A cast line (role 'dialogue') is
-        spoken in the character's voice and takes only its own direction.
+        `whole` is the reader's own instruction, exactly as Narrator Settings shows it: it is
+        used as it stands, with nothing added but the paragraph's direction -- worded by `cue`,
+        where {cue} is the direction -- and only when the page sent one. Without `whole`, the
+        older form: the reader's style inside a standing sentence, plus LIGHT_DIALOGUE or the
+        direction. With no style and no direction that is NARRATION_CRAFT exactly, so audio
+        rendered before styles existed stays valid. A cast line (role 'dialogue') is spoken in
+        the character's voice and takes only its own direction.
         """
         direction = (direction or '').strip()[:80]
         style = (style or '').strip()[:300]
         if role == 'dialogue':
             return DIALOGUE_DIRECTED % direction if direction and direction != 'thought' else DIALOGUE
+        if whole is not None:
+            whole = whole.strip()[:1500]
+            if not direction:
+                return whole
+            if direction == 'thought':
+                return (whole + THOUGHT_SUFFIX).strip()
+            cue = (cue or '').strip()[:400] or DIRECTED_SUFFIX.strip().replace('%s', '{cue}')
+            return (whole + ' ' + cue.replace('{cue}', direction)).strip()
         base = ('Narrate as an audiobook reader of literary fiction. ' + style) if style else NARRATION_BASE
         if not direction:
             return base + LIGHT_DIALOGUE
@@ -442,7 +453,9 @@ class Narrator(object):
         input_ids = m._tokenize_texts([m._build_assistant_text(t) for t in texts])
         tokenized = {}
         for i in set(instructions):
-            tokenized[i] = m._tokenize_texts([m._build_instruct_text(i)])[0]
+            # An empty instruction is none at all, as qwen-tts's own generate_custom_voice has
+            # it: the reader can clear Narrator Settings' box and hear the model unguided.
+            tokenized[i] = m._tokenize_texts([m._build_instruct_text(i)])[0] if i else None
         codes, _ = m.model.generate(input_ids=input_ids, instruct_ids=[tokenized[i] for i in instructions],
                                     voice_clone_prompt=prompt, languages=['English'] * n,
                                     non_streaming_mode=True, **m._merge_generate_kwargs())
@@ -472,7 +485,7 @@ class Narrator(object):
                 return s, True
         return self.cached(key), False
 
-    def render_group(self, blocks, voice, seed, reading=None, style='', private=False):
+    def render_group(self, blocks, voice, seed, reading=None, style='', private=False, whole=None, cue=None):
         """Audio for each block, from the cache where it exists; the rest in one batched call.
 
         Each block may name its own voice (a cast line) and role; the rest use `voice`.
@@ -488,7 +501,7 @@ class Narrator(object):
         if private:
             os.makedirs(self.private_dir, exist_ok=True)
         voices = [self.known_voice(b.get('voice') or voice) for b in blocks]
-        instructions = [self.instruction(style, b.get('direction'), b.get('role') or 'narration') for b in blocks]
+        instructions = [self.instruction(style, b.get('direction'), b.get('role') or 'narration', whole, cue) for b in blocks]
         keys = [self.key_for(b['text'], v, i) for b, v, i in zip(blocks, voices, instructions)]
         found = [self.find(k, private) for k in keys]
         have = [f[0] for f in found]
@@ -545,8 +558,10 @@ class Narrator(object):
         cached = len(blocks) - len(todo)
         if cached:
             log('%d of %d pieces from the cache' % (cached, len(blocks)))
-        items = [{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3), 'private': p}
-                 for b, k, s, p in zip(blocks, keys, have, where)]
+        # The instruction goes back with each piece, so Narrator Settings can show exactly what
+        # the narrator was told.
+        items = [{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3), 'private': p, 'instruction': i}
+                 for b, k, s, p, i in zip(blocks, keys, have, where, instructions)]
         return items, cached
 
     # ---- the voice library: design from a description, keep, delete, preview ----------------
@@ -925,6 +940,11 @@ class Handler(BaseHTTPRequestHandler):
         # rather than failing the reading.
         voice = Handler.narrator.known_voice(body.get('voice') or DEFAULT_VOICE)
         style = body.get('style') or ''
+        # The reader's whole instruction, when the page sends one (Narrator Settings); an
+        # empty string is a real choice, so only its absence falls back to the style form.
+        whole = body.get('instruction')
+        whole = whole if isinstance(whole, str) else None
+        cue = body.get('cue') or ''
         seed = int(body.get('seed', 1234))
         size = int(body.get('group_size', GROUP_SIZE))
         blocks = [b for b in blocks if (b.get('text') or '').strip()]
@@ -956,7 +976,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, {'items': items, 'cancelled': True})
                     return
                 got, cached = Handler.narrator.render_group(blocks[at:at + size], voice, seed, reading,
-                                                            style, private)
+                                                            style, private, whole, cue)
                 items.extend(got)
                 from_cache += cached
         except Cancelled:

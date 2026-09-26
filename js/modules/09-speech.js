@@ -481,12 +481,15 @@ let _qwenPending = null;        // a selection to narrate once the host says the
 
 /**
  * The narrator's settings, from the host (File > Read Aloud > Narrator settings): the
- * narrator's voice, the reader's own style words, the reading speed, and this book's cast --
- * character key to voice id. Sent before every narration and whenever they change.
+ * narrator's voice, the instruction it reads by -- the whole of it, as the reader sees and edits
+ * it -- the wording of an emotion cue, the reading speed, and this book's cast (character key
+ * to voice id). Sent before every narration and whenever they change.
  */
 let _narrVoice = '';
 let _narrVoiceName = '';
 let _narrStyle = '';
+let _narrInstruction = null;    // null: not sent, and the narrator uses its standing wording
+let _narrCue = '';
 let _narrSpeed = 1;
 let _narrCast = {};
 // Emotion cues from speech tags, sent as each piece's direction. Off unless the reader turns
@@ -497,10 +500,12 @@ let _narrPrivate = false;
 window.setNarratorSettings = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
-        const before = JSON.stringify([_narrVoice, _narrStyle, _narrCast, _narrDirect]);
+        const before = JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrDirect]);
         _narrVoice = s.voice || '';
         _narrVoiceName = s.voiceName || '';
         _narrStyle = s.style || '';
+        _narrInstruction = typeof s.instruction === 'string' ? s.instruction : null;
+        _narrCue = s.cue || '';
         _narrDirect = s.direct === true;
         _narrSpeed = Math.max(0.5, Math.min(2, parseFloat(s.speed) || 1));
         _narrCast = s.cast || {};
@@ -508,12 +513,14 @@ window.setNarratorSettings = function (json) {
         if (_renderedAudio) _renderedAudio.playbackRate = _narrSpeed;
         // A new voice, style or cast while narrating: start again at the paragraph being read,
         // in the new voice, rather than play out what was already rendered in the old one.
-        if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrCast, _narrDirect]) && _narrActive && isPlaying) {
+        if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrDirect]) && _narrActive && isPlaying) {
             narrLog('settings changed while narrating: restarting at the current paragraph');
             _qwenPending = null;
             try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
         }
-        narrLog('settings: voice ' + (_narrVoice || 'default') + ', style ' + (_narrStyle ? _narrStyle.length + ' chars' : 'standard') +
+        narrLog('settings: voice ' + (_narrVoice || 'default') +
+                (_narrInstruction !== null ? ', instruction ' + _narrInstruction.length + ' chars'
+                                           : ', style ' + (_narrStyle ? _narrStyle.length + ' chars' : 'standard')) +
                 ', speed ' + _narrSpeed + ', cast ' + Object.keys(_narrCast).length +
                 (_narrDirect ? ', emotion cues' : '') +
                 (_narrPrivate ? ', private' : ''));
@@ -612,6 +619,79 @@ function cancelNarration() {
     } catch (e) {}
 }
 
+/**
+ * Narrator Settings' "Try it": the reader's own text, read with the settings on screen (saved
+ * or not), cut, respelt and cued exactly as narration does it -- speakNumbers, blockPieces,
+ * narrationDirection -- so what is heard is what narrating that text would sound like. The
+ * dialog's own shortcut used to skip all three, so the emotion cues could never be heard there.
+ *
+ * `o`: {base, text, voice, instruction, cue, direct}. Each line is a paragraph. Tells the host
+ * host_narrator_trial:{kind:'ready', pieces:[{text, cue, instruction, seconds}]} before playing,
+ * {kind:'ended'} after, or {kind:'error', message}.
+ */
+let _trialAudio = null;
+let _trialQueue = [];
+let _trialRun = 0;
+function trialTell(o) { try { window.chrome.webview.postMessage('host_narrator_trial:' + JSON.stringify(o)); } catch (e) {} }
+window.narrationTrialStop = function () {
+    _trialRun++;
+    _trialQueue = [];
+    if (_trialAudio) { try { _trialAudio.pause(); } catch (e) {} _trialAudio = null; }
+};
+window.narrationTrial = async function (json) {
+    window.narrationTrialStop();
+    const run = _trialRun;
+    try {
+        const o = typeof json === 'string' ? JSON.parse(json) : json;
+        if (isPlaying) stopReading();
+        const pieces = [];
+        String(o.text || '').split(/\r?\n/).map(l => l.trim()).filter(l => /[A-Za-z0-9]/.test(l)).forEach(line => {
+            blockPieces(speakNumbers(line)).forEach(t => pieces.push({ text: t, direction: narrationDirection(t, null) }));
+        });
+        if (!pieces.length) throw new Error('there is no text to read');
+        const items = [];
+        for (let k = 0; k < pieces.length; k += NARRATION_BATCH) {
+            const batch = pieces.slice(k, k + NARRATION_BATCH);
+            const res = await fetch(o.base + '/render', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    voice: o.voice || '', instruction: String(o.instruction || ''), cue: o.cue || '',
+                    blocks: batch.map((p, i) => ({ id: k + i, text: p.text, direction: o.direct ? p.direction : '' })),
+                    reading: 900000 + run, group_size: batch.length, private: _narrPrivate
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || ('the narrator said ' + res.status));
+            if (run !== _trialRun) return;
+            (data.items || []).forEach(it => items.push(it));
+        }
+        if (items.length !== pieces.length) throw new Error('the narrator returned ' + items.length + ' of ' + pieces.length + ' pieces');
+        trialTell({ kind: 'ready', pieces: pieces.map((p, i) => ({
+            text: p.text, cue: o.direct ? p.direction : '', instruction: items[i].instruction || '', seconds: items[i].seconds || 0 })) });
+        _trialQueue = items.map(it => (it.private ? 'https://localnarrationp/' : 'https://localnarration/') + it.file);
+        const next = () => {
+            if (run !== _trialRun) return;
+            const url = _trialQueue.shift();
+            if (!url) { _trialAudio = null; trialTell({ kind: 'ended' }); return; }
+            _trialAudio = new Audio(url);
+            _trialAudio.playbackRate = _narrSpeed;
+            _trialAudio.onended = next;
+            _trialAudio.onerror = () => { if (run === _trialRun) trialTell({ kind: 'error', message: 'could not play ' + url }); };
+            _trialAudio.play().catch(err => { if (run === _trialRun) trialTell({ kind: 'error', message: String(err && err.message || err) }); });
+        };
+        next();
+    } catch (err) {
+        if (run === _trialRun) trialTell({ kind: 'error', message: String(err && err.message || err) });
+    }
+};
+/** The text selected in the document, for "Use selected text". */
+window.narrationTrialSelection = function () {
+    let t = '';
+    try { t = String(getSelection() || ''); } catch (e) {}
+    trialTell({ kind: 'selection', text: t });
+};
+
 /** One request to the sidecar; returns chunks ready for the reading queue. */
 async function renderNarration(base, batch, reading) {
     const sent = performance.now();
@@ -621,7 +701,7 @@ async function renderNarration(base, batch, reading) {
         const res = await fetch(base + '/render', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: JSON.stringify(Object.assign({
                 voice: _narrVoice,
                 style: _narrStyle,
                 blocks: batch.map(p => ({ id: p.id, text: p.text, direction: _narrDirect ? (p.direction || '') : '',
@@ -629,7 +709,7 @@ async function renderNarration(base, batch, reading) {
                 reading: reading,
                 group_size: batch.length,
                 private: _narrPrivate
-            })
+            }, _narrInstruction !== null ? { instruction: _narrInstruction, cue: _narrCue } : {}))
         });
         if (!res.ok) throw new Error('sidecar said ' + res.status);
         data = await res.json();

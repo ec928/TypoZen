@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.6.11";
+        internal const string AppVersion = "0.6.12";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -6812,6 +6812,13 @@ namespace TypoZen
                 // The page's answer to Narrator settings' "Find characters".
                 var cb = NarratorDialog.CastScanArrived;
                 if (cb != null) cb(msg.Substring(19));
+                return;
+            }
+            else if (msg.StartsWith("host_narrator_trial:"))
+            {
+                // Narrator settings' Try it: the pieces and what the narrator was told, or the end.
+                var cb = NarratorDialog.TrialArrived;
+                if (cb != null) cb(msg.Substring(20));
                 return;
             }
             else if (msg.StartsWith("host_narration_phase:"))

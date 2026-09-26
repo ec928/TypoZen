@@ -75,15 +75,40 @@ namespace TypoZen
 
         // ---- Narrator settings and each book's cast ---------------------------------------
         //
-        // narrator.json in the extension folder holds the narrator's voice and the reader's
-        // style words; cast\<hash of the book's path>.json holds a book's character -> voice
-        // choices and the names they were shown under. Both are sent to the page, which puts
-        // them on every request it makes, before each narration and whenever they change.
+        // narrator.json in the extension folder holds the narrator's voice, the instruction it
+        // reads by and the emotion-cue setting; presets.json the reader's own saved instructions;
+        // cast\<hash of the book's path>.json a book's character -> voice choices and the names
+        // they were shown under. Settings and cast are sent to the page, which puts them on every
+        // request it makes, before each narration and whenever they change.
+        //
+        // The instruction is the whole of what the narrator is told for a paragraph, shown and
+        // edited as it stands. Nothing is added to it except an emotion cue, and that only when
+        // the reader ticks the box -- hidden standing wording was what made the cues look like an
+        // improvement until an A/B test showed the opposite (2026-09-26).
+
+        /// <summary>What the narrator read by before instructions were editable; kept word for word
+        /// so audio already rendered from them is still found in the cache.</summary>
+        public const string StandardBase = "Narrate as an accomplished audiobook reader of literary fiction: measured and unhurried, phrasing that follows the sense of the sentence, understated rather than performed.";
+        public const string LightDialogue = " Give the spoken lines a light, distinct colour without acting them out.";
+        private const string StylePrefix = "Narrate as an audiobook reader of literary fiction. ";
+        /// <summary>How an emotion cue is worded when it is added; {cue} is the cue ("whispered, hushed").</summary>
+        public const string DefaultCue = "Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured.";
+
+        /// <summary>The starting points offered in Narrator Settings, in order. Not editable in place; save a copy as your own.</summary>
+        public static readonly KeyValuePair<string, string>[] BuiltInPresets =
+        {
+            new KeyValuePair<string, string>("Standard", StandardBase + LightDialogue),
+            new KeyValuePair<string, string>("Warm", StylePrefix + "Warm and close, as if reading to one listener, unhurried, with a gentle smile in the voice where the text allows." + LightDialogue),
+            new KeyValuePair<string, string>("Brisk", StylePrefix + "Brisk and clear, keeping the story moving, crisp at the ends of sentences, never rushed." + LightDialogue),
+            new KeyValuePair<string, string>("Dramatic", StylePrefix + "Vivid and engaged, giving tension and emotion their full weight, with bold contrasts between quiet and intense moments." + LightDialogue),
+            new KeyValuePair<string, string>("None (the model unguided)", "")
+        };
 
         public sealed class Settings
         {
             public string Voice = "";
-            public string Style = "";
+            public string Instruction = StandardBase + LightDialogue;
+            public string Cue = DefaultCue;
             // Emotion cues from speech tags ("he whispered" -> whispered, hushed). Off by default:
             // compared side by side on ten Dune paragraphs (2026-09-26), the model reading the
             // scene itself was as good or better in nearly every case, and the cue flattened
@@ -131,19 +156,50 @@ namespace TypoZen
         public static Settings LoadSettings(string cacheDir)
         {
             var d = ReadJson(SettingsPath(cacheDir));
-            object v, s, c;
-            return new Settings
+            object v, s, c, i, q;
+            var r = new Settings
             {
                 Voice = d.TryGetValue("voice", out v) ? (v as string ?? "") : "",
-                Style = d.TryGetValue("style", out s) ? (s as string ?? "") : "",
                 Direct = d.TryGetValue("direct", out c) && c is bool && (bool)c
             };
+            if (d.TryGetValue("instruction", out i) && i is string) r.Instruction = (string)i;
+            else
+            {
+                // Saved before instructions were editable: the same words the narrator built from
+                // the style, now in the open.
+                string style = d.TryGetValue("style", out s) ? ((s as string) ?? "").Trim() : "";
+                r.Instruction = (style.Length > 0 ? StylePrefix + style : StandardBase) + LightDialogue;
+            }
+            if (d.TryGetValue("cue", out q) && q is string && ((string)q).Trim().Length > 0) r.Cue = (string)q;
+            return r;
         }
 
         public static void SaveSettings(string cacheDir, Settings s)
         {
-            var d = new Dictionary<string, object> { { "voice", s.Voice ?? "" }, { "style", s.Style ?? "" }, { "direct", s.Direct } };
+            var d = new Dictionary<string, object>
+            {
+                { "voice", s.Voice ?? "" }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }
+            };
             File.WriteAllText(SettingsPath(cacheDir), new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
+        }
+
+        private static string PresetsPath(string cacheDir) { return Path.Combine(RootDir(cacheDir), "presets.json"); }
+
+        /// <summary>The reader's own saved instructions, name -> instruction, in the order saved.</summary>
+        public static List<KeyValuePair<string, string>> LoadPresets(string cacheDir)
+        {
+            var list = new List<KeyValuePair<string, string>>();
+            foreach (var kv in StringMap(ReadJson(PresetsPath(cacheDir)), "presets")) list.Add(kv);
+            return list;
+        }
+
+        public static void SavePresets(string cacheDir, List<KeyValuePair<string, string>> presets)
+        {
+            var map = new Dictionary<string, object>();
+            foreach (var kv in presets) map[kv.Key] = kv.Value;
+            string path = PresetsPath(cacheDir), part = path + ".part";
+            File.WriteAllText(part, new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "presets", map } }), Encoding.UTF8);
+            if (File.Exists(path)) File.Replace(part, path, null); else File.Move(part, path);
         }
 
         /// <summary>
@@ -269,7 +325,8 @@ namespace TypoZen
             foreach (var v in SavedVoices(cacheDir)) if (v.Key == current) name = v.Value;
             var d = new Dictionary<string, object>
             {
-                { "voice", s.Voice }, { "voiceName", name }, { "style", s.Style }, { "direct", s.Direct }, { "speed", speed },
+                { "voice", s.Voice }, { "voiceName", name }, { "instruction", s.Instruction }, { "cue", s.Cue },
+                { "direct", s.Direct }, { "speed", speed },
                 { "cast", LoadCast(cacheDir, book).Voices },
                 // Render into this session's private folder, not the lasting cache.
                 { "private", privateMode }
