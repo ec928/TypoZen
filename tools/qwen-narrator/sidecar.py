@@ -86,6 +86,18 @@ BUILTIN_VOICES = {
     },
 }
 DEFAULT_VOICE = 'northern-english'
+# The model's own speakers whose native language is English (its README). They are the voices
+# it was trained to follow instructions with; a designed voice is a voice-print from the Base
+# model's encoder, a pairing the library itself never makes (generate()), and on 2026-09-26 an
+# instruction to read "like a crazy clown" barely changed one. Given here as the speaker's own
+# embedding row, passed exactly where a voice-print goes, which is the embedding
+# generate_custom_voice would use for that name -- so they mix with designed voices in a batch.
+MODEL_SPEAKERS = {
+    'qwen-ryan': {'speaker': 'ryan', 'name': 'Ryan (built into the model)',
+                  'description': 'Dynamic male voice with strong rhythmic drive.'},
+    'qwen-aiden': {'speaker': 'aiden', 'name': 'Aiden (built into the model)',
+                   'description': 'Sunny American male voice with a clear midrange.'},
+}
 # A voice-print is the speaker encoder's x-vector: this many float32 values.
 VOICE_PRINT_SIZE = 2048
 GROUP_SIZE = 8
@@ -265,6 +277,18 @@ class Narrator(object):
             prints[vid] = (self.torch.from_numpy(raw), hashlib.sha256(raw.tobytes()).hexdigest())
             meta[vid] = {'id': vid, 'name': v['name'], 'description': v['description'], 'builtin': True,
                          'preview': ''}
+        try:
+            table = self.model.model.talker.get_input_embeddings()
+            ids = self.model.model.config.talker_config.spk_id
+            for vid, v in MODEL_SPEAKERS.items():
+                with self.torch.no_grad():
+                    row = table(self.torch.tensor(ids[v['speaker']], device=table.weight.device))
+                emb = row.detach().float().cpu()
+                prints[vid] = (emb, hashlib.sha256(emb.numpy().tobytes()).hexdigest())
+                meta[vid] = {'id': vid, 'name': v['name'], 'description': v['description'], 'builtin': True,
+                             'preview': ''}
+        except Exception as e:
+            log('the model\'s own speakers are unavailable: %s' % e)
         for vid in sorted(os.listdir(self.voices_dir)):
             d = os.path.join(self.voices_dir, vid)
             if vid.startswith('_') or not os.path.isfile(os.path.join(d, 'print.npy')):
@@ -698,7 +722,7 @@ class Narrator(object):
         name = (name or '').strip()[:60] or 'Voice'
         slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or 'voice'
         vid, n = slug, 2
-        while os.path.exists(os.path.join(self.voices_dir, vid)) or vid in BUILTIN_VOICES:
+        while os.path.exists(os.path.join(self.voices_dir, vid)) or vid in BUILTIN_VOICES or vid in MODEL_SPEAKERS:
             vid, n = '%s-%d' % (slug, n), n + 1
         dst = os.path.join(self.voices_dir, vid)
         shutil.copytree(src, dst)
@@ -761,7 +785,7 @@ class Narrator(object):
         name = name.strip()[:60] or 'Voice'
         slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or 'voice'
         vid, n = slug, 2
-        while os.path.exists(os.path.join(self.voices_dir, vid)) or vid in BUILTIN_VOICES:
+        while os.path.exists(os.path.join(self.voices_dir, vid)) or vid in BUILTIN_VOICES or vid in MODEL_SPEAKERS:
             vid, n = '%s-%d' % (slug, n), n + 1
         dst = os.path.join(self.voices_dir, vid)
         os.makedirs(dst)
@@ -778,7 +802,7 @@ class Narrator(object):
 
     def delete_voice(self, vid):
         """To the Recycle Bin, so it can be restored. Exported copies are the reader's and untouched."""
-        if vid in BUILTIN_VOICES or vid.startswith('_') or '/' in vid or '\\' in vid:
+        if vid in BUILTIN_VOICES or vid in MODEL_SPEAKERS or vid.startswith('_') or '/' in vid or '\\' in vid:
             raise ValueError('cannot delete %s' % vid)
         recycle(os.path.join(self.voices_dir, vid))
         self.reload_voices()

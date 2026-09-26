@@ -262,12 +262,25 @@ namespace TypoZen
         public const string DefaultVoiceName = "Northern English (original)";
 
         /// <summary>
-        /// Every voice the narrator can read in, (id, name), the built-in one first -- read from
+        /// The model's own English speakers (sidecar.py MODEL_SPEAKERS): id, name, description.
+        /// The voices the model was trained to take instructions with.
+        /// </summary>
+        public static readonly string[][] ModelSpeakers =
+        {
+            // The model's own words for them. Ryan's accent is not stated, so nothing here names a
+            // country for Look up's voice match (PickWordVoice) to guess from.
+            new[] { "qwen-ryan", "Ryan (built into the model)", "Dynamic male voice with strong rhythmic drive." },
+            new[] { "qwen-aiden", "Aiden (built into the model)", "Sunny American male voice with a clear midrange." }
+        };
+
+        /// <summary>
+        /// Every voice the narrator can read in, (id, name), the built-in ones first -- read from
         /// the voices folder on disk, so a menu can list them without starting the narrator.
         /// </summary>
         public static List<KeyValuePair<string, string>> SavedVoices(string cacheDir)
         {
             var list = new List<KeyValuePair<string, string>> { new KeyValuePair<string, string>(DefaultVoiceId, DefaultVoiceName) };
+            foreach (var m in ModelSpeakers) list.Add(new KeyValuePair<string, string>(m[0], m[1]));
             try
             {
                 string dir = Path.Combine(RootDir(cacheDir), "voices");
@@ -306,6 +319,7 @@ namespace TypoZen
         public static string VoiceDescription(string cacheDir, string id)
         {
             if (string.IsNullOrEmpty(id) || id == DefaultVoiceId) return DefaultVoiceDescription;
+            foreach (var m in ModelSpeakers) if (m[0] == id) return m[2] + " " + m[1];
             try
             {
                 var meta = ReadJson(Path.Combine(RootDir(cacheDir), "voices", id, "meta.json"));

@@ -767,7 +767,9 @@ namespace TypoZen
                 voices.Add(new VoiceItem
                 {
                     Id = v.Key, Name = v.Value,
-                    Description = meta.TryGetValue("description", out d) ? Convert.ToString(d) : "",
+                    Description = meta.TryGetValue("description", out d) ? Convert.ToString(d)
+                                : v.Key == QwenNarrator.DefaultVoiceId ? QwenNarrator.DefaultVoiceDescription
+                                : Array.Find(QwenNarrator.ModelSpeakers, m => m[0] == v.Key) != null ? Array.Find(QwenNarrator.ModelSpeakers, m => m[0] == v.Key)[2] : "",
                     Preview = System.IO.File.Exists(prev) ? prev : ""
                 });
             }
