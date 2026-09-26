@@ -200,6 +200,33 @@ if (!BOOK) {
     assert(tempSessions().length <= before, 'and it is gone once the window closes');
 }
 
+console.log('\n=== a PDF\'s page: remembered normally, not in Privacy Mode ===');
+// The page reaches book_positions.txt by the same path as a book's (book_position:), so
+// this is the same guard -- but a PDF had never been checked (pdf-and-audit-plan.md).
+async function turnPdfPage(a) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < 15000 && !(await a.eval(() => !!(window.tzPdfTextReady && window.tzPdfTextReady())))) await sleep(200);
+    await a.eval(() => { window.prompt = () => '3'; openGoToPageDialog(); });
+    await sleep(2500);   // past the position report
+    return a.eval(() => window.tzPdfState ? window.tzPdfState().page : 0);
+}
+wipe(); setFlag('privacyMode', false); setFlag('autosave', false);
+app = await launchApp({ file: 'tests/pdf-sample.pdf', settleMs: 8000 });
+let pdfPage = 0;
+try { pdfPage = await turnPdfPage(app); } finally { await app.closeGracefully(); }
+await sleep(1200);
+assert(pdfPage === 3, 'control: the PDF turns to page 3');
+assert(/pdf-sample\.pdf/i.test(read('book_positions.txt')), 'control: its page is remembered by path');
+assert(/pdf-sample\.pdf/i.test(read('recent_files.json')), 'control: and it reaches recent files');
+
+wipe(); setFlag('privacyMode', true);
+app = await launchApp({ file: 'tests/pdf-sample.pdf', settleMs: 8000 });
+try { pdfPage = await turnPdfPage(app); } finally { await app.closeGracefully(); }
+await sleep(1200);
+assert(pdfPage === 3, 'the PDF still turns to page 3');
+assert(!/pdf-sample\.pdf/i.test(read('book_positions.txt')), 'no remembered page for it');
+assert(!/pdf-sample\.pdf/i.test(read('recent_files.json')), 'no recent-files entry for it');
+
 try { fs.unlinkSync(DOC); } catch (e) {}
 try { if (restoreState !== null) fs.writeFileSync(STATE, restoreState); } catch (e) {}
 
