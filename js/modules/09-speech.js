@@ -691,6 +691,141 @@ function narrationDocIndex(el, i) {
     return isFinite(idx) ? idx : i;
 }
 
+/**
+ * Numbers as words, for the Qwen narrator (British English).
+ *
+ * The narrator turns digits into sound itself and gets them wrong: "£86,000 - £117,800" came
+ * out as "eighty six thousand pounds nine hundred seventeen thousand eight hundred" in one
+ * voice and "...minus one hundred seventeen thousand eight hundred twenty" in another (Ed,
+ * 2026-09-26), with "Pay Range:" right in front of it. The Windows voices run a normaliser of
+ * their own first and read it correctly; this is that step for the narrator. Only what is
+ * spoken changes, never the text.
+ *
+ * Amounts (£ $ €, with k / m / bn), ranges between numbers ("to"), dates and ordinals, times,
+ * percentages, decimals, years where the words around them say they are years, and plain
+ * numbers. Left alone: anything joined to letters (A4, COVID-19, mp3), numbers with a leading
+ * zero (phone numbers, "01"), and dotted versions (0.6.8). One self-contained function so
+ * tests/speak-numbers-selftest.mjs can run it as it is.
+ */
+function speakNumbers(text) {
+    if (!text || !/\d/.test(text)) return text;
+    const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+        'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+    const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+    const SCALES = ['', 'thousand', 'million', 'billion', 'trillion'];
+    const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec';
+    const FULL_MONTH = { Jan: 'January', Feb: 'February', Mar: 'March', Apr: 'April', Jun: 'June', Jul: 'July',
+        Aug: 'August', Sep: 'September', Sept: 'September', Oct: 'October', Nov: 'November', Dec: 'December' };
+    const month = (m) => FULL_MONTH[m] || m;
+
+    const under100 = (n) => n < 20 ? ONES[n] : TENS[Math.floor(n / 10)] + (n % 10 ? '-' + ONES[n % 10] : '');
+    const under1000 = (n) => {
+        const h = Math.floor(n / 100), r = n % 100;
+        if (!h) return under100(r);
+        return ONES[h] + ' hundred' + (r ? ' and ' + under100(r) : '');
+    };
+    const cardinal = (n) => {
+        if (n === 0) return 'zero';
+        const groups = [];
+        while (n > 0) { groups.push(n % 1000); n = Math.floor(n / 1000); }
+        const parts = [];
+        for (let i = groups.length - 1; i >= 0; i--) {
+            const g = groups[i];
+            if (!g) continue;
+            // British: "one thousand and five" -- a last group under a hundred after a larger one.
+            parts.push((i === 0 && g < 100 && groups.length > 1 ? 'and ' : '') + under1000(g) + (SCALES[i] ? ' ' + SCALES[i] : ''));
+        }
+        return parts.join(' ');
+    };
+    const ordinal = (n) => {
+        const w = cardinal(n);
+        const m = w.match(/^(.*?)([a-z]+)$/);
+        const IRREG = { one: 'first', two: 'second', three: 'third', five: 'fifth', eight: 'eighth', nine: 'ninth', twelve: 'twelfth' };
+        const last = m[2];
+        return m[1] + (IRREG[last] || (/y$/.test(last) ? last.slice(0, -1) + 'ieth' : last + 'th'));
+    };
+    const year = (n) => {
+        if (n === 2000) return 'two thousand';
+        if (n > 2000 && n < 2010) return 'two thousand and ' + ONES[n - 2000];
+        const hi = Math.floor(n / 100), lo = n % 100;
+        if (lo === 0) return under100(hi) + ' hundred';
+        return under100(hi) + ' ' + (lo < 10 ? 'oh ' + ONES[lo] : under100(lo));
+    };
+    const toNumber = (s) => Number(String(s).replace(/,/g, ''));
+    // A number as words: integers, and decimals read digit by digit after "point".
+    const numberWords = (s) => {
+        const [whole, frac] = String(s).replace(/,/g, '').split('.');
+        const w = whole.length > 15 ? whole.split('').map(d => ONES[+d]).join(' ') : cardinal(Number(whole));
+        return frac ? w + ' point ' + frac.split('').map(d => ONES[+d]).join(' ') : w;
+    };
+    const NUM = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?';
+    // Not joined to letters, other digits, a dot or a hyphen on either side.
+    const START = '(?<![\\w.,\\-–—£$€])(?!0\\d)';
+    const END = '(?![\\w]|[.,]\\d|\\s*[-–—]\\s*\\d)';
+    let t = text;
+
+    // Times: 12pm, 9:30 am, 12:30.
+    t = t.replace(new RegExp(START + '(\\d{1,2})(?::(\\d{2}))?\\s?(am|pm|a\\.m\\.|p\\.m\\.)(?![\\w])', 'gi'), (m, h, mm, ap) => {
+        const hh = +h, min = mm ? +mm : 0;
+        if (hh > 24 || min > 59) return m;
+        const minutes = mm ? (min === 0 ? '' : ' ' + (min < 10 ? 'oh ' + ONES[min] : under100(min))) : '';
+        return cardinal(hh) + minutes + (/^a/i.test(ap) ? ' a.m.' : ' p.m.');
+    });
+    t = t.replace(new RegExp(START + '(\\d{1,2}):(\\d{2})(?![\\w:]|[.,]\\d)', 'g'), (m, h, mm) => {
+        const hh = +h, min = +mm;
+        if (hh > 24 || min > 59) return m;
+        return cardinal(hh) + ' ' + (min === 0 ? "o'clock" : min < 10 ? 'oh ' + ONES[min] : under100(min));
+    });
+
+    // Ranges: a dash between two numbers or amounts is "to" -- "£86,000 - £117,800". Not in a
+    // chain of three or more (phone numbers), and the currency of the first carries to the second.
+    t = t.replace(new RegExp(START + '([£$€]\\s?)?(' + NUM + ')(\\s?(?:k|m|bn)\\b|%)?\\s*[-–—]\\s*([£$€]\\s?)?((?!0\\d)' + NUM + ')(?![\\w]|[.,]\\d|\\s*[-–—]\\s*\\d)', 'g'),
+        (m, c1, a, s1, c2, b) => (c1 || '') + a + (s1 || '') + ' to ' + (c2 || c1 || '') + b);
+
+    // Amounts: £86,000, £1.50, $3.99, €20, £2m, £3.5bn, £40k, £2 million.
+    const UNIT = { '£': ['pound', 'pounds', 'pence'], '$': ['dollar', 'dollars', 'cents'], '€': ['euro', 'euros', 'cents'] };
+    t = t.replace(new RegExp(START + '([£$€])\\s?(' + NUM + ')(?:\\s?(k|m|bn)\\b|\\s(thousand|million|billion)\\b)?', 'g'), (m, c, n, short, word) => {
+        const u = UNIT[c];
+        const scale = short ? { k: 'thousand', m: 'million', bn: 'billion' }[short.toLowerCase()] : word;
+        if (scale) return numberWords(n) + ' ' + scale + ' ' + u[1];
+        const [whole, frac] = n.replace(/,/g, '').split('.');
+        const main = cardinal(Number(whole)) + ' ' + (Number(whole) === 1 ? u[0] : u[1]);
+        if (frac && frac.length === 2 && +frac > 0) return main + ' ' + under100(+frac);
+        return frac ? numberWords(n) + ' ' + u[1] : main;
+    });
+
+    // Dates: "7th September 2026" -> "the seventh of September, twenty twenty-six";
+    // "September 7, 2026" -> "September the seventh, twenty twenty-six".
+    t = t.replace(new RegExp(START + '(\\d{1,2})(?:st|nd|rd|th)?\\s+(' + MONTHS + ')\\b\\.?(?:,?\\s+(\\d{4})(?![\\w]))?', 'g'), (m, d, mo, y) => {
+        if (+d < 1 || +d > 31) return m;
+        return 'the ' + ordinal(+d) + ' of ' + month(mo) + (y ? ', ' + year(+y) : '');
+    });
+    t = t.replace(new RegExp('\\b(' + MONTHS + ')\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?![\\w:])(?:,?\\s+(\\d{4})(?![\\w]))?', 'g'), (m, mo, d, y) => {
+        if (+d < 1 || +d > 31) return m;
+        return month(mo) + ' the ' + ordinal(+d) + (y ? ', ' + year(+y) : '');
+    });
+    t = t.replace(new RegExp('\\b(' + MONTHS + ')\\s+(\\d{4})(?![\\w])', 'g'), (m, mo, y) => month(mo) + ' ' + year(+y));
+
+    // Ordinals: 1st, 22nd, 103rd.
+    t = t.replace(new RegExp(START + '(\\d{1,9})(st|nd|rd|th)\\b', 'gi'), (m, n) => ordinal(+n));
+
+    // Percentages.
+    t = t.replace(new RegExp(START + '(' + NUM + ')\\s?%', 'g'), (m, n) => numberWords(n) + ' per cent');
+
+    // Years, where the words before say so: "in 1990", "from 1990 to 1995", "(2019)".
+    t = t.replace(new RegExp('(\\b(?:in|since|until|till|by|from|to|of|during|year|circa|c\\.|early|late|mid|and)\\s+|\\()(1[0-9]\\d{2}|20\\d{2})(?![\\w]|[.,]\\d)', 'gi'),
+        (m, before, y) => before + year(+y));
+
+    // Everything else that is a number on its own.
+    t = t.replace(new RegExp(START + '(' + NUM + ')' + END, 'g'), (m, n) => numberWords(n));
+    return t;
+}
+
+/** A paragraph's text as the narrator should hear it: numbers as words (speakNumbers). */
+function narrationText(el) {
+    return speakNumbers((el && el.innerText || '').trim());
+}
+
 /** A paragraph as one piece, or several at sentence ends when it is over the cap. */
 function blockPieces(text) {
     if (text.length <= NARRATION_PIECE_CAP) return [text];
@@ -953,7 +1088,7 @@ function narrationBatches(all, from, maxBatches, graduated) {
         const known = knownSpeakers(all);
         Object.keys(_narrCast).forEach(k => known.add(k));
         const texts = all.slice(first, Math.min(all.length, from + limit + 40))
-            .map(el => (el.innerText || '').trim());
+            .map(el => narrationText(el));
         speakers = attributeParagraphs(texts, known);
     }
     for (let i = from; i < all.length && pieces.length < limit; i++) {
@@ -962,7 +1097,7 @@ function narrationBatches(all, from, maxBatches, graduated) {
         // Jesserit") help the Windows and Kokoro voices, but Qwen reads words from their
         // context, and by ear it did better without them -- the respelled name came out
         // distorted (2026-09-24).
-        const text = (all[i].innerText || '').trim();
+        const text = narrationText(all[i]);
         if (!text) continue;
         const quotes = speakers && speakers[i - first];
         if (quotes && quotes.some(q => q.key && _narrCast[q.key])) {
@@ -1230,7 +1365,7 @@ async function narrateSelection(base, sel) {
     const i = sel.el ? all.indexOf(sel.el) : -1;
     // A word from Look up has no paragraph of its own (startReading).
     const at = sel.el ? narrationDocIndex(sel.el, i < 0 ? 0 : i) : 0;
-    const pieces = blockPieces(sel.text)          // as written: see narrationBatches
+    const pieces = blockPieces(speakNumbers(sel.text))    // as written but for numbers: see narrationBatches
         .map((t, k) => ({ el: sel.el, at: at, id: at * 100 + 50 + k, text: t, direction: narrationDirection(t, null) }));
     const reading = ++_narrationReading;
     _narrationBase = base;
