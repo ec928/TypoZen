@@ -95,6 +95,8 @@ namespace TypoZen
             var voices = new List<VoiceItem>();
             SoundPlayer player = null;
             Trial kept = null;              // Try it: Previous, the last different settings played
+            string playing = null;          // Try it: "Current" or "Previous" while one is preparing or playing
+            Action applyPlay = null;        // shows that row's Play as Stop; set once the buttons exist
 
             var win = new Window
             {
@@ -163,7 +165,7 @@ namespace TypoZen
             Func<UIElement, ScrollViewer> scrolling = content => new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
             Func<string, UIElement, Expander> fold = (title, content) =>
             {
-                var x = new Expander { Header = title, Content = content, Margin = new Thickness(0, 4, 0, 2) };
+                var x = new Expander { Header = new TextBlock { Text = title, FontWeight = FontWeights.SemiBold }, Content = content, Margin = new Thickness(0, 8, 0, 4) };
                 if (win.Foreground != null) x.Foreground = win.Foreground;
                 return x;
             };
@@ -207,7 +209,7 @@ namespace TypoZen
                 Text = "No instruction: the narrator reads with nothing but the text.", Margin = new Thickness(6, 4, 6, 0),
                 Foreground = Brushes.Gray, IsHitTestVisible = false, TextWrapping = TextWrapping.Wrap
             };
-            var instructionCell = new Grid { Margin = new Thickness(0, 4, 0, 4) };
+            var instructionCell = new Grid { Margin = new Thickness(0, 8, 0, 8) };
             instructionCell.Children.Add(instructionBox);
             instructionCell.Children.Add(instructionHint);
             left.Children.Add(instructionCell);
@@ -266,7 +268,7 @@ namespace TypoZen
             Func<string, TextBlock> slot = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, Width = 70, VerticalAlignment = VerticalAlignment.Center };
             var aSummary = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 4) };
             var bSummary = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 4), Opacity = 0.72, Text = "Play, change something on the left, and play again: what you heard before appears here." };
-            var playA = primary("▶ Play");
+            var playA = button("▶ Play");
             var playB = button("▶ Play");
             var takeA = button("↻ New take");
             var takeB = button("↻ New take");
@@ -279,8 +281,8 @@ namespace TypoZen
             put(slot("Current"), 0, 0); put(aSummary, 0, 1); put(playA, 0, 2); put(takeA, 0, 3);
             put(slot("Previous"), 1, 0); put(bSummary, 1, 1); put(playB, 1, 2); put(takeB, 1, 3);
             tryTop.Children.Add(ab);
-            var stopTry = button("■ Stop");
-            tryTop.Children.Add(row(new UIElement[] { stopTry }));
+            // No Stop of its own: the Play of whichever row is preparing or playing becomes
+            // Stop (applyPlay), where the eye and the pointer already are.
 
             var toldBox = new TextBox
             {
@@ -533,6 +535,7 @@ namespace TypoZen
                             if (busyWhat != null) { busyWhat = null; line.Text = ""; }
                             foreach (var b in busyButtons) b.IsEnabled = true;
                             playB.IsEnabled = takeB.IsEnabled = kept != null;
+                            if (applyPlay != null) applyPlay();
                             refreshLibButtons();
                         }));
                     }
@@ -721,23 +724,27 @@ namespace TypoZen
                     { "base", QwenNarrator.BaseUrl }, { "text", text }, { "voice", t.Voice },
                     { "instruction", t.Instruction }, { "cue", t.Cue }, { "direct", t.Direct }, { "seed", t.Seed }
                 });
+                // Nothing will play after all: that row's Stop goes back to Play.
+                Action notPlaying = () => win.Dispatcher.BeginInvoke((Action)(() => { playing = null; applyPlay(); }));
+                playing = which;
                 work("Preparing " + which + ":", 15, () =>
                 {
                     bool up = QwenNarrator.EnsureRunning(cacheDir, appDir, m => { }, CancellationToken.None).Result;
-                    if (!up) { say("The narrator is not running, so nothing can be tried now."); return; }
+                    if (!up) { notPlaying(); say("The narrator is not running, so nothing can be tried now."); return; }
                     var tcs = new TaskCompletionSource<string>();
                     pendingTrial = tcs;
                     win.Dispatcher.Invoke((Action)(() => sendToPage("cmd:narrator_trial:" + json)));
                     if (!tcs.Task.Wait(180000))
                     {
                         win.Dispatcher.Invoke((Action)(() => sendToPage("cmd:narrator_trial_stop")));
+                        notPlaying();
                         say("No answer after three minutes; stopped.");
                         return;
                     }
                     var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(tcs.Task.Result);
                     string kind = Convert.ToString(d["kind"]);
-                    if (kind == "error") { say("That did not work: " + Convert.ToString(d["message"])); return; }
-                    if (kind != "ready") { say(""); return; }
+                    if (kind == "error") { notPlaying(); say("That did not work: " + Convert.ToString(d["message"])); return; }
+                    if (kind != "ready") { notPlaying(); say(""); return; }
                     var sb = new System.Text.StringBuilder();
                     sb.Append(which).Append(": ").Append(t.Describe()).Append("\r\n\r\n");
                     string last = null;
@@ -756,6 +763,7 @@ namespace TypoZen
                     win.Dispatcher.Invoke((Action)(() => toldBox.Text = sb.ToString()));
                     say("Playing " + which + " (" + secs.ToString("0") + "s).");
                 });
+                applyPlay();            // work() disabled the buttons; this row's Stop stays live
             };
             Action playCurrent = () =>
             {
@@ -771,22 +779,42 @@ namespace TypoZen
                 lastPlayed = t;
                 runTrial(t, "Current");
             };
-            playA.Click += (s, e) => playCurrent();
+            Action stopTrial = () =>
+            {
+                sendToPage("cmd:narrator_trial_stop");
+                var p = pendingTrial;
+                if (p != null) p.TrySetResult("{\"kind\":\"stopped\"}");
+                playing = null;
+                applyPlay();
+                say("");
+            };
+            // While a row is preparing or playing, its Play reads Stop and the other controls
+            // wait; once nothing is, every button is itself again.
+            applyPlay = () =>
+            {
+                playA.Content = playing == "Current" ? "■ Stop" : "▶ Play";
+                playB.Content = playing == "Previous" ? "■ Stop" : "▶ Play";
+                if (playing != null)
+                {
+                    playA.IsEnabled = playing == "Current";
+                    playB.IsEnabled = playing == "Previous";
+                    takeA.IsEnabled = takeB.IsEnabled = false;
+                }
+                else if (busyBar.Visibility != Visibility.Visible)
+                {
+                    playA.IsEnabled = takeA.IsEnabled = true;
+                    playB.IsEnabled = takeB.IsEnabled = kept != null;
+                }
+            };
+            playA.Click += (s, e) => { if (playing == "Current") stopTrial(); else playCurrent(); };
             takeA.Click += (s, e) => { currentTake++; updateA(); playCurrent(); };
-            playB.Click += (s, e) => { if (kept != null) runTrial(kept, "Previous"); };
+            playB.Click += (s, e) => { if (playing == "Previous") stopTrial(); else if (kept != null) runTrial(kept, "Previous"); };
             takeB.Click += (s, e) =>
             {
                 if (kept == null) return;
                 kept.Take++;
                 bSummary.Text = kept.Describe();
                 runTrial(kept, "Previous");
-            };
-            stopTry.Click += (s, e) =>
-            {
-                sendToPage("cmd:narrator_trial_stop");
-                var p = pendingTrial;
-                if (p != null) p.TrySetResult("{\"kind\":\"stopped\"}");
-                say("");
             };
             useSelection.Click += (s, e) => sendToPage("cmd:narrator_trial_selection");
             TrialArrived = json =>
@@ -805,7 +833,11 @@ namespace TypoZen
                             status.Text = t.Length > 3000 ? "The selection is long; its first 3000 characters are in the box." : "";
                         }));
                     }
-                    else if (kind == "ended") say("");
+                    else if (kind == "ended")
+                    {
+                        win.Dispatcher.BeginInvoke((Action)(() => { playing = null; applyPlay(); }));
+                        say("");
+                    }
                     else { var p = pendingTrial; if (p != null) p.TrySetResult(json); }
                 }
                 catch { }
@@ -1063,7 +1095,7 @@ namespace TypoZen
                 if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
                 {
                     e.Handled = true;
-                    if (playA.IsEnabled) playCurrent();
+                    if (playing == null && playA.IsEnabled) playCurrent();
                 }
             };
 
