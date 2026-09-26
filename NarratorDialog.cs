@@ -7,6 +7,7 @@ using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace TypoZen
@@ -38,6 +39,9 @@ namespace TypoZen
 
         /// <summary>Set while the dialog is open: the page's answers to Try it (host_narrator_trial).</summary>
         public static Action<string> TrialArrived;
+
+        /// <summary>The last Build's Voices window, unshown: for rendering its layout to check it.</summary>
+        internal static Func<Window> VoicesWindowForTest;
 
         private sealed class VoiceItem
         {
@@ -107,13 +111,44 @@ namespace TypoZen
             };
             try { win.Owner = owner; } catch { }
 
-            // ---- building blocks
+            // ---- building blocks. Spacing is on one grid: 4 within a group, 8 between controls,
+            // 16 between sections and at the edges.
             Func<string, TextBlock> heading = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, FontSize = 13.5, Margin = new Thickness(0, 16, 0, 4) };
-            Func<string, TextBlock> note = t => new TextBlock { Text = t, TextWrapping = TextWrapping.Wrap, Opacity = 0.72, Margin = new Thickness(0, 0, 0, 6) };
-            Func<string, Button> button = t => new Button { Content = t, Padding = new Thickness(10, 2, 10, 2), Height = 26, Margin = new Thickness(0, 0, 6, 0) };
+            Func<string, TextBlock> note = t => new TextBlock { Text = t, TextWrapping = TextWrapping.Wrap, Opacity = 0.72, Margin = new Thickness(0, 0, 0, 8) };
+            Func<string, Button> button = t => new Button { Content = t, Padding = new Thickness(12, 2, 12, 2), Height = 28, Margin = new Thickness(0, 0, 8, 0) };
+            // The action a section exists for -- Save, Play -- in the accent colour, so the eye
+            // finds it first. A template of its own: the system one repaints the background pale
+            // on hover, which would leave white text unreadable.
+            var accent = new SolidColorBrush(Color.FromRgb(0x2F, 0x6B, 0xD6));
+            Func<string, Button> primary = t =>
+            {
+                var b = button(t);
+                b.Foreground = Brushes.White;
+                b.FontWeight = FontWeights.SemiBold;
+                var tpl = new ControlTemplate(typeof(Button));
+                var bd = new FrameworkElementFactory(typeof(Border), "bd");
+                bd.SetValue(Border.BackgroundProperty, accent);
+                bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+                bd.SetValue(Border.PaddingProperty, new Thickness(12, 2, 12, 2));
+                var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+                cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+                cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+                bd.AppendChild(cp);
+                tpl.VisualTree = bd;
+                var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+                hover.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0x43, 0x7E, 0xE6)), "bd"));
+                var down = new Trigger { Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true };
+                down.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0x24, 0x57, 0xB3)), "bd"));
+                var off = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+                off.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45, "bd"));
+                tpl.Triggers.Add(hover); tpl.Triggers.Add(down); tpl.Triggers.Add(off);
+                b.Template = tpl;
+                b.Cursor = Cursors.Hand;
+                return b;
+            };
             Func<UIElement[], StackPanel> row = items =>
             {
-                var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
+                var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 4) };
                 foreach (var i in items) p.Children.Add(i);
                 return p;
             };
@@ -121,7 +156,7 @@ namespace TypoZen
             // the page under it matches TypoZen's theme.
             Func<UIElement, Border> page = content =>
             {
-                var b = new Border { Child = content, Padding = new Thickness(18, 4, 18, 12), Background = win.Background };
+                var b = new Border { Child = content, Padding = new Thickness(16, 4, 16, 16), Background = win.Background };
                 if (win.Foreground != null) b.SetValue(TextElement.ForegroundProperty, win.Foreground);
                 return b;
             };
@@ -135,15 +170,21 @@ namespace TypoZen
             Func<string, CheckBox> check = t => { var c = new CheckBox { Content = t, Margin = new Thickness(0, 2, 0, 2) }; if (win.Foreground != null) c.Foreground = win.Foreground; return c; };
 
             // ================================================================ Reading
-            var left = new StackPanel { Margin = new Thickness(0, 0, 18, 0) };
+            var left = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
 
             left.Children.Add(heading("Voice"));
-            var voiceBox = new ComboBox { MinWidth = 300 };
+            var voiceBox = new ComboBox { MinWidth = 220 };
             var playVoice = button("▶ Sample");
             playVoice.ToolTip = "The recording made when this voice was designed";
-            var voiceRow = new DockPanel { Margin = new Thickness(0, 3, 0, 3) };
+            // The library acts at once, so it has a window of its own with Close, not Save/Cancel.
+            var manageVoices = button("Manage voices...");
+            manageVoices.ToolTip = "Design, import, export or delete voices";
+            var voiceRow = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+            DockPanel.SetDock(manageVoices, Dock.Right);
             DockPanel.SetDock(playVoice, Dock.Right);
-            playVoice.Margin = new Thickness(6, 0, 0, 0);
+            playVoice.Margin = new Thickness(8, 0, 0, 0);
+            manageVoices.Margin = new Thickness(8, 0, 0, 0);
+            voiceRow.Children.Add(manageVoices);
             voiceRow.Children.Add(playVoice);
             voiceRow.Children.Add(voiceBox);
             left.Children.Add(voiceRow);
@@ -204,12 +245,12 @@ namespace TypoZen
             var tryTop = new StackPanel();
             DockPanel.SetDock(tryTop, Dock.Top);
             tryTop.Children.Add(heading("Try it"));
-            tryTop.Children.Add(note("Plays this text with the settings on the left, saved or not, prepared exactly as narration prepares it. One paragraph per line. Each rendering is one take of many; New take renders the same settings afresh, so you can tell a setting's effect from one take's luck. Narration uses take 1."));
+            tryTop.Children.Add(note("Plays this text with the settings on the left, saved or not, exactly as narration would. One paragraph per line; Ctrl+Enter plays."));
             var sampleBox = new TextBox { Text = _sample, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             tryTop.Children.Add(sampleBox);
             var useSelection = button("Use text selected in the document");
             useSelection.HorizontalAlignment = HorizontalAlignment.Left;
-            useSelection.Margin = new Thickness(0, 6, 0, 10);
+            useSelection.Margin = new Thickness(0, 8, 0, 8);
             tryTop.Children.Add(useSelection);
 
             // Current and Previous: what each is, and a Play for each. Previous fills itself -- the
@@ -225,12 +266,14 @@ namespace TypoZen
             Func<string, TextBlock> slot = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, Width = 70, VerticalAlignment = VerticalAlignment.Center };
             var aSummary = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 4) };
             var bSummary = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 4), Opacity = 0.72, Text = "Play, change something on the left, and play again: what you heard before appears here." };
-            var playA = button("▶ Play");
+            var playA = primary("▶ Play");
             var playB = button("▶ Play");
             var takeA = button("↻ New take");
             var takeB = button("↻ New take");
-            playA.Margin = playB.Margin = new Thickness(0, 3, 6, 3);
-            takeA.Margin = takeB.Margin = new Thickness(0, 3, 0, 3);
+            takeA.ToolTip = takeB.ToolTip = "The same settings rendered afresh, so a setting's effect can be told from one take's luck. Narration uses take 1.";
+            playA.Margin = playB.Margin = new Thickness(0, 4, 8, 4);
+            takeA.Margin = takeB.Margin = new Thickness(0, 4, 0, 4);
+            playA.MinWidth = playB.MinWidth = 76;
             playB.IsEnabled = takeB.IsEnabled = false;
             Action<UIElement, int, int> put = (el, r, c) => { Grid.SetRow(el, r); Grid.SetColumn(el, c); ab.Children.Add(el); };
             put(slot("Current"), 0, 0); put(aSummary, 0, 1); put(playA, 0, 2); put(takeA, 0, 3);
@@ -246,16 +289,16 @@ namespace TypoZen
             };
             var toldFold = fold("What the narrator was told", toldBox);
             toldFold.IsExpanded = true;
-            toldFold.Margin = new Thickness(0, 10, 0, 0);
+            toldFold.Margin = new Thickness(0, 8, 0, 0);
             tryPanel.Children.Add(tryTop);
             tryPanel.Children.Add(toldFold);
 
             var tryCard = new Border
             {
-                Child = tryPanel, Padding = new Thickness(14, 0, 14, 12), CornerRadius = new CornerRadius(6),
+                Child = tryPanel, Padding = new Thickness(16, 0, 16, 16), CornerRadius = new CornerRadius(6),
                 Background = new SolidColorBrush(Color.FromArgb(0x1C, 0x80, 0x80, 0x80)),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x80, 0x80, 0x80)), BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 12, 0, 0)
+                Margin = new Thickness(0, 16, 0, 0)
             };
 
             var reading = new Grid();
@@ -267,21 +310,22 @@ namespace TypoZen
             reading.Children.Add(leftScroll);
             reading.Children.Add(tryCard);
 
-            // ================================================================ Voices
+            // ================================================================ Voices (own window)
+            // Everything here acts at once -- a deleted voice goes to the Recycle Bin there and
+            // then -- so it lives in a window with Close, not beside Save and Cancel.
             var lib = new StackPanel();
             lib.Children.Add(heading("Your voices"));
-            lib.Children.Add(note("Changes here happen at once; Cancel does not undo them. The voice the narrator uses is chosen on the Reading tab."));
-            var libList = new ListBox { Height = 170, MinWidth = 320 };
+            var libList = new ListBox { Height = 180, MinWidth = 320 };
             var libPlay = button("▶ Play sample");
             var exportVoice = button("Export...");
             var deleteVoice = button("Delete...");
             var importVoice = button("Import...");
-            foreach (var b in new[] { libPlay, exportVoice, deleteVoice, importVoice }) { b.Margin = new Thickness(0, 0, 0, 6); b.HorizontalContentAlignment = HorizontalAlignment.Left; }
-            var libButtons = new StackPanel { Margin = new Thickness(10, 0, 0, 0), Width = 130 };
+            foreach (var b in new[] { libPlay, exportVoice, deleteVoice, importVoice }) { b.Margin = new Thickness(0, 0, 0, 8); b.HorizontalContentAlignment = HorizontalAlignment.Left; }
+            var libButtons = new StackPanel { Margin = new Thickness(8, 0, 0, 0), Width = 132 };
             libButtons.Children.Add(libPlay);
             libButtons.Children.Add(exportVoice);
             libButtons.Children.Add(deleteVoice);
-            libButtons.Children.Add(new Separator { Margin = new Thickness(0, 4, 0, 10), Opacity = 0.4 });
+            libButtons.Children.Add(new Separator { Margin = new Thickness(0, 0, 0, 8), Opacity = 0.4 });
             libButtons.Children.Add(importVoice);
             var libRow = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
             DockPanel.SetDock(libButtons, Dock.Right);
@@ -290,18 +334,20 @@ namespace TypoZen
             lib.Children.Add(libRow);
             var libDesc = note("");
             lib.Children.Add(libDesc);
-            lib.Children.Add(note("Export saves a voice as one .tzvoice file wherever you like; Import brings one back, on this PC or another. A designed voice cannot be made again, so export the ones you keep."));
+            lib.Children.Add(note("Export saves a voice as one .tzvoice file; Import brings one back. A designed voice cannot be made again, so export the ones you keep."));
 
             lib.Children.Add(heading("Design a new voice"));
-            lib.Children.Add(note("Describe who they are: age, accent, texture. Three candidates come back, read by the narrator as each would sound; name and keep the one you want. About a minute and a half, and the graphics card is busy meanwhile."));
+            lib.Children.Add(note("Describe who they are: age, accent, texture. Three candidates come back; name and keep the one you want. About a minute and a half."));
             var descBox = new TextBox { TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             lib.Children.Add(descBox);
-            var design = button("Create 3 candidates");
+            var design = primary("Create 3 candidates");
             design.HorizontalAlignment = HorizontalAlignment.Left;
-            design.Margin = new Thickness(0, 6, 0, 0);
+            design.Margin = new Thickness(0, 8, 0, 0);
             lib.Children.Add(design);
-            var candidates = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+            var candidates = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
             lib.Children.Add(candidates);
+            var libStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.9, VerticalAlignment = VerticalAlignment.Center };
+            var libBusy = new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 8), Visibility = Visibility.Collapsed };
 
             // ================================================================ Cast
             var castRows = new List<Tuple<string, string, ComboBox>>();     // key, name, choice
@@ -312,34 +358,37 @@ namespace TypoZen
             {
                 castPage = new StackPanel();
                 castPage.Children.Add(heading("Cast for this book"));
-                castPage.Children.Add(note("Give characters voices of their own; their lines are then spoken in that voice and the narrator reads the rest. Characters left on the narrator's voice stay with the narrator. Who speaks is read from the text (\"said Ferbin\"), so an untagged or ambiguous line stays with the narrator."));
+                castPage.Children.Add(note("Give characters voices of their own: their lines are spoken in that voice, and the narrator reads the rest. Who speaks is read from the text (\"said Ferbin\"); an untagged or ambiguous line stays with the narrator."));
                 castPage.Children.Add(note("A character's line is told only: \"Speak this line of dialogue as the character would say it, naturally and in character.\""));
                 if (QwenNarrator.PrivateMode)
                     castPage.Children.Add(note("Privacy Mode is on: this book's cast is kept until TypoZen closes and is not saved to disk."));
                 findCast = button("Find characters");
                 findCast.HorizontalAlignment = HorizontalAlignment.Left;
-                findCast.Margin = new Thickness(0, 4, 0, 8);
+                findCast.Margin = new Thickness(0, 0, 0, 8);
                 castPage.Children.Add(findCast);
                 castPage.Children.Add(castPanel);
             }
 
             // ================================================================ window
-            var tabs = new TabControl { Margin = new Thickness(12, 12, 12, 0), Background = win.Background, BorderThickness = new Thickness(0) };
-            Func<string, UIElement, TabItem> tab = (title, content) => new TabItem { Header = new TextBlock { Text = title, FontSize = 13 }, Content = page(content), Padding = new Thickness(16, 5, 16, 5) };
+            var tabs = new TabControl { Margin = new Thickness(16, 16, 16, 0), Background = win.Background, BorderThickness = new Thickness(0) };
+            Func<string, UIElement, TabItem> tab = (title, content) => new TabItem { Header = new TextBlock { Text = title, FontSize = 13 }, Content = page(content), Padding = new Thickness(16, 4, 16, 4) };
             tabs.Items.Add(tab("Reading", reading));
-            tabs.Items.Add(tab("Voices", scrolling(lib)));
             if (castPage != null) tabs.Items.Add(tab("Cast for this book", scrolling(castPage)));
 
             var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.9, VerticalAlignment = VerticalAlignment.Center };
-            var busyBar = new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 6), Visibility = Visibility.Collapsed };
-            var save = new Button { Content = "Save", Width = 90, Height = 28, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var cancel = new Button { Content = "Cancel", Width = 90, Height = 28, IsCancel = true };
-            var buttons = row(new UIElement[] { save, cancel });
+            var busyBar = new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 8), Visibility = Visibility.Collapsed };
+            var save = primary("Save");
+            save.Width = 92; save.IsDefault = true;
+            var cancel = button("Cancel");
+            cancel.Width = 92; cancel.IsCancel = true; cancel.Margin = new Thickness(0);
+            // Try it plays unsaved settings, so it is easy to forget to save them.
+            var unsaved = new TextBlock { Text = "Unsaved changes", Opacity = 0.8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0), Visibility = Visibility.Hidden };
+            var buttons = row(new UIElement[] { unsaved, save, cancel });
             var footerRow = new DockPanel();
             DockPanel.SetDock(buttons, Dock.Right);
             footerRow.Children.Add(buttons);
             footerRow.Children.Add(status);
-            var footer = new StackPanel { Margin = new Thickness(18, 8, 18, 14) };
+            var footer = new StackPanel { Margin = new Thickness(16, 8, 16, 16) };
             footer.Children.Add(busyBar);
             footer.Children.Add(footerRow);
             var outer = new DockPanel();
@@ -353,6 +402,10 @@ namespace TypoZen
             string busyWhat = null;
             DateTime busySince = DateTime.Now;
             double busyExpect = 0;
+            // Where progress and messages show: this window's footer, or the Voices window's
+            // while that is open.
+            TextBlock statusNow = status;
+            ProgressBar busyNow = busyBar;
             var clock = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             Action showClock = () =>
             {
@@ -361,12 +414,12 @@ namespace TypoZen
                 string c = busyExpect <= 0 ? s + "s"
                          : s <= busyExpect ? s + "s of about " + busyExpect + "s"
                          : s + "s, longer than the usual " + busyExpect + "s";
-                status.Text = busyWhat + " " + c;
+                statusNow.Text = busyWhat + " " + c;
             };
             clock.Tick += (s, e) => showClock();
             // A message from inside a job replaces the running one and stops its clock: the
             // narrator's start-up reports its own seconds.
-            Action<string> say = m => win.Dispatcher.BeginInvoke((Action)(() => { busyWhat = null; status.Text = m ?? ""; }));
+            Action<string> say = m => win.Dispatcher.BeginInvoke((Action)(() => { busyWhat = null; statusNow.Text = m ?? ""; }));
 
             Action<string> play = path =>
             {
@@ -462,7 +515,9 @@ namespace TypoZen
                 foreach (var b in busyButtons) b.IsEnabled = false;
                 playB.IsEnabled = takeB.IsEnabled = false;
                 busyWhat = what; busySince = DateTime.Now; busyExpect = expect;
-                busyBar.Visibility = Visibility.Visible;
+                var bar = busyNow;
+                var line = statusNow;
+                bar.Visibility = Visibility.Visible;
                 showClock();
                 clock.Start();
                 Task.Run(() =>
@@ -474,8 +529,8 @@ namespace TypoZen
                         win.Dispatcher.BeginInvoke((Action)(() =>
                         {
                             clock.Stop();
-                            busyBar.Visibility = Visibility.Collapsed;
-                            if (busyWhat != null) { busyWhat = null; status.Text = ""; }
+                            bar.Visibility = Visibility.Collapsed;
+                            if (busyWhat != null) { busyWhat = null; line.Text = ""; }
                             foreach (var b in busyButtons) b.IsEnabled = true;
                             playB.IsEnabled = takeB.IsEnabled = kept != null;
                             refreshLibButtons();
@@ -950,7 +1005,7 @@ namespace TypoZen
                 };
             }
 
-            save.Click += (s, e) =>
+            Func<bool> doSave = () =>
             {
                 try
                 {
@@ -968,10 +1023,113 @@ namespace TypoZen
                     }
                     QwenNarrator.SaveCast(cacheDir, book, cast);
                     if (saved != null) saved();
-                    win.DialogResult = true;
+                    return true;
                 }
-                catch (Exception ex) { say("Could not save: " + ex.Message); }
+                catch (Exception ex) { say("Could not save: " + ex.Message); return false; }
             };
+            save.Click += (s, e) => { if (doSave()) win.DialogResult = true; };
+
+            // Unsaved changes: the settings on screen against what is saved, cast included.
+            Func<bool> dirty = () =>
+            {
+                var v = voiceBox.SelectedItem as VoiceItem;
+                string cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue;
+                if ((v != null && v.Id != settings.Voice) || instructionBox.Text.Trim() != (settings.Instruction ?? "").Trim()
+                    || cue != (settings.Cue ?? "").Trim() || (directBox.IsChecked == true) != settings.Direct) return true;
+                foreach (var r in castRows)
+                {
+                    var sel = r.Item3.SelectedItem as VoiceItem;
+                    string now = sel != null ? sel.Id : "", was;
+                    if (!cast.Voices.TryGetValue(r.Item1, out was)) was = "";
+                    if (now != was) return true;
+                }
+                return false;
+            };
+            var dirtyTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            dirtyTimer.Tick += (s, e) => unsaved.Visibility = dirty() ? Visibility.Visible : Visibility.Hidden;
+            dirtyTimer.Start();
+            // Closing with the window's X while changes are unsaved asks; Cancel means discard.
+            win.Closing += (s, e) =>
+            {
+                if (win.DialogResult != null || !dirty()) return;
+                var answer = MessageBox.Show(win, "Save the changes to the narrator settings?", "Narrator",
+                                             MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                if (answer == MessageBoxResult.Cancel) e.Cancel = true;
+                else if (answer == MessageBoxResult.Yes && !doSave()) e.Cancel = true;
+            };
+
+            sampleBox.PreviewKeyDown += (s, e) =>
+            {
+                if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+                {
+                    e.Handled = true;
+                    if (playA.IsEnabled) playCurrent();
+                }
+            };
+
+            // ---- the Voices window: the library, which acts at once, with Close and nothing else
+            // Unkept candidates from "Create 3 candidates" are files on disk until the next
+            // design; they go when the library closes, so nothing half-chosen is left behind.
+            Action clearCandidates = () =>
+            {
+                try
+                {
+                    string dir = System.IO.Path.Combine(QwenNarrator.RootDir(cacheDir), "voices", "_candidates");
+                    if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true);
+                }
+                catch { }
+            };
+            Func<Window> makeVoicesWindow = () =>
+            {
+                var vw = new Window
+                {
+                    Title = "Voices", Width = 640, Height = 640, MinWidth = 520, MinHeight = 460,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.CanResizeWithGrip,
+                    ShowInTaskbar = false, Background = win.Background, Foreground = win.Foreground
+                };
+                try { vw.Owner = win; } catch { }
+                var close = button("Close");
+                close.Width = 92; close.IsCancel = true; close.Margin = new Thickness(0);
+                close.Click += (s2, e2) => vw.Close();
+                var vFooterRow = new DockPanel();
+                DockPanel.SetDock(close, Dock.Right);
+                vFooterRow.Children.Add(close);
+                vFooterRow.Children.Add(libStatus);
+                var vFooter = new StackPanel { Margin = new Thickness(16, 8, 16, 16) };
+                vFooter.Children.Add(libBusy);
+                vFooter.Children.Add(vFooterRow);
+                if (win.Foreground != null) vFooter.SetValue(TextElement.ForegroundProperty, win.Foreground);
+                var vOuter = new DockPanel { Background = win.Background };
+                DockPanel.SetDock(vFooter, Dock.Bottom);
+                vOuter.Children.Add(vFooter);
+                var libScroll = scrolling(lib);
+                vOuter.Children.Add(page(libScroll));
+                vw.Content = vOuter;
+                statusNow = libStatus; busyNow = libBusy;
+                libStatus.Text = "Changes here take effect at once.";
+                // A design still running would write its candidates after they were cleared.
+                vw.Closing += (s2, e2) =>
+                {
+                    if (busyWhat != null && libBusy.Visibility == Visibility.Visible)
+                    {
+                        e2.Cancel = true;
+                        libStatus.Text = "Wait for this to finish: " + busyWhat;
+                    }
+                };
+                vw.Closed += (s2, e2) =>
+                {
+                    statusNow = status; busyNow = busyBar;
+                    candidates.Children.Clear();
+                    clearCandidates();
+                    // Detach the library and its status line, so the next opening can show them.
+                    libScroll.Content = null;
+                    vFooterRow.Children.Remove(libStatus);
+                    vFooter.Children.Remove(libBusy);
+                };
+                return vw;
+            };
+            VoicesWindowForTest = makeVoicesWindow;
+            manageVoices.Click += (s, e) => makeVoicesWindow().ShowDialog();
 
             // Saved cast rows show at once, before any scan.
             foreach (var kv in cast.Voices)
@@ -1013,6 +1171,8 @@ namespace TypoZen
 
             win.Closed += (s, e) =>
             {
+                dirtyTimer.Stop();
+                clearCandidates();
                 CastScanArrived = null;
                 TrialArrived = null;
                 _sample = sampleBox.Text;
