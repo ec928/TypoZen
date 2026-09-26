@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.6.24";
+        internal const string AppVersion = "0.7.0";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -14623,7 +14623,7 @@ namespace TypoZen
         //
         // The page fetches the file from https://localpdf/<token>/<name>, answered by
         // ServePdfRequest straight from disk: no copy, and no virtual host to re-map (a host
-        // mapped after navigation never reaches the page -- TypoZen CLAUDE.md). The token
+        // mapped after navigation never reaches the page; see MapLoadHosts). The token
         // keeps the file's path out of the URL. Reading position is the page number, kept
         // in the same recency-ordered store as books.
 
