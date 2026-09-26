@@ -18,7 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { launchApp } from './app-harness.mjs';
+import { launchApp, profileDir } from './app-harness.mjs';
 import { settledApp, sleep } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -162,17 +162,30 @@ try {
         // could never fail. Control-checked by building with the gate disabled: About is
         // the one that flips (none -> flex), so About is the one worth asserting. A green
         // line that cannot go red is worse than no line.
+        // Since 0.5.8 (audit 0.3) Help works on every tab: over a native tab the editor page
+        // is brought in front for as long as the panel is open (ShowHelpPanel), then hidden
+        // again. So About must open AND be seen -- the page it opens in must be the visible
+        // one -- which is the opposite of the old bug, About opening on a surface you could
+        // not see.
         ui('invoke', 'Help>About TypoZen');
         await sleep(800);
         const chrome = await app.eval(() => ({
             about: document.getElementById('aboutModal')
-                ? getComputedStyle(document.getElementById('aboutModal')).display : 'none'
+                ? getComputedStyle(document.getElementById('aboutModal')).display : 'none',
+            seen: document.visibilityState
         }));
-        info('hidden editor: about ' + chrome.about);
+        info('About over the native tab: ' + chrome.about + ', page ' + chrome.seen);
+        // Closed as a reader closes it, so the page reports overlay_closed and the native
+        // surface comes back -- and nothing of About is left for the status read below.
+        await app.eval(() => { const b = document.getElementById('aboutClose'); if (b) b.click(); });
+        await sleep(600);
+        const aboutAfter = await app.eval(() => document.getElementById('aboutModal')
+            ? getComputedStyle(document.getElementById('aboutModal')).display : 'none');
 
         // And the menus have to LOOK dead, not merely be dead. Blocking the command stops
         // the damage; a menu that still opens and responds to nothing is the other half of
-        // the complaint. Edit and Help are page-routed end to end, so both go grey whole.
+        // the complaint. Edit is page-routed end to end, so it goes grey whole; Help works
+        // here (above), so it stays live.
         const ctl = ui('controls');
         const byName = (n) => (ctl.controls || []).find(c => c.name === n || c.id === n);
         const edit = byName('Edit'), help = byName('Help'), view = byName('View');
@@ -181,8 +194,8 @@ try {
             + ' View=' + (view ? view.enabled : '?'));
         assert(edit && edit.enabled === false,
             nat.file + ': the Edit menu is greyed, not silently inert');
-        assert(help && help.enabled === false,
-            nat.file + ': the Help menu is greyed, not silently inert');
+        assert(help && help.enabled === true,
+            nat.file + ': the Help menu works here, over the tab');
         // View keeps zoom, fullscreen and the rest, which still mean something here.
         assert(view && view.enabled === true,
             nat.file + ': View stays available -- zoom and fullscreen still apply');
@@ -221,8 +234,9 @@ try {
         assert(wrongOn.length === 0,
             nat.file + ': the host-owned View items still work'
             + (wrongOn.length ? ' (wrongly greyed: ' + wrongOn.join(', ') + ')' : ''));
-        assert(chrome.about === 'none',
-            nat.file + ': About does not open behind the native surface');
+        assert(chrome.about !== 'none' && chrome.seen === 'visible',
+            nat.file + ': About opens in front of the native surface, not behind it');
+        assert(aboutAfter === 'none', nat.file + ': and closes when asked');
 
         // Ctrl+B must not format the markdown sitting behind this tab.
         //
@@ -323,6 +337,17 @@ try {
         info('counts: ' + JSON.stringify(wordCell));
         assert(wordCell.length > 0, 'the word count is back');
     }
+    // A fault the app caught and survived still turns autosave off ("off after an error" in
+    // the status bar), so it is a failure here, printed with its cause. One was seen on
+    // 2026-09-26 and could not be reproduced by opening the fixtures alone.
+    let faultLines = [];
+    try {
+        faultLines = fs.readFileSync(path.join(profileDir, 'debug.log'), 'utf8').split(/\r?\n/)
+            .filter(l => /FAULT/.test(l));
+    } catch (e) { }
+    for (const l of faultLines.slice(0, 3)) info(l.slice(0, 600));
+    assert(faultLines.length === 0, 'no fault was caught along the way' +
+        (faultLines.length ? ' (' + faultLines.length + ')' : ''));
 } finally {
     await app.close();
 }

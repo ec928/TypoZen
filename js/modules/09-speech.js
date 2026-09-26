@@ -574,12 +574,16 @@ function narrLog(msg) {
     // Privacy Mode: nothing reaches narration.log -- kept in memory only, gone with the page.
     if (_narrPrivate) return;
     _narrTraceOut.push(msg);
-    if (_narrTraceTimer) return;
+    if (_narrTraceOut.length > 200) _narrTraceOut.shift();
+    // Held until narration has actually reached the narrator. Posting to its port at start-up
+    // -- the settings line -- was a request with nothing installed, which TypoZen promises
+    // never to make (extensions-app, "nothing left the machine").
+    if (_narrTraceTimer || !_narrationBase) return;
     _narrTraceTimer = setTimeout(() => {
         _narrTraceTimer = null;
         const lines = _narrTraceOut;
         _narrTraceOut = [];
-        const base = _narrationBase || 'http://127.0.0.1:8765';
+        const base = _narrationBase;
         try {
             fetch(base + '/log', {
                 method: 'POST',

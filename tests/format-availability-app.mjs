@@ -56,7 +56,7 @@ function formatState() {
     return { seen, missing, total: all.length };
 }
 
-const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 7000 });
+const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 7000, visible: true });
 try {
     // --- Control: on an editable Markdown document every one of them is live.
     console.log('\n=== Markdown, Preview ===');
@@ -112,7 +112,7 @@ try {
 // --- A book, which is read-only whatever the mode says. Separate launch: opening one
 //     over a Markdown tab is a different code path and this is about the resting state.
 console.log('\n=== an epub ===');
-const book = await launchApp({ file: 'tests/Matter - Iain M. Banks.epub', settleMs: 12000 });
+const book = await launchApp({ file: 'tests/Matter - Iain M. Banks.epub', settleMs: 12000, visible: true });
 try {
     const kind = await book.eval(() =>
         (typeof DocumentModel !== 'undefined') ? DocumentModel.kind : '?');
