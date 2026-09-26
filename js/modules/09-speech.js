@@ -492,8 +492,8 @@ let _narrInstruction = null;    // null: not sent, and the narrator uses its sta
 let _narrCue = '';
 let _narrSpeed = 1;
 let _narrCast = {};
-// Emotion cues from speech tags, sent as each piece's direction. Off unless the reader turns
-// them on (Narrator settings, Emotion).
+// Emotion cues from speech tags, sent as each piece's direction. The host's settings decide
+// (Narrator settings, Emotion cues; on unless the reader turns them off).
 let _narrDirect = false;
 // Privacy Mode: new audio goes to this session's private folder, served by localnarrationp.
 let _narrPrivate = false;

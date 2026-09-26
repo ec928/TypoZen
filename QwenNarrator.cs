@@ -87,33 +87,38 @@ namespace TypoZen
         // improvement until an A/B test showed the opposite (2026-09-26).
 
         /// <summary>What the narrator read by before instructions were editable; kept word for word
-        /// so audio already rendered from them is still found in the cache.</summary>
-        public const string StandardBase = "Narrate as an accomplished audiobook reader of literary fiction: measured and unhurried, phrasing that follows the sense of the sentence, understated rather than performed.";
-        public const string LightDialogue = " Give the spoken lines a light, distinct colour without acting them out.";
+        /// so a reader's older settings migrate to exactly what they had, and its audio is still
+        /// found in the cache. Not offered as a preset any more (below).</summary>
+        private const string LegacyBase = "Narrate as an accomplished audiobook reader of literary fiction: measured and unhurried, phrasing that follows the sense of the sentence, understated rather than performed.";
+        private const string LegacyDialogue = " Give the spoken lines a light, distinct colour without acting them out.";
         private const string StylePrefix = "Narrate as an audiobook reader of literary fiction. ";
         /// <summary>How an emotion cue is worded when it is added; {cue} is the cue ("whispered, hushed").</summary>
         public const string DefaultCue = "Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured.";
 
-        /// <summary>The starting points offered in Narrator Settings, in order. Not editable in place; save a copy as your own.</summary>
+        /// <summary>
+        /// The starting points offered in Narrator Settings, in order. Not editable in place; save a
+        /// copy as your own. None of them tells the narrator to hold back on dialogue: "understated
+        /// rather than performed" and "without acting them out" fought the emotion cues -- with
+        /// them, "she snapped" was read flatter than with no instruction at all (2026-09-26).
+        /// </summary>
         public static readonly KeyValuePair<string, string>[] BuiltInPresets =
         {
-            new KeyValuePair<string, string>("Standard", StandardBase + LightDialogue),
-            new KeyValuePair<string, string>("Warm", StylePrefix + "Warm and close, as if reading to one listener, unhurried, with a gentle smile in the voice where the text allows." + LightDialogue),
-            new KeyValuePair<string, string>("Brisk", StylePrefix + "Brisk and clear, keeping the story moving, crisp at the ends of sentences, never rushed." + LightDialogue),
-            new KeyValuePair<string, string>("Dramatic", StylePrefix + "Vivid and engaged, giving tension and emotion their full weight, with bold contrasts between quiet and intense moments." + LightDialogue),
-            new KeyValuePair<string, string>("None (the model unguided)", "")
+            new KeyValuePair<string, string>("None (the model unguided)", ""),
+            new KeyValuePair<string, string>("Standard", "Narrate as an accomplished audiobook reader of literary fiction: measured and unhurried, phrasing that follows the sense of the sentence."),
+            new KeyValuePair<string, string>("Warm", StylePrefix + "Warm and close, as if reading to one listener, unhurried, with a gentle smile in the voice where the text allows."),
+            new KeyValuePair<string, string>("Brisk", StylePrefix + "Brisk and clear, keeping the story moving, crisp at the ends of sentences, never rushed."),
+            new KeyValuePair<string, string>("Dramatic", StylePrefix + "Vivid and engaged, giving tension and emotion their full weight, with bold contrasts between quiet and intense moments.")
         };
 
         public sealed class Settings
         {
             public string Voice = "";
-            public string Instruction = StandardBase + LightDialogue;
+            // No instruction and emotion cues on, for a reader who has set nothing: by ear on
+            // 2026-09-26 the cues came through best with nothing else said, and a standing
+            // instruction only competed with them. A reader's saved choice always wins.
+            public string Instruction = "";
             public string Cue = DefaultCue;
-            // Emotion cues from speech tags ("he whispered" -> whispered, hushed). Off by default.
-            // A scripted A/B on ten Dune paragraphs (2026-09-26) sounded worse with cues, but Try
-            // it did not bear that out -- both ways read well there -- and rendering the same
-            // paragraphs batched or alone did not explain the difference. The reader decides by ear.
-            public bool Direct = false;
+            public bool Direct = true;
         }
 
         public sealed class Cast
@@ -157,18 +162,15 @@ namespace TypoZen
         {
             var d = ReadJson(SettingsPath(cacheDir));
             object v, s, c, i, q;
-            var r = new Settings
-            {
-                Voice = d.TryGetValue("voice", out v) ? (v as string ?? "") : "",
-                Direct = d.TryGetValue("direct", out c) && c is bool && (bool)c
-            };
+            var r = new Settings { Voice = d.TryGetValue("voice", out v) ? (v as string ?? "") : "" };
+            if (d.TryGetValue("direct", out c) && c is bool) r.Direct = (bool)c;
             if (d.TryGetValue("instruction", out i) && i is string) r.Instruction = (string)i;
-            else
+            else if (d.TryGetValue("style", out s))
             {
                 // Saved before instructions were editable: the same words the narrator built from
-                // the style, now in the open.
-                string style = d.TryGetValue("style", out s) ? ((s as string) ?? "").Trim() : "";
-                r.Instruction = (style.Length > 0 ? StylePrefix + style : StandardBase) + LightDialogue;
+                // the style, now in the open. Cues were always on then, so they stay on.
+                string style = ((s as string) ?? "").Trim();
+                r.Instruction = (style.Length > 0 ? StylePrefix + style : LegacyBase) + LegacyDialogue;
             }
             if (d.TryGetValue("cue", out q) && q is string && ((string)q).Trim().Length > 0) r.Cue = (string)q;
             return r;
