@@ -12,7 +12,7 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 | 2b — save as images | **Done, in testing with Ed.** See below. Right-click Save Image As not built. | 0.6.3 |
 | 3 — OCR | **Done, in testing with Ed.** See below. | 0.6.4 |
 | 4 — annotate, forms | **Done, in testing with Ed.** See below. Signatures and page operations not built. | 0.6.5 |
-| Audit 1.3 — Source colouring | Waiting on Ed: CodeMirror 6 or the mirror approach. | — |
+| Audit 1.3 — Source colouring | **Not now** (Ed, 2026-09-26). Options costed: colour the existing mirror (about a day; colour only, no sizes) or CodeMirror 6 (1-2 weeks: ~280 places treat Source as a textarea). | — |
 
 **Outstanding, to come back to (not PDF-specific):**
 
