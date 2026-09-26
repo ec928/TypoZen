@@ -14,6 +14,26 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 | 4 — annotate, forms | **Done, in testing with Ed.** See below. Signatures and page operations not built. | 0.6.5 |
 | Audit 1.3 — Source colouring | **Not now** (Ed, 2026-09-26). Options costed: colour the existing mirror (about a day; colour only, no sizes) or CodeMirror 6 (1-2 weeks: ~280 places treat Source as a textarea). | — |
 
+**Possible later -- not scheduled, Ed decides (costed 2026-09-26):**
+
+- **Duplicate Tab** (1-2 days). A second tab on the same document, each tab keeping its own
+  position. TypoZen shows one tab at a time, so the tabs share one copy of the text and a tab
+  takes up the latest text when switched to; Save from either saves the one document, and
+  only the last tab of a file asks about unsaved changes. The work is the places that assume
+  one tab per file (open, Save As, the disk-change watcher, reading positions). PDFs with
+  unsaved annotations excluded, at least at first.
+- **Two windows, one TypoZen** (File > New Window; 1-3 days, unsurveyed -- about an hour of
+  reading the window state first would firm it up). One process, so every state file and the
+  narrator keep one owner -- two separate processes would silently lose each other's writes.
+  With Duplicate Tab, each window can show the same document at its own page: synced when
+  you switch windows (about half a day more), or live as you type (several days more).
+- **Source-mode colouring** (audit 1.3). Colour the existing mirror behind the textarea
+  (about a day; colour only, no sizes or weights, painted for the visible part only, theme
+  colours), or replace the textarea with CodeMirror 6 (1-2 weeks: about 280 places in the
+  modules and the host treat Source as a textarea -- find, formatting and its undo, list
+  indent, the selection popup, scroll sync, dirty tracking -- and 11 test files drive it).
+  "Not now" (Ed, 2026-09-26).
+
 **Outstanding, to come back to (not PDF-specific):**
 
 - ~~**Look up's speaker uses a different voice from the narrator**~~ (Ed, 2026-09-25). **Done in 0.6.6, then changed in 0.6.8 (Ed):** 0.6.6 had the narrator say the word, which took about 25 seconds when the narrator had to start -- Qwen is for long-form reading only. Now, with the Qwen narrator chosen, the word is said by the quick voice on this computer closest to the narrator: same country and gender, read from the voice's description (`PickWordVoice` in TypoZen_App.cs; local voices only, neural preferred, a Windows voice over Kokoro on a tie). For the built-in narrator that is Microsoft Sonia. Other voices say words in themselves, as before.
