@@ -4,6 +4,8 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 
 ## Progress
 
+**Released as v0.7.0 on 2026-09-26** (Phases 0-4 and 2b, with the narrator work of 0.6.6-0.6.24).
+
 | Phase | State | Version |
 |---|---|---|
 | 0 — audit fixes | **Done.** 0.1 bookmarks/positions kept (LRU, 5000), 0.2 drop to open, 0.3 Help over every tab, 0.4 autosave-off indicator, and 1.4 image paste into untitled. Git tag `baseline-before-pdf` marks the state before Phase 1. | 0.5.8 |
