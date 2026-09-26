@@ -452,25 +452,25 @@
                                  is hidden while there is only one to choose from. -->
                             <MenuItem x:Name="mDictionaryMenu" Header="_Dictionary" Visibility="Collapsed"/>
                             <MenuItem x:Name="mReadAloudMenu" Header="_Read Aloud">
-                                <!-- Hidden until the Kokoro extension is installed: see
-                                     RefreshExtensionState. The Windows voices below it are
-                                     always there, so this node hides, not the menu. -->
+                                <!-- Two groups: the voices to pick from, best first, then the
+                                     windows that change settings. The two optional engines hide
+                                     until installed (RefreshExtensionState); the Windows voices and
+                                     the sampler are always there, so no separator is ever left
+                                     dangling. -->
+                                <!-- A voice like the others, so Read Aloud, Read and Read from here
+                                     all use it. Filled in code with the saved narrator voices
+                                     (QwenNarrator.SavedVoices); the one reading is ticked and named in
+                                     the header. Hidden unless the narration environment is installed. -->
+                                <MenuItem x:Name="mQwenVoice" Header="_Qwen Narrator" Visibility="Collapsed"
+                                          ToolTip="Audiobook narration rendered on this PC's graphics card. Text not yet rendered takes about a minute to start; anything rendered before plays at once."/>
                                 <!-- Filled in code from ExtensionCatalog.Voices, which is also what the
                                      installer downloads, so the menu cannot offer fewer voices than
                                      are on disk. Hidden until the extension is installed. -->
                                 <MenuItem x:Name="mKokoroMenu" Header="_Kokoro Voices" Visibility="Collapsed"/>
-                                <!-- A voice like the others, so Read Aloud, Read and Read from here
-                                     all use it. Hidden unless the narration environment is
-                                     installed, like the Kokoro voices above. -->
-                                <!-- Filled in code with the saved narrator voices (QwenNarrator.SavedVoices);
-                                     the one reading is ticked and named in the header. -->
-                                <MenuItem x:Name="mQwenVoice" Header="_Qwen Narrator" Visibility="Collapsed"
-                                          ToolTip="Audiobook narration rendered on this PC's graphics card. Text not yet rendered takes about a minute to start; anything rendered before plays at once."/>
-                                <MenuItem x:Name="mNarratorSettings" Header="Narrator _Settings..." Visibility="Collapsed"
-                                          ToolTip="The Qwen narrator's voice and how it reads, new voices from a description, and voices for this book's characters."/>
-                                <Separator/>
                                 <MenuItem x:Name="mWindowsVoices" Header="Windows _Installed Voices"/>
                                 <Separator/>
+                                <MenuItem x:Name="mNarratorSettings" Header="Narrator _Settings..." Visibility="Collapsed"
+                                          ToolTip="The Qwen narrator's voice and how it reads, new voices from a description, and voices for this book's characters."/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
                             </MenuItem>
                             <!-- Access key t, not x: Exit already has x in this menu, and a
