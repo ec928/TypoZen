@@ -269,6 +269,15 @@ function speakSelection() {
  */
 function startReading(text) {
     if (!text) return;
+    // In the voice chosen, whichever it is: with the Qwen narrator chosen the word went to
+    // a Windows voice, so a British narrator was followed by an American word (Ed,
+    // 2026-09-25). The narrator caches each piece, so a word heard before is instant.
+    if (isQwenVoice(_kokoroVoice)) {
+        _qwenPending = { text: text, el: null };
+        narrLog('read requested: a single piece, ' + text.length + ' chars');
+        try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
+        return;
+    }
     startReadingChunks([{ text: text }]);
 }
 
@@ -620,7 +629,7 @@ async function renderNarration(base, batch, reading) {
     if (data.cancelled || items.length !== batch.length) return [];
     if (!data.from_cache) learnRenderRate(batch, (performance.now() - sent) / 1000);
     return batch.map((p, i) => {
-        const idx = parseInt(p.el.getAttribute('data-model-index'), 10);
+        const idx = p.el ? parseInt(p.el.getAttribute('data-model-index'), 10) : NaN;
         return {
             idx: isFinite(idx) ? idx : null,
             id: p.id,
@@ -1204,8 +1213,9 @@ window.startQwenNarration = startQwenNarration;
  */
 async function narrateSelection(base, sel) {
     const all = readingBlocks();
-    const i = all.indexOf(sel.el);
-    const at = narrationDocIndex(sel.el, i < 0 ? 0 : i);
+    const i = sel.el ? all.indexOf(sel.el) : -1;
+    // A word from Look up has no paragraph of its own (startReading).
+    const at = sel.el ? narrationDocIndex(sel.el, i < 0 ? 0 : i) : 0;
     const pieces = blockPieces(sel.text)          // as written: see narrationBatches
         .map((t, k) => ({ el: sel.el, at: at, id: at * 100 + 50 + k, text: t, direction: narrationDirection(t, null) }));
     const reading = ++_narrationReading;

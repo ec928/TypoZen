@@ -16,7 +16,7 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 
 **Outstanding, to come back to (not PDF-specific):**
 
-- **Look up's speaker uses a different voice from the narrator** (Ed, 2026-09-25). With a Qwen voice chosen, the dictionary's speaker button reads through `host_tts_play` with `_ttsVoiceId`, which is the last *Windows* voice picked (choosing Qwen leaves it alone, `TypoZen_App.cs` voice dialog OK handler). So a British narrator can be followed by an American word. Workaround today: pick a British Windows voice, then switch back to Qwen. Options: (a) Qwen says the word too (consistent; the first time per word waits seconds on the GPU narrator); (b) show and choose the "words looked up" Windows voice under the Qwen entry in the Read Aloud menu (instant). Recommended: (b). Awaiting Ed's choice.
+- ~~**Look up's speaker uses a different voice from the narrator**~~ (Ed, 2026-09-25). **Done in 0.6.6, Ed's choice:** the speaker says the word in the voice chosen, whichever it is -- with the Qwen narrator chosen, the narrator says it (`startReading` in 09-speech.js). The first word after starting TypoZen waits for the narrator to start, as Read Aloud does; a word heard before comes from its cache.
 
 **Phase 1 as built, against the plan:**
 
