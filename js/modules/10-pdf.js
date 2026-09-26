@@ -200,7 +200,7 @@
             linkService.setViewer(viewer);
             Object.assign(S, { eventBus, linkService, findController, viewer, url });
 
-            eventBus.on('scalechanging', (ev) => { if (seq === S.seq) postZoom(ev && ev.scale); });
+            eventBus.on('scalechanging', (ev) => { if (seq === S.seq) postZoom(ev && ev.scale, ev && ev.presetValue); });
             // PDF.js's editor asks for a change of tool itself (highlighting a selection from
             // reading mode, say); in its own app the app answers, so here the page does.
             // (PDF.js 6 asks with showannotationeditorui; older builds with switchannotationeditormode.)
@@ -396,8 +396,12 @@
         const s = v.currentScale || 1;
         v.currentScale = Math.max(0.25, Math.min(8, how === 'in' ? s * 1.1 : s / 1.1));
     };
-    function postZoom(scale) {
-        try { postMsg('pdf_zoom:' + Math.round((scale || 1) * 100)); } catch (e) { }
+    // With ",fit" while the page is fitted to the window: Reset returns to the fit, which at a
+    // given window size is 99% or 104%, and a bare number there read as a rounding error.
+    function postZoom(scale, preset) {
+        let fit = false;
+        try { const m = preset || (S.viewer && S.viewer.currentScaleValue); fit = m === 'page-width' || m === 'page-fit' || m === 'auto'; } catch (e) { }
+        try { postMsg('pdf_zoom:' + Math.round((scale || 1) * 100) + (fit ? ',fit' : '')); } catch (e) { }
     }
 
     /** Pages mode turns with the wheel and the keys; Scroll mode scrolls natively. */

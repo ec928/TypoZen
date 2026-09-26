@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.6.22";
+        internal const string AppVersion = "0.6.23";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -5870,6 +5870,8 @@ namespace TypoZen
 
         /// <summary>The PDF's own scale as the page last reported it (pdf_zoom:), for the status bar.</summary>
         private int _pdfZoomPct;
+        /// <summary>Whether that scale is the page fitted to the window rather than one set by hand.</summary>
+        private bool _pdfZoomFit;
 
         private void SetZoom(double factor)
         {
@@ -6219,8 +6221,10 @@ namespace TypoZen
                 Dispatcher.BeginInvoke(new Action(UpdateZoomLabel));
                 return;
             }
-            if (ActiveIsPdf() && _pdfZoomPct > 0) pct = _pdfZoomPct;
-            _lblZoom.Text = pct + "%";
+            bool fit = false;
+            if (ActiveIsPdf() && _pdfZoomPct > 0) { pct = _pdfZoomPct; fit = _pdfZoomFit; }
+            // A fitted PDF says so: Reset returns to the fit, whatever percentage that is.
+            _lblZoom.Text = pct + "%" + (fit ? " (fit)" : "");
         }
 
         /// <summary>
@@ -6924,8 +6928,11 @@ namespace TypoZen
             }
             if (msg.StartsWith("pdf_zoom:"))
             {
+                // "<pct>" or "<pct>,fit" while the page is fitted to the window.
+                string[] z = msg.Substring(9).Split(',');
                 int pct;
-                if (int.TryParse(msg.Substring(9), out pct) && pct > 0) _pdfZoomPct = pct;
+                if (int.TryParse(z[0], out pct) && pct > 0) _pdfZoomPct = pct;
+                _pdfZoomFit = z.Length > 1 && z[1] == "fit";
                 UpdateZoomLabel();
                 return;
             }
