@@ -14604,8 +14604,9 @@ namespace TypoZen
                     e.Response = core.Environment.CreateWebResourceResponse(null, 404, "Not Found", "");
                     return;
                 }
-                var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-                                            FileShare.ReadWrite | FileShare.Delete);
+                // Closed once read to the end (CloseAtEndFileStream): WebView2 never disposes
+                // it, and a plain FileStream held the PDF open for the life of the process.
+                var stream = new CloseAtEndFileStream(path);
                 e.Response = core.Environment.CreateWebResourceResponse(stream, 200, "OK",
                     "Content-Type: application/pdf\r\nContent-Length: " + stream.Length +
                     "\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-store");
@@ -16646,6 +16647,75 @@ namespace TypoZen
     }
 
     /// <summary>Theme model shared by the app and the basic theme editor.</summary>
+    /// <summary>
+    /// A file handed to WebView2 as a response body, closed as soon as it has been read to
+    /// the end. WebView2 never disposes the stream it is given, so a plain FileStream kept the
+    /// file open until the process exited: a PDF once opened in TypoZen -- tab closed or not --
+    /// could not be replaced by anything that wants a file to itself, such as Microsoft Print
+    /// to PDF saving over it ("Printing failed", Ed, 2026-09-26). Reading again after the end
+    /// (a seek back) reopens the file.
+    /// </summary>
+    internal sealed class CloseAtEndFileStream : Stream
+    {
+        private readonly string _path;
+        private readonly long _length;
+        private FileStream _file;
+        private long _position;
+
+        public CloseAtEndFileStream(string path)
+        {
+            _path = path;
+            _file = Open();
+            _length = _file.Length;
+        }
+
+        private FileStream Open()
+        {
+            return new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        }
+
+        public override bool CanRead { get { return true; } }
+        public override bool CanSeek { get { return true; } }
+        public override bool CanWrite { get { return false; } }
+        public override long Length { get { return _length; } }
+        public override long Position
+        {
+            get { return _position; }
+            set { Seek(value, SeekOrigin.Begin); }
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (_position >= _length) { CloseFile(); return 0; }
+            if (_file == null) { _file = Open(); _file.Position = _position; }
+            int n = _file.Read(buffer, offset, count);
+            _position += n;
+            if (n == 0 || _position >= _length) CloseFile();
+            return n;
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            long to = origin == SeekOrigin.Begin ? offset : origin == SeekOrigin.Current ? _position + offset : _length + offset;
+            if (to < 0) to = 0;
+            _position = to;
+            if (_file != null) _file.Position = Math.Min(to, _length);
+            return _position;
+        }
+
+        private void CloseFile()
+        {
+            var f = _file;
+            _file = null;
+            if (f != null) { try { f.Dispose(); } catch { } }
+        }
+
+        public override void Flush() { }
+        public override void SetLength(long value) { throw new NotSupportedException(); }
+        public override void Write(byte[] buffer, int offset, int count) { throw new NotSupportedException(); }
+        protected override void Dispose(bool disposing) { CloseFile(); base.Dispose(disposing); }
+    }
+
     /// <summary>
     /// Windows' own folder picker (the Explorer-style dialog), not WinForms'
     /// FolderBrowserDialog, whose tree cannot take a typed or pasted path and has no Quick

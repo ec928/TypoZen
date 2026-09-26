@@ -11,7 +11,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { launchApp, sleep, profileDir } from './app-harness.mjs';
 
@@ -61,6 +61,17 @@ try {
     ok(await waitFor(app, () => document.querySelector('#pdfView .page').getBoundingClientRect().width < window.__tzFitW * 0.8, 2000), 'a narrower view refits the page');
     await app.eval(() => { document.getElementById('pdfView').style.right = ''; });
     ok(await waitFor(app, () => Math.abs(document.querySelector('#pdfView .page').getBoundingClientRect().width - window.__tzFitW) < 3, 2000), 'and widening it fits it back');
+
+    // Once loaded, the file is not held open: a program that wants it to itself can have it
+    // (Microsoft Print to PDF saving over a PDF opened earlier failed, 2026-09-26).
+    const exclusive = (() => {
+        try {
+            return execFileSync('powershell', ['-NoProfile', '-Command',
+                "try { $s = [IO.File]::Open('" + PDF + "', 'Open', 'Read', 'None'); $s.Close(); 'ok' } catch { 'held' }"],
+                { encoding: 'utf8', timeout: 15000 }).trim();
+        } catch (e) { return 'error'; }
+    })();
+    ok(exclusive === 'ok', 'once loaded, the PDF is not held open', exclusive);
 
     // The sidebar: the PDF's own outline, and Find / Search over its text.
     const outline = await waitFor(app, () => { const rows = Array.from(document.querySelectorAll('.outline-item')).map(r => r.innerText.trim()); return rows.includes('Chapter Three') ? rows : null; }, 8000);
