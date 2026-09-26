@@ -1270,9 +1270,11 @@
         }
         /* The paragraph being read aloud, a mark's highlight, and the wash after jumping to
            a mark (10-pdf.js). The text layer's own text stays invisible; only the fill shows. */
+        /* The same reading colour a book's paragraph gets (.block.tts-active below), not the
+           accent: in Catppuccin that read as lavender on a PDF and amber in a book. */
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-tts) {
             color: transparent;
-            background-color: color-mix(in srgb, var(--accent, #f59e0b) 18%, transparent);
+            background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
         }
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-pdf-mark) {
             color: transparent;
