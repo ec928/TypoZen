@@ -92,8 +92,14 @@ namespace TypoZen
         private const string LegacyBase = "Narrate as an accomplished audiobook reader of literary fiction: measured and unhurried, phrasing that follows the sense of the sentence, understated rather than performed.";
         private const string LegacyDialogue = " Give the spoken lines a light, distinct colour without acting them out.";
         private const string StylePrefix = "Narrate as an audiobook reader of literary fiction. ";
-        /// <summary>How an emotion cue is worded when it is added; {cue} is the cue ("whispered, hushed").</summary>
-        public const string DefaultCue = "Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured.";
+        /// <summary>
+        /// How an emotion cue is worded when it is added; {cue} is the cue ("whispered, hushed").
+        /// It aims the cue at the dialogue, since the instruction covers the whole paragraph, and
+        /// says nothing else. The first wording added "clearly but with restraint, and keep the
+        /// narration around them measured" -- never tested, and the same hold-back language that
+        /// was found to flatten the cues when it was in the instruction (2026-09-26).
+        /// </summary>
+        public const string DefaultCue = "Voice the lines in quotation marks as {cue}.";
 
         /// <summary>
         /// The starting points offered in Narrator Settings, in order. Not editable in place; save a

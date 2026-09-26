@@ -441,7 +441,8 @@ class Narrator(object):
                 return whole
             if direction == 'thought':
                 return (whole + THOUGHT_SUFFIX).strip()
-            cue = (cue or '').strip()[:400] or DIRECTED_SUFFIX.strip().replace('%s', '{cue}')
+            # The reader's wording, else TypoZen's default (QwenNarrator.DefaultCue).
+            cue = (cue or '').strip()[:400] or 'Voice the lines in quotation marks as {cue}.'
             return (whole + ' ' + cue.replace('{cue}', direction)).strip()
         base = ('Narrate as an audiobook reader of literary fiction. ' + style) if style else NARRATION_BASE
         if not direction:
