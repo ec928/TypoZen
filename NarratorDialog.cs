@@ -131,13 +131,16 @@ namespace TypoZen
             var previewStyle = button("Preview voice and style");
             presets.Children.Add(previewStyle);
             root.Children.Add(presets);
+            // Its own heading, and a label that says what ticking it does: "Off, ..." under a
+            // box read as the box's label, so it looked like ticking it turned something off.
+            root.Children.Add(heading("Emotion"));
+            root.Children.Add(note("The narrator judges the emotion of each scene from the text itself, which usually sounds most natural."));
             var directBox = new CheckBox
             {
-                Content = "Add emotion cues from speech tags (\"she whispered\", \"he snapped\")",
-                IsChecked = settings.Direct, Margin = new Thickness(0, 8, 0, 0)
+                Content = "Also tell it how tagged lines should sound (\"she whispered\" means whisper)",
+                IsChecked = settings.Direct, Foreground = win.Foreground, Margin = new Thickness(0, 2, 0, 0)
             };
             root.Children.Add(directBox);
-            root.Children.Add(note("Off, the narrator reads the emotion from the scene itself, which usually sounds more natural."));
 
             // ---- designing a voice
             root.Children.Add(heading("New voice"));
