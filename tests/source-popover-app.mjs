@@ -34,6 +34,16 @@ const VISIBLE = `window.isVisible = function (el) {
     if (cs.display === 'none' || cs.visibility === 'hidden') return false;
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
+};
+// Offered: on the bar, or in the "More options" menu with that menu's own button showing.
+// Since 0.3.11 the popup is a CommandBarFlyout -- primary commands on the bar, the rest,
+// Highlight among them, behind More -- so "visible right now" was the wrong question for
+// those, and this suite failed against a working popup for a week.
+window.isOffered = function (el) {
+    if (isVisible(el)) return true;
+    if (!el || el.hidden || !el.closest('#selPopOverflow')) return false;
+    if (el.style.display === 'none') return false;
+    return isVisible(document.getElementById('selPopMore'));
 };`;
 
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 7000, view: true });
@@ -55,7 +65,7 @@ try {
         await sleep(500);
         return {
             shown: !document.getElementById('selPop').hidden,
-            markShows: isVisible(document.getElementById('selPopMark')),
+            markShows: isOffered(document.getElementById('selPopMark')),
             lookupShows: isVisible(document.getElementById('selPopLookup')),
         };
     });
@@ -82,7 +92,7 @@ try {
             mode: state.mode,
             selected: ta.value.slice(ta.selectionStart, ta.selectionEnd),
             shown: !pop.hidden,
-            markShows: isVisible(document.getElementById('selPopMark')),
+            markShows: isOffered(document.getElementById('selPopMark')),
             lookupShows: isVisible(document.getElementById('selPopLookup')),
             findShows: isVisible(document.getElementById('selPopFind')),
             onScreen: (() => { const r = pop.getBoundingClientRect();
@@ -162,7 +172,7 @@ try {
             selected: r.toString(),
             popShown: !document.getElementById('selPop').hidden,
             lookupShows: isVisible(document.getElementById('selPopLookup')),
-            markShows: isVisible(document.getElementById('selPopMark')),
+            markShows: isOffered(document.getElementById('selPopMark')),
         };
     });
     info('selected ' + JSON.stringify(phrase.selected));
