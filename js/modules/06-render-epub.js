@@ -1358,7 +1358,87 @@
             if (m) { s = s.slice(m[0].length); lead = true; }
             if (!s) return lead ? { page: true } : null;
             if (/^[+~]/.test(s)) return null;                   // a sibling of <body>
-            return { sel: '#editor ' + bookKeepOffBlocks(s) };
+            const sels = ['#editor ' + bookKeepOffBlocks(bookHonestPositions(s))];
+            const across = bookAcrossBlocks(s);
+            if (across) sels.push('#editor ' + bookKeepOffBlocks(across));
+            return { sels: sels };
+        }
+
+        /** A selector's compounds and the combinators between them, at the top level. */
+        function bookCompounds(s) {
+            const parts = [];
+            let depth = 0, cur = '', comb = null;
+            for (let i = 0; i < s.length; i++) {
+                const c = s[i];
+                if (c === '(' || c === '[') depth++;
+                else if (c === ')' || c === ']') depth--;
+                if (depth === 0 && (c === ' ' || c === '>' || c === '+' || c === '~')) {
+                    if (cur) { parts.push({ comb: comb, sel: cur }); cur = ''; comb = ' '; }
+                    if (c !== ' ') comb = c;
+                    continue;
+                }
+                cur += c;
+            }
+            if (cur) parts.push({ comb: comb, sel: cur });
+            return parts;
+        }
+
+        const BOOK_POSITIONAL = /:(first-child|last-child|nth-child|nth-last-child|only-child|first-of-type|last-of-type|nth-of-type|nth-last-of-type|only-of-type)\b(\([^)]*\))?/;
+
+        /**
+         * Every top-level element of a book sits alone in its own .block, so it is the first,
+         * last and only child there whatever it was in the book. A publisher's
+         * `p:first-child { text-indent: 0 }` therefore matched every paragraph. Positions are
+         * kept for elements still inside their own parent, and never claimed for a top-level
+         * one (its position is answered by bookAcrossBlocks instead).
+         */
+        function bookHonestPositions(s) {
+            if (!BOOK_POSITIONAL.test(s)) return s;
+            return bookCompounds(s).map(function (p, i) {
+                const sel = BOOK_POSITIONAL.test(p.sel) ? bookBeforePseudoElement(p.sel, ':not(.block > *)') : p.sel;
+                return (i === 0 ? '' : (p.comb === ' ' ? ' ' : ' ' + p.comb + ' ')) + sel;
+            }).join('');
+        }
+
+        /**
+         * The same rule written across blocks, for what the book said about neighbours at the
+         * top level of a chapter, or null. Blindsight's `p + p { text-indent: 1.5em }` and The
+         * Churn's `h2 + p { text-indent: 0 }` compare two top-level paragraphs, which here are
+         * in neighbouring .blocks and never siblings: `.block:has(> h2) + .block > p`. A
+         * leading :first-child / :first-of-type is the first element of a chapter
+         * (data-chapter-start, one per spine document). Only a rule that starts at the pair
+         * is translated: one scoped under an ancestor (`div.poem p + p`) names a container
+         * the block split may have removed, and guessing at it would style the wrong text.
+         */
+        function bookAcrossBlocks(s) {
+            const parts = bookCompounds(s);
+            if (parts.length >= 2 && (parts[1].comb === '+' || parts[1].comb === '~')) {
+                const first = parts[0].sel.replace(BOOK_POSITIONAL, '');
+                if (!first || /::/.test(first)) return null;
+                const rest = parts.slice(1).map(function (p, i) {
+                    return (i === 0 ? '' : (p.comb === ' ' ? ' ' : ' ' + p.comb + ' ')) + p.sel;
+                }).join('');
+                return '.block:has(> ' + first + ') ' + parts[1].comb + ' .block > ' + rest;
+            }
+            const lead = parts.length ? /:(first-child|first-of-type)\b/.exec(parts[0].sel) : null;
+            if (lead && !/\(/.test(parts[0].sel)) {
+                const own = parts[0].sel.replace(lead[0], '') || '*';
+                const rest = parts.slice(1).map(function (p) { return (p.comb === ' ' ? ' ' : ' ' + p.comb + ' ') + p.sel; }).join('');
+                return '.block[data-chapter-start] > ' + own + rest;
+            }
+            return null;
+        }
+
+        function bookSelectorOk(sel) {
+            try { return !window.CSS || !CSS.supports || CSS.supports('selector(' + sel + ')'); }
+            catch (e) { return false; }
+        }
+
+        /** Insert text into a compound before any pseudo-element (::before, :after...). */
+        function bookBeforePseudoElement(compound, text) {
+            const pm = /::?(before|after|first-line|first-letter|marker)\b|::[\w-]+/i.exec(compound);
+            const at = pm ? pm.index : compound.length;
+            return compound.slice(0, at) + text + compound.slice(at);
         }
 
         /** Add :not(.block) to the selector's subject, before any pseudo-element. */
@@ -1387,7 +1467,9 @@
                         const sc = bookScopeSelector(one);
                         if (!sc) return;
                         if (sc.page) pageSels.push('#editor');
-                        else innerSels.push(sc.sel);
+                        // One selector the browser cannot parse invalidates the whole rule,
+                        // the book's own selectors with it, so each is checked on its own.
+                        else sc.sels.forEach(function (x) { if (bookSelectorOk(x)) innerSels.push(x); });
                     });
                     if (pageSels.length) {
                         const d = bookCssDeclarations(r.style, true, divisor, base);
