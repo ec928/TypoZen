@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.4";
+        internal const string AppVersion = "0.9.5";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -11211,6 +11211,13 @@ namespace TypoZen
         {
             content = content ?? "";
             BumpDocGen();
+            // Whatever the page held, it holds this now. ApplyTabToEditor records the tab after
+            // calling here; any other caller must not leave the record naming the previous tab.
+            // Mode -> Source on an HTML page loaded the markup through here and left the record
+            // on the tab open before it, so switching back to that tab skipped its reload and
+            // showed the HTML under its name -- one keystroke and a save from overwriting it
+            // (2026-09-27). Clearing is always safe: the worst case is one extra reload.
+            InvalidateEnginePageLoad();
             bool plain = PreferSourceModeForPath(filePathHint);
             // Source highlights by document type (js/modules/01a-source.js). The load itself
             // only says "plain or not", which puts .css with .txt, so the extension goes first.
@@ -14479,6 +14486,7 @@ namespace TypoZen
                                     ShowEditorSurface();
                                     MapDocumentFolder(path);
                                     LoadContentToEditor(content, false, path);
+                                    RememberEnginePageLoad(_tabs[i], content);
                                     if (forceEditorText || PreferSourceModeForPath(path))
                                     {
                                         ApplyHostModeChrome("source");
