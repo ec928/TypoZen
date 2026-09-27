@@ -830,8 +830,7 @@
                             }
                         }
                     } else if (state.mode === 'source') {
-                        const src = document.getElementById('sourceEditor');
-                        if (src) src.focus();
+                        if (sourceEditor) sourceEditor.focus();
                     }
                 } catch(eFocus) {}
             }, 250);

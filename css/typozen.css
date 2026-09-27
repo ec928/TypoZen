@@ -1200,6 +1200,43 @@
             z-index: 1;
         }
 
+        /* Source on CodeMirror (js/modules/01a-source.js): the same box, type and colours
+           as the textarea above. The host is sized by resizeSourceEditor; CodeMirror's
+           scroller does the scrolling, as the textarea did. Its base theme sets a monospace
+           font, 1.4 line height, per-line padding and a dotted focus outline -- all
+           overridden, so Source looks as it did. */
+        #source-cm {
+            width: 100%;
+            min-height: 60vh;
+            position: relative;
+            z-index: 1;
+            color: var(--tx, #F4F4F5);
+            background: transparent;
+        }
+        #source-cm .cm-editor { height: 100%; background: transparent; color: inherit; }
+        #source-cm .cm-editor.cm-focused { outline: none; }
+        #source-cm .cm-scroller {
+            font-family: var(--font, sans-serif);
+            font-size: inherit;
+            line-height: inherit;
+        }
+        #source-cm .cm-content { padding: 20px 0; caret-color: var(--tx, #F4F4F5); }
+        #source-cm .cm-line { padding: 0; }
+        #source-cm .cm-content ::selection { background-color: var(--select-bg); }
+        /* Find in Source on CodeMirror: Preview's marks exactly (::highlight(typozen-find)
+           and -current above). Unlike the textarea's mirror, the text here is the marks'
+           own, so the current hit can be solid accent with --accent-tx like Preview's. */
+        #source-cm .tz-src-hit {
+            background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
+            text-decoration: underline 2px var(--accent, #3B82F6);
+            text-underline-offset: 3px;
+        }
+        #source-cm .tz-src-hit.cur {
+            background-color: var(--accent, #f59e0b);
+            color: var(--accent-tx, #111);
+            text-decoration: none;
+        }
+
         /* Document-scoped Find & Replace (not Chromium page-find) */
         #findBar {
             display: none;

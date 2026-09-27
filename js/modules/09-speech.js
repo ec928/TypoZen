@@ -142,8 +142,7 @@ function speakSelection() {
     // narrator is running and answers with cmd:narrate. Source mode has no rendered blocks
     // to narrate, so it keeps the Windows voice.
     const sourceShown = (() => {
-        const s = document.getElementById('source-editor');
-        return !!(s && window.getComputedStyle(s).display !== 'none');
+        return isSourceShown();
     })();
     if (isQwenVoice(_kokoroVoice) && !sourceShown) {
         let el = null;
@@ -199,8 +198,8 @@ function speakSelection() {
     }
 
     const caret = readingCaret();
-    const sourceEdit = document.getElementById('source-editor');
-    if (sourceEdit && window.getComputedStyle(sourceEdit).display !== 'none') {
+    const sourceEdit = sourceEditor;
+    if (sourceEdit && isSourceShown()) {
         let text = sourceEdit.value.substring(sourceEdit.selectionStart || 0);
         startReadingChunks([{ text: text }]);
         return;

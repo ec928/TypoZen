@@ -33,7 +33,7 @@
                 if (state.mode === 'source') return;
 
                 const t = e.target;
-                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || isSourceNode(t))) return;
                 if (t && t.closest && t.closest('#sidebar, #findBar, #tableModal, #helpModal, #aboutModal')) return;
 
                 e.preventDefault();
@@ -637,7 +637,7 @@
                     || active === document.body
                     || active === document.documentElement
                     || active === editor
-                    || active === sourceEditor
+                    || isSourceNode(active)
                     || (editor && editor.contains(active));
                 if (!stolenToDocument) return;
 
@@ -5835,7 +5835,7 @@
         }
 
         function ensureSourceHighlightLayer() {
-            if (!sourceEditor) return null;
+            if (!sourceEditor || sourceEditor.isCodeMirror) return null;
             const host = sourceEditor.parentElement;
             if (!host) return null;
             if (_srcHl && _srcHl.parentElement === host) return _srcHl;
@@ -5945,6 +5945,8 @@
 
         function clearSourceHighlights() {
             _srcHlSig = '';
+            // CodeMirror draws the marks itself (01a-source.js); there is no mirror.
+            if (sourceEditor && sourceEditor.isCodeMirror) { sourceEditor.setSearchMarks([]); return; }
             if (_srcHlInner) _srcHlInner.textContent = '';
             if (_srcHl) _srcHl.style.display = 'none';
         }
@@ -5961,6 +5963,21 @@
             if (!sourceEditor || !isSourceSurfaceActive()) { clearSourceHighlights(); return; }
             const matches = findState.matches || [];
             if (!findState.query || matches.length === 0) { clearSourceHighlights(); return; }
+            if (sourceEditor.isCodeMirror) {
+                // Decorations on the real text: no character cap (only visible lines are
+                // drawn), and the current hit can take Preview's solid accent because the
+                // text it recolours is its own. The mark cap still holds -- past it the
+                // document is being dyed, not searched.
+                const cur = findState.index;
+                const capped = matches.length > SRC_HL_MAX_MARKS;
+                const sig = findState.query + '|' + matches.length + '|' + sourceEditor.value.length + '|'
+                    + cur + '|' + (capped ? 'cap' : 'all');
+                if (sig === _srcHlSig) return;
+                _srcHlSig = sig;
+                if (capped) sourceEditor.setSearchMarks(cur >= 0 && cur < matches.length ? [matches[cur]] : [], 0);
+                else sourceEditor.setSearchMarks(matches, cur);
+                return;
+            }
             if (!ensureSourceHighlightLayer()) return;
 
             const text = sourceEditor.value || '';
@@ -6025,6 +6042,14 @@
             // many visual rows and a short heading is one, so Search landed in the
             // wrong place and the highlight looked broken.
             try { paintSourceHighlights(); } catch (eP) {}
+            if (sourceEditor.isCodeMirror) {
+                // CodeMirror knows where every line is, wrapped or not.
+                try {
+                    sourceEditor.scrollToOffset(start, Math.min(120, sourceEditor.clientHeight / 3));
+                    if (mainContainer) mainContainer.scrollTop = 0;
+                } catch (eC) {}
+                return;
+            }
             try {
                 const mark = _srcHlInner && _srcHlInner.querySelector('mark.tz-src-hit.cur');
                 if (mark) {
@@ -6073,7 +6098,7 @@
                     if (edDisp === 'none') return true;
                     if (!editor.querySelector || !editor.querySelector('.block')) return true;
                 }
-                if (document.activeElement === sourceEditor) return true;
+                if (isSourceFocused()) return true;
             } catch (e) {}
             return false;
         }

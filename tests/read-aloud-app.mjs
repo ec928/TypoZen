@@ -86,7 +86,7 @@ try {
     console.log('\n=== Source mode ===');
     await app.eval(async () => { handleCommand('view_set:mode:source'); await new Promise(r => setTimeout(r, 800)); });
     r = await app.eval(() => {
-        const ta = document.getElementById('source-editor');
+        const ta = sourceEditor;
         const at = ta.value.indexOf('scroll marker row 5');
         ta.focus(); ta.setSelectionRange(at, at);
         const wv = window.chrome.webview, real = wv.postMessage, sent = [];

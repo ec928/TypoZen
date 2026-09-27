@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.8.3";
+        internal const string AppVersion = "0.8.4";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -6670,8 +6670,14 @@ namespace TypoZen
                         "navigating (webview {0}x{1} visible={2}, window visible={3})",
                         _webView.Width, _webView.Height, _webView.Visible, this.IsVisible));
                     // perf=1 switches on the page-side marks; absent, they are inert.
+                    // source= picks Source's surface (js/modules/01a-source.js): a test seam,
+                    // honoured under --debug only like the other TYPOZEN_* stubs, so a
+                    // variable left set in a shell cannot change a normal launch.
+                    string srcEngine = Program.DebugLogEnabled
+                        ? Environment.GetEnvironmentVariable("TYPOZEN_SOURCE_ENGINE") : null;
                     _webView.CoreWebView2.Navigate("https://localapp/" + navName + "?v=" + ticks
-                        + (Program.PerfEnabled ? "&perf=1" : ""));
+                        + (Program.PerfEnabled ? "&perf=1" : "")
+                        + ((srcEngine == "textarea" || srcEngine == "codemirror") ? "&source=" + srcEngine : ""));
                 }
                 else
                 {

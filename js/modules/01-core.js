@@ -78,7 +78,8 @@
         window.__tzBlockFire = { keydown: 0, input: 0 };
 
         const editor = document.getElementById('editor');
-        const sourceEditor = document.getElementById('source-editor');
+        // A textarea, or CodeMirror behaving like one (01a-source.js).
+        const sourceEditor = createSourceSurface(document.getElementById('source-editor'));
         const mainContainer = document.getElementById('main-container');
         const sidebar = document.getElementById('sidebar');
         const outlineList = document.getElementById('outline-list');
@@ -548,7 +549,7 @@
             const viewLine = hardLineFromSourceScrollTop();
             let caretLine = Math.max(1, _stickyLineCache | 0, _lastCaretLine | 0);
             try {
-                if (sourceEditor && document.activeElement === sourceEditor) {
+                if (sourceEditor && isSourceFocused()) {
                     const live = lineFromMarkdownOffset(
                         sourceEditor.value || '', sourceEditor.selectionStart | 0);
                     // Ignore poisoned selectionStart=0 after chrome focus-steal

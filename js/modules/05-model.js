@@ -2256,7 +2256,7 @@
             if (!files.length) return;
             const allImages = files.every(f => /^image\//i.test(f.type || ''));
             const t = e.target;
-            const inText = t && (t === sourceEditor || (editor && editor.contains(t)));
+            const inText = t && (isSourceNode(t) || (editor && editor.contains(t)));
             const editable = state.mode === 'source'
                 ? !!(sourceEditor && !sourceEditor.readOnly)
                 : !!(editor && editor.isContentEditable);
@@ -2472,7 +2472,7 @@
         document.addEventListener('keydown', function (e) {
             if (e.ctrlKey || e.metaKey || e.altKey) return;
             const t = e.target;
-            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || isSourceNode(t))) return;
             if (t && t.closest && t.closest('#sidebar, #findBar, #tableModal, #helpModal, #aboutModal, #aboutModal')) return;
 
             const hasSearchHits = !!(typeof findState !== 'undefined'

@@ -29,7 +29,7 @@ try {
     /** Put `text` in the textarea, caret at the end of line `lineNo`, press Enter for real. */
     const pressEnterAfter = async (text, lineNo) => {
         await app.eval((t, n) => {
-            const ta = document.getElementById('source-editor');
+            const ta = sourceEditor;
             ta.value = t;
             const lines = t.split('\n');
             let at = 0;
@@ -42,7 +42,7 @@ try {
         await app.page.keyboard.press('Enter');
         await sleep(500);
         return app.eval(() => {
-            const ta = document.getElementById('source-editor');
+            const ta = sourceEditor;
             const before = ta.value.slice(0, ta.selectionStart);
             const lineStart = before.lastIndexOf('\n') + 1;
             return {

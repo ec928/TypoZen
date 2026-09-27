@@ -77,7 +77,8 @@ function probe() {
         pageAdvance: !!state.pageAdvance,
         blocks: ed.querySelectorAll('.block').length,
         editorShown: getComputedStyle(ed).display !== 'none',
-        sourceShown: getComputedStyle(document.getElementById('source-editor')).display !== 'none',
+        // Whichever surface Source is on: the textarea, or CodeMirror's host (01a-source.js).
+        sourceShown: isSourceShown(),
         scrollWidth: ed.scrollWidth,
         clientWidth: ed.clientWidth
     };
@@ -142,7 +143,7 @@ async function main() {
         await settled(page);
         s = await page.evaluate(probe);
         eq(s.mode, 'source', 'Source mode engages');
-        assert(s.sourceShown, 'the raw textarea is visible in Source');
+        assert(s.sourceShown, 'the Source surface is visible in Source');
         assert(!/two-col-layout/.test(s.classes), 'Source drops back to one column');
         assert(!s.pageAdvance, 'Source drops back to scrolling');
 
@@ -151,7 +152,7 @@ async function main() {
         await settled(page);
         s = await page.evaluate(probe);
         eq(s.mode, 'wysiwyg', 'Preview mode engages');
-        assert(s.editorShown && !s.sourceShown, 'the editor is showing and the textarea is not');
+        assert(s.editorShown && !s.sourceShown, 'the editor is showing and the Source surface is not');
         assert(s.blocks > 0, 'the document is still rendered after the mode round trip');
 
         console.log('\n--- search finds and reports matches ---');

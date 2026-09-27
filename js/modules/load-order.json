@@ -1,6 +1,7 @@
 {
   "description": "Editor engine modules in load order. Classic scripts share one global scope.",
   "modules": [
+    "01a-source.js",
     "01-core.js",
     "02-layout.js",
     "03-shell.js",

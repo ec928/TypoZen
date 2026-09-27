@@ -524,8 +524,12 @@
     </div>
 
     <script>window.__tzBeforeMain = Math.round(performance.now());</script>
+    <!-- Source mode's editor (docs/codemirror-source-plan.md). Outside the engine block:
+         the jsdom test page leaves it out, so its suites exercise the textarea path. -->
+    <script src="js/vendor/codemirror/codemirror.js"></script>
     <!-- TYPOZEN_ENGINE_BEGIN -->
     <!-- Classic scripts, fixed order — see js/modules/load-order.json. Shared globals. -->
+    <script src="js/modules/01a-source.js"></script>
     <script src="js/modules/01-core.js"></script>
     <script src="js/modules/02-layout.js"></script>
     <script src="js/modules/03-shell.js"></script>

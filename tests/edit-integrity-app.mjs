@@ -201,7 +201,7 @@ try {
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
             handleCommand('view_set:mode:source');
             await sleep(2000);
-            const se = document.getElementById('source-editor');
+            const se = sourceEditor;
             se.focus(); se.setSelectionRange(50, 50);
             se.setRangeText('XYZ', 50, 50, 'end');
             se.dispatchEvent(new Event('input', { bubbles: true }));

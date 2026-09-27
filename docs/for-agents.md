@@ -57,12 +57,12 @@ Implemented in:
 | **Reader / book, Pages** (no hits) | Turn page | Turn page | Turn page | Turn page |
 | **Reader / book + search hits** | Turn page | Turn page | Prev / next hit | Turn page |
 | **Preview, Scroll** | Scroll `#main-container` | Caret / default | Caret; with hits → step hits | Space types (Reader-like only pages with Space) |
-| **Source** | Default textarea | Default | Default | Default |
+| **Source** | Default (CodeMirror's standard keys, which match a textarea's) | Default | Default | Default |
 | **INPUT / TEXTAREA / sidebar / find bar** | Leave alone | Leave alone | Leave alone | Leave alone |
 
 ### Critical implementation rules
 
-1. **Never** early-return the page handler solely because `#editor` is `contenteditable`. That made PageUp/PageDown dead in Preview. Bail only for real fields: `INPUT`, `TEXTAREA`, and chrome (`#sidebar`, `#findBar`, `#tableModal`).
+1. **Never** early-return the page handler solely because `#editor` is `contenteditable`. That made PageUp/PageDown dead in Preview. Bail only for real fields: `INPUT`, `TEXTAREA`, Source's surface (`isSourceNode(t)` -- CodeMirror's editable element is a contenteditable `div`, so a tag check alone lets Preview's page keys fire inside Source), and chrome (`#sidebar`, `#findBar`, `#tableModal`).
 2. **Reader** sets `#editor` `contenteditable="false"`. That is the reliable signal for “no caret to move” (not a mode-name guess alone).
 3. **Wheel** always turns pages when `state.pageAdvance` (outside the sidebar).
 4. Up/Down with hits are owned by `bindReaderFindKeys` (capture). The page handler must **return** for those keys when hits exist so search wins.
@@ -89,7 +89,7 @@ Implemented in:
    bodies *are* dropped on the toggle, because the page has already consumed them.
    **Tidying up must never cost someone the thing they are using.**
 
-Spelling: **not** `dictionary.tsv` (that is Look up). Preview uses WPF `TextBox` spellcheck (`SpellCheck.cs`, .NET 4 dictionaries); the page paints `::highlight(typozen-spell)` and the selection popover offers replacements. Source uses Chromium `spellcheck` on the textarea. `cmd:spell_check_doc` / `cmd:spell_next`. Do not feed WordNet to a spell loop.
+Spelling: **not** `dictionary.tsv` (that is Look up). Preview uses WPF `TextBox` spellcheck (`SpellCheck.cs`, .NET 4 dictionaries); the page paints `::highlight(typozen-spell)` and the selection popover offers replacements. Source uses Chromium `spellcheck` on its editing surface (CodeMirror's content element, or the textarea). `cmd:spell_check_doc` / `cmd:spell_next`. Do not feed WordNet to a spell loop.
 
 Help: **F1** / **Help → Syntax & Shortcuts** → `#helpModal`. **Help → About TypoZen** → `#aboutModal`. Both are themed in-page overlays (`openTzOverlay` in `03-shell.js`), not `alert` / MessageBox. Debug HUD: **Ctrl+Shift+D**. F1 is bound in **two** places because Window.KeyDown does not run while the editor WebView has focus, and `AreBrowserAcceleratorKeysEnabled=false` can swallow Chromium Help: page JS (`02-layout.js`, next to F7/F8/F9) and the host `ThreadPreprocessMessage` filter (same path as Ctrl+Z). `cmd:help_syntax` **opens** the overlay; it does not toggle. Esc / the Close button dismisses it. Guarded by `scratch-hint-selftest` and `scratch-help-app`.
 
@@ -131,6 +131,7 @@ Help: **F1** / **Help → Syntax & Shortcuts** → `#helpModal`. **Help → Abou
 
 | Module | Concern |
 |--------|---------|
+| `01a-source.js` | Source's editing surface: CodeMirror 6 behaving like the textarea it replaced (`createSourceSurface`), or the textarea itself (`?source=textarea`, `TYPOZEN_SOURCE_ENGINE` under `--debug`). **Nothing reads Source text from CodeMirror's DOM** -- `source-dom-read-selftest`. See `docs/codemirror-source-plan.md` |
 | `01-core.js` | State, view selectors, sticky helpers |
 | `02-layout.js` | Find/search, pagination, page window, search history, reader find keys |
 | `03-shell.js` | onload, themes, host commands |

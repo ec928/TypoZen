@@ -104,18 +104,18 @@ try {
     console.log('\n=== Source: the textarea selects itself ===');
     await app.eval(() => handleCommand('view_set:mode:source'));
     await sleep(1200);
-    await app.eval(() => { try { document.getElementById('source-editor').setSelectionRange(0, 0); } catch (e) {} });
+    await app.eval(() => { try { sourceEditor.setSelectionRange(0, 0); } catch (e) {} });
     await invokeMenu('Edit>Select All');
     for (let i = 0; i < 20; i++) {
         const n = await app.eval(() => {
-            const ta = document.getElementById('source-editor');
+            const ta = sourceEditor;
             return ta ? ta.selectionEnd - ta.selectionStart : 0;
         });
         if (n > 0) break;
         await sleep(150);
     }
     const src = await app.eval(() => {
-        const ta = document.getElementById('source-editor');
+        const ta = sourceEditor;
         return { len: ta.value.length, start: ta.selectionStart, end: ta.selectionEnd };
     });
     info('source: ' + src.start + '..' + src.end + ' of ' + src.len);

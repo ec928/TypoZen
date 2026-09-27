@@ -167,7 +167,7 @@
                         const inEd = !!(editor && ae
                             && (ae === editor || editor.contains(ae)));
                         const inSrc = !!(typeof sourceEditor !== 'undefined' && sourceEditor
-                            && ae === sourceEditor);
+                            && isSourceNode(ae));
                         if (!inEd && !inSrc) caretLine = Math.min(sticky, lines);
                     }
                 } catch (ePin) {}
@@ -179,7 +179,7 @@
             try {
                 if (forced >= 1) {
                     rememberStickyLine(caretLine);
-                } else if (state.mode === 'source' && document.activeElement === sourceEditor) {
+                } else if (state.mode === 'source' && isSourceFocused()) {
                     const pos = sourceEditor ? (sourceEditor.selectionStart | 0) : 0;
                     if (!isPoisonedSourceLineOne(caretLine, pos)) {
                         rememberStickyLine(caretLine);

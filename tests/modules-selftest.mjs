@@ -24,7 +24,9 @@ console.log('=== engine modules ===');
 {
     const names = engineModuleNames();
     assert(names.length >= 5, 'at least 5 modules listed (' + names.length + ')');
-    assert(names[0] === '01-core.js', 'first module is 01-core.js');
+    // 01a-source.js first: 01-core.js creates sourceEditor through its createSourceSurface.
+    assert(names[0] === '01a-source.js', 'first module is 01a-source.js');
+    assert(names[1] === '01-core.js', 'second module is 01-core.js');
     assert(names.indexOf('04-lists.js') >= 0, '04-lists.js listed');
     assert(names.indexOf('04b-format.js') >= 0, '04b-format.js listed');
     assert(names.indexOf('07-stats-host.js') >= 0, '07-stats-host.js listed');

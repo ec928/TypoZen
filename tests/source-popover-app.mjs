@@ -78,7 +78,7 @@ try {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         handleCommand('view_set:mode:source');
         await sleep(2200);
-        const ta = document.getElementById('source-editor');
+        const ta = sourceEditor;
         // A real word, so Look up has something to ask about.
         const idx = ta.value.indexOf('scroll');
         ta.focus();

@@ -1078,7 +1078,7 @@
         function rememberStickyFromSourceIfFocused() {
             if (state.mode !== 'source' || !sourceEditor) return;
             try {
-                if (document.activeElement !== sourceEditor) return;
+                if (!isSourceFocused()) return;
                 const pos = sourceEditor.selectionStart | 0;
                 const live = lineFromMarkdownOffset(sourceEditor.value || '', pos);
                 if (isPoisonedSourceLineOne(live, pos)) return; // keep cache
@@ -1208,7 +1208,7 @@
             try {
                 const frozen = Math.max(1, _stickyLineCache | 0, _lastCaretLine | 0);
                 if (state.mode === 'source' && sourceEditor) {
-                    if (document.activeElement === sourceEditor) {
+                    if (isSourceFocused()) {
                         const pos = sourceEditor.selectionStart | 0;
                         const live = captureStickyDocumentLineLive();
                         if (isPoisonedSourceLineOne(live, pos)) {
@@ -1652,7 +1652,7 @@
         }
 
         document.addEventListener('selectionchange', () => {
-            if (state.mode === 'source' && document.activeElement === sourceEditor) {
+            if (state.mode === 'source' && isSourceFocused()) {
                 rememberStickyFromSourceIfFocused();
                 updateCaretLineStatus();
                 // Selection size can change without line change — refresh sel word count

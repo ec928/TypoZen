@@ -112,13 +112,14 @@ Source is `<textarea id="source-editor">` (`TypoZen_Template.html:186`), held in
   `smoke-browser`, `source-highlight-app`, `source-indent-app`, `source-popover-app`,
   `spell-selftest`.
 
-**Two mirrors that exist only because a textarea cannot be styled:**
-- the search-highlight mirror, `02-layout.js` about 5790-6045 (`ensureSourceHighlightLayer`,
-  `syncSourceHighlightGeometry`, `syncSourceHighlightScroll`, `paintSourceHighlights`);
-- a hidden-div caret measurer for the selection popup (`02-layout.js` about 2255).
-
-Both go. Their geometry-matching code is the most fragile in Source today: a 1px wrap
-mismatch "ghosts the whole document", as a CSS comment puts it.
+**A mirror that exists only because a textarea cannot be styled:** the search-highlight
+mirror, `02-layout.js` about 5790-6045 (`ensureSourceHighlightLayer`,
+`syncSourceHighlightGeometry`, `syncSourceHighlightScroll`, `paintSourceHighlights`). Its
+geometry-matching code is the most fragile in Source today: a 1px wrap mismatch "ghosts
+the whole document", as a CSS comment puts it. On CodeMirror it is not used; it stays for
+the textarea path. (An earlier draft also listed a caret-measuring mirror for the
+selection popup. There is none: `showSelPop` places the popup at the mouse in Source, and
+only its comment mentions a mirror.)
 
 **Found during the survey, unrelated:** `03-shell.js:833` looks up
 `getElementById('sourceEditor')`, an id that does not exist, so that focus call has
@@ -267,8 +268,11 @@ restart. Phase 4 deletes it. Git tag `baseline-before-codemirror` marks the star
 - **Startup** (`tests/cm-ab.mjs`, 7 interleaved runs, headless, cache off): **+16 ms**
   median to the last module, **over the 15 ms line**. The bundle's evaluation took a
   median 23.5 ms and creating the empty editor 4.8 ms. A (as shipped) ranged 191-250 ms on
-  its own, so the difference is about the size of the noise. Decision for Ed before
-  Phase 1.
+  its own, so the difference is about the size of the noise. **Accepted by Ed
+  (2026-09-27)**, with a condition: if further performance costs turn up, CodeMirror
+  becomes an option rather than the default. So the textarea path is kept working behind
+  one switch (`createSourceSurface`) rather than deleted in Phase 4 -- whether it is then
+  removed or offered as a setting is decided with Phase 4's numbers.
 - **Round trip** (`tests/source-roundtrip-browser.mjs`): 72 checks pass on the textarea;
   that is the bar CodeMirror must meet. The host turns CRLF into LF before the page sees a
   file (`TypoZen_App.cs`, load path), so line endings never reach Source.
@@ -284,6 +288,31 @@ restart. Phase 4 deletes it. Git tag `baseline-before-codemirror` marks the star
   TypoZen's handler (the model rebuild); the other ~130 ms is the textarea laying out
   5 MB. CodeMirror lays out only visible lines, so Phase 1 should cut the second part.
   That is a prediction to measure, not a result.
+
+### Phase 1 results (2026-09-27)
+
+- **Source runs on CodeMirror** through `js/modules/01a-source.js`; the textarea path is
+  intact behind `?source=textarea` / `TYPOZEN_SOURCE_ENGINE=textarea` (`--debug` only).
+- **Round trip:** 146 checks pass -- the whole corpus on both surfaces, each asserted to be
+  the one that ran. The corpus caught one real bug on the way (CRLF offsets in `value =`).
+- **Latency** (`source-latency-app`, same machine as the baseline):
+
+  | Case | Textarea | CodeMirror |
+  |---|---|---|
+  | Markdown 74 KB, keystroke to frame | 7.1 ms | **7.1 ms** |
+  | Switch into Source | 1025 ms | 1079 ms (within 10%; the cost is the mode switch, not the surface) |
+  | Plain log 5 MB, keystroke to frame | 216.9 ms | **59 ms** |
+
+  The log's handler also fell from 87 to 33 ms: `value` is cached per document version
+  instead of copied out of a textarea on every read.
+- **Search marks** are CodeMirror decorations in Preview's find colours; the mirror is not
+  used on this path. Hidden Source holds no marks (a bug the suite found: marks survived
+  leaving Source).
+- **Found and fixed on the way, not part of CodeMirror:** F3 / Shift+F3 had no handler
+  anywhere although `for-agents.md` documented them (`source-keys-app`).
+- **App suites green on CodeMirror:** source-highlight (both surfaces), source-indent,
+  source-popover, source-keys, read-aloud, core-smoke, edit-integrity, undo-steps. **Not
+  run:** `select-all-app` and the other visible-window suites (need Ed away).
 
 ## 7. Tests
 

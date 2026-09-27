@@ -180,7 +180,7 @@ try {
         const wait = (ms) => new Promise(r => setTimeout(r, ms));
         handleCommand('view_set:mode:source');
         await wait(1200);
-        const se = document.getElementById('source-editor');
+        const se = sourceEditor;
         se.setRangeText('\n\n' + marker + '\n', se.value.length, se.value.length, 'end');
         se.dispatchEvent(new Event('input', { bubbles: true }));
         await wait(900);
