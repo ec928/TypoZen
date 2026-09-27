@@ -220,8 +220,10 @@ try {
             const k = Object.keys(state).find(n => n.indexOf(frag) >= 0);
             return k === undefined ? null : state[k];
         };
+        // Bookmark Gutter Hover left the View menu in 0.7.4 (2bf8356): the gutter click it
+        // previewed was gone, so there is nothing for it to grey.
         const mustBeOff = ['Sidebar', 'Focus Mode', 'Typewriter', 'Reveal Markdown',
-                           'Font Appearance', 'Spacing', 'Bookmark Gutter', 'Justified'];
+                           'Font Appearance', 'Spacing', 'Justified'];
         const mustBeOn = ['Scrubber', 'Status Bar', 'Fullscreen', 'Reset View']
             .concat(nat.zooms === false ? [] : ['Zoom']);
         const wrongOff = mustBeOff.filter(f => find(f) !== false);
