@@ -105,6 +105,36 @@ info('token kinds: ' + JSON.stringify(kinds));
 assert(kinds[0] === 'attr', 'the string before a colon is a key');
 assert(kinds[1] === 'string', 'the string after it is a value');
 
+console.log('\n=== every lexer finishes, on any input ===');
+// 2026-09-27: '@' could start a clike word but not continue one, so the scan never advanced
+// and the page hung on the first '@' in any CSS, JS or C# file -- @font-face in the test
+// template froze Source outright. A lexer that stalls hangs the app, so these run inside
+// the VM with a timeout: a stall is a failure here, not a frozen test.
+{
+    const printable = [];
+    for (let k = 32; k < 127; k++) printable.push(String.fromCharCode(k));
+    const inputs = ['@', '@media screen', '@font-face {', 'a@b', '@"verbatim"', '@@', '$@_', '<@>', '"@', '-', '<', '<a', '<!', '"'];
+    for (const p of printable) { inputs.push(p); for (const q of printable) inputs.push(p + q); }
+    const template = path.join(__dirname, '..', 'TypoZen_Template_Test.html');
+    if (fs.existsSync(template)) inputs.push(...fs.readFileSync(template, 'utf8').split('\n'));
+    sandbox.__inputs = inputs;
+    let result = null, err = null;
+    try {
+        result = vm.runInContext(`(function () {
+            var n = 0;
+            for (var L of ['clike', 'xml', 'json']) {
+                var st = 0;
+                for (var s of __inputs) { st = lexCodeLine(s, L, st).state; n++; }
+            }
+            return n;
+        })()`, sandbox, { timeout: 20000 });
+    } catch (e) { err = e; }
+    info((result || 0) + ' lines lexed across three lexers' + (err ? ' -- ' + err.message : ''));
+    assert(!err && result === inputs.length * 3, 'no lexer stalls: every character and pair, and every line of the 2.2 MB template');
+    // Nothing below may call a lexer outside the VM on '@' input: on a regression it would
+    // hang this test instead of failing it.
+}
+
 console.log('\n=== an unknown language paints nothing rather than guessing ===');
 assert(lexCodeLine('some words here', 'not-a-language', 0).tokens.length === 0,
     'no tokens for an unknown language');

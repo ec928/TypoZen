@@ -155,7 +155,11 @@
                     continue;
                 }
                 if (/[A-Za-z_$@]/.test(c)) {
-                    let j = i;
+                    // The first character is taken as it is: '@' may start a word (@media,
+                    // C#'s @"...", decorators) but not continue one, and starting the scan at
+                    // i left j === i -- the loop never advanced and the page hung on the
+                    // first '@' in any CSS, JS or C# file (2026-09-27).
+                    let j = i + 1;
                     while (j < n && /[A-Za-z0-9_$]/.test(line.charAt(j))) j++;
                     const word = line.slice(i, j);
                     if (CLIKE_KEYWORDS.has(word)) {

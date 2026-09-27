@@ -179,13 +179,23 @@
             });
             const spellMark = CM.Decoration.mark({ class: 'typozen-spell' });
 
-            /** The non-blank lines on screen: [{ from, text }]. */
+            /** The non-blank prose lines on screen: [{ from, text }]. Fenced code is skipped. */
             const visibleLines = (v) => {
                 const d = v.state.doc, out = [];
-                const last = d.lineAt(v.viewport.to).number;
-                for (let n = d.lineAt(v.viewport.from).number; n <= last; n++) {
+                const vp = v.viewport, fences = [];
+                if (kind === 'markdown') {
+                    CM.syntaxTree(v.state).iterate({ from: vp.from, to: vp.to, enter: (node) => {
+                        if (node.name !== 'FencedCode') return;
+                        fences.push([node.from, node.to]);
+                        return false;
+                    } });
+                }
+                const last = d.lineAt(vp.to).number;
+                for (let n = d.lineAt(vp.from).number; n <= last; n++) {
                     const line = d.line(n);
-                    if (line.text.trim()) out.push({ from: line.from, text: line.text });
+                    if (!line.text.trim()) continue;
+                    if (fences.some(f => line.from >= f[0] && line.from <= f[1])) continue;
+                    out.push({ from: line.from, text: line.text });
                 }
                 return out;
             };
@@ -215,6 +225,12 @@
                     this.timer = null;
                     if (typeof state !== 'undefined' && state && state.mode !== 'source') return;
                     if (typeof window.spellCheckTexts !== 'function') return;
+                    // Code is never checked (spellingEnabledHere, 02-layout.js); drop any
+                    // underlines the last document left.
+                    if (typeof window.spellingEnabledHere === 'function' && !window.spellingEnabledHere()) {
+                        paintSpelling(v, []);
+                        return;
+                    }
                     const lines = visibleLines(v);
                     paintSpelling(v, lines);                                  // what is known, now
                     const missing = lines.filter(l => window.spellCached(l.text) === undefined).length;

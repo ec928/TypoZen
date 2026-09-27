@@ -34,7 +34,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Live block editing:** Format Markdown and text on the fly, including headings, lists, tables, tasks, emphasis, and fenced code.
 - **Deep immersion:** Engage Focus mode, Typewriter scroll, and chrome auto-hide to eliminate distractions while you work.
 - **Engineered for massive files:** A virtualized rendering engine builds only the part of the document on screen, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it.
-- **Spelling as you type:** wavy underlines under every misspelled word on screen, in Preview and Source. Select one for replacements, Ignore, or Add to dictionary.
+- **Spelling as you type:** wavy underlines under every misspelled word on screen, in Preview and Source (not in code). Select any word for replacements, Ignore, or Add to dictionary.
 
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
@@ -189,10 +189,11 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your _reading position_, which is automatic, written atomically as you read, and unaffected by any of this.
 
 ### Spelling
-**Spelling is checked by the Windows spell checker, the same way in Preview and Source**, with suggestions, a personal dictionary and a whole-document check:
+**Spelling is checked by the Windows spell checker, the same way in Preview and Source**, with suggestions and a personal dictionary:
 
 - **Every misspelling on screen is underlined** (wavy red), re-checked after a pause in typing, when you scroll, switch tabs or switch between Preview and Source — so the underlines do not come and go.
-- **Select an underlined word** — the popover offers replacements, **Ignore**, and **Add to dictionary** (persisted in the cache folder as `user_words.txt`, not in the document).
+- **Code is not spell-checked**: HTML, XML, CSS, JavaScript, C# and the other code files, and fenced code blocks inside Markdown. Tags and identifiers are not words.
+- **Select a word** — underlined or not, in any editable document including code — and if Windows thinks it is misspelled the popover offers replacements, **Ignore**, and **Add to dictionary** (persisted in the cache folder as `user_words.txt`, not in the document). A correctly spelled word shows no spelling row.
 - Chromium's own spell checker is switched off in both views, so there is one dictionary and one look.
 
 Preview uses **WPF’s built-in dictionaries** — English, French, German and Spanish, the same engine a WPF TextBox uses — in your Windows display language. Other languages will not underline until a dictionary for them is available.
@@ -297,7 +298,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 > Earlier versions pulled these from Google Fonts via a `<link>` in `<head>`. That was a render-blocking network round trip on every cold start of a local editor, and because Google's CSS omits `local()`, it shadowed already-installed copies and re-downloaded them. Bundling removed both problems.
 
 ### Writing tools
-- **Spelling** — the Windows spell checker underlines every misspelling on screen, in Preview and Source alike; select one for replacements, Ignore, or Add to dictionary. **Edit → Spelling → Check Document** / **Next Issue**. The bundled `dictionary.tsv` is Look up, not this
+- **Spelling** — the Windows spell checker underlines every misspelling on screen, in Preview and Source alike, except in code; select any word for replacements, Ignore, or Add to dictionary. The bundled `dictionary.tsv` is Look up, not this
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
 - **Every match is highlighted, in Source as well as Preview, in the same colours:** a
   soft wash with an accent underline, and the current match in solid accent. Preview

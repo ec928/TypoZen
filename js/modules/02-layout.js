@@ -2847,8 +2847,20 @@
                 if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
                     return false;
             } catch (e) {}
+            // Code is not spell-checked (Ed, 2026-09-27): every tag and identifier reads as
+            // a misspelling, and the Windows checker, on the UI thread, took 13 s over 500
+            // characters of minified script -- opening a large HTML file in Source froze
+            // the app. HTML, XML, CSS and the rest are code (08-code.js's table).
+            if (isCodeDocument()) return false;
             return true;
         }
+        function isCodeDocument() {
+            try {
+                return !!(state.docExt && typeof window.codeLanguageForPath === 'function'
+                    && window.codeLanguageForPath('x.' + state.docExt));
+            } catch (e) { return false; }
+        }
+        window.spellingEnabledHere = spellingEnabledHere;
 
         /**
          * Check the text on screen again, in whichever view is showing. Every spelling
@@ -2976,6 +2988,7 @@
                 ? mainContainer.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
             for (const child of editor.children) {
                 if (!child.classList || !child.classList.contains('block')) continue;
+                if (child.querySelector('pre')) continue;          // a code fence: not prose
                 const cr = child.getBoundingClientRect();
                 if (cr.bottom <= rect.top || cr.top >= rect.bottom) continue;
                 const text = blockPlainText(child);
@@ -3030,21 +3043,31 @@
         }
 
         /**
-         * The popover's spelling row, for an underlined word: its suggestions -- asked of
-         * the host the first time this word is selected -- then Ignore and Add to
-         * dictionary. Not shown for a correctly spelled word.
+         * The popover's spelling row for a selected word: its suggestions -- asked of the
+         * host the first time this word is selected -- then Ignore and Add to dictionary.
+         *
+         * Any word the user selects is asked about, underlined or not (Ed, 2026-09-27):
+         * correction on request, not detection. It is how spelling works in a code file,
+         * which is never scanned, and it catches a word the scan has not reached. One word
+         * costs the host next to nothing, where a scan of code cost seconds. The host
+         * suggests nothing for a correctly spelled word, so the row stays hidden then.
+         * Not in Reader or a book: there is nothing to replace there.
          */
         function fillSpellSuggestions(word) {
             const box = document.getElementById('selPopSpell');
             if (!box) return;
             box.innerHTML = '';
-            if (!word || !isUnderlinedWord(word)) { box.hidden = true; return; }
+            const editable = state.mode !== 'reader'
+                && !(typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
+            if (!word || !editable) { box.hidden = true; return; }
             const list = _spellSuggs.get(word);
             if (!list) {
                 box.hidden = true;
                 try { postMsg('spell_suggest:' + word); } catch (e) {}   // applySpellSuggestions fills it
                 return;
             }
+            // Not underlined and nothing suggested: spelled correctly, as far as Windows knows.
+            if (!list.length && !isUnderlinedWord(word)) { box.hidden = true; return; }
             list.slice(0, 5).forEach(function (s) {
                 const b = document.createElement('button');
                 b.type = 'button';
