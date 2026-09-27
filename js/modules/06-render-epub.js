@@ -305,6 +305,19 @@
                     try { el.setAttributeNS(XLINK, 'xlink:href', abs); } catch (eNs) {}
                     el.setAttribute('href', abs);
                 }
+
+                // A url() in an inline style="" is relative to this chapter, like an img src.
+                // bookInlineStyle leaves it relative for exactly this; resolving it there
+                // used the package folder, so Text/ch1.xhtml reaching ../Images/ missed.
+                const styled = root.querySelectorAll('[style*="url("]');
+                for (let i = 0; i < styled.length; i++) {
+                    const el = styled[i];
+                    const was = el.getAttribute('style') || '';
+                    const now = was.replace(/\burl\(\s*(['"]?)([^'")]+)\1\s*\)/gi, function (m, q, u) {
+                        return 'url("' + bookResolveUrl(u, dir) + '")';
+                    });
+                    if (now !== was) el.setAttribute('style', now);
+                }
                 const links = root.querySelectorAll('a[href]');
                 for (let i = 0; i < links.length; i++) {
                     const a = links[i];
@@ -1502,11 +1515,15 @@
             return out;
         }
 
-        /** A book's inline style="" run through the same allowlist (sanitizeBookHtml). */
-        function bookInlineStyle(el, base) {
+        /**
+         * A book's inline style="" run through the same allowlist (sanitizeBookHtml).
+         * Its url()s stay relative: they are relative to the chapter, which is not known
+         * here, and rewriteBookUrls resolves them once the block is mounted.
+         */
+        function bookInlineStyle(el) {
             try {
                 if (!el.getAttribute('style')) return;
-                const d = bookCssDeclarations(el.style, false, 1, base || _bookAssetsBase || '');
+                const d = bookCssDeclarations(el.style, false, 1, '');
                 if (d) el.setAttribute('style', d); else el.removeAttribute('style');
             } catch (e) { el.removeAttribute('style'); }
         }

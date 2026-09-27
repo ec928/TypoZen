@@ -96,6 +96,17 @@ try {
         const wide = q('p.wide'), wideCs = getComputedStyle(wide), wr = wide.getBoundingClientRect();
         const keep = getComputedStyle(q('p.keep'));
         const inline = sanitizeBookHtml('<p style="position:fixed;top:0;margin-left:-5em;color:rgb(200,0,0);font-style:italic;width:3000px">x</p>');
+        // An inline url() is relative to its chapter (Text/), like an img src, not to the
+        // package folder: ../Images/ from Text/ is OEBPS/Images/.
+        const savedBase = _bookAssetsBase, savedDirs = _bookBlockDirs;
+        _bookAssetsBase = 'https://localbooks/k/OEBPS/';
+        _bookBlockDirs = ['Text/'];
+        const ib = document.createElement('div');
+        ib.className = 'block'; ib.setAttribute('data-model-index', '0');
+        ib.innerHTML = sanitizeBookHtml('<div style="background-image: url(../Images/plate.png)">p</div>');
+        rewriteBookUrls(ib);
+        const inlineUrl = ib.firstElementChild.getAttribute('style');
+        _bookAssetsBase = savedBase; _bookBlockDirs = savedDirs;
         return {
             sheet, was, blockBefore,
             ed: { ml: cs.marginLeft, mr: cs.marginRight, pl: cs.paddingLeft, pos: cs.position,
@@ -113,7 +124,7 @@ try {
             part: { bb: getComputedStyle(q('h2.part')).breakBefore, ba: getComputedStyle(q('h2.part')).breakAfter },
             media: getComputedStyle(q('p.media')).color,
             chrome: getComputedStyle(probe).color,
-            inline,
+            inline, inlineUrl,
             sib: {
                 s2: getComputedStyle(q('p.s2')).letterSpacing,
                 s1: getComputedStyle(q('p.s1')).letterSpacing,
@@ -188,6 +199,8 @@ try {
     assert(!/position|top|margin-left/.test(r.inline), 'inline position, offsets and negative margins are dropped (' + r.inline + ')');
     assert(/max-width: 100%/.test(r.inline), 'an inline fixed width is capped at the column');
     assert(/color/.test(r.inline) && /italic/.test(r.inline), 'inline colour and italic are kept');
+    assert(/url\("https:\/\/localbooks\/k\/OEBPS\/Images\/plate\.png"\)/.test(r.inlineUrl || ''),
+        'an inline url() resolves against its chapter\'s folder (' + r.inlineUrl + ')');
 } finally {
     await browser.close();
 }
