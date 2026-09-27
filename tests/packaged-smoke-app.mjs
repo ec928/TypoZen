@@ -18,6 +18,11 @@
  *   node tests/packaged-smoke-app.mjs
  *
  * Remove it again with: Get-AppxPackage *TypoZen* | Remove-AppxPackage
+ *
+ * Run it against a freshly registered package. The package keeps its own profile across
+ * launches and re-registration, so a second run reopens the book where the first one left
+ * it -- at the block this seeks to -- and "it moves through the book" fails on a correct
+ * build. Removing the package deletes that profile.
  */
 import puppeteer from 'puppeteer-core';
 
@@ -69,6 +74,14 @@ check(ext !== 'undefined', 'the extension hook is present in the packaged build'
 check(ext === 'null', 'the package starts with its own empty extensions folder', ext);
 const ready = await page.evaluate(() => _isKokoroReady === true);
 check(!ready, 'no speech engine loaded at launch');
+
+// Source's editor is a separate bundle (js/vendor/codemirror) with no fallback: a package
+// that left it out would open books fine and fail the moment anyone switched to Source.
+const cm = await page.evaluate(() => ({
+    bundle: typeof window.TzCM === 'object' && !!window.TzCM.EditorView,
+    mounted: !!document.querySelector('#source-cm .cm-editor')
+}));
+check(cm.bundle && cm.mounted, 'Source\'s editor (CodeMirror) is in the package and mounted', JSON.stringify(cm));
 
 check(remote.length === 0, 'nothing left the machine', remote.slice(0, 3).join(' '));
 
