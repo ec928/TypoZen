@@ -175,6 +175,27 @@ try {
     }, Array.from({ length: 6000 }, (_, i) => '<p>Line ' + (i + 1) + '</p>').join('\n'));
     assert(carried === 'Other 1', 'a tab switch opens the new document at its own top, not the old one\'s line (got ' + carried + ')');
 
+    // Source tells the host where it is (book_position:), as Preview does: after a load and
+    // after scrolling. It never did, so a tab left in Source came back at an old Preview
+    // report's line -- the top of an HTML file reopened at 3904 (2026-09-27).
+    const reports = await page.evaluate(async () => {
+        const wait = (ms) => new Promise(res => setTimeout(res, ms));
+        const sent = [];
+        const real = postMsg;
+        window.postMsg = postMsg = function (m) { if (String(m).startsWith('book_position:')) sent.push(parseInt(String(m).slice(14), 10)); return real.apply(this, arguments); };
+        setSourceDocExt('md'); handleCommand('view_set:mode:source');
+        finishLoadContent(Array.from({ length: 3000 }, (_, i) => 'Row ' + (i + 1)).join('\n'), false, false);
+        await wait(1600);
+        const atLoad = sent.slice();
+        sourceEditor.scrollToOffset(sourceOffsetAtHardLine(sourceEditor.value, 2000), 0);
+        await wait(1600);
+        window.postMsg = postMsg = real;
+        handleCommand('view_set:mode:preview');
+        return { atLoad, afterScroll: sent.slice(atLoad.length) };
+    });
+    assert(reports.atLoad.includes(0), 'Source reports its position after a load (' + JSON.stringify(reports.atLoad) + ')');
+    assert(reports.afterScroll.some(b => Math.abs(b - 1999) <= 1), 'and after scrolling to line 2000 (' + JSON.stringify(reports.afterScroll) + ')');
+
     r = await measure('const a = 1;\n\nfunction f() {\n  return a;\n}\n\n\n// end', 1, 'js');
     // Line 4 is indented: Preview collapses leading spaces (it has no code-document kind),
     // Source shows them. Its top and right must still match.

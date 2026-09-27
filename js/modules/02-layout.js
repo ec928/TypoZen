@@ -4617,6 +4617,15 @@
          */
         function currentReadingBlock() {
             if (!editor) return -1;
+            // Source: the block holding the line at the top of its view. Source never
+            // reported at all, so a tab left in Source came back wherever an old Preview
+            // report had put it -- the top of an HTML file reopened at line 3904 (2026-09-27).
+            if (state.mode === 'source' && sourceEditor) {
+                try {
+                    const loc = modelLocationFromDocumentLine(hardLineFromSourceScrollTop());
+                    return loc && loc.blockIndex >= 0 ? loc.blockIndex : -1;
+                } catch (eSrc) { return -1; }
+            }
             if (isPaginatedLayout()) return topLeftModelIndexTwoCol();
             const host = (mainContainer || editor).getBoundingClientRect();
             const blocks = editor.querySelectorAll('.block');

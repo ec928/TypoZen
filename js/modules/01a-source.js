@@ -331,6 +331,15 @@
                             if (u.selectionSet && !u.state.selection.main.empty) {
                                 queueMicrotask(() => fire('select', new Event('select')));
                             }
+                            // Tell the host where Source is, as Preview does when it scrolls
+                            // (reportBookPosition, 02-layout.js: debounced, stamped with this
+                            // document). Also after a load, so a tab left at its top comes
+                            // back at its top instead of at an older report's line.
+                            if ((u.viewportChanged || u.docChanged)
+                                && typeof state !== 'undefined' && state && state.mode === 'source'
+                                && typeof window.reportBookPosition === 'function') {
+                                try { window.reportBookPosition(); } catch (eRp) {}
+                            }
                         })
                     ]
                 })
