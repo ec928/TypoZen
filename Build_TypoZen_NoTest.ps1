@@ -175,6 +175,18 @@ if ($missing.Count -gt 0) {
     }
 }
 Write-Host "  All WebView2 dependencies present." -ForegroundColor Gray
+# PdfPig and the .NET libraries it needs: File > Save All Images in PDF reads pictures
+# straight from the file with it (PdfPictures.cs). Tracked beside the exe like WebView2's.
+# Keep in step with Build_TypoZen.ps1, tools\Build-Portable.ps1 and TypoZen.csproj.
+$pdfDlls = @("UglyToad.PdfPig.dll", "UglyToad.PdfPig.Core.dll", "UglyToad.PdfPig.Fonts.dll",
+             "UglyToad.PdfPig.Tokenization.dll", "UglyToad.PdfPig.Tokens.dll", "Microsoft.Bcl.HashCode.dll",
+             "System.Memory.dll", "System.Buffers.dll", "System.Numerics.Vectors.dll",
+             "System.Runtime.CompilerServices.Unsafe.dll")
+$pdfMissing = @($pdfDlls | Where-Object { -not (Test-Path (Join-Path $appDir $_)) })
+if ($pdfMissing.Count -gt 0) {
+    Write-Host ("[ERROR] Required PdfPig DLLs not found: " + ($pdfMissing -join ", ")) -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "[2/4] Compiling TypoZen.exe..." -ForegroundColor Yellow
 $compiled = $false
@@ -239,6 +251,7 @@ if (-not $compiled) {
     
     [void]$refPaths.Add((Join-Path $appDir "Microsoft.Web.WebView2.Core.dll"))
     [void]$refPaths.Add((Join-Path $appDir "Microsoft.Web.WebView2.WinForms.dll"))
+    foreach ($d in $pdfDlls) { [void]$refPaths.Add((Join-Path $appDir $d)) }
 
     try {
         $cp = New-Object System.CodeDom.Compiler.CompilerParameters

@@ -20,6 +20,11 @@ $files = @(
     'WebView2Loader.dll',
     'Microsoft.Web.WebView2.Core.dll',
     'Microsoft.Web.WebView2.WinForms.dll',
+    # PdfPig and what it needs (Save All Images in PDF); keep in step with Build_TypoZen.ps1.
+    'UglyToad.PdfPig.dll', 'UglyToad.PdfPig.Core.dll', 'UglyToad.PdfPig.Fonts.dll',
+    'UglyToad.PdfPig.Tokenization.dll', 'UglyToad.PdfPig.Tokens.dll', 'Microsoft.Bcl.HashCode.dll',
+    'System.Memory.dll', 'System.Buffers.dll', 'System.Numerics.Vectors.dll',
+    'System.Runtime.CompilerServices.Unsafe.dll', 'THIRD-PARTY-NOTICES.txt',
     'dictionary.tsv',
     'thesaurus.tsv',
     'README.md',

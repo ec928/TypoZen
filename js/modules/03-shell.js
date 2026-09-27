@@ -940,6 +940,12 @@
                     if (typeof window.tzPdfExportCancel === 'function') window.tzPdfExportCancel(msg.substring(18));
                     return;
                 }
+                else if (msg.startsWith("pdf_export_result:")) {
+                    // A test run's whole result (host and viewer parts summed), which the host
+                    // sends only under --debug in place of its dialog.
+                    try { window.__tzExportResult = JSON.parse(msg.substring(18)); } catch (e) { }
+                    return;
+                }
                 else if (msg.startsWith("pdf_zoom:")) {
                     // Zoom on a PDF scales the PDF, not the page (host ZoomBy).
                     if (typeof window.tzPdfZoom === 'function') window.tzPdfZoom(msg.substring(9));

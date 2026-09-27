@@ -52,6 +52,17 @@
       <HintPath>.\Microsoft.Web.WebView2.WinForms.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <!-- PdfPig and what it needs (PdfPictures.cs); in step with $pdfDlls in Build_TypoZen.ps1. -->
+    <Reference Include="UglyToad.PdfPig"><HintPath>.\UglyToad.PdfPig.dll</HintPath><Private>True</Private></Reference>
+    <Reference Include="UglyToad.PdfPig.Core"><HintPath>.\UglyToad.PdfPig.Core.dll</HintPath><Private>True</Private></Reference>
+    <Reference Include="UglyToad.PdfPig.Fonts"><HintPath>.\UglyToad.PdfPig.Fonts.dll</HintPath><Private>True</Private></Reference>
+    <Reference Include="UglyToad.PdfPig.Tokenization"><HintPath>.\UglyToad.PdfPig.Tokenization.dll</HintPath><Private>True</Private></Reference>
+    <Reference Include="UglyToad.PdfPig.Tokens"><HintPath>.\UglyToad.PdfPig.Tokens.dll</HintPath><Private>True</Private></Reference>
+    <Reference Include="Microsoft.Bcl.HashCode"><HintPath>.\Microsoft.Bcl.HashCode.dll</HintPath><Private>True</Private></Reference>
+    <Reference Include="System.Memory"><HintPath>.\System.Memory.dll</HintPath><Private>True</Private></Reference>
+    <Reference Include="System.Buffers"><HintPath>.\System.Buffers.dll</HintPath><Private>True</Private></Reference>
+    <Reference Include="System.Numerics.Vectors"><HintPath>.\System.Numerics.Vectors.dll</HintPath><Private>True</Private></Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe"><HintPath>.\System.Runtime.CompilerServices.Unsafe.dll</HintPath><Private>True</Private></Reference>
     <Reference Include="System" />
     <Reference Include="Microsoft.VisualBasic" />
     <Reference Include="System.Core" />
@@ -87,6 +98,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Compile Include="EpubReader.cs" />
+    <Compile Include="PdfPictures.cs" />
     <Compile Include="Extensions.cs" />
     <Compile Include="Lexicon.cs" />
     <Compile Include="QwenNarrator.cs" />

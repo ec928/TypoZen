@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.8.1";
+        internal const string AppVersion = "0.8.2";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -15289,6 +15289,13 @@ namespace TypoZen
             public string Id, Kind, Folder;
             public int Files;
             public bool Finished;
+            // Pictures read straight from the file (PdfPictures): the host's part of the job,
+            // what it saved, and whether the reader asked it to stop. The viewer's part, if any,
+            // follows under the same job id.
+            public bool Host, CancelRequested;
+            public PdfPictures.Result HostResult;
+            public int ViewerPictures = -1;
+            public string HostNote;
             public Window Progress;
             public TextBlock Label;
             public ProgressBar Bar;
@@ -15300,6 +15307,9 @@ namespace TypoZen
         private bool _pdfExportJpeg = false;
         private int _pdfExportDpi = 300, _pdfExportQuality = 90;
         private bool _pdfExportSkipSmall = true, _pdfExportDedupe = true, _pdfExportPerPage = false;
+        // Save All Images: "original" (as stored, read by PdfPictures), "png" (all converted,
+        // losslessly) or "viewer" (decoded by PDF.js in the page, the method before 0.8.2).
+        private string _pdfExportMethod = "original";
         private string _pdfExportFolder;
 
         private void AskPdfExport(string kind)
@@ -15435,8 +15445,15 @@ namespace TypoZen
             if (n > 1) line(rbRange, tbRange).Children.Add(new TextBlock { Text = "  e.g. 1-5, 8", Opacity = 0.65, VerticalAlignment = VerticalAlignment.Center });
             tbRange.GotFocus += (s2, e2) => { rbRange.IsChecked = true; };
 
+            RadioButton rbOriginal = null, rbAllPng = null, rbViewer = null;
             if (!pages)
             {
+                heading("Method");
+                rbOriginal = radio("method", "Original files -- each picture exactly as stored in the PDF (a JPEG stays the same JPEG); the rest as lossless PNG. Fastest.", _pdfExportMethod == "original");
+                rbAllPng = radio("method", "All as PNG -- every picture converted to PNG, losslessly.", _pdfExportMethod == "png");
+                rbViewer = radio("method", "As the viewer decodes them -- the previous method; slower.", _pdfExportMethod == "viewer");
+                root.Children.Add(rbOriginal); root.Children.Add(rbAllPng); root.Children.Add(rbViewer);
+
                 heading("Options");
                 cbSmall = new CheckBox { IsChecked = _pdfExportSkipSmall, Margin = new Thickness(0, 4, 0, 0), Foreground = win.Foreground, Content = new TextBlock { Text = "Skip small pictures (under 32 x 32 pixels: icons, bullets)", TextWrapping = TextWrapping.Wrap } };
                 cbDedupe = new CheckBox { IsChecked = _pdfExportDedupe, Margin = new Thickness(0, 4, 0, 0), Foreground = win.Foreground, Content = new TextBlock { Text = "Save a picture used on several pages once (a logo in every header)", TextWrapping = TextWrapping.Wrap } };
@@ -15444,8 +15461,9 @@ namespace TypoZen
                 root.Children.Add(cbSmall); root.Children.Add(cbDedupe); root.Children.Add(cbPerPage);
                 root.Children.Add(new TextBlock
                 {
-                    Text = "Each picture is saved at the size it is stored in the PDF. Photos stored as JPEG keep "
-                         + "their original bytes; the rest are saved as PNG. Page text is never included -- a PDF "
+                    Text = "Each picture is saved at the size it is stored in the PDF, not as it looks on the page. "
+                         + "A picture the first two methods cannot copy as it is -- one with transparency, some "
+                         + "scans -- is saved by the viewer's method instead. Page text is never included -- a PDF "
                          + "keeps text and pictures apart.",
                     TextWrapping = TextWrapping.Wrap, Opacity = 0.75, Margin = new Thickness(0, 12, 0, 0)
                 });
@@ -15528,6 +15546,7 @@ namespace TypoZen
                 _pdfExportSkipSmall = cbSmall.IsChecked == true;
                 _pdfExportDedupe = cbDedupe.IsChecked == true;
                 _pdfExportPerPage = cbPerPage.IsChecked == true;
+                _pdfExportMethod = rbViewer.IsChecked == true ? "viewer" : rbAllPng.IsChecked == true ? "png" : "original";
             }
 
             string start = _pdfExportFolder;
@@ -15539,22 +15558,112 @@ namespace TypoZen
             if (string.IsNullOrEmpty(folder)) return;
             _pdfExportFolder = folder;
             StartPdfExport(pages ? "pages" : "images", folder, list, _pdfExportJpeg ? "jpeg" : "png", _pdfExportDpi,
-                _pdfExportQuality, _pdfExportSkipSmall, _pdfExportDedupe, _pdfExportPerPage);
+                _pdfExportQuality, _pdfExportSkipSmall, _pdfExportDedupe, _pdfExportPerPage, pages ? "viewer" : _pdfExportMethod);
         }
 
         private void StartPdfExport(string kind, string folder, List<int> pages, string format, int dpi, int quality,
-                                    bool skipSmall, bool dedupe, bool perPage)
+                                    bool skipSmall, bool dedupe, bool perPage, string method)
         {
             var job = new PdfExportJob { Id = Guid.NewGuid().ToString("N"), Kind = kind, Folder = folder };
             _pdfExportJobs[job.Id] = job;
             ShowPdfExportProgress(job, pages.Count);
+            if (kind == "images" && (method == "original" || method == "png"))
+            {
+                StartDirectPictureExport(job, pages, method == "png", skipSmall, dedupe, perPage);
+                return;
+            }
+            SendViewerExport(job, kind, pages, format, dpi, quality, skipSmall, dedupe, perPage, null);
+        }
+
+        /// <summary>The page's own export (PDF.js). `only`: the pictures the host left to it.</summary>
+        private void SendViewerExport(PdfExportJob job, string kind, List<int> pages, string format, int dpi, int quality,
+                                      bool skipSmall, bool dedupe, bool perPage, Dictionary<string, object> only)
+        {
             var run = new Dictionary<string, object>
             {
                 { "job", job.Id }, { "kind", kind }, { "pages", pages }, { "format", format }, { "dpi", dpi },
                 { "quality", quality }, { "skipSmall", skipSmall }, { "dedupe", dedupe }, { "perPage", perPage },
                 { "base", Path.GetFileNameWithoutExtension(_currentFilePath ?? "PDF") }
             };
+            if (only != null) run["only"] = only;
             SendMsg("pdf_export_run:" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(run));
+        }
+
+        /// <summary>
+        /// Save All Images read straight from the file (PdfPictures), off the UI thread. What it
+        /// cannot hand over as it is goes to the viewer afterwards, picture by picture; a file it
+        /// cannot open at all (a password typed into the viewer, a PDF it cannot parse) goes to
+        /// the viewer whole.
+        /// </summary>
+        private void StartDirectPictureExport(PdfExportJob job, List<int> pages, bool png, bool skipSmall, bool dedupe, bool perPage)
+        {
+            job.Host = true;
+            DocTab tab = (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count) ? _tabs[_activeTabIndex] : null;
+            // The PDF on screen: its unsaved-changes copy when there is one, as OpenPdf serves it.
+            string source = (tab != null && tab.PdfEdited && !string.IsNullOrEmpty(tab.PdfStashPath) && File.Exists(tab.PdfStashPath))
+                ? tab.PdfStashPath : _currentFilePath;
+            string baseName = SafeExportName(Path.GetFileNameWithoutExtension(_currentFilePath ?? "PDF"));
+            if (baseName.Length == 0) baseName = "PDF";
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                PdfPictures.Result r = null;
+                string why = null;
+                try
+                {
+                    r = PdfPictures.Extract(source, pages, job.Folder, baseName, png, skipSmall, dedupe, perPage,
+                        () => job.CancelRequested,
+                        (done, files) => Dispatcher.BeginInvoke(new Action(() =>
+                            PdfExportProgress(job.Id + "|" + done + "|" + pages.Count + "|" + files))));
+                }
+                catch (Exception ex) { why = ex.Message; LogFault("pdf pictures", ex); }
+                Dispatcher.BeginInvoke(new Action(() => FinishDirectPictureExport(job, r, why, pages, skipSmall, dedupe, perPage)));
+            });
+        }
+
+        private void FinishDirectPictureExport(PdfExportJob job, PdfPictures.Result r, string why, List<int> pages,
+                                               bool skipSmall, bool dedupe, bool perPage)
+        {
+            if (job.Finished) return;
+            if (r == null)
+            {
+                // Nothing read: the viewer does the whole job, and the result says why.
+                job.HostNote = "The pictures were saved by the viewer's method: the PDF could not be read directly"
+                    + (string.IsNullOrEmpty(why) ? "." : " (" + why + ").");
+                SendViewerExport(job, "images", pages, "png", 0, 90, skipSmall, dedupe, perPage, null);
+                return;
+            }
+            job.HostResult = r;
+            job.Files += r.Files;
+            if (r.Cancelled || r.Fallbacks.Count == 0 || job.CancelRequested)
+            {
+                PdfExportFinish(job, new Dictionary<string, object> { { "job", job.Id }, { "cancelled", r.Cancelled || job.CancelRequested } });
+                return;
+            }
+            // The rest, by page: the sizes to find there (or every picture, for a page the host
+            // could not read at all), numbered on after the ones the host already saved.
+            var only = new Dictionary<string, object>();
+            var fallbackPages = new List<int>();
+            foreach (var f in r.Fallbacks)
+            {
+                string key = f.Page.ToString();
+                object o;
+                Dictionary<string, object> entry;
+                if (only.TryGetValue(key, out o)) entry = (Dictionary<string, object>)o;
+                else
+                {
+                    int start;
+                    r.WrittenOnPage.TryGetValue(f.Page, out start);
+                    entry = new Dictionary<string, object> { { "sizes", new List<int[]>() }, { "all", false }, { "start", start } };
+                    only[key] = entry;
+                    fallbackPages.Add(f.Page);
+                }
+                if (f.Width < 0) entry["all"] = true;
+                else ((List<int[]>)entry["sizes"]).Add(new[] { f.Width, f.Height });
+            }
+            fallbackPages.Sort();
+            job.ViewerPictures = r.Fallbacks.Count;
+            if (job.Label != null) job.Label.Text = "Saving " + r.Fallbacks.Count + (r.Fallbacks.Count == 1 ? " picture" : " pictures") + " by the viewer's method...";
+            SendViewerExport(job, "images", fallbackPages, "png", 0, 90, skipSmall, dedupe, perPage, only);
         }
 
         private void ShowPdfExportProgress(PdfExportJob job, int total)
@@ -15580,6 +15689,7 @@ namespace TypoZen
             Action stop = () =>
             {
                 if (job.Finished) return;
+                job.CancelRequested = true;                 // the host's part, if it is running
                 SendMsg("pdf_export_cancel:" + job.Id);
                 job.Label.Text = "Stopping after this page...";
                 job.Cancel.IsEnabled = false;
@@ -15618,8 +15728,26 @@ namespace TypoZen
             try { r = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json); } catch { }
             if (r == null || !r.ContainsKey("job")) return;
             PdfExportJob job;
-            string id = Convert.ToString(r["job"]);
-            if (!_pdfExportJobs.TryGetValue(id, out job)) return;
+            if (!_pdfExportJobs.TryGetValue(Convert.ToString(r["job"]), out job)) return;
+            PdfExportFinish(job, r);
+        }
+
+        /// <summary>
+        /// The end of a job: the page's result, with the host's own part added when it read
+        /// pictures straight from the file. Summed here so the reader gets one report.
+        /// </summary>
+        private void PdfExportFinish(PdfExportJob job, Dictionary<string, object> r)
+        {
+            string id = job.Id;
+            if (!_pdfExportJobs.ContainsKey(id)) return;
+            var h = job.HostResult;
+            if (h != null)
+            {
+                Func<string, int, int> add = (key, extra) => { int v = (int)JsonNumber(r, key) + extra; r[key] = v; return v; };
+                add("originals", h.Originals); add("small", h.Small); add("repeats", h.Repeats); add("unreadable", h.Unreadable);
+                r["viewer"] = job.ViewerPictures > 0 ? job.ViewerPictures : 0;
+            }
+            if (!r.ContainsKey("kind")) r["kind"] = job.Kind;
             _pdfExportJobs.Remove(id);
             job.Finished = true;
             try { if (job.Progress != null) job.Progress.Close(); } catch { }
@@ -15648,10 +15776,19 @@ namespace TypoZen
                 if (repeats > 0) notes.Add(repeats + " repeated " + (repeats == 1 ? "picture was" : "pictures were") + " saved once");
                 int unreadable = (int)JsonNumber(r, "unreadable");
                 if (unreadable > 0) notes.Add(unreadable + (unreadable == 1 ? " picture" : " pictures") + " could not be read and " + (unreadable == 1 ? "was" : "were") + " left out");
+                int viewer = (int)JsonNumber(r, "viewer");
+                if (viewer > 0) notes.Add(viewer + (viewer == 1 ? " picture was" : " pictures were") + " saved by the viewer's method (transparency, some scans)");
                 if (notes.Count > 0) sb.Append("\n\n" + string.Join("; ", notes) + ".");
+                if (!string.IsNullOrEmpty(job.HostNote)) sb.Append("\n\n" + job.HostNote);
             }
-            // A test run keeps quiet; the page reports the result to the test itself.
-            if (_e2eMode || _pdfExportTestMode) return;
+            // A test run keeps quiet; the result goes to the page for the test to read.
+            if (_e2eMode || _pdfExportTestMode)
+            {
+                r["files"] = files;
+                if (!string.IsNullOrEmpty(job.HostNote)) r["note"] = job.HostNote;
+                try { SendMsg("pdf_export_result:" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(r)); } catch { }
+                return;
+            }
             if (files > 0)
             {
                 sb.Append("\n\nOpen the folder?");
@@ -15687,7 +15824,9 @@ namespace TypoZen
                 Directory.CreateDirectory(folder);
                 StartPdfExport(Convert.ToString(d["kind"]), folder, pages, Convert.ToString(d["format"]),
                     (int)JsonNumber(d, "dpi"), (int)JsonNumber(d, "quality"),
-                    Convert.ToBoolean(d["skipSmall"]), Convert.ToBoolean(d["dedupe"]), Convert.ToBoolean(d["perPage"]));
+                    Convert.ToBoolean(d["skipSmall"]), Convert.ToBoolean(d["dedupe"]), Convert.ToBoolean(d["perPage"]),
+                    // The viewer's method unless the test names another: pdf-export-app predates them.
+                    d.ContainsKey("method") ? Convert.ToString(d["method"]) : "viewer");
             }
             catch (Exception ex) { LogFault("pdf export test", ex); }
         }

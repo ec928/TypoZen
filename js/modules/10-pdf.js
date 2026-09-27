@@ -1612,9 +1612,20 @@
                         jpegs = encrypted ? [] : findJpegStreams(data);
                     }
                     const { page, list } = await picturesOn(doc, p);
-                    let k = 0;
+                    // job.only: the host read this PDF's pictures itself (PdfPictures.cs) and
+                    // left these to the viewer -- by size, or every picture on a page it could
+                    // not read -- numbered on after the ones it saved. A page holding two
+                    // pictures of one size, one saved by the host and one not, can get the
+                    // wrong one of the two; sizes are all the two readers have in common.
+                    const want = job.only ? job.only[String(p)] : null;
+                    let k = want && want.start ? want.start : 0;
                     for (const { id, img } of list) {
                         if (state.cancelled) break;
+                        if (want && !want.all) {
+                            const at = img ? want.sizes.findIndex(s => s[0] === img.width && s[1] === img.height) : -1;
+                            if (at < 0) continue;
+                            want.sizes.splice(at, 1);
+                        }
                         // A picture that cannot be read is counted and reported, never dropped
                         // silently; the reasons go to the page for diagnosis.
                         const unreadable = (why) => { result.unreadable++; (window.__tzExportTrace = window.__tzExportTrace || []).push('p' + p + ' ' + id + ': ' + why); };

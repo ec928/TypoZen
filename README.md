@@ -93,7 +93,12 @@ A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing download
 - **Bookmarks and highlights** are kept with the PDF and listed in the Marks pane with their page.
 - **A password-protected PDF** asks for its password.
 - **File → Save Pages as Images...** saves pages as PNG or JPEG at 150, 300 or 600 DPI (or your own figure): all pages, this page, or a range like `1-5, 8`. The DPI is written into each file, so a page opens at its paper size.
-- **File → Save All Images in PDF...** saves every picture as its own file, at the size it is stored in the PDF. Photos stored as JPEG keep their original bytes, so nothing is re-compressed; the rest are saved as PNG with any transparency. Small icons are skipped and a picture repeated on many pages (a logo) is saved once, both optional; one subfolder per page if you like. Page text is never included.
+- **File → Save All Images in PDF...** saves every picture as its own file, at the size it is stored in the PDF, by one of three methods:
+  - **Original files** (the default) reads the pictures straight from the file: a JPEG or JPEG 2000 is saved as the very bytes the PDF holds, anything else as a lossless PNG of its stored samples (a 1-bit scan stays a 1-bit PNG).
+  - **All as PNG** does the same but converts JPEGs to lossless PNG too, for one format throughout.
+  - **As the viewer decodes them** is the previous method, kept as a choice.
+
+  The first two read the PDF with [PdfPig](https://github.com/UglyToad/PdfPig) rather than asking the viewer, which only ever hands over decoded pixels -- measured on 20 pages of a picture book, 3.6 s against 17.4 s, and on 60 pages of a scanned book 1.9 s against 6.1 s with files a quarter the size. A picture they cannot hand over as it is (one with a transparency mask, a JBIG2 scan) is saved by the viewer's method in the same run, and the result says how many. Small icons are skipped and a picture repeated on many pages (a logo) is saved once, both optional; one subfolder per page if you like. Page text is never included.
 - **Print** prints the original file through Edge's PDF printing, so the output is the PDF, not a screen capture. **File → Open in Default App** hands it to your usual PDF program.
 - **Scanned pages are read.** A page that is only a picture of text has its words recognised by Windows' own text recognition, on your computer, in the languages Windows has installed: they can then be found, selected, looked up and read aloud like any other text. Pages scanned sideways or upside down are turned until they read. The words are kept for next time (in Privacy Mode only for the session), and Clear Stored Data can remove them. About half a second a page; a picture with no words stays a picture. Handwriting and poor scans read badly. **View → Read Text in Scanned PDF Pages** turns it off.
 - **Annotate and fill in.** **Edit → Annotate PDF** offers Highlight (drag across text), Add Text, Draw and Add Picture; **Stop Annotating** goes back to reading. Each annotation has PDF.js's small toolbar when selected (delete; colour for a highlight), and **Undo/Redo** step through them. Form fields are filled in where they are. These go *into the PDF* when saved -- unlike TypoZen's own bookmarks and highlights from the selection popup, which TypoZen keeps.
@@ -588,6 +593,8 @@ From the project folder:
 
 **Referenced assemblies.** Three DLLs sit beside the sources — `Microsoft.Web.WebView2.Core`, `Microsoft.Web.WebView2.WinForms` and `WebView2Loader`. The **WinForms** flavour only: the control is hosted in a `WindowsFormsHost`, nothing imports `Microsoft.Web.WebView2.Wpf`, and neither of the other two assemblies references it, so it is not shipped. The build fails with a named list if any is missing, and falls back to a sibling `Text Search` folder for the ones it cannot find. `TypoZen.ico` is passed as `/win32icon`. `TypoZen.csproj` describes the same build for MSBuild and Visual Studio — **keep it and `Build_TypoZen.ps1` in step**, since each carries its own copy of the reference list.
 
+**PdfPig** (Save All Images in PDF, `PdfPictures.cs`) is ten more DLLs beside the sources, about 5.5 MB: PdfPig 0.1.16's .NET Framework 4.7.1 build (`UglyToad.PdfPig`, `.Core`, `.Fonts`, `.Tokenization`, `.Tokens`) and what it needs (`Microsoft.Bcl.HashCode`, `System.Memory`, `System.Buffers`, `System.Numerics.Vectors`, `System.Runtime.CompilerServices.Unsafe`), from nuget.org. Their versions match one another exactly, so no binding redirects are needed. The build compiles with the .NET Framework C# compiler, which cannot use `Span<T>`: use PdfPig's `RawMemory` and `TryGetBytesAsMemory`, never `RawBytes` or any `Span`-typed member. They are listed in `$pdfDlls` in both build scripts, in `tools/Build-Portable.ps1` and in `TypoZen.csproj`.
+
 **Runtime assets** (edit without recompiling C#):
 
 - `TypoZen.xaml` — shell and menus
@@ -677,14 +684,16 @@ Marks are milliseconds from entry to `Main`; the log is appended, so delete it b
 ---
 
 ## Licence
-TypoZen is **MIT** (`LICENSE`). Three bundled things carry their own terms, and all
-three permit commercial use and redistribution:
+TypoZen is **MIT** (`LICENSE`). The bundled components carry their own terms, and all
+of them permit commercial use and redistribution:
 
 | Component | Licence | Text |
 | --- | --- | --- |
 | TypoZen itself | MIT | `LICENSE` |
 | Inter, Literata, Merriweather, Source Sans 3 | SIL Open Font License 1.1 | `fonts/OFL.txt` |
 | Dictionary and thesaurus data | Open English WordNet (CC BY 4.0), derived from Princeton WordNet | `WORDNET-LICENSE.txt` |
+| PDF.js (the PDF viewer) | Apache 2.0, with its own component notices | `js/vendor/pdfjs/LICENSE` and beside it |
+| PdfPig and the .NET libraries it needs | Apache 2.0; MIT | `THIRD-PARTY-NOTICES.txt` |
 
 **Privacy:** [PRIVACY.md](PRIVACY.md) — TypoZen sends nothing anywhere; everything it
 remembers is in `%LOCALAPPDATA%\TypoZen_Cache_Portable` and can be cleared from **File → Privacy**.
