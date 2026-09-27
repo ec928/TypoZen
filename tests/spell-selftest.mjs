@@ -53,8 +53,14 @@ const source = fs.readFileSync(path.join(root, 'js', 'modules', '01a-source.js')
 assert(/id="source-cm"/.test(html) && /contentAttributes\.of\(\{\s*spellcheck:\s*'false'/.test(source),
     'Source (CodeMirror in #source-cm) has Chromium spellcheck off');
 assert(/id="editor"[^>]*spellcheck="false"/.test(html), 'Preview editor has Chromium spellcheck off');
-assert(/spell_check:cm/.test(source) && /typozen-spell/.test(source) && /recheckSpelling\(\)/.test(source),
-    'Source sends its visible lines to the host and draws typozen-spell decorations');
+assert(/spellCheckTexts/.test(source) && /spellCached/.test(source) && /typozen-spell/.test(source) && /recheckSpelling\(\)/.test(source),
+    'Source checks its visible lines through the shared, remembering checker and draws typozen-spell');
+// Suggestions only when a word is selected: a check finds misspellings, nothing more.
+const checkBody = (spellCs.match(/public static Hit\[\] Check\(string text\)[\s\S]*?\n        }\r?\n/) || [''])[0];
+assert(checkBody && !/GetSpellingError\(/.test(checkBody), 'the host\'s check does not work out suggestions');
+assert(/public static string\[\] Suggest\(string word\)/.test(spellCs) && /spell_suggest:/.test(app), 'the host suggests for one word on request');
+assert(/spell_suggestions:/.test(shell) && /spell_suggest:/.test(layout), 'the page asks for suggestions when a word is selected');
+assert(/function spellCheckTexts/.test(layout) && /_spellCache/.test(layout), 'answers are remembered per text');
 assert(/sourceEditor\.recheckSpelling\(\)/.test(layout), 'scheduleSpellCheck re-checks Source when Source is showing');
 assert(/::highlight\(typozen-spell\),\s*#source-cm \.typozen-spell/.test(css), 'one underline rule for both views');
 

@@ -2782,15 +2782,28 @@
             }, true);
         }
 
-        /* ---- Spelling (Windows ISpellChecker via the host) ----------------------
-           dictionary.tsv is definitions, not a spell list. Underlines and replacements
-           come from the OS proofing engine. The page paints; the host decides. */
+        /* ---- Spelling (the Windows checker via the host) ------------------------
+           dictionary.tsv is definitions, not a spell list. The host's checker decides; the
+           page asks about the text on screen and draws the answers -- Preview here, Source
+           in 01a-source.js, both through spellCheckTexts().
+
+           Answers are remembered per paragraph (Preview) or line (Source), keyed by the
+           text itself, so a check asks only about text not seen in that exact form:
+           scrolling back, switching tabs or modes, or a pause in typing that changed one
+           paragraph costs a repaint and, at most, one paragraph sent to the host.
+
+           Suggestions are not part of a check. The host works them out for one word when
+           the reader selects it (spell_suggest:): doing it for every misspelling on screen
+           took seconds on a page of unknown words, on the window's own thread. */
 
         let _spellTimer = null;
         let _spellReq = 0;
-        let _spellPending = null;
-        let _spellHits = [];
-        let _spellBlockEl = null;
+        let _spellHits = [];                  // words Preview has underlined now
+        const _spellCache = new Map();        // text -> [{ start, len, word }]
+        const SPELL_CACHE_MAX = 20000;
+        const SPELL_REQUEST_CHARS = 7500;     // under the host's 8,000-character cap
+        const _spellRequests = new Map();     // request id -> { segs, done }
+        const _spellSuggs = new Map();        // word -> suggestions, once asked
 
         function blockPlainText(el) {
             if (!el) return '';
@@ -2823,27 +2836,9 @@
 
         function clearSpellHighlights() {
             _spellHits = [];
-            _spellBlockEl = null;
             try {
                 if (window.CSS && CSS.highlights) CSS.highlights.delete('typozen-spell');
             } catch (e) {}
-        }
-
-        function paintSpellOnBlock(el, hits) {
-            _spellHits = hits || [];
-            _spellBlockEl = el;
-            const ranges = [];
-            if (el && hits) {
-                for (let i = 0; i < hits.length; i++) {
-                    const r = rangeForPlainOffset(el, hits[i].start, hits[i].len);
-                    if (r) ranges.push(r);
-                }
-            }
-            try {
-                if (!window.CSS || !CSS.highlights || typeof Highlight === 'undefined') return;
-                if (ranges.length) CSS.highlights.set('typozen-spell', new Highlight(...ranges));
-                else CSS.highlights.delete('typozen-spell');
-            } catch (e2) {}
         }
 
         function spellingEnabledHere() {
@@ -2858,13 +2853,13 @@
         /**
          * Check the text on screen again, in whichever view is showing. Every spelling
          * trigger comes here -- typing, a load or tab switch, a mode switch, scrolling
-         * Preview, a fix, Ignore, Add to dictionary.
+         * Preview, a fix, Ignore, Add to dictionary. When nothing on screen is new, it
+         * repaints from memory and asks the host nothing.
          */
         function scheduleSpellCheck() {
             if (!spellingEnabledHere()) { clearSpellHighlights(); return; }
             // Source checks its own visible lines (01a-source.js); Preview's marks are not
-            // on screen there. Without this, Ignore and Add to dictionary never cleared an
-            // underline in Source, and a tab switch never re-checked it.
+            // on screen there.
             if (state.mode === 'source') {
                 clearSpellHighlights();
                 try { if (sourceEditor && sourceEditor.recheckSpelling) sourceEditor.recheckSpelling(); } catch (eSrc) {}
@@ -2875,47 +2870,53 @@
         }
         window.scheduleSpellCheck = scheduleSpellCheck;
 
-        function runSpellCheckNow() {
-            _spellTimer = null;
-            if (!spellingEnabledHere()) { clearSpellHighlights(); return; }
-            if (state.mode === 'source') {
-                clearSpellHighlights();
-                return;
-            }
-            
-            // Find all visible blocks
-            const visible = [];
-            if (editor) {
-                const rect = (typeof mainContainer !== 'undefined' && mainContainer) ? mainContainer.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
-                for (let child of editor.children) {
-                    if (!child.classList.contains('block')) continue;
-                    const cr = child.getBoundingClientRect();
-                    if (cr.bottom > rect.top && cr.top < rect.bottom) {
-                        visible.push(child);
-                    }
-                }
-            }
-            
-            if (!visible.length) { clearSpellHighlights(); return; }
-            
-            let fullText = '';
-            const blockMap = [];
-            for (let i = 0; i < visible.length; i++) {
-                const text = blockPlainText(visible[i]);
-                if (text.trim()) {
-                    blockMap.push({ el: visible[i], offset: fullText.length, len: text.length });
-                    fullText += text + '\n\n';
-                }
-            }
-            
-            if (!fullText.trim()) { clearSpellHighlights(); return; }
-            
-            const id = 'live' + (++_spellReq);
-            _spellPending = { id: id, mode: 'live_viewport', map: blockMap, text: fullText };
-            try { postMsg('spell_check:' + id + '\n' + fullText.slice(0, 8000)); } catch (e2) {}
-        }
+        /** This text's misspellings as last answered; undefined if it was never checked. */
+        function spellCached(text) { return _spellCache.get(text); }
+        window.spellCached = spellCached;
 
-        window.parseSpellHits = parseSpellHits; function parseSpellHits(rest) {
+        /**
+         * Make sure every text in `texts` has an answer, asking the host only about the
+         * ones not already known. `done` runs when they are in -- at once if none were
+         * missing. Texts go in batches under the host's size cap. An answer the host cut
+         * short (it says "capped") is trusted only up to its last hit: the texts after it
+         * are asked about again next time, never remembered as clean.
+         */
+        function spellCheckTexts(texts, done) {
+            const want = [];
+            const seen = new Set();
+            for (const t of texts) {
+                if (!t || seen.has(t) || _spellCache.has(t)) continue;
+                seen.add(t);
+                // No run of two letters: nothing the checker could flag.
+                if (!/\p{L}{2}/u.test(t)) { _spellCache.set(t, []); continue; }
+                want.push(t);
+            }
+            if (!want.length) { if (done) done(); return; }
+            let open = 0;
+            const finish = function () { if (--open === 0 && done) done(); };
+            let segs = [], body = '';
+            const flush = function () {
+                if (!segs.length) return;
+                const id = 'sp' + (++_spellReq);
+                _spellRequests.set(id, { segs: segs, done: finish });
+                open++;
+                try { postMsg('spell_check:' + id + '\n' + body); }
+                catch (e) { _spellRequests.delete(id); open--; }
+                segs = []; body = '';
+            };
+            for (const t of want) {
+                const text = t.length > SPELL_REQUEST_CHARS ? t.slice(0, SPELL_REQUEST_CHARS) : t;
+                if (body.length && body.length + 2 + text.length > SPELL_REQUEST_CHARS) flush();
+                if (body.length) body += '\n\n';
+                segs.push({ key: t, offset: body.length, len: text.length });
+                body += text;
+            }
+            flush();
+            if (open === 0 && done) done();
+        }
+        window.spellCheckTexts = spellCheckTexts;
+
+        function parseSpellHits(rest) {
             const hits = [];
             const lines = String(rest || '').split('\n');
             for (let i = 0; i < lines.length; i++) {
@@ -2924,69 +2925,126 @@
                 const start = parseInt(p[0], 10) || 0;
                 const len = parseInt(p[1], 10) || 0;
                 if (len <= 0) continue;
-                hits.push({
-                    start: start,
-                    len: len,
-                    word: p[2] || '',
-                    suggs: p[3] ? p[3].split('|').filter(Boolean) : []
-                });
+                hits.push({ start: start, len: len, word: p[2] || '' });
             }
             return hits;
         }
 
+        /** The host's answer to one spellCheckTexts batch (spell_hits:). */
         function applySpellHits(payload) {
             const raw = String(payload == null ? '' : payload);
             const nl = raw.indexOf('\n');
-            const first = nl < 0 ? raw : raw.slice(0, nl);
-            const id = first.split('\t')[0];
+            const head = (nl < 0 ? raw : raw.slice(0, nl)).split('\t');
+            const req = _spellRequests.get(head[0]);
+            if (!req) return;
+            _spellRequests.delete(head[0]);
+            if (head[1] !== '1') { req.done(); return; }       // no checker: remember nothing
             const hits = parseSpellHits(nl < 0 ? '' : raw.slice(nl + 1));
-            if (_spellPending && _spellPending.id === id && _spellPending.mode === 'live_viewport') {
-                _spellHits = hits || [];
-                const ranges = [];
-                for (let h = 0; h < hits.length; h++) {
-                    const hit = hits[h];
-                    for (let b = 0; b < _spellPending.map.length; b++) {
-                        const m = _spellPending.map[b];
-                        if (hit.start >= m.offset && hit.start < m.offset + m.len) {
-                            const r = rangeForPlainOffset(m.el, hit.start - m.offset, hit.len);
-                            if (r) ranges.push(r);
-                            break;
-                        }
-                    }
+            const capped = head.indexOf('capped') > 1;
+            const lastStart = hits.length ? hits[hits.length - 1].start : -1;
+            for (const seg of req.segs) {
+                if (capped && seg.offset + seg.len > lastStart) continue;   // not fully answered
+                const own = [];
+                for (const h of hits) {
+                    if (h.start >= seg.offset && h.start < seg.offset + seg.len)
+                        own.push({ start: h.start - seg.offset, len: h.len, word: h.word });
                 }
-                try {
-                    if (window.CSS && CSS.highlights && typeof Highlight !== 'undefined') {
-                        if (ranges.length) CSS.highlights.set('typozen-spell', new Highlight(...ranges));
-                        else CSS.highlights.delete('typozen-spell');
-                    }
-                } catch (eH) {}
-            } else if (_spellPending && _spellPending.id === id && _spellPending.el) {
-                paintSpellOnBlock(_spellPending.el, hits);
+                if (_spellCache.size >= SPELL_CACHE_MAX) _spellCache.clear();
+                _spellCache.set(seg.key, own);
             }
+            req.done();
         }
         window.applySpellHits = applySpellHits;
 
-        function suggestionsForWord(word) {
-            const w = String(word || '');
-            if (!w) return [];
-            const hits = (state.mode === 'source' && window._cmSpellHits) ? window._cmSpellHits : _spellHits;
-            for (let i = 0; i < hits.length; i++) {
-                if (String(hits[i].word) === w) return hits[i].suggs || [];
+        /** Ignore / Add to dictionary: the word is no longer a misspelling anywhere. */
+        function spellForget(word) {
+            const lw = String(word || '').toLowerCase();
+            if (!lw) return;
+            _spellCache.forEach(function (hits, key) {
+                if (hits.some(h => String(h.word).toLowerCase() === lw))
+                    _spellCache.set(key, hits.filter(h => String(h.word).toLowerCase() !== lw));
+            });
+            _spellSuggs.delete(word);
+        }
+        window.spellForget = spellForget;
+
+        /** Preview's blocks on screen, with their text. */
+        function previewSpellItems() {
+            const items = [];
+            if (!editor) return items;
+            const rect = (typeof mainContainer !== 'undefined' && mainContainer)
+                ? mainContainer.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+            for (const child of editor.children) {
+                if (!child.classList || !child.classList.contains('block')) continue;
+                const cr = child.getBoundingClientRect();
+                if (cr.bottom <= rect.top || cr.top >= rect.bottom) continue;
+                const text = blockPlainText(child);
+                if (text.trim()) items.push({ el: child, text: text });
             }
-            const lw = w.toLowerCase();
-            for (let j = 0; j < hits.length; j++) {
-                if (String(hits[j].word).toLowerCase() === lw)
-                    return hits[j].suggs || [];
-            }
-            return [];
+            return items;
         }
 
-        function fillSpellSuggestions(word, suggs) {
+        /** Underline what is known about these blocks; unknown ones stay clean until answered. */
+        function paintPreviewSpelling(items) {
+            const ranges = [], words = [];
+            for (const it of items) {
+                const hits = _spellCache.get(it.text);
+                if (!hits) continue;
+                for (const h of hits) {
+                    const r = rangeForPlainOffset(it.el, h.start, h.len);
+                    if (r) { ranges.push(r); words.push(h.word); }
+                }
+            }
+            _spellHits = words;
+            try {
+                if (!window.CSS || !CSS.highlights || typeof Highlight === 'undefined') return;
+                if (ranges.length) CSS.highlights.set('typozen-spell', new Highlight(...ranges));
+                else CSS.highlights.delete('typozen-spell');
+            } catch (e) {}
+        }
+
+        function runSpellCheckNow() {
+            _spellTimer = null;
+            if (!spellingEnabledHere() || state.mode === 'source') { clearSpellHighlights(); return; }
+            const items = previewSpellItems();
+            if (!items.length) { clearSpellHighlights(); return; }
+            paintPreviewSpelling(items);                         // what is already known, now
+            const missing = items.filter(i => !_spellCache.has(i.text)).length;
+            if (!missing) return;                                // nothing new on screen
+            spellCheckTexts(items.map(i => i.text), function () {
+                if (state.mode === 'source') return;
+                // The screen may have moved while the host answered: paint what is there now.
+                const now = previewSpellItems();
+                paintPreviewSpelling(now);
+                const still = now.filter(i => !_spellCache.has(i.text)).length;
+                if (still && still < missing) scheduleSpellCheck();   // a capped answer: the rest
+            });
+        }
+
+        /** Whether this word is underlined on screen now, in whichever view is showing. */
+        function isUnderlinedWord(word) {
+            const lw = String(word || '').toLowerCase();
+            if (!lw) return false;
+            const words = state.mode === 'source' ? (window._cmSpellWords || []) : _spellHits;
+            return words.some(w => String(w).toLowerCase() === lw);
+        }
+
+        /**
+         * The popover's spelling row, for an underlined word: its suggestions -- asked of
+         * the host the first time this word is selected -- then Ignore and Add to
+         * dictionary. Not shown for a correctly spelled word.
+         */
+        function fillSpellSuggestions(word) {
             const box = document.getElementById('selPopSpell');
             if (!box) return;
             box.innerHTML = '';
-            const list = suggs || suggestionsForWord(word);
-            if (!word || !list.length) { box.hidden = true; return; }
+            if (!word || !isUnderlinedWord(word)) { box.hidden = true; return; }
+            const list = _spellSuggs.get(word);
+            if (!list) {
+                box.hidden = true;
+                try { postMsg('spell_suggest:' + word); } catch (e) {}   // applySpellSuggestions fills it
+                return;
+            }
             list.slice(0, 5).forEach(function (s) {
                 const b = document.createElement('button');
                 b.type = 'button';
@@ -3010,6 +3068,16 @@
             box.appendChild(add);
             box.hidden = false;
         }
+
+        /** The host's suggestions for one word (spell_suggestions:word<TAB>a|b|c). */
+        window.applySpellSuggestions = function (payload) {
+            const raw = String(payload == null ? '' : payload);
+            const tab = raw.indexOf('\t');
+            const word = tab < 0 ? raw : raw.slice(0, tab);
+            _spellSuggs.set(word, tab < 0 ? [] : raw.slice(tab + 1).split('|').filter(Boolean));
+            const pop = document.getElementById('selPop');
+            if (pop && !pop.hidden && _selPopWord === word) fillSpellSuggestions(word);
+        };
 
         function applySpellFix(replacement) {
             const word = _selPopWord || (window.getSelection() && window.getSelection().toString()) || '';
@@ -3056,12 +3124,14 @@
                 if (fix) { applySpellFix(fix); return; }
                 if (t.getAttribute('data-spell-ignore') && _selPopWord) {
                     try { postMsg('spell_ignore:' + _selPopWord); } catch (err) {}
+                    spellForget(_selPopWord);
                     hideSelPop();
                     scheduleSpellCheck();
                     return;
                 }
                 if (t.getAttribute('data-spell-add') && _selPopWord) {
                     try { postMsg('spell_add:' + _selPopWord); } catch (err2) {}
+                    spellForget(_selPopWord);
                     hideSelPop();
                     scheduleSpellCheck();
                 }

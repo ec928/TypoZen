@@ -31,7 +31,11 @@ namespace TypoZen
 
         const int MaxTextChars = 8000;
         const int MaxSuggestions = 5;
-        const int MaxHits = 40;
+        // Finding misspellings is cheap; working out suggestions is not, so Check does not
+        // (Suggest does, for one word, when the reader selects it). With suggestions gone
+        // from a check, the cap can be generous. A check that reaches it says so, and the
+        // page asks about the rest again rather than remembering it as clean.
+        public const int MaxHits = 200;
 
         static TextBox _box;
         static bool _tried;
@@ -85,27 +89,12 @@ namespace TypoZen
                     if (len <= 0) { pos = start + 1; continue; }
                     string word = text.Substring(start, Math.Min(len, text.Length - start));
                     if (!IsCheckableWord(word)) { pos = start + len; continue; }
-                    var sugg = new List<string>();
-                    try
-                    {
-                        var err = _box.GetSpellingError(start);
-                        if (err != null)
-                        {
-                            foreach (string s in err.Suggestions)
-                            {
-                                if (string.IsNullOrEmpty(s)) continue;
-                                sugg.Add(s);
-                                if (sugg.Count >= MaxSuggestions) break;
-                            }
-                        }
-                    }
-                    catch { }
                     hits.Add(new Hit
                     {
                         Start = start,
                         Length = len,
                         Word = word,
-                        Suggestions = sugg.ToArray()
+                        Suggestions = new string[0]
                     });
                     pos = start + len;
                 }
@@ -115,6 +104,38 @@ namespace TypoZen
                 _lastError = ex.GetType().Name + ": " + ex.Message;
             }
             return hits.ToArray();
+        }
+
+        /// <summary>
+        /// Up to MaxSuggestions replacements for one word -- asked for when the reader
+        /// selects an underlined word, not for every misspelling a check finds.
+        /// </summary>
+        public static string[] Suggest(string word)
+        {
+            word = (word ?? "").Trim();
+            Ensure();
+            if (_box == null || word.Length < 2) return new string[0];
+            var sugg = new List<string>();
+            try
+            {
+                _box.Text = word;
+                int start = _box.GetNextSpellingErrorCharacterIndex(0, LogicalDirection.Forward);
+                if (start >= 0)
+                {
+                    var err = _box.GetSpellingError(start);
+                    if (err != null)
+                    {
+                        foreach (string s in err.Suggestions)
+                        {
+                            if (string.IsNullOrEmpty(s)) continue;
+                            sugg.Add(s);
+                            if (sugg.Count >= MaxSuggestions) break;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) { _lastError = ex.GetType().Name + ": " + ex.Message; }
+            return sugg.ToArray();
         }
 
         public static void Add(string word, bool persist)

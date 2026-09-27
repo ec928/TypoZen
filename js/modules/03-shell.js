@@ -1073,13 +1073,14 @@
                     catch (eDf) {}
                 }
                 else if (msg.startsWith("spell_hits:")) {
-                    const payload = msg.substring(11);
-                    if (payload.startsWith("cm")) {
-                        if (typeof window.applyCmSpellHits === 'function') window.applyCmSpellHits(payload);
-                    } else {
-                        try { if (typeof applySpellHits === 'function') applySpellHits(payload); }
-                        catch (eSp) {}
-                    }
+                    // Both views' checks, by request id (spellCheckTexts in 02-layout.js).
+                    try { if (typeof applySpellHits === 'function') applySpellHits(msg.substring(11)); }
+                    catch (eSp) {}
+                }
+                else if (msg.startsWith("spell_suggestions:")) {
+                    // Suggestions for the one underlined word the reader selected.
+                    try { if (typeof window.applySpellSuggestions === 'function') window.applySpellSuggestions(msg.substring(18)); }
+                    catch (eSs) {}
                 }
                 else if (msg.startsWith("marks_load:")) {
                     // This document's stored marks. Deferred a beat: the host sends it in the

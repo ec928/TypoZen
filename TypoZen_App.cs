@@ -3821,17 +3821,28 @@ namespace TypoZen
                 sb.Append('\t').Append(WindowsSpell.LastError.Replace('\n', ' ').Replace('\t', ' '));
             if (WindowsSpell.Available && !string.IsNullOrEmpty(text))
             {
-                foreach (var h in WindowsSpell.Check(text))
+                var hits = WindowsSpell.Check(text);
+                // Cut short at the cap: the page trusts the answer only up to the last hit.
+                if (hits.Length >= WindowsSpell.MaxHits) sb.Append("\tcapped");
+                foreach (var h in hits)
                 {
                     sb.Append('\n')
                         .Append(h.Start).Append('\t')
                         .Append(h.Length).Append('\t')
                         .Append((h.Word ?? "").Replace('\t', ' ').Replace('\n', ' '))
-                        .Append('\t')
-                        .Append(h.Suggestions == null ? "" : string.Join("|", h.Suggestions));
+                        .Append('\t');
                 }
             }
             SendMsg(sb.ToString());
+        }
+
+        /// <summary>Suggestions for the one word the reader selected (spell_suggest:).</summary>
+        private void HandleSpellSuggest(string word)
+        {
+            if (_nativeSurfaceVisible) return;
+            word = (word ?? "").Replace('\t', ' ').Replace('\n', ' ').Trim();
+            if (word.Length == 0) return;
+            SendMsg("spell_suggestions:" + word + "\t" + string.Join("|", WindowsSpell.Suggest(word)));
         }
 
         /// <summary>One word in, one definition out. Empty when there is nothing to look in.</summary>
@@ -7577,6 +7588,10 @@ namespace TypoZen
             else if (msg.StartsWith("spell_check:"))
             {
                 HandleSpellCheck(msg.Substring(12));
+            }
+            else if (msg.StartsWith("spell_suggest:"))
+            {
+                HandleSpellSuggest(msg.Substring(14));
             }
             else if (msg.StartsWith("spell_add:"))
             {

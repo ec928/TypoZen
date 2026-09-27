@@ -43,6 +43,38 @@ try {
     });
     assert(painted > 0, 'Preview paints a spelling highlight (size=' + painted + ')');
 
+    // Nothing changed: the next check repaints from memory and asks the host nothing.
+    const sentBefore = await app.eval(() => {
+        window.__spellSent = 0;
+        const real = window.chrome.webview.postMessage.bind(window.chrome.webview);
+        window.chrome.webview.postMessage = (m) => { if (String(m).startsWith('spell_check:')) window.__spellSent++; return real(m); };
+        scheduleSpellCheck();
+        return window.__spellSent;
+    });
+    await sleep(900);                                   // past the 420 ms pause
+    const sentAfter = await app.eval(() => window.__spellSent);
+    const stillPainted = await app.eval(() => { const h = CSS.highlights.get('typozen-spell'); return h ? h.size : 0; });
+    assert(sentAfter === sentBefore && stillPainted > 0,
+        'with nothing changed, a check sends nothing to the host and keeps the underline (' + sentAfter + ' sent)');
+
+    // Suggestions come only when the word is selected (spell_suggest:), not with the check.
+    assert(!/\tthe\b/.test(last.split('\n')[1] || ''), 'the check itself carries no suggestions');
+    await app.eval(() => {
+        const t = document.querySelector('#editor .block');
+        const w = document.createTreeWalker(t, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode()) && !n.nodeValue.includes('teh')) {}
+        const r = document.createRange(); const i = n.nodeValue.indexOf('teh'); r.setStart(n, i); r.setEnd(n, i + 3);
+        const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        const box = r.getBoundingClientRect();
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: box.left + 2, clientY: box.top + 2 }));
+    });
+    let suggs = [];
+    for (let i = 0; i < 25 && !suggs.includes('the'); i++) {
+        await sleep(150);
+        suggs = await app.eval(() => Array.from(document.querySelectorAll('#selPopSpell [data-spell-fix]')).map(b => b.textContent));
+    }
+    assert(suggs.includes('the'), 'selecting the underlined word shows its suggestions (got ' + JSON.stringify(suggs) + ')');
+    await app.eval(() => { try { hideSelPop(); } catch (e) {} });
+
     // Source: the same engine, its visible lines drawn as decorations (01a-source.js).
     const underlinedInSource = () => app.eval(() =>
         Array.from(document.querySelectorAll('#source-cm .typozen-spell')).map(e => e.textContent));
@@ -53,8 +85,21 @@ try {
     const chromium = await app.eval(() => (document.querySelector('#source-cm .cm-content') || {}).spellcheck);
     assert(chromium === false, 'Chromium\'s own checker is off in Source');
 
-    // Ignore goes through scheduleSpellCheck(), which used to re-check Preview only.
-    await app.eval(() => { postMsg('spell_ignore:teh'); scheduleSpellCheck(); });
+    // Ignore, through the popover's own button, in Source: the word is forgotten and the
+    // underline goes (it used to stay until the text itself changed).
+    await app.eval(() => {
+        sourceEditor.focus();
+        sourceEditor.setSelectionRange(0, 3);
+        const box = document.getElementById('source-cm').getBoundingClientRect();
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: box.left + 20, clientY: box.top + 20 }));
+    });
+    let ignore = null;
+    for (let i = 0; i < 25 && !ignore; i++) {
+        await sleep(150);
+        ignore = await app.eval(() => !!document.querySelector('#selPopSpell [data-spell-ignore]'));
+    }
+    assert(ignore, 'selecting the underlined word in Source offers Ignore');
+    await app.eval(() => { const b = document.querySelector('#selPopSpell [data-spell-ignore]'); if (b) b.click(); });
     for (let i = 0; i < 25 && src.some(w => /teh/i.test(w)); i++) { await sleep(150); src = await underlinedInSource(); }
     assert(!src.some(w => /teh/i.test(w)), 'Ignore clears the underline in Source (left ' + JSON.stringify(src) + ')');
 } finally {
