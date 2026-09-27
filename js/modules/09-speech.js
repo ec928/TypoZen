@@ -173,7 +173,9 @@ function speakSelection() {
         }
         const at = window.tzPdfReadStart();
         if (at < 0) return;
-        startReadingChunks(all.slice(at).map(el => ({ el: el, text: el.textContent })));
+        // From the cursor's word, not the top of its paragraph (Read from here).
+        const fromCaret = typeof window.tzPdfTextFromCaret === 'function' ? window.tzPdfTextFromCaret(all[at]) : null;
+        startReadingChunks(all.slice(at).map((el, i) => ({ el: el, text: (i === 0 && fromCaret) ? fromCaret : el.textContent })));
         return;
     }
 
@@ -1144,9 +1146,12 @@ function quoteDirection(q) {
  * narration around them -- including lines by characters with no voice of their own -- in
  * the narrator's.
  */
-function castPieces(text, quotes) {
+function castPieces(text, quotes, from) {
     const out = [];
-    let cursor = 0, narr = '';
+    // from: Read from here started inside this paragraph; nothing before it is voiced, and
+    // a quotation it lands in is voiced from there.
+    from = from > 0 ? from : 0;
+    let cursor = from, narr = '';
     const flush = () => {
         const t = narr.trim();
         if (/[A-Za-z0-9]/.test(t)) blockPieces(t).forEach(p => out.push({ role: 'narration', text: p, direction: narrationDirection(p, null) }));
@@ -1155,6 +1160,13 @@ function castPieces(text, quotes) {
     for (const q of quotes) {
         const voice = q.key && _narrCast[q.key];
         if (!voice) continue;
+        if (q.end <= from) continue;
+        if (q.start < from) {
+            const rest = text.slice(from, q.end).replace(/["'“”‘’]+\s*$/, '').trim();
+            if (rest) blockPieces(rest).forEach(p => out.push({ role: 'dialogue', text: p, voice: voice, direction: quoteDirection(q), speaker: q.key }));
+            cursor = q.end;
+            continue;
+        }
         narr += text.slice(cursor, q.start);
         flush();
         blockPieces(q.inner.trim()).forEach(p => out.push({ role: 'dialogue', text: p, voice: voice, direction: quoteDirection(q), speaker: q.key }));
@@ -1170,7 +1182,26 @@ function castPieces(text, quotes) {
  * its block's document index as `at`, and its direction; with a cast, a paragraph where a
  * cast character speaks is cut between their voice and the narrator's.
  */
-function narrationBatches(all, from, maxBatches, graduated) {
+/**
+ * Where `part` begins in `full` when it is full's tail, ignoring whitespace (the cursor's
+ * text comes from a DOM range, the narrator's from innerText, and they space differently);
+ * -1 when it is not the tail, so the caller reads the whole paragraph rather than guess.
+ */
+function narrationTailStart(full, part) {
+    const strip = s => String(s || '').replace(/\s+/g, '');
+    const p = strip(part), f = strip(full);
+    if (!p || p.length >= f.length || !f.endsWith(p)) return -1;
+    let need = p.length, i = full.length;
+    while (i > 0 && need > 0) { i--; if (!/\s/.test(full[i])) need--; }
+    return i;
+}
+
+/**
+ * firstText: for Read from here, the starting paragraph's text from the cursor's word on
+ * (readingCaret / tzPdfTextFromCaret). Without it the narrator read the whole paragraph,
+ * as if the cursor had been at its start.
+ */
+function narrationBatches(all, from, maxBatches, graduated, firstText) {
     const pieces = [];
     const limit = maxBatches * NARRATION_BATCH;
     // Speakers, only when this book has a cast. Attributed from a few paragraphs before the
@@ -1190,13 +1221,16 @@ function narrationBatches(all, from, maxBatches, graduated) {
         // Jesserit") help the Windows and Kokoro voices, but Qwen reads words from their
         // context, and by ear it did better without them -- the respelled name came out
         // distorted (2026-09-24).
-        const text = narrationText(all[i]);
+        let text = narrationText(all[i]);
         if (!text) continue;
+        // Read from here: the starting paragraph from the cursor's word, not its top.
+        const cut = (i === from && firstText) ? narrationTailStart(text, speakNumbers(String(firstText).trim())) : -1;
         const quotes = speakers && speakers[i - first];
         if (quotes && quotes.some(q => q.key && _narrCast[q.key])) {
-            castPieces(text, quotes).forEach((p, k) => pieces.push(Object.assign({ el: all[i], at: at, id: at * 100 + k }, p)));
+            castPieces(text, quotes, cut > 0 ? cut : 0).forEach((p, k) => pieces.push(Object.assign({ el: all[i], at: at, id: at * 100 + k }, p)));
             continue;
         }
+        if (cut > 0) text = text.slice(cut).trim();
         blockPieces(text).forEach((t, k) => pieces.push({
             el: all[i], at: at, id: at * 100 + k, text: t, direction: narrationDirection(t, all[i])
         }));
@@ -1342,20 +1376,22 @@ async function startQwenNarration(base) {
     const all = readingBlocks();
     if (!all.length) return;
 
-    let at, why;
+    let at, why, fromCaret = null;
     if (pdfReading()) {
         at = window.tzPdfReadStart();
         why = 'PDF: cursor or first on screen';
+        if (at >= 0 && typeof window.tzPdfTextFromCaret === 'function') fromCaret = window.tzPdfTextFromCaret(all[at]);
     } else {
         const caret = readingCaret();
         at = caret ? all.indexOf(caret.block) : -1;
         why = 'cursor';
+        if (at >= 0) fromCaret = caret.text;
         if (at < 0) { at = firstVisibleBlock(all, editor); why = 'first on screen'; }
     }
     if (at < 0) { at = 0; why = 'nothing on screen, top'; }
 
     const startAt = narrationDocIndex(all[at], at);
-    const batches = narrationBatches(all, at, 15, true);
+    const batches = narrationBatches(all, at, 15, true, fromCaret);
     const first = batches.findIndex(b => b.some(p => p.at >= startAt));
     narrLog('---- narrate: start block ' + startAt + ' (' + why + ', DOM position ' + at + ' of ' + all.length +
             '; DOM holds blocks ' + narrationDocIndex(all[0], 0) + '..' + narrationDocIndex(all[all.length - 1], all.length - 1) +

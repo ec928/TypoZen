@@ -815,6 +815,26 @@
         return null;
     }
 
+    /**
+     * A paragraph's text from the cursor on -- from the start of the word it is in -- for
+     * Read from here; null when the cursor is not in this paragraph. Cut from the page's raw
+     * text, where the cursor's offset is, and only then made readable: the paragraph's own
+     * text has its lines joined and hyphens mended, so offsets into it are not the page's.
+     */
+    window.tzPdfTextFromCaret = function (el) {
+        const sel = window.getSelection();
+        if (!el || !sel || !sel.rangeCount || !el.__pdfRaw) return null;
+        const at = pointOnPage(sel.anchorNode, sel.anchorOffset);
+        const a = +el.dataset.pdfStart, b = +el.dataset.pdfEnd;
+        if (!at || at.page !== +el.dataset.pdfPage || at.off < a || at.off >= b) return null;
+        const raw = el.__pdfRaw;
+        let i = at.off - a;
+        while (i > 0 && /[\p{L}\p{N}'’-]/u.test(raw[i - 1])) i--;
+        if (i <= 0) return null;                               // the start: the whole paragraph
+        const text = readable(raw.slice(i));
+        return text || null;
+    };
+
     /** Index of the block holding a page offset, or the next one on that page. */
     function blockIndexAt(page, off) {
         const list = blocks();
