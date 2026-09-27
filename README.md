@@ -1,13 +1,13 @@
-# 🧘 TypoZen — Markdown editor and ePub reader for Windows
+# 🧘 TypoZen — Markdown editor, ePub and PDF reader for Windows
 **Write in the morning, read in the evening, in the same quiet window.**
 
-TypoZen is a beautifully simple, distraction-free app for Windows that combines a seamless Markdown editor with a proper ePub reader.
+TypoZen is a beautifully simple, distraction-free app for Windows that combines a seamless Markdown editor with a proper ePub reader and a full PDF reader.
 
-Whether you're drafting a new note or settling in with a good book, TypoZen gives you a calm, clean space to do it. It opens your `.md`, `.txt`, and `.epub` files—as well as PDFs, images, and media—and remembers exactly where you left off in your documents and books.
+Whether you're drafting a new note or settling in with a good book, TypoZen gives you a calm, clean space to do it. It opens your `.md`, `.txt`, `.epub` and PDF files—as well as code, markup, images, and media—and remembers exactly where you left off in your documents and books.
 
 **Privacy-first and completely free.** TypoZen asks nothing of the internet. There are no accounts, no sign-ins, and absolutely no tracking or telemetry. It just opens straight into your document. The one exception is an **extension** you choose to install from **File > Extensions**, which downloads while you watch and never afterwards — and if you install none, TypoZen makes no network request at all.
 
-*(For the technically curious: Under the hood, TypoZen is a lightweight, native Windows app built with WPF and WebView2, offering both a live block-based preview and a raw Source mode for Markdown.)*
+*(For the technically curious: Under the hood, TypoZen is a lightweight, native Windows app built with WPF and WebView2, offering both a live block-based preview and a Source mode built on CodeMirror 6 for Markdown and code.)*
 
 ---
 ## Get TypoZen
@@ -30,30 +30,31 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 
 ### Writing
 
-- **Dual-mode editing:** Seamlessly switch between WYSIWYG Preview and raw Source without losing your scroll position.
+- **Dual-mode editing:** Seamlessly switch between WYSIWYG Preview and Source. The two lay text out alike, so the line you are on stays where it is.
+- **Source is a real code editor:** built on CodeMirror 6, with highlighting in your theme's colours for Markdown and for code and markup — HTML, XML, CSS, JSON, JavaScript, C# and more.
 - **Live block editing:** Format Markdown and text on the fly, including headings, lists, tables, tasks, emphasis, and fenced code.
 - **Deep immersion:** Engage Focus mode, Typewriter scroll, and chrome auto-hide to eliminate distractions while you work.
-- **Engineered for massive files:** A virtualized rendering engine builds only the part of the document on screen, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it.
+- **Engineered for massive files:** Preview builds only the part of the document on screen, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it. Source opens files of megabytes, with lines hundreds of thousands of characters long, at once.
 - **Spelling as you type:** wavy underlines under every misspelled word on screen, in Preview and Source (not in code). Select any word for replacements, Ignore, or Add to dictionary.
 
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
-- **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows. Choose the voice and speed in **File → Configure Voice**. 
+- **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows — or in a neural voice or the Qwen narrator, if you install them. Choose the voice and speed in **File → Read Aloud**.
 - **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said in the voice you have chosen for reading aloud -- or, with the Qwen narrator chosen, in the quick voice on your computer closest to it (same country and gender), since the narrator takes too long to start for one word.
 - **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
 - **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
-- **A PDF reader:** real, selectable text, Find and Search across pages, the PDF's outline, two-page spreads, and your place remembered.
-- **Read everything else safely:** PDF, HTML, images, and media open read-only. Never dirty, never saved over.
+- **A full PDF reader:** single pages or two-page spreads, real selectable text, Find and Search across pages, the outline, read aloud, bookmarks and highlights, and your place remembered. Annotate, fill in forms and save; the text of scanned pages is read on your computer; save pages or pictures as images, and print.
+- **Read everything else safely:** HTML, images, and media open read-only. Never dirty, never saved over. An HTML page's markup opens in Source from the Mode control.
 
 ### Look, Session & Privacy
 - **Bundled premium typography:** Included fonts (Inter, Literata, Merriweather, Source Sans 3) ensure perfect rendering without any network requests.
 - **25 curated built-in themes:** Choose from dark, light, and mono themes, or use **Customise Theme...** to build and save your own palettes. Every state takes its colour from the theme, one colour per meaning: the accent for what is current (selection, the search match you are on, the paragraph being read aloud), a highlighter colour of the theme's own for marks, and faint washes of the text colour for hover and the cursor's paragraph.
-- **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions.
+- **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions. Drag tabs into any order; the order is kept.
 - **Offline & Portable:** Zero telemetry, and nothing on the network unless you install an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
-- **Extensions, if you want them:** **File > Extensions** offers neural voices for reading aloud and a dictionary of 1.3 million words. Both are optional downloads, both run entirely on your computer once installed, and removing one takes its menu away again.
+- **Extensions, if you want them:** **File > Extensions** offers neural voices for reading aloud, a dictionary of 1.3 million words, and **Qwen narration** — an AI narrator that reads a book in character voices (experimental; needs an NVIDIA graphics card). All are optional downloads, all run entirely on your computer once installed, and removing one takes its menu away again.
 
 ### Files & Links
-- **Format support:** Open Markdown, text, epub, PDF, common images, and media. Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF.
+- **Format support:** Open Markdown, text, code and markup, epub, PDF, common images, and media. Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF.
 - **Smart linking:** Hover links for Open, Show in Folder, and Edit. Local files open in a tab, `http` links open in your browser, and `#heading` jumps seamlessly within the document.
 
 ---
@@ -521,7 +522,7 @@ Which path a Preview load takes:
 Two rules worth keeping: don't gate progressive paint on a character count (it belongs to block count), and don't lower the virtualization floor toward 16 KB without a deliberate product decision — ordinary notes are meant to stay full WYSIWYG.
 
 ### Editor engine
-Standalone vanilla JavaScript — no framework.
+Preview is standalone vanilla JavaScript — no framework. Source is [CodeMirror 6](https://codemirror.net/), bundled into the app (`js/vendor/codemirror/`, built by `tools/Update-CodeMirror.ps1`), behind an adapter that gives the rest of the editor a textarea-like surface (`js/modules/01a-source.js`).
 
 - **Custom snapshot undo/redo** (`HistoryManager`) rather than the fragile `contenteditable` undo stack, with byte- and step-capped history
 - **2-stage Backspace** on list and heading prefixes — first press strips the marker, second merges blocks
