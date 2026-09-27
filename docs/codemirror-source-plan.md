@@ -20,9 +20,10 @@ the start of Phase 1 rather than trusting them.
   selection popup, Read Aloud and Read from here, the status bar line, and landing on the
   same line when switching modes.
 - **Plain files** (`.txt`, `.log`, `.csv`) open in the same surface with no highlighting.
-- **CSS, XML, XAML and HTML markup** open plain in Source too, until Ed decides otherwise
-  (section 9). TypoZen is not a code editor (`for-agents.md`); highlighting those kinds is a
-  separate decision, not part of this plan.
+- **Code blocks in Markdown, and CSS, XML, XAML, HTML and JSON files, are coloured by the
+  lexers Preview already uses for code blocks** (`08-code.js`), so code looks the same in
+  both views and nothing is added to the bundle (decisions 2 and 3). Colour only: TypoZen
+  is still not a code editor (`for-agents.md`).
 - **Not added:** line numbers, a code-folding gutter, bracket auto-closing, autocomplete,
   CodeMirror's own search panel, and multiple cursors. Each would be a new behaviour, and
   several take shortcuts TypoZen already uses.
@@ -248,7 +249,7 @@ is reported. It is not patched around.**
 | **0 — Baseline and spike** | Install the packages (needs Ed's OK for the download). Bundle. Write the notices. Add `source-latency-app`, measuring today's textarea: keystroke-to-paint on an 80 KB Markdown file and a 5 MB log, and time to switch into Source. Add the round-trip corpus suite. Load the bundle into the page with no other change and measure startup with the existing `tzMark` timings. | Bundle size measured. The estimate is **350-500 KB minified**, so Phase 0 records the real figure. If `lang-html` and the parsers it pulls in do not drop out of the bundle, set up the Markdown language without them. Startup cost measured. **Go / no-go for Ed** if the cost is over 15 ms at startup. | 1 day |
 | **1 — The surface** | `01a-source.js`; `sourceEditor` becomes the surface; identity and tag checks; Tab, Enter, paste, drop and `beforeinput` undo ported; `03-shell.js:833` fixed; the DOM-read guard. No highlighting yet. | Default gate green. The 11 Source suites updated and green. Round-trip byte-identical, including through the host's save path. Latency no worse than the textarea's +10%. | 3 days |
 | **2 — Native paths** | Search decorations; popup coordinates; line and scroll mapping; typewriter; wrap compartment. **Delete both mirrors** (named in the commit title). | `source-highlight-app`, `source-popover-app` and `mode-switch-sticky-e2e` green. Every search-marks case the mirror was patched for (wrap swap, sidebar open and close, edit while searching) passes. | 2 days |
-| **3 — Highlighting** | `HighlightStyle` from theme variables; heading sizes; dimmed markers; fence contents through `08-code.js`'s lexers (decision 3); Ed reviews on his themes, including a light one (Gruvbox light was hard to read last time). | Ed signs off on the look. Latency still within the limit, now with parsing on. | 1-2 days |
+| **3 — Highlighting** | `HighlightStyle` from theme variables; heading sizes; dimmed markers; fences and code files through `08-code.js`'s lexers (decisions 2 and 3); Ed reviews on his themes, including a light one (Gruvbox light was hard to read last time). | Ed signs off on the look. Latency still within the limit, now with parsing on. | 1-2 days |
 | **4 — Hardening** | IME by hand (Japanese and Chinese input); spellcheck and suggestions; 5 MB log; `core-smoke-app`; the visible-window suites while Ed is away; `packaged-smoke-app` against the MSIX; README, `for-agents.md` (module map, keyboard matrix row) and `known-issues.md`. Remove the textarea fallback. | Full gate and app tier green; every item in section 1 performed by hand, with a list of what was and was not performed. | 2 days |
 | **Total** | | | **9-10 working days** |
 
@@ -287,19 +288,21 @@ contract).
 | Highlight colours that mean something different from Preview's | medium | colours only from Preview's variables; Ed's review in Phase 3 |
 | Plan figures stale by the time work starts | certain over time | re-count at Phase 1 |
 
-## 9. Decisions for Ed
+## 9. Decisions (Ed, 2026-09-27)
 
-1. **The download for Phase 0:** about 20 packages from npm, roughly 4-5 MB unpacked,
-   plus esbuild's Windows binary (about 10 MB), into `node_modules` only. Only the
-   bundled file ships.
-2. **CSS, XML, XAML and HTML markup:** plain as today (recommended, since TypoZen is not a
-   code editor), or highlighted with the parsers the Markdown language already brings.
-3. **Code fences in Markdown.** Preview already colours fence contents with TypoZen's own
-   per-line lexers (`08-code.js`: `clike`, `xml`, `json`). **Recommended:** Source calls
-   those same lexers and paints their tokens with the same `::highlight` colours, so a
-   fence looks the same in both views and no second set of code parsers is added. This
-   adds about half a day to Phase 3. The alternative is plain monospace fences in Source,
-   which would differ from Preview.
+1. **The download for Phase 0: approved.** About 20 packages from npm, roughly 4-5 MB
+   unpacked, plus esbuild's Windows binary (about 10 MB), into `node_modules` only. Only
+   the bundled file ships: an estimated 100-150 KB added to the release zip.
+2. **CSS, XML, XAML, HTML (and JSON) files: highlighted**, because it is free. Done with
+   `08-code.js`'s lexers (`xml` for XML, XAML and HTML, `clike` for CSS, `json`), not with
+   CodeMirror's language packages, so the bundle does not grow and the colours match
+   Preview's code blocks. The file kind comes from the host, which already decides plain
+   against Markdown.
+3. **Code fences in Markdown: coloured**, with the same lexers and `::highlight` colours
+   Preview uses, so a fence looks the same in both views.
+
+2 and 3 are one piece of work (a view plugin that runs a lexer over the visible lines),
+about half a day in Phase 3.
 
 ## 10. Not verified by this plan
 
