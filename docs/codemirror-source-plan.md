@@ -341,6 +341,37 @@ restart. Phase 4 deletes it. Git tag `baseline-before-codemirror` marks the star
 - `source-colours-browser`: 26 checks -- classes on the right text, colours resolving to
   Preview's variables, code files lexed, plain text untouched.
 
+### The slow switch into Source (2026-09-27, `763f629`)
+
+- **Cause** (found in a separate investigation Ed commissioned): `applyViewState` reached
+  Source by toggling the mode cycle, Preview -> Reader -> Source. The Reader step makes the
+  whole laid-out document non-editable (`setEditorEditable(false)`) and the next step makes
+  it editable again -- about 1.2 s of the ~1.7 s a switch took on a 74 KB file.
+- **Fix:** `mode_to_source` enters Source through the existing Reader -> Source branch of
+  `toggle_mode`, skipping the Reader step. A first version of the fix copied that branch
+  into a second command instead; the copy had already lost the position re-read after
+  soft breaks expand (the "mid-document Preview -> top of Source" jump the original's
+  comment records), so it was replaced before landing. One way into Source.
+- **Result** (`source-latency-app`, 74 KB): switch into Source **25.7 ms** median (samples
+  124, 25, 26 -- the first is the first-switch warm-up), was 1025 ms. Typing unchanged
+  (7.1 ms a key).
+- **Proposed, not applied:** reading each block's stored `data-raw` in `getMarkdownContent`
+  instead of the live `getBlockRaw`, measured by its author at 10-15 ms on the same file.
+  It is the save path, where reading the page's copy instead of the model has lost text six
+  times (`for-agents.md`), and after the fix above the saving is small. It needs
+  `page-integrity-app`, `edit-integrity-app`, `multi-block-edit-app`, `editing-sweep-app`,
+  `no-false-dirty-app` and `clipboard-roundtrip-browser` green before it is worth taking.
+
+### Phase 4 results (2026-09-27)
+
+- **Removed:** the textarea, its search-highlight mirror (about 210 lines of JS, 90 of
+  CSS), and the `?source=` / `TYPOZEN_SOURCE_ENGINE` switch -- Ed: "no need for a fall back
+  if it works". A missing CodeMirror bundle fails loudly at load.
+- **The jsdom test page inlines the bundle,** so every suite runs the surface that ships.
+- **Spelling:** deferred by Ed; see below.
+- **Not done:** the visible-window suites (need Ed away), `packaged-smoke-app` (needs
+  Developer Mode), and IME input by hand.
+
 ### Seen by Ed on 0.8.4 (2026-09-27)
 
 - **Search marks slid left while typing above them** with the find bar shut and a query
