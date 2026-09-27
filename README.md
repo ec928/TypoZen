@@ -94,9 +94,9 @@ A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing download
 - **A password-protected PDF** asks for its password.
 - **File → Save Pages as Images...** saves pages as PNG or JPEG at 150, 300 or 600 DPI (or your own figure): all pages, this page, or a range like `1-5, 8`. The DPI is written into each file, so a page opens at its paper size.
 - **File → Save All Images in PDF...** saves every picture as its own file, at the size it is stored in the PDF, by one of three methods:
-  - **Original files** (the default) reads the pictures straight from the file: a JPEG or JPEG 2000 is saved as the very bytes the PDF holds, anything else as a lossless PNG of its stored samples (a 1-bit scan stays a 1-bit PNG).
-  - **All as PNG** does the same but converts JPEGs to lossless PNG too, for one format throughout.
-  - **As the viewer decodes them** is the previous method, kept as a choice.
+  - **Original files (PdfPig accelerated)**, the default, reads the pictures straight from the file: a JPEG or JPEG 2000 is saved as the very bytes the PDF holds, anything else as a lossless PNG of its stored samples (a 1-bit scan stays a 1-bit PNG).
+  - **All as PNG (PdfPig accelerated)** does the same but converts JPEGs to lossless PNG too, for one format throughout.
+  - **Images extracted via PDF.js (slowest)** takes each picture as the viewer's engine decodes it -- the method before 0.8.2.
 
   The first two read the PDF with [PdfPig](https://github.com/UglyToad/PdfPig) rather than asking the viewer, which only ever hands over decoded pixels -- measured on 20 pages of a picture book, 3.6 s against 17.4 s, and on 60 pages of a scanned book 1.9 s against 6.1 s with files a quarter the size. A picture they cannot hand over as it is (one with a transparency mask, a JBIG2 scan) is saved by the viewer's method in the same run, and the result says how many. Small icons are skipped and a picture repeated on many pages (a logo) is saved once, both optional; one subfolder per page if you like. Page text is never included.
 - **Print** prints the original file through Edge's PDF printing, so the output is the PDF, not a screen capture. **File → Open in Default App** hands it to your usual PDF program.

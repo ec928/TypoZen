@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.8.2";
+        internal const string AppVersion = "0.8.3";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -15449,9 +15449,9 @@ namespace TypoZen
             if (!pages)
             {
                 heading("Method");
-                rbOriginal = radio("method", "Original files -- each picture exactly as stored in the PDF (a JPEG stays the same JPEG); the rest as lossless PNG. Fastest.", _pdfExportMethod == "original");
-                rbAllPng = radio("method", "All as PNG -- every picture converted to PNG, losslessly.", _pdfExportMethod == "png");
-                rbViewer = radio("method", "As the viewer decodes them -- the previous method; slower.", _pdfExportMethod == "viewer");
+                rbOriginal = radio("method", "Original files (PdfPig accelerated)", _pdfExportMethod == "original");
+                rbAllPng = radio("method", "All as PNG (PdfPig accelerated)", _pdfExportMethod == "png");
+                rbViewer = radio("method", "Images extracted via PDF.js (slowest)", _pdfExportMethod == "viewer");
                 root.Children.Add(rbOriginal); root.Children.Add(rbAllPng); root.Children.Add(rbViewer);
 
                 heading("Options");
@@ -15461,10 +15461,10 @@ namespace TypoZen
                 root.Children.Add(cbSmall); root.Children.Add(cbDedupe); root.Children.Add(cbPerPage);
                 root.Children.Add(new TextBlock
                 {
-                    Text = "Each picture is saved at the size it is stored in the PDF, not as it looks on the page. "
-                         + "A picture the first two methods cannot copy as it is -- one with transparency, some "
-                         + "scans -- is saved by the viewer's method instead. Page text is never included -- a PDF "
-                         + "keeps text and pictures apart.",
+                    Text = "Original files keeps each picture exactly as stored (a JPEG stays the same JPEG) and "
+                         + "saves the rest as lossless PNG. Every picture is saved at the size it is stored in the "
+                         + "PDF, not as it looks on the page. One PdfPig cannot copy as it is -- with transparency, "
+                         + "some scans -- is extracted via PDF.js instead. Page text is never included.",
                     TextWrapping = TextWrapping.Wrap, Opacity = 0.75, Margin = new Thickness(0, 12, 0, 0)
                 });
             }
