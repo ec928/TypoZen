@@ -187,12 +187,19 @@ namespace TypoZen
                     }
                     if (docs.Count == 0) return null;
 
+                    // Each stylesheet with its own folder, relative to the OPF: a url() in CSS
+                    // is relative to the stylesheet, not the package. Resolved against the OPF
+                    // folder, Alien: Covenant's OEBPS/Styles/x.css asking for ../Fonts/a.ttf
+                    // looked for Fonts/ outside OEBPS and found nothing.
                     var css = new List<string>();
+                    var cssDirs = new List<string>();
                     foreach (var kv in manifest)
                     {
                         if (!kv.Value.EndsWith(".css", StringComparison.OrdinalIgnoreCase)) continue;
                         string text = ReadEntry(zip, Join(opfDir, kv.Value)) ?? ReadEntry(zip, kv.Value);
-                        if (text != null) css.Add(JsonStr(text));
+                        if (text == null) continue;
+                        css.Add(JsonStr(text));
+                        cssDirs.Add(JsonStr(DirOf(kv.Value.Replace('\\', '/'))));
                     }
 
                     var toc = ReadToc(zip, opfXml, opfDir, manifest);
@@ -207,6 +214,7 @@ namespace TypoZen
                         // once a private session extracts somewhere else.
                         "https://localbooks/" + key + "/" + opfDir));
                     sb.Append(",\"css\":[").Append(string.Join(",", css)).Append("]");
+                    sb.Append(",\"cssDirs\":[").Append(string.Join(",", cssDirs)).Append("]");
                     sb.Append(",\"toc\":[").Append(string.Join(",", toc)).Append("]");
                     sb.Append(",\"docs\":[").Append(string.Join(",", docs)).Append("]}");
                     string payload = sb.ToString();
@@ -364,7 +372,9 @@ namespace TypoZen
         private static void ExtractIfStale(ZipArchive zip, string dir)
         {
             string stamp = Path.Combine(dir, ".typozen-stamp");
-            string want = zip.Entries.Count + ":" + zip.Entries.Sum(e => (long)e.Length);
+            // "f1:" -- the extraction also unscrambles obfuscated fonts (RestoreObfuscatedFonts).
+            // A cache stamped before that holds them still scrambled, so it must not match.
+            string want = "f1:" + zip.Entries.Count + ":" + zip.Entries.Sum(e => (long)e.Length);
             if (File.Exists(stamp))
             {
                 try { if (File.ReadAllText(stamp) == want) return; } catch { }
@@ -390,7 +400,82 @@ namespace TypoZen
                 }
                 catch { }
             }
+            try { RestoreObfuscatedFonts(zip, dir); } catch { }
             try { File.WriteAllText(stamp, want); } catch { }
+        }
+
+        /// <summary>
+        /// Unscramble a book's embedded fonts, as every reading system is required to.
+        ///
+        /// EPUB lets a publisher obfuscate a font so it cannot be lifted out of the zip
+        /// whole: META-INF/encryption.xml lists the files, and the first bytes of each are
+        /// XORed with a key derived from the book's own identifier. Served as they were, the
+        /// browser refused them and the text quietly fell back to the theme's typeface --
+        /// Alien: Covenant's eleven fonts and Red Country's one, in a 148-book library.
+        ///
+        ///   IDPF  (http://www.idpf.org/2008/embedding): first 1040 bytes, XORed with the
+        ///         SHA-1 of the package's unique identifier, whitespace removed.
+        ///   Adobe (http://ns.adobe.com/pdf/enc#RC): first 1024 bytes, XORed with the 16
+        ///         bytes of the book's urn:uuid identifier.
+        /// Anything else in encryption.xml is real encryption (DRM) and is left alone.
+        /// </summary>
+        private static void RestoreObfuscatedFonts(ZipArchive zip, string dir)
+        {
+            string enc = ReadEntry(zip, "META-INF/encryption.xml");
+            if (enc == null) return;
+            string opfPath = FindOpfPath(zip);
+            string opf = opfPath != null ? ReadEntry(zip, opfPath) : null;
+            if (opf == null) return;
+
+            // The unique identifier: <package unique-identifier="X"> names a dc:identifier.
+            string uidRef = Attr(Regex.Match(opf, "<package\\b[^>]*>", RegexOptions.IgnoreCase).Value, "unique-identifier");
+            string uid = null;
+            var ids = Regex.Matches(opf, "<dc:identifier\\b([^>]*)>([\\s\\S]*?)</dc:identifier>", RegexOptions.IgnoreCase);
+            foreach (Match m in ids)
+            {
+                if (uidRef != null && string.Equals(Attr("<x " + m.Groups[1].Value + ">", "id"), uidRef, StringComparison.Ordinal))
+                { uid = System.Net.WebUtility.HtmlDecode(m.Groups[2].Value); break; }
+            }
+            if (uid == null && ids.Count > 0) uid = System.Net.WebUtility.HtmlDecode(ids[0].Groups[2].Value);
+            if (uid == null) return;
+
+            byte[] idpfKey;
+            using (var sha = System.Security.Cryptography.SHA1.Create())
+                idpfKey = sha.ComputeHash(Encoding.UTF8.GetBytes(Regex.Replace(uid, "[\\u0020\\u0009\\u000D\\u000A]", "")));
+
+            // Adobe's key is the book's UUID: the unique identifier if it is one, else any.
+            byte[] adobeKey = null;
+            foreach (Match m in ids)
+            {
+                string v = System.Net.WebUtility.HtmlDecode(m.Groups[2].Value).Trim();
+                bool isUid = uidRef != null && string.Equals(Attr("<x " + m.Groups[1].Value + ">", "id"), uidRef, StringComparison.Ordinal);
+                var g = Regex.Match(v, "^(?:urn:uuid:)?([0-9a-fA-F]{8})-?([0-9a-fA-F]{4})-?([0-9a-fA-F]{4})-?([0-9a-fA-F]{4})-?([0-9a-fA-F]{12})$");
+                if (!g.Success) continue;
+                string hex = g.Groups[1].Value + g.Groups[2].Value + g.Groups[3].Value + g.Groups[4].Value + g.Groups[5].Value;
+                var k = new byte[16];
+                for (int i = 0; i < 16; i++) k[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+                if (adobeKey == null || isUid) adobeKey = k;
+                if (isUid) break;
+            }
+
+            foreach (Match data in Regex.Matches(enc, "<(?:\\w+:)?EncryptedData\\b[\\s\\S]*?</(?:\\w+:)?EncryptedData>", RegexOptions.IgnoreCase))
+            {
+                var alg = Regex.Match(data.Value, "EncryptionMethod\\b[^>]*Algorithm\\s*=\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
+                var uri = Regex.Match(data.Value, "CipherReference\\b[^>]*URI\\s*=\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
+                if (!alg.Success || !uri.Success) continue;
+                byte[] key; int length;
+                if (alg.Groups[1].Value == "http://www.idpf.org/2008/embedding") { key = idpfKey; length = 1040; }
+                else if (alg.Groups[1].Value == "http://ns.adobe.com/pdf/enc#RC" && adobeKey != null) { key = adobeKey; length = 1024; }
+                else continue;
+
+                string rel = Uri.UnescapeDataString(uri.Groups[1].Value).Replace('\\', '/').TrimStart('/');
+                string file = Path.GetFullPath(Path.Combine(dir, rel.Replace('/', Path.DirectorySeparatorChar)));
+                if (!file.StartsWith(Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase) || !File.Exists(file)) continue;
+                byte[] bytes = File.ReadAllBytes(file);
+                int n = Math.Min(length, bytes.Length);
+                for (int i = 0; i < n; i++) bytes[i] ^= key[i % key.Length];
+                File.WriteAllBytes(file, bytes);
+            }
         }
 
         /// <summary>Keep the cache from growing without limit; books are large.</summary>

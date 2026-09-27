@@ -10881,8 +10881,7 @@ namespace TypoZen
         private void MapBookHosts()
         {
             if (_webView == null || _webView.CoreWebView2 == null) return;
-            // Both roots, before the page navigates -- see MapLoadHosts. DenyCors is what
-            // book image URLs have always used.
+            // Both roots, before the page navigates -- see MapLoadHosts.
             MapOneBookHost("localbooks", Path.Combine(CacheDir(), "typozen_books"));
             string priv = EpubReader.BeginPrivateSession();
             if (priv != null) MapOneBookHost("localbooksp", priv);
@@ -10893,8 +10892,13 @@ namespace TypoZen
             try
             {
                 Directory.CreateDirectory(dir);
+                // Allow, not DenyCors: the page is https://localapp and a font is always
+                // fetched in CORS mode, so under DenyCors no book's embedded font ever
+                // loaded (18 of 148 library books embed fonts) while its images, which are
+                // not CORS requests, did. Book markup cannot run script (sanitizeBookHtml),
+                // and localapp itself is mapped Allow.
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    host, dir, CoreWebView2HostResourceAccessKind.DenyCors);
+                    host, dir, CoreWebView2HostResourceAccessKind.Allow);
             }
             catch (Exception ex) { LogFault("MapBookHosts " + host + " dir=" + dir, ex); }
         }

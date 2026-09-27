@@ -91,6 +91,7 @@
             // Kept because the size correction re-applies them with a divisor, and it has to
             // divide the publisher's own numbers rather than numbers it divided before.
             _bookCssTexts = data.css || [];
+            _bookCssDirs = data.cssDirs || [];
             _bookEmDivisor = 1;
             try { applyBookStyles(_bookCssTexts, data.assetsBase || ''); } catch (eS) {}
             try { applyBookLanguage(data.docs); } catch (eLang) {}
@@ -793,6 +794,9 @@
         // The publisher's stylesheets as delivered, and the divisor currently applied to
         // their declared sizes. Both belong to the book that is open.
         let _bookCssTexts = [];
+        // Each stylesheet's folder relative to the OPF (EpubReader cssDirs), because a url()
+        // in CSS is relative to the stylesheet: "Styles/" for OEBPS/Styles/x.css.
+        let _bookCssDirs = [];
         let _bookEmDivisor = 1;
 
         function normaliseBookTextSize() {
@@ -1062,7 +1066,7 @@
             _bookBlockDirs = [];
             try { _bookDocStarts = {}; } catch (e2) {}
             try { _bookPlateBlocks = null; } catch (e2b) {}
-            try { _bookCssTexts = []; _bookEmDivisor = 1; } catch (e2c) {}
+            try { _bookCssTexts = []; _bookCssDirs = []; _bookEmDivisor = 1; } catch (e2c) {}
             try { _bookAnchorIndex = null; } catch (e3) {}
             try { _bookTitleIndex = null; } catch (e4) {}
             try { _bookPosLast = -1; } catch (e5) {}
@@ -1442,7 +1446,9 @@
                     // fetched every stylesheet the book lists.
                     sheet.replaceSync(String(cssTexts[i] || '').replace(/@import[^;]*;/gi, ''));
                 } catch (e) { continue; }
-                out += bookCssRules(sheet.cssRules, emDivisor, base);
+                // Relative urls resolve against this stylesheet's own folder.
+                const dir = (typeof _bookCssDirs !== 'undefined' && _bookCssDirs[i]) || '';
+                out += bookCssRules(sheet.cssRules, emDivisor, base + dir);
             }
             el.textContent = out;
         }
