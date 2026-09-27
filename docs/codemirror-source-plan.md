@@ -314,6 +314,26 @@ restart. Phase 4 deletes it. Git tag `baseline-before-codemirror` marks the star
   source-popover, source-keys, read-aloud, core-smoke, edit-integrity, undo-steps. **Not
   run:** `select-all-app` and the other visible-window suites (need Ed away).
 
+### Seen by Ed on 0.8.4 (2026-09-27)
+
+- **Search marks slid left while typing above them** with the find bar shut and a query
+  live. Cosmetic (the matches were right; a tab switch repainted them) and older than
+  CodeMirror -- the textarea's mirror did the same. **Fixed** in `51619d3`: the search
+  re-runs after an edit instead of repainting the old offsets.
+- **Spelling underlines come and go -- the risk in section 8, realised.** A misspelling's
+  squiggle vanished while focus was in the find box and came back when Source was focused
+  again; some words typed into Source were never underlined at all. Likely mechanism, not
+  verified: Chromium's spellchecker only checks the focused editable element and hangs
+  its markers on DOM text nodes, and CodeMirror replaces a line's nodes whenever it redraws
+  the line -- so markers are dropped and only return when Chromium rechecks. A textarea's
+  inner nodes are never replaced, which is why this did not happen before (also not
+  verified on the textarea side). **Open, for Phase 4.** Recommended: Source uses TypoZen's
+  own spelling, as Preview does (host Windows spell check, painted as decorations in
+  Preview's `typozen-spell` style, suggestions in the selection popup) -- one spelling
+  engine and one look in both views, and decorations do not vanish on redraw. It changes
+  where suggestions appear in Source (the popup instead of the right-click menu), so it is
+  Ed's decision.
+
 ## 7. Tests
 
 **New:**

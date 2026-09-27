@@ -487,7 +487,7 @@
          * Map hard-line index → fraction of real scrollHeight (word-wrap safe).
          * (line-1)*lineHeight was wrong: last hard line landed ~halfway down wrapped text.
          */
-        function scrollSourceToHardLine(hardLine1Based, takeFocus) {
+        function scrollSourceToHardLine(hardLine1Based, takeFocus, keepCaret) {
             if (!sourceEditor) return;
             const text = sourceEditor.value || '';
             const total = countHardLines(text);
@@ -495,8 +495,18 @@
             const pos = sourceOffsetAtHardLine(text, line);
             try {
                 if (takeFocus) sourceEditor.focus();
-                sourceEditor.setSelectionRange(pos, pos);
+                // keepCaret: scroll only. Typewriter mode used to come through here and put
+                // the caret at the start of its line on every caret move.
+                if (!keepCaret) sourceEditor.setSelectionRange(pos, pos);
             } catch (e) {}
+            if (sourceEditor.isCodeMirror) {
+                // CodeMirror knows where every line is laid out, wrapped or not: the line
+                // goes to the top of the view, which is where hardLineFromSourceScrollTop
+                // reads it back from.
+                try { sourceEditor.scrollToOffset(pos, 0); } catch (eCm) {}
+                try { if (mainContainer) mainContainer.scrollTop = 0; } catch (e3) {}
+                return;
+            }
             function applyScroll() {
                 try {
                     const max = Math.max(0, sourceEditor.scrollHeight - sourceEditor.clientHeight);
@@ -533,6 +543,8 @@
                 if (total <= 1 || max <= 0) return 1;
                 if (st <= 2) return 1;
                 if (st >= max - 2) return total;
+                // CodeMirror: the line actually at the top of the view, not an estimate.
+                if (sourceEditor.isCodeMirror) return Math.max(1, Math.min(total, sourceEditor.topLine()));
                 const t = st / max;
                 return Math.max(1, Math.min(total, Math.round(1 + t * (total - 1))));
             } catch (e) {

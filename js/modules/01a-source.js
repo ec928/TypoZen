@@ -297,12 +297,25 @@
                     }
                     return out;
                 },
-                /** Scroll so `pos` sits `margin` px below the top of the view. */
-                scrollToOffset(pos, margin) {
+                /**
+                 * Scroll so `pos` sits `margin` px below the top of the view, or in its
+                 * middle with align 'center' (typewriter mode). The caret does not move.
+                 */
+                scrollToOffset(pos, margin, align) {
                     view.dispatch({
-                        effects: CM.EditorView.scrollIntoView(clamp(pos), { y: 'start', yMargin: margin | 0 }),
+                        effects: CM.EditorView.scrollIntoView(clamp(pos), { y: align || 'start', yMargin: margin | 0 }),
                         annotations: programmatic.of(true)
                     });
+                },
+                /**
+                 * The 1-based document line at the top of the visible part: from CodeMirror's
+                 * own layout, so a wrapped paragraph counts once however many rows it takes
+                 * (the textarea path can only estimate this from the scroll fraction).
+                 */
+                topLine() {
+                    const top = view.scrollDOM.getBoundingClientRect().top - view.documentTop + 1;
+                    const block = view.lineBlockAtHeight(Math.max(0, top));
+                    return view.state.doc.lineAt(block.from).number;
                 },
                 /** True for the surface itself and anything inside it (the focus lands inside). */
                 contains(node) { return !!node && (node === surface || host.contains(node)); },

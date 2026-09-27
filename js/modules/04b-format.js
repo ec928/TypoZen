@@ -850,9 +850,15 @@
             try {
                 if (state.mode === 'source' && sourceEditor) {
                     const pos = sourceEditor.selectionStart || 0;
+                    // Scroll only -- this runs on every caret move, and it used to move the
+                    // caret to the start of its line each time (both Source surfaces).
+                    if (sourceEditor.isCodeMirror) {
+                        sourceEditor.scrollToOffset(pos, 0, 'center');   // the caret's line, centred
+                        return;
+                    }
                     const before = sourceEditor.value.substring(0, pos);
                     const line = Math.max(1, before.split(/\r?\n/).length);
-                    scrollSourceToHardLine(line, false);
+                    scrollSourceToHardLine(line, false, true);
                     return;
                 }
                 const block = currentActiveBlock
