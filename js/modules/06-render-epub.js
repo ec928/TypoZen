@@ -1149,21 +1149,282 @@
         }
 
         /**
-         * The book's own stylesheets, optionally with every declared size divided through.
+         * A book's stylesheets, rewritten through an allowlist before they reach the page.
          *
-         * emDivisor is how the reader's text size is honoured without touching the box the
+         * Publisher CSS is data, like publisher HTML (sanitizeBookHtml), and it is treated
+         * the same way: what is allowed is named, and everything else is dropped. The
+         * first version worked the other way -- apply the stylesheet, then strip each thing
+         * a book had already broken -- and every book with an unusual stylesheet was a
+         * new bug found by the reader: leading (Xeelee), black ink (Hilldiggers), page
+         * breaks that emptied pages (Xeelee again, a day to bisect), rem sizes, and body
+         * margins that pushed Zones of Thought's right column off the window. A blocklist
+         * can only ever be one book behind.
+         *
+         * The browser parses the CSS (a constructed stylesheet), not a regex. The regex
+         * version never scoped rules inside @media, so those reached the application
+         * itself, and it rewrote any selector starting with body -- `body p` included --
+         * to the page element, so a paragraph rule landed on the page.
+         *
+         * Who owns what:
+         *   the page (#editor: a book's html, body and :root rules)
+         *       text properties only, and never size or place: the reader's View > Margins,
+         *       the theme's paper and PageGeometry own the page box;
+         *   everything inside the book
+         *       text properties, plus the bounded box properties a book legitimately uses
+         *       -- indents, paragraph spacing, borders, image sizes -- none of which can
+         *       take an element out of its column;
+         *   the app's own blocks (.block, one per top-level element)
+         *       nothing: a publisher `div` rule used to restyle the app's paragraph boxes,
+         *       so every selector's subject is kept off .block.
+         * Leading, justification and hyphenation are the reader's (View), and the ink and
+         * paper are the theme's, so those are dropped or rewritten here as before.
+         *
+         * emDivisor: how the reader's text size is honoured without touching the box the
          * text sits in. A publisher sizes against a device default it cannot see -- Xeelee
-         * asks for 0.88em on its body classes, Matter for 1.33333em -- and the old fix
-         * scaled #editor by the reciprocal so the dominant size landed on the theme. That
-         * works for text wearing the class and only for that text: anything the publisher
-         * left unstyled inherited the scaled base and came out wrong in the other
-         * direction. Measured on Xeelee, about one paragraph in ten.
-         *
-         * Dividing the declarations instead leaves #editor at exactly --fs, so unstyled
-         * text is right by definition, 0.88em/0.88 is 1em and right too, and a 1.5em
-         * heading becomes 1.7em -- still half again the size of the body, which is the
-         * proportion the publisher was expressing.
+         * 0.88em, Matter 1.33333em -- so declared relative sizes are divided through,
+         * which keeps #editor at exactly --fs and the publisher's proportions intact.
          */
+        const BOOK_TEXT_PROPS = new Set([
+            'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch',
+            'font-variant', 'font-variant-caps', 'font-variant-ligatures', 'font-variant-numeric',
+            'font-variant-east-asian', 'font-variant-position', 'font-variant-alternates',
+            'font-feature-settings', 'font-variation-settings', 'font-kerning',
+            'font-optical-sizing', 'font-size-adjust', 'font-variant-emoji', 'font-synthesis-weight',
+            'font-synthesis-style', 'font-synthesis-small-caps',
+            'color', 'text-align', 'text-align-last', 'text-indent', 'text-transform',
+            'text-decoration-line', 'text-decoration-style', 'text-decoration-color',
+            'text-decoration-thickness', 'text-decoration-skip-ink', 'text-underline-position',
+            'text-underline-offset', 'text-emphasis-style', 'text-emphasis-color',
+            'text-emphasis-position', 'text-shadow', 'letter-spacing', 'word-spacing',
+            'white-space', 'white-space-collapse', 'text-wrap-mode', 'word-break',
+            'overflow-wrap', 'tab-size', 'vertical-align', 'direction', 'unicode-bidi',
+            'quotes', 'orphans', 'widows'
+        ]);
+        // On the page element: inherited typography only. No vertical-align, no box.
+        const BOOK_PAGE_PROPS = new Set([
+            'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch',
+            'font-variant', 'font-variant-caps', 'font-variant-ligatures', 'font-variant-numeric',
+            'font-feature-settings', 'font-variation-settings', 'font-kerning',
+            'color', 'text-align', 'text-indent', 'text-transform', 'letter-spacing',
+            'word-spacing', 'direction', 'quotes', 'orphans', 'widows'
+        ]);
+        const BOOK_BOX_PROPS = new Set([
+            'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+            'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+            'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
+            'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style',
+            'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+            'border-top-left-radius', 'border-top-right-radius',
+            'border-bottom-left-radius', 'border-bottom-right-radius',
+            // Chromium stores border-spacing as these two; the plain name never appears.
+            'border-collapse', '-webkit-border-horizontal-spacing', '-webkit-border-vertical-spacing',
+            'caption-side', 'empty-cells', 'table-layout',
+            'background-color', 'background-image', 'background-repeat', 'background-size',
+            'background-position-x', 'background-position-y', 'background-clip', 'background-origin',
+            'box-sizing', 'width', 'min-width', 'max-width', 'height', 'max-height',
+            'float', 'clear', 'display', 'position', 'visibility', 'opacity',
+            'object-fit', 'object-position', 'aspect-ratio', 'image-rendering',
+            'list-style-type', 'list-style-position', 'list-style-image',
+            'counter-reset', 'counter-increment', 'counter-set', 'content',
+            'break-before', 'break-after', 'break-inside'
+        ]);
+        const BOOK_DISPLAY_OK = /^(none|block|inline|inline-block|list-item|flow-root|contents|table|inline-table|table-row|table-cell|table-row-group|table-header-group|table-footer-group|table-column|table-column-group|table-caption)$/;
+        // Selectors that would reach the application's own chrome rather than the book.
+        const BOOK_SELECTOR_BANNED = /::?(selection|highlight|-webkit-scrollbar|scrollbar|backdrop|placeholder)\b/i;
+
+        /** One declaration's value as the page may use it, or null to drop it. */
+        function bookCssValue(prop, value, divisor, base, page) {
+            let v = String(value || '').trim();
+            if (!v) return null;
+            // rem is rooted at the application, not the reader's text.
+            v = v.replace(/(\d*\.?\d+)rem\b/gi, '$1em');
+            v = v.replace(/\burl\(\s*(['"]?)([^'")]+)\1\s*\)/gi, function (m, q, u) {
+                if (/^(data:|https?:|\/)/i.test(u)) return m;
+                return 'url("' + base + u.replace(/^\.\//, '') + '")';
+            });
+            // vh is the window, not the page; a page is --tz-page-h tall (PageGeometry).
+            v = v.replace(/(\d*\.?\d+)vh\b/gi, 'calc(var(--tz-page-h, 100vh) * $1 / 100)');
+            v = v.replace(/(\d*\.?\d+)vw\b/gi, '$1%');
+            switch (prop) {
+                case 'color':
+                case 'background-color':
+                    // A publisher assuming a white page; the theme owns ink and paper.
+                    return bookColourIsNeutral(v) ? null : v;
+                case 'text-align':
+                    // The reader's Justified setting, keeping the rule's specificity.
+                    return /^justify$/i.test(v) ? 'var(--tz-align, left)' : v;
+                case 'text-align-last':
+                    return /justify/i.test(v) ? null : v;
+                case 'font-size': {
+                    const d = Number(divisor);
+                    if (!(isFinite(d) && d > 0 && Math.abs(d - 1) > 0.001)) return v;
+                    const m = /^(\d*\.?\d+)(em|%)$/i.exec(v);
+                    if (!m) return v;
+                    return (Math.round(parseFloat(m[1]) / d * 10000) / 10000) + m[2];
+                }
+                case 'margin-top': case 'margin-right': case 'margin-bottom': case 'margin-left':
+                    // A negative margin is how an element leaves its column.
+                    return /^-/.test(v) ? null : v;
+                case 'min-width':
+                    // min-width beats max-width, so an absolute one can force a line wider
+                    // than the column. Only a share of the column, or nothing.
+                    if (/^(0|auto)$/i.test(v)) return v;
+                    { const m = /^(\d*\.?\d+)%$/.exec(v); return m && parseFloat(m[1]) <= 100 ? v : null; }
+                case 'width': case 'max-width': {
+                    const m = /^(\d*\.?\d+)%$/.exec(v);
+                    if (m && parseFloat(m[1]) > 100) return '100%';
+                    return v;
+                }
+                case 'display':
+                    return BOOK_DISPLAY_OK.test(v) ? v : 'block';
+                case 'position':
+                    return /^(static|relative)$/i.test(v) ? v : null;
+                case 'float':
+                    return /^(left|right|none|inline-start|inline-end)$/i.test(v) ? v : null;
+                case 'white-space':
+                    if (/^nowrap$/i.test(v)) return null;          // a line longer than its column
+                    return /^pre$/i.test(v) ? 'pre-wrap' : v;
+                case 'text-wrap-mode':
+                    return /^nowrap$/i.test(v) ? null : v;
+                case 'break-before':
+                    // left/right mean recto/verso, which a spread has no notion of; a
+                    // column break is the honest reading of "start on a new page".
+                    return /^(page|left|right|recto|verso|always)$/i.test(v) ? 'column' : v;
+                case 'break-after':
+                    // Neutralised, not translated. Xeelee puts it on ordinary paragraph
+                    // classes; honoured, it swallowed TypoZen's own chapter breaks, and
+                    // translated to a column break it emptied nearly every page.
+                    return /^(page|left|right|recto|verso|always)$/i.test(v) ? 'auto' : v;
+                case 'break-inside':
+                    return /^avoid/i.test(v) ? 'avoid' : v;
+            }
+            return v;
+        }
+
+        /** The declarations of one CSSStyleDeclaration that survive, as CSS text. */
+        function bookCssDeclarations(style, page, divisor, base) {
+            const out = [];
+            let width = null, maxWidth = null;
+            for (let i = 0; i < style.length; i++) {
+                const prop = style[i];
+                const allowed = page ? BOOK_PAGE_PROPS.has(prop)
+                    : (BOOK_TEXT_PROPS.has(prop) || BOOK_BOX_PROPS.has(prop));
+                if (!allowed) continue;
+                const v = bookCssValue(prop, style.getPropertyValue(prop), divisor, base, page);
+                if (v == null) continue;
+                if (prop === 'width') width = v;
+                if (prop === 'max-width') maxWidth = v;
+                out.push(prop + ': ' + v);
+            }
+            // A fixed width is kept as a preference, never as a way out of the column.
+            if (width && !/%$|^auto$/i.test(width) && !(maxWidth && /%$/.test(maxWidth)))
+                out.push('max-width: 100%');
+            return out.join('; ');
+        }
+
+        /** Split a selector list on its top-level commas (:is(a, b) is one selector). */
+        function bookSplitSelectors(text) {
+            const out = [];
+            let depth = 0, from = 0;
+            for (let i = 0; i < text.length; i++) {
+                const c = text[i];
+                if (c === '(' || c === '[') depth++;
+                else if (c === ')' || c === ']') depth--;
+                else if (c === ',' && depth === 0) { out.push(text.slice(from, i)); from = i + 1; }
+            }
+            out.push(text.slice(from));
+            return out.map(function (s) { return s.trim(); }).filter(Boolean);
+        }
+
+        /**
+         * One selector scoped into the book: { page: true } for the page element, or
+         * { sel } for the elements inside it; null to drop it.
+         */
+        function bookScopeSelector(sel) {
+            if (BOOK_SELECTOR_BANNED.test(sel)) return null;
+            let s = sel;
+            let lead = false;
+            // A leading :root / html / body, with any class or attribute on it and the
+            // combinator after it, is the page. What follows is inside the page -- as a
+            // descendant, because every element sits inside a .block, so `body > p`
+            // would match nothing if it stayed a child combinator.
+            let m = /^(?::root|html)(?=$|[\s>.#:\[])[^\s>+~]*\s*>?\s*/i.exec(s);
+            if (m) { s = s.slice(m[0].length); lead = true; }
+            m = /^body(?=$|[\s>.#:\[])[^\s>+~]*\s*>?\s*/i.exec(s);
+            if (m) { s = s.slice(m[0].length); lead = true; }
+            if (!s) return lead ? { page: true } : null;
+            if (/^[+~]/.test(s)) return null;                   // a sibling of <body>
+            return { sel: '#editor ' + bookKeepOffBlocks(s) };
+        }
+
+        /** Add :not(.block) to the selector's subject, before any pseudo-element. */
+        function bookKeepOffBlocks(s) {
+            let depth = 0, subjectFrom = 0;
+            for (let i = 0; i < s.length; i++) {
+                const c = s[i];
+                if (c === '(' || c === '[') depth++;
+                else if (c === ')' || c === ']') depth--;
+                else if (depth === 0 && (c === ' ' || c === '>' || c === '+' || c === '~')) subjectFrom = i + 1;
+            }
+            const subject = s.slice(subjectFrom);
+            const pm = /::?(before|after|first-line|first-letter|marker)\b|::[\w-]+/i.exec(subject);
+            const at = subjectFrom + (pm ? pm.index : subject.length);
+            return s.slice(0, at) + ':not(.block)' + s.slice(at);
+        }
+
+        /** A list of CSSRules rewritten through the allowlist, as CSS text. */
+        function bookCssRules(rules, divisor, base) {
+            let out = '';
+            for (let i = 0; i < rules.length; i++) {
+                const r = rules[i];
+                if (r instanceof CSSStyleRule) {
+                    const pageSels = [], innerSels = [];
+                    bookSplitSelectors(r.selectorText).forEach(function (one) {
+                        const sc = bookScopeSelector(one);
+                        if (!sc) return;
+                        if (sc.page) pageSels.push('#editor');
+                        else innerSels.push(sc.sel);
+                    });
+                    if (pageSels.length) {
+                        const d = bookCssDeclarations(r.style, true, divisor, base);
+                        if (d) out += '#editor { ' + d + ' }\n';
+                    }
+                    if (innerSels.length) {
+                        const d = bookCssDeclarations(r.style, false, divisor, base);
+                        if (d) out += innerSels.join(', ') + ' { ' + d + ' }\n';
+                    }
+                } else if (r instanceof CSSMediaRule) {
+                    const inner = bookCssRules(r.cssRules, divisor, base);
+                    if (inner) out += '@media ' + r.media.mediaText + ' {\n' + inner + '}\n';
+                } else if (typeof CSSSupportsRule !== 'undefined' && r instanceof CSSSupportsRule) {
+                    const inner = bookCssRules(r.cssRules, divisor, base);
+                    if (inner) out += '@supports ' + r.conditionText + ' {\n' + inner + '}\n';
+                } else if (r instanceof CSSFontFaceRule) {
+                    // Embedded fonts stay: a book may need its own glyphs.
+                    const parts = [];
+                    for (let k = 0; k < r.style.length; k++) {
+                        const p = r.style[k];
+                        let v = r.style.getPropertyValue(p);
+                        if (p === 'src') v = bookCssValue('src', v, 1, base, false);
+                        if (v) parts.push(p + ': ' + v);
+                    }
+                    if (parts.length) out += '@font-face { ' + parts.join('; ') + ' }\n';
+                }
+                // Everything else -- @page, @import, @keyframes, @layer, @container,
+                // @namespace -- is the publisher's packaging or pagination, not this page's.
+            }
+            return out;
+        }
+
+        /** A book's inline style="" run through the same allowlist (sanitizeBookHtml). */
+        function bookInlineStyle(el, base) {
+            try {
+                if (!el.getAttribute('style')) return;
+                const d = bookCssDeclarations(el.style, false, 1, base || _bookAssetsBase || '');
+                if (d) el.setAttribute('style', d); else el.removeAttribute('style');
+            } catch (e) { el.removeAttribute('style'); }
+        }
+
         function applyBookStyles(cssTexts, assetsBase, emDivisor) {
             let el = document.getElementById('book-styles');
             if (!el) {
@@ -1172,129 +1433,18 @@
                 document.head.appendChild(el);
             }
             if (!cssTexts || !cssTexts.length) { el.textContent = ''; return; }
-
             const base = String(assetsBase || '');
-            let joined = cssTexts.join('\n')
-                // @page and @import belong to the book's own pagination and packaging;
-                // TypoZen owns the page and has already fetched the stylesheets.
-                .replace(/@page[^{]*\{[^}]*\}/gi, '')
-                .replace(/@import[^;]*;/gi, '')
-                // A book marks its own page breaks -- .pb, .pagebreak, .mbppagebreak -- and
-                // says so with page-break-before, which is an alias for break-before: page.
-                // A multi-column layout ignores a paged-media break, so a part title that
-                // has its own page in every other reader ran on mid-column here. Same trap
-                // TypoZen's own rule fell into. left/right mean recto/verso, which a
-                // two-column spread has no notion of; a column break is the honest reading.
-                .replace(/\bpage-break-(before|after)\s*:\s*(always|left|right)\s*(;|})/gi,
-                    function (m, side, how, end) { return 'break-' + side + ': column' + end; })
-                // A paged break *after* an element is neutralised, not translated.
-                //
-                // This one cost a day. Xeelee puts `break-after: page` on body classes --
-                // .bt1-body-text4 and friends -- so it lands on thousands of ordinary
-                // paragraphs, including the one immediately before every story title. At a
-                // break point the preceding element's break-after and the next element's
-                // break-before combine and the strongest wins: `page` outranks `column`. A
-                // multi-column layout has no pages, so the combined value is discarded --
-                // and TypoZen's own chapter break, sitting on the very next block, is
-                // swallowed with it. Found by bisecting 3,114 rules of the book's stylesheet:
-                // chapter starts opening their own page went from 1 of 3 to 3 of 3 the moment
-                // this rule was removed.
-                //
-                // Translating it to a column break instead is what emptied every page
-                // earlier: a forced break after nearly every paragraph took columns from 97%
-                // full to 9%. So neither honouring it nor translating it is right. In a
-                // reader that lays each spine document out separately -- which is what the
-                // publisher wrote for -- it is a no-op; here it is actively destructive, and
-                // `auto` is the faithful rendering of a declaration that meant nothing.
-                //
-                // break-before: page is left to the conversion above, because "start this
-                // element on a new page" is a request that survives the translation.
-                .replace(/\bbreak-after\s*:\s*(page|left|right|recto|verso)\s*(;|})/gi,
-                    function (m, how, end) { return 'break-after: auto' + end; })
-                .replace(/\bpage-break-inside\s*:\s*avoid\s*(;|})/gi, 'break-inside: avoid$1')
-                // rem is rooted at the application, not at the reader's text, so a book
-                // asking for 0.88rem renders at 0.88 of TypoZen's UI size and the reader's
-                // own font-size setting cannot touch it. Xeelee does exactly this and came
-                // out at 12.32px while Matter, which uses em, sat at the chosen 14px.
-                .replace(/(\d*\.?\d+)rem\b/gi, '$1em')
-                .replace(/\burl\(\s*(['"]?)([^'")]+)\1\s*\)/gi, function (m, q, u) {
-                    if (/^(data:|https?:|\/)/i.test(u)) return m;
-                    return 'url("' + base + u.replace(/^\.\//, '') + '")';
-                });
-
-            // The reader's leading, not the publisher's.
-            //
-            // An omnibus is not one book: Xeelee is twelve, each with its own stylesheet,
-            // and they disagree. Measured across it -- 1.6 for the first books, 1.2 for the
-            // later ones, with the occasional paragraph at something else again. Reading
-            // straight through, the page visibly tightens and loosens for no reason the
-            // reader can see, which is what "messy, and often very tight in some places"
-            // means. The theme already decides the typeface and the size; leading is the
-            // third part of the same decision and there is no sense in honouring a
-            // publisher's on a page whose width and font neither of us chose.
-            //
-            // Dropped rather than rewritten, so everything inherits the one value the app
-            // sets. The cost is that deliberately tight setting -- a verse, a title page --
-            // is levelled too. That is a real loss and a small one against a novel that
-            // changes leading halfway through.
-            joined = joined.replace(/(^|[;{])\s*line-height\s*:[^;}]*/gi, '$1');
-
-            // The theme's ink and paper, not the publisher's.
-            //
-            // Hilldiggers' stylesheet says `color: black` on every paragraph class. The
-            // theme sets the page colour and the book set the text colour, so on a dark
-            // theme it was black on near-black. Only neutral colours are dropped -- black,
-            // white and the greys between -- because those are the publisher assuming a
-            // white page. A red heading or a blue link is a choice, and stays.
-            joined = joined.replace(/(^|[;{])(\s*)(color|background-color|background)\s*:\s*([^;}]*)/gi,
-                function (m, lead, ws, prop, value) {
-                    return bookColourIsNeutral(value) ? lead : m;
-                });
-
-            // The reader's justification, not the publisher's -- and left by default.
-            //
-            // Trade paperback justification depends on hyphenation and a typesetter's
-            // discretion over a fixed measure. A reader window is none of those: the
-            // measure changes with the window, the font is the theme's, and the browser
-            // justifies by stretching word spaces alone, so a long word at a line end
-            // opens rivers of white down the column. Every book here asks for it --
-            // Xeelee on 96 rules, Matter on 7 -- and it is the publisher describing
-            // their page, not this one.
-            //
-            // Rewritten rather than dropped, because dropping it would be a decision the
-            // reader cannot undo. The declaration keeps its selector and its specificity
-            // and reads --tz-align, which View -> Justified sets; centred and
-            // right-aligned rules are untouched, since those are the publisher saying
-            // something about a specific element rather than about the body text.
-            joined = joined.replace(/text-align\s*:\s*justify/gi, 'text-align: var(--tz-align, left)');
-
-            // Divide the declared sizes through, after rem has become em so both are caught.
-            // Relative units only: an em or a % is the publisher expressing a proportion,
-            // which is exactly what we are renormalising. A px is an absolute the publisher
-            // meant literally, and there is no proportion in it to rescale.
-            const d = Number(emDivisor);
-            if (isFinite(d) && d > 0 && Math.abs(d - 1) > 0.001) {
-                joined = joined.replace(
-                    /(font-size\s*:\s*)(\d*\.?\d+)(em|%)/gi,
-                    function (m, head, num, unit) {
-                        const v = parseFloat(num) / d;
-                        return head + (Math.round(v * 10000) / 10000) + unit;
-                    });
+            let out = '';
+            for (let i = 0; i < cssTexts.length; i++) {
+                const sheet = new CSSStyleSheet();
+                try {
+                    // @import is refused by a constructed sheet; the host has already
+                    // fetched every stylesheet the book lists.
+                    sheet.replaceSync(String(cssTexts[i] || '').replace(/@import[^;]*;/gi, ''));
+                } catch (e) { continue; }
+                out += bookCssRules(sheet.cssRules, emDivisor, base);
             }
-
-            // Every rule is confined to the editor. Naive but sufficient: these are book
-            // stylesheets, not application ones, and shipping a CSS parser would gain
-            // nothing a reader would ever notice.
-            el.textContent = joined.replace(/(^|\})\s*([^@{}][^{}]*)\{/g,
-                function (m, brace, sel) {
-                    const parts = sel.split(',').map(function (one) {
-                        const t = one.trim();
-                        if (!t) return '';
-                        if (/^(html|body)\b/i.test(t)) return '#editor';
-                        return '#editor ' + t;
-                    }).filter(Boolean);
-                    return brace + ' ' + parts.join(', ') + '{';
-                });
+            el.textContent = out;
         }
 
 
@@ -1337,6 +1487,9 @@
                 const all = doc.body.querySelectorAll('*');
                 for (let i = 0; i < all.length; i++) {
                     const el = all[i];
+                    // Inline style is the second way a book's CSS reaches the page, so it
+                    // goes through the same allowlist as its stylesheets (applyBookStyles).
+                    if (typeof bookInlineStyle === 'function') bookInlineStyle(el);
                     const attrs = el.attributes;
                     for (let a = attrs.length - 1; a >= 0; a--) {
                         const name = attrs[a].name.toLowerCase();

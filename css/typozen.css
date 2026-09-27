@@ -752,6 +752,19 @@
             hyphens: var(--tz-hyphens, manual);
             hyphenate-limit-chars: 6 3 3;
         }
+        /* The reader's margins, not the publisher's -- the same rule applyBookStyles
+           already applies to leading, ink and justification.
+           A book's html/body rules are rewritten onto #editor (06-render-epub.js), so
+           Zones of Thought's `body { margin: 0 1.5em 0 1em }` landed on the element that IS
+           the page. Pages size #editor at 100% of the wrapper and zero its padding, but
+           never its margin: the left margin pushed the spread 16px right and the right
+           one fell off the window, so the right column ran to the edge whatever
+           View > Margins said. Two ids outrank the rewritten `#editor` (one id). */
+        #editor-wrapper > #editor {
+            margin: 0;
+            padding-left: 0;
+            padding-right: 0;
+        }
         
         /* --- Fenced code -----------------------------------------------------------
            Painted with the CSS Custom Highlight API, so these are ::highlight() rules
