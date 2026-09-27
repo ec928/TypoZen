@@ -153,7 +153,12 @@
         }, 800);
     }
 
-    window.tzOpenPdf = async function (url, page) {
+    /**
+     * view: the tab's own layout, { cols, scroll }, either may be absent. Absent means the
+     * tab never chose one, and the viewer keeps what it last showed. A redraw in place (a
+     * theme change) passes none and keeps the layout on screen.
+     */
+    window.tzOpenPdf = async function (url, page, view) {
         const seq = ++S.seq;
         try {
             await ensureLib();
@@ -169,6 +174,10 @@
             } catch (e) { keepBytes = null; }
             if (seq !== S.seq) return;
             teardown();
+            // Before the viewer exists, so pagesinit -> applyView lays it out this way first
+            // time rather than drawing 1-column scroll and switching.
+            if (view && (view.cols === 1 || view.cols === 2)) S.cols = view.cols;
+            if (view && (view.scroll === 'scroll' || view.scroll === 'pagination')) S.scroll = view.scroll;
             S.password = knownPassword;
             S.editedCopy = !!keepBytes;
             // Empty the editor's document first. It stays in the page, hidden, and without
@@ -479,7 +488,10 @@
             textPages: S.pageTexts ? S.pageTexts.filter(t => t != null).length : 0,
             modified: !!S.modified,
             editMode: S.editMode,
-            outline: S.outline ? S.outline.length : 0
+            outline: S.outline ? S.outline.length : 0,
+            // The layout, as asked for and as the viewer is actually showing it.
+            cols: S.cols, scroll: S.scroll,
+            spread: S.viewer.spreadMode, scrollMode: S.viewer.scrollMode
         } : null;
     };
 

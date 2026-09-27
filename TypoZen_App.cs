@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.7.3";
+        internal const string AppVersion = "0.7.11";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -693,6 +693,14 @@ namespace TypoZen
             /// 1 or 2 columns for THIS tab; 0 = never chosen (apply path defaults only).
             /// </summary>
             public int Columns = 0;
+
+            /// <summary>
+            /// "scroll" or "pagination" for THIS tab; "" = never chosen. PDFs only: the PDF
+            /// viewer's Pages setting was held in the page's memory, shared by every PDF tab
+            /// and lost on restart, so a PDF read in 2-column Pages reopened as 1-column
+            /// scroll. Books need no such field -- loadBookPayload always opens them in Pages.
+            /// </summary>
+            public string Scroll = "";
 
             /// <summary>
             /// Mode for THIS tab: "source", "preview", "reader", or "" = never chosen
@@ -1808,7 +1816,12 @@ namespace TypoZen
             {
                 _btnScrollToggle.Click += (s, e) =>
                 {
-                    SendMsg("cmd:view_set:scroll:" + (_viewScroll == "pagination" ? "scroll" : "pagination"));
+                    string nextScroll = _viewScroll == "pagination" ? "scroll" : "pagination";
+                    // A PDF tab remembers its own (DocTab.Scroll), as every tab does its columns.
+                    if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                        && IsPdfTab(_tabs[_activeTabIndex]) && !_viewScrollLocked)
+                        _tabs[_activeTabIndex].Scroll = nextScroll;
+                    SendMsg("cmd:view_set:scroll:" + nextScroll);
                     try { if (_webView != null) _webView.Focus(); } catch { }
                 };
             }
@@ -4594,6 +4607,7 @@ namespace TypoZen
                         sb0.AppendLine("trail=" + EncodeTrailToken(tab.TrailingNewlines ?? ""));
                         sb0.AppendLine("resume=" + tab.ResumeBlock);
                         sb0.AppendLine("cols=" + tab.Columns);
+                        sb0.AppendLine("scroll=" + (tab.Scroll ?? ""));
                         sb0.AppendLine("mode=" + (tab.ViewMode ?? ""));
                         sb0.AppendLine("body=");
                         sb0.AppendLine();
@@ -4643,6 +4657,7 @@ namespace TypoZen
                     sb.AppendLine("trail=" + trail);
                     sb.AppendLine("resume=" + tab.ResumeBlock);
                     sb.AppendLine("cols=" + tab.Columns);
+                    sb.AppendLine("scroll=" + (tab.Scroll ?? ""));
                     sb.AppendLine("mode=" + (tab.ViewMode ?? ""));
                     // Native / book: never store body (not engine text).
                     if (IsReadOnlyTab(tab)) needBody = false;
@@ -4811,6 +4826,7 @@ namespace TypoZen
                     string modeTok = "";
                     int resumeBlock = 0;
                     int cols = 0;
+                    string scrollTok = "";
                     for (int i = start; i < lines.Length; i++)
                     {
                         string line = lines[i].TrimEnd();
@@ -4822,6 +4838,7 @@ namespace TypoZen
                         else if (line.StartsWith("trail=")) trailTok = line.Substring(6);
                         else if (line.StartsWith("resume=")) int.TryParse(line.Substring(7), out resumeBlock);
                         else if (line.StartsWith("cols=")) int.TryParse(line.Substring(5), out cols);
+                        else if (line.StartsWith("scroll=")) scrollTok = line.Substring(7).Trim();
                         else if (line.StartsWith("mode=")) modeTok = line.Substring(5).Trim();
                         else if (line.StartsWith("body=")) bodyName = line.Substring(5);
                     }
@@ -4837,6 +4854,7 @@ namespace TypoZen
                         // A session written before this field existed says nothing, which is
                         // 0 and means "no choice recorded" -- not "one column".
                         Columns = (cols == 2) ? 2 : (cols == 1 ? 1 : 0),
+                        Scroll = (scrollTok == "pagination" || scrollTok == "scroll") ? scrollTok : "",
                         ViewMode = NormalizeTabViewMode(modeTok)
                     };
                     ApplyDocKindFromSession(tab, kindTok);
@@ -15774,7 +15792,11 @@ namespace TypoZen
                 string serve = (tab.PdfEdited && !string.IsNullOrEmpty(tab.PdfStashPath) && File.Exists(tab.PdfStashPath))
                     ? tab.PdfStashPath : path;
                 _pdfStashStale = false;
-                SendMsg("load_pdf:" + PdfUrlFor(serve) + (page > 1 ? "|page=" + page : ""));
+                // With the tab's own layout: ApplyTabView skips PDF tabs, so this is the only
+                // way a PDF tab's columns and Pages setting reach the viewer.
+                SendMsg("load_pdf:" + PdfUrlFor(serve) + (page > 1 ? "|page=" + page : "")
+                    + (tab.Columns > 0 ? "|cols=" + tab.Columns : "")
+                    + (!string.IsNullOrEmpty(tab.Scroll) ? "|scroll=" + tab.Scroll : ""));
                 SendMsg("pdf_edit_mode:none");
                 SetAnnotateChecks("none");
                 // Its bookmarks and highlights, made on its paragraphs (10-pdf.js); the page

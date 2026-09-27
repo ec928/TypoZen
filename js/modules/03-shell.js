@@ -946,14 +946,23 @@
                     return;
                 }
                 else if (msg.startsWith("load_pdf:")) {
-                    // A PDF, read here by PDF.js (10-pdf.js). "<url>" or "<url>|page=<n>".
+                    // A PDF, read here by PDF.js (10-pdf.js).
+                    // "<url>[|page=<n>][|cols=<1|2>][|scroll=<scroll|pagination>]": where the
+                    // reader was, and the tab's own layout (host DocTab.Columns / .Scroll).
                     try { cancelPositionReport(); } catch (eCP) {}
                     try { cancelResumeAt(); } catch (eCR) {}
-                    let spec = msg.substring(9);
+                    const parts = msg.substring(9).split('|');
+                    const spec = parts.shift();
                     let page = 1;
-                    const pAt = spec.indexOf('|page=');
-                    if (pAt >= 0) { page = parseInt(spec.substring(pAt + 6), 10) || 1; spec = spec.substring(0, pAt); }
-                    if (typeof window.tzOpenPdf === 'function') window.tzOpenPdf(spec, page);
+                    const view = {};
+                    parts.forEach(function (p) {
+                        const eq = p.indexOf('=');
+                        const k = p.substring(0, eq), v = p.substring(eq + 1);
+                        if (k === 'page') page = parseInt(v, 10) || 1;
+                        else if (k === 'cols') view.cols = parseInt(v, 10) === 2 ? 2 : 1;
+                        else if (k === 'scroll') view.scroll = v === 'pagination' ? 'pagination' : 'scroll';
+                    });
+                    if (typeof window.tzOpenPdf === 'function') window.tzOpenPdf(spec, page, view);
                     return;
                 }
                 else if (msg.startsWith("fetch_and_load_book:")) {
