@@ -1877,30 +1877,19 @@
             if (cmd === "toggle_mode" || cmd === "mode_to_source") {
                 const directToSource = cmd === "mode_to_source";
                 if (directToSource && state.mode === 'source') return;
-                // Sticky line: what the user is looking at (viewport), not only caret.
-                // Source scroll without click leaves selectionStart far from the visible
-                // region — that produced Preview jumps 2000→700 / 3000→1500.
+                // The line at the top of the view being left -- what the user is looking at.
+                // It goes to the top of the other view, and the two lay a line out alike, so
+                // nothing on screen moves. Never the caret: it can be anywhere (a file opened
+                // in Source used to leave it at the end). This used to take the LARGEST of the
+                // view's line, the caret's line and two cached lines, so any stale number
+                // ahead of the view won: Source showing line 1 with the caret on line 4000
+                // opened Preview at line 4000 (2026-09-27).
                 let stickyLine = 1;
                 try {
-                    if (state.mode === 'source') {
-                        stickyLine = captureSourceStickyLineForModeSwitch();
-                    } else {
-                        stickyLine = captureStickyDocumentLine();
-                    }
+                    stickyLine = state.mode === 'source'
+                        ? hardLineFromSourceScrollTop() : hardLineFromPreviewViewport();
                 } catch (eA) { stickyLine = 1; }
-                stickyLine = Math.max(
-                    stickyLine | 0,
-                    _stickyLineCache | 0,
-                    _lastCaretLine | 0,
-                    1
-                );
-                // Last chance: if still in source, viewport wins over a lower sticky
-                if (state.mode === 'source') {
-                    try {
-                        const v = hardLineFromSourceScrollTop();
-                        if (v > stickyLine) stickyLine = v;
-                    } catch (eV) {}
-                }
+                stickyLine = Math.max(1, stickyLine | 0);
                 rememberStickyLine(stickyLine);
 
                 if (state.mode === 'wysiwyg' && !directToSource) {
@@ -1921,16 +1910,12 @@
                     try { expandAllFragmentedBlocks(); } catch (e0) {}
                     // Phase 1: flush active DOM → data-raw, then serialize (I3).
                     try { flushActiveBlockToRaw(); } catch (e) {}
-                    // Soft-break expand changes hard-line numbering. Re-capture sticky
-                    // against the structure Source will actually show — using the pre-expand
-                    // line was a common jump (e.g. mid-doc Preview → top of Source).
+                    // Soft-break expand changes hard-line numbering. Re-read the top of the
+                    // view against the structure Source will actually show — using the
+                    // pre-expand line was a common jump (e.g. mid-doc Preview → top of Source).
                     try {
-                        const afterExpand = (typeof captureStickyDocumentLineLive === 'function')
-                            ? (captureStickyDocumentLineLive() | 0) : 0;
-                        const viewAfter = (typeof hardLineFromPreviewViewport === 'function')
-                            ? (hardLineFromPreviewViewport() | 0) : 0;
-                        stickyLine = Math.max(stickyLine | 0, afterExpand, viewAfter,
-                            _stickyLineCache | 0, _lastCaretLine | 0, 1);
+                        const viewAfter = hardLineFromPreviewViewport() | 0;
+                        if (viewAfter >= 1) stickyLine = viewAfter;
                         rememberStickyLine(stickyLine);
                     } catch (eRecap) {}
                     const md = getMarkdownContent(false, { flushActive: false });
@@ -1989,7 +1974,7 @@
                         // Always full markdown render (lists, headings, …). Large docs paint
                         // progressively inside loadMarkdownContent — never leave plain "-" text.
                         // Pass stickyLine so load does not leave you on block 0 / Ln 1.
-                        loadMarkdownContent(src, { stickyLine: stickyLine });
+                        loadMarkdownContent(src, { stickyLine: stickyLine, stickyAtTop: true });
                     } finally {
                         try {
                             if (typeof HistoryManager !== 'undefined') {
@@ -2017,7 +2002,7 @@
                     // Hold stickyLine closed over rAF so a late paint cannot leave you mid-doc.
                     const stickyToPreview = stickyLine;
                     function restorePreviewSticky() {
-                        try { restoreStickyDocumentLine(stickyToPreview); } catch (eS) {}
+                        try { restoreStickyDocumentLine(stickyToPreview, false, 0); } catch (eS) {}
                     }
                     try { restorePreviewSticky(); } catch (eS2a) {}
                     requestAnimationFrame(function () {

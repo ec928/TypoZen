@@ -240,6 +240,35 @@
                 }
             }, { decorations: (p) => p.decorations });
 
+            // Lines Preview spaces differently from a paragraph: an empty line is an empty
+            // .block (shorter than a line of text), and list lines pack tight
+            // (.block.list-block, by Preview's own test, parseListLine in 04-lists.js). Mark
+            // the same lines here so both views space them alike. Fenced code is spaced by
+            // its own tzmd-fence rule.
+            const listLine = CM.Decoration.line({ class: 'tzsp-li' });
+            const blankLine = CM.Decoration.line({ class: 'tzsp-blank' });
+            const buildLists = (v) => {
+                // A code file is one .block per line in Preview too, but never a list.
+                const isList = !codeLang && typeof window.parseListLine === 'function' ? window.parseListLine : () => null;
+                const d = v.state.doc, b = new CM.RangeSetBuilder();
+                const last = d.lineAt(v.viewport.to).number;
+                for (let n = d.lineAt(v.viewport.from).number; n <= last; n++) {
+                    const line = d.line(n);
+                    if (!line.length) b.add(line.from, line.from, blankLine);
+                    else if (isList(line.text)) b.add(line.from, line.from, listLine);
+                }
+                return b.finish();
+            };
+            const listPlugin = CM.ViewPlugin.fromClass(class {
+                constructor(v) { this.decorations = buildLists(v); }
+                update(u) {
+                    if (u.docChanged || u.viewportChanged
+                        || u.transactions.some(tr => tr.effects.some(e => e.is(kindChanged)))) {
+                        this.decorations = buildLists(u.view);
+                    }
+                }
+            }, { decorations: (p) => p.decorations });
+
             const wrapExt = () => document.body && document.body.classList.contains('nowrap')
                 ? [] : CM.EditorView.lineWrapping;
 
@@ -270,6 +299,7 @@
                         CM.keymap.of(keys),
                         language.of([]),
                         codePlugin,
+                        listPlugin,
                         cmSpellField,
                         cmSpellPlugin,
                         marksField,
@@ -477,8 +507,19 @@
                  * middle with align 'center' (typewriter mode). The caret does not move.
                  */
                 scrollToOffset(pos, margin, align) {
+                    let m = margin | 0;
+                    // CodeMirror puts the character's own box at the margin, which sits below
+                    // its line's top by the line's padding and half-leading. Add that gap, read
+                    // off a line on screen, so the line's top lands where a block's top does in
+                    // Preview -- else a switch from Preview comes out a few pixels low.
+                    if (!align) {
+                        try {
+                            const from = view.viewport.from, c = view.coordsAtPos(from);
+                            if (c) m += Math.max(0, Math.round(c.top - view.documentTop - view.lineBlockAt(from).top));
+                        } catch (eGap) {}
+                    }
                     view.dispatch({
-                        effects: CM.EditorView.scrollIntoView(clamp(pos), { y: align || 'start', yMargin: margin | 0 }),
+                        effects: CM.EditorView.scrollIntoView(clamp(pos), { y: align || 'start', yMargin: m }),
                         annotations: programmatic.of(true)
                     });
                 },

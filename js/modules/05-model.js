@@ -127,6 +127,15 @@
             }
             if (state.mode === 'source' && sourceEditor) {
                 sourceEditor.value = content;
+                // A new document starts at its top, caret included, as Preview's load does
+                // (a saved position comes back afterwards, by the host's resume message).
+                // Setting the value puts the caret at the end, as a textarea does, and keeps
+                // the last document's scroll: a file opened in Source said Ln 4000/4000
+                // while showing line 1, or opened part-way down.
+                try {
+                    sourceEditor.setSelectionRange(0, 0);
+                    sourceEditor.scrollTop = 0;
+                } catch (eSel) {}
             }
             try { if (typeof syncModeSurface === 'function') syncModeSurface(); } catch (eSurf2) {}
             try { postViewState(currentViewState()); } catch (ePv2) {}
@@ -1303,6 +1312,8 @@
             }
 
             const stickyWanted = (opts && opts.stickyLine >= 1) ? (opts.stickyLine | 0) : 0;
+            // A mode switch wants the line at the very top, where it was in Source.
+            const stickyPad = (opts && opts.stickyAtTop) ? 0 : undefined;
 
             // Whether this load seeds a fresh history is decided now, when the load is
             // requested -- not later, when its deferred tail happens to finish.
@@ -1376,7 +1387,7 @@
                 
                 if (stickyWanted) {
                     if (typeof restoreStickyDocumentLine === 'function') {
-                        restoreStickyDocumentLine(stickyWanted);
+                        restoreStickyDocumentLine(stickyWanted, false, stickyPad);
                     }
                 } else {
                     try { updateStatsNow(); } catch (eSt) {}
@@ -1433,7 +1444,7 @@
                 if (stickyWanted && typeof restoreStickyDocumentLine === 'function') {
                     // Delay slightly to let browser layout update parent scroll bounds before scrolling
                     setTimeout(function() {
-                        restoreStickyDocumentLine(stickyWanted);
+                        restoreStickyDocumentLine(stickyWanted, false, stickyPad);
                     }, 20);
                 }
                 if (progressive) {

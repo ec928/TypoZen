@@ -1198,7 +1198,15 @@
             line-height: inherit;
         }
         #source-cm .cm-content { padding: 20px 0; caret-color: var(--tx, #F4F4F5); }
-        #source-cm .cm-line { padding: 0; }
+        /* One line here is one .block in Preview, spaced the same way: .block's 2px top and
+           bottom padding plus its Paragraph Spacing gap below (a margin there; padding here,
+           since CodeMirror measures line boxes and ignores margins). List items pack tight,
+           as .block.list-block does, with li's own 3px below. An empty line is an empty
+           .block: 1.6em tall padding included, then the gap. So a line sits at the same
+           height in both views. */
+        #source-cm .cm-line { padding: 2px 0 calc(2px + var(--para, 3px)); }
+        #source-cm .cm-line.tzsp-li { padding: 1px 0 4px; }   /* 1px, and li's 3px margin */
+        #source-cm .cm-line.tzsp-blank { padding: 0 0 var(--para, 3px); line-height: 1.6em; }
         #source-cm .cm-content ::selection { background-color: var(--select-bg); }
         /* Markdown in Source (CodeMirror, 01a-source.js). Every rule is Preview's rule for
            the same thing, so an element means one thing in both views: headings in the
@@ -1235,6 +1243,9 @@
             font-family: Consolas, monospace;
             font-size: 0.9em;
             background-color: var(--code-bg, rgba(128, 128, 128, 0.15));
+            /* A fence is one .block in Preview, its lines one <pre>: no gap between them. */
+            padding: 0;
+            line-height: inherit;
         }
         #source-cm .cm-line.tzmd-fence .tzmd-code { background: none; font-weight: normal; font-size: 1em; }
 

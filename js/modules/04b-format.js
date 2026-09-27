@@ -1200,69 +1200,6 @@
         }
 
         /**
-         * Line to restore on mode switch. Prefer frozen sticky cache when live caret
-         * looks like focus-steal poison (selectionStart 0 → line 1).
-         * Preview also consults the viewport (same idea as Source's scrollTop map).
-         */
-        function captureStickyDocumentLine() {
-            try {
-                const frozen = Math.max(1, _stickyLineCache | 0, _lastCaretLine | 0);
-                if (state.mode === 'source' && sourceEditor) {
-                    if (isSourceFocused()) {
-                        const pos = sourceEditor.selectionStart | 0;
-                        const live = captureStickyDocumentLineLive();
-                        if (isPoisonedSourceLineOne(live, pos)) {
-                            return frozen;
-                        }
-                        rememberStickyLine(live);
-                        return live;
-                    }
-                    // Focus already gone (toolbar/mode button) → frozen cache
-                    return frozen;
-                }
-                // Sidebar search has focus — the frozen cache IS the user's position.
-                // Do NOT consult viewport center, it's inaccurate.
-                const sidebarFocused = document.activeElement && (
-                    document.activeElement.id === 'sidebarSearchInput' ||
-                    (document.activeElement.closest && document.activeElement.closest('#tab-search'))
-                );
-                if (sidebarFocused) {
-                    return frozen;
-                }
-                // Preview: prefer what is on screen over a stale caret after scroll.
-                if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#sidebar')) {
-                    return frozen;
-                }
-                let viewLine = 1;
-                try { viewLine = hardLineFromPreviewViewport(); } catch (eV) { viewLine = frozen; }
-                const sel = window.getSelection();
-                const inEd = sel && sel.anchorNode && editor && editor.contains(sel.anchorNode);
-                if (inEd || (document.activeElement === editor
-                    || (editor && editor.contains(document.activeElement)))) {
-                    const live = captureStickyDocumentLineLive();
-                    // Chrome-destroyed selection often reports block 0 / line 1
-                    if ((live | 0) <= 1 && frozen > 1 && !inEd) {
-                        return Math.max(frozen, viewLine | 0);
-                    }
-                    if ((live | 0) <= 1 && frozen > 1) {
-                        return Math.max(frozen, viewLine | 0);
-                    }
-                    // Viewport wins when it disagrees with caret (scrolled without click).
-                    const chosen = (Math.abs((viewLine | 0) - (live | 0)) > 12)
-                        ? (viewLine | 0) : (live | 0);
-                    rememberStickyLine(chosen);
-                    return chosen;
-                }
-                // Mode button stole focus: viewport + frozen
-                const chosen = Math.max(frozen, viewLine | 0);
-                rememberStickyLine(chosen);
-                return chosen;
-            } catch (e) {
-                return Math.max(1, _stickyLineCache | 0, _lastCaretLine | 0);
-            }
-        }
-
-        /**
          * Scroll/mount so model block `blockIndex` is VISIBLE in #main-container.
          * Height-map estimates (prefixHeight) often overshoot: status can show Ln N
          * while the block sits above the viewport. After estimate+mount, snap with
@@ -1402,10 +1339,13 @@
         }
 
         /**
-         * Put the user on hard line `line1Based` in the CURRENT mode and leave the caret there
-         * so the next captureStickyDocumentLine() returns the same number.
+         * Put the user on hard line `line1Based` in the CURRENT mode and leave the caret there.
+         * Source puts the line at the top of the view. Preview leaves `topPad` px above it
+         * (default 48, so a search hit has context); a mode switch passes 0, so the line
+         * lands at the top as in Source, where the next switch reads it back.
          */
-        function restoreStickyDocumentLine(line1Based, noFocus) {
+        function restoreStickyDocumentLine(line1Based, noFocus, topPad) {
+            const pad = topPad == null ? 48 : Math.max(0, topPad | 0);
             let line = Math.max(1, line1Based | 0);
             if (window.markProgrammaticScroll) window.markProgrammaticScroll(800);
             rememberStickyLine(line);
@@ -1437,7 +1377,7 @@
                 const loc = modelLocationFromDocumentLine(line);
                 const bi = loc.blockIndex;
                 window.showDebugTelemetry('restoreSticky: line=' + line + ' maps to blockIndex=' + bi);
-                const el = ensureModelBlockVisible(bi, { topPad: 48 });
+                const el = ensureModelBlockVisible(bi, { topPad: pad });
                 if (el) {
                     window.showDebugTelemetry('restoreSticky: ensureModelBlockVisible returned el, setting focus');
                     currentActiveBlock = el;
@@ -1449,7 +1389,7 @@
                         const r = el.getBoundingClientRect();
                         const c = mainContainer.getBoundingClientRect();
                         if (r.bottom < c.top + 8 || r.top > c.bottom - 8 || r.top < c.top - 2) {
-                            ensureModelBlockVisible(bi, { topPad: 48 });
+                            ensureModelBlockVisible(bi, { topPad: pad });
                         }
                     } catch (eRe) {}
                 }

@@ -32,15 +32,23 @@ function extractFunction(name) {
 }
 
 console.log('=== sticky helpers exist ===');
-assert(mainScript.includes('function captureStickyDocumentLine'), 'captureStickyDocumentLine');
 assert(mainScript.includes('function restoreStickyDocumentLine'), 'restoreStickyDocumentLine');
 assert(mainScript.includes('function ensureModelBlockVisible'), 'ensureModelBlockVisible (DOM snap)');
 assert(mainScript.includes('function lineFromMarkdownOffset'), 'lineFromMarkdownOffset');
 assert(mainScript.includes('function modelLocationFromDocumentLine'), 'modelLocationFromDocumentLine');
 assert(mainScript.includes('_stickyLineCache'), 'focus-steal sticky cache');
 assert(mainScript.includes('rememberStickyFromSourceIfFocused'), 'source focus cache bump');
-// Mode switch must use sticky helpers + loadMarkdownContent stickyLine
-assert(mainScript.includes('captureStickyDocumentLine()'), 'toggle_mode calls capture');
+// Mode switch reads the top of the view it leaves -- never the caret, never a max with
+// cached lines (2026-09-27: Source on line 1, caret on 4000, Preview opened at 4000).
+{
+    const i = mainScript.indexOf('cmd === "toggle_mode" || cmd === "mode_to_source"');
+    const head = i >= 0 ? mainScript.slice(i, mainScript.indexOf('rememberStickyLine(stickyLine)', i)) : '';
+    assert(/hardLineFromSourceScrollTop\(\)\s*:\s*hardLineFromPreviewViewport\(\)/.test(head),
+        'toggle_mode takes the top line of the view it leaves');
+    const handler = i >= 0 ? mainScript.slice(i, mainScript.indexOf('else if (cmd === "select_all")', i)) : '';
+    assert(handler && !/_lastCaretLine|_stickyLineCache/.test(handler),
+        'toggle_mode never folds in the caret or cached lines');
+}
 assert(mainScript.includes('restoreStickyDocumentLine(stickyLine)'), 'toggle_mode calls restore');
 assert(mainScript.includes('stickyLine: stickyLine') || mainScript.includes('stickyLine:stickyLine'),
     'loadMarkdownContent receives stickyLine');
@@ -247,20 +255,12 @@ console.log('=== source viewport sticky (scroll without caret) ===');
         if (st >= maxScroll - 2) return total;
         return Math.max(1, Math.min(total, Math.round(1 + (st / maxScroll) * (total - 1))));
     }
-    function modeSwitchChoose(viewLine, caretLine) {
-        return (Math.abs(viewLine - caretLine) > 12) ? viewLine : caretLine;
-    }
     assert(lineFromScroll(0, 4000, 100000) === 1, 'scroll top → L1');
     assert(lineFromScroll(100000, 4000, 100000) === 4000, 'scroll end → last');
     const midSt = Math.round(100000 * (3000 - 1) / (4000 - 1));
     const midLn = lineFromScroll(midSt, 4000, 100000);
     assert(Math.abs(midLn - 3000) <= 2, 'scroll mid → ~L3000 (got ' + midLn + ')');
-    // User scrolled to 3000, caret still at 700
-    assert(modeSwitchChoose(3000, 700) === 3000, 'viewport wins over stale caret 700');
-    assert(modeSwitchChoose(2000, 1995) === 1995, 'near caret preferred when close');
     assert(mainScript.includes('hardLineFromSourceScrollTop'), 'hardLineFromSourceScrollTop exists');
-    assert(mainScript.includes('captureSourceStickyLineForModeSwitch'),
-        'mode switch uses source viewport capture');
     assert(mainScript.includes('function hardLineFromPreviewViewport'),
         'hardLineFromPreviewViewport exists (Preview scroll sticky)');
     assert(mainScript.includes('rememberStickyFromPreviewScroll'),

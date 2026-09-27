@@ -323,6 +323,7 @@
          * the textarea — so we zero the wrapper's right padding in Source and pad the
          * textarea text instead, leaving the scrollbar track at the pane edge.
          */
+        const BLOCK_SIDE_PAD = 8;   // .block { padding: 2px 8px } in typozen.css
         function applyEditorChromeForMode() {
             const wrapper = document.getElementById('editor-wrapper');
             if (!wrapper) return;
@@ -334,9 +335,13 @@
             
             let isTwoCol = isPaginatedLayout();
             
+            // The wrapper's left padding is the same in both modes -- it animates (0.3s), and a
+            // difference would slide the text sideways on every switch. Preview makes up the
+            // rest with .block's padding, Source with its own left padding below.
+            const wrapLeft = Math.max(0, p.left - BLOCK_SIDE_PAD);
             if (state.mode === 'source') {
                 // Right pad 0 → scrollbar of #source-editor sits on the pane edge (like Preview).
-                wrapper.style.padding = '0 0 0 ' + p.left + 'px';
+                wrapper.style.padding = '0 0 0 ' + wrapLeft + 'px';
                 if (mainContainer) {
                     mainContainer.style.overflowY = 'hidden'; // one scrollbar only (textarea)
                     mainContainer.style.overflowX = 'hidden';
@@ -344,13 +349,16 @@
                 if (sourceEditor) {
                     sourceEditor.style.paddingTop = '0px';
                     sourceEditor.style.paddingBottom = '0px';
-                    sourceEditor.style.paddingLeft = '0px';
+                    sourceEditor.style.paddingLeft = (p.left - wrapLeft) + 'px';
                     sourceEditor.style.paddingRight = p.right + 'px';
                     sourceEditor.style.boxSizing = 'border-box';
                 }
             } else {
-                wrapper.style.padding = '0 ' + p.right + 'px 0 ' + p.left + 'px';
-                
+                // Less .block's own 8px side padding, so Preview's text starts and ends where
+                // Source's does: the margin setting is the distance to the text in both views.
+                wrapper.style.padding = '0 ' + Math.max(0, p.right - BLOCK_SIDE_PAD) + 'px 0 '
+                    + wrapLeft + 'px';
+
                 // Configure the container BEFORE measuring it. This used to run the other
                 // way round, so clientHeight was read while main-container still carried
                 // the outgoing layout's overflow settings -- and a scrollbar that was about
@@ -447,16 +455,19 @@
             } catch (e) { viewH = 0; }
             if (viewH < 120) viewH = Math.max(320, Math.floor(window.innerHeight * 0.7));
 
-            let topPad = 40;
+            // The wrapper's own top and bottom padding (0 in Source). This read `|| 40`, which
+            // turned a real 0 into 40, and took another 8 off: Source stopped 48px short of
+            // the bottom of the pane, where Preview runs to the edge.
+            let vPad = 0;
             try {
                 const wrap = document.getElementById('editor-wrapper');
                 if (wrap) {
                     const cs = window.getComputedStyle(wrap);
-                    topPad = parseFloat(cs.paddingTop) || 40;
+                    vPad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
                 }
             } catch (e2) {}
-            // Fill remaining height inside wrapper (scrollbar stays in-pane, not off-screen).
-            const h = Math.max(120, viewH - topPad - 8);
+            // Fill the height inside the wrapper (scrollbar stays in-pane, not off-screen).
+            const h = Math.max(120, viewH - vPad);
             sourceEditor.style.height = h + 'px';
             sourceEditor.style.maxHeight = h + 'px';
             sourceEditor.style.width = '100%';
@@ -521,29 +532,5 @@
             } catch (e) {
                 return 1;
             }
-        }
-
-        /**
-         * Source → Preview stickiness: use the line at the Source viewport, not only caret.
-         * Scrolling the textarea without clicking leaves selectionStart far from the view;
-         * mode switch must follow what is on screen.
-         */
-        function captureSourceStickyLineForModeSwitch() {
-            const viewLine = hardLineFromSourceScrollTop();
-            let caretLine = Math.max(1, _stickyLineCache | 0, _lastCaretLine | 0);
-            try {
-                if (sourceEditor && isSourceFocused()) {
-                    const live = lineFromMarkdownOffset(
-                        sourceEditor.value || '', sourceEditor.selectionStart | 0);
-                    // Ignore poisoned selectionStart=0 after chrome focus-steal
-                    if (!(live <= 1 && caretLine > 1 && (sourceEditor.selectionStart | 0) === 0)) {
-                        caretLine = live;
-                    }
-                }
-            } catch (e) {}
-            // Viewport wins when it disagrees with caret (user scrolled without clicking).
-            const chosen = (Math.abs(viewLine - caretLine) > 12) ? viewLine : caretLine;
-            rememberStickyLine(chosen);
-            return chosen;
         }
 
