@@ -156,7 +156,7 @@ Three ways to set one, because the single place marker this replaced went unused
 | Where | What |
 | --- | --- |
 | **The gutter** | A 3px amber rail in the left margin, and hovering a paragraph previews what clicking will do: faint rail on an unmarked one (_click adds_), the existing rail dimmed on a marked one (_click removes_). One shape, one colour, four intensities — the gutter is a toggle button that explains itself. Drawn with `::before` and hit-tested by coordinate — a real element inside a `.block` would end up in `data-raw` and therefore in your document. **View → Block Hover** turns the preview off; a bookmark you have set is always drawn |
-| **Marks pane** | **Mark this page**, which becomes **Remove this mark** |
+| **Marks pane** | **Mark this paragraph**, which becomes **Remove this mark** |
 | **Keyboard** | `Ctrl+Shift+M` toggles, `Ctrl+Shift+P` opens the pane |
 
 - **Enter keeps your indentation in Source.** A textarea drops the caret to column zero, so every indented structure — a fence, a YAML block, a nested list — had to be re-indented by hand on every line. A list carries its marker too (`3.` becomes `4.`), and Enter on an empty bullet ends the list and removes the stray marker. Brackets and quotes are deliberately left alone: auto-closing them turns hostile the moment it guesses wrong, and prose is full of apostrophes

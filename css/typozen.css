@@ -245,21 +245,29 @@
                text colour so it sits in all 25 palettes rather than being one fixed orange
                that fights half of them, and deliberately not --accent, which already means
                "current search match" in the sidebar. */
-            --mark-ink: color-mix(in srgb, #E8A33D 72%, var(--tx, #F4F4F5));
-            --mark-bg: color-mix(in srgb, #E8A33D 16%, transparent);
-            --mark-focus-bg: color-mix(in srgb, #E8A33D 30%, transparent);
-            --mark-annot-bg: color-mix(in srgb, #E8A33D 24%, transparent);
+            /* --mark-hue is the highlighter: the theme's Hi2, set in applyTheme. */
+            --mark-ink: color-mix(in srgb, var(--mark-hue, #E8A33D) 72%, var(--tx, #F4F4F5));
+            --mark-bg: color-mix(in srgb, var(--mark-hue, #E8A33D) 16%, transparent);
+            --mark-focus-bg: color-mix(in srgb, var(--mark-hue, #E8A33D) 30%, transparent);
+            --mark-annot-bg: color-mix(in srgb, var(--mark-hue, #E8A33D) 26%, transparent);
             /* The tint scale: washes of the theme's own TEXT colour, so every state takes
                the palette's character (Catppuccin's lavender-white, Gruvbox's warm beige)
                without taking the accent, which in the document means "search match", or
-               the amber, which means "marked". States differ by strength, not hue:
+               the highlighter, which means "marked". States differ by strength, not hue:
                hover 6% < focused paragraph 8% (--fill-quiet, set with the theme) <
-               paragraph being read 12% < selection 22%. Before, hover was a fixed grey,
-               selection the browser's own blue in every theme, and reading borrowed the
-               marks' amber. */
+               arrival after a jump 16%. The accent is for what is current: selection,
+               the search match you are on, and the paragraph being read aloud. */
             --tint-hover: color-mix(in srgb, var(--tx, #888888) 6%, transparent);
-            --read-bg: color-mix(in srgb, var(--tx, #888888) 12%, transparent);
-            --select-bg: color-mix(in srgb, var(--tx, #888888) 22%, transparent);
+            /* The paragraph being read: current, so the accent. As a grey it was a
+               shade away from the cursor's paragraph and the two could not be told
+               apart. A full-width band, which is what keeps it apart from a selection
+               (stronger, and only over the selected words). */
+            --read-bg: color-mix(in srgb, var(--accent, #3B82F6) 20%, transparent);
+            /* Arrival after a jump (search hit, mark, outline): where you are, so neutral. */
+            --arrive-bg: color-mix(in srgb, var(--tx, #888888) 16%, transparent);
+            /* Selection is what you picked: the accent, strong enough to see at a glance.
+               Search matches keep apart from it by shape -- underlined, faint fill. */
+            --select-bg: color-mix(in srgb, var(--accent, #3B82F6) 32%, transparent);
         }
         #editor ::selection { background-color: var(--select-bg); }
         /* PDF.js paints its own selection from the system accent; the theme's tint instead. */
@@ -278,7 +286,15 @@
         /* Filled at rest, so its hover has to clear that fill, not just the plain hover. */
         .mark-add:hover { background: color-mix(in srgb, var(--tx, #888888) 16%, transparent); }
         .mark-add:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 1px; }
-        .mark-add .mark-rib { color: var(--mark); font-size: 12px; }
+        /* The mark badge: one ribbon, drawn the same way as the one beside a marked
+           paragraph (#editor .block::before), so the button, the list and the page
+           all show the same thing. */
+        .mark-rib {
+            display: inline-block; flex: none;
+            width: 7px; height: 12px;
+            background: var(--mark, var(--mark-ink, #E8A33D));
+            clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%);
+        }
 
         /* Already marked: the button says so rather than silently doing the opposite. */
         .mark-add.on { color: var(--mark); background: var(--mark-bg); border-color: var(--mark); }
@@ -294,13 +310,17 @@
             transition: background-color 0.12s ease, color 0.12s ease;
         }
         .mark-item:hover { background-color: var(--tint-hover); color: var(--tx, #F4F4F5); }
-        /* Active mark uses mark amber (not search accent) so list ↔ page share one language. */
-        .mark-item.active {
-            background: var(--mark-bg, rgba(232, 163, 61, 0.16));
-            box-shadow: inset 3px 0 0 0 var(--mark-ink, #E8A33D);
+        /* The row you are at: the same look as the Search list's (.search-item.active),
+           because it is the same job. What makes it a mark is the ribbon in the row,
+           which keeps the highlighter colour. An inset shadow rather than a border, so
+           the row does not shift sideways when it becomes current. */
+        .mark-item.active,
+        .mark-item.active:hover {
+            background: var(--accent-bg, rgba(59, 130, 246, 0.25));
+            box-shadow: inset 2px 0 0 0 var(--accent, #3B82F6);
         }
         .mark-item.active .mark-name { color: var(--tx, #F4F4F5); font-weight: 600; }
-        .mark-item .mark-rib { color: var(--mark); font-size: 11px; }
+        .mark-item .mark-rib { align-self: start; margin-top: 4px; }
         .mark-body { min-width: 0; }
         .mark-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .mark-where {
@@ -310,7 +330,6 @@
         .mark-page { font-size: 11px; opacity: 0.75; font-variant-numeric: tabular-nums; }
         /* A highlight reads differently from a place: its second line is the reader's
            own note rather than the chapter it sits in. */
-        .mark-item.annot .mark-rib { opacity: 0.9; }
         .mark-where.mark-note { font-style: italic; opacity: 1; color: var(--mark-ink); }
         /* An unresolved mark -- its text is no longer in the document. Shown rather than
            dropped: it is the reader's, and deleting it silently on open is how a feature
@@ -335,18 +354,13 @@
         }
         .mark-clear:hover { color: var(--tx, #F4F4F5); text-decoration: underline; }
 
-        /* --- Bookmarks: one rail in the gutter, four states ----------------------
+        /* --- Bookmarks: one ribbon in the gutter ----------------------------------
 
            The gutter lane belongs to bookmarks and to nothing else. Every previous
            attempt to put a second meaning in it -- a hover edge, a focus bar -- ended
            up fighting the bookmark for the same three pixels, and the transient cue
            always won because it was written more specifically. So: one shape, one
-           colour, four opacities, and hover previews what clicking will do.
-
-               idle, unmarked      nothing
-               hover, unmarked     30%   click adds one
-               marked              100%  bookmarked
-               hover, marked       65%   click removes it
+           colour, shown when the paragraph is marked and not otherwise.
 
            A pseudo-element rather than an inset box-shadow. Three reasons: box-shadow
            on the block itself would prevent any future hover rule from using shadows,
@@ -364,33 +378,31 @@
             left: 0;
             top: 0;
             bottom: 0;
-            width: 10px;
-            border-radius: 6px;
-            box-shadow: inset 3px 0 0 0 var(--mark-ink, #E8A33D);
+            /* A ribbon beside the first line, the same shape as the Marks panel's icon,
+               not a bar down the whole paragraph -- the left edge belongs to quotes. */
+            top: 0.25em;
+            bottom: auto;
+            width: 6px;
+            height: 1.1em;
+            background: var(--mark-ink, #E8A33D);
+            clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.12s ease;
             z-index: 1;
         }
-        /* The three lit states. :not(.tz-marked) on the first is not decoration — without
-           it the unmarked-hover rule also matches a bookmarked block, and the only thing
-           stopping it winning is that the marked-hover rule below happens to be one class
-           more specific. State rules should be mutually exclusive by their selectors, not
-           by the order they were written in. */
-        html[data-block-hover="gutter"] #editor .block:not(.tz-marked):hover::before {
-            opacity: 0.30;   /* click adds one */
-        }
+        /* Marked or not; no hover states. Hovering used to preview what a click in the
+           gutter would do (a faint ribbon to add, a dimmed one to remove), but that click
+           was taken out on 2026-09-21 (f673fc2) and the preview stayed behind -- a faint
+           ribbon under the pointer on whatever line it rested, promising nothing. */
         #editor .block.tz-marked::before {
-            opacity: 1;      /* bookmarked */
-        }
-        html[data-block-hover="gutter"] #editor .block.tz-marked:hover::before {
-            opacity: 0.65;   /* click removes it */
+            opacity: 1;
         }
 
         /* Arrival wash after a jump (mark or search). The block body, not the gutter --
            a bookmarked target keeps its rail at full strength underneath. */
         #editor .block.tz-mark-focus {
-            background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
+            background-color: var(--arrive-bg);
             transition: background-color 0.3s ease;
         }
 
@@ -1266,6 +1278,8 @@
         ::highlight(typozen-find) {
             background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
             color: inherit;
+            text-decoration: underline 2px var(--accent, #3B82F6);
+            text-underline-offset: 3px;
         }
         ::highlight(typozen-find-current) {
             background-color: var(--accent, #f59e0b);
@@ -1278,26 +1292,29 @@
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-find) {
             color: transparent;
             background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
+            text-decoration: underline 2px var(--accent, #3B82F6);
         }
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-find-current) {
             color: transparent;
             background-color: color-mix(in srgb, var(--accent, #f59e0b) 45%, transparent);
         }
-        /* The paragraph being read aloud, a mark's highlight, and the wash after jumping to
-           a mark (10-pdf.js). The text layer's own text stays invisible; only the fill shows. */
-        /* The same reading tint a book's paragraph gets (.block.tts-active), from the theme. */
-        #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-tts) {
-            color: transparent;
-            background-color: var(--read-bg);
-        }
+        /* A highlight the reader made: words, so painted on the text like a book's
+           (::highlight(typozen-mark)), in the same colour. The text layer's own text
+           stays invisible; only the fill shows. */
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-pdf-mark) {
             color: transparent;
-            background-color: color-mix(in srgb, var(--mark-ink, #E8A33D) 30%, transparent);
+            background-color: var(--mark-annot-bg, rgba(232, 163, 61, 0.24));
         }
-        #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-pdf-flash) {
-            color: transparent;
-            background-color: color-mix(in srgb, var(--mark-ink, #E8A33D) 40%, transparent);
+        /* The paragraph being read, and the wash after jumping to a mark: paragraphs, so
+           one band around the lines like a book's .block (10-pdf.js paintBand), not a
+           highlight on the text, which left gaps between the lines. */
+        #pdfView .tzPdfBand {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 6px;
         }
+        #pdfView .tzPdfBand.read { background-color: var(--read-bg); }
+        #pdfView .tzPdfBand.arrive { background-color: var(--arrive-bg); }
         /* Windows spell checker hits in Preview. Wavy underline if the Highlight
            API will paint it; a light wash if not. Not dictionary.tsv — that file
            is definitions. */
@@ -1357,6 +1374,7 @@
            hit is a ring and not a fill -- see the note in 02-layout.js. */
         #source-highlights mark.tz-src-hit {
             background: var(--find-soft, rgba(255, 180, 0, 0.30));
+            box-shadow: inset 0 -2px 0 var(--accent, #3B82F6);
             color: transparent;
             border-radius: 2px;
         }
@@ -1367,8 +1385,7 @@
         }
 
         #source-editor::selection {
-            background-color: var(--accent, #f59e0b);
-            color: var(--accent-tx, #111);
+            background-color: var(--select-bg);
         }
         /* An annotation. Quieter than a search match on purpose: a search hit is
            transient and wants the eye, a highlight is something the reader put there
@@ -1376,11 +1393,8 @@
            rather than wrapped -- a <mark> element inside a .block would round-trip
            into data-raw and become part of the document. */
         ::highlight(typozen-mark) {
+            /* Fill only, like a highlighter pen. Underline now means "search match". */
             background-color: var(--mark-annot-bg, rgba(232, 163, 61, 0.24));
-            text-decoration: underline;
-            text-decoration-color: var(--mark-ink, #E8A33D);
-            text-decoration-thickness: 2px;
-            text-underline-offset: 2px;
         }
 
         /* --- Selection popover ---------------------------------------------------
@@ -1802,14 +1816,19 @@
         .selpop-hint { margin-top: 6px; opacity: 0.75; }
         /* Synonyms read as a list rather than as prose, so they are set apart from a
            definition when both are shown. Each word is a control, because a synonym you
-           cannot look up is a dead end. */
-        .selpop-syn { color: var(--mark-ink, #E8A33D); }
+           cannot look up is a dead end -- and so they look like the document's links
+           (the `a` rule): accent text, a faint accent underline, solid on hover. They
+           used to take the marks' colour, which said "highlighted", not "click me". */
+        .selpop-syn { color: var(--accent, #3B82F6); }
         .selpop-synlink {
             background: none; border: 0; padding: 0; cursor: pointer;
             font: inherit; color: inherit;
-            border-bottom: 1px dotted currentColor;
+            text-decoration: underline;
+            text-decoration-thickness: 1px;
+            text-underline-offset: 2px;
+            text-decoration-color: color-mix(in srgb, var(--accent, #3B82F6) 55%, transparent);
         }
-        .selpop-synlink:hover { color: var(--tx, #F4F4F5); border-bottom-style: solid; }
+        .selpop-synlink:hover { text-decoration-color: currentColor; }
         .selpop-synlink:focus-visible { outline: 2px solid var(--accent, #3B82F6); outline-offset: 2px; }
         .selpop-back {
             background: none; border: 0; cursor: pointer;
@@ -1947,7 +1966,7 @@
         }
         /* Arrival wash wins over any residual focus tint. */
         #editor .block.tz-mark-focus.focused {
-            background-color: var(--mark-focus-bg, rgba(232, 163, 61, 0.28));
+            background-color: var(--arrive-bg);
         }
 
         /* Focus Mode Styling */
@@ -1960,14 +1979,11 @@
         }
 
         /* TTS Reading Mode Tracking */
-        #editor.tts-reading-mode .block:not(.tts-active) {
-            opacity: 0.7;
-            transition: opacity 0.3s ease-in-out;
-        }
+        /* The rest of the page is NOT faded while reading: at 70% it washed out every
+           paragraph but one, and the reading tint already says which one is being read. */
         #editor.tts-reading-mode .block.tts-active,
         #editor.tts-reading-mode .block.focused.tts-active {
             opacity: 1;
-            border-left: 2px solid var(--accent, #3B82F6);
             background-color: var(--read-bg);
             transition: background-color 0.2s;
         }
@@ -2028,7 +2044,10 @@
             padding: 2px 6px;
             border-radius: 4px;
             font-size: 0.9em;
-            color: var(--accent, #3B82F6);
+            /* The text around it, not the accent: the accent in the document means
+               current or clickable (selection, the search match, links), and code in it
+               read as a search hit. The monospace face and the box set code apart. */
+            color: inherit;
             border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
             font-weight: 600;
         }
@@ -2046,7 +2065,7 @@
         }
 
         blockquote {
-            border-left: 4px solid var(--accent, #3B82F6);
+            border-left: 4px solid color-mix(in srgb, var(--tx, #888888) 30%, transparent);
             background-color: var(--quote-bg, rgba(128, 128, 128, 0.08));
             padding: 8px 14px;
             border-radius: 0 6px 6px 0;

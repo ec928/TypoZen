@@ -127,13 +127,17 @@ console.log('--- 3. search highlighting is theme-derived and visible in every th
         'current-match highlight uses the accent and its contrast-checked text colour');
     assert(/--find-soft/.test(js), 'the theme code actually sets --find-soft');
 
-    // The soft tint has to be visible against every background, or a page of hits shows
-    // nothing. Alphas mirror the ones applied in applyTheme.
+    // Every match is underlined in the accent -- that is what makes a page of hits
+    // visible, and what keeps them apart from a selection, which is an accent fill.
+    assert(/text-decoration:\s*underline[^;]*var\(--accent/.test(findRule),
+        'every match is underlined in the accent');
+    // The fill under it is deliberately faint (selection is the stronger fill), but it
+    // must still register. Alphas mirror the ones applied in applyTheme.
     const SOFT_MIN = 1.12;
     const results = themes.map(t => {
         const bgc = hex(t.Bg);
         const isLight = lum(bgc) > 0.5;
-        const a = isLight ? 0.30 : 0.38;
+        const a = isLight ? 0.14 : 0.18;
         return { n: t.Name, r: ratio(blend(hex(t.Hi), bgc, a), bgc) };
     });
     const faint = results.filter(x => x.r < SOFT_MIN).map(x => x.n + ' (' + x.r.toFixed(3) + ')');
@@ -153,6 +157,29 @@ console.log('--- 3. search highlighting is theme-derived and visible in every th
     assert(bad.length === 0,
         'text on the solid current-match highlight clears 4.5' +
         (bad.length ? ' -- short: ' + bad.join(', ') : ' (' + themes.length + ' themes)'));
+
+    // The highlighter (Hi2) is a colour of its own because it must not read as the
+    // accent: on Gruvbox and Ayu, whose accents are orange, a fixed amber made selection,
+    // search and highlights one colour. Its wash (26% in typozen.css) must also show.
+    const hueOf = (c) => {
+        const [r, g, b] = c.map(v => v / 255);
+        const mx = Math.max(r, g, b), d = mx - Math.min(r, g, b);
+        if (d === 0) return null;
+        const h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+        return h * 60;
+    };
+    const hi2Bad = themes.map(t => {
+        if (!/^#[0-9a-f]{6}$/i.test(t.Hi2 || '')) return t.Name + ' (no Hi2)';
+        const h1 = hueOf(hex(t.Hi)), h2 = hueOf(hex(t.Hi2));
+        const apart = (h1 === null || h2 === null) ? 180 : Math.min(Math.abs(h1 - h2), 360 - Math.abs(h1 - h2));
+        if (apart < 40) return t.Name + ' (Hi2 only ' + apart.toFixed(0) + ' deg from Hi)';
+        const r = ratio(blend(hex(t.Hi2), hex(t.Bg), 0.26), hex(t.Bg));
+        if (r < 1.12) return t.Name + ' (Hi2 wash ' + r.toFixed(3) + ')';
+        return null;
+    }).filter(Boolean);
+    assert(hi2Bad.length === 0,
+        'every theme has a highlighter apart from its accent and visible as a wash' +
+        (hi2Bad.length ? ' -- ' + hi2Bad.join(', ') : ''));
 }
 
 console.log('');

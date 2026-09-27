@@ -594,10 +594,6 @@
                             </MenuItem>
                             <Separator/>
 
-                            <!-- Whether hovering a paragraph offers its bookmark gutter.
-                                 Bookmarks themselves are always drawn; this is only the
-                                 hover preview of adding or removing one. -->
-                            <MenuItem x:Name="mHoverGutter" Header="Bookmark _Gutter Hover" IsCheckable="True" IsChecked="True" ToolTip="Hovering a paragraph shows the bookmark it would add, or dims the one it would remove."/>
                             <MenuItem x:Name="mJustify" Header="_Justified" IsCheckable="True" IsChecked="False"/>
                             <MenuItem x:Name="mWordWrap" Header="_Word Wrap" IsCheckable="True" IsChecked="True"/>
                             <Separator/>

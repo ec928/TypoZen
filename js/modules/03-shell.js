@@ -1356,9 +1356,18 @@
                 }
                 // A touch stronger on dark themes: the same alpha reads fainter against a
                 // dark background than a light one.
-                const a = isLight ? 0.30 : 0.38;
+                // Faint: every match is also underlined in the accent, and selection
+                // (the accent at 32%) must stay the stronger fill of the two.
+                const a = isLight ? 0.14 : 0.18;
                 root.setProperty('--find-soft', 'rgba(' + rr + ',' + gg + ',' + bb + ',' + a + ')');
             })();
+            // The highlighter (--mark-hue: marks and highlights) is the theme's second
+            // colour, Hi2, chosen per palette in TypoZen_Themes.json and editable in
+            // Customise Theme. It has to differ from the accent, which is selection and
+            // search, and on dark themes it is not a yellow: a see-through yellow over a
+            // dark background comes out brown. Amber only for a theme that predates Hi2.
+            root.setProperty('--mark-hue',
+                /^#[0-9a-f]{6}$/i.test(t.Hi2 || '') ? t.Hi2 : '#E8A33D');
             // Theme font size (FS) — with sane clamp; CSS body uses var(--fs)
             let fs = parseInt(t.FS != null ? t.FS : (t.FontSize != null ? t.FontSize : 16), 10);
             if (isNaN(fs) || fs < 10) fs = 14;

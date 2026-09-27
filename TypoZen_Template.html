@@ -161,7 +161,7 @@
                  accelerator. This button is also what teaches the gutter ribbon exists. -->
             <div id="tab-marks" class="tab-pane">
                 <button type="button" id="markAddBtn" class="mark-add" title="Bookmark the page you are on">
-                    <span class="mark-rib" aria-hidden="true">&#x25AE;</span><span>Mark this page</span>
+                    <span class="mark-rib" aria-hidden="true"></span><span>Mark this paragraph</span>
                 </button>
                 <div id="marks-list" tabindex="0" role="listbox" aria-label="Bookmarks">
                     <div class="mark-empty">No bookmarks in this document yet.</div>
@@ -236,7 +236,7 @@
             <button type="button" id="selPopStrike" class="selpop-btn" title="Strikethrough (Ctrl+Shift+X)"><span style="text-decoration:line-through; font-family:serif; width:16px; display:inline-block; text-align:center; margin-right:6px;">S</span> Strikethrough</button>
             <button type="button" id="selPopCode" class="selpop-btn" title="Inline Code"><span style="font-family:monospace; width:16px; display:inline-block; text-align:center; margin-right:6px;">&lt;&gt;</span> Code</button>
             <hr id="selPopDivFormat" class="selpop-divider">
-            <button type="button" id="selPopMark" class="selpop-btn" title="Save this selection to your Marks (Ctrl+Shift+M)"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px; height:16px; margin-right:6px;"><path d="M19 4l-4-4-12 12v4h4l12-12z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/><path d="M15 2l3 3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg> Highlight</button>
+            <button type="button" id="selPopMark" class="selpop-btn" title="Save this selection to your Marks (Ctrl+Shift+M)"><span class="mark-rib" aria-hidden="true" style="margin:0 10.5px 0 4.5px;"></span> Highlight</button>
             <button type="button" id="selPopLink" class="selpop-btn" title="Turn selection into a hyperlink (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px; height:16px; margin-right:6px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg> Add Link</button>
             <hr id="selPopDivExt" class="selpop-divider">
             <button type="button" id="selPopSearchWeb" class="selpop-btn" title="Search Web for selection"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px; height:16px; margin-right:6px;"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.75"/><ellipse cx="12" cy="12" rx="4" ry="10" fill="none" stroke="currentColor" stroke-width="1.75"/><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.75"/></svg> Search Web</button>

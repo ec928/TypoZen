@@ -935,6 +935,71 @@ namespace TypoZen
             return Path.Combine(_appDir, "TypoZen_Themes.json");
         }
 
+        /// <summary>
+        /// The theme list as the app should see it. A user copy holds the built-in themes as
+        /// they were when it was first saved, so a colour added to the shipped file later --
+        /// Hi2, the highlighter -- would never reach anyone who has saved a custom theme.
+        /// Missing Hi2 is filled from the shipped theme of the same name, in memory only;
+        /// the user's file is not rewritten.
+        /// </summary>
+        private string ReadThemesJson()
+        {
+            string path = ThemesReadPath();
+            if (!File.Exists(path)) return null;
+            string json = File.ReadAllText(path, Encoding.UTF8);
+            try
+            {
+                string shipped = Path.Combine(_appDir, "TypoZen_Themes.json");
+                if (!File.Exists(shipped) || string.Equals(Path.GetFullPath(path),
+                        Path.GetFullPath(shipped), StringComparison.OrdinalIgnoreCase))
+                    return json;
+                var mine = ParseThemeObjects(json);
+                if (!mine.Exists(t => string.IsNullOrEmpty(t.Hi2))) return json;
+                var ship = ParseThemeObjects(File.ReadAllText(shipped, Encoding.UTF8));
+                bool changed = false;
+                foreach (var t in mine)
+                {
+                    if (!string.IsNullOrEmpty(t.Hi2)) continue;
+                    var s = ship.Find(x => string.Equals(x.Name, t.Name, StringComparison.OrdinalIgnoreCase));
+                    if (s != null && !string.IsNullOrEmpty(s.Hi2)) { t.Hi2 = s.Hi2; changed = true; }
+                }
+                return changed ? SerializeThemesJson(mine) : json;
+            }
+            catch { return json; }
+        }
+
+        /// <summary>The same fields PopulateThemeDropdown reads, and the same skip rule.</summary>
+        private static List<ThemeInfo> ParseThemeObjects(string json)
+        {
+            var list = new List<ThemeInfo>();
+            foreach (Match om in Regex.Matches(json ?? "", @"\{[^{}]+\}"))
+            {
+                string obj = om.Value;
+                var nameM = Regex.Match(obj, @"\""Name\""\s*:\s*\""([^\""]+)\""");
+                var fnM = Regex.Match(obj, @"\""FN\""\s*:\s*\""([^\""]+)\""");
+                var fsM = Regex.Match(obj, @"\""FS\""\s*:\s*(\d+)");
+                var bgM = Regex.Match(obj, @"\""Bg\""\s*:\s*\""([^\""]+)\""");
+                var txM = Regex.Match(obj, @"\""Tx\""\s*:\s*\""([^\""]+)\""");
+                var hiM = Regex.Match(obj, @"\""Hi\""\s*:\s*\""([^\""]+)\""");
+                var hi2M = Regex.Match(obj, @"\""Hi2\""\s*:\s*\""([^\""]+)\""");
+                if (!nameM.Success || !bgM.Success || !txM.Success || !hiM.Success) continue;
+                int fs = 14;
+                if (fsM.Success) int.TryParse(fsM.Groups[1].Value, out fs);
+                list.Add(new ThemeInfo
+                {
+                    Name = nameM.Groups[1].Value,
+                    FN = fnM.Success ? fnM.Groups[1].Value : "'Segoe UI', sans-serif",
+                    FS = fs,
+                    Bg = bgM.Groups[1].Value,
+                    Tx = txM.Groups[1].Value,
+                    Hi = hiM.Groups[1].Value,
+                    Hi2 = hi2M.Success ? hi2M.Groups[1].Value : null,
+                    Custom = Regex.IsMatch(obj, @"\""Custom\""\s*:\s*true", RegexOptions.IgnoreCase)
+                });
+            }
+            return list;
+        }
+
         private string ThemesWritePath()
         {
             string dir = CacheDir();
@@ -1600,7 +1665,6 @@ namespace TypoZen
             BindClick("mParaNormal",  (s, e) => SetParaSpacing(1));
             BindClick("mParaRelaxed", (s, e) => SetParaSpacing(2));
             BindClick("mParaLoose",   (s, e) => SetParaSpacing(3));
-            BindClick("mHoverGutter", (s, e) => SetBlockHover(_blockHover == 1 ? 0 : 1));
             BindClick("mResetView", (s, e) => ResetViewSettings());
             BindClick("mFontTheme",  (s, e) => SetFontType(0));
             BindClick("mFontSerif",  (s, e) => SetFontType(1));
@@ -1816,10 +1880,9 @@ namespace TypoZen
                     var nameMatch = Regex.Match(prefsText, @"\""themeName\""\s*:\s*\""([^\""]*)\""");
                     if (nameMatch.Success) savedThemeName = nameMatch.Groups[1].Value;
                 }
-                string themesPath = ThemesReadPath();
-                if (File.Exists(themesPath))
+                string json = ReadThemesJson();
+                if (json != null)
                 {
-                    string json = File.ReadAllText(themesPath, Encoding.UTF8);
                     PopulateThemeDropdown(json, savedThemeIdx, savedThemeName);
                 }
             }
@@ -7092,10 +7155,9 @@ namespace TypoZen
                     catch {}
                 }
 
-                string themesPath = ThemesReadPath();
-                if (File.Exists(themesPath))
+                string json = ReadThemesJson();
+                if (json != null)
                 {
-                    string json = File.ReadAllText(themesPath, Encoding.UTF8);
                     SendMsg("init_themes:" + json);
 
                     // Tell the page WHICH theme, rather than letting it guess.
@@ -8178,6 +8240,7 @@ namespace TypoZen
                     var bgM = Regex.Match(obj, @"\""Bg\""\s*:\s*\""([^\""]+)\""");
                     var txM = Regex.Match(obj, @"\""Tx\""\s*:\s*\""([^\""]+)\""");
                     var hiM = Regex.Match(obj, @"\""Hi\""\s*:\s*\""([^\""]+)\""");
+                    var hi2M = Regex.Match(obj, @"\""Hi2\""\s*:\s*\""([^\""]+)\""");
                     if (!nameM.Success || !bgM.Success || !txM.Success || !hiM.Success) continue;
 
                     string themeName = nameM.Groups[1].Value;
@@ -8188,7 +8251,8 @@ namespace TypoZen
                     string tx = txM.Groups[1].Value;
                     string hi = hiM.Groups[1].Value;
                     bool custom = Regex.IsMatch(obj, @"\""Custom\""\s*:\s*true", RegexOptions.IgnoreCase);
-                    _themesList.Add(new ThemeInfo { Name = themeName, FN = fn, FS = fs, Bg = bg, Tx = tx, Hi = hi, Custom = custom });
+                    string hi2 = hi2M.Success ? hi2M.Groups[1].Value : null;
+                    _themesList.Add(new ThemeInfo { Name = themeName, FN = fn, FS = fs, Bg = bg, Tx = tx, Hi = hi, Hi2 = hi2, Custom = custom });
 
                     int currentIdx = idx;
                     if (_cmbThemes != null) _cmbThemes.Items.Add(themeName);
@@ -8332,7 +8396,8 @@ namespace TypoZen
                     FS = 14,
                     Bg = "#1E1E1E",
                     Tx = "#D4D4D4",
-                    Hi = "#007ACC"
+                    Hi = "#007ACC",
+                    Hi2 = "#E8A33D"
                 };
 
             int restoreIdx = _currentThemeIndex;
@@ -8376,6 +8441,7 @@ namespace TypoZen
                 Bg = t.Bg,
                 Tx = t.Tx,
                 Hi = t.Hi,
+                Hi2 = t.Hi2,
                 Custom = t.Custom
             };
         }
@@ -8399,7 +8465,8 @@ namespace TypoZen
                     WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                 return false;
             }
-            if (!IsValidHexColor(t.Bg) || !IsValidHexColor(t.Tx) || !IsValidHexColor(t.Hi))
+            if (!IsValidHexColor(t.Bg) || !IsValidHexColor(t.Tx) || !IsValidHexColor(t.Hi)
+                || (!string.IsNullOrWhiteSpace(t.Hi2) && !IsValidHexColor(t.Hi2)))
             {
                 WinForms.MessageBox.Show("Colors must be #RRGGBB hex values.", "Customise Theme",
                     WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
@@ -8429,6 +8496,7 @@ namespace TypoZen
                     Bg = NormalizeHex(t.Bg),
                     Tx = NormalizeHex(t.Tx),
                     Hi = NormalizeHex(t.Hi),
+                    Hi2 = string.IsNullOrWhiteSpace(t.Hi2) ? null : NormalizeHex(t.Hi2),
                     Custom = true      // user-created: eligible for Delete Theme
                 });
 
@@ -8475,13 +8543,14 @@ namespace TypoZen
         private static string BuildThemeJsonObject(ThemeInfo t)
         {
             return string.Format(
-                "{{\"Name\":\"{0}\",\"FN\":\"{1}\",\"FS\":{2},\"Bg\":\"{3}\",\"Tx\":\"{4}\",\"Hi\":\"{5}\"{6}}}",
+                "{{\"Name\":\"{0}\",\"FN\":\"{1}\",\"FS\":{2},\"Bg\":\"{3}\",\"Tx\":\"{4}\",\"Hi\":\"{5}\"{6}{7}}}",
                 EscapeJson(t.Name ?? "Preview"),
                 EscapeJson(t.FN ?? "'Segoe UI', sans-serif"),
                 t.FS > 0 ? t.FS : 14,
                 EscapeJson(NormalizeHex(t.Bg)),
                 EscapeJson(NormalizeHex(t.Tx)),
                 EscapeJson(NormalizeHex(t.Hi)),
+                IsValidHexColor(t.Hi2) ? ",\"Hi2\":\"" + EscapeJson(NormalizeHex(t.Hi2)) + "\"" : "",
                 t.Custom ? ",\"Custom\":true" : "");
         }
 
@@ -9940,8 +10009,10 @@ namespace TypoZen
         /// </summary>
         private void SetBlockHover(int index)
         {
+            // No menu item any more: the hover preview it switched was removed with the
+            // gutter click (f673fc2). The value is still saved -- dropping it would
+            // renumber the settings format string -- and the page ignores it.
             _blockHover = ClampBlockHover(index);
-            SetMenuChecked("mHoverGutter", _blockHover == 1);
             SendMsg("cmd:set_block_hover:" + BlockHoverKeys[_blockHover]);
             if (!_applyingRestoredSettings) SaveWindowState();
         }
@@ -10076,8 +10147,10 @@ namespace TypoZen
             {
                 btn.Content = "";                                   // StopSolid
                 btn.ToolTip = "Stop reading";
-                btn.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, System.Windows.SystemColors.MenuHighlightBrushKey);
-                btn.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, System.Windows.SystemColors.HighlightTextBrushKey);
+                // The same soft fill every other "on" toolbar button gets (SetToolbarActive),
+                // not the system's solid highlight: that made Stop the loudest thing on screen.
+                btn.Background = _modeSourceBg ?? SystemColors.HighlightBrush;
+                btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
             }
             else
             {
@@ -15823,7 +15896,7 @@ namespace TypoZen
             "mToggleReveal", "mToggleFocus", "mToggleTypewriter",
             "menuFontAppearance", "menuSpacing",
             "mMarginNarrow", "mMarginRegular", "mMarginWide",
-            "mHoverGutter", "mJustify"
+            "mJustify"
         };
 
         /// <summary>Edit and Help go whole; View loses only its document-shaped half.</summary>
@@ -16951,6 +17024,12 @@ namespace TypoZen
         public string Tx;
         public string Hi;
         /// <summary>
+        /// The highlighter: the colour of marks and highlights. A second colour of the
+        /// theme's own, because it has to stay apart from Hi, which is selection and search.
+        /// Optional -- older theme files do not have it; the page falls back to amber.
+        /// </summary>
+        public string Hi2;
+        /// <summary>
         /// True for themes the user saved via Customise Theme. Serialized so it survives
         /// a restart. Built-in themes have no such marker and are protected from deletion.
         /// </summary>
@@ -17048,9 +17127,11 @@ namespace TypoZen
         private readonly TextBox _txtBg;
         private readonly TextBox _txtTx;
         private readonly TextBox _txtHi;
+        private readonly TextBox _txtHi2;
         private readonly Border _swatchBg;
         private readonly Border _swatchTx;
         private readonly Border _swatchHi;
+        private readonly Border _swatchHi2;
         private readonly ComboBox _cmbFont;
         private readonly ComboBox _cmbSize;
         private string[][] _fontPresets;
@@ -17059,6 +17140,7 @@ namespace TypoZen
         private readonly string _resetBg;
         private readonly string _resetTx;
         private readonly string _resetHi;
+        private readonly string _resetHi2;
         private readonly int _resetFontIndex;
         private readonly int _resetFs;
 
@@ -17077,6 +17159,9 @@ namespace TypoZen
             string bg = seed != null && seed.Bg != null ? seed.Bg : "#1E1E1E";
             string tx = seed != null && seed.Tx != null ? seed.Tx : "#D4D4D4";
             string hi = seed != null && seed.Hi != null ? seed.Hi : "#007ACC";
+            // A theme from an older file has no highlighter; show the amber the page uses
+            // for it then, so saving does not change what the user was looking at.
+            string hi2 = seed != null && !string.IsNullOrWhiteSpace(seed.Hi2) ? seed.Hi2 : "#E8A33D";
             _resetFs = seed != null && seed.FS > 0 ? seed.FS : 14;
 
             // Suggest a new name so Save as New feels natural
@@ -17126,6 +17211,7 @@ namespace TypoZen
             _resetBg = bg;
             _resetTx = tx;
             _resetHi = hi;
+            _resetHi2 = hi2;
             _resetFontIndex = selectedFont;
 
             Title = "Customise Theme";
@@ -17138,7 +17224,7 @@ namespace TypoZen
             Foreground = appFg;
 
             var root = new Grid { Margin = new Thickness(16, 16, 16, 20) };
-            for (int r = 0; r < 12; r++)
+            for (int r = 0; r < 14; r++)
                 root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             int row = 0;
@@ -17147,7 +17233,8 @@ namespace TypoZen
 
             _txtBg = AddColorRow(root, ref row, "Background", bg, out _swatchBg);
             _txtTx = AddColorRow(root, ref row, "Text", tx, out _swatchTx);
-            _txtHi = AddColorRow(root, ref row, "Accent", hi, out _swatchHi);
+            _txtHi = AddColorRow(root, ref row, "Accent (selection and search)", hi, out _swatchHi);
+            _txtHi2 = AddColorRow(root, ref row, "Highlighter (marks and highlights)", hi2, out _swatchHi2);
 
             var fontSizeLabelGrid = new Grid { Margin = new Thickness(0, 8, 0, 4) };
             fontSizeLabelGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -17275,9 +17362,11 @@ namespace TypoZen
             _txtBg.Text = _resetBg;
             _txtTx.Text = _resetTx;
             _txtHi.Text = _resetHi;
+            _txtHi2.Text = _resetHi2;
             UpdateSwatch(_swatchBg, _resetBg);
             UpdateSwatch(_swatchTx, _resetTx);
             UpdateSwatch(_swatchHi, _resetHi);
+            UpdateSwatch(_swatchHi2, _resetHi2);
             if (_cmbFont.Items.Count > 0)
                 _cmbFont.SelectedIndex = Math.Max(0, Math.Min(_resetFontIndex, _cmbFont.Items.Count - 1));
             if (_cmbSize != null) _cmbSize.Text = _resetFs.ToString();
@@ -17419,7 +17508,8 @@ namespace TypoZen
                 FS = fs,
                 Bg = _txtBg.Text != null ? _txtBg.Text.Trim() : "#1E1E1E",
                 Tx = _txtTx.Text != null ? _txtTx.Text.Trim() : "#D4D4D4",
-                Hi = _txtHi.Text != null ? _txtHi.Text.Trim() : "#007ACC"
+                Hi = _txtHi.Text != null ? _txtHi.Text.Trim() : "#007ACC",
+                Hi2 = _txtHi2.Text != null ? _txtHi2.Text.Trim() : "#E8A33D"
             };
         }
 

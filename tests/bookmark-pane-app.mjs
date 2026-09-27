@@ -62,7 +62,7 @@ try {
     let s = await app.eval(paneState);
     info('button reads ' + JSON.stringify(s.btnLabel) + ', count ' + JSON.stringify(s.count));
     assert(s.empty, 'the empty state is shown rather than a blank pane');
-    assert(s.btnLabel === 'Mark this page', 'the button offers to mark the page');
+    assert(s.btnLabel === 'Mark this paragraph', 'the button offers to mark the paragraph');
     assert(!s.btnOn, 'and does not claim the page is already marked');
 
     console.log('\n=== the button marks the page ===');

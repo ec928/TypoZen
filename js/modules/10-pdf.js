@@ -113,7 +113,7 @@
         S.ocrRun++; S.ocrPages = {}; S.ocrBoxes = {}; S.ocrSize = {}; S.ocrStats = null;
         S.editMode = 'none'; window.tzPdfEditing = false; S.modified = false;
         try { CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch (e) { }
-        try { CSS.highlights.delete('typozen-tts'); CSS.highlights.delete('typozen-pdf-flash'); } catch (e) { }
+        clearBand('read'); clearBand('arrive');
         const host = document.getElementById('pdfView');
         if (host) host.innerHTML = '';
     }
@@ -846,6 +846,50 @@
         return list.length - 1;
     };
 
+    /**
+     * A paragraph-wide band on the page: one rounded rectangle around the paragraph's
+     * lines, the way a book paints its paragraph (.block.tts-active, .tz-mark-focus).
+     * These used to be CSS highlights on the text layer, which colour only the height of
+     * the letters, so a PDF showed the paragraph line by line with gaps -- the look that
+     * means "these words" everywhere else, not "this paragraph".
+     *
+     * Placed in percentages of the page, so it scales with zoom. It sits between the page
+     * image and the text layer, and ignores the pointer, so selection works through it.
+     * A page redraw (zoom, scrolling back) removes it with the page's other children;
+     * onTextLayer paints it again, as it did the highlight.
+     */
+    function clearBand(kind) {
+        document.querySelectorAll('#pdfView .tzPdfBand.' + kind).forEach(n => n.remove());
+    }
+    function paintBand(kind, el) {
+        clearBand(kind);
+        if (!el) return null;
+        const p = +el.dataset.pdfPage;
+        const r = rangeOnPage(p, +el.dataset.pdfStart, +el.dataset.pdfEnd);
+        const page = document.querySelector('#pdfView .page[data-page-number="' + (p + 1) + '"]');
+        if (!r || !page) return r;
+        const pr = page.getBoundingClientRect(), rr = r.getBoundingClientRect();
+        if (!pr.width || !pr.height || !rr.width || !rr.height) return r;
+        const PAD_X = 6, PAD_Y = 3;
+        const band = document.createElement('div');
+        band.className = 'tzPdfBand ' + kind;
+        band.style.left = ((rr.left - pr.left - PAD_X) / pr.width * 100) + '%';
+        band.style.top = ((rr.top - pr.top - PAD_Y) / pr.height * 100) + '%';
+        band.style.width = ((rr.width + 2 * PAD_X) / pr.width * 100) + '%';
+        band.style.height = ((rr.height + 2 * PAD_Y) / pr.height * 100) + '%';
+        const layer = page.querySelector(S.ocrPages[p] ? '.tzOcrLayer' : '.textLayer');
+        if (layer && layer.parentNode === page) page.insertBefore(band, layer);
+        else page.appendChild(band);
+        return r;
+    }
+    /** Test hook: the text under a band ('read' or 'arrive'), or '' when none is shown. */
+    window.tzPdfBandText = function (kind) {
+        const el = kind === 'arrive' ? S.flashEl : S.readEl;
+        if (!el || !document.querySelector('#pdfView .tzPdfBand.' + kind)) return '';
+        const r = rangeOnPage(+el.dataset.pdfPage, +el.dataset.pdfStart, +el.dataset.pdfEnd);
+        return r ? r.toString() : '';
+    };
+
     /** The paragraph being read: paint it, and bring it into view (09-speech.js). */
     window.tzPdfReadFocus = function (el) {
         S.readEl = el;
@@ -854,16 +898,11 @@
     };
     window.tzPdfReadClear = function () {
         S.readEl = null;
-        try { CSS.highlights.delete('typozen-tts'); } catch (e) { }
+        clearBand('read');
     };
     function paintRead() {
-        const el = S.readEl;
-        try { CSS.highlights.delete('typozen-tts'); } catch (e) { }
-        if (!el || !window.Highlight) return;
-        const r = rangeOnPage(+el.dataset.pdfPage, +el.dataset.pdfStart, +el.dataset.pdfEnd);
-        if (!r) return;
-        try { CSS.highlights.set('typozen-tts', new Highlight(r)); } catch (e) { }
-        if (S.revealRead) { S.revealRead = false; revealRange(r); }
+        const r = paintBand('read', S.readEl);
+        if (r && S.revealRead) { S.revealRead = false; revealRange(r); }
     }
 
     /**
@@ -890,16 +929,13 @@
         bringIntoView(el);
         paintFlash();
         clearTimeout(S.flashTimer);
-        S.flashTimer = setTimeout(() => { S.flashEl = null; try { CSS.highlights.delete('typozen-pdf-flash'); } catch (e) { } }, 1600);
+        S.flashTimer = setTimeout(() => { S.flashEl = null; clearBand('arrive'); }, 1600);
         return true;
     };
     function paintFlash() {
-        const el = S.flashEl;
-        if (!el || !window.Highlight) return;
-        const r = rangeOnPage(+el.dataset.pdfPage, +el.dataset.pdfStart, +el.dataset.pdfEnd);
-        if (!r) return;
-        try { CSS.highlights.set('typozen-pdf-flash', new Highlight(r)); } catch (e) { }
-        if (S.revealFlash) { S.revealFlash = false; revealRange(r); }
+        if (!S.flashEl) return;
+        const r = paintBand('arrive', S.flashEl);
+        if (r && S.revealFlash) { S.revealFlash = false; revealRange(r); }
     }
 
     /** A range over [s, e) of block i's raw text, if its page is drawn (marks' highlights). */

@@ -87,7 +87,7 @@ try {
     });
     info('now at block ' + s.here + ': "' + s.says + '", lit ' + s.lit);
     assert(!s.reallyMarked, 'this block is genuinely not marked');
-    assert(s.says === 'Mark this page' && !s.lit,
+    assert(s.says === 'Mark this paragraph' && !s.lit,
         'so the button says so — this is the "Marked stays even when nowhere near it" report');
 
     console.log('\n=== and pressing it does what it says ===');
@@ -105,7 +105,7 @@ try {
     });
     info('said "' + act.said + '": ' + act.before + ' → ' + act.after +
          ' marks, now says "' + act.saidAgain + '"');
-    assert(act.after === act.before + 1, 'saying "Mark this page" added one');
+    assert(act.after === act.before + 1, 'saying "Mark this paragraph" added one');
     assert(act.saidAgain === 'Remove this mark', 'and it now offers the opposite');
 
     const undo = await app.eval(async () => {

@@ -58,16 +58,18 @@ try {
     await waitFor(app, () => window.tzPdfState().page === 3, 3000);
     await sleep(600);
     await app.eval(() => { getSelection().removeAllRanges(); handleCommand('read_aloud_doc'); });
+    // The paragraph being read is a band on the page (10-pdf.js paintBand), not a
+    // highlight on the text; tzPdfBandText gives the words under it.
     const first = await waitFor(app, () => {
-        const h = CSS.highlights.get('typozen-tts');
-        return window.__spoken.length && h ? { spoken: window.__spoken[0], lit: Array.from(h)[0].toString() } : null;
+        const lit = window.tzPdfBandText('read');
+        return window.__spoken.length && lit ? { spoken: window.__spoken[0], lit } : null;
     }, 3000);
     ok(first && first.spoken === 'Chapter Three' && /Chapter Three/.test(first.lit), 'Read Aloud starts at the top of the page on screen and highlights it', JSON.stringify(first));
     const second = await waitFor(app, () => window.__spoken.length >= 2
-        ? { spoken: window.__spoken[1], lit: Array.from(CSS.highlights.get('typozen-tts') || [])[0]?.toString() } : null, 3000);
+        ? { spoken: window.__spoken[1], lit: window.tzPdfBandText('read') } : null, 3000);
     ok(second && /harbour/.test(second.spoken) && /harbour/.test(second.lit || ''), 'and moves on, the highlight following', JSON.stringify(second));
     await waitFor(app, () => !isPlaying, 3000);
-    ok(await app.eval(() => !CSS.highlights.get('typozen-tts')), 'the highlight goes when reading ends');
+    ok(await app.eval(() => !document.querySelector('#pdfView .tzPdfBand.read')), 'the highlight goes when reading ends');
 
     // Narration (the Qwen narrator) from the same place: the narrator's answer and the audio
     // are stubbed; what is checked is what the PDF hands it and the highlight following.
@@ -84,7 +86,7 @@ try {
             return new Response('{}');
         };
         window.playRenderedChunk = (url) => {
-            window.__played.push(Array.from(CSS.highlights.get('typozen-tts') || [])[0]?.toString() || '');
+            window.__played.push(window.tzPdfBandText('read'));
             setTimeout(() => { if (isPlaying) playNextChunk(); }, 300);
         };
         getSelection().removeAllRanges();

@@ -1500,7 +1500,7 @@
             const on = !sel && here >= 0 && markIndexAtBlock(here) >= 0;
             btn.classList.toggle('on', on);
             btn.lastElementChild.textContent = sel ? 'Highlight selection'
-                : (on ? 'Remove this mark' : 'Mark this page');
+                : (on ? 'Remove this mark' : 'Mark this paragraph');
         }
 
         /**
@@ -1580,7 +1580,6 @@
                 const rib = document.createElement('span');
                 rib.className = 'mark-rib';
                 rib.setAttribute('aria-hidden', 'true');
-                rib.textContent = '▮';
 
                 const body = document.createElement('span');
                 body.className = 'mark-body';
@@ -1597,10 +1596,9 @@
                     }
                 } catch (e) {}
                 const isNote = m.e > m.s;
-                if (isNote) {
-                    rib.textContent = '\u270E';   // a highlight, not a place
-                    row.classList.add('annot');
-                }
+                // Same badge for a highlight and a place: both are marks, and the page
+                // shows one ribbon for either.
+                if (isNote) row.classList.add('annot');
                 where.textContent = lost
                     ? 'the text this marked is no longer here'
                     : (isNote && m.note ? m.note : chapter);
