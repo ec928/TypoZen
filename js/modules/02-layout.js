@@ -5936,12 +5936,27 @@
          */
         function invalidateSourceHighlights() {
             _srcHlSig = '';
-            if (findState.query && findState.matches && findState.matches.length) {
-                paintSourceHighlights();
-            } else {
+            if (!(findState.query && findState.matches && findState.matches.length)) {
                 clearSourceHighlights();
+                return;
             }
+            // findState.matches are offsets into the text BEFORE this edit. Painting them
+            // again put every mark after the edit that many characters too early: typing
+            // above a hit slid its mark left one character per keystroke (Ed, 2026-09-27;
+            // the textarea's mirror did the same). So the search itself is re-run on the
+            // new text, shortly -- and until then CodeMirror's marks move with the text on
+            // their own, while the mirror, which cannot, is hidden rather than shown wrong.
+            if (!(sourceEditor && sourceEditor.isCodeMirror)) clearSourceHighlights();
+            clearTimeout(_srcSearchRefresh);
+            _srcSearchRefresh = setTimeout(function () {
+                const q = findState.query;
+                if (!q || state.mode !== 'source') return;
+                try { runFind(q, true, { navigate: false }); } catch (eF) {}
+                try { if (typeof updateSearchSidebar === 'function') updateSearchSidebar(); } catch (eS) {}
+                try { if (typeof updateSidebarSearchCount === 'function') updateSidebarSearchCount(); } catch (eC) {}
+            }, 300);
         }
+        let _srcSearchRefresh = 0;
 
         function clearSourceHighlights() {
             _srcHlSig = '';

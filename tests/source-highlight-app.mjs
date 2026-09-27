@@ -139,6 +139,34 @@ async function codemirrorChecks(app) {
     assert(e.head === 'ZZZZ', 'the edit landed');
     assert(e.ok && e.onWord, 'after the edit every mark is on a current hit');
 
+    console.log('\n=== typing above the hits, find bar shut, keeps the marks on their words ===');
+    // A live query with the find bar closed (the Search sidebar's case): the input path
+    // used to repaint the pre-edit offsets onto the new text, and every mark slid left one
+    // character per keystroke typed above it (Ed, 2026-09-27).
+    await app.eval(() => { closeFindBar(); runFind('bullet', true, { navigate: false }); });
+    await app.page.waitForFunction(() => findState.query === 'bullet' && findState.matches.length > 0, { timeout: 5000 });
+    for (let i = 0; i < 6; i++) {
+        await app.eval(() => {
+            sourceEditor.setRangeText('d', 0, 0, 'end');
+            sourceEditor.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+    const onWord = () => app.eval(() => {
+        const t = sourceEditor.value, marks = sourceEditor.searchMarks();
+        return { n: marks.length, bad: marks.filter(x => t.slice(x.from, x.to).toLowerCase() !== 'bullet').length };
+    });
+    const during = await onWord();
+    await app.page.waitForFunction(() => {
+        const m = findState.matches, t = sourceEditor.value;
+        return m.length > 0 && t.slice(m[0].start, m[0].end).toLowerCase() === 'bullet';
+    }, { timeout: 3000 }).catch(() => { });
+    const settledMarks = await onWord();
+    info('while typing ' + JSON.stringify(during) + ', after ' + JSON.stringify(settledMarks));
+    assert(during.n > 0 && during.bad === 0, 'while typing, every mark stays on "bullet"');
+    assert(settledMarks.n > 0 && settledMarks.bad === 0, 'after the search re-runs, every mark is on "bullet"');
+    await app.eval(() => { runFind('', false, { navigate: false }); openFindBar(); });
+    await find(app, 'scroll', 2000);
+
     console.log('\n=== keyboard navigation moves the ring ===');
     // findStep (Up/Down, the find bar arrows) is a different path from findJumpTo (the
     // mouse). The ring once followed the mouse and ignored the keyboard.
