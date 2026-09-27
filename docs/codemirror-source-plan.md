@@ -257,6 +257,34 @@ is reported. It is not patched around.**
 switch, so a Source problem found by Ed can be told apart from a pre-existing one in one
 restart. Phase 4 deletes it. Git tag `baseline-before-codemirror` marks the start.
 
+### Phase 0 results (2026-09-27)
+
+- **Packages:** installed at the pinned versions; every bundled package's own `LICENSE` file
+  read (all MIT, Marijn Haverbeke). Notices added to `THIRD-PARTY-NOTICES.txt`.
+- **Bundle:** `js/vendor/codemirror/codemirror.js`, **290 KB**, about 95 KB compressed
+  (under the 350-500 KB estimate). The HTML, CSS and JavaScript parsers do not end up in
+  it. It is not loaded by the page yet.
+- **Startup** (`tests/cm-ab.mjs`, 7 interleaved runs, headless, cache off): **+16 ms**
+  median to the last module, **over the 15 ms line**. The bundle's evaluation took a
+  median 23.5 ms and creating the empty editor 4.8 ms. A (as shipped) ranged 191-250 ms on
+  its own, so the difference is about the size of the noise. Decision for Ed before
+  Phase 1.
+- **Round trip** (`tests/source-roundtrip-browser.mjs`): 72 checks pass on the textarea;
+  that is the bar CodeMirror must meet. The host turns CRLF into LF before the page sees a
+  file (`TypoZen_App.cs`, load path), so line endings never reach Source.
+- **Latency baseline** (`tests/source-latency-app.mjs`, `source-latency-baseline.json`),
+  textarea, this machine:
+
+  | Case | Keystroke to frame (median / p90) | Handler | Switch into Source |
+  |---|---|---|---|
+  | Markdown, 74 KB | 7.1 / 7.9 ms | 2.3 ms | 718-1578 ms (median 1025) |
+  | Plain log, 5 MB | **216.9 / 237 ms** | 86.6 ms | -- |
+
+  Typing in a 5 MB log already lags about a fifth of a second a key. About 87 ms of it is
+  TypoZen's handler (the model rebuild); the other ~130 ms is the textarea laying out
+  5 MB. CodeMirror lays out only visible lines, so Phase 1 should cut the second part.
+  That is a prediction to measure, not a result.
+
 ## 7. Tests
 
 **New:**

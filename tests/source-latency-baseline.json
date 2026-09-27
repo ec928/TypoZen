@@ -1,0 +1,14 @@
+{
+  "recorded": "2026-09-27T10:55:40.383Z",
+  "md": {
+    "switchMs": 1024.7,
+    "keyFrameMedian": 7.1,
+    "keyFrameP90": 7.9,
+    "keyHandlerMedian": 2.3
+  },
+  "log": {
+    "keyFrameMedian": 216.9,
+    "keyFrameP90": 237,
+    "keyHandlerMedian": 86.6
+  }
+}
