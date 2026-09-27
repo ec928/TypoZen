@@ -1392,10 +1392,10 @@
         }
         #pdfView .tzPdfBand.read { background-color: var(--read-bg); }
         #pdfView .tzPdfBand.arrive { background-color: var(--arrive-bg); }
-        /* Windows spell checker hits in Preview. Wavy underline if the Highlight
-           API will paint it; a light wash if not. Not dictionary.tsv — that file
-           is definitions. */
-        ::highlight(typozen-spell) {
+        /* Windows spell checker hits, one look in both views: Preview paints them with the
+           Highlight API, Source draws them as decorations on its own text (01a-source.js).
+           Not dictionary.tsv -- that file is definitions. */
+        ::highlight(typozen-spell), #source-cm .typozen-spell {
             text-decoration: underline wavy #ef4444;
             background-color: color-mix(in srgb, #ef4444 14%, transparent);
         }

@@ -582,6 +582,7 @@
             // restores an old caret far from what was on screen.
             if (mainContainer) {
                 mainContainer.addEventListener('scroll', function () {
+                    if (typeof scheduleSpellCheck === 'function' && state.mode !== 'source') scheduleSpellCheck();
                     try {
                         if (window.getProgScrollUntil && Date.now() <= window.getProgScrollUntil()) return;
                         if (typeof rememberStickyFromPreviewScroll === 'function')
@@ -1072,8 +1073,13 @@
                     catch (eDf) {}
                 }
                 else if (msg.startsWith("spell_hits:")) {
-                    try { if (typeof applySpellHits === 'function') applySpellHits(msg.substring(11)); }
-                    catch (eSp) {}
+                    const payload = msg.substring(11);
+                    if (payload.startsWith("cm")) {
+                        if (typeof window.applyCmSpellHits === 'function') window.applyCmSpellHits(payload);
+                    } else {
+                        try { if (typeof applySpellHits === 'function') applySpellHits(payload); }
+                        catch (eSp) {}
+                    }
                 }
                 else if (msg.startsWith("marks_load:")) {
                     // This document's stored marks. Deferred a beat: the host sends it in the
@@ -2051,6 +2057,8 @@
                 syncPaginationClass();
                 applyEditorChromeForMode();
                 scheduleColumnSettle(function () { ensurePageWindow(); PageMap.invalidate(); updatePageIndicator(); });
+                // The other view's text is now on screen: check its spelling.
+                try { scheduleSpellCheck(); } catch (eSp) {}
                 // Mode changes from the toolbar selector (and host view_set), not a shortcut.
                 postViewState(currentViewState());
             }

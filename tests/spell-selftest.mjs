@@ -49,11 +49,16 @@ assert(/::highlight\(typozen-spell\)/.test(css), 'wavy underline style exists');
 
 const html = fs.readFileSync(path.join(root, 'TypoZen_Template.html'), 'utf8');
 assert(/id="selPopSpell"/.test(html), 'selection popover has a spelling row');
-assert(/id="source-cm"/.test(html)
-    && /contentAttributes\.of\(\{\s*spellcheck:\s*'true'/.test(fs.readFileSync(path.join(root, 'js', 'modules', '01a-source.js'), 'utf8')),
-    'Source (CodeMirror in #source-cm) has Chromium spellcheck on');
-assert(/id="editor"[^>]*spellcheck="true"/.test(html),
-    'Preview editor keeps spellcheck="true"');
+// One engine in both views: the host's Windows checker, drawn by the page. Chromium's own
+// checker is off in both -- inside CodeMirror its squiggles came and went with every redraw.
+const source = fs.readFileSync(path.join(root, 'js', 'modules', '01a-source.js'), 'utf8');
+assert(/id="source-cm"/.test(html) && /contentAttributes\.of\(\{\s*spellcheck:\s*'false'/.test(source),
+    'Source (CodeMirror in #source-cm) has Chromium spellcheck off');
+assert(/id="editor"[^>]*spellcheck="false"/.test(html), 'Preview editor has Chromium spellcheck off');
+assert(/spell_check:cm/.test(source) && /typozen-spell/.test(source) && /recheckSpelling\(\)/.test(source),
+    'Source sends its visible lines to the host and draws typozen-spell decorations');
+assert(/sourceEditor\.recheckSpelling\(\)/.test(layout), 'scheduleSpellCheck re-checks Source when Source is showing');
+assert(/::highlight\(typozen-spell\),\s*#source-cm \.typozen-spell/.test(css), 'one underline rule for both views');
 
 const csproj = fs.readFileSync(path.join(root, 'TypoZen.csproj'), 'utf8');
 assert(/SpellCheck\.cs/.test(csproj), 'SpellCheck.cs is in the project');

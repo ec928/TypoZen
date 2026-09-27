@@ -50,6 +50,21 @@ try {
         return s && !s.isCollapsed ? s.toString() : '';
     });
     assert(/teh/i.test(sel), 'Check Document selects the misspelling (got ' + JSON.stringify(sel) + ')');
+
+    // Source: the same engine, its visible lines drawn as decorations (01a-source.js).
+    const underlinedInSource = () => app.eval(() =>
+        Array.from(document.querySelectorAll('#source-cm .typozen-spell')).map(e => e.textContent));
+    await app.eval(() => handleCommand('view_set:mode:source'));
+    let src = [];
+    for (let i = 0; i < 25 && !src.some(w => /teh/i.test(w)); i++) { await sleep(150); src = await underlinedInSource(); }
+    assert(src.some(w => /teh/i.test(w)), 'Source underlines the misspelling (got ' + JSON.stringify(src) + ')');
+    const chromium = await app.eval(() => (document.querySelector('#source-cm .cm-content') || {}).spellcheck);
+    assert(chromium === false, 'Chromium\'s own checker is off in Source');
+
+    // Ignore goes through scheduleSpellCheck(), which used to re-check Preview only.
+    await app.eval(() => { postMsg('spell_ignore:teh'); scheduleSpellCheck(); });
+    for (let i = 0; i < 25 && src.some(w => /teh/i.test(w)); i++) { await sleep(150); src = await underlinedInSource(); }
+    assert(!src.some(w => /teh/i.test(w)), 'Ignore clears the underline in Source (left ' + JSON.stringify(src) + ')');
 } finally {
     try { await app.close(); } catch (e) {}
 }

@@ -103,6 +103,7 @@
                     if (typeof invalidateMarkCaches === 'function') invalidateMarkCaches();
                 } catch (eMk) {}
                 setTimeout(function () { try { updateStatsNow(); } catch (eS) {} }, 0);
+                try { if (typeof scheduleSpellCheck === 'function') scheduleSpellCheck(); } catch (eSp) {}
                 return;
             }
 
@@ -139,6 +140,7 @@
                 if (typeof invalidateMarkCaches === 'function') invalidateMarkCaches();
             } catch (eMk2) {}
             updateStatsNow();
+            try { if (typeof scheduleSpellCheck === 'function') scheduleSpellCheck(); } catch (eSp2) {}
         }
 
         // Invalidate in-flight progressive paints when a new document loads.

@@ -2856,8 +2856,21 @@
             return true;
         }
 
+        /**
+         * Check the text on screen again, in whichever view is showing. Every spelling
+         * trigger comes here -- typing, a load or tab switch, a mode switch, scrolling
+         * Preview, a fix, Ignore, Add to dictionary.
+         */
         function scheduleSpellCheck() {
             if (!spellingEnabledHere()) { clearSpellHighlights(); return; }
+            // Source checks its own visible lines (01a-source.js); Preview's marks are not
+            // on screen there. Without this, Ignore and Add to dictionary never cleared an
+            // underline in Source, and a tab switch never re-checked it.
+            if (state.mode === 'source') {
+                clearSpellHighlights();
+                try { if (sourceEditor && sourceEditor.recheckSpelling) sourceEditor.recheckSpelling(); } catch (eSrc) {}
+                return;
+            }
             if (_spellTimer) clearTimeout(_spellTimer);
             _spellTimer = setTimeout(runSpellCheckNow, 420);
         }
@@ -2870,21 +2883,40 @@
                 clearSpellHighlights();
                 return;
             }
-            let blk = null;
-            try {
-                const sel = window.getSelection();
-                if (sel && sel.anchorNode) blk = getAncestorBlock(sel.anchorNode);
-            } catch (e) {}
-            if (!blk) blk = currentActiveBlock;
-            if (!blk || !editor || !editor.contains(blk)) { clearSpellHighlights(); return; }
-            const text = blockPlainText(blk);
-            if (!text.trim()) { clearSpellHighlights(); return; }
+            
+            // Find all visible blocks
+            const visible = [];
+            if (editor) {
+                const rect = (typeof mainContainer !== 'undefined' && mainContainer) ? mainContainer.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+                for (let child of editor.children) {
+                    if (!child.classList.contains('block')) continue;
+                    const cr = child.getBoundingClientRect();
+                    if (cr.bottom > rect.top && cr.top < rect.bottom) {
+                        visible.push(child);
+                    }
+                }
+            }
+            
+            if (!visible.length) { clearSpellHighlights(); return; }
+            
+            let fullText = '';
+            const blockMap = [];
+            for (let i = 0; i < visible.length; i++) {
+                const text = blockPlainText(visible[i]);
+                if (text.trim()) {
+                    blockMap.push({ el: visible[i], offset: fullText.length, len: text.length });
+                    fullText += text + '\n\n';
+                }
+            }
+            
+            if (!fullText.trim()) { clearSpellHighlights(); return; }
+            
             const id = 'live' + (++_spellReq);
-            _spellPending = { id: id, el: blk, mode: 'live', text: text };
-            try { postMsg('spell_check:' + id + '\n' + text.slice(0, 8000)); } catch (e2) {}
+            _spellPending = { id: id, mode: 'live_viewport', map: blockMap, text: fullText };
+            try { postMsg('spell_check:' + id + '\n' + fullText.slice(0, 8000)); } catch (e2) {}
         }
 
-        function parseSpellHits(rest) {
+        window.parseSpellHits = parseSpellHits; function parseSpellHits(rest) {
             const hits = [];
             const lines = String(rest || '').split('\n');
             for (let i = 0; i < lines.length; i++) {
@@ -2919,8 +2951,29 @@
                 }
                 return;
             }
-            if (_spellPending && _spellPending.id === id && _spellPending.el)
+            if (_spellPending && _spellPending.id === id && _spellPending.mode === 'live_viewport') {
+                _spellHits = hits || [];
+                const ranges = [];
+                for (let h = 0; h < hits.length; h++) {
+                    const hit = hits[h];
+                    for (let b = 0; b < _spellPending.map.length; b++) {
+                        const m = _spellPending.map[b];
+                        if (hit.start >= m.offset && hit.start < m.offset + m.len) {
+                            const r = rangeForPlainOffset(m.el, hit.start - m.offset, hit.len);
+                            if (r) ranges.push(r);
+                            break;
+                        }
+                    }
+                }
+                try {
+                    if (window.CSS && CSS.highlights && typeof Highlight !== 'undefined') {
+                        if (ranges.length) CSS.highlights.set('typozen-spell', new Highlight(...ranges));
+                        else CSS.highlights.delete('typozen-spell');
+                    }
+                } catch (eH) {}
+            } else if (_spellPending && _spellPending.id === id && _spellPending.el) {
                 paintSpellOnBlock(_spellPending.el, hits);
+            }
         }
         window.applySpellHits = applySpellHits;
 
@@ -2988,13 +3041,14 @@
         function suggestionsForWord(word) {
             const w = String(word || '');
             if (!w) return [];
-            for (let i = 0; i < _spellHits.length; i++) {
-                if (String(_spellHits[i].word) === w) return _spellHits[i].suggs || [];
+            const hits = (state.mode === 'source' && window._cmSpellHits) ? window._cmSpellHits : _spellHits;
+            for (let i = 0; i < hits.length; i++) {
+                if (String(hits[i].word) === w) return hits[i].suggs || [];
             }
             const lw = w.toLowerCase();
-            for (let j = 0; j < _spellHits.length; j++) {
-                if (String(_spellHits[j].word).toLowerCase() === lw)
-                    return _spellHits[j].suggs || [];
+            for (let j = 0; j < hits.length; j++) {
+                if (String(hits[j].word).toLowerCase() === lw)
+                    return hits[j].suggs || [];
             }
             return [];
         }

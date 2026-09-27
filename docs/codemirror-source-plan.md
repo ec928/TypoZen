@@ -394,6 +394,13 @@ restart. Phase 4 deletes it. Git tag `baseline-before-codemirror` marks the star
   engine and one look in both views, and decorations do not vanish on redraw. It changes
   where suggestions appear in Source (the popup instead of the right-click menu), so it is
   Ed's decision.
+  **Resolved (2026-09-27), as recommended.** Another agent built the design: Source's visible
+  lines to the Windows checker as decorations, Preview's check widened from the caret's
+  paragraph to every block on screen, Chromium's checker off in both. Finished here: Source's
+  answers were being discarded (a property name the surface does not have), it was never
+  re-checked by Ignore / Add to dictionary / a tab switch (`scheduleSpellCheck()` now serves
+  both views), a stale answer could underline the wrong letters, and the trigger sat in a
+  layout function that runs on every resize.
 
 ## 7. Tests
 

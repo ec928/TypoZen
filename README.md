@@ -189,11 +189,12 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your _reading position_, which is automatic, written atomically as you read, and unaffected by any of this.
 
 ### Spelling
-**Spelling is checked as you type**, with suggestions, a personal dictionary and a whole-document check:
+**Spelling is checked by the Windows spell checker, the same way in Preview and Source**, with suggestions, a personal dictionary and a whole-document check:
 
-- **Preview:** wavy underline on the paragraph you are editing. Select the word — the popover offers replacements, **Ignore**, and **Add to dictionary** (persisted in the cache folder as `user_words.txt`, not in the document).
-- **Source:** Chromium’s own squiggles, with suggestions on right-click. Known limit: an underline can disappear while focus is elsewhere (in the find box, say) and return when Source is focused again.
+- **Every misspelling on screen is underlined** (wavy red), re-checked after a pause in typing, when you scroll, switch tabs or switch between Preview and Source — so the underlines do not come and go.
+- **Select an underlined word** — the popover offers replacements, **Ignore**, and **Add to dictionary** (persisted in the cache folder as `user_words.txt`, not in the document).
 - **Edit → Spelling → Check Document** walks the file and selects the first issue; **Next Issue** continues. Books, PDFs and Reader are skipped.
+- Chromium's own spell checker is switched off in both views, so there is one dictionary and one look.
 
 Preview uses **WPF’s built-in dictionaries** — English, French, German and Spanish, the same engine a WPF TextBox uses — in your Windows display language. Other languages will not underline until a dictionary for them is available.
 
@@ -297,7 +298,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 > Earlier versions pulled these from Google Fonts via a `<link>` in `<head>`. That was a render-blocking network round trip on every cold start of a local editor, and because Google's CSS omits `local()`, it shadowed already-installed copies and re-downloaded them. Bundling removed both problems.
 
 ### Writing tools
-- **Spelling** — wavy underline in Preview as you type; select a misspelling for replacements, Ignore, or Add to dictionary. **Edit → Spelling → Check Document** / **Next Issue**. Source uses Chromium’s squiggles. The bundled `dictionary.tsv` is Look up, not this
+- **Spelling** — the Windows spell checker underlines every misspelling on screen, in Preview and Source alike; select one for replacements, Ignore, or Add to dictionary. **Edit → Spelling → Check Document** / **Next Issue**. The bundled `dictionary.tsv` is Look up, not this
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
 - **Every match is highlighted, in Source as well as Preview, in the same colours:** a
   soft wash with an accent underline, and the current match in solid accent. Preview

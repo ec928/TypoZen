@@ -158,6 +158,74 @@
                 });
                 return b.finish();
             };
+            
+            // --- Spelling --------------------------------------------------------------
+            // The Windows spell checker, as in Preview (02-layout.js): the lines on screen go
+            // to the host (spell_check:cm<n>), the misspellings come back (spell_hits:) and are
+            // drawn as decorations in Preview's typozen-spell style. Chromium's own squiggles
+            // are off here -- inside CodeMirror they came and went as lines were redrawn.
+            // Re-checked after a typing pause, on scroll, and whenever scheduleSpellCheck()
+            // asks: a load, a mode switch, a fix, Ignore, Add to dictionary.
+            const cmSpellEffect = CM.StateEffect.define();
+            const cmSpellField = CM.StateField.define({
+                create: () => CM.Decoration.none,
+                update(deco, tr) {
+                    deco = deco.map(tr.changes);
+                    for (const e of tr.effects) if (e.is(cmSpellEffect)) deco = e.value;
+                    return deco;
+                },
+                provide: (f) => CM.EditorView.decorations.from(f)
+            });
+            const spellMark = CM.Decoration.mark({ class: 'typozen-spell' });
+            let cmSpellReqId = 0;
+            let cmSpellSent = null;          // { from, text } of the request in flight
+
+            const cmSpellPlugin = CM.ViewPlugin.fromClass(class {
+                constructor(v) { this.timer = null; this.schedule(v); }
+                update(u) { if (u.docChanged || u.viewportChanged) this.schedule(u.view); }
+                schedule(v) {
+                    clearTimeout(this.timer);
+                    this.timer = setTimeout(() => this.run(v), 420);
+                }
+                run(v) {
+                    this.timer = null;
+                    if (typeof state !== 'undefined' && state && state.mode !== 'source') return;
+                    const vp = v.viewport;
+                    const from = v.state.doc.lineAt(vp.from).from, to = v.state.doc.lineAt(vp.to).to;
+                    const text = v.state.sliceDoc(from, to);
+                    if (!text.trim()) {
+                        v.dispatch({ effects: cmSpellEffect.of(CM.Decoration.none), annotations: programmatic.of(true) });
+                        return;
+                    }
+                    cmSpellReqId++;
+                    cmSpellSent = { from: from, text: text };
+                    try { if (typeof postMsg === 'function') postMsg('spell_check:cm' + cmSpellReqId + '\n' + text); } catch (e) {}
+                }
+                destroy() { clearTimeout(this.timer); }
+            });
+
+            /** The host's answer to the latest Source request (03-shell.js routes cm ids here). */
+            window.applyCmSpellHits = function (payload) {
+                const raw = String(payload);
+                const nl = raw.indexOf('\n');
+                const id = (nl < 0 ? raw : raw.slice(0, nl)).split('\t')[0];
+                if (id !== 'cm' + cmSpellReqId) return;              // superseded by a newer request
+                // The text may have changed while the host was checking it, and offsets into
+                // the old text would underline the wrong letters. Drop the answer: the edit
+                // has already scheduled a fresh check.
+                const sent = cmSpellSent;
+                if (!sent || view.state.sliceDoc(sent.from, sent.from + sent.text.length) !== sent.text) return;
+                const hits = typeof window.parseSpellHits === 'function'
+                    ? window.parseSpellHits(nl < 0 ? '' : raw.slice(nl + 1)) : [];
+                window._cmSpellHits = hits;                          // suggestionsForWord reads these
+                const n = view.state.doc.length, decos = [];
+                for (let i = 0; i < hits.length; i++) {
+                    const a = sent.from + hits[i].start, b = a + hits[i].len;
+                    if (a >= 0 && b <= n && a < b) decos.push(spellMark.range(a, b));
+                }
+                view.dispatch({ effects: cmSpellEffect.of(CM.Decoration.set(decos, true)), annotations: programmatic.of(true) });
+            };
+
             const codePlugin = CM.ViewPlugin.fromClass(class {
                 constructor(v) { this.decorations = buildCode(v); }
                 update(u) {
@@ -192,13 +260,15 @@
                         wrapping.of(wrapExt()),
                         editable.of(CM.EditorView.editable.of(true)),
                         CM.EditorView.contentAttributes.of({
-                            spellcheck: 'true',
+                            spellcheck: 'false',
                             lang: host.getAttribute('lang') || 'en',
                             'aria-label': 'Source'
                         }),
                         CM.keymap.of(keys),
                         language.of([]),
                         codePlugin,
+                        cmSpellField,
+                        cmSpellPlugin,
                         marksField,
                         CM.EditorView.updateListener.of((u) => {
                             if (u.docChanged) {
@@ -384,6 +454,11 @@
                         last = b;
                     }
                     view.dispatch({ effects: setMarks.of(CM.Decoration.set(ranges)), annotations: programmatic.of(true) });
+                },
+                /** Check the lines on screen for spelling again, after the usual pause. */
+                recheckSpelling() {
+                    const pl = view.plugin(cmSpellPlugin);
+                    if (pl) pl.schedule(view);
                 },
                 /** The marks as drawn: [{ from, to, cur }], in document order. */
                 searchMarks() {
