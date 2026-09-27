@@ -1948,8 +1948,10 @@
                     postMsg("mode_changed:source");
                     // Restore immediately (not only next frame) so status/scroll match Source.
                     try { restoreStickyDocumentLine(stickyLine); } catch (eS0) {}
+                    const genToSource = window.__tzPaintGen;   // see genToPreview below
                     requestAnimationFrame(function () {
                         try { resizeSourceEditor(); } catch (eR) {}
+                        if (window.__tzPaintGen !== genToSource) return;
                         try { restoreStickyDocumentLine(stickyLine); } catch (eS) {}
                     });
                 } else {
@@ -2001,7 +2003,13 @@
                     // Restore after layout: first paint may have zero rects while display flips.
                     // Hold stickyLine closed over rAF so a late paint cannot leave you mid-doc.
                     const stickyToPreview = stickyLine;
+                    // Only while this document is still the one loaded. A tab switch sends the
+                    // mode first and the new tab's text after (by fetch, when large): these
+                    // late restores then scrolled the NEW document to the old one's line --
+                    // Source at 3904 of one file opened the other tab at 3904 (2026-09-27).
+                    const genToPreview = window.__tzPaintGen;
                     function restorePreviewSticky() {
+                        if (window.__tzPaintGen !== genToPreview) return;
                         try { restoreStickyDocumentLine(stickyToPreview, false, 0); } catch (eS) {}
                     }
                     try { restorePreviewSticky(); } catch (eS2a) {}

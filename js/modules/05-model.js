@@ -1444,6 +1444,8 @@
                 if (stickyWanted && typeof restoreStickyDocumentLine === 'function') {
                     // Delay slightly to let browser layout update parent scroll bounds before scrolling
                     setTimeout(function() {
+                        // Not if another document has loaded since (a tab switch).
+                        if (window.__tzPaintGen !== paintGen) return;
                         restoreStickyDocumentLine(stickyWanted, false, stickyPad);
                     }, 20);
                 }

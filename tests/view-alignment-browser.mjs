@@ -157,6 +157,24 @@ try {
     assert(topAfter.smallPreview === 'Line 60 of 4000' && Math.abs(topAfter.smallTop) <= 1,
         'fully mounted Preview: Source at line 60 opens Preview with line 60 at the top (got ' + topAfter.smallPreview + ', line 60 at ' + topAfter.smallTop + 'px)');
 
+    // A tab switch: the host sends the mode first, then the new tab's text (by fetch when it
+    // is large, ~30 ms later). The mode switch's late restores used to land on the new
+    // document -- Source at line 3904 of one file opened the other tab at 3904 (2026-09-27).
+    const carried = await page.evaluate(async (big) => {
+        const wait = (ms) => new Promise(res => setTimeout(res, ms));
+        setSourceDocExt('html'); handleCommand('view_set:mode:source');
+        finishLoadContent(big, false, false); await wait(300);
+        sourceEditor.scrollToOffset(sourceOffsetAtHardLine(sourceEditor.value, 3904), 0); await wait(300);
+        handleCommand('view_set:mode:preview');
+        setSourceDocExt('md');
+        setTimeout(() => finishLoadContent(Array.from({ length: 4000 }, (_, i) => 'Other ' + (i + 1)).join('\n'), false, false), 30);
+        await wait(1000);
+        const mc = document.getElementById('main-container');
+        const b = Array.from(document.querySelectorAll('#editor .block')).find(x => x.getBoundingClientRect().bottom > mc.getBoundingClientRect().top + 1);
+        return b ? b.textContent : null;
+    }, Array.from({ length: 6000 }, (_, i) => '<p>Line ' + (i + 1) + '</p>').join('\n'));
+    assert(carried === 'Other 1', 'a tab switch opens the new document at its own top, not the old one\'s line (got ' + carried + ')');
+
     r = await measure('const a = 1;\n\nfunction f() {\n  return a;\n}\n\n\n// end', 1, 'js');
     // Line 4 is indented: Preview collapses leading spaces (it has no code-document kind),
     // Source shows them. Its top and right must still match.
