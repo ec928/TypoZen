@@ -37,16 +37,14 @@ still being learned, and is exact once the document has been read through. Mark 
 
 Measured across a 148-book library on 2026-09-27. None of it loses text.
 
-- **Obfuscated embedded fonts** (2 books: *Alien: Covenant*, *Red Country*). EPUB lets a
-  publisher scramble a font's first bytes against the book's identifier
-  (`META-INF/encryption.xml`); `EpubReader` does not undo it, so those fonts fail to load
-  and the text falls back to the theme's.
-- **Sibling and position selectors** (4 books use `+`/`~`, 2 use `:first-child` and the
-  like). Every top-level element is mounted in its own `.block`, so `h2 + p` or
-  `p:first-child` never match across blocks: a "no indent after a heading" rule is lost.
-- **Tables in two-column pages** (17 books have tables) are not yet checked for width. The
-  CSS allowlist caps declared widths at the column, but a table's natural width is not a
-  declaration.
+- **A rule scoped under a container the block split removed.** Every top-level element is
+  mounted in its own `.block`, and a wrapper `div` with many children is split into its
+  children. `p + p`, `h2 + p` and a leading `:first-child` are translated across blocks
+  (0.7.13); `div.poem p + p` is not, because the `div` may no longer be there and guessing
+  would style the wrong text. Seen in one book (*Gods of Risk*, its poems).
+- **A broken font file in the book itself.** *Alien: Covenant*'s `00007.ttf` (Univers
+  italic) is refused by Chromium as invalid font data once unscrambled; its ten siblings
+  load. That style falls back, as it would in any reader.
 
 Not present in that library and not handled: DRM, fixed-layout (pre-paginated) books,
 right-to-left or vertical text, EPUB 3 footnote markup, MathML, audio and video.
@@ -76,6 +74,30 @@ an allowlist (`applyBookStyles`): the page takes text properties only; elements 
 book take text properties and bounded box properties; the app's `.block` boxes take
 nothing. Inline `style=""` goes through the same allowlist. Guarded by
 `book-css-browser` (a hostile stylesheet).
+
+### No book's embedded fonts ever loaded — **fixed** (0.7.13)
+
+Three faults in a row. The book host was mapped `DenyCors`, and a font is always fetched
+in CORS mode, so none of the 18 library books with `@font-face` got their fonts (images are
+not CORS requests, which is why nothing else looked wrong). Fonts EPUB obfuscates
+(`META-INF/encryption.xml`, IDPF and Adobe schemes) were served still scrambled
+(`RestoreObfuscatedFonts`, on extraction). And a stylesheet's `url()`s were resolved
+against the OPF folder instead of the stylesheet's own, so `Styles/x.css` asking for
+`../Fonts/a.ttf` looked outside the book (`cssDirs` in the payload).
+
+### Sibling rules and tables in books — **fixed** (0.7.13)
+
+Each top-level element sits alone in a `.block`, so Blindsight's `p + p` indent and The
+Churn's `h2 + p` never matched, and `p:first-child` matched every paragraph. Sibling rules
+between top-level elements are translated across blocks, a leading `:first-child` means a
+chapter's first element, and positions are never claimed for a top-level element. A book
+table is capped at its column and its cells may break anywhere (a Zones of Thought table
+was 337px in a 290px column). Guarded by `book-css-browser`.
+
+### PDF selection painted twice, and on line breaks — **fixed** (0.7.12)
+
+PDF.js's own selection painter stacked with the theme's, and the theme's rule painted the
+text layer's line breaks, a dashed column at the page's left edge.
 
 ### A PDF tab forgot its columns and Pages — **fixed** (0.7.11)
 

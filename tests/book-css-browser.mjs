@@ -40,6 +40,13 @@ p.rem { margin-top: 2rem }
 ::selection { background: red }
 body ::selection { background: red }
 @font-face { font-family: BookFace; src: url(fonts/face.ttf) }
+p.s1 + p.s2 { letter-spacing: 3px }
+h2.part + p { word-spacing: 7px }
+p:first-child { font-variant-caps: small-caps }
+div.pc > :first-child { font-weight: 700 }
+.pc p + p { text-decoration-line: underline }
+table.wide { width: 2400px; max-width: none }
+table.wide td { overflow-wrap: normal; white-space: normal }
 `;
 
 const browser = await puppeteer.launch({ headless: 'new' });
@@ -58,7 +65,19 @@ try {
             '<div class="block"><p class="wide">wide wide wide wide wide wide wide wide wide wide wide wide</p></div>' +
             '<div class="block"><p class="keep">keep</p></div>' +
             '<div class="block"><h2 class="part">Part</h2></div>' +
-            '<div class="block"><p class="media">media</p></div>';
+            '<div class="block"><p class="media">media</p></div>' +
+            // Neighbours at the top level of a chapter sit in neighbouring blocks.
+            '<div class="block"><p class="s1">one</p></div>' +
+            '<div class="block"><p class="s2">two</p></div>' +
+            '<div class="block"><h2 class="part">Heading</h2></div>' +
+            '<div class="block"><p class="afterh">after heading</p></div>' +
+            '<div class="block" data-chapter-start="1"><p class="chfirst">chapter opens</p></div>' +
+            '<div class="block"><p class="plain">ordinary paragraph</p></div>' +
+            // A container the book kept: positions and siblings inside it are real.
+            '<div class="block"><div class="pc"><p class="n1">x</p><p class="n2">y</p></div></div>' +
+            // A table wider than any column, by declaration and by an unbreakable word.
+            '<div class="block"><table class="wide"><tr><td>' + 'Supercalifragilistic'.repeat(12) +
+            '</td><td>b</td></tr></table></div>';
         const probe = document.createElement('div');
         probe.id = 'chrome-probe'; probe.textContent = 'app chrome';
         document.body.appendChild(probe);
@@ -94,7 +113,19 @@ try {
             part: { bb: getComputedStyle(q('h2.part')).breakBefore, ba: getComputedStyle(q('h2.part')).breakAfter },
             media: getComputedStyle(q('p.media')).color,
             chrome: getComputedStyle(probe).color,
-            inline
+            inline,
+            sib: {
+                s2: getComputedStyle(q('p.s2')).letterSpacing,
+                s1: getComputedStyle(q('p.s1')).letterSpacing,
+                afterh: getComputedStyle(q('p.afterh')).wordSpacing,
+                chfirst: getComputedStyle(q('p.chfirst')).fontVariantCaps,
+                plain: getComputedStyle(q('p.plain')).fontVariantCaps,
+                n1: getComputedStyle(q('p.n1')).fontWeight,
+                n2w: getComputedStyle(q('p.n2')).fontWeight,
+                n2u: getComputedStyle(q('p.n2')).textDecorationLine,
+                n1u: getComputedStyle(q('p.n1')).textDecorationLine
+            },
+            table: { w: q('table.wide').getBoundingClientRect().width, sw: q('table.wide').scrollWidth, edW: er.width }
         };
     }, HOSTILE);
 
@@ -139,6 +170,19 @@ try {
     assert(r.chrome !== 'rgb(0, 150, 0)', 'and does not reach the application\'s own elements');
     assert(!/selection/.test(r.sheet), '::selection rules are dropped (the theme owns selection)');
     assert(!/@import|@page/.test(r.sheet), '@import and @page are dropped');
+
+    // What the book said about neighbours still holds, though each top-level element is
+    // alone in its own .block (Blindsight's p + p, The Churn's h2 + p).
+    assert(r.sib.s2 === '3px' && r.sib.s1 !== '3px', '`p + p` reaches the second of two top-level paragraphs, not the first');
+    assert(r.sib.afterh === '7px', '`h2 + p` reaches the paragraph after a top-level heading');
+    assert(r.sib.chfirst === 'small-caps', 'a leading :first-child is the first element of a chapter');
+    assert(r.sib.plain !== 'small-caps', 'and not every paragraph, though each is alone in its block');
+    assert(r.sib.n1 === '700' && r.sib.n2w !== '700', 'positions inside a container the book kept are its own');
+    assert(r.sib.n2u === 'underline' && r.sib.n1u !== 'underline', 'and so are siblings inside it');
+
+    assert(r.table.w <= r.table.edW + 0.5 && r.table.sw <= r.table.edW + 0.5,
+        'a table fits the page, whatever width the book declares or its longest word needs (' +
+        Math.round(r.table.w) + 'px in ' + Math.round(r.table.edW) + 'px)');
 
     // Inline style="" is the second way in, through the same allowlist.
     assert(!/position|top|margin-left/.test(r.inline), 'inline position, offsets and negative margins are dropped (' + r.inline + ')');

@@ -770,6 +770,13 @@
             padding-left: 0;
             padding-right: 0;
         }
+        /* A book's table fits its column. A table cannot be narrower than its longest
+           unbreakable run of text, so max-width alone does nothing to one that is too
+           wide; letting cell text break anywhere lowers that floor to the column. Measured
+           in two-column Pages: a Zones of Thought table was 337px in a 290px column. Two
+           ids, so a book's own table rules (#editor table, one id) cannot undo it. */
+        #editor-wrapper > #editor .block table { max-width: 100%; }
+        #editor-wrapper > #editor .block :is(td, th) { overflow-wrap: anywhere; }
         
         /* --- Fenced code -----------------------------------------------------------
            Painted with the CSS Custom Highlight API, so these are ::highlight() rules
