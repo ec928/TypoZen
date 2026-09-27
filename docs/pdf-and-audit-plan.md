@@ -14,7 +14,7 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
 | 2b — save as images | **Done, in testing with Ed.** See below. Right-click Save Image As not built. | 0.6.3 |
 | 3 — OCR | **Done, in testing with Ed.** See below. | 0.6.4 |
 | 4 — annotate, forms | **Done, in testing with Ed.** See below. Signatures and page operations not built. | 0.6.5 |
-| Audit 1.3 — Source colouring | **Not now** (Ed, 2026-09-26). Options costed: colour the existing mirror (about a day; colour only, no sizes) or CodeMirror 6 (1-2 weeks: ~280 places treat Source as a textarea). | — |
+| Audit 1.3 — Source colouring | **CodeMirror 6 chosen** (Ed, 2026-09-27), planned in `codemirror-source-plan.md`, not started. Was "not now" on 2026-09-26. | — |
 
 **Possible later -- not scheduled, Ed decides (costed 2026-09-26):**
 
@@ -34,7 +34,8 @@ _Written 25 September 2026. Progress is kept in the next section; update it with
   colours), or replace the textarea with CodeMirror 6 (1-2 weeks: about 280 places in the
   modules and the host treat Source as a textarea -- find, formatting and its undo, list
   indent, the selection popup, scroll sync, dirty tracking -- and 11 test files drive it).
-  "Not now" (Ed, 2026-09-26).
+  "Not now" (Ed, 2026-09-26); then CodeMirror 6 chosen (Ed, 2026-09-27) -- see
+  `codemirror-source-plan.md`.
 
 **Outstanding, to come back to (not PDF-specific):**
 

@@ -1,0 +1,310 @@
+# Source mode on CodeMirror 6 — implementation plan
+
+**Status: planned, not started (2026-09-27).** Ed chose CodeMirror 6 over colouring the
+existing mirror: the best quality with no slowdown, accepting more work and more risk.
+The alternative that was turned down, and why, is in `pdf-and-audit-plan.md` (audit 1.3).
+
+Survey figures below were counted in this tree on 2026-09-27 and will drift; re-count at
+the start of Phase 1 rather than trusting them.
+
+## 1. What changes for the reader
+
+- **Markdown in Source is highlighted, in the theme's own colours.** Headings larger and
+  bold, `**bold**` bold, `*italic*` italic, markers (`#`, `**`, `>`, list bullets, link
+  brackets) dimmed, code in the mono font, links in the link colour. **Every colour means
+  what it means in Preview** -- a heading in Source is the colour a heading is in Preview.
+  No colour is introduced that Preview does not already use.
+- **Everything Source does today keeps working the same way:** list continuation on Enter,
+  list Tab / Shift+Tab, undo shared with Preview, find and search highlights, spellcheck,
+  pasting images and HTML, dropping files, word wrap, typewriter and focus modes, the
+  selection popup, Read Aloud and Read from here, the status bar line, and landing on the
+  same line when switching modes.
+- **Plain files** (`.txt`, `.log`, `.csv`) open in the same surface with no highlighting.
+- **CSS, XML, XAML and HTML markup** open plain in Source too, until Ed decides otherwise
+  (section 9). TypoZen is not a code editor (`for-agents.md`); highlighting those kinds is a
+  separate decision, not part of this plan.
+- **Not added:** line numbers, a code-folding gutter, bracket auto-closing, autocomplete,
+  CodeMirror's own search panel, and multiple cursors. Each would be a new behaviour, and
+  several take shortcuts TypoZen already uses.
+
+## 2. Licences — verified
+
+Every package was checked against the npm registry on 2026-09-27. All are **MIT**, and
+nothing in the tree is GPL, LGPL or otherwise copyleft.
+
+| Package | Version | Licence | Why it is needed |
+|---|---|---|---|
+| `@codemirror/state` | 6.7.6 | MIT | document, selection, transactions |
+| `@codemirror/view` | 6.43.13 | MIT | the editing surface |
+| `@codemirror/commands` | 6.11.1 | MIT | cursor and selection key commands |
+| `@codemirror/language` | 6.12.4 | MIT | highlighting framework |
+| `@codemirror/lang-markdown` | 6.5.2 | MIT | the Markdown language |
+| `@lezer/markdown` | 1.7.2 | MIT | Markdown parser |
+| `@lezer/common`, `@lezer/highlight`, `@lezer/lr` | 1.5.3, 1.2.4, 1.4.10 | MIT | parser runtime |
+| `style-mod`, `w3c-keyname`, `crelt`, `@marijn/find-cluster-break` | 4.1.4, 2.2.8, 1.0.7, 1.0.4 | MIT | small helpers of `view` / `state` |
+| `@codemirror/lang-html`, `lang-css`, `lang-javascript`, `@codemirror/autocomplete`, `@codemirror/lint`, `@lezer/html`, `@lezer/css`, `@lezer/javascript` | current | MIT | pulled in by `lang-markdown` for HTML inside Markdown; possibly bundled, see Phase 0 |
+| `esbuild` | 0.28.2 | MIT | **build tool only, never shipped** |
+
+**Obligations.** MIT requires the copyright and permission notice to ship with the code.
+Phase 0 adds a CodeMirror section to `THIRD-PARTY-NOTICES.txt` with the text copied from
+each package's own `LICENSE` file, not retyped. It also checks that file against the
+registry's `license` field, because a registry field is a claim, not the licence. The
+bundle keeps the licence comments (esbuild `--legal-comments=eof`).
+
+**No network.** CodeMirror makes no requests. The About box, the README and the Store
+listing keep saying that TypoZen goes online only to install an extension.
+
+## 3. Why this is not the parked code-editor attempt again
+
+`developer-editor-analysis.md` records a code editor built on Preview that **corrupted
+real files**. It is the right thing to ask about, because CodeMirror 6 also edits through a
+`contenteditable` element.
+
+The difference is **who owns the text**. The parked attempt had TypoZen rebuild the
+document from the DOM after each keystroke (`textContent`, `innerText`, splitting blocks),
+and each of those steps changed bytes. CodeMirror owns its buffer (`state.doc`), the way
+Scintilla does for Notepad++. The DOM is a picture CodeMirror draws from that buffer and
+reconciles back into it with its own well-tested code. It is the "owns its buffer" model
+that analysis says an editor needs.
+
+That only holds if TypoZen keeps to one rule, which this plan makes a guarded invariant:
+
+> **Nothing in TypoZen reads Source text from the DOM.** The only source of the text is
+> `view.state.doc`, through the surface in section 5. A suite checks this (Phase 1).
+
+## 4. What exists today
+
+Source is `<textarea id="source-editor">` (`TypoZen_Template.html:186`), held in the global
+`sourceEditor` (`01-core.js:81`).
+
+| Where | References | What for |
+|---|---|---|
+| `02-layout.js` | 60 | find, search highlights (the mirror), selection for lookups, replace |
+| `03-shell.js` | 42 | input / key / paste listeners, mode switching, Select All, commands, insert |
+| `04b-format.js` | 37 | formatting on a Source selection, typewriter scroll, sticky line, caret line |
+| `01-core.js` | 36 | show/hide, sizing, scroll-to-line, line-from-scroll |
+| `04-lists.js` | 18 | undo caret capture and restore |
+| `05-model.js` | 16 | loading content, inserting text, drag and drop |
+| `07-stats-host.js` | 14 | selection word count, dirty flag, state for the host |
+| `06-render-epub.js`, `09-speech.js` | 7 each | leaving a book, Read Aloud from Source |
+| **Total** | **237** in 9 modules | |
+
+**The textarea API they use:** `value` 47, `style` 27, `selectionStart` 26,
+`selectionEnd` 14, `addEventListener` 13, `scrollTop` 11, `focus` 10, `setSelectionRange`
+7, `setRangeText` 7, and a handful each of `clientHeight`, `scrollHeight`, `scrollLeft`,
+`getBoundingClientRect`, `select`, `readOnly`, `dispatchEvent`.
+
+**Outside the modules:**
+- **The host's save path reads Source directly:** `FetchDocumentStateBlocking`
+  (`TypoZen_App.cs:11451`) runs `sourceEditor.value`. This is the data-loss line: whatever
+  replaces the textarea must answer it with the exact text.
+- **Three CSS rules** (`#source-editor`, its `::selection`, and `body.nowrap`).
+- **Three keyboard handlers recognise a field by tag name** (`02-layout.js:36`,
+  `05-model.js:2475`, `10-pdf.js:440`: `tagName === 'TEXTAREA'`). CodeMirror's editable
+  element is a `div`, so without a change **Preview's page keys would fire inside Source**:
+  PageDown would turn pages instead of moving the caret, against the keyboard matrix.
+- **Three places compare the focused element with `sourceEditor`** (`02-layout.js:640`,
+  `05-model.js:2259`, and the drop handler). The focus will be CodeMirror's inner element,
+  not the surface.
+- **11 test files** drive the textarea: `core-smoke-app`, `edit-integrity-app`,
+  `mode-switch-sticky-e2e`, `read-aloud-app`, `regression-selftest`, `select-all-app`,
+  `smoke-browser`, `source-highlight-app`, `source-indent-app`, `source-popover-app`,
+  `spell-selftest`.
+
+**Two mirrors that exist only because a textarea cannot be styled:**
+- the search-highlight mirror, `02-layout.js` about 5790-6045 (`ensureSourceHighlightLayer`,
+  `syncSourceHighlightGeometry`, `syncSourceHighlightScroll`, `paintSourceHighlights`);
+- a hidden-div caret measurer for the selection popup (`02-layout.js` about 2255).
+
+Both go. Their geometry-matching code is the most fragile in Source today: a 1px wrap
+mismatch "ghosts the whole document", as a CSS comment puts it.
+
+**Found during the survey, unrelated:** `03-shell.js:833` looks up
+`getElementById('sourceEditor')`, an id that does not exist, so that focus call has
+never done anything. It is fixed in passing in Phase 1.
+
+**Undo:** Source has no undo of its own. `HistoryManager` (`04-lists.js:2344`) keeps
+whole-document snapshots shared with Preview, and the host routes Ctrl+Z to it. That stays.
+
+**Cost per keystroke today:** each Source `input` rebuilds the document model from the
+whole text (`DocumentModel.fromMarkdown(sourceEditor.value)`, `03-shell.js:334`). This
+plan does not change that. It is the baseline the new surface is measured against, not
+something to fix here.
+
+## 5. Design
+
+### 5.1 One seam: the Source surface
+
+A new module, `js/modules/01a-source.js`, loaded before `01-core.js`, creates the
+CodeMirror view and returns an object that **behaves like the textarea for exactly the
+members listed in section 4**. `01-core.js:81` then reads:
+
+    const sourceEditor = createSourceSurface(document.getElementById('source-editor'));
+
+Most of the 237 references keep working unchanged, so the swap is small and reviewable.
+Phase 2 then moves the fragile paths (the mirrors, scroll-to-line) onto CodeMirror's own
+calls one at a time.
+
+The surface's rules, each covered by a unit test:
+
+| Member | Behaviour |
+|---|---|
+| `value` (get) | `state.doc.toString()`, **cached per document version**, so the dozen reads per keystroke cost one copy, as a textarea's does |
+| `value` (set) | replaces only the changed middle (common prefix and suffix kept), so selection, scroll and decorations survive; marked programmatic; **does not fire `input`**, same as a textarea |
+| `selectionStart`, `selectionEnd`, `setSelectionRange`, `select` | the main selection; CodeMirror offsets are UTF-16 code units, the same as a textarea's |
+| `setRangeText(text, s, e, mode)` | one transaction; `select` / `end` / `start` / `preserve` as the DOM defines them |
+| `scrollTop`, `scrollLeft`, `scrollHeight`, `clientHeight` | read from and written to CodeMirror's scroller |
+| `addEventListener` | `input` from user transactions only; `select` when the selection changes; `scroll` from the scroller; key, mouse, paste, drag events from CodeMirror's root element |
+| `dispatchEvent(new Event('input'))` | runs the `input` listeners (`02-layout.js:3042` relies on it) |
+| `style.display`, `getBoundingClientRect`, `parentElement` | the wrapper element |
+| `readOnly` | CodeMirror's editable state, through a compartment |
+| `contains(node)` | new; replaces the `=== sourceEditor` identity checks |
+
+**Line endings.** A textarea turns `\r\n` and lone `\r` into `\n`, and CodeMirror's
+default does the same, so the text handed to the host is unchanged. A round-trip corpus
+proves it (section 7), including CRLF, a BOM, tabs, trailing spaces, NUL, lone
+surrogates, a 100,000-character line, and emoji ZWJ sequences.
+
+### 5.2 Keys
+
+CodeMirror's default keymaps are **not** used whole. They bind Ctrl+F, Ctrl+Z, Ctrl+D,
+Alt+arrows, Ctrl+/ and Ctrl+[ to things TypoZen or the host already own. Source gets:
+
+- **CodeMirror's `standardKeymap` only:** caret and selection movement, Home/End,
+  PageUp/PageDown, delete-by-character and by-word, and Select All. That matches the
+  matrix's "Source: default textarea" row.
+- **TypoZen's two existing key behaviours, ported as highest-precedence commands:** list
+  Tab / Shift+Tab (`03-shell.js:375`) and Enter-continues-indent-and-marker
+  (`03-shell.js:415`). Both keep their IME guard.
+- **Nothing else.** A suite presses every host and page shortcut in Source and checks that
+  the TypoZen action fires (Ctrl+B / I / K / S / F / H / Z / Y, F1, F3, F7-F9, Ctrl+Shift+D).
+
+The three tag-name checks become `isTextField(t)`, which also recognises CodeMirror's
+content element. `for-agents.md` critical rule 1 still holds: the page handler bails for a
+real field, never merely because something is `contenteditable`.
+
+### 5.3 Undo
+
+- **CodeMirror's `history` extension is not loaded.** `HistoryManager` stays the one undo
+  history across Preview and Source; its Source snapshot and restore go through the surface.
+- **The host's Ctrl+Z path is unchanged.**
+- **Undo from the browser's own menu:** `beforeinput` events of type `historyUndo` and
+  `historyRedo` are routed to `HistoryManager` as well, so no second undo can appear.
+
+### 5.4 Highlighting and theme
+
+- **Parser:** `markdownLanguage` from `@codemirror/lang-markdown` (CommonMark plus GFM
+  tables, strikethrough and task lists: the dialect Preview renders).
+- **One `HighlightStyle` whose colours are CSS variables** (`--tx`, `--tx-muted`,
+  `--accent`, `--mono-font`, and whatever Preview's heading and link rules use: read them
+  from Preview's CSS in Phase 3, do not invent new ones). A theme change then needs no
+  reconfiguration. User themes and the Customise Theme dialog work automatically because
+  they already set those variables.
+- **Font:** Source already uses the prose font (`--font`), so heading sizes and bold do
+  not fight a monospace grid.
+
+### 5.5 Search highlights, geometry and scroll
+
+- **Find and search marks become a decoration field** fed from `findState.matches`, whose
+  offsets are already offsets into Source's text. **The search-highlight mirror is deleted.**
+- **The selection popup** positions itself with `view.coordsAtPos`. **The caret-measuring
+  mirror is deleted.**
+- **Line and scroll mapping** (`hardLineFromSourceScrollTop`, `scrollSourceToHardLine`,
+  typewriter scroll, sticky line) use `lineBlockAtHeight` and `scrollIntoView` effects.
+- **Word wrap** switches `EditorView.lineWrapping` through a compartment when
+  `body.nowrap` changes.
+
+### 5.6 Spelling, input methods, large files
+
+- **Spellcheck:** `spellcheck="true"` and `lang` on the content element. Chromium
+  underlines inside CodeMirror as it does in a textarea, and the right-click suggestions
+  come from the same menu (`AreDefaultContextMenusEnabled` is already on).
+- **IME:** CodeMirror handles composition itself. The Enter command keeps its
+  `isComposing` guard.
+- **Large files:** CodeMirror draws only the visible lines, so a multi-megabyte log is
+  cheaper to show than in a textarea. The per-keystroke model rebuild (section 4) is
+  unchanged either way.
+
+### 5.7 Bundling and staging
+
+- `package.json` gains the packages above as **exact-version** dev dependencies, next to
+  `pdfjs-dist`.
+- `tools/cm-entry.mjs` imports only what TypoZen uses. `tools/Update-CodeMirror.ps1`
+  (modelled on `Update-PdfJs.ps1`) runs esbuild into
+  `js/vendor/codemirror/codemirror.js`: one IIFE exposing `window.TzCM`, minified, with
+  licence comments kept.
+- It loads as a classic script ahead of the modules (`TypoZen_Template.html`,
+  `load-order.json`). `js/` is staged whole by the build scripts, so no staging-list
+  change is expected. Phase 0 proves it against `bin\`, `dist\`, the installer and the
+  MSIX (`test-the-artefact-that-ships`).
+
+## 6. Phases
+
+Each phase ends in a build Ed can try. **A phase that misses its exit criteria stops and
+is reported. It is not patched around.**
+
+| Phase | Work | Exit criteria | Estimate |
+|---|---|---|---|
+| **0 — Baseline and spike** | Install the packages (needs Ed's OK for the download). Bundle. Write the notices. Add `source-latency-app`, measuring today's textarea: keystroke-to-paint on an 80 KB Markdown file and a 5 MB log, and time to switch into Source. Add the round-trip corpus suite. Load the bundle into the page with no other change and measure startup with the existing `tzMark` timings. | Bundle size measured. The estimate is **350-500 KB minified**, so Phase 0 records the real figure. If `lang-html` and the parsers it pulls in do not drop out of the bundle, set up the Markdown language without them. Startup cost measured. **Go / no-go for Ed** if the cost is over 15 ms at startup. | 1 day |
+| **1 — The surface** | `01a-source.js`; `sourceEditor` becomes the surface; identity and tag checks; Tab, Enter, paste, drop and `beforeinput` undo ported; `03-shell.js:833` fixed; the DOM-read guard. No highlighting yet. | Default gate green. The 11 Source suites updated and green. Round-trip byte-identical, including through the host's save path. Latency no worse than the textarea's +10%. | 3 days |
+| **2 — Native paths** | Search decorations; popup coordinates; line and scroll mapping; typewriter; wrap compartment. **Delete both mirrors** (named in the commit title). | `source-highlight-app`, `source-popover-app` and `mode-switch-sticky-e2e` green. Every search-marks case the mirror was patched for (wrap swap, sidebar open and close, edit while searching) passes. | 2 days |
+| **3 — Highlighting** | `HighlightStyle` from theme variables; heading sizes; dimmed markers; fence contents through `08-code.js`'s lexers (decision 3); Ed reviews on his themes, including a light one (Gruvbox light was hard to read last time). | Ed signs off on the look. Latency still within the limit, now with parsing on. | 1-2 days |
+| **4 — Hardening** | IME by hand (Japanese and Chinese input); spellcheck and suggestions; 5 MB log; `core-smoke-app`; the visible-window suites while Ed is away; `packaged-smoke-app` against the MSIX; README, `for-agents.md` (module map, keyboard matrix row) and `known-issues.md`. Remove the textarea fallback. | Full gate and app tier green; every item in section 1 performed by hand, with a list of what was and was not performed. | 2 days |
+| **Total** | | | **9-10 working days** |
+
+**Fallback while it is built.** Phases 1-3 keep the textarea path behind a debug-only
+switch, so a Source problem found by Ed can be told apart from a pre-existing one in one
+restart. Phase 4 deletes it. Git tag `baseline-before-codemirror` marks the start.
+
+## 7. Tests
+
+**New:**
+- `source-roundtrip-browser`: the corpus in 5.1, through load → surface → host save
+  payload, compared byte for byte.
+- `source-surface-selftest`: every row of the table in 5.1, including "setting `value`
+  does not fire `input`" with a control proving that typing does.
+- `source-latency-app`: keystroke-to-paint and mode switch, against Phase 0's textarea
+  baseline.
+- `source-keys-app`: every shortcut in 5.2 reaches TypoZen, not CodeMirror.
+- `source-dom-read-selftest`: no module reads text from `.cm-content` or `.cm-line`, by
+  scan, like the existing `assets-selftest`.
+
+**Updated:** the 11 files listed in section 4. Each assertion is read against current
+product truth before it is changed (`for-agents.md`: a red suite is more often a stale
+contract).
+
+## 8. Risks
+
+| Risk | Likelihood | What contains it |
+|---|---|---|
+| Text differs from what the textarea gave (line endings, surrogates, BOM) → a saved file changes | low | round-trip corpus through the real save path; Phase 1 exit criterion |
+| A CodeMirror key binding shadows a TypoZen shortcut | medium without 5.2 | minimal keymap; `source-keys-app` |
+| Preview's page keys fire in Source | certain without the tag-check change | `isTextField`; `page-arrow-keys-app` |
+| Two undo histories | medium | `history` not loaded; `beforeinput` routed; `undo-steps-app` |
+| Spellcheck squiggles flicker or vanish as CodeMirror redraws lines | unknown | Phase 4 by hand; if it misbehaves, report it before building around it |
+| Startup slower | low-medium | Phase 0 measurement and go / no-go |
+| Typing slower on large files | low | CodeMirror renders only visible lines; `source-latency-app` against the baseline |
+| Highlight colours that mean something different from Preview's | medium | colours only from Preview's variables; Ed's review in Phase 3 |
+| Plan figures stale by the time work starts | certain over time | re-count at Phase 1 |
+
+## 9. Decisions for Ed
+
+1. **The download for Phase 0:** about 20 packages from npm, roughly 4-5 MB unpacked,
+   plus esbuild's Windows binary (about 10 MB), into `node_modules` only. Only the
+   bundled file ships.
+2. **CSS, XML, XAML and HTML markup:** plain as today (recommended, since TypoZen is not a
+   code editor), or highlighted with the parsers the Markdown language already brings.
+3. **Code fences in Markdown.** Preview already colours fence contents with TypoZen's own
+   per-line lexers (`08-code.js`: `clike`, `xml`, `json`). **Recommended:** Source calls
+   those same lexers and paints their tokens with the same `::highlight` colours, so a
+   fence looks the same in both views and no second set of code parsers is added. This
+   adds about half a day to Phase 3. The alternative is plain monospace fences in Source,
+   which would differ from Preview.
+
+## 10. Not verified by this plan
+
+- **Bundle size and startup cost:** estimates until Phase 0 measures them.
+- **Spellcheck and IME behaviour inside CodeMirror in WebView2:** expected to work, not
+  tried.
+- **"No slowdown":** CodeMirror's design supports it, but it is a claim to measure against
+  Phase 0's baseline, not an assumption.
