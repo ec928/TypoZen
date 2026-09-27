@@ -64,6 +64,18 @@ assert(/function spellCheckTexts/.test(layout) && /_spellCache/.test(layout), 'a
 assert(/sourceEditor\.recheckSpelling\(\)/.test(layout), 'scheduleSpellCheck re-checks Source when Source is showing');
 assert(/::highlight\(typozen-spell\),\s*#source-cm \.typozen-spell/.test(css), 'one underline rule for both views');
 
+// The checker never runs on the UI thread: its cost grows faster than the text, and a big
+// pass there froze the window (2026-09-27). The host posts to it and gets a callback.
+assert(/Thread\(/.test(spellCs) && /ApartmentState\.STA/.test(spellCs) && /CheckAsync/.test(spellCs),
+    'the checker has a thread of its own');
+{
+    const handler = (app.match(/private void HandleSpellCheck[\s\S]*?\n        }\r?\n/) || [''])[0];
+    assert(/WindowsSpell\.CheckAsync\(/.test(handler) && !/WindowsSpell\.Check\(/.test(handler),
+        'the host checks through the spelling thread, never directly');
+    const sugg = (app.match(/private void HandleSpellSuggest[\s\S]*?\n        }\r?\n/) || [''])[0];
+    assert(/WindowsSpell\.SuggestAsync\(/.test(sugg), 'suggestions go through the spelling thread too');
+}
+
 const csproj = fs.readFileSync(path.join(root, 'TypoZen.csproj'), 'utf8');
 assert(/SpellCheck\.cs/.test(csproj), 'SpellCheck.cs is in the project');
 

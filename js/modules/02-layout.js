@@ -2985,12 +2985,17 @@
             const items = [];
             if (!editor) return items;
             const rect = (typeof mainContainer !== 'undefined' && mainContainer)
-                ? mainContainer.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+                ? mainContainer.getBoundingClientRect()
+                : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
             for (const child of editor.children) {
                 if (!child.classList || !child.classList.contains('block')) continue;
                 if (child.querySelector('pre')) continue;          // a code fence: not prose
                 const cr = child.getBoundingClientRect();
                 if (cr.bottom <= rect.top || cr.top >= rect.bottom) continue;
+                // Sideways too: in 2-Col every mounted page sits in the same vertical band,
+                // so the vertical test alone took all of them -- 87,000 characters of a
+                // README in one pass, which froze the app (2026-09-27).
+                if (cr.right <= rect.left || cr.left >= rect.right) continue;
                 const text = blockPlainText(child);
                 if (text.trim()) items.push({ el: child, text: text });
             }

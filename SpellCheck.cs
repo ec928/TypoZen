@@ -17,10 +17,69 @@ namespace TypoZen
     /// / German / Spanish dictionaries with .NET 4, so this works even when the Windows
     /// ISpellChecker COM factory is not registered.
     ///
-    /// Must be called on the UI thread — the host already is, inside WebMessageReceived.
+    /// Runs on a thread of its own, never the UI thread. The checker's cost grows faster than
+    /// the text -- seconds for a few thousand characters of code -- and on the UI thread a
+    /// big pass froze the window outright: 2-Col Preview sent 87,000 characters of a README
+    /// in twelve requests and the app had to be killed (2026-09-27). Every touch of the
+    /// TextBox now happens on the spelling thread; the host posts work with CheckAsync /
+    /// SuggestAsync / Post and gets its answer back through a callback, so the worst a slow
+    /// check can do is make underlines arrive late.
     /// </summary>
     internal static class WindowsSpell
     {
+        // --- The spelling thread -------------------------------------------------------
+        static System.Windows.Threading.Dispatcher _disp;
+        static readonly object _startLock = new object();
+
+        static System.Windows.Threading.Dispatcher Disp()
+        {
+            lock (_startLock)
+            {
+                if (_disp != null) return _disp;
+                var ready = new System.Threading.ManualResetEventSlim(false);
+                var t = new System.Threading.Thread(() =>
+                {
+                    _disp = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+                    ready.Set();
+                    System.Windows.Threading.Dispatcher.Run();
+                });
+                t.SetApartmentState(System.Threading.ApartmentState.STA);
+                t.IsBackground = true;
+                t.Name = "TypoZen spelling";
+                t.Start();
+                ready.Wait();
+                return _disp;
+            }
+        }
+
+        /// <summary>Queue work on the spelling thread. Never waits.</summary>
+        public static void Post(Action work)
+        {
+            if (work == null) return;
+            Disp().BeginInvoke(new Action(() => { try { work(); } catch { } }));
+        }
+
+        /// <summary>
+        /// Check `text` on the spelling thread; `done(available, lastError, hits)` runs there
+        /// too -- the caller marshals back to its own thread.
+        /// </summary>
+        public static void CheckAsync(string text, Action<bool, string, Hit[]> done)
+        {
+            Post(() =>
+            {
+                Ensure();
+                bool ok = _box != null;
+                Hit[] hits = ok && !string.IsNullOrEmpty(text) ? Check(text) : new Hit[0];
+                if (done != null) done(ok, _lastError ?? "", hits);
+            });
+        }
+
+        /// <summary>Suggestions for one word, on the spelling thread; `done` runs there.</summary>
+        public static void SuggestAsync(string word, Action<string[]> done)
+        {
+            Post(() => { string[] s = Suggest(word); if (done != null) done(s); });
+        }
+
         public sealed class Hit
         {
             public int Start;
@@ -44,13 +103,6 @@ namespace TypoZen
         static string _lastError = "";
         static readonly HashSet<string> _userWords =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        public static bool Available
-        {
-            get { Ensure(); return _box != null; }
-        }
-
-        public static string LastError { get { Ensure(); return _lastError ?? ""; } }
 
         public static void ConfigureUserWords(string path)
         {

@@ -134,6 +134,23 @@ try {
     assert(pick.shown && pick.fixes.includes('receive'), 'a misspelled selection offers its suggestions (' + JSON.stringify(pick.fixes) + ')');
     assert(!pick.correctShown, 'a correctly spelled selection shows no spelling row');
 
+    // 2-Col: only the pages on screen are checked. Every mounted page sits in the same
+    // vertical band, and a vertical-only test sent 87,000 characters of the README in one
+    // pass -- which froze the app when the checker still ran on the UI thread (2026-09-27).
+    const readme = fs.readFileSync(path.join(appDir, 'README.md'), 'utf8');
+    const cols = await page.evaluate(async (md) => {
+        const wait = (ms) => new Promise(res => setTimeout(res, ms));
+        setSourceDocExt('md'); handleCommand('view_set:mode:preview');
+        finishLoadContent(md, false, false); await wait(800);
+        handleCommand('view_set:columns:2'); await wait(1500);
+        const paged = document.body.classList.contains('tz-pages');
+        const chars = previewSpellItems().reduce((a, i) => a + i.text.length, 0);
+        handleCommand('view_set:columns:1'); await wait(500);
+        return { paged, chars, total: md.length };
+    }, readme);
+    assert(cols.paged && cols.chars > 0 && cols.chars < 12000,
+        '2-Col checks only the pages on screen (' + cols.chars + ' of ' + cols.total + ' characters)');
+
     // Markdown: prose is checked, a fence is not -- in both views.
     const md = await page.evaluate(async () => {
         const wait = (ms) => new Promise(res => setTimeout(res, ms));

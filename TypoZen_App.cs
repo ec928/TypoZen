@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.5";
+        internal const string AppVersion = "0.9.6";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1275,7 +1275,13 @@ namespace TypoZen
             }
             _appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
             StartLexiconLoad();
-            try { WindowsSpell.ConfigureUserWords(Path.Combine(CacheDir(), "user_words.txt")); } catch { }
+            try
+            {
+                // The checker lives on its own thread (SpellCheck.cs); so does its setup.
+                string userWords = Path.Combine(CacheDir(), "user_words.txt");
+                WindowsSpell.Post(() => WindowsSpell.ConfigureUserWords(userWords));
+            }
+            catch { }
             Program.PerfMark("window ctor");
             SweepLegacyAppLoadStage();
             try { PruneLoadStageDir(maxAgeMinutes: 0); } catch { }
@@ -3814,26 +3820,30 @@ namespace TypoZen
             int nl = body.IndexOf('\n');
             string id = nl < 0 ? body : body.Substring(0, nl);
             string text = nl < 0 ? "" : body.Substring(nl + 1);
-            var sb = new StringBuilder();
-            sb.Append("spell_hits:").Append(id)
-                .Append('\t').Append(WindowsSpell.Available ? "1" : "0");
-            if (!WindowsSpell.Available && !string.IsNullOrEmpty(WindowsSpell.LastError))
-                sb.Append('\t').Append(WindowsSpell.LastError.Replace('\n', ' ').Replace('\t', ' '));
-            if (WindowsSpell.Available && !string.IsNullOrEmpty(text))
+            // On the spelling thread, never this one: a check can take seconds, and here it
+            // froze the whole window (SpellCheck.cs). The answer comes back to this thread.
+            WindowsSpell.CheckAsync(text, (available, lastError, hits) =>
             {
-                var hits = WindowsSpell.Check(text);
-                // Cut short at the cap: the page trusts the answer only up to the last hit.
-                if (hits.Length >= WindowsSpell.MaxHits) sb.Append("\tcapped");
-                foreach (var h in hits)
+                var sb = new StringBuilder();
+                sb.Append("spell_hits:").Append(id).Append('\t').Append(available ? "1" : "0");
+                if (!available && !string.IsNullOrEmpty(lastError))
+                    sb.Append('\t').Append(lastError.Replace('\n', ' ').Replace('\t', ' '));
+                if (available)
                 {
-                    sb.Append('\n')
-                        .Append(h.Start).Append('\t')
-                        .Append(h.Length).Append('\t')
-                        .Append((h.Word ?? "").Replace('\t', ' ').Replace('\n', ' '))
-                        .Append('\t');
+                    // Cut short at the cap: the page trusts the answer only up to the last hit.
+                    if (hits.Length >= WindowsSpell.MaxHits) sb.Append("\tcapped");
+                    foreach (var h in hits)
+                    {
+                        sb.Append('\n')
+                            .Append(h.Start).Append('\t')
+                            .Append(h.Length).Append('\t')
+                            .Append((h.Word ?? "").Replace('\t', ' ').Replace('\n', ' '))
+                            .Append('\t');
+                    }
                 }
-            }
-            SendMsg(sb.ToString());
+                string reply = sb.ToString();
+                Dispatcher.BeginInvoke(new Action(() => { try { SendMsg(reply); } catch { } }));
+            });
         }
 
         /// <summary>Suggestions for the one word the reader selected (spell_suggest:).</summary>
@@ -3842,7 +3852,12 @@ namespace TypoZen
             if (_nativeSurfaceVisible) return;
             word = (word ?? "").Replace('\t', ' ').Replace('\n', ' ').Trim();
             if (word.Length == 0) return;
-            SendMsg("spell_suggestions:" + word + "\t" + string.Join("|", WindowsSpell.Suggest(word)));
+            string w = word;
+            WindowsSpell.SuggestAsync(w, sugg =>
+            {
+                string reply = "spell_suggestions:" + w + "\t" + string.Join("|", sugg ?? new string[0]);
+                Dispatcher.BeginInvoke(new Action(() => { try { SendMsg(reply); } catch { } }));
+            });
         }
 
         /// <summary>One word in, one definition out. Empty when there is nothing to look in.</summary>
@@ -7595,11 +7610,15 @@ namespace TypoZen
             }
             else if (msg.StartsWith("spell_add:"))
             {
-                WindowsSpell.Add(msg.Substring(10).Trim(), !SuppressDocumentTraces());
+                // On the spelling thread, in order with the checks queued before it.
+                string addWord = msg.Substring(10).Trim();
+                bool persist = !SuppressDocumentTraces();
+                WindowsSpell.Post(() => WindowsSpell.Add(addWord, persist));
             }
             else if (msg.StartsWith("spell_ignore:"))
             {
-                WindowsSpell.Ignore(msg.Substring(13).Trim());
+                string ignoreWord = msg.Substring(13).Trim();
+                WindowsSpell.Post(() => WindowsSpell.Ignore(ignoreWord));
             }
             else if (msg.StartsWith("marks_set:"))
             {

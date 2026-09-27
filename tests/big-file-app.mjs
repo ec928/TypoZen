@@ -19,7 +19,8 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { launchApp, profileFile } from './app-harness.mjs';
+import { execSync } from 'child_process';
+import { launchApp, profileFile, profileDir } from './app-harness.mjs';
 import { settledApp, sleep } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,9 +33,15 @@ function assert(cond, msg) {
 
 let app = null;
 const trace = [];            // steps logged from the page, printed if it stops answering
-const deadline = setTimeout(async () => {
+const deadline = setTimeout(() => {
     console.error(trace.join('\n')); console.error('BIG FILE APP: deadline -- the app stopped answering');
-    try { if (app) await app.close(); } catch (e) {}
+    // A frozen app does not close when asked. End the one this suite started -- found by its
+    // throwaway profile folder, so no other TypoZen can match.
+    try {
+        execSync('powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'TypoZen.exe\'\\" | '
+            + 'Where-Object { $_.CommandLine -like \'*' + path.basename(profileDir) + '*\' } | '
+            + 'ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"', { stdio: 'ignore', timeout: 15000 });
+    } catch (e) {}
     process.exit(3);
 }, 150000);
 
@@ -92,6 +99,35 @@ async function run(ext) {
         console.log('  ..   host round trip ' + trip.ms + ' ms: ' + JSON.stringify(trip.payload));
         assert(trip.payload !== null && trip.ms < 1000, 'the host answers within a second -- its UI thread is free');
         assert(/[\t|]receive(\||$)/.test(trip.payload || ''), 'and a selected misspelling gets real suggestions (receive)');
+
+        // The spell checker never blocks the window (2026-09-27: a 2-Col pass over a README
+        // froze the app and it had to be killed). Hand the host a chunk known to take the
+        // checker many seconds -- 2,000 characters of minified script -- and ask for a
+        // definition, which the host answers on its UI thread. It must come straight back.
+        if (ext === 'xml') {
+            const free = await app.eval(async () => {
+                const defined = () => new Promise(res => {
+                    const prev = window.showDefinition;
+                    window.showDefinition = function () {
+                        window.showDefinition = prev;
+                        try { return prev.apply(this, arguments); } catch (e) {} finally { res(true); }
+                    };
+                });
+                const within = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(false), ms))]);
+                let p = defined(); postMsg('define:house');
+                await within(p, 15000);                          // the dictionary loads once
+                const v = sourceEditor.value, i = Math.max(0, v.indexOf('!function'));
+                postMsg('spell_check:free1\n' + v.slice(i, i + 2000));
+                await new Promise(r => setTimeout(r, 300));      // the check is under way
+                p = defined();
+                const a = performance.now();
+                postMsg('define:garden');
+                const ok = await within(p, 10000);
+                return { ok, ms: Math.round(performance.now() - a) };
+            });
+            console.log('  ..   a definition during a slow spell check came back in ' + free.ms + ' ms');
+            assert(free.ok && free.ms < 1000, 'the window stays responsive while the spell checker works (' + free.ms + ' ms)');
+        }
     } finally {
         try { await app.close(); } catch (e) {}
         app = null;
