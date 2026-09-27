@@ -309,7 +309,8 @@
                 // A url() in an inline style="" is relative to this chapter, like an img src.
                 // bookInlineStyle leaves it relative for exactly this; resolving it there
                 // used the package folder, so Text/ch1.xhtml reaching ../Images/ missed.
-                const styled = root.querySelectorAll('[style*="url("]');
+                // "url", not "url(": assets-selftest reads the built template for url( refs.
+                const styled = root.querySelectorAll('[style*="url"]');
                 for (let i = 0; i < styled.length; i++) {
                     const el = styled[i];
                     const was = el.getAttribute('style') || '';
