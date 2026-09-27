@@ -39,7 +39,17 @@ function main() {
 
     const template = fs.readFileSync(templatePath, 'utf8');
     const css = fs.readFileSync(cssPath, 'utf8');
-    const js = readEngineSource();
+    // Source's editor (CodeMirror) goes first in the one inline script: the suites boot by
+    // evaluating the largest inline script, and 01a-source.js needs window.TzCM at load.
+    // There is no textarea fallback to test instead -- the jsdom suites run the surface
+    // the app ships.
+    const cmPath = path.join(appDir, 'js', 'vendor', 'codemirror', 'codemirror.js');
+    if (!fs.existsSync(cmPath)) {
+        console.error('build-test-template: missing ' + cmPath + ' (run tools/Update-CodeMirror.ps1)');
+        process.exit(1);
+    }
+    const CM_TAG = '<script src="js/vendor/codemirror/codemirror.js"></script>';
+    const js = fs.readFileSync(cmPath, 'utf8') + '\n' + readEngineSource();
 
     const LINK_TAG = '<link rel="stylesheet" href="css/typozen.css">';
     if (template.indexOf(LINK_TAG) === -1) {
@@ -73,6 +83,7 @@ function main() {
     // fixture came out corrupt and the only symptom was this script's own sanity check
     // failing with "the largest inline script is not the engine bundle".
     const out = banner + template
+        .replace(CM_TAG, () => '<!-- codemirror.js: inlined at the head of the engine script -->')
         .replace(LINK_TAG, () => '<style id="inlined-typozen-css">\n' + css + '\n</style>')
         .replace(engineBlockRe, () => ENGINE_BEGIN + '\n<script>\n' + js + '\n</script>\n' + ENGINE_END);
 

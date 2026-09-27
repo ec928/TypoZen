@@ -47,7 +47,7 @@ try {
     await page.setViewport({ width: 1280, height: 900 });
     await page.goto('file:///' + path.join(appDir, 'TypoZen_Template.html').split(path.sep).join('/'), { waitUntil: 'load' });
     await page.waitForFunction(() => typeof finishLoadContent === 'function', { timeout: 15000 });
-    assert((await page.evaluate(() => window.__tzSourceEngine)) === 'codemirror', 'Source is on CodeMirror');
+    assert(await page.evaluate(() => !!document.querySelector('#source-cm .cm-editor')), 'Source is CodeMirror, mounted in #source-cm');
 
     // Load as the host does: doc_ext first, then the text.
     const load = async (ext, text, plain) => {

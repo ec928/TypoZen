@@ -78,8 +78,8 @@
         window.__tzBlockFire = { keydown: 0, input: 0 };
 
         const editor = document.getElementById('editor');
-        // A textarea, or CodeMirror behaving like one (01a-source.js).
-        const sourceEditor = createSourceSurface(document.getElementById('source-editor'));
+        // CodeMirror, behaving like the textarea it replaced (01a-source.js).
+        const sourceEditor = createSourceSurface(document.getElementById('source-cm'));
         const mainContainer = document.getElementById('main-container');
         const sidebar = document.getElementById('sidebar');
         const outlineList = document.getElementById('outline-list');
@@ -431,9 +431,9 @@
         }
 
         /**
-         * Source uses a viewport-tall textarea with overflow:auto.
-         * Browser clamps scroll to real content (never past EOF). Scrollbar is aligned to
-         * the pane's right edge via applyEditorChromeForMode() (not inset by page margins).
+         * Source is viewport-tall and scrolls inside itself (CodeMirror's scroller), so the
+         * view clamps to real content (never past EOF). Scrollbar is aligned to the pane's
+         * right edge via applyEditorChromeForMode() (not inset by page margins).
          */
         function resizeSourceEditor() {
             if (!sourceEditor || sourceEditor.style.display === 'none') return;
@@ -460,12 +460,6 @@
             sourceEditor.style.height = h + 'px';
             sourceEditor.style.maxHeight = h + 'px';
             sourceEditor.style.width = '100%';
-            sourceEditor.style.overflowY = 'auto';
-            sourceEditor.style.overflowX = document.body.classList.contains('nowrap') ? 'auto' : 'hidden';
-            // The mirror is sized from the textarea's computed style, so it has to be
-            // re-read after the inline height/width above -- and after the wrap swap,
-            // which changes white-space and so changes where every line breaks.
-            try { syncSourceHighlightGeometry(); } catch (eHl) {}
             try {
                 if (mainContainer) mainContainer.scrollTop = 0;
             } catch (e3) {}
@@ -486,9 +480,10 @@
         }
 
         /**
-         * Scroll the source textarea to a 1-based hard line.
-         * Map hard-line index → fraction of real scrollHeight (word-wrap safe).
-         * (line-1)*lineHeight was wrong: last hard line landed ~halfway down wrapped text.
+         * Scroll Source so a 1-based hard line is at the top of the view, and (unless
+         * keepCaret) put the caret at its start. CodeMirror knows where every line is laid
+         * out, wrapped or not -- the textarea this replaced could only map line index onto
+         * a fraction of scrollHeight.
          */
         function scrollSourceToHardLine(hardLine1Based, takeFocus, keepCaret) {
             if (!sourceEditor) return;
@@ -502,39 +497,15 @@
                 // the caret at the start of its line on every caret move.
                 if (!keepCaret) sourceEditor.setSelectionRange(pos, pos);
             } catch (e) {}
-            if (sourceEditor.isCodeMirror) {
-                // CodeMirror knows where every line is laid out, wrapped or not: the line
-                // goes to the top of the view, which is where hardLineFromSourceScrollTop
-                // reads it back from.
-                try { sourceEditor.scrollToOffset(pos, 0); } catch (eCm) {}
-                try { if (mainContainer) mainContainer.scrollTop = 0; } catch (e3) {}
-                return;
-            }
-            function applyScroll() {
-                try {
-                    const max = Math.max(0, sourceEditor.scrollHeight - sourceEditor.clientHeight);
-                    if (total <= 1 || max <= 0 || line <= 1) {
-                        sourceEditor.scrollTop = 0;
-                    } else if (line >= total) {
-                        sourceEditor.scrollTop = max; // true EOF — never past
-                    } else {
-                        const t = (line - 1) / (total - 1);
-                        sourceEditor.scrollTop = Math.round(max * t);
-                    }
-                } catch (e2) {}
-                try {
-                    if (mainContainer) mainContainer.scrollTop = 0;
-                } catch (e3) {}
-            }
-            applyScroll();
-            // Focus can restore a stale scrollTop; re-apply next frame.
-            try { requestAnimationFrame(applyScroll); } catch (e4) { setTimeout(applyScroll, 0); }
+            // To the top of the view, which is where hardLineFromSourceScrollTop reads it.
+            try { sourceEditor.scrollToOffset(pos, 0); } catch (eCm) {}
+            try { if (mainContainer) mainContainer.scrollTop = 0; } catch (e3) {}
         }
 
         /**
-         * Invert scrollSourceToHardLine's proportional map: scrollTop → hard line.
-         * Used for mode-switch stickiness when the user scrolled without moving the caret
-         * (caret/status can lag far behind what's on screen).
+         * The hard line at the top of Source's view (the one scrollSourceToHardLine puts
+         * there). Used for mode-switch stickiness when the user scrolled without moving the
+         * caret (caret/status can lag far behind what's on screen).
          */
         function hardLineFromSourceScrollTop() {
             if (!sourceEditor) return 1;
@@ -546,10 +517,7 @@
                 if (total <= 1 || max <= 0) return 1;
                 if (st <= 2) return 1;
                 if (st >= max - 2) return total;
-                // CodeMirror: the line actually at the top of the view, not an estimate.
-                if (sourceEditor.isCodeMirror) return Math.max(1, Math.min(total, sourceEditor.topLine()));
-                const t = st / max;
-                return Math.max(1, Math.min(total, Math.round(1 + t * (total - 1))));
+                return Math.max(1, Math.min(total, sourceEditor.topLine()));
             } catch (e) {
                 return 1;
             }

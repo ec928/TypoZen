@@ -49,8 +49,9 @@ assert(/::highlight\(typozen-spell\)/.test(css), 'wavy underline style exists');
 
 const html = fs.readFileSync(path.join(root, 'TypoZen_Template.html'), 'utf8');
 assert(/id="selPopSpell"/.test(html), 'selection popover has a spelling row');
-assert(/id="source-editor"[^>]*spellcheck="true"/.test(html),
-    'Source textarea has Chromium spellcheck on');
+assert(/id="source-cm"/.test(html)
+    && /contentAttributes\.of\(\{\s*spellcheck:\s*'true'/.test(fs.readFileSync(path.join(root, 'js', 'modules', '01a-source.js'), 'utf8')),
+    'Source (CodeMirror in #source-cm) has Chromium spellcheck on');
 assert(/id="editor"[^>]*spellcheck="true"/.test(html),
     'Preview editor keeps spellcheck="true"');
 

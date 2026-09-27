@@ -10,8 +10,8 @@
  * on, it must give back what that textarea gives back for the same input -- the text,
  * the "unsaved" flag the host reads with it, and the text after an edit is made and
  * undone by hand. Nothing here asserts what the right normalisation IS; only that Source
- * does not differ from a textarea. It runs on both surfaces (?source=codemirror and
- * ?source=textarea) and asserts which one ran.
+ * does not differ from a textarea -- the control Source replaced, and the behaviour the
+ * host's save path was written against.
  *
  *   node tests/source-roundtrip-browser.mjs
  */
@@ -60,17 +60,14 @@ const show = (s) => JSON.stringify(s == null ? s : (s.length > 60 ? s.slice(0, 6
 const deadline = setTimeout(() => { console.error('DEADLINE'); process.exit(3); }, 60000);
 const browser = await puppeteer.launch({ headless: 'new' });
 try {
-  // Both surfaces, each proven to be the one that ran: a silent fallback to the textarea
-  // would otherwise pass every check below while testing nothing new.
-  for (const engine of ['codemirror', 'textarea']) {
+  for (const engine of ['codemirror']) {
     console.log('\n##### Source on ' + engine + ' #####');
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
-    const url = 'file:///' + path.join(appDir, 'TypoZen_Template.html').split(path.sep).join('/') + '?source=' + engine;
+    const url = 'file:///' + path.join(appDir, 'TypoZen_Template.html').split(path.sep).join('/');
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof handleCommand === 'function' && typeof finishLoadContent === 'function', { timeout: 15000 });
-    const ran = await page.evaluate(() => window.__tzSourceEngine);
-    assert(ran === engine, 'Source is on ' + engine, 'got ' + ran);
+    assert(await page.evaluate(() => !!document.querySelector('#source-cm .cm-editor')), 'Source is CodeMirror, mounted in #source-cm');
 
     for (const [name, text] of CORPUS) {
         console.log('=== ' + name + ' ===');

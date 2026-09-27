@@ -44,8 +44,7 @@ async function reset(a, b) {
 try {
     await app.eval(() => handleCommand('view_set:mode:source'));
     await page.waitForFunction(() => state.mode === 'source', { timeout: 5000 });
-    const engine = await app.eval(() => window.__tzSourceEngine);
-    assert(engine === 'codemirror', 'Source is on CodeMirror (' + engine + ')');
+    assert(await app.eval(() => !!document.querySelector('#source-cm .cm-editor')), 'Source is CodeMirror, mounted in #source-cm');
     await page.bringToFront().catch(() => { });
 
     console.log('\n=== formatting and undo are TypoZen\'s ===');

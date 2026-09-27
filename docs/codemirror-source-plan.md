@@ -354,7 +354,10 @@ restart. Phase 4 deletes it. Git tag `baseline-before-codemirror` marks the star
   its markers on DOM text nodes, and CodeMirror replaces a line's nodes whenever it redraws
   the line -- so markers are dropped and only return when Chromium rechecks. A textarea's
   inner nodes are never replaced, which is why this did not happen before (also not
-  verified on the textarea side). **Open, for Phase 4.** Recommended: Source uses TypoZen's
+  verified on the textarea side). **Deferred by Ed (2026-09-27): resolve later, not in
+  Phase 4.** Found meanwhile: Preview runs two checkers -- Chromium's (the editor has
+  `spellcheck="true"`) and TypoZen's own, which covers only the paragraph holding the caret
+  (`runSpellCheckNow`), so in practice what readers see is Chromium's. Recommended: Source uses TypoZen's
   own spelling, as Preview does (host Windows spell check, painted as decorations in
   Preview's `typozen-spell` style, suggestions in the selection popup) -- one spelling
   engine and one look in both views, and decorations do not vanish on redraw. It changes

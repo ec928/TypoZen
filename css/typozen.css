@@ -705,7 +705,7 @@
 
         /* Editor Wrapper — full width; horizontal padding = real page margins (not line-length caps) */
         #editor-wrapper {
-            /* Containing block for #source-highlights and the scratch-empty hint.
+            /* Containing block for the scratch-empty hint.
                .block::before is the bookmark gutter (position:relative on .block). */
             position: relative;
             max-width: none;
@@ -727,7 +727,6 @@
            is a sideways to scroll -- see the page-mode override further down. */
         body.nowrap #editor .block { white-space: pre; }
         body.nowrap #main-container { overflow-x: auto; }
-        body.nowrap #source-editor { white-space: pre; overflow-x: auto; }
 
         #editor {
             outline: none;
@@ -1177,38 +1176,13 @@
         }
         #page-scrubber-bubble.showing { opacity: 1; }
 
-        /* Source Editor — viewport-tall; scrolls inside itself so the browser never allows
-           scrolling past the true end of the text (estimated full-document heights could). */
-        #source-editor {
-            display: none;
-            width: 100%;
-            height: 100%;
-            min-height: 60vh;
-            overflow-x: auto;
-            overflow-y: auto;
-            background: transparent;
-            color: var(--tx, #F4F4F5);
-            font-family: var(--font, sans-serif);
-            font-size: inherit;
-            line-height: inherit;
-            border: none;
-            outline: none;
-            resize: none;
-            padding: 20px 0;
-            box-sizing: border-box;
-            /* Above #source-highlights. The mirror is position:absolute, so without
-               this it paints on top of the static textarea: a 1px wrap mismatch then
-               ghosts the whole document. */
-            position: relative;
-            z-index: 1;
-        }
-
-        /* Source on CodeMirror (js/modules/01a-source.js): the same box, type and colours
-           as the textarea above. The host is sized by resizeSourceEditor; CodeMirror's
-           scroller does the scrolling, as the textarea did. Its base theme sets a monospace
-           font, 1.4 line height, per-line padding and a dotted focus outline -- all
-           overridden, so Source looks as it did. */
+        /* Source Editor (CodeMirror, js/modules/01a-source.js) -- viewport-tall and scrolling
+           inside itself, so the view never scrolls past the true end of the text. The host is
+           sized by resizeSourceEditor and shown by syncModeSurface. CodeMirror's base theme
+           sets a monospace font, 1.4 line height, per-line padding and a dotted focus outline
+           -- all overridden: Source is in the theme's font and colours. */
         #source-cm {
+            display: none;
             width: 100%;
             min-height: 60vh;
             position: relative;
@@ -1431,65 +1405,6 @@
         }
         .selpop-spell[hidden] { display: none; }
 
-        /* Source mode is a <textarea>, so none of the above can reach it: the Custom
-           Highlight API paints Ranges over DOM text nodes and a textarea's content is
-           the native control's internal buffer. The current search hit is shown by
-           selecting it (scrollSourceMatchIntoView), and until this rule that selection
-           was Chromium's default blue -- easy to lose against a dark theme, and nothing
-           like the accent the same hit gets in Preview.
-
-           This covers the sidebar Search only. Chromium paints NO selection at all for
-           an unfocused textarea -- not a dimmed one, none -- and ::selection does not
-           change that, so Ctrl+F, which ends with focus in #findInput, still shows an
-           invisible hit. Measured, not assumed. Fixing that needs a mirrored overlay
-           div, because a textarea exposes no rect for a character range; there is no
-           CSS-only version of it. findJumpTo takes focus for sidebar jumps and returns
-           it to the find bar for Ctrl+F, which is exactly the split you see on screen.
-
-           Same accent/--accent-tx pair as typozen-find-current above, so the current hit
-           looks the same in Source as in Preview. That pair is safe on all twenty-six
-           themes by construction: the theme code picks --accent-tx for contrast against
-           --accent. This does colour ordinary editing selection too -- a textarea has
-           only the one selection to style -- which is the price of the native control. */
-        /* The Source search mirror. See paintSourceHighlights in 02-layout.js for why a
-           mirror is the only way to mark a <textarea>. Everything here exists to make it
-           invisible except for the marks: it must occupy the same box as the textarea and
-           paint no text of its own, or it would show through as a second, offset copy of
-           the document. pointer-events:none keeps clicks, drags and the caret going to
-           the real control underneath. */
-        #source-highlights {
-            position: absolute;
-            z-index: 0;
-            overflow: hidden;
-            pointer-events: none;
-            color: transparent;
-            -webkit-text-fill-color: transparent;
-            background: transparent;
-            /* Same default as the textarea; the computed white-space is copied over it
-               so body.nowrap swaps both together. */
-            white-space: pre-wrap;
-            overflow-wrap: break-word;
-            -webkit-user-select: none;
-            user-select: none;
-        }
-        /* Under the textarea's own glyphs, so the wash sits behind the words rather than
-           over them. The text colour stays the textarea's --tx, which is why the current
-           hit is a ring and not a fill -- see the note in 02-layout.js. */
-        #source-highlights mark.tz-src-hit {
-            background: var(--find-soft, rgba(255, 180, 0, 0.30));
-            box-shadow: inset 0 -2px 0 var(--accent, #3B82F6);
-            color: transparent;
-            border-radius: 2px;
-        }
-        #source-highlights mark.tz-src-hit.cur {
-            background: var(--find-soft, rgba(255, 180, 0, 0.30));
-            box-shadow: 0 0 0 2px var(--accent, #f59e0b);
-            border-radius: 2px;
-        }
-
-        #source-editor::selection {
-            background-color: var(--select-bg);
-        }
         /* An annotation. Quieter than a search match on purpose: a search hit is
            transient and wants the eye, a highlight is something the reader put there
            and has to be readable underneath for as long as the book is open. Painted

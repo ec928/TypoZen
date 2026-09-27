@@ -179,11 +179,11 @@
         <div id="editor-wrapper">
             <!-- Live Preview WYSIWYG Mode -->
             <div id="editor" contenteditable="true" spellcheck="true" lang="en"></div>
-            <!-- Raw Source Mode. Chromium paints its own squiggles here; Preview uses
-                 the host Windows spell checker (dictionary.tsv is definitions, not a
-                 spell list) and CSS highlights, because re-rendering blocks would wipe
-                 the browser's markers. -->
-            <textarea id="source-editor" spellcheck="true" lang="en"></textarea>
+            <!-- Raw Source Mode: CodeMirror mounts here (js/modules/01a-source.js). Chromium
+                 paints its spelling squiggles on it; Preview also has the host's Windows
+                 spell checker for the paragraph being edited (dictionary.tsv is
+                 definitions, not a spell list). -->
+            <div id="source-cm" lang="en"></div>
         </div>
         <!-- Book-style page numbers, Reader + Pagination only. Driven from the page map,
              so they double as a visible check that the pagination is real. -->

@@ -361,9 +361,6 @@
             // Scroll without caret move: freeze sticky to viewport so Source→Preview
             // does not land on a stale caret line hundreds of rows away.
             sourceEditor.addEventListener('scroll', function () {
-                // Before the mode gate: the marks must track the text on every scroll,
-                // and this fires for Source whatever state.mode believes.
-                syncSourceHighlightScroll();
                 if (state.mode !== 'source') return;
                 try {
                     const viewLine = hardLineFromSourceScrollTop();

@@ -12,36 +12,18 @@
 //   1. The text lives in view.state.doc and nowhere else. Nothing reads Source text from
 //      CodeMirror's DOM (.cm-content, .cm-line). The parked code editor corrupted files by
 //      rebuilding text from a contenteditable's DOM; CodeMirror owns its buffer instead.
-//   2. It behaves like the textarea it replaces, including where that is inconvenient:
+//   2. It behaves like the textarea it replaced, including where that is inconvenient:
 //      setting `value` or calling setRangeText does not fire `input`; typing does.
 //
-// The textarea is kept, hidden, and IS the surface when CodeMirror is unavailable (the
-// jsdom test page does not load the bundle) or switched off: `?source=textarea` on the
-// page, or localStorage tzSourceEngine = "textarea". Ed's condition (2026-09-27): if
-// CodeMirror costs performance, it becomes an option rather than the default -- so the
-// textarea path stays whole.
+// There is no textarea any more (removed in Phase 4, Ed 2026-09-27: "no need for a fall
+// back if it works" -- CodeMirror measured faster than the textarea in every case). A
+// missing bundle is a broken build, and says so at load rather than degrading quietly;
+// assets-selftest checks the bundle ships.
 
-        function createSourceSurface(textarea) {
-            let engine = 'codemirror';
-            try {
-                const q = /[?&]source=(textarea|codemirror)\b/.exec(location.search || '');
-                if (q) engine = q[1];
-                else if (window.localStorage && localStorage.getItem('tzSourceEngine') === 'textarea') engine = 'textarea';
-            } catch (eEng) {}
+        function createSourceSurface(host) {
             const CM = window.TzCM;
-            if (!textarea || !CM || engine !== 'codemirror') {
-                window.__tzSourceEngine = 'textarea';
-                return textarea;
-            }
-            window.__tzSourceEngine = 'codemirror';
-
-            const host = document.createElement('div');
-            host.id = 'source-cm';
-            host.style.display = 'none';
-            textarea.parentNode.insertBefore(host, textarea.nextSibling);
-            textarea.style.display = 'none';
-            textarea.setAttribute('aria-hidden', 'true');
-            textarea.tabIndex = -1;
+            if (!CM) throw new Error('TypoZen: js/vendor/codemirror/codemirror.js did not load -- Source cannot start');
+            if (!host) throw new Error('TypoZen: #source-cm is missing from the page');
 
             // Transactions TypoZen makes itself (value =, setRangeText, selection calls).
             // They must not fire `input`: a textarea does not, and the engine's input
@@ -205,13 +187,13 @@
             const view = new CM.EditorView({
                 parent: host,
                 state: CM.EditorState.create({
-                    doc: textarea.value || '',
+                    doc: '',
                     extensions: [
                         wrapping.of(wrapExt()),
                         editable.of(CM.EditorView.editable.of(true)),
                         CM.EditorView.contentAttributes.of({
                             spellcheck: 'true',
-                            lang: textarea.getAttribute('lang') || 'en',
+                            lang: host.getAttribute('lang') || 'en',
                             'aria-label': 'Source'
                         }),
                         CM.keymap.of(keys),
@@ -285,17 +267,15 @@
                 set: (o, prop, v) => {
                     const t = styleTarget(prop);
                     if (t) t[prop] = v;
-                    // Hidden Source holds no search marks -- the rule the textarea's mirror
-                    // keeps by watching the textarea. Leaving Source could otherwise repaint
-                    // them while state.mode still said 'source', and they came back stale
-                    // on the next visit (source-highlight-app, "leaving Source").
+                    // Hidden Source holds no search marks. Leaving Source could otherwise
+                    // repaint them while state.mode still said 'source', and they came back
+                    // stale on the next visit (source-highlight-app, "leaving Source").
                     if (prop === 'display' && v === 'none') surface.setSearchMarks([]);
                     return true;
                 }
             });
 
             const surface = {
-                isCodeMirror: true,
                 view: view,
                 tagName: 'CM-SOURCE',
                 get value() { return text(); },
@@ -427,7 +407,7 @@
                 /**
                  * The 1-based document line at the top of the visible part: from CodeMirror's
                  * own layout, so a wrapped paragraph counts once however many rows it takes
-                 * (the textarea path can only estimate this from the scroll fraction).
+                 * (a textarea could only estimate this from the scroll fraction).
                  */
                 topLine() {
                     const top = view.scrollDOM.getBoundingClientRect().top - view.documentTop + 1;
@@ -471,10 +451,9 @@
             return !!(sourceEditor.contains && sourceEditor.contains(node));
         }
 
-        /** Source is on screen: the textarea, or CodeMirror's host, is not display:none. */
+        /** Source is on screen: CodeMirror's host is not display:none. */
         function isSourceShown() {
-            if (typeof sourceEditor === 'undefined' || !sourceEditor) return false;
-            const el = sourceEditor.isCodeMirror ? document.getElementById('source-cm') : sourceEditor;
+            const el = document.getElementById('source-cm');
             return !!el && window.getComputedStyle(el).display !== 'none';
         }
 

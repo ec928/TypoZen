@@ -2,13 +2,12 @@
  * Source lands where it should: switching modes keeps the line, and typewriter mode keeps
  * the caret.
  *
- * docs/codemirror-source-plan.md, Phase 2. On CodeMirror, Source reads and sets its
- * scroll position by real line layout (sourceEditor.topLine(), scrollToOffset); on the
- * textarea it can only estimate from the scroll fraction, which a wrapped paragraph
- * throws off. So the line checks are asserted on CodeMirror and recorded on the textarea.
+ * docs/codemirror-source-plan.md, Phase 2. Source reads and sets its scroll position by
+ * real line layout (sourceEditor.topLine(), scrollToOffset). The textarea it replaced could
+ * only estimate from the scroll fraction, which a wrapped paragraph throws off.
  *
- * Typewriter mode is asserted on both: it scrolls on every caret move, and until
- * 2026-09-27 it also put the caret at the start of its line every time, on both surfaces.
+ * Typewriter mode scrolls on every caret move; until 2026-09-27 it also put the caret at
+ * the start of its line every time.
  *
  *   node tests/source-landing-browser.mjs
  */
@@ -31,14 +30,14 @@ function info(msg) { console.log('  ..   ' + msg); }
 const deadline = setTimeout(() => { console.error('DEADLINE'); process.exit(3); }, 90000);
 const browser = await puppeteer.launch({ headless: 'new' });
 try {
-  for (const engine of ['codemirror', 'textarea']) {
+  for (const engine of ['codemirror']) {
     console.log('\n##### Source on ' + engine + ' #####');
     const exact = engine === 'codemirror';
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
-    await page.goto('file:///' + path.join(appDir, 'TypoZen_Template.html').split(path.sep).join('/') + '?source=' + engine, { waitUntil: 'load' });
+    await page.goto('file:///' + path.join(appDir, 'TypoZen_Template.html').split(path.sep).join('/'), { waitUntil: 'load' });
     await page.waitForFunction(() => typeof finishLoadContent === 'function', { timeout: 15000 });
-    assert((await page.evaluate(() => window.__tzSourceEngine)) === engine, 'Source is on ' + engine);
+    assert(await page.evaluate(() => !!document.querySelector('#source-cm .cm-editor')), 'Source is CodeMirror, mounted in #source-cm');
     await page.evaluate((md) => { finishLoadContent(md, false, false); }, MD);
     await page.evaluate(() => handleCommand('view_set:mode:source'));
     await page.waitForFunction(() => state.mode === 'source', { timeout: 5000 });

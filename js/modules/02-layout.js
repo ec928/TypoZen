@@ -5782,158 +5782,24 @@
         /* ------------------------------------------------------------------
            Source-mode search highlighting.
 
-           Preview marks every hit with the CSS Custom Highlight API. That API paints
-           Ranges over DOM text nodes, and Source is a <textarea> whose content is the
-           native control's internal buffer -- no Range can address it, so none of that
-           machinery reaches here. Before this, Source showed the current hit by
-           selecting it, and Chromium paints no selection at all for an unfocused
-           textarea; since Ctrl+F ends with focus in #findInput, the hit was invisible
-           exactly when the reader was looking for it.
-
-           So the marks are drawn on a mirror: a div holding the same text, with the
-           same font, padding and wrapping, scrolled to the same offset, sitting behind
-           the transparent textarea. The textarea keeps typing, caret and selection; the
-           mirror is only a shape to paint on. Its own text is transparent -- the visible
-           glyphs are still the textarea's, one layer up.
-
-           That last point decides the colours. The current hit CANNOT use the
-           accent/--accent-tx pair Preview uses, because --accent-tx recolours the text
-           and the text down here belongs to the textarea. A solid accent fill would put
-           unchanged --tx over it, which on the dark themes is light-on-amber. The
-           current hit gets the same wash plus an accent ring instead: readable on every
-           theme, and unmistakable against the others.
+           Preview marks every hit with the CSS Custom Highlight API. Source draws them as
+           CodeMirror decorations on its own text (sourceEditor.setSearchMarks,
+           01a-source.js), in Preview's colours -- including the current hit in solid
+           accent with --accent-tx, which the textarea's painted mirror could never do,
+           because the glyphs on screen were the textarea's and not the mirror's. The
+           mirror, and the geometry-matching that kept it on its words, went with the
+           textarea (docs/codemirror-source-plan.md, Phase 4).
            ------------------------------------------------------------------ */
 
-        let _srcHl = null;          // the mirror
-        let _srcHlInner = null;     // its content, so geometry and text update apart
-        let _srcHlSig = '';         // rebuild the marks only when they would differ
-
-        /** Everything that can move a glyph. Miss one and every mark slides. */
-        const SRC_HL_STYLE_KEYS = [
-            'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant',
-            'letterSpacing', 'wordSpacing', 'lineHeight', 'textTransform', 'textIndent',
-            'textRendering', 'whiteSpace', 'wordBreak', 'overflowWrap', 'tabSize',
-            'direction', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-            'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-            'boxSizing', 'fontKerning', 'fontFeatureSettings', 'fontVariationSettings',
-            'fontOpticalSizing', 'fontStretch'
-        ];
+        let _srcHlSig = '';         // redraw the marks only when they would differ
 
         /**
          * Past this many marks the document is not being searched, it is being dyed:
-         * every line hit, nothing picked out, and tens of thousands of nodes to lay out
-         * on each keystroke. Above it the current hit alone is drawn, which is still the
-         * one thing the reader is actually looking at.
+         * every line hit and nothing picked out. Above it the current hit alone is drawn,
+         * which is still the one thing the reader is actually looking at.
          */
         const SRC_HL_MAX_MARKS = 8000;
-        // Full-document innerHTML of the mirror. Above this, skip the overlay rather
-        // than doubling an already-large Source file in the DOM.
-        const SRC_HL_MAX_CHARS = 400000;
 
-        function srcHlEscape(t) {
-            return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        }
-
-        function ensureSourceHighlightLayer() {
-            if (!sourceEditor || sourceEditor.isCodeMirror) return null;
-            const host = sourceEditor.parentElement;
-            if (!host) return null;
-            if (_srcHl && _srcHl.parentElement === host) return _srcHl;
-            _srcHl = document.createElement('div');
-            _srcHl.id = 'source-highlights';
-            _srcHl.setAttribute('aria-hidden', 'true');
-            _srcHl.setAttribute('spellcheck', 'false');
-            _srcHlInner = document.createElement('div');
-            _srcHl.appendChild(_srcHlInner);
-            // Before the textarea in document order: both are positioned, so the
-            // textarea paints over the marks without either needing a z-index race.
-            host.insertBefore(_srcHl, sourceEditor);
-
-            /* Follow the textarea's visibility by watching it, rather than by trusting
-               every mode-switch path to remember the mirror exists.
-
-               syncModeSurface hides the textarea and clears the marks, but it does not
-               run everywhere state.mode ends up changing -- switching to Preview left a
-               page of amber boxes stranded over the Preview editor, because at the point
-               it ran state.mode was still 'source'. Chasing that ordering would fix this
-               one path and leave the next one to be found the same way. The mirror has
-               exactly one job, to look like the textarea, so it takes its visibility from
-               the textarea directly. Style mutations are also where the inline height and
-               width from resizeSourceEditor land, so this keeps the geometry current for
-               free. */
-            try {
-                const obs = new MutationObserver(function () {
-                    if (!_srcHl || !sourceEditor) return;
-                    const hidden = getComputedStyle(sourceEditor).display === 'none';
-                    if (hidden) { _srcHl.style.display = 'none'; return; }
-                    if (_srcHl.style.display !== 'none') syncSourceHighlightGeometry();
-                });
-                obs.observe(sourceEditor, { attributes: true, attributeFilter: ['style', 'class'] });
-            } catch (eObs) {}
-
-            /* Width changes that no attribute reports.
-               Opening or closing the sidebar resizes the textarea through layout -- its
-               width is a percentage of a pane that moved -- so the style attribute never
-               changes and the observer above never fires. The mirror kept the old width,
-               re-wrapped differently from the textarea, and every mark slid off its word:
-               boxes stranded in blank space and half-covering the wrong text. Width is
-               the one property the marks cannot survive being wrong about. */
-            try {
-                const ro = new ResizeObserver(function () {
-                    if (!_srcHl || _srcHl.style.display === 'none') return;
-                    syncSourceHighlightGeometry();
-                });
-                ro.observe(sourceEditor);
-            } catch (eRo) {}
-
-            _srcHlSig = '';
-            return _srcHl;
-        }
-
-        /**
-         * Copy the textarea's box and text metrics onto the mirror.
-         *
-         * Read from the computed style rather than the stylesheet: resizeSourceEditor
-         * sets height/width inline, applyEditorChromeForMode sets paddingRight from the
-         * page margin, and body.nowrap swaps white-space. All three land in the computed
-         * style and none of them are visible from the rules alone.
-         */
-        function syncSourceHighlightGeometry() {
-            if (!_srcHl || !sourceEditor) return;
-            const cs = getComputedStyle(sourceEditor);
-            for (let i = 0; i < SRC_HL_STYLE_KEYS.length; i++) {
-                const k = SRC_HL_STYLE_KEYS[i];
-                _srcHl.style[k] = cs[k];
-            }
-            const host = sourceEditor.parentElement;
-            if (!host) return;
-            const r = sourceEditor.getBoundingClientRect();
-            const hr = host.getBoundingClientRect();
-            _srcHl.style.left = (r.left - hr.left) + 'px';
-            _srcHl.style.top = (r.top - hr.top) + 'px';
-            // Wrap width is clientWidth, not the border box. The border box includes
-            // the scrollbar; a div with overflow:hidden does not, so using r.width
-            // made the mirror wrap ~17px wider and every mark slid off its word.
-            // Scale by the zoom that getBoundingClientRect already includes.
-            const ow = Math.max(1, sourceEditor.offsetWidth);
-            const oh = Math.max(1, sourceEditor.offsetHeight);
-            _srcHl.style.width = (sourceEditor.clientWidth * (r.width / ow)) + 'px';
-            _srcHl.style.height = (sourceEditor.clientHeight * (r.height / oh)) + 'px';
-            syncSourceHighlightScroll();
-        }
-
-        function syncSourceHighlightScroll() {
-            if (!_srcHl || !sourceEditor) return;
-            _srcHl.scrollTop = sourceEditor.scrollTop;
-            _srcHl.scrollLeft = sourceEditor.scrollLeft;
-        }
-
-        /**
-         * The mirror holds its own copy of the text, so any edit makes it a copy of a
-         * document that no longer exists. The signature cannot catch that on its own --
-         * typing over a selection can leave the length unchanged -- so editing states it
-         * outright rather than hoping the length moved.
-         */
         function invalidateSourceHighlights() {
             _srcHlSig = '';
             if (!(findState.query && findState.matches && findState.matches.length)) {
@@ -5942,11 +5808,9 @@
             }
             // findState.matches are offsets into the text BEFORE this edit. Painting them
             // again put every mark after the edit that many characters too early: typing
-            // above a hit slid its mark left one character per keystroke (Ed, 2026-09-27;
-            // the textarea's mirror did the same). So the search itself is re-run on the
-            // new text, shortly -- and until then CodeMirror's marks move with the text on
-            // their own, while the mirror, which cannot, is hidden rather than shown wrong.
-            if (!(sourceEditor && sourceEditor.isCodeMirror)) clearSourceHighlights();
+            // above a hit slid its mark left one character per keystroke (Ed, 2026-09-27).
+            // So the search itself is re-run on the new text, shortly; until then the
+            // marks move with the text on their own (decorations map through edits).
             clearTimeout(_srcSearchRefresh);
             _srcSearchRefresh = setTimeout(function () {
                 const q = findState.query;
@@ -5960,71 +5824,29 @@
 
         function clearSourceHighlights() {
             _srcHlSig = '';
-            // CodeMirror draws the marks itself (01a-source.js); there is no mirror.
-            if (sourceEditor && sourceEditor.isCodeMirror) { sourceEditor.setSearchMarks([]); return; }
-            if (_srcHlInner) _srcHlInner.textContent = '';
-            if (_srcHl) _srcHl.style.display = 'none';
+            if (sourceEditor) sourceEditor.setSearchMarks([]);
         }
 
         /**
-         * Draw every match, and ring the current one.
+         * Mark every match, and the current one.
          *
          * findState.matches holds offsets into the same string as sourceEditor.value --
-         * getFindHaystack returns that value for the source surface -- so the offsets
-         * index the mirror's text directly. No second search, and no second opinion
-         * about what matched.
+         * getFindHaystack returns that value for the source surface -- so they are
+         * decoration positions directly. No second search, and no second opinion about
+         * what matched.
          */
         function paintSourceHighlights() {
             if (!sourceEditor || !isSourceSurfaceActive()) { clearSourceHighlights(); return; }
             const matches = findState.matches || [];
             if (!findState.query || matches.length === 0) { clearSourceHighlights(); return; }
-            if (sourceEditor.isCodeMirror) {
-                // Decorations on the real text: no character cap (only visible lines are
-                // drawn), and the current hit can take Preview's solid accent because the
-                // text it recolours is its own. The mark cap still holds -- past it the
-                // document is being dyed, not searched.
-                const cur = findState.index;
-                const capped = matches.length > SRC_HL_MAX_MARKS;
-                const sig = findState.query + '|' + matches.length + '|' + sourceEditor.value.length + '|'
-                    + cur + '|' + (capped ? 'cap' : 'all');
-                if (sig === _srcHlSig) return;
-                _srcHlSig = sig;
-                if (capped) sourceEditor.setSearchMarks(cur >= 0 && cur < matches.length ? [matches[cur]] : [], 0);
-                else sourceEditor.setSearchMarks(matches, cur);
-                return;
-            }
-            if (!ensureSourceHighlightLayer()) return;
-
-            const text = sourceEditor.value || '';
             const cur = findState.index;
-            // Over the char cap, still draw the current hit so Search is not a dead
-            // counter on a large Source file. Over the mark cap, same: one ring.
-            const overChars = text.length > SRC_HL_MAX_CHARS;
-            const capped = overChars || matches.length > SRC_HL_MAX_MARKS;
-            const sig = findState.query + '|' + matches.length + '|' + text.length + '|'
+            const capped = matches.length > SRC_HL_MAX_MARKS;
+            const sig = findState.query + '|' + matches.length + '|' + sourceEditor.value.length + '|'
                 + cur + '|' + (capped ? 'cap' : 'all');
-            _srcHl.style.display = '';
-            syncSourceHighlightGeometry();
             if (sig === _srcHlSig) return;
             _srcHlSig = sig;
-
-            const draw = capped
-                ? (cur >= 0 && cur < matches.length ? [matches[cur]] : [])
-                : matches;
-            let html = '', last = 0;
-            for (let i = 0; i < draw.length; i++) {
-                const m = draw[i];
-                if (m.start < last) continue;          // overlapping hits: keep the first
-                const isCur = !capped ? (i === cur) : true;
-                html += srcHlEscape(text.slice(last, m.start))
-                     + '<mark class="tz-src-hit' + (isCur ? ' cur' : '') + '">'
-                     + srcHlEscape(text.slice(m.start, m.end))
-                     + '</mark>';
-                last = m.end;
-            }
-            html += srcHlEscape(text.slice(last));
-            _srcHlInner.innerHTML = html;
-            syncSourceHighlightScroll();
+            if (capped) sourceEditor.setSearchMarks(cur >= 0 && cur < matches.length ? [matches[cur]] : [], 0);
+            else sourceEditor.setSearchMarks(matches, cur);
         }
 
         function scrollRangeIntoMain(range) {
@@ -6052,43 +5874,12 @@
                 if (takeFocus) sourceEditor.focus();
                 sourceEditor.setSelectionRange(start, end);
             } catch (e) {}
-            // Paint first, then scroll to the laid-out mark. Mapping hard-line-index /
-            // total-lines onto scrollHeight is not wrap-safe: a wrapped paragraph is
-            // many visual rows and a short heading is one, so Search landed in the
-            // wrong place and the highlight looked broken.
             try { paintSourceHighlights(); } catch (eP) {}
-            if (sourceEditor.isCodeMirror) {
-                // CodeMirror knows where every line is, wrapped or not.
-                try {
-                    sourceEditor.scrollToOffset(start, Math.min(120, sourceEditor.clientHeight / 3));
-                    if (mainContainer) mainContainer.scrollTop = 0;
-                } catch (eC) {}
-                return;
-            }
+            // CodeMirror knows where every line is laid out, wrapped or not.
             try {
-                const mark = _srcHlInner && _srcHlInner.querySelector('mark.tz-src-hit.cur');
-                if (mark) {
-                    const mRect = mark.getBoundingClientRect();
-                    const tRect = sourceEditor.getBoundingClientRect();
-                    if (tRect.height > 0) {
-                        const target = tRect.top + Math.min(120, tRect.height / 3);
-                        sourceEditor.scrollTop += (mRect.top - target);
-                        syncSourceHighlightScroll();
-                    }
-                } else {
-                    const before = sourceEditor.value.substring(0, Math.max(0, start | 0));
-                    const line = Math.max(1, before.split(/\r?\n/).length);
-                    const total = countHardLines(sourceEditor.value || '');
-                    const max = Math.max(0, sourceEditor.scrollHeight - sourceEditor.clientHeight);
-                    if (total <= 1 || max <= 0) sourceEditor.scrollTop = 0;
-                    else {
-                        const t = (Math.min(line, total) - 1) / (total - 1);
-                        sourceEditor.scrollTop = Math.round(max * Math.max(0, Math.min(1, t)));
-                    }
-                    syncSourceHighlightScroll();
-                }
+                sourceEditor.scrollToOffset(start, Math.min(120, sourceEditor.clientHeight / 3));
                 if (mainContainer) mainContainer.scrollTop = 0;
-            } catch (e2) {}
+            } catch (eC) {}
         }
 
         /**

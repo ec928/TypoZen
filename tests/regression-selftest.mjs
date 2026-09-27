@@ -24,7 +24,7 @@ if (!mainScript || mainScript.length < 10000) {
 
 const dom = new JSDOM(`<!DOCTYPE html><html><body>
 <div id="editor" contenteditable="true"></div>
-<textarea id="source-editor" style="display:none"></textarea>
+<div id="source-cm" lang="en"></div>
 <div id="main-container"></div>
 <div id="sidebar"></div>
 <div id="outline-list"></div>
