@@ -64,7 +64,8 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, emphasis)
 - **Source Mode** — the raw Markdown/text, highlighted in the theme's colours: headings in their Preview sizes, **bold**, *italic*, `code` and links as Preview shows them, and the markup itself (`#`, `**`, `>`, a link's address) in one muted colour so the text reads first. Code blocks, and CSS, XML, XAML, HTML and JSON files, are coloured by the same lexers as Preview's code blocks; `.txt`, logs and CSV stay plain. Edited with [CodeMirror 6](https://codemirror.net/), which draws only the lines on screen, so typing in a 5 MB log keeps up (about 60 ms a key, where it was over 200) — one scrollbar, never nested
 - Switch with the **Mode** control on the toolbar (Source / Preview / Reader); the lit segment is the **current** mode
-- **Sticky mode switching** — the same hard line stays put for both the status readout _and_ the scroll position when you toggle
+- **Sticky mode switching** — the line at the top of the screen stays at the top when you toggle, for both the status readout _and_ the scroll position. Source and Preview lay a line out alike (same margins, width and spacing), so text does not shift between them
+- **Large code files** — a 2.2 MB HTML file with a 356 KB line opens in Source and reaches that line in a fraction of a second; code is not spell-checked
 - Source uses the **active theme font** (pick a **(Mono)** theme if you want monospaced source and preview)
 - **Reveal markdown on focus** can be enabled to automatically show markdown details while still in preview WYSIWYG mode
 
@@ -333,6 +334,7 @@ Full multi-document editing, with the tab strip living in the title bar.
 
 - **New** with the `+` button or `Ctrl+N`; close with the tab's own button or `Ctrl+W`
 - Cycle with `Ctrl+Tab` / `Ctrl+Shift+Tab`
+- **Drag a tab** sideways to move it; a line shows where it will land. Dragging only reorders — the tab you are reading stays on screen — and the order is kept with the session
 - **Scroll arrows** appear only when the strip overflows, and the active tab is always scrolled into view
 - **Per-tab unsaved indicator**, tracked independently of every other tab
 - **Per-tab file fidelity** — each tab remembers its file's line-ending style (LF / CRLF) and whether it ended with a trailing newline, so saving one document never quietly rewrites the whole file's line endings

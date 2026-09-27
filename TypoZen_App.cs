@@ -13900,7 +13900,12 @@ namespace TypoZen
         private void RebuildTabStrip()
         {
             if (_tabStrip == null) return;
+            // Mid-drag the chip under the pointer holds mouse capture; clearing it would drop
+            // the drag. The drop (or its cancel) rebuilds instead.
+            if (_tabDragging) { _tabStripRebuildPending = true; return; }
+            _tabStripRebuildPending = false;
             _tabStrip.Children.Clear();
+            _tabChips.Clear();
             EnsureAtLeastOneTab();
 
             // Tab chips stay rebuilt in the strip even while auto-hide has them tucked —
@@ -14009,16 +14014,50 @@ namespace TypoZen
                     };
                 }
 
+                // Click switches; press and drag sideways reorders. A drag moves the tab and
+                // nothing else -- no switch, no reload -- so the tab being read is untouched.
+                border.MouseLeftButtonDown += (s, e) =>
+                {
+                    if (e.OriginalSource is Button) return;
+                    _tabDragFrom = idx;
+                    _tabDragStart = e.GetPosition(_tabStrip);
+                    _tabDragging = false;
+                };
+                border.MouseMove += (s, e) =>
+                {
+                    if (_tabDragFrom != idx || e.LeftButton != MouseButtonState.Pressed) return;
+                    Point p = e.GetPosition(_tabStrip);
+                    if (!_tabDragging)
+                    {
+                        if (Math.Abs(p.X - _tabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance) return;
+                        if (_tabs.Count < 2 || _tabOpInProgress) return;
+                        _tabDragging = true;
+                        border.CaptureMouse();
+                    }
+                    ShowTabDropMarker(TabDropSlot(p.X));
+                };
                 border.MouseLeftButtonUp += (s, e) =>
                 {
+                    if (_tabDragging)
+                    {
+                        e.Handled = true;
+                        int slot = TabDropSlot(e.GetPosition(_tabStrip).X);
+                        int from = _tabDragFrom;
+                        EndTabDrag();
+                        MoveTabToSlot(from, slot);
+                        return;
+                    }
+                    _tabDragFrom = -1;
                     if (e.OriginalSource is Button) return;
                     SwitchToTab(idx);
                 };
+                border.LostMouseCapture += (s, e) => { if (_tabDragging) EndTabDrag(); };
 
                 row.Children.Add(title);
                 row.Children.Add(closeBtn);
                 border.Child = row;
                 _tabStrip.Children.Add(border);
+                _tabChips.Add(border);
 
                 // Divider only between two inactive tabs. Next to the active tab the
                 // selection border already marks the edge — a rule there is a double line.
@@ -14069,6 +14108,102 @@ namespace TypoZen
                 }
                 catch { }
             }), DispatcherPriority.Loaded);
+        }
+
+        // --- Reordering tabs by dragging ---------------------------------------------------
+        // Chips in tab order (the strip also holds dividers and +), the drag in progress, and
+        // the insertion line drawn over the strip while dragging.
+        private readonly List<Border> _tabChips = new List<Border>();
+        private int _tabDragFrom = -1;
+        private Point _tabDragStart;
+        private bool _tabDragging;
+        private bool _tabStripRebuildPending;
+        private TabDropMarker _tabDropMarker;
+
+        /// <summary>Where a drop at x (strip coordinates) would insert: 0.._tabs.Count.</summary>
+        private int TabDropSlot(double x)
+        {
+            int slot = 0;
+            for (int i = 0; i < _tabChips.Count; i++)
+            {
+                var c = _tabChips[i];
+                double mid = c.TranslatePoint(new Point(c.ActualWidth / 2, 0), _tabStrip).X;
+                if (x > mid) slot = i + 1;
+            }
+            return slot;
+        }
+
+        private void ShowTabDropMarker(int slot)
+        {
+            if (_tabChips.Count == 0) return;
+            if (_tabDropMarker == null)
+            {
+                var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(_tabStrip);
+                if (layer == null) return;
+                _tabDropMarker = new TabDropMarker(_tabStrip, _tabText);
+                layer.Add(_tabDropMarker);
+            }
+            double x = slot < _tabChips.Count
+                ? _tabChips[slot].TranslatePoint(new Point(0, 0), _tabStrip).X
+                : _tabChips[_tabChips.Count - 1].TranslatePoint(new Point(_tabChips[_tabChips.Count - 1].ActualWidth, 0), _tabStrip).X;
+            _tabDropMarker.X = x;
+            _tabDropMarker.InvalidateVisual();
+        }
+
+        /// <summary>Stop dragging: capture, marker, state. Safe to call twice.</summary>
+        private void EndTabDrag()
+        {
+            bool was = _tabDragging;
+            _tabDragging = false;
+            _tabDragFrom = -1;
+            if (_tabDropMarker != null)
+            {
+                try
+                {
+                    var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(_tabStrip);
+                    if (layer != null) layer.Remove(_tabDropMarker);
+                }
+                catch { }
+                _tabDropMarker = null;
+            }
+            try { if (Mouse.Captured != null) Mouse.Capture(null); } catch { }
+            if (was && _tabStripRebuildPending) RebuildTabStrip();
+        }
+
+        /// <summary>Move the tab at `from` to insertion slot `slot`; the active tab stays active.</summary>
+        private void MoveTabToSlot(int from, int slot)
+        {
+            if (_tabOpInProgress) return;
+            if (from < 0 || from >= _tabs.Count) return;
+            int to = slot > from ? slot - 1 : slot;
+            if (to < 0) to = 0;
+            if (to >= _tabs.Count) to = _tabs.Count - 1;
+            if (to == from) { RebuildTabStrip(); return; }
+            DocTab active = (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count) ? _tabs[_activeTabIndex] : null;
+            DocTab moving = _tabs[from];
+            _tabs.RemoveAt(from);
+            _tabs.Insert(to, moving);
+            if (active != null) _activeTabIndex = _tabs.IndexOf(active);
+            RebuildTabStrip();
+            // The session stores tabs in list order, so the new order survives a restart.
+            try { PersistTabSession(); } catch { }
+        }
+
+        /// <summary>The insertion line shown while a tab is dragged.</summary>
+        private sealed class TabDropMarker : System.Windows.Documents.Adorner
+        {
+            public double X = -1;
+            private readonly Brush _brush;
+            public TabDropMarker(UIElement strip, Brush brush) : base(strip)
+            {
+                _brush = brush ?? Brushes.White;
+                IsHitTestVisible = false;
+            }
+            protected override void OnRender(DrawingContext dc)
+            {
+                if (X < 0) return;
+                dc.DrawRectangle(_brush, null, new Rect(X - 1, 2, 2, 26));
+            }
         }
 
         private void SwitchToTab(int index)
