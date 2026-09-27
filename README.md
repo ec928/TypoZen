@@ -62,7 +62,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 
 ### Dual-mode editing
 - **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, emphasis)
-- **Source Mode** — raw Markdown/text in a growing textarea (one scrollbar with the outer pane, never nested)
+- **Source Mode** — the raw Markdown/text, highlighted in the theme's colours: headings in their Preview sizes, **bold**, *italic*, `code` and links as Preview shows them, and the markup itself (`#`, `**`, `>`, a link's address) in one muted colour so the text reads first. Code blocks, and CSS, XML, XAML, HTML and JSON files, are coloured by the same lexers as Preview's code blocks; `.txt`, logs and CSV stay plain. Edited with [CodeMirror 6](https://codemirror.net/), which draws only the lines on screen, so typing in a 5 MB log keeps up (about 60 ms a key, where it was over 200) — one scrollbar, never nested
 - Switch with the **Mode** control on the toolbar (Source / Preview / Reader); the lit segment is the **current** mode
 - **Sticky mode switching** — the same hard line stays put for both the status readout _and_ the scroll position when you toggle
 - Source uses the **active theme font** (pick a **(Mono)** theme if you want monospaced source and preview)
@@ -192,7 +192,7 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 **Spelling is checked as you type**, with suggestions, a personal dictionary and a whole-document check:
 
 - **Preview:** wavy underline on the paragraph you are editing. Select the word — the popover offers replacements, **Ignore**, and **Add to dictionary** (persisted in the cache folder as `user_words.txt`, not in the document).
-- **Source:** Chromium’s own squiggles on the textarea.
+- **Source:** Chromium’s own squiggles, with suggestions on right-click. Known limit: an underline can disappear while focus is elsewhere (in the find box, say) and return when Source is focused again.
 - **Edit → Spelling → Check Document** walks the file and selects the first issue; **Next Issue** continues. Books, PDFs and Reader are skipped.
 
 Preview uses **WPF’s built-in dictionaries** — English, French, German and Spanish, the same engine a WPF TextBox uses — in your Windows display language. Other languages will not underline until a dictionary for them is available.
@@ -299,16 +299,11 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 ### Writing tools
 - **Spelling** — wavy underline in Preview as you type; select a misspelling for replacements, Ignore, or Add to dictionary. **Edit → Spelling → Check Document** / **Next Issue**. Source uses Chromium’s squiggles. The bundled `dictionary.tsv` is Look up, not this
 - Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
-- **Every match is highlighted, in Source as well as Preview.** Preview paints them with
-  the CSS Custom Highlight API. Source cannot use it — it is a `<textarea>`, and that API
-  paints over DOM text nodes while a textarea's content belongs to the native control —
-  so the marks are drawn on a mirror layer behind it, holding the same text at the same
-  font, padding and wrap, scrolled to the same offset. Before this, Source showed only
-  the current hit as a selection, and Chromium paints no selection at all for an
-  unfocused textarea: with `Ctrl+F` holding focus the hit was invisible exactly when you
-  were looking for it. The current match is ringed rather than filled, because the
-  visible glyphs belong to the textarea above the marks and a solid fill would leave
-  unreadable text over it
+- **Every match is highlighted, in Source as well as Preview, in the same colours:** a
+  soft wash with an accent underline, and the current match in solid accent. Preview
+  paints them with the CSS Custom Highlight API; Source draws them on its own text, so
+  they stay on their words while you type, scroll or re-wrap, and follow the search as
+  it re-runs after an edit
 - Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree. Both options (and which sidebar tab you last used — Outline vs Search) are **remembered** across restarts
 - **Recent searches** — the Search tab is a combo box: the last **8** committed queries (Enter, or a pick from the list) are kept **globally** (not per tab) in `settings.json`. Click the chevron or press ↓ on an empty box for the dropdown. Remove one with **×**, clear all from the menu footer or **File → Privacy → Clear Recent Searches**. **Alt+S** also restores the last text left in the Search box (selection still wins when you have one). Full **Clear Stored Data** still wipes history too
 - **Search mode** (a live result list — sidebar need not stay open): **Up / Down** step previous / next match with eyes on the text; **Left / Right** turn the page when the layout is paginated. Without results, Up/Down are normal (caret in Preview, page turn in Reader). **F3** / **Shift+F3** also step next/prev. Same Up/Down behaviour the results list has always used
@@ -694,6 +689,7 @@ of them permit commercial use and redistribution:
 | Dictionary and thesaurus data | Open English WordNet (CC BY 4.0), derived from Princeton WordNet | `WORDNET-LICENSE.txt` |
 | PDF.js (the PDF viewer) | Apache 2.0, with its own component notices | `js/vendor/pdfjs/LICENSE` and beside it |
 | PdfPig and the .NET libraries it needs | Apache 2.0; MIT | `THIRD-PARTY-NOTICES.txt` |
+| CodeMirror 6 (Source mode's editor) | MIT | `THIRD-PARTY-NOTICES.txt` |
 
 **Privacy:** [PRIVACY.md](PRIVACY.md) — TypoZen sends nothing anywhere; everything it
 remembers is in `%LOCALAPPDATA%\TypoZen_Cache_Portable` and can be cleared from **File → Privacy**.

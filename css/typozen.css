@@ -793,24 +793,27 @@
            Mixed from the theme's accent and text rather than a fixed palette, for the
            reason --mark-ink is: a scheme that looks deliberate on Gruvbox and arbitrary
            on Rose Pine is not a scheme. */
-        ::highlight(tzcode-comment) {
+        /* Source on CodeMirror draws the same tokens as classes (#source-cm .tzcode-*, from
+           the same lexers in 01a-source.js), listed here beside Preview's so one rule sets
+           each colour for both views. */
+        ::highlight(tzcode-comment), #source-cm .tzcode-comment {
             color: color-mix(in srgb, var(--tx, #F4F4F5) 45%, transparent);
         }
-        ::highlight(tzcode-keyword) { color: var(--accent, #3B82F6); }
-        ::highlight(tzcode-tag)     { color: var(--accent, #3B82F6); }
-        ::highlight(tzcode-string)  {
+        ::highlight(tzcode-keyword), #source-cm .tzcode-keyword { color: var(--accent, #3B82F6); }
+        ::highlight(tzcode-tag), #source-cm .tzcode-tag         { color: var(--accent, #3B82F6); }
+        ::highlight(tzcode-string), #source-cm .tzcode-string  {
             color: color-mix(in srgb, var(--accent, #3B82F6) 55%, var(--tx, #F4F4F5));
         }
-        ::highlight(tzcode-number)  {
+        ::highlight(tzcode-number), #source-cm .tzcode-number  {
             color: color-mix(in srgb, var(--accent, #3B82F6) 40%, var(--tx, #F4F4F5));
         }
-        ::highlight(tzcode-type)    {
+        ::highlight(tzcode-type), #source-cm .tzcode-type    {
             color: color-mix(in srgb, var(--accent, #3B82F6) 70%, var(--tx, #F4F4F5));
         }
-        ::highlight(tzcode-attr)    {
+        ::highlight(tzcode-attr), #source-cm .tzcode-attr    {
             color: color-mix(in srgb, var(--accent, #3B82F6) 60%, var(--tx, #F4F4F5));
         }
-        ::highlight(tzcode-fn)      { color: var(--tx, #F4F4F5); }
+        ::highlight(tzcode-fn), #source-cm .tzcode-fn      { color: var(--tx, #F4F4F5); }
 
         #editor.reader-mode {
             cursor: default;
@@ -1223,6 +1226,44 @@
         #source-cm .cm-content { padding: 20px 0; caret-color: var(--tx, #F4F4F5); }
         #source-cm .cm-line { padding: 0; }
         #source-cm .cm-content ::selection { background-color: var(--select-bg); }
+        /* Markdown in Source (CodeMirror, 01a-source.js). Every rule is Preview's rule for
+           the same thing, so an element means one thing in both views: headings in the
+           text colour, bold and at Preview's sizes; strong, em and strikethrough as in
+           Preview; code in its face on --code-bg; quotes muted and italic; link text in the
+           accent, as links are. What Source adds is the syntax itself -- the # ** > - []()
+           markers and a link's address -- and all of it is one muted colour, so the text
+           reads first and the markup second. */
+        #source-cm .tzmd-h { font-weight: 700; color: var(--tx, #F4F4F5); }
+        #source-cm .tzmd-h1 { font-size: 2.2em; }
+        #source-cm .tzmd-h2 { font-size: 1.7em; }
+        #source-cm .tzmd-h3 { font-size: 1.4em; }
+        #source-cm .tzmd-h4 { font-size: 1.2em; }
+        #source-cm .tzmd-h5 { font-size: 1.05em; }
+        #source-cm .tzmd-h6 { font-size: 0.95em; opacity: 0.92; }
+        #source-cm .tzmd-strong { font-weight: 700; }
+        #source-cm .tzmd-em { font-style: italic; }
+        #source-cm .tzmd-del { text-decoration: line-through; opacity: 0.85; }
+        #source-cm .tzmd-code {
+            font-family: Consolas, monospace;
+            font-size: 0.9em;
+            font-weight: 600;
+            background-color: var(--code-bg, rgba(128, 128, 128, 0.15));
+            border-radius: 4px;
+        }
+        #source-cm .tzmd-quote { color: var(--tx-muted, #A1A1AA); font-style: italic; }
+        #source-cm .tzmd-link { color: var(--accent, #3B82F6); }
+        #source-cm .tzmd-url,
+        #source-cm .tzmd-mark { color: var(--tx-muted, #A1A1AA); }
+        #source-cm .tzmd-url { font-style: normal; }
+        /* A fenced block: the whole line on --code-bg in the code face, as Preview's <pre>;
+           the tokens inside take the tzcode-* colours above. */
+        #source-cm .cm-line.tzmd-fence {
+            font-family: Consolas, monospace;
+            font-size: 0.9em;
+            background-color: var(--code-bg, rgba(128, 128, 128, 0.15));
+        }
+        #source-cm .cm-line.tzmd-fence .tzmd-code { background: none; font-weight: normal; font-size: 1em; }
+
         /* Find in Source on CodeMirror: Preview's marks exactly (::highlight(typozen-find)
            and -current above). Unlike the textarea's mirror, the text here is the marks'
            own, so the current hit can be solid accent with --accent-tx like Preview's. */

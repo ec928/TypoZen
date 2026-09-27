@@ -865,6 +865,10 @@
                         }
                     } catch(e) {}
                 }
+                else if (msg.startsWith("doc_ext:")) {
+                    // What kind of document the next load is (01a-source.js highlighting).
+                    setSourceDocExt(msg.substring(8));
+                }
                 else if (msg.startsWith("doc_gen:")) {
                     // Which document the host is putting on the page. Echoed back with
                     // every position report so a late one cannot be misattributed.

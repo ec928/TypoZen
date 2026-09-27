@@ -314,6 +314,33 @@ restart. Phase 4 deletes it. Git tag `baseline-before-codemirror` marks the star
   source-popover, source-keys, read-aloud, core-smoke, edit-integrity, undo-steps. **Not
   run:** `select-all-app` and the other visible-window suites (need Ed away).
 
+### Phase 2 results (2026-09-27, `d0415e8`)
+
+- On CodeMirror, Source reads and sets its position by real line layout
+  (`sourceEditor.topLine()`, `scrollToOffset`); lines 900, 2000 and 3500 read back exactly,
+  and a mode switch keeps the line on screen both ways (`source-landing-browser`).
+- Typewriter mode centres the caret's line on CodeMirror. **Fixed on both surfaces:** it
+  used to move the caret to the start of its line on every caret move.
+- The textarea's mirror is **kept**, for the textarea path (Ed's condition).
+
+### Phase 3 results (2026-09-27)
+
+- **Markdown** highlighted with `tzmd-*` classes styled from Preview's own rules
+  (headings at Preview's sizes in the text colour, bold, italic, strikethrough, code on
+  `--code-bg`, muted italic quotes, link text in the accent); every marker and a link's
+  address in `--tx-muted`.
+- **Code** -- fenced blocks, and files of a code type -- through `08-code.js`'s lexers as
+  `tzcode-*` classes; each colour rule now lists Preview's `::highlight` and Source's class
+  together. `css`, `html` and `htm` added to the shared language table, so Preview colours
+  ```` ```css ```` and ```` ```html ```` blocks too.
+- **The document's type** comes from the host before each load (`doc_ext:`), because the
+  load only said "plain or not". Plain text gets no highlighting.
+- **Latency** with parsing on: Markdown 74 KB **5.9 ms** a key (textarea 7.1); switch into
+  Source 1019 ms (1025); 5 MB log 67.5 ms (217; plain, so no parsing -- the 59 of Phase 1 is
+  the same case, run-to-run variation).
+- `source-colours-browser`: 26 checks -- classes on the right text, colours resolving to
+  Preview's variables, code files lexed, plain text untouched.
+
 ### Seen by Ed on 0.8.4 (2026-09-27)
 
 - **Search marks slid left while typing above them** with the find bar shut and a query

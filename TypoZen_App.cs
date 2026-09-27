@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.8.4";
+        internal const string AppVersion = "0.9.0";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -11206,6 +11206,16 @@ namespace TypoZen
             content = content ?? "";
             BumpDocGen();
             bool plain = PreferSourceModeForPath(filePathHint);
+            // Source highlights by document type (js/modules/01a-source.js). The load itself
+            // only says "plain or not", which puts .css with .txt, so the extension goes first.
+            string docExt = "";
+            try
+            {
+                if (!string.IsNullOrEmpty(filePathHint))
+                    docExt = (Path.GetExtension(filePathHint) ?? "").TrimStart('.').ToLowerInvariant();
+            }
+            catch { }
+            try { SendMsg("doc_ext:" + docExt); } catch { }
             try
             {
                 if (content.Length <= LoadContentInlineMaxChars)

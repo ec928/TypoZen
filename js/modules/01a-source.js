@@ -76,6 +76,117 @@
             const hitMark = CM.Decoration.mark({ class: 'tz-src-hit' });
             const curMark = CM.Decoration.mark({ class: 'tz-src-hit cur' });
 
+            // --- Highlighting (plan, section 5.4) -------------------------------------
+            // By what the document is, which the host says before each load (doc_ext:,
+            // setSourceDocExt): Markdown gets CodeMirror's parser, drawn with classes that
+            // typozen.css styles from Preview's own rules -- a heading here is the colour and
+            // weight a heading is there. Code -- a file of a code type, or a fenced block in
+            // Markdown -- gets 08-code.js's lexers, the ones Preview's code blocks use, with
+            // the same tzcode-* colours. Plain text gets nothing.
+            const t = CM.tags;
+            const mdStyle = CM.HighlightStyle.define([
+                { tag: t.heading1, class: 'tzmd-h tzmd-h1' },
+                { tag: t.heading2, class: 'tzmd-h tzmd-h2' },
+                { tag: t.heading3, class: 'tzmd-h tzmd-h3' },
+                { tag: t.heading4, class: 'tzmd-h tzmd-h4' },
+                { tag: t.heading5, class: 'tzmd-h tzmd-h5' },
+                { tag: t.heading6, class: 'tzmd-h tzmd-h6' },
+                { tag: t.strong, class: 'tzmd-strong' },
+                { tag: t.emphasis, class: 'tzmd-em' },
+                { tag: t.strikethrough, class: 'tzmd-del' },
+                { tag: t.monospace, class: 'tzmd-code' },
+                { tag: t.link, class: 'tzmd-link' },
+                { tag: t.url, class: 'tzmd-url' },
+                { tag: t.quote, class: 'tzmd-quote' },
+                { tag: [t.processingInstruction, t.contentSeparator], class: 'tzmd-mark' }
+            ]);
+            const language = new CM.Compartment();
+            const kindChanged = CM.StateEffect.define();
+            let kind = '', codeLang = null;
+            const MARKDOWN_EXT = /^(|md|markdown|mdown|mkd|mkdn|mdwn|mdtxt|mdtext)$/;
+            const kindForExt = (ext) => {
+                ext = String(ext == null ? '' : ext).toLowerCase();
+                const code = window.CODE_LANGUAGES ? window.CODE_LANGUAGES[ext] : null;
+                if (code) return 'code:' + code;
+                return MARKDOWN_EXT.test(ext) ? 'markdown' : 'plain';
+            };
+            /** Follow the document's type; a no-op unless it changed. */
+            const applyKind = () => {
+                const k = kindForExt(typeof state !== 'undefined' && state ? state.docExt : '');
+                if (k === kind) return;
+                kind = k;
+                codeLang = k.indexOf('code:') === 0 ? k.slice(5) : null;
+                view.dispatch({
+                    effects: [language.reconfigure(k === 'markdown'
+                        ? [CM.markdownLanguage.extension, CM.syntaxHighlighting(mdStyle)] : []), kindChanged.of(k)],
+                    annotations: programmatic.of(true)
+                });
+            };
+
+            // Code, by 08-code.js's per-line lexers (window.lexCodeLine), over the lines on
+            // screen only. A lexer carries a small state from line to line (a block comment
+            // spanning lines); it is rebuilt from at most CODE_LOOKBACK lines above the view,
+            // which is exact for anything but a comment longer than that.
+            const CODE_LOOKBACK = 200;
+            const tokenMarks = {};
+            const tokenMark = (c) => tokenMarks[c] || (tokenMarks[c] = CM.Decoration.mark({ class: 'tzcode-' + c }));
+            const fenceLine = CM.Decoration.line({ class: 'tzmd-fence' });
+            const buildCode = (v) => {
+                const lex = window.lexCodeLine;
+                if (typeof lex !== 'function' || !(codeLang || kind === 'markdown')) return CM.Decoration.none;
+                const doc = v.state.doc, b = new CM.RangeSetBuilder();
+                const vp = v.viewport;
+                // Lex lines [lexFrom, to] carrying state; decorate from `from` on.
+                const lexLines = (lang, lexFrom, from, to, fence) => {
+                    let st = 0;
+                    for (let n = lexFrom; n <= to; n++) {
+                        const line = doc.line(n);
+                        const r = lang ? lex(line.text, lang, st) : { tokens: [], state: 0 };
+                        st = r.state;
+                        if (n < from) continue;
+                        if (fence) b.add(line.from, line.from, fenceLine);
+                        for (const tok of r.tokens) {
+                            if (tok.e > tok.s) b.add(line.from + tok.s, line.from + tok.e, tokenMark(tok.t));
+                        }
+                    }
+                };
+                const first = doc.lineAt(vp.from).number, last = doc.lineAt(vp.to).number;
+                if (codeLang) {
+                    lexLines(codeLang, Math.max(1, first - CODE_LOOKBACK), first, last, false);
+                    return b.finish();
+                }
+                CM.syntaxTree(v.state).iterate({
+                    from: vp.from, to: vp.to,
+                    enter: (node) => {
+                        if (node.name !== 'FencedCode') return;
+                        const info = node.node.getChild('CodeInfo');
+                        const lang = info && typeof window.codeLanguageForFence === 'function'
+                            ? window.codeLanguageForFence(doc.sliceString(info.from, info.to)) : null;
+                        const open = doc.lineAt(node.from).number, close = doc.lineAt(node.to).number;
+                        const closed = close > open && /^\s*(```|~~~)/.test(doc.line(close).text);
+                        const vFirst = Math.max(open, first), vLast = Math.min(close, last);
+                        // The fence lines themselves: tinted, not lexed.
+                        if (vFirst === open) b.add(doc.line(open).from, doc.line(open).from, fenceLine);
+                        const bodyFirst = open + 1, bodyLast = closed ? close - 1 : close;
+                        const from = Math.max(bodyFirst, vFirst), to = Math.min(bodyLast, vLast);
+                        if (to >= from) lexLines(lang, Math.max(bodyFirst, from - CODE_LOOKBACK), from, to, true);
+                        if (closed && vLast === close && close > open) b.add(doc.line(close).from, doc.line(close).from, fenceLine);
+                        return false;
+                    }
+                });
+                return b.finish();
+            };
+            const codePlugin = CM.ViewPlugin.fromClass(class {
+                constructor(v) { this.decorations = buildCode(v); }
+                update(u) {
+                    if (u.docChanged || u.viewportChanged
+                        || CM.syntaxTree(u.startState) !== CM.syntaxTree(u.state)
+                        || u.transactions.some(tr => tr.effects.some(e => e.is(kindChanged)))) {
+                        this.decorations = buildCode(u.view);
+                    }
+                }
+            }, { decorations: (p) => p.decorations });
+
             const wrapExt = () => document.body && document.body.classList.contains('nowrap')
                 ? [] : CM.EditorView.lineWrapping;
 
@@ -104,6 +215,8 @@
                             'aria-label': 'Source'
                         }),
                         CM.keymap.of(keys),
+                        language.of([]),
+                        codePlugin,
                         marksField,
                         CM.EditorView.updateListener.of((u) => {
                             if (u.docChanged) {
@@ -121,6 +234,7 @@
                     ]
                 })
             });
+            applyKind();
             view.scrollDOM.addEventListener('scroll', (e) => fire('scroll', e), { passive: true });
 
             // One undo history: HistoryManager's, shared with Preview. Ctrl+Z / Ctrl+Y never
@@ -190,6 +304,9 @@
                     // normalise first, or every offset below counts characters the
                     // document will not have (source-roundtrip-browser, CRLF case).
                     v = v == null ? '' : String(v).replace(/\r\n?/g, '\n');
+                    // Every load puts its text here, after the host has said what kind of
+                    // document it is (doc_ext:): pick up the matching highlighting.
+                    applyKind();
                     const cur = text();
                     if (v === cur) return;
                     // Replace only the part that changed, so the selection, scroll position
@@ -336,6 +453,15 @@
                 }
             };
             return surface;
+        }
+
+        /**
+         * The type of the document about to load, as its extension ('md', 'css', 'txt', ''
+         * for untitled). The host sends it (doc_ext:) before every load; Source picks its
+         * highlighting from it when the text arrives.
+         */
+        function setSourceDocExt(ext) {
+            if (typeof state !== 'undefined' && state) state.docExt = String(ext == null ? '' : ext).toLowerCase();
         }
 
         /** True for Source's editing surface and anything inside it. */

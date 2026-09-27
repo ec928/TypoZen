@@ -36,6 +36,9 @@
             json: 'json', jsonc: 'json',
             xml: 'xml', xaml: 'xml', axaml: 'xml', csproj: 'xml', props: 'xml',
             targets: 'xml', config: 'xml', resx: 'xml', svg: 'xml', xsd: 'xml', plist: 'xml',
+            // HTML markup and CSS (Ed, 2026-09-27: highlight them in Source). The xml lexer
+            // reads tags and attributes; clike reads CSS's comments, strings and numbers.
+            html: 'xml', htm: 'xml', css: 'clike',
             cs: 'clike', js: 'clike', mjs: 'clike', cjs: 'clike', ts: 'clike', tsx: 'clike',
             jsx: 'clike', java: 'clike', c: 'clike', h: 'clike', cpp: 'clike', hpp: 'clike',
             cc: 'clike', go: 'clike', rs: 'clike', swift: 'clike', kt: 'clike', php: 'clike'
