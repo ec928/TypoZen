@@ -271,7 +271,12 @@
         }
         #editor ::selection { background-color: var(--select-bg); }
         /* PDF.js paints its own selection from the system accent; the theme's tint instead. */
-        #pdfView .textLayer ::selection { background: var(--select-bg); }
+        /* Text only. PDF.js keeps a line break (br) in the text layer at each line end and
+           makes its selection transparent; a plain `.textLayer ::selection` outranked that,
+           and every selected line break painted a sliver at the left edge of the page -- a
+           dashed column beside the selection (0.7.3 to 0.7.11). PDF.js's own selection
+           painter is switched off in 10-pdf.js, so this is the only one. */
+        #pdfView .textLayer :not(br)::selection { background: var(--select-bg); }
         #sidebar { --mark: var(--mark-ink); }
         .mark-add {
             display: flex; align-items: center; gap: 7px;

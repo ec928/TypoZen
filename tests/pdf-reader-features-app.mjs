@@ -105,6 +105,23 @@ try {
         return { pop: vis('selPop'), lookup: vis('selPopLookup'), read: vis('selPopRead'), bold: vis('selPopBold'), mark: vis('selPopMark') };
     });
     ok(pop.pop && pop.lookup && pop.read && !pop.bold, 'selecting a word on a PDF raises the popup with Look up and Read, no formatting', JSON.stringify(pop));
+
+    // Selection paints the text in the theme's colour, and never the text layer's line
+    // breaks: those sit at the left edge, and painting them drew a dashed column there.
+    const selPaint = await app.eval(() => {
+        const layer = document.querySelector('#pdfView .textLayer');
+        const span = layer && layer.querySelector('span'), br = layer && layer.querySelector('br');
+        return {
+            span: span ? getComputedStyle(span, '::selection').backgroundColor : null,
+            br: br ? getComputedStyle(br, '::selection').backgroundColor : 'no br',
+            // PDF.js's own painter: on, it draws a second selection over the page image.
+            pdfjsPainter: !!(layer && layer.classList.contains('selectionRendering'))
+        };
+    });
+    ok(!selPaint.pdfjsPainter, 'one selection painter: PDF.js\'s own is off');
+    ok(selPaint.span && !/rgba\(0, 0, 0, 0\)|transparent/.test(selPaint.span)
+        && (selPaint.br === 'no br' || /rgba\(0, 0, 0, 0\)|transparent/.test(selPaint.br)),
+        'a PDF selection paints its words, not its line breaks', JSON.stringify(selPaint));
     await app.eval(() => { window.__spoken = []; document.getElementById('selPopRead').click(); });
     ok(await waitFor(app, () => window.__spoken[0] === 'harbour', 2000), 'Read in the popup reads the selection');
     await app.eval(() => { if (isPlaying) stopReading(); hideSelPop(); });

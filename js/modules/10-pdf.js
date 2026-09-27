@@ -200,6 +200,10 @@
                 viewer: host.firstElementChild,
                 eventBus, linkService, findController,
                 pageColors: themePageColors(),
+                // One selection painter, the theme's (typozen.css #pdfView .textLayer). PDF.js
+                // otherwise draws its own with a backdrop-filter over the page image, and the
+                // two together gave a PDF selection a colour of neither.
+                enableSelectionRendering: false,
                 annotationMode: lib.AnnotationMode.ENABLE_FORMS,
                 // The highlight tool's colours, PDF.js's own defaults. Its app supplies these;
                 // without them making a highlight threw (the colour's name is looked up here).
