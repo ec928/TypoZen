@@ -26,12 +26,11 @@ assert(!/LoadLexicon/.test(spellCs), 'spell engine does not load the WordNet lex
 const app = fs.readFileSync(path.join(root, 'TypoZen_App.cs'), 'utf8');
 assert(/user_words\.txt/.test(app), 'user dictionary file is user_words.txt in the cache');
 assert(/HandleSpellCheck/.test(app), 'host answers spell_check:');
-assert(/cmd:spell_check_doc/.test(app), 'Edit → Check Document posts cmd:spell_check_doc');
-assert(/cmd:spell_next/.test(app), 'Next Issue posts cmd:spell_next');
 
 const xaml = fs.readFileSync(path.join(root, 'TypoZen.xaml'), 'utf8');
-assert(/mSpellCheck/.test(xaml) && /Check Document/.test(xaml), 'Edit menu has Check Document');
-assert(/mSpellNext/.test(xaml), 'Edit menu has Next Issue');
+// Edit > Spelling (Check Document / Next Issue) was removed on 2026-09-27: every misspelling on
+// screen is underlined, and nobody used the walk.
+assert(!/mSpellCheck|mSpellNext|menuSpelling/.test(xaml), 'no Edit > Spelling submenu');
 
 const layout = fs.readFileSync(path.join(root, 'js', 'modules', '02-layout.js'), 'utf8');
 assert(/function scheduleSpellCheck/.test(layout), 'page schedules a check after typing');
@@ -42,7 +41,6 @@ assert(/data-spell-ignore/.test(layout) && /data-spell-add/.test(layout),
 
 const shell = fs.readFileSync(path.join(root, 'js', 'modules', '03-shell.js'), 'utf8');
 assert(/spell_hits:/.test(shell), 'host hits reach the page');
-assert(/spell_check_doc/.test(shell), 'Check Document command is handled');
 
 const css = fs.readFileSync(path.join(root, 'css', 'typozen.css'), 'utf8');
 assert(/::highlight\(typozen-spell\)/.test(css), 'wavy underline style exists');

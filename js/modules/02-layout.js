@@ -2791,7 +2791,6 @@
         let _spellPending = null;
         let _spellHits = [];
         let _spellBlockEl = null;
-        let _spellDocFrom = 0;
 
         function blockPlainText(el) {
             if (!el) return '';
@@ -2941,16 +2940,6 @@
             const first = nl < 0 ? raw : raw.slice(0, nl);
             const id = first.split('\t')[0];
             const hits = parseSpellHits(nl < 0 ? '' : raw.slice(nl + 1));
-            if (_spellPending && _spellPending.id === id && _spellPending.mode === 'doc') {
-                if (hits.length) {
-                    _spellDocFrom = (_spellPending.index | 0) + 1;
-                    jumpToSpellHit(_spellPending.index | 0, hits[0], _spellPending.text);
-                } else {
-                    _spellPending.index = (_spellPending.index | 0) + 1;
-                    spellCheckDocumentStep();
-                }
-                return;
-            }
             if (_spellPending && _spellPending.id === id && _spellPending.mode === 'live_viewport') {
                 _spellHits = hits || [];
                 const ranges = [];
@@ -2976,67 +2965,6 @@
             }
         }
         window.applySpellHits = applySpellHits;
-
-        function jumpToSpellHit(blockIndex, hit, text) {
-            try {
-                if (typeof goToModelBlock === 'function') goToModelBlock(blockIndex);
-            } catch (e) {}
-            const el = (typeof mountedBlockAtFormatIndex === 'function')
-                ? mountedBlockAtFormatIndex(blockIndex)
-                : (editor && editor.querySelector('.block[data-model-index="' + blockIndex + '"]'));
-            if (!el) return;
-            paintSpellOnBlock(el, [hit]);
-            const r = rangeForPlainOffset(el, hit.start, hit.len);
-            if (r) {
-                try {
-                    const sel = window.getSelection();
-                    sel.removeAllRanges();
-                    sel.addRange(r);
-                } catch (e2) {}
-            }
-            try { showSelPop(); fillSpellSuggestions(hit.word, hit.suggs); } catch (e3) {}
-        }
-
-        function spellCheckDocument() {
-            if (!spellingEnabledHere()) return;
-            _spellDocFrom = 0;
-            _spellPending = { id: '', mode: 'doc', index: 0, text: '' };
-            spellCheckDocumentStep();
-        }
-        window.spellCheckDocument = spellCheckDocument;
-
-        function spellNextIssue() {
-            if (!spellingEnabledHere()) return;
-            _spellPending = { id: '', mode: 'doc', index: _spellDocFrom | 0, text: '' };
-            spellCheckDocumentStep();
-        }
-        window.spellNextIssue = spellNextIssue;
-
-        function spellCheckDocumentStep() {
-            let blocks = [];
-            try {
-                if (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
-                    blocks = DocumentModel.blocks;
-            } catch (e) {}
-            let i = (_spellPending && _spellPending.mode === 'doc') ? (_spellPending.index | 0) : 0;
-            while (i < blocks.length) {
-                let text = String(blocks[i].raw == null ? '' : blocks[i].raw);
-                text = text.replace(/```[\s\S]*?```/g, ' ').replace(/`[^`]+`/g, ' ')
-                    .replace(/https?:\/\/\S+/gi, ' ').replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
-                if (text.replace(/\W+/g, '').length >= 2) {
-                    const id = 'doc' + i + 'x' + (++_spellReq);
-                    _spellPending = { id: id, mode: 'doc', index: i, text: text };
-                    try { postMsg('spell_check:' + id + '\n' + text.slice(0, 8000)); } catch (e2) {}
-                    return;
-                }
-                i++;
-            }
-            _spellPending = null;
-            clearSpellHighlights();
-            try {
-                if (typeof updateStatusBar === 'function') { /* no-op: host owns the bar */ }
-            } catch (e3) {}
-        }
 
         function suggestionsForWord(word) {
             const w = String(word || '');

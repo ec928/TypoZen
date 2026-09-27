@@ -43,14 +43,6 @@ try {
     });
     assert(painted > 0, 'Preview paints a spelling highlight (size=' + painted + ')');
 
-    await app.eval(() => handleCommand('spell_check_doc'));
-    await sleep(600);
-    const sel = await app.eval(() => {
-        const s = window.getSelection();
-        return s && !s.isCollapsed ? s.toString() : '';
-    });
-    assert(/teh/i.test(sel), 'Check Document selects the misspelling (got ' + JSON.stringify(sel) + ')');
-
     // Source: the same engine, its visible lines drawn as decorations (01a-source.js).
     const underlinedInSource = () => app.eval(() =>
         Array.from(document.querySelectorAll('#source-cm .typozen-spell')).map(e => e.textContent));

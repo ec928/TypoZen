@@ -65,3 +65,5 @@ docs/internal/
 
 # Installer output, rebuilt by tools/Build-Installer.ps1 (needs Inno Setup 6)
 dist-installer/
+# Written by the CodeDOM build (a binding redirect); not needed at run time and never shipped.
+TypoZen.exe.config

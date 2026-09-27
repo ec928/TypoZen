@@ -1640,8 +1640,6 @@ namespace TypoZen
             BindClick("mMarkToggle", (s, e) => SendMsg("cmd:mark_toggle"));
             BindClick("mMarksPane", (s, e) => SendMsg("cmd:show_marks"));
             BindClick("mReturnJump", (s, e) => SendMsg("cmd:return_jump"));
-            BindClick("mSpellCheck", (s, e) => SendMsg("cmd:spell_check_doc"));
-            BindClick("mSpellNext", (s, e) => SendMsg("cmd:spell_next"));
             BindClick("mInsertLink", (s, e) => SendMsg("fmt:link"));
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
             BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
@@ -9827,14 +9825,13 @@ namespace TypoZen
         // "tableMenu" was listed here and exists nowhere -- the toolbar's table button is
         // btnTable -- so FindElement returned null, the loop skipped it, and Insert Table
         // stayed bright on every book. The Edit items that change the document (Undo, Redo,
-        // Cut, Paste) and the Spelling group lock with them; Copy, Select All, Find, Go to
+        // Cut, Paste) lock with them; Copy, Select All, Find, Go to
         // Page and the bookmark items read the document and stay.
         private static readonly string[] FormatControls =
         {
             "headingMenu", "btnQuote", "listMenu",
             "btnTable",
             "mInsertLink", "mInsertTable", "mStrike",
-            "menuSpelling", "mSpellCheck", "mSpellNext",
             "mUndo", "mRedo", "mCut", "mPaste",
         };
         private readonly Dictionary<string, object> _formatTips = new Dictionary<string, object>();

@@ -2326,12 +2326,6 @@
             else if (cmd === "toggle_debug_hud") {
                 if (typeof window.toggleDebugHUD === 'function') window.toggleDebugHUD();
             }
-            else if (cmd === "spell_check_doc") {
-                if (typeof spellCheckDocument === 'function') spellCheckDocument();
-            }
-            else if (cmd === "spell_next") {
-                if (typeof spellNextIssue === 'function') spellNextIssue();
-            }
         }
 
         // Table size picker: 10 columns × 8 data-rows (Notepad-style hover grid)

@@ -34,7 +34,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Live block editing:** Format Markdown and text on the fly, including headings, lists, tables, tasks, emphasis, and fenced code.
 - **Deep immersion:** Engage Focus mode, Typewriter scroll, and chrome auto-hide to eliminate distractions while you work.
 - **Engineered for massive files:** A virtualized rendering engine builds only the part of the document on screen, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it.
-- **Spelling as you type:** See wavy underlines in Preview for misspelled words. Select for replacements, Ignore, or Add to dictionary, or use Edit → Spelling for a document-wide check.
+- **Spelling as you type:** wavy underlines under every misspelled word on screen, in Preview and Source. Select one for replacements, Ignore, or Add to dictionary.
 
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
@@ -193,7 +193,6 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 
 - **Every misspelling on screen is underlined** (wavy red), re-checked after a pause in typing, when you scroll, switch tabs or switch between Preview and Source — so the underlines do not come and go.
 - **Select an underlined word** — the popover offers replacements, **Ignore**, and **Add to dictionary** (persisted in the cache folder as `user_words.txt`, not in the document).
-- **Edit → Spelling → Check Document** walks the file and selects the first issue; **Next Issue** continues. Books, PDFs and Reader are skipped.
 - Chromium's own spell checker is switched off in both views, so there is one dictionary and one look.
 
 Preview uses **WPF’s built-in dictionaries** — English, French, German and Spanish, the same engine a WPF TextBox uses — in your Windows display language. Other languages will not underline until a dictionary for them is available.
