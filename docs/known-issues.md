@@ -33,6 +33,26 @@ still being learned, and is exact once the document has been read through. Mark 
 
 ---
 
+### What a book's own files can still get wrong
+
+Measured across a 148-book library on 2026-09-27. None of it loses text.
+
+- **Obfuscated embedded fonts** (2 books: *Alien: Covenant*, *Red Country*). EPUB lets a
+  publisher scramble a font's first bytes against the book's identifier
+  (`META-INF/encryption.xml`); `EpubReader` does not undo it, so those fonts fail to load
+  and the text falls back to the theme's.
+- **Sibling and position selectors** (4 books use `+`/`~`, 2 use `:first-child` and the
+  like). Every top-level element is mounted in its own `.block`, so `h2 + p` or
+  `p:first-child` never match across blocks: a "no indent after a heading" rule is lost.
+- **Tables in two-column pages** (17 books have tables) are not yet checked for width. The
+  CSS allowlist caps declared widths at the column, but a table's natural width is not a
+  declaration.
+
+Not present in that library and not handled: DRM, fixed-layout (pre-paginated) books,
+right-to-left or vertical text, EPUB 3 footnote markup, MathML, audio and video.
+
+---
+
 ## Product notes (not defects)
 
 ### Spelling is not the bundled dictionary
@@ -44,6 +64,24 @@ Books, PDFs and Reader are not checked.
 ---
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
+
+### A book's stylesheet could move the page — **fixed** (0.7.10–0.7.11)
+
+Zones of Thought's `body { margin: 0 1.5em 0 1em }` landed on `#editor`, the element that
+is the page, and pushed the right column of every spread off the window whatever View >
+Margins said. It was a class, not a book: 36 of 148 library books put layout on the page
+this way, and 49 had rules that escaped the book into the application (rules inside
+`@media` were never scoped). Book CSS is now parsed by the browser and rewritten through
+an allowlist (`applyBookStyles`): the page takes text properties only; elements inside the
+book take text properties and bounded box properties; the app's `.block` boxes take
+nothing. Inline `style=""` goes through the same allowlist. Guarded by
+`book-css-browser` (a hostile stylesheet).
+
+### A PDF tab forgot its columns and Pages — **fixed** (0.7.11)
+
+The PDF viewer held its layout in page memory, shared by every PDF tab and lost on
+restart. `DocTab.Scroll` beside `Columns`, saved in the session and sent with `load_pdf`.
+Guarded by `pdf-layout-restore-app`.
 
 ### Keyboard shortcuts did nothing while typing — **fixed** (0.5.7)
 
@@ -107,8 +145,8 @@ as `910`, and that produced two false reproductions.
 
 Hilldiggers' stylesheet sets `color: black` on its paragraph classes. `applyBookStyles` now
 drops neutral `color` / `background-color` / bare-colour `background` declarations (black,
-white, greys) so the theme decides; coloured declarations stay. Inline `style=` colours in
-a book's markup are not touched.
+white, greys) so the theme decides; coloured declarations stay. Inline `style=` in a book's
+markup now goes through the same rules (0.7.11).
 
 ### Source search highlighting jumped to the wrong place — **fixed** (0.2.30)
 
@@ -250,16 +288,17 @@ Preview swapped its amber edge for the accent one. In Reader the "hover off" rul
 `box-shadow: none !important` / `background-color: transparent !important`, which erased
 the bookmark rail *and* the arrival wash on whichever paragraph the pointer rested over.
 
-**Now:** the gutter is a single `::before` rail owned by bookmarks, four opacities, and
-there is no block-body hover cue at all. Nothing in that lane uses `!important`.
+**Now:** the gutter holds one ribbon beside a marked paragraph's first line, owned by
+bookmarks, and nothing appears on hover (0.7.4 removed the hover preview and its View menu
+item: the gutter click it previewed had gone in f673fc2). Nothing in that lane uses
+`!important`.
 
 ---
 
 ## Preferences (not bugs)
 
-- **View → Block Hover:** `off` / `gutter` (default). Controls the hover *preview* only —
-  a bookmark that exists is always drawn, in Reader as well as Preview.
-- Search and Marks jumps share **`flashMarkFocus`** (brief amber wash, `MARK_FLASH_MS`).
+- Search and Marks jumps share **`flashMarkFocus`**: a brief wash in the theme's text colour
+  (`--arrive-bg`), not the marks' colour.
 
 ---
 
