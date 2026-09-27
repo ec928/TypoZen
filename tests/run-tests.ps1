@@ -28,7 +28,7 @@ $errFile = [System.IO.Path]::GetTempFileName()
 $allSuites = @(Get-ChildItem ".\tests\*.mjs" | Sort-Object Name)
 # Helpers / generators, not suites.
 $helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
-             'fonts-ab.mjs', 'scripts-ab.mjs', 'narrator-sidecar.mjs')
+             'fonts-ab.mjs', 'scripts-ab.mjs', 'cm-ab.mjs', 'narrator-sidecar.mjs')
 # make-*.mjs build fixtures (run by hand; as suites they rewrote the committed PDFs on every
 # gate) and _*.mjs are scratch files. Build_TypoZen.ps1 applies the same rule.
 $allSuites = @($allSuites | Where-Object { $helpers -notcontains $_.Name -and $_.Name -notlike 'make-*.mjs' -and $_.Name -notlike '_*' })
