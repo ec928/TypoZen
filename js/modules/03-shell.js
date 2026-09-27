@@ -1864,7 +1864,15 @@
                 postViewState(currentViewState());
                 return;
             }
-            if (cmd === "toggle_mode") {
+            // mode_to_source: Preview -> Source directly (applyViewState). toggle_mode cycles
+            // Preview -> Reader -> Source, and the Reader step made the whole laid-out
+            // document non-editable only for the next step to make it editable again --
+            // about 1.2 s on a 74 KB file, most of the 1.7 s a switch into Source took. The
+            // direct request enters Source through the same branch as Reader -> Source, so
+            // there is one way into Source, not two to keep in step.
+            if (cmd === "toggle_mode" || cmd === "mode_to_source") {
+                const directToSource = cmd === "mode_to_source";
+                if (directToSource && state.mode === 'source') return;
                 // Sticky line: what the user is looking at (viewport), not only caret.
                 // Source scroll without click leaves selectionStart far from the visible
                 // region — that produced Preview jumps 2000→700 / 3000→1500.
@@ -1891,13 +1899,13 @@
                 }
                 rememberStickyLine(stickyLine);
 
-                if (state.mode === 'wysiwyg') {
+                if (state.mode === 'wysiwyg' && !directToSource) {
                     state.mode = 'reader';
                     setEditorEditable(false);
                     applyEditorChromeForMode();
                     postMsg("mode_changed:reader");
                     state.pageAdvance = true;
-                } else if (state.mode === 'reader') {
+                } else if (state.mode === 'reader' || directToSource) {
                     // A book stays in Reader: there is nothing to edit and nothing to
                     // serialise to Source, so leaving would only produce an empty editor.
                     if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') {

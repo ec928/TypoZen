@@ -222,6 +222,9 @@
             _applyingViewState = true;
             try {
                 const targetInternal = internalModeFromView(next.mode);
+                // Preview -> Source goes straight there; toggling would pass through Reader
+                // (see mode_to_source in 03-shell.js). Other changes still step the cycle.
+                if (targetInternal === 'source' && state.mode === 'wysiwyg') handleCommand('mode_to_source');
                 for (let i = 0; i < 3 && state.mode !== targetInternal; i++) {
                     handleCommand('toggle_mode');
                 }
