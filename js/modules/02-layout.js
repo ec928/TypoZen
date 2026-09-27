@@ -6921,6 +6921,18 @@
                     openFindBar(null, true);
                     return;
                 }
+                // F3 / Shift+F3: next / previous hit (for-agents.md, Search UX). Documented
+                // for a long time, but no handler existed in the page or the host until
+                // 2026-09-27 -- found by source-keys-app. Only with live hits; otherwise the
+                // key is left alone.
+                if (e.key === 'F3' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    if (findState.matches && findState.matches.length) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        findStep(e.shiftKey ? -1 : 1);
+                    }
+                    return;
+                }
                 // Ctrl+G → go-to-page (paginated). F3 remains find next.
                 if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey
                     && (e.key === 'g' || e.key === 'G')) {
