@@ -1735,7 +1735,19 @@
                     return;
                 }
                 const change = {};
-                if (which === 'mode') change.mode = value;
+                if (which === 'mode') {
+                    if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub' && value !== 'reader') {
+                        // OPTIMIZATION: Host is switching from an epub tab to a text tab.
+                        // It sends view_set commands (mode, columns, scroll) BEFORE load_content.
+                        // Tear down the DOM immediately, then strip the layout classes on the empty DOM,
+                        // so upcoming view_set commands don't force massive layout reflows.
+                        try { if (typeof editor !== 'undefined' && editor) editor.innerHTML = ''; } catch(e) {}
+                        try { if (typeof leaveBookViewForMarkdown === 'function') leaveBookViewForMarkdown(); } catch(e) {}
+                        DocumentModel.kind = 'text';
+                        state.mode = 'wysiwyg'; // Fast-forward past slow toggle_mode cycles
+                    }
+                    change.mode = value;
+                }
                 else if (which === 'columns') change.columns = parseInt(value, 10) === 2 ? 2 : 1;
                 else if (which === 'scroll') change.scroll = value;
                 else return;

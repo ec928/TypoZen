@@ -675,6 +675,30 @@ Get-Content "$env:LOCALAPPDATA\TypoZen_Cache_Portable\perf.log"
 Marks are milliseconds from entry to `Main`; the log is appended, so delete it between runs.
 
 ---
+## Default Media Interactions & Preferences
+
+TypoZen opens by document _type_, not size. View settings are saved per document type and can be customized by the user:
+
+| Type | Files | Theme | Line | Paragraph | Margins | Justified | Font Size | Word Wrap | Columns |
+|---|---|---|---|---|---|---|---|---|---|
+| **Code** | HTML, XML, XAML, CSS, JSON, JS/TS, C#, etc. plus `.log` and `.csv` | Tokyo Night | Tight | Tight | Narrow | off | Normal | off | n/a |
+| **Documents** | `.md`, `.txt`, untitled | Gruvbox | Normal | Normal | Narrow | off | Normal | on | n/a |
+| **ePub** | `.epub` | RosǸ Pine Dawn | Relaxed | Loose | Regular | off | Large | n/a | Inherits from ePub TypePrefs |
+| **PDF** | `.pdf` | Catppuccin Latte | ?" | ?" | ?" | ?" | ?" | ?" | n/a |
+
+These are the out-of-box defaults. PDF takes the theme only (PDF.js lays the page out itself). Images, video and rendered HTML pages have no text layout of TypoZen's and are not a type.
+
+### Hardcoded Interactions (Not customizable by user)
+The following behaviors are hardcoded per media type for *newly opened* files and cannot be configured globally as defaults. While some can be toggled per-tab (and saved to the session), their initial state on open is fixed:
+
+| Type | Default Mode | Default Layout | Default Columns | User can change Mode per-tab? | User can change Layout per-tab? | User can change Columns per-tab? |
+|---|---|---|---|---|---|---|
+| **Code** | Source | Scroll | 1-Col | Yes (to Preview/Reader) | No (Source is strictly Scroll) | No (Source is strictly 1-Col) |
+| **Documents** | Preview | Scroll | 1-Col | Yes | Yes (in Preview/Reader) | Yes (in Preview/Reader) |
+| **ePub** | Reader | Pagination | Inherits from ePub TypePrefs | No (forced by engine) | Yes (can toggle Scroll/Pagination) | Yes |
+| **PDF** | PDF View | Scroll | 1-Col | No (forced by engine) | Yes (can toggle Scroll/Pagination) | Yes |
+
+---
 ## Supported Markdown (practical)
 **Yes:** headings, bold/italic/strike, inline code, fenced code, links, images (stored beside the document after save), blockquotes, bullet/ordered/task lists with basic indent, tables, thematic breaks (`---`, `- - -`, and friends).
 
