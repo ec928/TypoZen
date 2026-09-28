@@ -1,5 +1,5 @@
 /**
- * Annotating a PDF, filling in its form, and saving (docs/pdf-and-audit-plan.md, Phase 4).
+ * Annotating a PDF, filling in its form, and saving (docs/archive/pdf-and-audit-plan.md, Phase 4).
  *
  * Works on copies in a temp folder. A highlight made from selected text can be undone and
  * redone, survives switching to another tab and back (the unsaved PDF is kept aside), and

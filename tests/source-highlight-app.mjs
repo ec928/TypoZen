@@ -2,7 +2,7 @@
  * Source-mode search highlighting.
  *
  * Source draws its search marks as CodeMirror decorations on the real text
- * (js/modules/01a-source.js; docs/codemirror-source-plan.md). The reader's promises: every
+ * (js/modules/01a-source.js; docs/archive/codemirror-source-plan.md). The reader's promises: every
  * hit marked, the marks on the matched characters, the ring on the current hit and
  * following the keyboard, no stale marks after an edit, a late jump actually shown, and
  * nothing left behind on leaving Source. Decorations cannot drift, so the checks read them

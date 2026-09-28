@@ -1,5 +1,5 @@
 /**
- * Builds tests/pdf-scanned.pdf for reading text in scanned pages (docs/pdf-and-audit-plan.md,
+ * Builds tests/pdf-scanned.pdf for reading text in scanned pages (docs/archive/pdf-and-audit-plan.md,
  * Phase 3): two pages that are pictures of text and hold no text of their own, as a scanner
  * makes them. The words are drawn on a canvas and embedded as images.
  *

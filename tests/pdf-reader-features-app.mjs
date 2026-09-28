@@ -1,5 +1,5 @@
 /**
- * A PDF joins the reader's features (docs/pdf-and-audit-plan.md, Phase 2): Read Aloud reads
+ * A PDF joins the reader's features (docs/archive/pdf-and-audit-plan.md, Phase 2): Read Aloud reads
  * its paragraphs and highlights each on the page, the selection popup offers Look up and
  * Read, a bookmark or highlight made on it is kept, and a password-protected PDF asks for
  * its password.

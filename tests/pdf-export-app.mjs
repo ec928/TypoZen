@@ -1,5 +1,5 @@
 /**
- * Saving a PDF's pages and pictures as images (docs/pdf-and-audit-plan.md, Phase 2b).
+ * Saving a PDF's pages and pictures as images (docs/archive/pdf-and-audit-plan.md, Phase 2b).
  *
  * Runs the export the File menu starts, minus the dialog and the folder picker (they need a
  * person): pdf_export_test, honoured only under --debug and only into the temp folder, goes

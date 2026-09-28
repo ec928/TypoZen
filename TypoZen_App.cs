@@ -363,7 +363,8 @@ namespace TypoZen
         /// </summary>
         internal static void PerfMark(string label)
         {
-            if (!_perfOn) return;
+            // Privacy Mode writes no log of any kind -- this one included.
+            if (!_perfOn || DebugLogSuppressed) return;
             try
             {
                 if (_perfLog == null)
@@ -15020,7 +15021,7 @@ namespace TypoZen
             return best;
         }
 
-        // ---- Annotating a PDF and saving it (docs/pdf-and-audit-plan.md, Phase 4) -----------
+        // ---- Annotating a PDF and saving it (docs/archive/pdf-and-audit-plan.md, Phase 4) -----------
         //
         // The annotations and form entries live in the page's PDF.js until saved. The page
         // reports the first change (pdf_modified:1) and the tab counts as unsaved (PdfEdited,
@@ -15298,7 +15299,7 @@ namespace TypoZen
             catch (Exception ex) { LogFault("pdf save test", ex); }
         }
 
-        // ---- Text in scanned PDF pages (docs/pdf-and-audit-plan.md, Phase 3) ----------------
+        // ---- Text in scanned PDF pages (docs/archive/pdf-and-audit-plan.md, Phase 3) ----------------
         //
         // A page with no text is drawn by the page and sent here; Windows' own text
         // recognition (Windows.Media.Ocr, on this computer, in the languages Windows has
@@ -15460,7 +15461,7 @@ namespace TypoZen
             finally { if (deferral != null) deferral.Complete(); }
         }
 
-        // ---- Saving pages and pictures from a PDF (docs/pdf-and-audit-plan.md, Phase 2b) ----
+        // ---- Saving pages and pictures from a PDF (docs/archive/pdf-and-audit-plan.md, Phase 2b) ----
         //
         // File > Save Pages as Images / Save All Images in PDF. The host asks the page what it
         // needs for the dialog (pdf_export_ask -> pdf_export_info), shows it and a folder
@@ -16148,7 +16149,7 @@ namespace TypoZen
 
         /// <summary>
         /// Open an image / media file or HTML page on the native Chromium surface (read-only).
-        /// See docs/native-reader-plan.md.
+        /// See docs/archive/native-reader-plan.md.
         /// </summary>
         private void OpenNative(string path, bool forceLoad = false)
         {

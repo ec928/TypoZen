@@ -1,6 +1,6 @@
 /**
  * Builds tests/pdf-form.pdf: one page with one fillable text field ("name"), for filling in
- * a PDF form and saving it (docs/pdf-and-audit-plan.md, Phase 4). Written by hand -- a
+ * a PDF form and saving it (docs/archive/pdf-and-audit-plan.md, Phase 4). Written by hand -- a
  * minimal AcroForm -- since a browser's print to PDF makes no form fields.
  *
  *   node tests/make-pdf-form.mjs

@@ -1,7 +1,7 @@
 // The parts of CodeMirror 6 that Source mode uses, bundled by tools/Update-CodeMirror.ps1
 // into js/vendor/codemirror/codemirror.js as one classic script exposing window.TzCM.
 //
-// Deliberately absent (docs/codemirror-source-plan.md, 5.2-5.4): CodeMirror's history
+// Deliberately absent (docs/archive/codemirror-source-plan.md, 5.2-5.4): CodeMirror's history
 // (HistoryManager is the one undo), its search panel, autocomplete, and the markdown()
 // helper, whose keymap binds Enter -- Source's Enter is TypoZen's own.
 export {

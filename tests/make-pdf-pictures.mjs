@@ -1,5 +1,5 @@
 /**
- * Builds tests/pdf-pictures.pdf for Save All Images in PDF (docs/pdf-and-audit-plan.md,
+ * Builds tests/pdf-pictures.pdf for Save All Images in PDF (docs/archive/pdf-and-audit-plan.md,
  * Phase 2b): two pages holding
  *   page 1  a 320x200 JPEG photo, a 16x16 icon, and a 96x48 logo
  *   page 2  the same logo again, and a 200x120 PNG with a transparent hole

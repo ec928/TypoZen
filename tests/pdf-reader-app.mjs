@@ -1,5 +1,5 @@
 /**
- * A PDF is read in the editor page by PDF.js (0.6.0; docs/pdf-and-audit-plan.md Phase 1).
+ * A PDF is read in the editor page by PDF.js (0.6.0; docs/archive/pdf-and-audit-plan.md Phase 1).
  *
  * Opens tests/pdf-sample.pdf (three pages, known text) and checks what a reader relies on:
  * real text on screen, pages drawn in the theme's colours, Go to Page, the page remembered

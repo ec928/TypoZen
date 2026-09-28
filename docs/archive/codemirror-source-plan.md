@@ -1,6 +1,6 @@
 # Source mode on CodeMirror 6 — implementation plan
 
-**Status: planned, not started (2026-09-27).** Ed chose CodeMirror 6 over colouring the
+**Status: built — Phases 0–4 shipped in 0.8.4–0.9.1 (2026-09-27); archived 2026-09-28.** *(Originally: planned, not started.)* Ed chose CodeMirror 6 over colouring the
 existing mirror: the best quality with no slowdown, accepting more work and more risk.
 The alternative that was turned down, and why, is in `pdf-and-audit-plan.md` (audit 1.3).
 

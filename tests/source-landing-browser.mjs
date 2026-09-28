@@ -2,7 +2,7 @@
  * Source lands where it should: switching modes keeps the line, and typewriter mode keeps
  * the caret.
  *
- * docs/codemirror-source-plan.md, Phase 2. Source reads and sets its scroll position by
+ * docs/archive/codemirror-source-plan.md, Phase 2. Source reads and sets its scroll position by
  * real line layout (sourceEditor.topLine(), scrollToOffset). The textarea it replaced could
  * only estimate from the scroll fraction, which a wrapped paragraph throws off.
  *

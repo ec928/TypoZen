@@ -1,5 +1,5 @@
 /**
- * A/B: what CodeMirror costs at startup (docs/codemirror-source-plan.md, Phase 0).
+ * A/B: what CodeMirror costs at startup (docs/archive/codemirror-source-plan.md, Phase 0).
  *
  * A is the template as it ships. B adds js/vendor/codemirror/codemirror.js ahead of the
  * modules and creates one empty EditorView after them, which is what Source mode will do

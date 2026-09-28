@@ -54,6 +54,8 @@ tab-drag auto-scroll, and the `big-file-app` deadline clean-up; Store screenshot
 - **Visible-window UI suites** (`disk-conflict`, `format-availability`, `native-surface`,
   `scratch-help`, `select-all`, `shell-seam`, `tab-strip-paint`) not run since 0.9.3 — they
   need Ed away from the machine.
+- **`docs/store-listing.md` is out of date**: the live listing's description and 20
+  features were rewritten for 0.9.6 in Partner Center (2026-09-28); copy them back here.
 - **Store product name** ("ePub Reader & Markdown Editor - TypoZen") does not mention PDFs —
   branding, Ed's call.
 - **Save All Images in PDF: the fast method often does not work** (Ed, 2026-09-28). In

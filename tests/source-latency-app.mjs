@@ -1,7 +1,7 @@
 /**
  * How fast Source answers a keystroke, and how long switching into Source takes.
  *
- * docs/codemirror-source-plan.md: Source is moving from a textarea to CodeMirror, and
+ * docs/archive/codemirror-source-plan.md: Source is moving from a textarea to CodeMirror, and
  * "no slowdown" is a claim to measure, not to assume. This records the textarea's numbers
  * as the baseline (SOURCE_LATENCY_RECORD=1 writes tests/source-latency-baseline.json) and,
  * once a baseline exists, fails if the median is more than 10% (and 2 ms) slower.

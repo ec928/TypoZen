@@ -5877,7 +5877,7 @@
            accent with --accent-tx, which the textarea's painted mirror could never do,
            because the glyphs on screen were the textarea's and not the mirror's. The
            mirror, and the geometry-matching that kept it on its words, went with the
-           textarea (docs/codemirror-source-plan.md, Phase 4).
+           textarea (docs/archive/codemirror-source-plan.md, Phase 4).
            ------------------------------------------------------------------ */
 
         let _srcHlSig = '';         // redraw the marks only when they would differ

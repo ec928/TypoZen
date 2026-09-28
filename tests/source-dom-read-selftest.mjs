@@ -1,7 +1,7 @@
 /**
  * Nothing reads Source's text from CodeMirror's DOM.
  *
- * docs/codemirror-source-plan.md, section 3. The code editor parked in
+ * docs/archive/codemirror-source-plan.md, section 3. The code editor parked in
  * docs/developer-editor-analysis.md corrupted real files because TypoZen rebuilt text from
  * a contenteditable's DOM after each keystroke. CodeMirror owns its buffer (state.doc) and
  * draws the DOM from it; the text is safe exactly as long as nobody reads it back out of

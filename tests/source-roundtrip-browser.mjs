@@ -1,7 +1,7 @@
 /**
  * Source hands the host exactly the text a <textarea> would.
  *
- * docs/codemirror-source-plan.md, section 5.1: Source is moving from a textarea to
+ * docs/archive/codemirror-source-plan.md, section 5.1: Source is moving from a textarea to
  * CodeMirror, and the host's save path reads Source's text directly
  * (FetchDocumentStateBlocking in TypoZen_App.cs, reproduced below as HOST_READ). A
  * difference of one byte there is a changed file on disk.

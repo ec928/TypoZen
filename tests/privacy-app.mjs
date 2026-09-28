@@ -202,7 +202,7 @@ if (!BOOK) {
 
 console.log('\n=== a PDF\'s page: remembered normally, not in Privacy Mode ===');
 // The page reaches book_positions.txt by the same path as a book's (book_position:), so
-// this is the same guard -- but a PDF had never been checked (pdf-and-audit-plan.md).
+// this is the same guard -- but a PDF had never been checked (docs/archive/pdf-and-audit-plan.md).
 async function turnPdfPage(a) {
     const t0 = Date.now();
     while (Date.now() - t0 < 15000 && !(await a.eval(() => !!(window.tzPdfTextReady && window.tzPdfTextReady())))) await sleep(200);

@@ -1,7 +1,7 @@
 /**
  * In Source, TypoZen's keys do TypoZen's things -- not CodeMirror's.
  *
- * docs/codemirror-source-plan.md, section 5.2. CodeMirror's default keymaps bind Ctrl+Z,
+ * docs/archive/codemirror-source-plan.md, section 5.2. CodeMirror's default keymaps bind Ctrl+Z,
  * Ctrl+D, Alt+arrows, Ctrl+[ and more to behaviours TypoZen either owns already or does
  * not have. Source loads CodeMirror's standard caret keys only, plus TypoZen's own Enter
  * and Tab. This presses real keys (through DevTools, so page-level shortcuts; the host's

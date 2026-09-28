@@ -1,5 +1,5 @@
 /**
- * Text in scanned PDF pages (docs/pdf-and-audit-plan.md, Phase 3).
+ * Text in scanned PDF pages (docs/archive/pdf-and-audit-plan.md, Phase 3).
  *
  * tests/pdf-scanned.pdf (from tests/make-pdf-scanned.mjs) is two pages that are pictures of
  * text. Opened, Windows' text recognition reads them: the words become the pages' text --

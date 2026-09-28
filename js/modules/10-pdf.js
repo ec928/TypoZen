@@ -1,5 +1,5 @@
 /**
- * PDFs, read in the editor page with PDF.js (docs/pdf-and-audit-plan.md, Phase 1).
+ * PDFs, read in the editor page with PDF.js (docs/archive/pdf-and-audit-plan.md, Phase 1).
  *
  * A PDF used to open on a separate WebView showing Edge's viewer, which TypoZen could not
  * reach: no theme, no remembered page, nothing of the reader's own. Here PDF.js's viewer

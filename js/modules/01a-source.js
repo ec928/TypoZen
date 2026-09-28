@@ -2,7 +2,7 @@
 // Source mode's editing surface. Classic script; shares page globals.
 // Load order is fixed -- see js/modules/load-order.json and TypoZen_Template.html.
 //
-// docs/codemirror-source-plan.md, section 5.1. Source is edited in CodeMirror 6
+// docs/archive/codemirror-source-plan.md, section 5.1. Source is edited in CodeMirror 6
 // (js/vendor/codemirror/codemirror.js, window.TzCM). The rest of the engine was written
 // against a <textarea>, so createSourceSurface returns an object that behaves like one
 // for exactly the members the engine uses -- value, the selection, setRangeText, scroll

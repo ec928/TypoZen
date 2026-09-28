@@ -1,7 +1,7 @@
 /**
  * Source highlights Markdown and code in Preview's colours, and plain text not at all.
  *
- * docs/codemirror-source-plan.md, Phase 3 and decisions 2-3. Markdown is parsed by
+ * docs/archive/codemirror-source-plan.md, Phase 3 and decisions 2-3. Markdown is parsed by
  * CodeMirror and drawn with tzmd-* classes whose CSS is Preview's own rules; code -- a
  * file of a code type, or a fenced block -- is drawn with tzcode-* classes from
  * 08-code.js's lexers, the same colours Preview's code blocks use. The document's type

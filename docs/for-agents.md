@@ -5,10 +5,10 @@ Product truth lives here and in the README; `docs/archive/` is history.
 
 ## What TypoZen is
 
-- **Windows prose editor + reader**: WPF shell + WebView2; Markdown/text in Preview/Source; epubs in Reader; PDFs in the editor page via PDF.js (`js/modules/10-pdf.js`, DocKind.Pdf; text read-only, but annotations and form entries are saved into a PDF -- unsaved state is `DocTab.PdfEdited`, not `IsDirty`, which the read-only rules force false; see docs/pdf-and-audit-plan.md Phase 4; the native WebView is used only to print the original); images/media as native read-only tabs.
+- **Windows prose editor + reader**: WPF shell + WebView2; Markdown/text in Preview/Source; epubs in Reader; PDFs in the editor page via PDF.js (`js/modules/10-pdf.js`, DocKind.Pdf; text read-only, but annotations and form entries are saved into a PDF -- unsaved state is `DocTab.PdfEdited`, not `IsDirty`, which the read-only rules force false; see docs/archive/pdf-and-audit-plan.md Phase 4; the native WebView is used only to print the original); images/media as native read-only tabs.
 - **Not a code editor.** A developer/code surface was attempted and **parked** (file corruption via contenteditable). See `docs/developer-editor-analysis.md`. Do not revive code-kind / fence-as-document editing unless the user explicitly reopens that work.
 - **Not ZenSeek.** CLI hooks (`--reader`, `--search`, …) exist for ZenSeek; do not merge the two apps.
-- **Native Reader:** HTML, images, media — second WebView. HTML Mode: **Source** = edit markup; **Reader** = read-only real page; **Preview locked** (Preview is Markdown editor mode, not HTML). CSS/XML/XAML → editor Source. See `docs/native-reader-plan.md`.
+- **Native Reader:** HTML, images, media — second WebView. HTML Mode: **Source** = edit markup; **Reader** = read-only real page; **Preview locked** (Preview is Markdown editor mode, not HTML). CSS/XML/XAML → editor Source. See `docs/archive/native-reader-plan.md`.
 
 ## Where truth lives
 
@@ -20,8 +20,8 @@ Product truth lives here and in the README; `docs/archive/` is history.
 | `docs/developer-editor-analysis.md` | Parked code-editor attempt |
 | `docs/releasing.md` | Build, package, release, Store. Read section 5 before touching install identity |
 | `docs/store-listing.md` | Store listing copy and the certification answers, with field limits |
-| `docs/fonts-ab.md` | Measured: loading only the active theme's fonts does not cut startup |
-| `docs/scripts-ab.md` | Measured: concatenating the modules into one runtime script does not either |
+| `docs/archive/fonts-ab.md` | Measured: loading only the active theme's fonts does not cut startup |
+| `docs/archive/scripts-ab.md` | Measured: concatenating the modules into one runtime script does not either |
 | `docs/archive/` | Dated snapshots. Every health review lives here now -- none of them describes the current tree |
 | `docs/archive/` | Historical plans and decision records — not current contracts |
 
@@ -131,7 +131,7 @@ Help: **F1** / **Help → Syntax & Shortcuts** → `#helpModal`. **Help → Abou
 
 | Module | Concern |
 |--------|---------|
-| `01a-source.js` | Source's editing surface: CodeMirror 6, mounted in `#source-cm`, behaving like the textarea it replaced (`createSourceSurface`). There is no textarea and no fallback (removed in Phase 4); the jsdom test page inlines the CodeMirror bundle, so its suites run the same surface as the app. **Nothing reads Source text from CodeMirror's DOM** -- `source-dom-read-selftest`. Highlighting follows the document's type, which the host sends before every load (`doc_ext:` -> `setSourceDocExt`): Markdown gets CodeMirror's parser with `tzmd-*` classes styled from Preview's own rules; code files and fenced blocks get `08-code.js`'s lexers as `tzcode-*` classes (one CSS rule per colour, shared with Preview's `::highlight`); plain text gets none. See `docs/codemirror-source-plan.md` |
+| `01a-source.js` | Source's editing surface: CodeMirror 6, mounted in `#source-cm`, behaving like the textarea it replaced (`createSourceSurface`). There is no textarea and no fallback (removed in Phase 4); the jsdom test page inlines the CodeMirror bundle, so its suites run the same surface as the app. **Nothing reads Source text from CodeMirror's DOM** -- `source-dom-read-selftest`. Highlighting follows the document's type, which the host sends before every load (`doc_ext:` -> `setSourceDocExt`): Markdown gets CodeMirror's parser with `tzmd-*` classes styled from Preview's own rules; code files and fenced blocks get `08-code.js`'s lexers as `tzcode-*` classes (one CSS rule per colour, shared with Preview's `::highlight`); plain text gets none. See `docs/archive/codemirror-source-plan.md` |
 | `01-core.js` | State, view selectors, sticky helpers |
 | `02-layout.js` | Find/search, pagination, page window, search history, reader find keys |
 | `03-shell.js` | onload, themes, host commands |
