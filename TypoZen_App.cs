@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.10";
+        internal const string AppVersion = "0.9.11";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -7970,15 +7970,29 @@ namespace TypoZen
             public TypePrefs PrefsPdf = new TypePrefs();
             
             public HostPrefs() {
-                PrefsCode.FontSize = 1;
-                PrefsCode.WordWrap = false;
                 PrefsCode.ThemeName = "Tokyo Night";
-                PrefsEPub.ThemeName = "RosǸ Pine Dawn";
+                PrefsCode.LineSpacing = 0;
+                PrefsCode.ParaSpacing = 0;
+                PrefsCode.Margin = "narrow";
+                PrefsCode.Justified = false;
+                PrefsCode.FontSize = 2;
+                PrefsCode.WordWrap = false;
+
+                PrefsDocuments.ThemeName = "Gruvbox";
+                PrefsDocuments.LineSpacing = 1;
+                PrefsDocuments.ParaSpacing = 1;
+                PrefsDocuments.Margin = "narrow";
+                PrefsDocuments.Justified = false;
+                PrefsDocuments.FontSize = 2;
+                PrefsDocuments.WordWrap = true;
+
+                PrefsEPub.ThemeName = "Rosé Pine Dawn";
                 PrefsEPub.LineSpacing = 2;
                 PrefsEPub.ParaSpacing = 3;
                 PrefsEPub.Margin = "regular";
                 PrefsEPub.Justified = false;
                 PrefsEPub.FontSize = 3;
+
                 PrefsPdf.ThemeName = "Catppuccin Latte";
             }
 
