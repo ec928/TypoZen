@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.9";
+        internal const string AppVersion = "0.9.10";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -14032,6 +14032,8 @@ namespace TypoZen
         private void ApplyTabView(DocTab tab)
         {
             if (tab == null) return;
+            ApplyViewSettingsForType(GetDocType(tab.FilePath));
+            
             if (IsNativeTab(tab)) return;
             if (IsPdfTab(tab)) return;       // the PDF viewer keeps its own view
 
