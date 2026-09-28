@@ -729,3 +729,7 @@ in it are reproduced from each font file's own `name` table.
 
 ---
 _Built with zen and focus for writers, developers, and Markdown enthusiasts._
+
+## Backlog
+
+- File Associations: Capture both custom and hardcoded file extensions (e.g. .md, .txt, .epub, .pdf) for proper file type handling and integration.

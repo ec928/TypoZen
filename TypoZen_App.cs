@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.8";
+        internal const string AppVersion = "0.9.9";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1817,7 +1817,7 @@ namespace TypoZen
                         if (IsBookTab(tab))
                         {
                             var prefs = LoadHostPrefs();
-                            prefs.EPubColumns = next;
+                            prefs.PrefsEPub.Columns = next;
                             WriteHostPrefs(prefs);
                         }
                     }
@@ -7226,7 +7226,8 @@ namespace TypoZen
                         var prefs = LoadHostPrefs();
                         if (prefs != null)
                         {
-                            if (prefs.ThemeIndex >= 0) SendMsg("set_theme:" + prefs.ThemeIndex);
+                            var tp = GetCurrentTypePrefs(prefs);
+                            if (tp.ThemeIndex >= 0) SendMsg("set_theme:" + tp.ThemeIndex);
                             if (!string.IsNullOrEmpty(prefs.TtsVoiceId)) 
                             {
                                 // Validate that the saved voice still exists (it may have been
@@ -7933,16 +7934,59 @@ namespace TypoZen
         /// Host-owned settings.json fields. Page may update allowlisted view prefs only;
         /// document text is never stored here (tab session owns that).
         /// </summary>
+        private enum DocType { Documents, Code, EPub, Pdf }
+
+        private DocType GetDocType(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return DocType.Documents;
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            if (ext == ".epub") return DocType.EPub;
+            if (ext == ".pdf") return DocType.Pdf;
+            
+            string[] codeExts = { ".json", ".jsonc", ".xml", ".xaml", ".axaml", ".csproj", ".props", ".targets", ".config", ".resx", ".svg", ".xsd", ".plist", ".html", ".htm", ".css", ".cs", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".java", ".c", ".h", ".cpp", ".hpp", ".cc", ".go", ".rs", ".swift", ".kt", ".php", ".log", ".csv" };
+            if (Array.IndexOf(codeExts, ext) >= 0) return DocType.Code;
+            
+            return DocType.Documents;
+        }
+
+        private class TypePrefs
+        {
+            public int ThemeIndex = 0;
+            public string ThemeName = "";
+            public string Margin = "narrow";
+            public int LineSpacing = 1;
+            public int ParaSpacing = 1;
+            public bool Justified = false;
+            public int FontSize = 2;
+            public bool WordWrap = true;
+            public int Columns = 0;
+        }
+
         private sealed class HostPrefs
         {
-            public int ThemeIndex;
-            public string ThemeName = "";
+            public TypePrefs PrefsDocuments = new TypePrefs();
+            public TypePrefs PrefsCode = new TypePrefs();
+            public TypePrefs PrefsEPub = new TypePrefs();
+            public TypePrefs PrefsPdf = new TypePrefs();
+            
+            public HostPrefs() {
+                PrefsCode.FontSize = 1;
+                PrefsCode.WordWrap = false;
+                PrefsCode.ThemeName = "Tokyo Night";
+                PrefsEPub.ThemeName = "RosǸ Pine Dawn";
+                PrefsEPub.LineSpacing = 2;
+                PrefsEPub.ParaSpacing = 3;
+                PrefsEPub.Margin = "regular";
+                PrefsEPub.Justified = false;
+                PrefsEPub.FontSize = 3;
+                PrefsPdf.ThemeName = "Catppuccin Latte";
+            }
+
             public string Mode = "wysiwyg";
             public bool SidebarCollapsed;
             public bool RevealOnFocus;
             public bool FocusMode;
             public bool TypewriterMode;
-            public string Margin = "narrow";
             public string LastFilePath = "";
             public string LastContent = ""; // always written empty
             /// <summary>Global Search-tab recent queries (most recent first, max 8).</summary>
@@ -7955,7 +7999,6 @@ namespace TypoZen
             public string SidebarTab = "outline";
             public string TtsVoiceId = "";
             public double TtsSpeed = 1.0;
-            public int EPubColumns = 0;
         }
 
         private static string JsonEscape(string s)
@@ -8089,6 +8132,18 @@ namespace TypoZen
             return sb.ToString();
         }
 
+        private void LoadTypePrefs(string json, string suffix, TypePrefs tp)
+        {
+            int? ti = ExtractJsonInt(json, "themeIndex" + suffix); if (ti.HasValue) tp.ThemeIndex = ti.Value;
+            string s = ExtractJsonString(json, "themeName" + suffix); if (s != null) tp.ThemeName = s;
+            s = ExtractJsonString(json, "margin" + suffix); if (s != null) tp.Margin = s;
+            int? ls = ExtractJsonInt(json, "lineSpacing" + suffix); if (ls.HasValue) tp.LineSpacing = ls.Value;
+            int? ps = ExtractJsonInt(json, "paraSpacing" + suffix); if (ps.HasValue) tp.ParaSpacing = ps.Value;
+            bool? b = ExtractJsonBool(json, "justified" + suffix); if (b.HasValue) tp.Justified = b.Value;
+            int? fs = ExtractJsonInt(json, "fontSize" + suffix); if (fs.HasValue) tp.FontSize = fs.Value;
+            bool? ww = ExtractJsonBool(json, "wordWrap" + suffix); if (ww.HasValue) tp.WordWrap = ww.Value;
+        }
+
         private HostPrefs LoadHostPrefs()
         {
             var p = new HostPrefs();
@@ -8097,12 +8152,14 @@ namespace TypoZen
                 string path = PrefsPath();
                 if (!File.Exists(path)) return p;
                 string json = File.ReadAllText(path, Encoding.UTF8);
-                int? ti = ExtractJsonInt(json, "themeIndex");
-                if (ti.HasValue) p.ThemeIndex = ti.Value;
+                
+                LoadTypePrefs(json, "", p.PrefsDocuments);
+                LoadTypePrefs(json, "_code", p.PrefsCode);
+                LoadTypePrefs(json, "_epub", p.PrefsEPub);
+                LoadTypePrefs(json, "_pdf", p.PrefsPdf);
+
                 string s;
-                s = ExtractJsonString(json, "themeName"); if (s != null) p.ThemeName = s;
                 s = ExtractJsonString(json, "mode"); if (s != null) p.Mode = s;
-                s = ExtractJsonString(json, "margin"); if (s != null) p.Margin = s;
                 s = ExtractJsonString(json, "lastFilePath"); if (s != null) p.LastFilePath = s;
                 // lastContent deliberately not loaded into host prefs for rewrite (always blank out)
                 bool? b;
@@ -8119,7 +8176,6 @@ namespace TypoZen
                 b = ExtractJsonBool(json, "findWholeWord"); if (b.HasValue) p.FindWholeWord = b.Value;
                 s = ExtractJsonString(json, "ttsVoiceId"); if (s != null) { p.TtsVoiceId = s; }
                 s = ExtractJsonString(json, "ttsSpeed"); if (s != null && double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double speed)) { p.TtsSpeed = speed; }
-                int? cols = ExtractJsonInt(json, "epubColumns"); if (cols.HasValue) p.EPubColumns = cols.Value;
             }
             catch { }
             return p;
@@ -8129,16 +8185,28 @@ namespace TypoZen
         {
             if (p == null) p = new HostPrefs();
             string tab = (p.SidebarTab == "search") ? "search" : "outline";
+            
+            Func<TypePrefs, string, string> formatTp = (tp, suffix) => 
+                "\"themeIndex" + suffix + "\":" + tp.ThemeIndex + ","
+                + "\"themeName" + suffix + "\":\"" + JsonEscape(tp.ThemeName ?? "") + "\","
+                + "\"margin" + suffix + "\":\"" + JsonEscape(string.IsNullOrEmpty(tp.Margin) ? "narrow" : tp.Margin) + "\","
+                + "\"lineSpacing" + suffix + "\":" + tp.LineSpacing + ","
+                + "\"paraSpacing" + suffix + "\":" + tp.ParaSpacing + ","
+                + "\"justified" + suffix + "\":" + (tp.Justified ? "true" : "false") + ","
+                + "\"fontSize" + suffix + "\":" + tp.FontSize + ","
+                + "\"wordWrap" + suffix + "\":" + (tp.WordWrap ? "true" : "false") + ",";
+
             // Never persist document body in settings.json (tab session owns unsaved text).
             string json = "{"
-                + "\"themeIndex\":" + p.ThemeIndex + ","
-                + "\"themeName\":\"" + JsonEscape(p.ThemeName ?? "") + "\","
+                + formatTp(p.PrefsDocuments, "")
+                + formatTp(p.PrefsCode, "_code")
+                + formatTp(p.PrefsEPub, "_epub")
+                + formatTp(p.PrefsPdf, "_pdf")
                 + "\"mode\":\"" + JsonEscape(string.IsNullOrEmpty(p.Mode) ? "wysiwyg" : p.Mode) + "\","
                 + "\"sidebarCollapsed\":" + (p.SidebarCollapsed ? "true" : "false") + ","
                 + "\"revealOnFocus\":" + (p.RevealOnFocus ? "true" : "false") + ","
                 + "\"focusMode\":" + (p.FocusMode ? "true" : "false") + ","
                 + "\"typewriterMode\":" + (p.TypewriterMode ? "true" : "false") + ","
-                + "\"margin\":\"" + JsonEscape(string.IsNullOrEmpty(p.Margin) ? "narrow" : p.Margin) + "\","
                 + "\"lastFilePath\":\"" + JsonEscape(p.LastFilePath ?? "") + "\","
                 + "\"searchHistory\":" + FormatJsonStringArray(p.SearchHistory) + ","
                 + "\"lastSearchQuery\":\"" + JsonEscape(p.LastSearchQuery ?? "") + "\","
@@ -8147,7 +8215,6 @@ namespace TypoZen
                 + "\"sidebarTab\":\"" + tab + "\","
                 + "\"ttsVoiceId\":\"" + JsonEscape(p.TtsVoiceId ?? "") + "\","
                 + "\"ttsSpeed\":\"" + p.TtsSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\","
-                + "\"epubColumns\":" + p.EPubColumns + ","
                 + "\"lastContent\":\"\""
                 + "}";
             string prefsPath = PrefsPath();
@@ -8172,17 +8239,24 @@ namespace TypoZen
 
             if (!string.IsNullOrEmpty(pageJson))
             {
+                var tp = GetCurrentTypePrefs(prefs);
                 int? ti = ExtractJsonInt(pageJson, "themeIndex");
-                if (ti.HasValue && ti.Value >= 0) prefs.ThemeIndex = ti.Value;
+                if (ti.HasValue && ti.Value >= 0) tp.ThemeIndex = ti.Value;
 
                 string s = ExtractJsonString(pageJson, "themeName");
-                if (s != null) prefs.ThemeName = s;
+                if (s != null) tp.ThemeName = s;
 
                 s = ExtractJsonString(pageJson, "mode");
                 if (s == "source" || s == "wysiwyg") prefs.Mode = s;
 
                 s = ExtractJsonString(pageJson, "margin");
-                if (s == "narrow" || s == "regular" || s == "wide") prefs.Margin = s;
+                if (s == "narrow" || s == "regular" || s == "wide") {
+                    tp.Margin = s;
+                    _margin = s;
+                    SetMenuChecked("mMarginNarrow", _margin == "narrow");
+                    SetMenuChecked("mMarginRegular", _margin == "regular");
+                    SetMenuChecked("mMarginWide", _margin == "wide");
+                }
 
                 bool? b;
                 b = ExtractJsonBool(pageJson, "sidebarCollapsed"); if (b.HasValue) prefs.SidebarCollapsed = b.Value;
@@ -8214,9 +8288,10 @@ namespace TypoZen
             }
             if (_currentThemeIndex >= 0 && _currentThemeIndex < _themesList.Count)
             {
-                prefs.ThemeIndex = _currentThemeIndex;
+                var tp = GetCurrentTypePrefs(prefs);
+                tp.ThemeIndex = _currentThemeIndex;
                 if (!string.IsNullOrEmpty(_themesList[_currentThemeIndex].Name))
-                    prefs.ThemeName = _themesList[_currentThemeIndex].Name;
+                    tp.ThemeName = _themesList[_currentThemeIndex].Name;
             }
 
             prefs.LastContent = "";
@@ -8687,6 +8762,75 @@ namespace TypoZen
             sb.Append("]");
             sb.AppendLine();
             return sb.ToString();
+        }
+
+        private TypePrefs GetCurrentTypePrefs(HostPrefs prefs) {
+            DocType dt = GetDocType(_currentFilePath);
+            if (dt == DocType.Code) return prefs.PrefsCode;
+            if (dt == DocType.EPub) return prefs.PrefsEPub;
+            if (dt == DocType.Pdf) return prefs.PrefsPdf;
+            return prefs.PrefsDocuments;
+        }
+
+        private void SaveCurrentTypePrefs() {
+            var prefs = LoadHostPrefs();
+            var tp = GetCurrentTypePrefs(prefs);
+            tp.ThemeIndex = _currentThemeIndex;
+            if (_currentThemeIndex >= 0 && _currentThemeIndex < _themesList.Count)
+                tp.ThemeName = _themesList[_currentThemeIndex].Name;
+            tp.LineSpacing = _lineSpacing;
+            tp.ParaSpacing = _paraSpacing;
+            tp.Margin = _margin;
+            tp.Justified = _justified;
+            tp.FontSize = _fontSize;
+            tp.WordWrap = _wordWrap;
+            WriteHostPrefs(prefs);
+        }
+
+        private void ApplyViewSettingsForType(DocType dt) {
+            var prefs = LoadHostPrefs();
+            TypePrefs tp = prefs.PrefsDocuments;
+            if (dt == DocType.Code) tp = prefs.PrefsCode;
+            else if (dt == DocType.EPub) tp = prefs.PrefsEPub;
+            else if (dt == DocType.Pdf) tp = prefs.PrefsPdf;
+            
+            // Apply theme
+            if (tp.ThemeIndex >= 0 && tp.ThemeIndex < _themesList.Count) {
+                _currentThemeIndex = tp.ThemeIndex;
+                if (!string.IsNullOrEmpty(tp.ThemeName)) {
+                    // try match by name if index shifted
+                    for (int i=0; i<_themesList.Count; i++) {
+                        if (_themesList[i].Name == tp.ThemeName) { _currentThemeIndex = i; break; }
+                    }
+                }
+                ApplyTheme(_currentThemeIndex);
+            }
+            
+            // Apply others
+            _lineSpacing = tp.LineSpacing;
+            _paraSpacing = tp.ParaSpacing;
+            _margin = string.IsNullOrEmpty(tp.Margin) ? "narrow" : tp.Margin;
+            _justified = tp.Justified;
+            _fontSize = tp.FontSize;
+            _wordWrap = tp.WordWrap;
+            
+            // Sync to WebView
+            SendMsg("cmd:set_margin_" + _margin);
+            SendMsg("cmd:set_justify:" + (_justified ? "1" : "0"));
+            try { SendMsg("cmd:set_line_spacing:" + LineSpacingPresets[Clamp4(_lineSpacing)].ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch {}
+            try { SendMsg("cmd:set_para_spacing:" + ParaSpacingPresets[Clamp4(_paraSpacing)].ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch {}
+            SendMsg("cmd:set_font_size:" + _fontSize);
+            SendMsg("cmd:set_word_wrap:" + (_wordWrap ? "1" : "0"));
+            
+            // Sync menus
+            SetMenuChecked("mMarginNarrow", _margin == "narrow");
+            SetMenuChecked("mMarginRegular", _margin == "regular");
+            SetMenuChecked("mMarginWide", _margin == "wide");
+            SetMenuChecked("mJustify", _justified);
+            for (int j = 0; j < LineSpacingItems.Length; j++) SetMenuChecked(LineSpacingItems[j], j == _lineSpacing);
+            for (int j = 0; j < ParaSpacingItems.Length; j++) SetMenuChecked(ParaSpacingItems[j], j == _paraSpacing);
+            for (int j = 0; j < FontSizeItems.Length; j++) SetMenuChecked(FontSizeItems[j], j == _fontSize);
+            SetMenuChecked("mWordWrap", _wordWrap);
         }
 
         private void ApplyTheme(int idx)
@@ -9673,7 +9817,7 @@ namespace TypoZen
             if (IsWordWrapApplicable())
                 SendMsg(on ? "cmd:wordwrap_on" : "cmd:wordwrap_off");
             RefreshEditingAvailability();
-            if (!_applyingRestoredSettings) SaveWindowState();
+            if (!_applyingRestoredSettings) { SaveWindowState(); SaveCurrentTypePrefs(); }
         }
 
         /// <summary>
@@ -10010,6 +10154,7 @@ namespace TypoZen
         // here has been looked at on a real page, which is not true of an open field.
         private static readonly double[] LineSpacingPresets = { 1.4, 1.6, 1.8, 2.0 };
         private static readonly int[] ParaSpacingPresets = { 1, 3, 7, 12 };
+        private static readonly int[] FontSizePresets = { 13, 16, 20, 24 };
         private static readonly string[] LineSpacingItems =
             { "mLineTight", "mLineNormal", "mLineRelaxed", "mLineLoose" };
         private static readonly string[] ParaSpacingItems =
@@ -10017,6 +10162,7 @@ namespace TypoZen
 
         private int _lineSpacing = 1;
         private int _paraSpacing = 1;
+        private string _margin = "narrow";
         /// <summary>
         /// Whether hovering a paragraph offers its bookmark gutter: 0=off, 1=gutter.
         /// Default on. This is only the hover preview — a bookmark is always drawn.
@@ -10050,7 +10196,7 @@ namespace TypoZen
                 SetMenuChecked(LineSpacingItems[i], i == _lineSpacing);
             SendMsg("cmd:set_line_spacing:" + LineSpacingPresets[_lineSpacing].ToString(
                 System.Globalization.CultureInfo.InvariantCulture));
-            if (!_applyingRestoredSettings) SaveWindowState();
+            if (!_applyingRestoredSettings) { SaveWindowState(); SaveCurrentTypePrefs(); }
         }
 
         /// <summary>Gap between paragraphs, in pixels.</summary>
@@ -10061,7 +10207,7 @@ namespace TypoZen
                 SetMenuChecked(ParaSpacingItems[i], i == _paraSpacing);
             SendMsg("cmd:set_para_spacing:" + ParaSpacingPresets[_paraSpacing].ToString(
                 System.Globalization.CultureInfo.InvariantCulture));
-            if (!_applyingRestoredSettings) SaveWindowState();
+            if (!_applyingRestoredSettings) { SaveWindowState(); SaveCurrentTypePrefs(); }
         }
 
         /// <summary>
@@ -10076,7 +10222,7 @@ namespace TypoZen
             // renumber the settings format string -- and the page ignores it.
             _blockHover = ClampBlockHover(index);
             SendMsg("cmd:set_block_hover:" + BlockHoverKeys[_blockHover]);
-            if (!_applyingRestoredSettings) SaveWindowState();
+            if (!_applyingRestoredSettings) { SaveWindowState(); SaveCurrentTypePrefs(); }
         }
 
         private void SetFontType(int index)
@@ -10102,7 +10248,7 @@ namespace TypoZen
             }
 
             SendMsg("cmd:set_font_family:" + family);
-            if (!_applyingRestoredSettings) SaveWindowState();
+            if (!_applyingRestoredSettings) { SaveWindowState(); SaveCurrentTypePrefs(); }
         }
 
         private void SetFontSizeOverride(int index)
@@ -10114,7 +10260,7 @@ namespace TypoZen
                 SetMenuChecked(FontSizeItems[i], i == _fontSize);
 
             SendMsg("cmd:set_font_size:" + _fontSize);
-            if (!_applyingRestoredSettings) SaveWindowState();
+            if (!_applyingRestoredSettings) { SaveWindowState(); SaveCurrentTypePrefs(); }
         }
 
         /// <summary>
@@ -10136,7 +10282,7 @@ namespace TypoZen
             _justified = on;
             SetMenuChecked("mJustify", on);
             SendMsg("cmd:set_justify:" + (on ? "1" : "0"));
-            if (!_applyingRestoredSettings) SaveWindowState();
+            if (!_applyingRestoredSettings) { SaveWindowState(); SaveCurrentTypePrefs(); }
         }
 
         /// <summary>
@@ -13894,8 +14040,8 @@ namespace TypoZen
                 if (tab.Columns <= 0)
                 {
                     var prefs = LoadHostPrefs();
-                    if (prefs.EPubColumns > 0)
-                        tab.Columns = prefs.EPubColumns;
+                    if (prefs.PrefsEPub.Columns > 0)
+                        tab.Columns = prefs.PrefsEPub.Columns;
                 }
                 // Mode is forced by loadBookPayload; only columns are free.
                 RequestTabColumns(tab);
