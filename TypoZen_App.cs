@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.19";
+        internal const string AppVersion = "0.9.20";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4596,128 +4596,73 @@ namespace TypoZen
         /// index is committed — never wipe the body dir first (crash mid-persist used
         /// to lose every unsaved buffer).
         /// </summary>
-        private void PersistTabSession()
+        private class TabBodyWriteInfo
+        {
+            public string BodyName;
+            public string Content;
+        }
+
+        private readonly object _sessionWriteLock = new object();
+
+        private void PersistTabSession(bool runAsync = false)
         {
             if (_restoringTabs) return;
-            // Leave the last good session where it is. Replacing it with post-fault state
-            // turns one bad run into a bad restore on every launch after it, and the
-            // bodies it points at are what the reader recovers from.
             if (Program.DocumentStateSuspect) return;
-            // Privacy mode: the open documents are not written down, and any previous
-            // index goes with them -- otherwise closing would leave the last ordinary
-            // session on disk, looking current.
+            
             if (SuppressDocumentTraces())
             {
-                try { File.Delete(TabSessionPath()); } catch { }
+                Action deleteAct = () => { lock(_sessionWriteLock) { try { File.Delete(TabSessionPath()); } catch { } } };
+                if (runAsync) System.Threading.Tasks.Task.Run(deleteAct);
+                else deleteAct();
                 return;
             }
+
             try
             {
                 EnsureAtLeastOneTab();
                 string cache = CacheDir();
-                if (!Directory.Exists(cache)) Directory.CreateDirectory(cache);
                 string bodyDir = TabSessionBodiesDir();
+                string sessionPath = TabSessionPath();
 
-                if (!_sessionRestoreContent)
-                {
-                    // Opted out: drop bodies after writing a path-only index.
-                    int n0 = Math.Min(_tabs.Count, MaxSessionTabs);
-                    int active0 = _activeTabIndex;
-                    if (active0 < 0) active0 = 0;
-                    if (active0 >= n0) active0 = Math.Max(0, n0 - 1);
-                    var sb0 = new StringBuilder();
-                    sb0.AppendLine("TZTABS1");
-                    sb0.AppendLine("active=" + active0);
-                    sb0.AppendLine("count=" + n0);
-                    sb0.AppendLine();
-                    for (int i = 0; i < n0; i++)
-                    {
-                        var tab = _tabs[i];
-                        sb0.AppendLine("[tab " + i + "]");
-                        sb0.AppendLine("path=" + (tab.FilePath ?? ""));
-                        sb0.AppendLine("dirty=" + (tab.IsDirty ? "1" : "0"));
-                        sb0.AppendLine("kind=" + DocKindToken(tab));
-                        sb0.AppendLine("le=" + ((tab.LineEnding == "\r\n") ? "crlf" : "lf"));
-                        sb0.AppendLine("trail=" + EncodeTrailToken(tab.TrailingNewlines ?? ""));
-                        sb0.AppendLine("resume=" + tab.ResumeBlock);
-                        sb0.AppendLine("cols=" + tab.Columns);
-                        sb0.AppendLine("scroll=" + (tab.Scroll ?? ""));
-                        sb0.AppendLine("mode=" + (tab.ViewMode ?? ""));
-                        sb0.AppendLine("body=");
-                        sb0.AppendLine();
-                    }
-                    WriteStateFileAtomic(TabSessionPath(), sb0.ToString());
-                    if (Directory.Exists(bodyDir))
-                    {
-                        try
-                        {
-                            foreach (string f in Directory.GetFiles(bodyDir))
-                                try { File.Delete(f); } catch { }
-                            Directory.Delete(bodyDir);
-                        }
-                        catch { }
-                    }
-                    return;
-                }
-
-                Directory.CreateDirectory(bodyDir);
-
+                bool restoreContent = _sessionRestoreContent;
                 int n = Math.Min(_tabs.Count, MaxSessionTabs);
                 int active = _activeTabIndex;
                 if (active < 0) active = 0;
-                if (active >= n) active = n - 1;
+                if (active >= n) active = Math.Max(0, n - 1);
 
-                var keepBodies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 var sb = new StringBuilder();
                 sb.AppendLine("TZTABS1");
                 sb.AppendLine("active=" + active);
                 sb.AppendLine("count=" + n);
                 sb.AppendLine();
 
+                var writes = new List<TabBodyWriteInfo>();
+                var keepBodies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
                 for (int i = 0; i < n; i++)
                 {
                     var tab = _tabs[i];
                     string path = tab.FilePath ?? "";
                     bool dirty = tab.IsDirty;
-                    bool needBody = dirty || string.IsNullOrEmpty(path) || !File.Exists(path);
-                    string le = (tab.LineEnding == "\r\n") ? "crlf" : "lf";
-                    string trail = EncodeTrailToken(tab.TrailingNewlines ?? "");
-
+                    
                     sb.AppendLine("[tab " + i + "]");
                     sb.AppendLine("path=" + path);
                     sb.AppendLine("dirty=" + (dirty ? "1" : "0"));
                     sb.AppendLine("kind=" + DocKindToken(tab));
-                    sb.AppendLine("le=" + le);
-                    sb.AppendLine("trail=" + trail);
+                    sb.AppendLine("le=" + ((tab.LineEnding == "\r\n") ? "crlf" : "lf"));
+                    sb.AppendLine("trail=" + EncodeTrailToken(tab.TrailingNewlines ?? ""));
                     sb.AppendLine("resume=" + tab.ResumeBlock);
                     sb.AppendLine("cols=" + tab.Columns);
                     sb.AppendLine("scroll=" + (tab.Scroll ?? ""));
                     sb.AppendLine("mode=" + (tab.ViewMode ?? ""));
-                    // Native / book: never store body (not engine text).
+
+                    bool needBody = dirty || string.IsNullOrEmpty(path) || !File.Exists(path);
                     if (IsReadOnlyTab(tab)) needBody = false;
-                    if (needBody)
+
+                    if (restoreContent && needBody)
                     {
                         string bodyName = "t" + i + ".md";
-                        string bodyPath = Path.Combine(bodyDir, bodyName);
-                        string tmpBody = bodyPath + ".new";
-                        File.WriteAllText(tmpBody, tab.Content ?? "", new UTF8Encoding(false));
-                        try
-                        {
-                            if (File.Exists(bodyPath))
-                            {
-                                try { File.Replace(tmpBody, bodyPath, null); }
-                                catch
-                                {
-                                    try { File.Delete(bodyPath); } catch { }
-                                    File.Move(tmpBody, bodyPath);
-                                }
-                            }
-                            else File.Move(tmpBody, bodyPath);
-                        }
-                        catch
-                        {
-                            try { if (File.Exists(tmpBody)) File.Move(tmpBody, bodyPath); } catch { }
-                        }
+                        writes.Add(new TabBodyWriteInfo { BodyName = bodyName, Content = tab.Content ?? "" });
                         keepBodies.Add(bodyName);
                         sb.AppendLine("body=" + bodyName);
                     }
@@ -4728,37 +4673,101 @@ namespace TypoZen
                     sb.AppendLine();
                 }
 
-                // Index last: crash before this leaves previous index + old bodies intact.
-                WriteStateFileAtomic(TabSessionPath(), sb.ToString());
-                _sessionPersistFailNotified = false;
+                string indexText = sb.ToString();
 
-                // Orphans only after a successful index write.
-                try
+                Action writeAct = () =>
                 {
-                    foreach (string f in Directory.GetFiles(bodyDir))
+                    lock (_sessionWriteLock)
                     {
-                        string name = Path.GetFileName(f);
-                        if (name != null && name.EndsWith(".new", StringComparison.OrdinalIgnoreCase))
+                        try
                         {
-                            try { File.Delete(f); } catch { }
-                            continue;
+                            if (!Directory.Exists(cache)) Directory.CreateDirectory(cache);
+
+                            if (!restoreContent)
+                            {
+                                WriteStateFileAtomic(sessionPath, indexText);
+                                if (Directory.Exists(bodyDir))
+                                {
+                                    try
+                                    {
+                                        foreach (string f in Directory.GetFiles(bodyDir))
+                                            try { File.Delete(f); } catch { }
+                                        Directory.Delete(bodyDir);
+                                    }
+                                    catch { }
+                                }
+                                return;
+                            }
+
+                            if (!Directory.Exists(bodyDir)) Directory.CreateDirectory(bodyDir);
+
+                            foreach (var w in writes)
+                            {
+                                string bodyPath = Path.Combine(bodyDir, w.BodyName);
+                                string tmpBody = bodyPath + ".new";
+                                File.WriteAllText(tmpBody, w.Content, new UTF8Encoding(false));
+                                try
+                                {
+                                    if (File.Exists(bodyPath))
+                                    {
+                                        try { File.Replace(tmpBody, bodyPath, null); }
+                                        catch
+                                        {
+                                            try { File.Delete(bodyPath); } catch { }
+                                            File.Move(tmpBody, bodyPath);
+                                        }
+                                    }
+                                    else File.Move(tmpBody, bodyPath);
+                                }
+                                catch
+                                {
+                                    try { if (File.Exists(tmpBody)) File.Move(tmpBody, bodyPath); } catch { }
+                                }
+                            }
+
+                            WriteStateFileAtomic(sessionPath, indexText);
+                            
+                            Dispatcher.BeginInvoke(new Action(() => { _sessionPersistFailNotified = false; }));
+
+                            try
+                            {
+                                foreach (string f in Directory.GetFiles(bodyDir))
+                                {
+                                    string name = Path.GetFileName(f);
+                                    if (name != null && name.EndsWith(".new", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        try { File.Delete(f); } catch { }
+                                        continue;
+                                    }
+                                    if (name != null && !keepBodies.Contains(name))
+                                    {
+                                        try { File.Delete(f); } catch { }
+                                    }
+                                }
+                            }
+                            catch { }
                         }
-                        if (name != null && !keepBodies.Contains(name))
+                        catch (Exception ex)
                         {
-                            try { File.Delete(f); } catch { }
+                            Dispatcher.BeginInvoke(new Action(() => {
+                                LogFault("PersistTabSession", ex);
+                                NotifyPersistFailedOnce("Could not save the session",
+                                    "TypoZen could not write the tab session to disk.\n\n" +
+                                    ex.Message, ref _sessionPersistFailNotified);
+                            }));
                         }
                     }
-                }
-                catch { }
+                };
+
+                if (runAsync) System.Threading.Tasks.Task.Run(writeAct);
+                else writeAct();
             }
             catch (Exception ex)
             {
                 LogFault("PersistTabSession", ex);
-                NotifyPersistFailedOnce(
-                    "Could not save the session",
+                NotifyPersistFailedOnce("Could not save the session",
                     "TypoZen could not write the tab session to disk.\n\n" +
-                    "Unsaved tabs may not come back after a restart.\n\n" + ex.Message,
-                    ref _sessionPersistFailNotified);
+                    ex.Message, ref _sessionPersistFailNotified);
             }
         }
 
