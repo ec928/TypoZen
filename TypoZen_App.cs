@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.11";
+        internal const string AppVersion = "0.9.12";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -7992,6 +7992,7 @@ namespace TypoZen
                 PrefsEPub.Margin = "regular";
                 PrefsEPub.Justified = false;
                 PrefsEPub.FontSize = 3;
+                PrefsEPub.Columns = 2;
 
                 PrefsPdf.ThemeName = "Catppuccin Latte";
             }
@@ -8155,6 +8156,7 @@ namespace TypoZen
             int? ps = ExtractJsonInt(json, "paraSpacing" + suffix); if (ps.HasValue) tp.ParaSpacing = ps.Value;
             bool? b = ExtractJsonBool(json, "justified" + suffix); if (b.HasValue) tp.Justified = b.Value;
             int? fs = ExtractJsonInt(json, "fontSize" + suffix); if (fs.HasValue) tp.FontSize = fs.Value;
+            int? cl = ExtractJsonInt(json, "columns" + suffix); if (cl.HasValue) tp.Columns = cl.Value;
             bool? ww = ExtractJsonBool(json, "wordWrap" + suffix); if (ww.HasValue) tp.WordWrap = ww.Value;
         }
 
@@ -8208,6 +8210,7 @@ namespace TypoZen
                 + "\"paraSpacing" + suffix + "\":" + tp.ParaSpacing + ","
                 + "\"justified" + suffix + "\":" + (tp.Justified ? "true" : "false") + ","
                 + "\"fontSize" + suffix + "\":" + tp.FontSize + ","
+                + "\"columns" + suffix + "\":" + tp.Columns + ","
                 + "\"wordWrap" + suffix + "\":" + (tp.WordWrap ? "true" : "false") + ",";
 
             // Never persist document body in settings.json (tab session owns unsaved text).
