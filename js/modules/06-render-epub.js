@@ -2083,22 +2083,22 @@
                 return a ? ' style="text-align:' + a + '"' : '';
             };
 
-            let html = '<div class="table-wrapper"><table class="zen-table"><thead><tr>';
+            let html = '<div class="table-wrapper"><table class="zen-table"><thead><tr>\n';
             model.header.forEach(function (cell, i) {
-                html += '<th' + alignStyle(model.align[i]) + '>' + parseInline(cell) + '</th>';
+                html += '<th' + alignStyle(model.align[i]) + '>' + parseInline(cell) + '</th>\n';
             });
-            html += '</tr></thead>';
+            html += '</tr></thead>\n';
 
             if (model.rows.length) {
-                html += '<tbody>';
+                html += '<tbody>\n';
                 model.rows.forEach(function (row) {
-                    html += '<tr>';
+                    html += '<tr>\n';
                     row.forEach(function (cell, i) {
-                        html += '<td' + alignStyle(model.align[i]) + '>' + parseInline(cell) + '</td>';
+                        html += '<td' + alignStyle(model.align[i]) + '>' + parseInline(cell) + '</td>\n';
                     });
-                    html += '</tr>';
+                    html += '</tr>\n';
                 });
-                html += '</tbody>';
+                html += '</tbody>\n';
             }
             html += '</table></div>';
             return html;

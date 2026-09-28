@@ -385,7 +385,7 @@ preferred on load once it exists. An update replaces the shipped file and cannot
 | **Remember unsaved documents between sessions** | **Off** | When on, dirty/untitled tab bodies are stored for restore. When off, nothing document-like is kept in the cache beyond what you explicitly save. |
 | **Keep recent files list** | On | File → Open Recent |
 | **Clear Recent Searches** | — | Drops the last-8 Search history and the restored Search-box text only |
-| **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents. Includes recent Search queries, open tabs, recent files, match-case/whole-word, and web storage (on next launch). |
+| **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents. Includes recent Search queries, open tabs, recent files, match-case/whole-word, view settings, and web storage (on next launch). |
 
 Also restored: window size and position, theme, margins, mode, line and paragraph spacing, justification, F7/F8/F9, zoom, scrubber/status-bar visibility, chrome auto-hide, side-panel auto-hide, open tab paths **and each tab's column layout** (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
 

@@ -3127,6 +3127,13 @@
             try {
                 if (typeof HistoryManager !== 'undefined') HistoryManager.beginEdit();
                 const range = sel.getRangeAt(0);
+                // Chromium's double-click word selection often grabs the trailing
+                // space: "tre " instead of "tre". deleteContents would eat it, so
+                // "tree" lands right against the next word → "treetree". Keep
+                // whatever whitespace the browser included beyond the word itself.
+                const selText = sel.toString() || '';
+                const trailingWs = selText.match(/(\s+)$/);
+                if (trailingWs) replacement = replacement + trailingWs[1];
                 range.deleteContents();
                 range.insertNode(document.createTextNode(replacement));
                 sel.removeAllRanges();

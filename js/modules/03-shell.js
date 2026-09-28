@@ -1697,7 +1697,7 @@
                     document.head.appendChild(style);
                 }
                 if (family) {
-                    style.textContent = `body, #editor { font-family: ${family} !important; }`;
+                    style.textContent = `body, #editor, #source-cm { font-family: ${family} !important; }`;
                 } else {
                     style.textContent = "";
                 }
@@ -1716,7 +1716,7 @@
                     document.head.appendChild(style);
                 }
                 if (size) {
-                    style.textContent = `:root { --base-font-size: ${size} !important; } #editor { font-size: var(--base-font-size) !important; }`;
+                    style.textContent = `:root { --base-font-size: ${size} !important; } #editor, #source-cm { font-size: var(--base-font-size) !important; }`;
                 } else {
                     style.textContent = "";
                 }
@@ -1736,6 +1736,9 @@
                 }
                 const change = {};
                 if (which === 'mode') {
+                    if (window.tzPdfActive && typeof window.tzClosePdf === 'function') {
+                        try { window.tzClosePdf(); } catch(e) {}
+                    }
                     if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub' && value !== 'reader') {
                         // OPTIMIZATION: Host is switching from an epub tab to a text tab.
                         // It sends view_set commands (mode, columns, scroll) BEFORE load_content.

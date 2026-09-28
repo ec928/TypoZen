@@ -2785,6 +2785,9 @@
                         _selectedFormatRaws = {};
                         _selectedFormatBlocks = [];
                     } catch (eClr) {}
+                    // Undo rebuilds the DOM, destroying the text nodes the CSS
+                    // Highlight API ranges pointed at. Re-scan so squiggles return.
+                    try { if (typeof scheduleSpellCheck === 'function') scheduleSpellCheck(); } catch (eSp) {}
                 }
             },
 
@@ -2814,6 +2817,8 @@
                         _selectedFormatRaws = {};
                         _selectedFormatBlocks = [];
                     } catch (eClr2) {}
+                    // Same as undo: redo rebuilds the DOM, destroying highlight ranges.
+                    try { if (typeof scheduleSpellCheck === 'function') scheduleSpellCheck(); } catch (eSp2) {}
                 }
             },
 

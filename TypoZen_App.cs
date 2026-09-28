@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.20";
+        internal const string AppVersion = "0.9.25";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -5238,7 +5238,7 @@ namespace TypoZen
         {
             public bool SessionText, OpenTabs, RecentFiles, RecentSearches, PastedImages, OcrText;
             public bool WebStorage, ReadingPositions, ExtractedBooks, Bookmarks;
-            public bool AddedWords, CustomThemes, Narration, DiagnosticLogs;
+            public bool AddedWords, CustomThemes, Narration, DiagnosticLogs, ViewSettings;
         }
 
         /// <summary>
@@ -5392,6 +5392,7 @@ namespace TypoZen
             var cbMarks    = add("Bookmarks", CountLines(BookmarksPath()) + " document(s) with marks", false);
             var cbWords    = add("Words you added to the dictionary", UserWordCountLabel(), false);
             var cbThemes   = add("Custom themes", HumanSize(SizeOfFile(Path.Combine(cache, "TypoZen_Themes.json"))), false);
+            var cbView     = add("View settings", "font size, line spacing, margins, layout", true);
             long logBytes = 0;
             foreach (string f in DiagnosticLogFiles()) logBytes += SizeOfFile(f);
             var cbLogs     = add("Diagnostic logs", HumanSize(logBytes) + ", may name files you opened", true);
@@ -5450,6 +5451,7 @@ namespace TypoZen
                 Bookmarks        = cbMarks.IsChecked == true,
                 AddedWords       = cbWords.IsChecked == true,
                 CustomThemes     = cbThemes.IsChecked == true,
+                ViewSettings     = cbView.IsChecked == true,
                 DiagnosticLogs   = cbLogs.IsChecked == true,
                 Narration        = cbNarr != null && cbNarr.IsChecked == true
             };
@@ -5542,6 +5544,29 @@ namespace TypoZen
             {
                 try { File.Delete(Path.Combine(cache, "TypoZen_Themes.json")); } catch { }
                 done.Add("custom themes");
+            }
+
+            if (want.ViewSettings)
+            {
+                try
+                {
+                    var prefs = LoadHostPrefs();
+                    var fresh = new HostPrefs();
+                    fresh.LastFilePath = prefs.LastFilePath;
+                    fresh.LastContent = prefs.LastContent;
+                    fresh.LastOpenDirectory = prefs.LastOpenDirectory;
+                    fresh.SearchHistory = prefs.SearchHistory;
+                    fresh.LastSearchQuery = prefs.LastSearchQuery;
+                    fresh.FindMatchCase = prefs.FindMatchCase;
+                    fresh.FindWholeWord = prefs.FindWholeWord;
+                    fresh.TtsVoiceId = prefs.TtsVoiceId;
+                    fresh.TtsSpeed = prefs.TtsSpeed;
+                    WriteHostPrefs(fresh);
+                    
+                    if (_currentFilePath != null) ApplyViewSettingsForType(GetDocType(_currentFilePath));
+                }
+                catch { }
+                done.Add("view settings");
             }
 
             if (want.RecentSearches)
@@ -7985,7 +8010,7 @@ namespace TypoZen
                 PrefsCode.ParaSpacing = 0;
                 PrefsCode.Margin = "narrow";
                 PrefsCode.Justified = false;
-                PrefsCode.FontSize = 2;
+                PrefsCode.FontSize = 1;
                 PrefsCode.WordWrap = false;
 
                 PrefsDocuments.ThemeName = "Gruvbox";
@@ -9810,14 +9835,42 @@ namespace TypoZen
 
         private void ResetViewSettings()
         {
-            SetParaSpacing(1);
-            SetLineSpacing(1);
+            var defaults = new HostPrefs();
+            TypePrefs tp = defaults.PrefsDocuments;
+            if (_currentFilePath != null)
+            {
+                DocType dt = GetDocType(_currentFilePath);
+                if (dt == DocType.Code) tp = defaults.PrefsCode;
+                else if (dt == DocType.EPub) tp = defaults.PrefsEPub;
+                else if (dt == DocType.Pdf) tp = defaults.PrefsPdf;
+            }
+
+            if (!string.IsNullOrEmpty(tp.ThemeName))
+            {
+                for (int i = 0; i < _themesList.Count; i++)
+                {
+                    if (_themesList[i].Name == tp.ThemeName)
+                    {
+                        ApplyTheme(i);
+                        break;
+                    }
+                }
+            }
+
+            SetParaSpacing(tp.ParaSpacing);
+            SetLineSpacing(tp.LineSpacing);
             SetBlockHover(1);
             SetFontType(0);
-            SetFontSizeOverride(2);
-            SetJustified(false);
-            SetWordWrap(true);
-            SendMsg("cmd:set_margin_regular");
+            SetFontSizeOverride(tp.FontSize);
+            SetJustified(tp.Justified);
+            SetWordWrap(tp.WordWrap);
+            
+            string m = string.IsNullOrEmpty(tp.Margin) ? "narrow" : tp.Margin;
+            SendMsg("cmd:set_margin_" + m);
+            SetMenuChecked("mMarginNarrow", m == "narrow");
+            SetMenuChecked("mMarginRegular", m == "regular");
+            SetMenuChecked("mMarginWide", m == "wide");
+            
             SetZoom(1.0);
             
             SetChromeAutoHide(false);
