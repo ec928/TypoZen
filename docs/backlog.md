@@ -52,3 +52,29 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
   need Ed away from the machine.
 - **Store product name** ("ePub Reader & Markdown Editor - TypoZen") does not mention PDFs —
   branding, Ed's call.
+- **Spell-check queue.** The checker has its own thread (0.9.6), but requests still queue:
+  after fast scrolling it keeps checking pages already left, and a word's suggestions wait
+  behind them (seconds). Drop queued checks that are no longer on screen; let
+  `spell_suggest:` go first.
+- **Spelling speed on long paragraphs.** The Windows checker's cost grows faster than the
+  text, so long paragraphs underline slowly (slow, no longer frozen). Option discussed:
+  check new words rather than whole paragraphs.
+- **Store screenshots** (6, Desktop) predate the Source editor, the PDF reader and the
+  themes. Needs new screenshots from Ed.
+- **IME (CJK) composition in Source** — untested since the move to CodeMirror. Only matters
+  for CJK input.
+- **Tab dragging** does not auto-scroll the strip when dragged past its edge.
+- **`big-file-app` deadline clean-up** (ending a frozen app by its profile folder) has not
+  yet been exercised by a real failure.
+- **Release notes:** v0.9.6's notes cover only the freeze fix; the CodeMirror work is written
+  up in v0.9.4 (kept for that reason). Option: fold 0.9.4 and 0.9.5's notes into 0.9.6.
+  Ed to decide.
+
+## Done (recorded so it is not re-raised)
+
+- **`docs/audit_report.md`** — its findings are all fixed (Ed, 2026-09-28).
+- **Typewriter and Focus modes** are deliberate features and stay. Typewriter keeps the caret
+  line centred and so blocks wheel scrolling by design (2026-09-28).
+- **v0.9.5's GitHub release** was deleted (it carried the 2-Col freeze); tag and archived zip
+  kept. v0.9.4 stays up.
+- **Store 0.9.6.0** submitted with the updated description and features (2026-09-28).
