@@ -2,7 +2,9 @@
 
 Baseline inventory of **user-visible** residual risk for the current tree.
 
-- **Open defect-class items:** none.
+- **Open defects and planned work are in `docs/backlog.md`** -- the one list of what is
+  still to do. This file keeps product limits (not to be "fixed"), product notes, and the
+  history of fixed defects so a regression is recognised.
 - Suite-only failures belong in the harness, not here. See `docs/for-agents.md`.
 - This file is the living record. The health reviews are archived snapshots of older
   trees (`docs/archive/`) and do not describe current state, whatever their own text says.
