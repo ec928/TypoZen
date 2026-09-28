@@ -41,6 +41,10 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
 
 ## 2. Smaller items
 
+**To follow up (Ed, 2026-09-28):** the spell-check queue, spelling speed on long paragraphs,
+tab-drag auto-scroll, and the `big-file-app` deadline clean-up. **Parked:** Store screenshots,
+IME (CJK) in Source. The rest below are open questions or Ed's calls.
+
 - **`perf.log` under Privacy Mode** — fixed in `TypoZen_App.cs` (PerfMark returns when
   `DebugLogSuppressed`), not yet built or released. Ships with the next build.
 - **Large documents: a Source/Preview switch can land a few lines off.** Preview's
