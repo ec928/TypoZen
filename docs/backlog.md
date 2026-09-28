@@ -56,6 +56,12 @@ tab-drag auto-scroll, and the `big-file-app` deadline clean-up; Store screenshot
   need Ed away from the machine.
 - **Store product name** ("ePub Reader & Markdown Editor - TypoZen") does not mention PDFs —
   branding, Ed's call.
+- **Save All Images in PDF: the fast method often does not work** (Ed, 2026-09-28). In
+  several PDFs the direct extraction (PdfPig, reading pictures straight from the file,
+  0.8.2) fails and TypoZen falls back to the very slow method. To do: collect the PDFs it
+  fails on, find which image encodings or structures PdfPig does not handle, and fix or
+  widen the fast path; measure both methods on each file. Debug logging only with Ed's
+  permission.
 - **Spell-check queue.** The checker has its own thread (0.9.6), but requests still queue:
   after fast scrolling it keeps checking pages already left, and a word's suggestions wait
   behind them (seconds). Drop queued checks that are no longer on screen; let
