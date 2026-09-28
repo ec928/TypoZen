@@ -5,29 +5,40 @@ Work agreed but not built, newest decisions first. Defects and product limits li
 
 ## 1. View settings per document type (next — planned for 2026-09-30)
 
-**Decided (Ed, 2026-09-28):** change nothing in the UI and add no menu items. The existing
-theme and View settings are saved **per document type** instead of once globally. They stay
-the user's to set; a change is saved to the type of the document on screen and persists.
+**Decided (Ed, 2026-09-28):** change nothing in the UI and add no menu items. The existing theme and View settings are saved **per document type** instead of once globally. They stay the user's to set; a change is saved to the type of the document on screen and persists.
 
-| Type | Files | Theme | Line | Paragraph | Margins | Justified |
-|---|---|---|---|---|---|---|
-| **Code** | the code table in `js/modules/08-code.js` (HTML in Source, XML, XAML, CSS, JSON, JS/TS, C#, …) plus `.log` and `.csv` | Monokai | Tight | Tight | Narrow | off |
-| **Documents** | `.md`, `.txt`, untitled | Gruvbox | Normal | Normal | Narrow | off |
-| **ePub** | `.epub` | Rosé Pine Dawn | Relaxed | Loose | Regular | off |
-| **PDF** | `.pdf` | Catppuccin Latte | — | — | — | — |
+### Customizable View Defaults
+The following view settings are saved per document type and can be customized by the user:
+
+| Type | Files | Theme | Line | Paragraph | Margins | Justified | Font Size | Word Wrap | Columns |
+|---|---|---|---|---|---|---|---|---|---|
+| **Code** | the code table in `js/modules/08-code.js` (HTML in Source, XML, XAML, CSS, JSON, JS/TS, C#, …) plus `.log` and `.csv` | Tokyo Night | Tight | Tight | Narrow | off | Normal | off | n/a |
+| **Documents** | `.md`, `.txt`, untitled | Gruvbox | Normal | Normal | Narrow | off | Normal | on | n/a |
+| **ePub** | `.epub` | Rosé Pine Dawn | Relaxed | Loose | Regular | off | Large | n/a | Inherits from ePub TypePrefs |
+| **PDF** | `.pdf` | Catppuccin Latte | — | — | — | — | — | — | n/a |
 
 These are the out-of-box defaults. PDF takes the theme only: PDF.js lays the page out itself.
 Images, video and rendered HTML pages have no text layout of TypoZen's and are not a type.
 
+### Hardcoded Interactions (Not customizable by user)
+The following behaviors are hardcoded per media type for *newly opened* files and cannot be configured globally as defaults. While some can be toggled per-tab (and saved to the session), their initial state on open is fixed:
+
+| Type | Default Mode | Default Layout | Default Columns | User can change Mode per-tab? | User can change Layout per-tab? | User can change Columns per-tab? |
+|---|---|---|---|---|---|---|
+| **Code** | Source | Scroll | 1-Col | Yes (to Preview/Reader) | No (Source is strictly Scroll) | No (Source is strictly 1-Col) |
+| **Documents** | Preview | Scroll | 1-Col | Yes | Yes (in Preview/Reader) | Yes (in Preview/Reader) |
+| **ePub** | Reader | Pagination | Inherits from ePub TypePrefs | No (forced by engine) | Yes (can toggle Scroll/Pagination) | Yes |
+| **PDF** | PDF View | Scroll | 1-Col | No (forced by engine) | Yes (can toggle Scroll/Pagination) | Yes |
+
 **How (sketch):**
 - The host already owns all of these (theme, `_lineSpacing`, `_paraSpacing`, margin,
-  justified) and every tab switch and open goes through `ApplyTabToEditor` / `OpenBook` /
+  justified, `_fontSize`, `_wordWrap`) and every tab switch and open goes through `ApplyTabToEditor` / `OpenBook` /
   `OpenPdf`, which know the kind. Store one set per type in `settings.json`; apply the
   tab's type set before its text loads, with the View menu ticks following; on a change,
   write it to the current type.
 - **Upgrade:** an existing install's current global values become **Documents**; Code, ePub
   and PDF start from the defaults above. A fresh install gets the defaults for all four.
-- Word Wrap, Focus, Typewriter and Reveal stay global (not decided otherwise).
+- Focus, Typewriter and Reveal stay global (not decided otherwise).
 
 **Risks and tests:**
 - The tab-switch path — it produced two defects on 2026-09-27. New real-app suite (hidden
@@ -90,3 +101,9 @@ tab-drag auto-scroll, and the `big-file-app` deadline clean-up; Store screenshot
 - **v0.9.5's GitHub release** was deleted (it carried the 2-Col freeze); tag and archived zip
   kept. v0.9.4 stays up.
 - **Store 0.9.6.0** submitted with the updated description and features (2026-09-28).
+
+
+
+
+
+

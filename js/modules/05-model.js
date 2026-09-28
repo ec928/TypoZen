@@ -50,6 +50,9 @@
                 try { DocumentModel.fromMarkdown(content); } catch (eM) {
                     try { window.tzLogException('fromMarkdown load', eM); } catch (eL) {}
                 }
+                if (editor) {
+                    try { editor.innerHTML = ''; } catch (eE) {}
+                }
                 if (wasBookPlain) {
                     try { leaveBookViewForMarkdown(); } catch (eL) { try { clearBookSession(); } catch (eC) {} }
                 } else {
@@ -57,9 +60,6 @@
                 }
                 try { DocumentModel.virtEnabled = false; unbindVirtScroll(); } catch (eV) {}
                 try { releaseDocumentStateForHost(); } catch (e0) {}
-                if (editor) {
-                    try { editor.innerHTML = ''; } catch (eE) {}
-                }
                 if (sourceEditor) {
                     sourceEditor.value = content;
                     try {
@@ -1284,6 +1284,16 @@
             // Leaving a book without teardown left publisher CSS + Pages mode on the next
             // markdown tab (black text on dark theme, scrubber 1/35 of a short note).
             const wasBook = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub');
+            
+            // OPTIMIZATION: Clear the DOM BEFORE stripping layout classes!
+            // If the editor currently holds thousands of elements (e.g. from an epub),
+            // stripping multi-column and pagination classes forces a synchronous layout
+            // recalculation of all those elements into a single-column flow, freezing the thread.
+            // By emptying the element first, layout recalculation takes 0ms.
+            if (typeof editor !== 'undefined' && editor) {
+                try { editor.innerHTML = ''; } catch(e) {}
+            }
+
             DocumentModel.fromMarkdown(text);
             if (wasBook) {
                 try { leaveBookViewForMarkdown(); } catch (eLeave) {

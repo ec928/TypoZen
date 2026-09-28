@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.7";
+        internal const string AppVersion = "0.9.8";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1811,7 +1811,16 @@ namespace TypoZen
                     int next = (_viewColumns == 2) ? 1 : 2;
                     if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
                         && !_viewColumnsLocked)
-                        _tabs[_activeTabIndex].Columns = next;
+                    {
+                        var tab = _tabs[_activeTabIndex];
+                        tab.Columns = next;
+                        if (IsBookTab(tab))
+                        {
+                            var prefs = LoadHostPrefs();
+                            prefs.EPubColumns = next;
+                            WriteHostPrefs(prefs);
+                        }
+                    }
                     SendMsg("cmd:view_set:columns:" + next);
                     try { if (_webView != null) _webView.Focus(); } catch { }
                 };
@@ -7946,6 +7955,7 @@ namespace TypoZen
             public string SidebarTab = "outline";
             public string TtsVoiceId = "";
             public double TtsSpeed = 1.0;
+            public int EPubColumns = 0;
         }
 
         private static string JsonEscape(string s)
@@ -8109,6 +8119,7 @@ namespace TypoZen
                 b = ExtractJsonBool(json, "findWholeWord"); if (b.HasValue) p.FindWholeWord = b.Value;
                 s = ExtractJsonString(json, "ttsVoiceId"); if (s != null) { p.TtsVoiceId = s; }
                 s = ExtractJsonString(json, "ttsSpeed"); if (s != null && double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double speed)) { p.TtsSpeed = speed; }
+                int? cols = ExtractJsonInt(json, "epubColumns"); if (cols.HasValue) p.EPubColumns = cols.Value;
             }
             catch { }
             return p;
@@ -8136,6 +8147,7 @@ namespace TypoZen
                 + "\"sidebarTab\":\"" + tab + "\","
                 + "\"ttsVoiceId\":\"" + JsonEscape(p.TtsVoiceId ?? "") + "\","
                 + "\"ttsSpeed\":\"" + p.TtsSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\","
+                + "\"epubColumns\":" + p.EPubColumns + ","
                 + "\"lastContent\":\"\""
                 + "}";
             string prefsPath = PrefsPath();
@@ -13879,6 +13891,12 @@ namespace TypoZen
 
             if (IsBookTab(tab))
             {
+                if (tab.Columns <= 0)
+                {
+                    var prefs = LoadHostPrefs();
+                    if (prefs.EPubColumns > 0)
+                        tab.Columns = prefs.EPubColumns;
+                }
                 // Mode is forced by loadBookPayload; only columns are free.
                 RequestTabColumns(tab);
                 return;
