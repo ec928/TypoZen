@@ -225,6 +225,15 @@ def tidy(models_dir):
             out('NOTE', 'could not share %s: %s' % (name, e))
     if shared:
         out('NOTE', '%.2f GB stored once instead of twice' % (shared / 1073741824.0))
+    
+    # Remove the blobs directories to prevent Windows Explorer from double-counting the hard links.
+    # The actual physical files are safely preserved in the snapshots directories.
+    import shutil
+    for repo, _ in MODELS:
+        blobs_dir = os.path.join(models_dir, 'models--' + repo.replace('/', '--'), 'blobs')
+        if os.path.exists(blobs_dir):
+            shutil.rmtree(blobs_dir, ignore_errors=True)
+            out('NOTE', 'Cleaned up blobs to fix Explorer size inflation')
 
 
 # ---- 5. check ------------------------------------------------------------------------------
