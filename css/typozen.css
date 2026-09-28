@@ -2099,6 +2099,12 @@
             margin: 0;
             font-style: italic;
         }
+        
+        blockquote, blockquote p, blockquote div, blockquote span {
+            font-size: 1em !important;
+            text-align: var(--tz-align, left) !important;
+            line-height: inherit !important;
+        }
 
         /* Quote decoration stops after three levels.
          *
