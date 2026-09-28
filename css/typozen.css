@@ -2073,10 +2073,7 @@
             padding: 2px 6px;
             border-radius: 4px;
             font-size: 0.9em;
-            /* The text around it, not the accent: the accent in the document means
-               current or clickable (selection, the search match, links), and code in it
-               read as a search hit. The monospace face and the box set code apart. */
-            color: inherit;
+            color: var(--accent, #3B82F6);
             border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
             font-weight: 600;
         }
@@ -2094,7 +2091,7 @@
         }
 
         blockquote {
-            border-left: 4px solid color-mix(in srgb, var(--tx, #888888) 30%, transparent);
+            border-left: 4px solid var(--accent, #3B82F6);
             background-color: var(--quote-bg, rgba(128, 128, 128, 0.08));
             padding: 8px 14px;
             border-radius: 0 6px 6px 0;
