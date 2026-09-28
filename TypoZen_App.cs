@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.9.15";
+        internal const string AppVersion = "0.9.16";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -8004,6 +8004,7 @@ namespace TypoZen
             public bool TypewriterMode;
             public string LastFilePath = "";
             public string LastContent = ""; // always written empty
+            public string LastOpenDirectory = "";
             /// <summary>Global Search-tab recent queries (most recent first, max 8).</summary>
             public List<string> SearchHistory = new List<string>();
             /// <summary>Last text left in the Search box (restored on Alt+S).</summary>
@@ -14571,13 +14572,23 @@ namespace TypoZen
                     "Media|*.mp4;*.webm;*.ogv;*.mov;*.mp3;*.wav;*.ogg;*.m4a;*.flac|" +
                     "All Files|*.*";
                 dlg.Title = "Open";
+                HostPrefs currentPrefs = null;
+                try { currentPrefs = LoadHostPrefs(); } catch { }
+
                 if (_currentFilePath != null) dlg.InitialDirectory = Path.GetDirectoryName(_currentFilePath);
                 else if (_lastOpenDirectory != null) dlg.InitialDirectory = _lastOpenDirectory;
-                else dlg.InitialDirectory = _appDir;
+                else if (currentPrefs != null && !string.IsNullOrEmpty(currentPrefs.LastOpenDirectory)) dlg.InitialDirectory = currentPrefs.LastOpenDirectory;
+                // Rely on Windows' native MRU fallback when no directory is specified.
 
                 if (dlg.ShowDialog() == WinForms.DialogResult.OK)
                 {
-                    try { _lastOpenDirectory = Path.GetDirectoryName(dlg.FileName); } catch { }
+                    try { 
+                        _lastOpenDirectory = Path.GetDirectoryName(dlg.FileName); 
+                        if (currentPrefs != null) {
+                            currentPrefs.LastOpenDirectory = _lastOpenDirectory;
+                            WriteHostPrefs(currentPrefs);
+                        }
+                    } catch { }
                     LoadFileFromPath(dlg.FileName);
                 }
             }
@@ -14700,7 +14711,14 @@ namespace TypoZen
                     return;
                 }
 
-                try { _lastOpenDirectory = Path.GetDirectoryName(path); } catch { }
+                try { 
+                    _lastOpenDirectory = Path.GetDirectoryName(path); 
+                    var prefs = LoadHostPrefs();
+                    if (prefs != null) {
+                        prefs.LastOpenDirectory = _lastOpenDirectory;
+                        WriteHostPrefs(prefs);
+                    }
+                } catch { }
 
                 if (_tabOpInProgress)
                 {
