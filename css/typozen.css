@@ -2090,17 +2090,17 @@
             color: var(--tx, #F4F4F5);
         }
 
-        blockquote {
-            border-left: 4px solid var(--accent, #3B82F6);
-            background-color: var(--quote-bg, rgba(128, 128, 128, 0.08));
-            padding: 8px 14px;
-            border-radius: 0 6px 6px 0;
-            color: var(--tx-muted, #A1A1AA);
-            margin: 0;
-            font-style: italic;
+        #editor blockquote {
+            border-left: 4px solid var(--accent, #3B82F6) !important;
+            background-color: var(--quote-bg, rgba(128, 128, 128, 0.08)) !important;
+            padding: 8px 14px !important;
+            border-radius: 0 6px 6px 0 !important;
+            color: var(--tx-muted, #A1A1AA) !important;
+            margin: 0 !important;
+            font-style: italic !important;
         }
         
-        blockquote, blockquote p, blockquote div, blockquote span {
+        #editor blockquote, #editor blockquote p, #editor blockquote div, #editor blockquote span {
             font-size: 1em !important;
             text-align: var(--tz-align, left) !important;
             line-height: inherit !important;
@@ -2124,11 +2124,11 @@
          * Indentation is NOT removed here: it comes from the book's own margin-left, so
          * deeper levels still step in, they simply stop adding bars and backgrounds.
          */
-        blockquote blockquote blockquote blockquote {
-            border-left: none;
-            background-color: transparent;
-            padding: 0;
-            border-radius: 0;
+        #editor blockquote blockquote blockquote blockquote {
+            border-left: none !important;
+            background-color: transparent !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
         }
 
         /* A shallow chain shows ONE bar, not three.
@@ -2150,11 +2150,11 @@
          * :has() needs Chromium 105+. On anything older the whole rule is dropped and
          * the previous behaviour stands, which is a flatter look, not a broken one.
          */
-        blockquote:has(blockquote):not(:has(blockquote blockquote blockquote)) {
-            border-left: none;
-            background-color: transparent;
-            padding: 0;
-            border-radius: 0;
+        #editor blockquote:has(blockquote):not(:has(blockquote blockquote blockquote)) {
+            border-left: none !important;
+            background-color: transparent !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
         }
 
         ul, ol {
