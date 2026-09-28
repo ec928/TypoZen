@@ -752,7 +752,7 @@ async function renderNarration(base, batch, reading) {
 }
 
 /**
- * How narration is cut up, and why (docs/qwen-tts-plan.md, 3c, 3e and 3g).
+ * How narration is cut up, and why (docs/archive/qwen-tts-plan.md, 3c, 3e and 3g).
  *
  * A paragraph is one piece, so its intonation carries across its sentences. Only a paragraph
  * longer than the cap is split, at sentence ends.
@@ -935,7 +935,7 @@ function blockPieces(text) {
 }
 
 /**
- * Direction (docs/qwen-tts-plan.md 4, slice 3): how the spoken lines in a piece should sound,
+ * Direction (docs/archive/qwen-tts-plan.md 4, slice 3): how the spoken lines in a piece should sound,
  * read from the text around them. '' is plain narration, the narrator's standing style.
  *
  * Per paragraph rather than per utterance. Fiction gives each speaker their own paragraph --

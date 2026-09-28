@@ -44,7 +44,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.dont_write_bytecode = True
 import graphs  # noqa: E402
 
-# CustomVoice, with the narrator's voice-print in the speaker slot (docs/qwen-tts-plan.md 3g).
+# CustomVoice, with the narrator's voice-print in the speaker slot (docs/archive/qwen-tts-plan.md 3g).
 #
 # VoiceDesign, used before, invents the speaker afresh on every piece it renders, so the
 # narrator changed from paragraph to paragraph -- "multiple people narrating". CustomVoice

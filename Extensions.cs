@@ -248,7 +248,7 @@ namespace TypoZen
 
         /// <summary>
         /// Qwen narration: a Python environment and several gigabytes of model, set up by
-        /// hand (docs/qwen-tts-plan.md). There is nothing here to download it with, so it has
+        /// hand (docs/archive/qwen-tts-plan.md). There is nothing here to download it with, so it has
         /// no files to fetch -- the dialog lists it only while it exists, for its size, its
         /// narration audio and a way to remove it.
         /// </summary>
