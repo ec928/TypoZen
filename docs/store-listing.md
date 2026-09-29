@@ -9,7 +9,7 @@ against the shipping build; see the note at the foot before changing any of them
 
 _Shown in search results and at the top of the listing. Limit 1,000 characters._
 
-A calm place to write, and a beautiful place to read. TypoZen is a WYSIWYG Markdown editor and a paginated ePub reader in one window — with true two-page spreads, read aloud in your Windows voices, an offline dictionary and thesaurus, 25 themes, and no network request of its own.
+A calm place to write, and a beautiful place to read. TypoZen is a WYSIWYG Markdown editor, a paginated ePub reader and a PDF reader in one window — with true two-page spreads, read aloud in your Windows voices, an offline dictionary and thesaurus, 25 themes, and no network request of its own.
 
 ---
 
@@ -23,7 +23,7 @@ TypoZen is a Markdown editor that gets out of your way, and an ePub reader good 
 
 **Writing that stays out of the way**
 
-Type Markdown and watch it become the thing it describes — headings, lists, tables, task lists, code fences, emphasis — or flip to raw Source and back without losing your place on the page. Focus mode dims everything but the sentence you are in. Typewriter scrolling keeps that line where your eyes already are. The toolbars slide away when you stop needing them.
+Type Markdown and watch it become the thing it describes — headings, lists, tables, task lists, code fences, emphasis — or flip to raw Source, a proper code editor with highlighting that opens files of megabytes at once, and back without losing your place on the page. Focus mode dims everything but the sentence you are in. Typewriter scrolling keeps that line where your eyes already are. The toolbars slide away when you stop needing them.
 
 Big files stay quick. TypoZen only builds the part of the document you can actually see, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it, not just the visible page.
 
@@ -43,7 +43,7 @@ Select any word for its most common meanings first, its synonyms, and how often 
 
 **Everything else you opened by accident**
 
-PDFs, web pages, images, video and audio open read-only in their own tabs, so the wrong double-click never costs you your place. They cannot be edited and cannot be saved over.
+PDFs open in a full reader: single pages or two-page spreads, read aloud, highlights, notes and forms you can fill in and save, and the text of scanned pages read on your computer. Web pages, images, video and audio open read-only in their own tabs, so the wrong double-click never costs you your place.
 
 **Made to look like yours**
 
@@ -51,11 +51,11 @@ PDFs, web pages, images, video and audio open read-only in their own tabs, so th
 
 **Private by construction, not by promise**
 
-TypoZen makes no network requests. There is no account, no sign-in, no sync, no analytics, no advertising and no crash reporting. Your documents, your reading positions and your searches stay on your machine, and Privacy Mode stops the app writing any of it down. Everything it does remember can be cleared from one menu.
+TypoZen makes no network requests unless you choose to download an optional extension. There is no account, no sign-in, no sync, no analytics, no advertising and no crash reporting. Your documents, your reading positions and your searches stay on your machine, and Privacy Mode stops the app writing any of it down. Everything it does remember can be cleared from one menu.
 
 **Details that add up**
 
-Bookmarks that survive edits and are named from their own text. Highlights and notes. Spelling underlined as you type, with a document-wide check when you want it. Live word count, character count and reading time. Tabs, with the whole session restored the next time you open the app. Atomic saves, and a warning if a file changed underneath you. Export to self-contained HTML, or print to PDF.
+Bookmarks that survive edits and are named from their own text. Highlights and notes. Spelling underlined as you type, and corrections for any word you select. Live word count, character count and reading time. Tabs, with the whole session restored the next time you open the app. Atomic saves, and a warning if a file changed underneath you. Export to self-contained HTML, or print to PDF.
 
 Free, open source, and yours to keep.
 
@@ -65,26 +65,26 @@ Free, open source, and yours to keep.
 
 _Up to 20 bullets, 200 characters each._
 
-1. WYSIWYG Markdown editing — type Markdown, see the result, switch to raw Source and back without losing your place
-2. Paginated ePub reader with true two-page spreads, chapter navigation and a scrubber across the whole book
-3. Books keep the publisher's own layout — images, footnotes and links intact, re-sized to your theme
-4. Reading position, bookmarks and open tabs restored exactly where you left them
-5. Offline dictionary and thesaurus — over 150,000 definitions, no lookup ever leaves your computer
-6. Handles very large documents smoothly by rendering only what is on screen
-7. Find and Replace across the entire document, including the parts not currently displayed
-8. Focus mode, typewriter scrolling and auto-hiding chrome for distraction-free writing
-9. Spelling underlined as you type, plus a document-wide check with replacements and a personal dictionary
-10. Bookmarks that survive edits, named automatically from the text they mark
-11. Highlights and notes, listed in order of where they appear rather than when you made them
-12. PDF, HTML, images, video and audio open read-only in their own tabs — never edited, never saved over
-13. 25 built-in themes in dark, light and monospace, plus a theme editor for your own
-14. Four typefaces bundled in the app — Inter, Literata, Merriweather and Source Sans 3
-15. Control over margins, line spacing, justification and hyphenation
-16. Live word count, character count, line position and estimated reading time
-17. Tabs, with the full session restored on the next launch
-18. Atomic saves with a prompt if the file changed on disk; export to self-contained HTML, or print to PDF
-19. Read aloud — a passage or the page — in any voice installed in Windows, at the speed you choose
-20. No account, no telemetry, and no network request unless you install an optional extension — plus a Privacy Mode that records nothing
+1. WYSIWYG Markdown editing — type Markdown and see the result as you write; switch to raw Source and back without losing your place
+2. Source is a real code editor: highlighting for Markdown, HTML, XML, CSS, JSON, JavaScript and C#
+3. Opens large files instantly — megabytes of text, with lines hundreds of thousands of characters long
+4. Paginated ePub reader with true two-page spreads, chapter navigation and a reading scrubber
+5. Books keep the publisher's typography, embedded fonts and footnotes; the page, its margins and colours stay yours
+6. A PDF reader: single pages or two-page spreads, Find, bookmarks and highlights
+7. Annotate PDFs, fill in forms and save; the text of scanned pages is read on your computer
+8. Read aloud in any Windows voice, or in optional neural voices, with the passage highlighted as it is read
+9. Spelling: every misspelling on screen underlined in Preview and Source (not in code); select any word for corrections
+10. Offline dictionary and thesaurus — over 150,000 definitions; no lookup ever leaves your computer
+11. Search the whole document from a sidebar, with every match highlighted — even in very long files
+12. Highlights, notes and bookmarks that survive edits
+13. Tabs for every open document; drag to reorder them, and each remembers its view and position
+14. Reading positions, open tabs and layout restored exactly where you left them
+15. Focus mode, typewriter scrolling and auto-hiding controls for distraction-free writing
+16. 25 built-in themes plus your own; selections, search and highlights take their colours from the theme
+17. Bundled typefaces — Inter, Literata, Merriweather and Source Sans 3 — with no network requests
+18. Private by design: no telemetry, nothing sent anywhere, and a Privacy Mode that stores no history
+19. Images, videos and web pages open in their own tabs, read-only, so nothing is edited by accident
+20. Export to HTML, print or save as PDF; text saved as UTF-8 with its line endings preserved
 
 ---
 
@@ -155,7 +155,7 @@ The only capability declared. No data collection, no sign-in. Network use only w
 
 No account, sign-in or purchase is needed; all functionality is available immediately.
 
-To exercise the main paths: open any .md or .txt file to edit it, and any .epub to read it. For the paginated two-page spread, use the two buttons at the right of the toolbar -- click "Scroll" so it reads "Pages", then click "1-Col" so it reads "2-Col". Two columns require pagination, so that order matters. PDFs, images and web pages open read-only in their own tabs.
+To exercise the main paths: open any .md or .txt file to edit it, and any .epub to read it. For the paginated two-page spread, use the two buttons at the right of the toolbar -- click "Scroll" so it reads "Pages", then click "1-Col" so it reads "2-Col". Two columns require pagination, so that order matters. PDFs open in their own reader; images and web pages open read-only in their own tabs.
 
 Privacy policy: https://github.com/ec928/TypoZen/blob/master/PRIVACY.md
 
