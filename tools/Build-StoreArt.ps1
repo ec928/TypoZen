@@ -115,14 +115,16 @@ function New-Hero {
 
     # 16:9 Super hero art, which runs across the top of the listing.
     #
-    # NO WORDMARK. Partner Center is explicit: "Must not include the product's title."
-    # So this cannot be the poster composition widened -- it shows the product instead of
-    # naming it, which for a typography app means showing type. Real Literata at low alpha,
-    # because a fake page drawn as grey bars would be a picture of a wireframe.
+    # NO TEXT AT ALL. Microsoft: "this image must not include the product's title or other
+    # text", and "avoid showing your app's UI". The version before 2026-09-29 set a column
+    # of prose beside the mark, which is other text. So: the mark alone, with ripples
+    # spreading from it -- the arc the icon is built on, repeated outward, and the "zen" in
+    # the name. Centred and above the middle ("place the most important details in the
+    # center"; "avoid placing key visual elements in the bottom third"), and the rings run
+    # off the edges so the frame has no dead space.
     $bmp = New-Object System.Drawing.Bitmap($W, $H)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
     $g.Clear($bg)
 
     $rect = New-Object System.Drawing.Rectangle(0, 0, $W, $H)
@@ -131,49 +133,45 @@ function New-Hero {
     $g.FillRectangle($grad, $rect)
     $grad.Dispose()
 
-    $fam = Get-Family
     $markSize = [int]($H * 0.34)
+    $cx = [single]($W / 2)
+    $cy = [single]($H * 0.44)
 
-    # A column of prose, set the way the app sets it, fading as it falls back.
-    $bodySize = [single]($H * 0.038)
-    $fBody = New-Object System.Drawing.Font($fam, $bodySize, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
-    $lines = @(
-        'the sand was a low dune crest, and the wind',
-        'came off it carrying the smell of the deep',
-        'desert. He read the page again, slowly, the',
-        'way a thing is read when there is nothing',
-        'else to do with the evening but read it, and',
-        'the margin held the line where he had left',
-        'off the night before.'
+    # A soft indigo glow behind the mark, the colour of its own tile, so it sits in light
+    # rather than on a flat field.
+    $glowR = [single]($markSize * 1.25)
+    $glowPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $glowPath.AddEllipse($cx - $glowR, $cy - $glowR, 2 * $glowR, 2 * $glowR)
+    $glow = New-Object System.Drawing.Drawing2D.PathGradientBrush($glowPath)
+    $glow.CenterColor = [System.Drawing.Color]::FromArgb(70, 79, 70, 229)
+    $glow.SurroundColors = @([System.Drawing.Color]::FromArgb(0, 79, 70, 229))
+    $g.FillPath($glow, $glowPath)
+    $glow.Dispose(); $glowPath.Dispose()
+
+    # Ripples: the icon's blue arc repeated outward, fading and thinning with distance; one
+    # amber ring among them, the accent the reading themes use.
+    $blue = [System.Drawing.ColorTranslator]::FromHtml('#3B9BE8')
+    $rings = @(
+        @{ k = 0.80; a = 120; w = 0.0060; c = $blue },
+        @{ k = 1.12; a = 90;  w = 0.0045; c = $blue },
+        @{ k = 1.50; a = 110; w = 0.0035; c = $accent },
+        @{ k = 1.95; a = 55;  w = 0.0030; c = $blue },
+        @{ k = 2.50; a = 38;  w = 0.0026; c = $blue },
+        @{ k = 3.15; a = 26;  w = 0.0022; c = $blue },
+        @{ k = 3.95; a = 16;  w = 0.0020; c = $blue }
     )
-    $x = [int]($W * 0.34)
-    $lead = [int]($bodySize * 1.65)
-    # Centred on the canvas rather than started at a guessed offset: seven lines at this
-    # leading left the bottom third of a 1080 frame empty when y was pinned to 0.20.
-    $y = [int]((($H - ($lines.Count * $lead)) / 2))
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        # Falls away down the column, so the eye lands on the mark and not on the words.
-        $a = [int](150 - ($i * 17))
-        if ($a -lt 26) { $a = 26 }
-        $c = [System.Drawing.Color]::FromArgb($a, $text.R, $text.G, $text.B)
-        $b = New-Object System.Drawing.SolidBrush($c)
-        $g.DrawString($lines[$i], $fBody, $b, [single]$x, [single]($y + ($i * $lead)))
-        $b.Dispose()
+    foreach ($ring in $rings) {
+        $r = [single]($markSize * $ring.k)
+        $col = [System.Drawing.Color]::FromArgb($ring.a, $ring.c.R, $ring.c.G, $ring.c.B)
+        $pen = New-Object System.Drawing.Pen($col, [single]([Math]::Max(1.5, $H * $ring.w)))
+        $g.DrawEllipse($pen, $cx - $r, $cy - $r, 2 * $r, 2 * $r)
+        $pen.Dispose()
     }
-    $fBody.Dispose()
 
-    # The mark, left, drawn at the size it sits at.
+    # The mark, drawn at the size it sits at.
     $mark = Draw-TypoZenBitmap -size $markSize
-    $g.DrawImage($mark, [int]($W * 0.13), [int](($H - $markSize) / 2), $markSize, $markSize)
+    $g.DrawImage($mark, [int]($cx - $markSize / 2), [int]($cy - $markSize / 2), $markSize, $markSize)
     $mark.Dispose()
-
-    # One amber rule, the gutter the reading themes draw their bookmark rail in.
-    # Between the mark and the column, not through the mark. At 0.295 it crossed the icon,
-    # which spans 0.13W to 0.13W + 0.34H and so reaches past it on a 16:9 frame.
-    $bRule = New-Object System.Drawing.SolidBrush($accent)
-    $ruleX = [int]($W * 0.13) + $markSize + [int]($W * 0.010)
-    $g.FillRectangle($bRule, $ruleX, [int]($H * 0.20), [Math]::Max(3, [int]($W * 0.0022)), [int]($H * 0.60))
-    $bRule.Dispose()
 
     $path = Join-Path $out $Name
     $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
@@ -194,5 +192,6 @@ $fonts.Dispose()
 Write-Host "`nWritten to dist-storeart\" -ForegroundColor Green
 Write-Host "  9:16 Poster art -> PosterArt-720x1080.png"
 Write-Host "  1:1 Box art     -> BoxArt-1080x1080.png"
-Write-Host "  16:9 Super hero -> SuperHeroArt-1920x1080.png  (no title, by requirement)"
-Write-Host "Both optional: without them the Store uses the package tile logos.`n"
+Write-Host "  16:9 Super hero -> SuperHeroArt-1920x1080.png  (no text at all, by requirement)"
+Write-Host "Poster and box art are for GAMES (Microsoft Learn, 'App screenshots, images, and trailers'):"
+Write-Host "an app listing uses the hero art, and the package's own tile icon unless a 300x300 is uploaded.`n"
