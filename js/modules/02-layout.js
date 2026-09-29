@@ -4169,7 +4169,7 @@
         function getPageTwoColGap() {
             try {
                 if (typeof getPageMarginPads === 'function') {
-                    return getPageMarginPads().left * 2;
+                    return getPageMarginPads().left;
                 }
             } catch (e) {}
             return 60;
