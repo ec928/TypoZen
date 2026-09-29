@@ -1,7 +1,8 @@
 # A developer editor for TypoZen — analysis, and the attempt
 
-**Status: attempted, parked.** The code-kind route in section 2b was built, it corrupted
-real files, and it is parked at tag `code-kind-parked`. Nothing was merged. This document
+**Status: attempted, abandoned.** The code-kind route in section 2b was built, it corrupted
+real files, and it was never merged; its branch and its `code-kind-parked` tag were deleted
+on 2026-09-29. This document
 now records the outcome as well as the options, because the outcome is the useful part.
 
 **The answer to the original question is: yes, it needs its own surface.**
@@ -79,7 +80,7 @@ broke.
 
 ## What else survives
 
-The **lexers** in `js/modules/08-code.js` at tag `code-kind-parked`: JSON, XML/XAML and a
+The **lexers** that attempt built (they survive in `js/modules/08-code.js`): JSON, XML/XAML and a
 C-family fallback, line at a time with a carried state for block comments, plus a cached
 start state per line. They are surface-independent — an overlay would use them unchanged,
 and so would highlighting for fenced code inside Markdown, which needs no new surface at

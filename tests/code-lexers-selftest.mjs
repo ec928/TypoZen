@@ -8,7 +8,7 @@
  *
  * What is NOT here any more: renderCodeLine and the per-document state cache. They
  * existed for a whole-file code document kind, which was built, corrupted real
- * files, and is parked at tag code-kind-parked. See
+ * files, and was abandoned (branch and tag deleted 2026-09-29). See
  * docs/developer-editor-analysis.md. The lexers survived that attempt because they
  * are surface-independent; the machinery around them did not.
  *
