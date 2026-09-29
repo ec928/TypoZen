@@ -78,6 +78,16 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
   (Ed's perf log: 40 frames of 80-130 ms, script 6-33 ms of each). Ed: batching differently
   does not address the root cause -- the root cause is laying out the whole document per
   batch. Needs a real answer (e.g. only the blocks near the view laid out at all).
+  The same whole-document paint runs when a large document opens straight into 2-Col, before
+  it narrows to one range. Edits no longer go through it (0.10.15/0.10.16 mount only the
+  range holding the edit), but opening still does.
+
+**Reported, not reproduced (2026-09-30):** Ed: Tab "doesn't work at all" in 0.10.16.
+Checked on 0.10.16 and 0.10.15 alike, with real key presses: headless on
+`0-testing-large-scroll-mixed.md` in 1-Col and 2-Col, caret and mouse-drag selections, first
+item, after bold/italic/list/heading; and in the installed app (hidden desktop) on the same
+file. Tab indented and Shift+Tab outdented list items every time; on a plain paragraph Tab
+does nothing, in both versions. Waiting on the exact steps.
 
 **Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range
 boundaries. Seen with 200-block ranges; at 400, stepping across a boundary and back gives the
@@ -91,10 +101,23 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   fails on, find which image encodings or structures PdfPig does not handle, and fix or
   widen the fast path; measure both methods on each file. Debug logging only with Ed's
   permission.
-- **Store screenshots** (6, Desktop) predate the Source editor, the PDF reader and the
-  themes. Needs new screenshots from Ed.
 
 ## Done (recorded so it is not re-raised)
+
+- **Edits keep the view steady** (0.10.14-0.10.16, 2026-09-29/30). Edits that reload the
+  document -- undo/redo; bold, italic, strikethrough, code, heading, quote and list across
+  several lines; Tab/Shift+Tab on list items; a delete, cut or paste across lines -- pinned
+  the edited line 48 px from the top (Tab: the top of a large document). An edit on screen
+  now stays exactly where it was; one off screen is brought into view. In 2-Col only the
+  range holding the edit is laid out again (it was the whole document, ~5 s), and the page
+  numbers stay right (they read 1-2 of ~36 for pages 3-4 after Ctrl+Y).
+  `edit-view-anchor-browser` covers it -- but it calls the indent function, not the Tab key.
+- **2-Col Enter and startup** (0.10.13, from the 2026-09-29 audit). Enter no longer rebuilds
+  the outline on the keypress (deferred 250 ms); the compromise NLP library and the Kokoro
+  voice preload load when the app is idle after startup instead of before the first paint.
+- **Store screenshots** -- Ed's new screenshots and their captions
+  went live with Submission 8 (0.10.10, 2026-09-29). `docs/store-listing.md` synced with
+  the live text on 2026-09-30.
 
 - **Store product name** "TypoZen: ePub & PDF Reader, Markdown Editor" -- live with
   Submission 8 (0.10.10, 2026-09-29).

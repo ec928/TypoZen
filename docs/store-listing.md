@@ -16,60 +16,32 @@ DisplayName stays "TypoZen".
 ## Short description
 
 _Shown in search results and at the top of the listing. Limit 1,000 characters._
+_Synced with the live listing (Submission 8, 0.10.10) on 2026-09-30; the Short description,
+Description and Features below were rewritten in Partner Center and this file now matches._
 
-A calm place to write, and a beautiful place to read. TypoZen is a WYSIWYG Markdown editor, a paginated ePub reader and a PDF reader in one window — with true two-page spreads, read aloud in your Windows voices, an offline dictionary and thesaurus, 25 themes, and no network request of its own.
+Read ePubs in a real two-page spread, or have them read to you. Read and annotate PDFs. Write Markdown and watch it become the page as you type. One quiet window, 25 themes, text-to-speech built in, an offline dictionary/thesaurus, and nothing sent anywhere.
 
 ---
 
 ## Description
 
-_Limit 10,000 characters._
+_Limit 10,000 characters. Headings are plain lines: the Store shows no formatting._
 
-**A reader and an editor that finally live in one window.**
+A calm place to write, and a beautiful place to read. TypoZen is a distraction-free WYSIWYG Markdown editor, a paginated ePub reader, and a full PDF reader—all built into a single, quiet window. Write your notes in the morning and read a novel in the evening, without ever changing apps, breaking your focus, or sending a single byte of data to the cloud.
 
-TypoZen is an ePub reader good enough to finish a novel in, a PDF reader you can annotate, and a Markdown editor that gets out of your way. Write in the morning, read in the evening, in the same window, in the same theme, with the same fonts.
+Writing that stays out of your way
+Type Markdown and watch it format instantly—headings, tables, task lists, and code fences render as you write. Need to edit raw markup or code? Flip seamlessly to Source mode, a genuine code editor powered by CodeMirror 6, capable of opening megabyte-sized files and hundreds of thousands of lines without a stutter. Features like Focus mode (dimming all but the current sentence), Typewriter scroll, and auto-hide chrome ensure absolute immersion.
 
-**Writing that stays out of the way**
+Reading worth sitting down for
+Open an ePub and TypoZen transforms into a premium reader with a genuine two-page spread. It respects the publisher's original typography while smoothly scaling to your preferred font size. PDFs open with their native outlines, text search, and full annotation support. You can even fill out forms, extract images, or read scanned pages using local text recognition.
 
-Type Markdown and watch it become the thing it describes — headings, lists, tables, task lists, code fences, emphasis — or flip to raw Source, a proper code editor with highlighting that opens files of megabytes at once, and back without losing your place on the page. Focus mode dims everything but the sentence you are in. Typewriter scrolling keeps that line where your eyes already are. ZenMode hides the whole interface — toolbars, tabs, even the window buttons — until you reach for it.
+Listen and research, completely offline
+Select any text to look up its definition and synonyms using the built-in, completely offline dictionary featuring over 150,000 definitions. Sit back and use Read Aloud to hear your books or PDFs spoken in your local Windows voices. Every word, search, and definition stays strictly on your hard drive.
 
-Big files stay quick. TypoZen only builds the part of the document you can actually see, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it, not just the visible page.
+Private by construction, not by promise
+Choose from 25 hand-crafted themes—from low-glare dark modes to warm, paper-like light modes. TypoZen bundles premium typefaces including Inter, Literata, Merriweather, and Source Sans 3, so your documents look perfect on any machine. Best of all, TypoZen has no accounts, no telemetry, no forced sync, and makes absolutely zero network requests. It is a powerful, offline-first sanctuary for your words.
 
-**Reading worth sitting down for**
-
-Open an ePub and TypoZen becomes a reader: paginated, chaptered, with a genuine two-page spread. Books keep the publisher's own typesetting rather than a lossy conversion, so the images, footnotes and links are all still there — and the text is re-sized to the theme you chose, not to whatever device the publisher had in mind.
-
-A scrubber spans the whole book with your bookmarks marked along it. The status bar names the chapter you are in; click it to jump to the start. Close the book whenever you like — it reopens exactly where you stopped.
-
-**Or just listen**
-
-Select a passage and press Read aloud, or press it with nothing selected to hear the page you are on. TypoZen speaks in the voices already installed in Windows, at the speed you choose — and the words stay on your computer.
-
-**A dictionary that works on a plane**
-
-Select any word for its most common meanings first, its synonyms, and how often it appears in what you are reading — and press the speaker to hear it said. Over 150,000 definitions and over 110,000 synonym sets, all on your disk. No lookup ever leaves your computer.
-
-**PDFs, properly**
-
-PDFs open in a full reader: single pages or two-page spreads, Find and search across every page, the outline, read aloud, bookmarks and highlights. Annotate, fill in forms and save; the text of scanned pages is read on your computer, so it can be searched and selected too.
-
-**Everything else you opened by accident**
-
-Web pages, images, video and audio open read-only in their own tabs, so the wrong double-click never costs you your place.
-
-**Made to look like yours**
-
-25 hand-picked themes in dark, light and monospace, plus a theme editor to build your own. Five typefaces ship inside the app — Inter, Literata, Merriweather, Source Sans 3 and JetBrains Mono for code — so pages render identically on every machine and nothing is fetched from a font server. Margins, line spacing, justification and hyphenation are all yours to set.
-
-**Private by construction, not by promise**
-
-TypoZen makes no network requests unless you choose to download an optional extension. There is no account, no sign-in, no sync, no analytics, no advertising and no crash reporting. Your documents, your reading positions and your searches stay on your machine, and Privacy Mode stops the app writing any of it down. Everything it does remember can be cleared from one menu.
-
-**Details that add up**
-
-Bookmarks that survive edits and are named from their own text. Highlights and notes. Spelling underlined as you type, and corrections for any word you select. Live word count, character count and reading time. Tabs, with the whole session restored the next time you open the app. Atomic saves, and a warning if a file changed underneath you. Export to self-contained HTML, or print to PDF.
-
-Free, open source, and yours to keep.
+Free, open-source, and yours to keep.
 
 ---
 
@@ -128,9 +100,9 @@ _Up to 20 bullets, 200 characters each._
 14. Reading positions, open tabs and layout restored exactly where you left them
 15. Focus mode, typewriter scrolling and ZenMode, which hides the whole interface until you reach for it
 16. 25 built-in themes plus your own; selections, search and highlights take their colours from the theme
-17. Bundled typefaces — Inter, Literata, Merriweather, Source Sans 3 and JetBrains Mono — with no network requests
+17. Bundled typefaces — Inter, Literata, Merriweather and Source Sans 3 — with no network requests
 18. Private by design: no telemetry, nothing sent anywhere, and a Privacy Mode that stores no history
-19. Images, videos and web pages open in their own tabs, read-only, so nothing is edited by accident
+19. Images, videos and web pages open read-only in their own tabs, so nothing is edited by accident
 20. Export to HTML, print or save as PDF; text saved as UTF-8 with its line endings preserved
 
 ---
