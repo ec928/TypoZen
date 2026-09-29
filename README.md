@@ -47,7 +47,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Read everything else safely:** HTML, images, and media open read-only. Never dirty, never saved over. An HTML page's markup opens in Source from the Mode control.
 
 ### Look, Session & Privacy
-- **Bundled premium typography:** Included fonts (Inter, Literata, Merriweather, Source Sans 3) ensure perfect rendering without any network requests.
+- **Bundled premium typography:** Included fonts (Inter, Literata, Merriweather, Source Sans 3, JetBrains Mono) ensure perfect rendering without any network requests.
 - **25 curated built-in themes:** Choose from dark, light, and mono themes, or use **Customise Theme...** to build and save your own palettes. Every state takes its colour from the theme, one colour per meaning: the accent for what is current (selection, the search match you are on, the paragraph being read aloud), a highlighter colour of the theme's own for marks, and faint washes of the text colour for hover and the cursor's paragraph.
 - **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions. Drag tabs into any order; the order is kept.
 - **Offline & Portable:** Zero telemetry, and nothing on the network unless you install an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
@@ -714,7 +714,7 @@ of them permit commercial use and redistribution:
 | Component | Licence | Text |
 | --- | --- | --- |
 | TypoZen itself | MIT | `LICENSE` |
-| Inter, Literata, Merriweather, Source Sans 3 | SIL Open Font License 1.1 | `fonts/OFL.txt` |
+| Inter, Literata, Merriweather, Source Sans 3, JetBrains Mono | SIL Open Font License 1.1 | `fonts/OFL.txt` |
 | Dictionary and thesaurus data | Open English WordNet (CC BY 4.0), derived from Princeton WordNet | `WORDNET-LICENSE.txt` |
 | PDF.js (the PDF viewer) | Apache 2.0, with its own component notices | `js/vendor/pdfjs/LICENSE` and beside it |
 | PdfPig and the .NET libraries it needs | Apache 2.0; MIT | `THIRD-PARTY-NOTICES.txt` |

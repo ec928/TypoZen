@@ -59,7 +59,7 @@ Web pages, images, video and audio open read-only in their own tabs, so the wron
 
 **Made to look like yours**
 
-25 hand-picked themes in dark, light and monospace, plus a theme editor to build your own. Four typefaces ship inside the app — Inter, Literata, Merriweather and Source Sans 3 — so pages render identically on every machine and nothing is fetched from a font server. Margins, line spacing, justification and hyphenation are all yours to set.
+25 hand-picked themes in dark, light and monospace, plus a theme editor to build your own. Five typefaces ship inside the app — Inter, Literata, Merriweather, Source Sans 3 and JetBrains Mono for code — so pages render identically on every machine and nothing is fetched from a font server. Margins, line spacing, justification and hyphenation are all yours to set.
 
 **Private by construction, not by promise**
 
@@ -128,7 +128,7 @@ _Up to 20 bullets, 200 characters each._
 14. Reading positions, open tabs and layout restored exactly where you left them
 15. Focus mode, typewriter scrolling and ZenMode, which hides the whole interface until you reach for it
 16. 25 built-in themes plus your own; selections, search and highlights take their colours from the theme
-17. Bundled typefaces — Inter, Literata, Merriweather and Source Sans 3 — with no network requests
+17. Bundled typefaces — Inter, Literata, Merriweather, Source Sans 3 and JetBrains Mono — with no network requests
 18. Private by design: no telemetry, nothing sent anywhere, and a Privacy Mode that stores no history
 19. Images, videos and web pages open in their own tabs, read-only, so nothing is edited by accident
 20. Export to HTML, print or save as PDF; text saved as UTF-8 with its line endings preserved
