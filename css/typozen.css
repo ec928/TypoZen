@@ -967,7 +967,7 @@
             box-sizing: border-box;
         }
         #editor.page-mode.two-col-layout {
-            column-gap: 60px;
+            /* column-gap is now driven dynamically by JS based on the margin setting */
         }
         /* Empty trailing column so an odd leftover can sit on the left of a spread.
            PageGeometry._syncSpreadPad appends this only when the content column

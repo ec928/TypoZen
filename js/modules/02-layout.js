@@ -4166,7 +4166,14 @@
         // -----------------------------------------------------------------------------
         const PAGE_EDGE_SLOP = 12;
         const PAGE_FOOT_RESERVE = 26;
-        const PAGE_TWO_COL_GAP = 60;
+        function getPageTwoColGap() {
+            try {
+                if (typeof getPageMarginPads === 'function') {
+                    return getPageMarginPads().left * 2;
+                }
+            } catch (e) {}
+            return 60;
+        }
 
         const PageGeometry = {
             _stride: 0,
@@ -4221,7 +4228,7 @@
                 const pitch = this._stride / 2;
                 if (!(pitch > 0)) return;
                 const nColNow = Math.max(1, Math.round(
-                    (editor.scrollWidth + PAGE_TWO_COL_GAP) / pitch));
+                    (editor.scrollWidth + getPageTwoColGap()) / pitch));
                 const contentCols = existing ? Math.max(1, nColNow - 1) : nColNow;
                 if (contentCols % 2 === 1) {
                     if (existing) return;
@@ -4330,7 +4337,7 @@
                 setStyle('width', '100%');
                 setStyle('maxWidth', '100%');
                 const twoCol = editor.classList.contains('two-col-layout');
-                const gap = twoCol ? PAGE_TWO_COL_GAP : 0;
+                const gap = twoCol ? getPageTwoColGap() : 0;
 
                 // The exact width the browser will use, not a floor of it: with column-count
                 // auto the used width is (pane - gap) / N whatever we ask for, so asking for
