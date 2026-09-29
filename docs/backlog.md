@@ -65,11 +65,11 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
 
 Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 
-- **Visible-window UI suites** (`disk-conflict`, `format-availability`, `native-surface`,
-  `scratch-help`, `select-all`, `shell-seam`, `tab-strip-paint`) not run since 0.9.3 — they
-  need Ed away from the machine.
 - **Store product name** ("ePub Reader & Markdown Editor - TypoZen") does not mention PDFs.
-  Agreed to change with the next Store submission; the wording is Ed's.
+  New name (Ed, 2026-09-29): **"TypoZen: ePub & PDF Reader, Markdown Editor"**. Ed renames it
+  in Partner Center himself: reserve the name, then pick it in the listing. No package
+  change: the manifest's DisplayName is "TypoZen", which already differs from the listing
+  title and passed certification for 0.9.6.
 
 **Later (Ed, 2026-09-29):**
 
@@ -83,6 +83,9 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
   themes. Needs new screenshots from Ed.
 
 ## Done (recorded so it is not re-raised)
+
+- **Visible-window UI suites** — all seven run on 2026-09-29 (0.9.29 + spelling/2-Col
+  fixes): 110 checks, none failed.
 
 - **Spelling speed on long paragraphs** (2026-09-29). Measured first: the checker costs
   ~4-5 ms a character in any shape (3,000 characters 12 s whole, 11.4 s in pieces), so

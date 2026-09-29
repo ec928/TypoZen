@@ -5,6 +5,14 @@ against the shipping build; see the note at the foot before changing any of them
 
 ---
 
+## Product name
+
+**TypoZen: ePub & PDF Reader, Markdown Editor** (chosen 2026-09-29; replaces "ePub Reader &
+Markdown Editor - TypoZen"). A reserved name in Partner Center; the package's own
+DisplayName stays "TypoZen".
+
+---
+
 ## Short description
 
 _Shown in search results and at the top of the listing. Limit 1,000 characters._

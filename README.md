@@ -54,7 +54,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Extensions, if you want them:** **File > Extensions** offers neural voices for reading aloud, a dictionary of 1.3 million words, and **Qwen narration** — an AI narrator that reads a book in character voices (experimental; needs an NVIDIA graphics card). All are optional downloads, all run entirely on your computer once installed, and removing one takes its menu away again.
 
 ### Files & Links
-- **Format support:** Open Markdown, text, code and markup, epub, PDF, common images, and media. Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF.
+- **Format support:** Open Markdown, text, code and markup, epub, PDF, common images, and media. Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF. When installed, TypoZen appears under **Open with** in Explorer for Markdown, text, epub, code files and PDFs.
 - **Smart linking:** Hover links for Open, Show in Folder, and Edit. Local files open in a tab, `http` links open in your browser, and `#heading` jumps seamlessly within the document.
 
 ---
@@ -197,6 +197,7 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 - **Code is not spell-checked**: HTML, XML, CSS, JavaScript, C# and the other code files, and fenced code blocks inside Markdown. Tags and identifiers are not words.
 - **Select a word** — underlined or not, in any editable document including code — and if Windows thinks it is misspelled the popover offers replacements, **Ignore**, and **Add to dictionary** (persisted in the cache folder as `user_words.txt`, not in the document). A correctly spelled word shows no spelling row.
 - Chromium's own spell checker is switched off in both views, so there is one dictionary and one look.
+- **Checked word by word, each word once.** The checker is slow over long text (about 4–5 ms a character), so it is sent each new word rather than whole paragraphs: a long paragraph underlines in a fraction of the time, and a word it has seen before costs nothing. A word is judged on its own, without its sentence.
 
 Preview uses **WPF’s built-in dictionaries** — English, French, German and Spanish, the same engine a WPF TextBox uses — in your Windows display language. Other languages will not underline until a dictionary for them is available.
 
@@ -335,7 +336,7 @@ Full multi-document editing, with the tab strip living in the title bar.
 
 - **New** with the `+` button or `Ctrl+N`; close with the tab's own button or `Ctrl+W`
 - Cycle with `Ctrl+Tab` / `Ctrl+Shift+Tab`
-- **Drag a tab** sideways to move it; a line shows where it will land. Dragging only reorders — the tab you are reading stays on screen — and the order is kept with the session
+- **Drag a tab** sideways to move it; a line shows where it will land. Dragging past either end of a full strip scrolls it. Dragging only reorders — the tab you are reading stays on screen — and the order is kept with the session
 - **Scroll arrows** appear only when the strip overflows, and the active tab is always scrolled into view
 - **Per-tab unsaved indicator**, tracked independently of every other tab
 - **Per-tab file fidelity** — each tab remembers its file's line-ending style (LF / CRLF) and whether it ended with a trailing newline, so saving one document never quietly rewrites the whole file's line endings
