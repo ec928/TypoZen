@@ -883,7 +883,7 @@
                 // Trailing empty blocks are not lines of the text (the serialised document
                 // drops them), so they are not counted: Source's total is the reference.
                 let n = DocumentModel.blocks.length;
-                while (n > 1 && !(DocumentModel.blocks[n - 1] && DocumentModel.blocks[n - 1].raw)) n--;
+                while (n > 1 && !(DocumentModel.blocks[n - 1] && String(DocumentModel.blocks[n - 1].raw || '').trim())) n--;
                 return Math.max(1, modelBlockStartLine(n) - 1);
             }
             const content = precomputedContent != null ? precomputedContent : getMarkdownContent();
