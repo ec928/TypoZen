@@ -174,14 +174,16 @@ _Up to 200 characters each. One screenshot minimum; 1366×768 or larger._
 In the order of the 0.10 screenshots, `dist-storeart\1.png` to `8.png` (Ed, 2026-09-29);
 the first is the one shown in search.
 
-1. Read ePubs in a true two-page spread, with the publisher's own typesetting intact.
-2. A full PDF reader: two-page spreads, the outline, search, highlights and notes, and forms you can fill in and save.
-3. 25 built-in themes in dark, light and mono, or build your own — and books take on the theme you choose.
-4. Have any page read aloud in the voices installed in Windows, or in optional neural voices, with the passage highlighted as it is read.
-5. Select any word for its definitions and synonyms from the offline dictionary — nothing leaves your computer.
-6. Select text to format it, highlight it, link it or search for it, with every heading of the document in the outline.
-7. Write in Markdown and see the result as you type: headings, lists and tables edit in place.
-8. Source is a real code editor, built on CodeMirror 6, with highlighting in your theme's colours.
+Each caption says what its shot shows (Ed, 2026-09-29), not the feature list.
+
+1. An ePub in a true two-page spread, in ZenMode: every control hidden until you reach for it.
+2. A PDF as a two-page spread, with its own outline in the sidebar. Select any word to read aloud from there.
+3. The Themes menu: 25 built-in themes in dark, light and mono, or build your own with Customise Theme.
+4. Read aloud in Windows voices or optional neural voices. The paragraph being read is highlighted.
+5. Select any word for the offline dictionary: its meaning, synonyms, how often it appears, and a button to hear it said.
+6. Select text to format it, highlight it, add a link or search the web. The document's outline is in the sidebar.
+7. Markdown shown as it will look, here in two columns, with a table being edited from its own toolbar.
+8. Source view: a code editor built on CodeMirror 6, highlighting code in your theme's colours.
 
 ---
 
