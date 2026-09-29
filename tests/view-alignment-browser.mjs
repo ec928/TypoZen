@@ -64,7 +64,14 @@ try {
             const r = l.getBoundingClientRect();
             sv[n] = { top: Math.round(r.top - box.top), x: textLeft(l), right: Math.round(r.right - box.left) };
         }
-        const bottomGap = Math.round(box.bottom - document.getElementById('source-cm').getBoundingClientRect().bottom);
+        // Polled, not read once: under the full gate's load the pane can still be settling
+        // at 450 ms and read 4 px short, then pass alone (2026-09-29).
+        let bottomGap = 0;
+        for (let i = 0; i < 20; i++) {
+            bottomGap = Math.round(box.bottom - document.getElementById('source-cm').getBoundingClientRect().bottom);
+            if (Math.abs(bottomGap) <= 1) break;
+            await wait(100);
+        }
         handleCommand('view_set:mode:preview');
         await wait(450);
         return { pv, sv, bottomGap };

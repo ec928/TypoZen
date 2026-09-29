@@ -30,7 +30,7 @@ import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
 import { JSDOM } from 'jsdom';
 import { readSpine, bookBlocks, readToc } from './epub-zip.mjs';
-import { settled } from './settle.mjs';
+import { settled, sleep } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -298,6 +298,10 @@ async function main() {
                 ', seeking 60% of ' + pageCount + ' pages)');
             await page.evaluate(() => handleCommand('set_line_spacing:2.0'));
             await settled(page);
+            // applySpacing's settle chain keeps correcting for ~1.5 s; settled() can return
+            // inside it under the full gate's load, and the read then catches a mid-course
+            // view (failed in the gate, passed alone, 2026-09-29). Wait it out.
+            await sleep(1800);
             const after = await page.evaluate(visibleBlocks);
             // Distance from the text that was on screen to the nearest text now on screen.
             let drift = Infinity;

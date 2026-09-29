@@ -1746,6 +1746,31 @@ function showKokoroStatus(text) {
 // loading a speech engine, or touching the network, at launch.
 let _kokoroExt = null;
 
+/** Run `fn` once the page is idle after startup, so it never delays the first paint. */
+function tzWhenIdleAfterStartup(fn) {
+    const later = function () {
+        if (window.requestIdleCallback) requestIdleCallback(fn, { timeout: 5000 });
+        else setTimeout(fn, 2000);
+    };
+    if (document.readyState === 'complete') setTimeout(later, 1500);
+    else window.addEventListener('load', function () { setTimeout(later, 1500); }, { once: true });
+}
+
+// The NLP library (compromise, ~350 KB) only splits sentences for read aloud, yet it was a
+// <script> in the template and cost an 88 ms frame on every launch (perf log, 2026-09-29).
+// Loaded in idle time after startup instead, so it is in place before anyone presses
+// Read aloud; until it is, both call sites fall back (typeof window.nlp checks).
+tzWhenIdleAfterStartup(function loadNlp() {
+    if (typeof window.nlp === 'function' || document.getElementById('tz-nlp')) return;
+    const own = document.querySelector('script[src*="09-speech.js"]');
+    const query = (own && own.src.indexOf('?') >= 0) ? own.src.slice(own.src.indexOf('?')) : '';
+    const s = document.createElement('script');
+    s.id = 'tz-nlp';
+    s.async = true;
+    s.src = 'js/modules/08b-compromise.js' + query;   // same ?v= stamp as the modules
+    document.head.appendChild(s);
+});
+
 window.setKokoroExtension = function (payload) {
     if (!payload || payload === 'none') {
         _kokoroExt = null;
@@ -1759,8 +1784,11 @@ window.setKokoroExtension = function (payload) {
         try { window.setKokoroVoice('af_heart', 'Heart'); } catch (e) {}
     } else if (isKokoroVoice(_kokoroVoice) && !_isKokoroReady && !_isKokoroInitializing) {
         // The user's saved voice is a Kokoro voice — silently start loading the engine
-        // so it's ready by the time they hit Play.
-        setupKokoro(true);
+        // so it's ready by the time they hit Play. In idle time after startup, not during
+        // it: the engine's import cost a 33 ms frame at launch (perf log, 2026-09-29).
+        tzWhenIdleAfterStartup(function () {
+            if (_kokoroExt && !_isKokoroReady && !_isKokoroInitializing) setupKokoro(true);
+        });
     }
 };
 

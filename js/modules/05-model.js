@@ -3443,8 +3443,11 @@
             ensureCaretVisible(newBlock);
             try { refreshLastGoodDocRaws(); } catch (e2) {}
             HistoryManager.commitEdit();
+            // updateStats schedules the outline (and with it the chapter label) 250 ms on.
+            // Calling updateOutline here as well rebuilt the outline and re-measured every
+            // laid-out block for the chapter label on every Enter: ~19 ms of a 64 ms Enter in
+            // 2-Col (measured 2026-09-29).
             updateStats();
-            updateOutline();
         }
 
         function createBlock(rawText, insertAfter = null) {

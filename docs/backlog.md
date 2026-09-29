@@ -65,11 +65,23 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
 
 Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 
-- **Store product name** ("ePub Reader & Markdown Editor - TypoZen") does not mention PDFs.
-  New name (Ed, 2026-09-29): **"TypoZen: ePub & PDF Reader, Markdown Editor"**. Ed renames it
-  in Partner Center himself: reserve the name, then pick it in the listing. No package
-  change: the manifest's DisplayName is "TypoZen", which already differs from the listing
-  title and passed certification for 0.9.6.
+**From the 2026-09-29 audit (Ed: backlog for now):**
+
+- **Print / Export PDF refuses every large document.** `ExportPdf` (TypoZen_App.cs) stops with
+  "too large to print directly … print it from another application" whenever the page holds
+  only part of the document: any novel (Pride and Prejudice, 2,099 blocks, hits it) and any
+  large Markdown file. An ePub has no other application to print from, and the listing
+  advertises printing. Fix: at print time render the whole document from the model into a
+  print-only container (on-screen editor hidden in print); limit or warn for omnibuses.
+- **Opening a medium document janks for ~5 s.** `paintBlockPreviewsProgressive` (05-model.js)
+  paints 100 blocks per frame; each batch changes heights and re-lays out the whole document
+  (Ed's perf log: 40 frames of 80-130 ms, script 6-33 ms of each). Ed: batching differently
+  does not address the root cause -- the root cause is laying out the whole document per
+  batch. Needs a real answer (e.g. only the blocks near the view laid out at all).
+
+**Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range
+boundaries. Seen with 200-block ranges; at 400, stepping across a boundary and back gives the
+same number for the same view and steps by exactly one. Re-open only if it shows up in use.
 
 **Later (Ed, 2026-09-29):**
 
@@ -83,6 +95,9 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
   themes. Needs new screenshots from Ed.
 
 ## Done (recorded so it is not re-raised)
+
+- **Store product name** "TypoZen: ePub & PDF Reader, Markdown Editor" -- live with
+  Submission 8 (0.10.10, 2026-09-29).
 
 - **Visible-window UI suites** — all seven run on 2026-09-29 (0.9.29 + spelling/2-Col
   fixes): 110 checks, none failed.
