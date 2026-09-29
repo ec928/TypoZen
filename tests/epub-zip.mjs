@@ -187,13 +187,24 @@ export function readToc(spine, docStartBlock, dom) {
     return [];
 }
 
+/**
+ * The app's xhtmlSelfClosingToHtml (06-render-epub.js), which loadBookPayload applies to
+ * every chapter before splitting it: an HTML parse leaves <a id="chap01"/> open, and it
+ * swallows the chapter. Mirrored so these blocks match what the app builds.
+ */
+const XHTML_SELF_CLOSING_RE = /<(?!(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\b)([a-zA-Z][\w:.-]*)(\s[^<>]*?)?\s*\/>/g;
+function xhtmlSelfClosingToHtml(html) {
+    const s = String(html);
+    return s.indexOf('/>') < 0 ? s : s.replace(XHTML_SELF_CLOSING_RE, (m, tag, attrs) => '<' + tag + (attrs || '') + '></' + tag + '>');
+}
+
 /** Blocks for a whole book, plus where each spine document starts. */
 export function bookBlocks(spine, dom) {
     const blocks = [];
     const docStart = new Map();
     for (const d of spine.docs) {
         docStart.set(decodeURIComponent(d.href).replace(/^\.\//, ''), blocks.length);
-        for (const b of bodyBlocks(d.html, dom)) blocks.push(b);
+        for (const b of bodyBlocks(xhtmlSelfClosingToHtml(d.html), dom)) blocks.push(b);
     }
     return { blocks, docStart };
 }

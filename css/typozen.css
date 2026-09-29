@@ -2241,6 +2241,16 @@
         #editor a {
             cursor: pointer;
         }
+        /* An anchor with nowhere to go is not a link. Books use <a id="..."> as jump
+           targets, and a self-closing one in XHTML opens an <a> that wraps everything after
+           it -- a whole Project Gutenberg chapter came out underlined in accent, most visibly
+           in print (2026-09-29). Only an anchor with a destination looks like a link. */
+        #editor a:not([href]):not([data-book-href]) {
+            color: inherit;
+            text-decoration: none;
+            background: none;
+            cursor: auto;
+        }
 
         /* A PDF, read by PDF.js (10-pdf.js). PDF.js requires its container to be absolutely
            positioned; #main-container is the positioned box the editor sits in. The pages
@@ -2570,6 +2580,17 @@
            The Pages selectors are repeated so these outrank body.tz-pages' own !important
            rules; the column styles are inline (PageGeometry) and !important beats inline.
            Source is left as it is: CodeMirror draws only the lines on screen. */
+        /* The page's own margins and a page number. Declaring a margin box turns off
+           Chromium's default header and footer -- the date, "TypoZen Editor" and the
+           https://localapp/... address -- which printed on every page of a book. */
+        @page {
+            margin: 18mm 16mm 16mm;
+            @bottom-center {
+                content: counter(page);
+                font: 9pt Georgia, serif;
+                color: #666;
+            }
+        }
         @media print {
             html, body {
                 height: auto !important;

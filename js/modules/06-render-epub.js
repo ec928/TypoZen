@@ -40,6 +40,25 @@
          * @param {string} payload  the staged JSON
          * @param {number} [resumeAt]  block to open at, if the reader has been here before
          */
+        /**
+         * Chapters are XHTML, and every parse of them here is an HTML parse, which ignores
+         * the "/>" on an element that is not void. Project Gutenberg's chapters open with
+         * <a id="chap01"/>: as HTML that <a> never closes and swallows the whole chapter, so
+         * the chapter became one block (one paragraph to read aloud, bookmark and search)
+         * and printed underlined as a link (2026-09-29). Write such tags out as an open and
+         * a close, once, before anything reads the markup. Void elements (<br/>, <img/>)
+         * are left alone; HTML already reads those as closed.
+         */
+        const XHTML_SELF_CLOSING_RE = /<(?!(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\b)([a-zA-Z][\w:.-]*)(\s[^<>]*?)?\s*\/>/g;
+        function xhtmlSelfClosingToHtml(html) {
+            const s = String(html);
+            if (s.indexOf('/>') < 0) return s;
+            return s.replace(XHTML_SELF_CLOSING_RE, function (m, tag, attrs) {
+                return '<' + tag + (attrs || '') + '></' + tag + '>';
+            });
+        }
+        window.xhtmlSelfClosingToHtml = xhtmlSelfClosingToHtml;
+
         function loadBookPayload(payload, resumeAt) {
             // A book replaces a PDF on screen (10-pdf.js).
             try { if (window.tzPdfActive && typeof window.tzClosePdf === 'function') window.tzClosePdf(); } catch (eP) {}
@@ -54,6 +73,9 @@
 
             const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
 
+            for (let i = 0; i < data.docs.length; i++) {
+                if (data.docs[i] && data.docs[i].html) data.docs[i].html = xhtmlSelfClosingToHtml(data.docs[i].html);
+            }
             const split = bookBlocksFromDocs(data.docs);
             const toc = bookRepairTocByTitle(bookTocToBlockIndices(data.toc, split.docStart),
                 split.blocks, split.docStarts);

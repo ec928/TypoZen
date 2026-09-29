@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.10.5";
+        internal const string AppVersion = "0.10.6";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -17342,6 +17342,16 @@ namespace TypoZen
                         WinForms.MessageBoxIcon.Warning);
                     return;
                 }
+                // The page title is what the PDF is named and headed with; the template's
+                // "TypoZen Editor" said nothing about the document. Use the file's own name.
+                try
+                {
+                    string title = string.IsNullOrEmpty(_currentFilePath)
+                        ? "Untitled" : Path.GetFileNameWithoutExtension(_currentFilePath);
+                    _webView.CoreWebView2.ExecuteScriptAsync("document.title = " +
+                        new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(title) + ";");
+                }
+                catch { }
                 _webView.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
             }
         }
