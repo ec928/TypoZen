@@ -2465,7 +2465,7 @@
                 }
             },
 
-            _restoreCaret(caret) {
+            _restoreCaret(caret, keepTop) {
                 try {
                     if (!caret) return;
                     if (caret.mode === 'source' && sourceEditor) {
@@ -2496,7 +2496,9 @@
                         if (idx >= modelN) idx = modelN - 1;
                         try {
                             if (typeof ensureModelBlockVisible === 'function') {
-                                block = ensureModelBlockVisible(idx, { topPad: 48 });
+                                // keepTop: the paragraph's height on screen before the
+                                // reload (restore); 48 px only when it was not on screen.
+                                block = ensureModelBlockVisible(idx, { topPad: keepTop != null ? keepTop : 48 });
                             }
                         } catch (eVis) {}
                         if (!block && typeof mountedBlockAtFormatIndex === 'function') {
@@ -2524,6 +2526,15 @@
                             block.scrollIntoView({ block: 'nearest', behavior: 'auto' });
                         }
                     } catch (e5) {}
+                    // Exactly where it was: ensureModelBlockVisible lands within ~20 px of the
+                    // padding it is given (height estimates); close the gap in one step.
+                    try {
+                        if (keepTop != null && mainContainer && editor.contains(block)) {
+                            const d = Math.round(block.getBoundingClientRect().top
+                                - mainContainer.getBoundingClientRect().top) - keepTop;
+                            if (Math.abs(d) > 1) mainContainer.scrollTop += d;
+                        }
+                    } catch (e6) {}
                 } catch (e) {}
             },
 
@@ -2837,6 +2848,21 @@
                     // correction applied afterwards was overwritten a frame later.
                     const caret = caretOverride
                         || (data && data.caret ? data.caret : this._caretOf(stateStr));
+                    // Where the edited paragraph sits on screen now, if it is on screen. The
+                    // reload below loses the scroll position and _restoreCaret used to pin the
+                    // paragraph 48 px from the top, so an undo of a change in plain view threw
+                    // it to the top of the window (Ed, 2026-09-29). Put it back where it was.
+                    let keepTop = null;
+                    try {
+                        if (caret && caret.mode !== 'source' && editor && mainContainer
+                            && !(typeof isPaginatedLayout === 'function' && isPaginatedLayout())) {
+                            const el = editor.querySelector('.block[data-model-index="' + (caret.blockIndex | 0) + '"]');
+                            if (el) {
+                                const top = el.getBoundingClientRect().top - mainContainer.getBoundingClientRect().top;
+                                if (top >= 0 && top < mainContainer.clientHeight) keepTop = Math.round(top);
+                            }
+                        }
+                    } catch (eKeep) {}
                     // Legacy: bare array of block strings
                     if (Array.isArray(data)) {
                         editor.innerHTML = '';
@@ -2883,9 +2909,9 @@
                         const self = this;
                         // After loadMarkdownContent DOM is ready; rAF helps focus stick
                         requestAnimationFrame(function () {
-                            self._restoreCaret(caret);
+                            self._restoreCaret(caret, keepTop);
                         });
-                        this._restoreCaret(caret);
+                        this._restoreCaret(caret, keepTop);
                     } else if (state.mode !== 'source' && editor && editor.firstElementChild) {
                         currentActiveBlock = editor.firstElementChild;
                     }
