@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.10.7";
+        internal const string AppVersion = "0.10.9";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -3832,8 +3832,11 @@ namespace TypoZen
             string text = nl < 0 ? "" : body.Substring(nl + 1);
             // On the spelling thread, never this one: a check can take seconds, and here it
             // froze the whole window (SpellCheck.cs). The answer comes back to this thread.
+            var perfSw = System.Diagnostics.Stopwatch.StartNew();
             WindowsSpell.CheckAsync(text, (available, lastError, hits) =>
             {
+                Program.PerfMark("spell host " + id + ": " + text.Length + " chars, " +
+                    (hits == null ? "dropped" : hits.Length + " hits") + ", " + perfSw.ElapsedMilliseconds + " ms queued+checked");
                 var sb = new StringBuilder();
                 if (hits == null)
                 {

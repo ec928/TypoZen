@@ -2985,9 +2985,10 @@
             const flush = function () {
                 if (!words.length) return;
                 const id = 'sp' + (++_spellReq);
-                _spellRequests.set(id, { words: words, texts: texts.slice(), dones: [finish] });
+                _spellRequests.set(id, { words: words, texts: texts.slice(), dones: [finish], sentAt: performance.now() });
                 for (const w of words) _spellWordPending.set(w.word, id);
                 open++;
+                try { tzPerfNow('spell send ' + id + ': ' + words.length + ' words, ' + body.length + ' chars'); } catch (eP) {}
                 try { postMsg('spell_check:' + id + '\n' + body); }
                 catch (e) {
                     _spellRequests.delete(id);
@@ -3030,6 +3031,7 @@
             const req = _spellRequests.get(id);
             if (!req) return;
             _spellRequests.delete(id);
+            try { tzPerfNow('spell reply ' + id + ' ' + (head[1] || '') + ' after ' + Math.round(performance.now() - (req.sentAt || 0)) + 'ms'); } catch (eP) {}
             const release = function () {
                 for (const w of req.words)
                     if (_spellWordPending.get(w.word) === id) _spellWordPending.delete(w.word);
@@ -4978,6 +4980,8 @@
              * is a symptom, not a reason: a book-wide position control is the real answer.
              */
             size: 800,
+            /** Blocks per range for a document being edited rather than a book (ensure). */
+            editSize: 400,
             /** Pages per range: measured where known, estimated elsewhere. */
             counts: null,
             /** Which entries in counts came from a real layout. */
@@ -5016,6 +5020,23 @@
 
             /** Build or resize the map. Existing measurements survive. */
             ensure: function (nBlocks) {
+                // Books keep 800, tuned above for page turns. A document you edit pays for
+                // the whole laid-out range on every structural change instead: an Enter in
+                // 2-Col re-lays out every mounted block, 65 ms of a 115 ms keypress at 800
+                // (measured 2026-09-29, Ed: "useless as an editor"). At 400 an Enter is
+                // ~64 ms in all. 200 was faster (~48 ms) but a range then held about five
+                // 2-Col pages, so ordinary paging crossed range boundaries, where estimated
+                // page numbers can shift by one (pagination-browser failed forward-and-back).
+                // typeof, not a bare reference: the selftest evaluates this object alone.
+                const want = (typeof DocumentModel !== 'undefined' && DocumentModel && DocumentModel.kind !== 'epub')
+                    ? this.editSize : 800;
+                if (this.size !== want) {
+                    this.size = want;
+                    this.counts = null;
+                    this.measured = null;
+                    this.mounted = -1;
+                    this.perBlock = this.seedPerBlock;
+                }
                 this.docBlocks = Math.max(0, nBlocks | 0);
                 const n = this.chunkCount(nBlocks);
                 if (!this.counts) { this.counts = []; this.measured = []; }

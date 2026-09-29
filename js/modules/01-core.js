@@ -30,6 +30,34 @@
         }
         tzMark('(page) top-level script begins');
 
+        // Runtime marks, sent as they happen (startup marks above are batched). Same switch.
+        function tzPerfNow(label) {
+            if (!TZ_PERF) return;
+            try { postMsg('perf:' + Math.round(performance.now()) + '|' + label); } catch (e) {}
+        }
+        // Every frame that took 50 ms or more -- the stalls a reader feels -- with how long
+        // input was blocked, how long style/layout took, and which scripts ran, by name.
+        if (TZ_PERF) {
+            try {
+                new PerformanceObserver(function (list) {
+                    list.getEntries().forEach(function (e) {
+                        var scripts = (e.scripts || []).filter(function (s) { return s.duration >= 5; }).map(function (s) {
+                            return (s.sourceFunctionName || s.invoker || '?') + ' ' + Math.round(s.duration) + 'ms';
+                        }).join(', ');
+                        var render = e.renderStart ? Math.round(e.startTime + e.duration - e.renderStart) : 0;
+                        tzPerfNow('FRAME ' + Math.round(e.duration) + 'ms blocking=' + Math.round(e.blockingDuration || 0) +
+                            ' render+layout=' + render + 'ms' + (scripts ? ' scripts: ' + scripts : ''));
+                    });
+                }).observe({ type: 'long-animation-frame', buffered: false });
+            } catch (eL) {
+                try {
+                    new PerformanceObserver(function (list) {
+                        list.getEntries().forEach(function (e) { tzPerfNow('LONGTASK ' + Math.round(e.duration) + 'ms'); });
+                    }).observe({ type: 'longtask' });
+                } catch (eT) {}
+            }
+        }
+
         /**
          * Generated empty-editor hint, never authored. innerText includes ::before, so
          * a flush of an empty block used to turn the CSS placeholder into document text

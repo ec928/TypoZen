@@ -870,6 +870,22 @@
 
         /** Total document lines (same basis as status "total"). */
         function getTotalLineCount(precomputedContent) {
+            // From the model, not by rebuilding the document from the page. The status bar
+            // asks on every caret move; getMarkdownContent() re-serialises every laid-out
+            // block, measuring each one's visual lines, and in 2-Col every block is laid
+            // out. Measured 2026-09-29 on a 200,000-character document: 68 ms of the 120 ms
+            // an Enter took in 2-Col, and the lag Ed felt as "useless as an editor". The
+            // model holds each block's Markdown already; counting its newlines is the same
+            // arithmetic modelBlockStartLine uses for the caret's own line, so the two agree.
+            if (precomputedContent == null && state.mode !== 'source'
+                && typeof DocumentModel !== 'undefined' && DocumentModel.kind !== 'epub'
+                && DocumentModel.blocks && DocumentModel.blocks.length) {
+                // Trailing empty blocks are not lines of the text (the serialised document
+                // drops them), so they are not counted: Source's total is the reference.
+                let n = DocumentModel.blocks.length;
+                while (n > 1 && !(DocumentModel.blocks[n - 1] && DocumentModel.blocks[n - 1].raw)) n--;
+                return Math.max(1, modelBlockStartLine(n) - 1);
+            }
             const content = precomputedContent != null ? precomputedContent : getMarkdownContent();
             if (!content || content.length === 0) return 1;
             return content.split(/\r?\n/).length;

@@ -77,7 +77,9 @@ namespace TypoZen
                 if (wanted != null && !wanted()) { if (done != null) done(true, "", null); return; }
                 Ensure();
                 bool ok = _box != null;
+                var perfSw = System.Diagnostics.Stopwatch.StartNew();
                 Hit[] hits = ok && !string.IsNullOrEmpty(text) ? Check(text) : new Hit[0];
+                Program.PerfMark("spell thread: checked " + (text == null ? 0 : text.Length) + " chars in " + perfSw.ElapsedMilliseconds + " ms");
                 if (done != null) done(ok, _lastError ?? "", hits);
             }, System.Windows.Threading.DispatcherPriority.Background);
         }
