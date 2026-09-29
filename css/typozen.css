@@ -2559,3 +2559,55 @@
             font-family: var(--ui-font);
             color: var(--tx);
         }
+
+        /* ---- Print / Export PDF -------------------------------------------------------
+           Chromium prints the layout on screen, and on screen the document lives inside a
+           one-window box: a scroller in Scroll view, a sideways band of columns in Pages.
+           With no print rules, every print was one sheet -- the window's worth -- whatever
+           the length (measured 2026-09-29: a 120-paragraph document, and Alice, a 134-page
+           book, both came out as a single sheet). On paper the document flows down the
+           page in one column and the app's chrome is not there.
+           The Pages selectors are repeated so these outrank body.tz-pages' own !important
+           rules; the column styles are inline (PageGeometry) and !important beats inline.
+           Source is left as it is: CodeMirror draws only the lines on screen. */
+        @media print {
+            html, body {
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+                background: #fff !important;
+            }
+            #sidebar, #page-indicator, #page-scrubber, #selPop, #tablePop, #linkPop,
+            #findBar, #tableSizePicker, #tableModal, .tz-help-overlay, .tz-spread-pad {
+                display: none !important;
+            }
+            html body #main-container, html body.tz-pages #main-container,
+            html body #editor-wrapper, html body.tz-pages #editor-wrapper {
+                position: static !important;
+                height: auto !important;
+                max-height: none !important;
+                overflow: visible !important;
+                margin: 0 !important;
+                left: auto !important;
+                top: auto !important;
+            }
+            html body #editor, html body.tz-pages #editor.page-mode,
+            html body.tz-pages #editor.two-col-layout {
+                height: auto !important;
+                width: auto !important;
+                max-width: none !important;
+                min-width: 0 !important;
+                column-width: auto !important;
+                column-count: auto !important;
+                column-gap: normal !important;
+                overflow: visible !important;
+                transform: none !important;
+            }
+            /* Paper is white: a dark theme's pale text would print nearly invisible. */
+            html body #editor, html body #editor * {
+                color: #000 !important;
+            }
+            ::highlight(typozen-spell) {
+                text-decoration: none;
+            }
+        }
