@@ -73,21 +73,44 @@ def out(kind, text=''):
 
 def packages():
     out('STEP', 'Installing the Python packages (about 4.8 GB)')
-    cmd = [sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
-           '--progress-bar', 'off', '--extra-index-url', TORCH_INDEX] + PACKAGES
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                         encoding='utf-8', errors='replace', bufsize=1)
-    last = ''
-    for line in p.stdout:
-        line = line.strip()
-        if not line:
-            continue
-        last = line
-        # The lines worth showing: what it is fetching and what it is installing.
-        if line.startswith(('Collecting', 'Downloading', 'Installing', 'Successfully', 'Requirement already')):
-            out('NOTE', line[:160])
-    if p.wait() != 0:
-        raise RuntimeError('pip could not install the packages: ' + last[:200])
+    
+    import threading, os, time
+    venv_dir = os.path.dirname(os.path.dirname(sys.executable))
+    stop = threading.Event()
+    
+    def watch():
+        while not stop.wait(1.0):
+            done = 0
+            for d, _, files in os.walk(venv_dir):
+                for f in files:
+                    try:
+                        done += os.lstat(os.path.join(d, f)).st_size
+                    except OSError:
+                        pass
+            out('PROGRESS', '%d %d %s' % (min(done, 4800000000), 4800000000, 'Python packages'))
+            
+    t = threading.Thread(target=watch, daemon=True)
+    t.start()
+    
+    try:
+        cmd = [sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
+               '--progress-bar', 'off', '--extra-index-url', TORCH_INDEX] + PACKAGES
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             encoding='utf-8', errors='replace', bufsize=1)
+        last = ''
+        for line in p.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            last = line
+            # The lines worth showing: what it is fetching and what it is installing.
+            if line.startswith(('Collecting', 'Downloading', 'Installing', 'Successfully', 'Requirement already')):
+                out('NOTE', line[:160])
+        if p.wait() != 0:
+            raise RuntimeError('pip could not install the packages: ' + last[:200])
+    finally:
+        stop.set()
+        t.join()
 
 
 # ---- 2. models -----------------------------------------------------------------------------
