@@ -218,11 +218,13 @@ submission. To test locally you need Developer Mode and `Build-Msix.ps1 -Registe
   points at the separate Additional Testing Information page.
 - `runFullTrust` raises a validation warning on every packaged desktop app. Expected;
   answer it rather than removing the capability.
-- **Store logos are optional** — the Store falls back to the tile logos inside the
-  package. But 9:16 Poster art is the main logo on Windows 10/11, and a stretched 310px
-  tile looks like one. `tools\Build-StoreArt.ps1` draws the three listing images.
-- **16:9 Super hero art must not contain the product's title.** It is a requirement, not
-  a style note.
+- **Poster art and box art are for games, not apps** (Microsoft Learn, "App screenshots,
+  images, and trailers", checked 2026-09-29). An app listing uses the package's own tile
+  icon, or an optional 300x300 app tile icon. `tools\Build-StoreArt.ps1` still draws the
+  poster and box art, but they are not uploaded.
+- **16:9 Super hero art must contain no text at all** -- not the title, not anything
+  ("must not include the product's title or other text"), and should avoid app UI. The
+  version before 2026-09-29 set a paragraph of prose beside the mark.
 - Xbox images, Short title and Voice title are Xbox-only. Skip them for a desktop app.
 - **Do not upload a new package while a submission is in certification.** Fixes go into
   the next submission.
