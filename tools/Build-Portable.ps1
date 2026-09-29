@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
 # Output goes to dist/, NOT bin/.
 #
@@ -82,8 +82,8 @@ $tpl = Join-Path $dist 'TypoZen_Template.html'
 
 # '@font-face {', not '@font-face': a comment mentioning the at-rule in prose would otherwise
 # be counted and warn on a correct build.
-if ((Select-String -Path $tpl -Pattern '@font-face {' -SimpleMatch | Measure-Object).Count -ne 10) {
-    Write-Warning "Expected 10 @font-face rules; check the template."
+if ((Select-String -Path $tpl -Pattern '@font-face {' -SimpleMatch | Measure-Object).Count -ne 14) {
+    Write-Warning "Expected 14 @font-face rules; check the template."
 }
 
 Write-Host "Portable build created in $dist/"
