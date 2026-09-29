@@ -25,13 +25,13 @@ A calm place to write, and a beautiful place to read. TypoZen is a WYSIWYG Markd
 
 _Limit 10,000 characters._
 
-**Two apps that finally live in one window.**
+**A reader and an editor that finally live in one window.**
 
-TypoZen is a Markdown editor that gets out of your way, and an ePub reader good enough to finish a novel in. Write in the morning, read in the evening, in the same window, in the same theme, with the same fonts.
+TypoZen is an ePub reader good enough to finish a novel in, a PDF reader you can annotate, and a Markdown editor that gets out of your way. Write in the morning, read in the evening, in the same window, in the same theme, with the same fonts.
 
 **Writing that stays out of the way**
 
-Type Markdown and watch it become the thing it describes — headings, lists, tables, task lists, code fences, emphasis — or flip to raw Source, a proper code editor with highlighting that opens files of megabytes at once, and back without losing your place on the page. Focus mode dims everything but the sentence you are in. Typewriter scrolling keeps that line where your eyes already are. The toolbars slide away when you stop needing them.
+Type Markdown and watch it become the thing it describes — headings, lists, tables, task lists, code fences, emphasis — or flip to raw Source, a proper code editor with highlighting that opens files of megabytes at once, and back without losing your place on the page. Focus mode dims everything but the sentence you are in. Typewriter scrolling keeps that line where your eyes already are. ZenMode hides the whole interface — toolbars, tabs, even the window buttons — until you reach for it.
 
 Big files stay quick. TypoZen only builds the part of the document you can actually see, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it, not just the visible page.
 
@@ -49,9 +49,13 @@ Select a passage and press Read aloud, or press it with nothing selected to hear
 
 Select any word for its most common meanings first, its synonyms, and how often it appears in what you are reading — and press the speaker to hear it said. Over 150,000 definitions and over 110,000 synonym sets, all on your disk. No lookup ever leaves your computer.
 
+**PDFs, properly**
+
+PDFs open in a full reader: single pages or two-page spreads, Find and search across every page, the outline, read aloud, bookmarks and highlights. Annotate, fill in forms and save; the text of scanned pages is read on your computer, so it can be searched and selected too.
+
 **Everything else you opened by accident**
 
-PDFs open in a full reader: single pages or two-page spreads, read aloud, highlights, notes and forms you can fill in and save, and the text of scanned pages read on your computer. Web pages, images, video and audio open read-only in their own tabs, so the wrong double-click never costs you your place.
+Web pages, images, video and audio open read-only in their own tabs, so the wrong double-click never costs you your place.
 
 **Made to look like yours**
 
@@ -66,6 +70,38 @@ TypoZen makes no network requests unless you choose to download an optional exte
 Bookmarks that survive edits and are named from their own text. Highlights and notes. Spelling underlined as you type, and corrections for any word you select. Live word count, character count and reading time. Tabs, with the whole session restored the next time you open the app. Atomic saves, and a warning if a file changed underneath you. Export to self-contained HTML, or print to PDF.
 
 Free, open source, and yours to keep.
+
+---
+
+## What's new in this version
+
+_Limit 1,500 characters. For the 0.10 submission (the Store was on 0.9.6)._
+
+- Each kind of document keeps its own look: ePubs, documents and code each remember their own theme, text size, spacing and margins, and PDFs their own theme.
+- ZenMode hides the whole interface, window buttons included, until you move to the top of the window.
+- Spelling underlines long paragraphs far faster: each word is checked once, not every paragraph again.
+- Switching tabs is much faster, and dragging a tab past the end of a full strip scrolls it.
+- TypoZen appears under Open with for code files and PDFs.
+- Two-page spreads keep your place when you change the theme or text size.
+- Preview keeps the indentation of code files.
+
+---
+
+## Submission checklist -- ONE submission, everything in it (Ed, 2026-09-29)
+
+Every item is changed or confirmed before Submit; nothing is left for a second pass.
+
+| # | Where in Partner Center | What |
+| --- | --- | --- |
+| 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
+| 2 | Packages | the newest MSIX, version above 0.9.6.0; the 0.9.6 package removed from the submission |
+| 3 | Store listing: Product name | the new name selected |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands |
+| 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
+| 6 | Store listing: Store logos | new Poster and Box art from `dist-storeart\`; hero unchanged |
+| 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |
+| 8 | Submission options: Restricted capabilities | the runFullTrust text below, unchanged |
+| 9 | Before Submit | packaged smoke test passed on the exact MSIX uploaded |
 
 ---
 
@@ -87,7 +123,7 @@ _Up to 20 bullets, 200 characters each._
 12. Highlights, notes and bookmarks that survive edits
 13. Tabs for every open document; drag to reorder them, and each remembers its view and position
 14. Reading positions, open tabs and layout restored exactly where you left them
-15. Focus mode, typewriter scrolling and auto-hiding controls for distraction-free writing
+15. Focus mode, typewriter scrolling and ZenMode, which hides the whole interface until you reach for it
 16. 25 built-in themes plus your own; selections, search and highlights take their colours from the theme
 17. Bundled typefaces — Inter, Literata, Merriweather and Source Sans 3 — with no network requests
 18. Private by design: no telemetry, nothing sent anywhere, and a Privacy Mode that stores no history
@@ -118,13 +154,16 @@ than assuming the change worked.
 
 _Up to 7 terms, 30 characters each, 21 words total. Do not repeat the app name._
 
-- markdown editor
 - epub reader
-- wysiwyg
+- pdf reader
+- markdown editor
+- ebook reader
 - distraction free writing
 - offline dictionary
 - text editor
-- ebook reader
+
+(2026-09-29: "pdf reader" in, "wysiwyg" out -- PDF is in the product name now, and wysiwyg
+is a word people rarely search for.)
 
 ---
 
@@ -132,12 +171,14 @@ _Up to 7 terms, 30 characters each, 21 words total. Do not repeat the app name._
 
 _Up to 200 characters each. One screenshot minimum; 1366×768 or larger._
 
-1. Write in Markdown and see the result as you type — no split panes, no preview window to keep in sync.
-2. Focus mode dims everything except the line you are writing.
-3. Read ePubs in a true two-page spread, with the publisher's own typesetting intact.
-4. Select any word for definitions and synonyms from the offline dictionary — nothing leaves your computer.
-5. 25 built-in themes in dark, light and monospace, with four typefaces bundled in the app.
-6. PDFs, images and web pages open read-only in their own tabs, so nothing gets edited by accident.
+In the order of the 0.10 screenshots (Ed, 2026-09-29); the first is the one shown in search.
+
+1. Read ePubs in a true two-page spread, with the publisher's own typesetting intact.
+2. Write in Markdown and see the result as you type — in any of 25 built-in themes, or one of your own.
+3. Source is a real code editor, built on CodeMirror 6, with highlighting in your theme's colours.
+4. Have any page read aloud in the voices installed in Windows, or in optional neural voices.
+5. A full PDF reader: two-page spreads, search, highlights and notes, and forms you can fill in and save.
+6. Images, video and web pages open read-only in their own tabs, so nothing gets edited by accident.
 
 ---
 
@@ -185,7 +226,7 @@ Privacy policy: https://github.com/ec928/TypoZen/blob/master/PRIVACY.md
 _Optional, recommended 270 characters or fewer. Deliberately NOT the opening line of the
 Description above, which is already on the same page._
 
-Write Markdown and watch it become the page as you type. Read ePubs in a real two-page spread, or have them read to you. One quiet window, 25 themes, an offline dictionary, and nothing sent anywhere.
+Read ePubs in a real two-page spread, or have them read to you. Read and annotate PDFs. Write Markdown and watch it become the page as you type. One quiet window, 25 themes, an offline dictionary, and nothing sent anywhere.
 
 Leave **Short title** and **Voice title** empty -- both are Xbox-only (installation screens
 and Kinect voice). Leave the three **Xbox images** empty for the same reason: Xbox is
