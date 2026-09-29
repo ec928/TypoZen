@@ -1,4 +1,4 @@
-TypoZen bundles the four typefaces below. Each is licensed under the
+TypoZen bundles the five typefaces below. Each is licensed under the
 SIL Open Font License, Version 1.1, whose full text follows. The OFL
 permits these fonts to be bundled, redistributed and sold with software;
 it requires that this notice and licence travel with them.
@@ -21,6 +21,9 @@ Source Sans 3
     © 2023 Adobe (http://www.adobe.com/), with Reserved Font Name ‘Source’
     SourceSans3-Italic.ttf, SourceSans3.ttf
 
+JetBrains Mono
+    Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+    JetBrainsMono-Bold.ttf, JetBrainsMono-BoldItalic.ttf, JetBrainsMono-Italic.ttf, JetBrainsMono.ttf
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
 https://openfontlicense.org
@@ -111,3 +114,4 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+

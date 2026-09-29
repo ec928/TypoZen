@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.10.10";
+        internal const string AppVersion = "0.10.11";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -881,6 +881,7 @@ namespace TypoZen
             new string[] { "Georgia", "serif" },
             new string[] { "Palatino Linotype", "serif" },
             new string[] { "Sitka Text", "serif" },
+            new string[] { "JetBrains Mono", "monospace" },
             new string[] { "Cascadia Mono", "monospace" },
             new string[] { "Consolas", "monospace" },
         };
@@ -18241,6 +18242,7 @@ namespace TypoZen
         }
     }
 }
+
 
 
 
