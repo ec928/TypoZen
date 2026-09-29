@@ -13,8 +13,8 @@ added to the README.)*
 
 Built on branch `feature/per-type-view-settings` (not yet merged to `master`). As built,
 it goes further than the plan below: text size, Word Wrap and columns are per type as
-well, ePub defaults to two columns, and **Code's default theme is Tokyo Night, not Monokai**
-as decided below — confirm which is intended. The plan as agreed follows.
+well, ePub defaults to two columns, and Code's default theme is **Tokyo Night** (Ed,
+2026-09-29: intentional; it replaces Monokai in the table below). The plan as agreed follows.
 
 **Decided (Ed, 2026-09-28):** change nothing in the UI and add no menu items. The existing theme and View settings are saved **per document type** instead of once globally. They stay the user's to set; a change is saved to the type of the document on screen and persists.
 
