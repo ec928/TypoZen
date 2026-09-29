@@ -1245,7 +1245,11 @@
                         const pageForBlock = twoColPageOfElement(el);
                         if (pageForBlock !== null) {
                             editor.scrollLeft = pageForBlock * twoColPageWidth();
-                            currentTwoColPage = pageForBlock;
+                            // pageForBlock is within the mounted range; the global page adds
+                            // the ranges before it.
+                            currentTwoColPage = (pageWindowingActive() && PageChunks.mounted >= 0)
+                                ? PageChunks.prefixPages(PageChunks.mounted) + pageForBlock
+                                : pageForBlock;
                             window.showDebugTelemetry('ensureVisible: 2col seed page=' + pageForBlock +
                                 ' scrollLeft=' + editor.scrollLeft);
                         }

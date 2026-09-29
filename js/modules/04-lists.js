@@ -2535,6 +2535,14 @@
                             if (Math.abs(d) > 1) mainContainer.scrollTop += d;
                         }
                     } catch (e6) {}
+                    // Pages: land on the page holding the edit through the page map, so the
+                    // page numbers follow. If it was on screen, that is the page already there.
+                    try {
+                        if (isPaginatedLayout() && editor.contains(block)) {
+                            const lp = twoColPageOfElement(block);
+                            if (lp != null) PageMap.gotoLocal(lp);
+                        }
+                    } catch (e7) {}
                 } catch (e) {}
             },
 
@@ -2897,6 +2905,22 @@
                         // and completely unscrollable until the mode was toggled by hand.
                         try { syncPaginationClass(); } catch (eP) {}
                         try { applyEditorChromeForMode(); } catch (eC) {}
+                        // Pages on a large document lays out one range at a time, and the
+                        // load above rebuilds and paints the WHOLE document instead: ~5 s on
+                        // a 4,000-line file, then narrowed back to a range with the page
+                        // numbers left counting that range alone (Ed, 2026-09-29: pages 3-4
+                        // shown as 1-2 of ~36 after Ctrl+Y). Drop that build and mount the
+                        // range holding the edit, as a page turn does.
+                        try {
+                            if (state.mode !== 'source' && typeof pageWindowingActive === 'function'
+                                && pageWindowingActive()) {
+                                window.__tzPaintGen = (window.__tzPaintGen || 0) + 1;
+                                window.__tzPreviewPainting = false;
+                                const wbi = (caret && caret.mode !== 'source') ? (caret.blockIndex | 0) : 0;
+                                PageChunks.ensure(DocumentModel.blocks.length);
+                                mountPageChunk(PageChunks.chunkOfBlock(wbi));
+                            }
+                        } catch (eW) {}
                     }
                     updateStatsNow();
                     updateOutline();

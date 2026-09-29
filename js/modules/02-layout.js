@@ -5392,7 +5392,10 @@
                 const line = (typeof _stickyLineCache !== 'undefined' && _stickyLineCache)
                     ? _stickyLineCache : 1;
                 const anchor = modelLocationFromDocumentLine(Math.max(1, line | 0)).blockIndex;
-                return mountPageChunk(PageChunks.chunkOfBlock(anchor));
+                const ok = mountPageChunk(PageChunks.chunkOfBlock(anchor));
+                // The numbers on screen were counted over the whole document; recount.
+                try { updatePageIndicator(); } catch (eI) {}
+                return ok;
             } catch (e) {
                 window.showDebugTelemetry('ensurePageWindow: ' + e.message);
                 return false;
