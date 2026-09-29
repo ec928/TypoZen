@@ -2311,6 +2311,32 @@
             catch (err) { }
         }, true);
 
+        /**
+         * Tab outside a list or table: type a tab at the caret, replacing a selection
+         * within one paragraph, as Notepad does. Shift+Tab removes a tab just before the
+         * caret. A selection across paragraphs is left alone rather than deleted.
+         * The preview shows the tab at its width (parseInline, .tz-tab).
+         */
+        function typeTabAtCaret(outdent) {
+            if (!editor || !editor.isContentEditable || state.mode === 'source') return false;
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount || !sel.anchorNode || !editor.contains(sel.anchorNode)) return false;
+            const a = getAncestorBlock(sel.anchorNode);
+            if (!a || a !== getAncestorBlock(sel.focusNode)) return false;
+            if (outdent) {
+                if (!sel.isCollapsed) return false;
+                const n = sel.anchorNode, o = sel.anchorOffset;
+                if (n.nodeType !== 3 || o < 1 || n.nodeValue.charAt(o - 1) !== '\t') return false;
+                const r = document.createRange();
+                r.setStart(n, o - 1);
+                r.setEnd(n, o);
+                sel.removeAllRanges();
+                sel.addRange(r);
+                return document.execCommand('delete');
+            }
+            return document.execCommand('insertText', false, '\t');
+        }
+
         // Alt reveals hidden chrome. The page is the ONLY component that sees this key
         // while the editor has focus: the WebView's HWND belongs to the browser process,
         // so it never reaches the host's message loop or WPF's KeyDown.
@@ -2372,7 +2398,8 @@
                 const t = e.target;
                 if (t && (t.id === 'findInput' || (t.closest && t.closest('#findBar')))) return;
             }
-            // Nested list Tab — safe reload path only (never multi writeBlockRaw)
+            // Tab: nested list indent (safe reload path only, never multi writeBlockRaw);
+            // otherwise a tab character (typeTabAtCaret).
             if (e.key === 'Tab' && state.mode !== 'source' && !e.ctrlKey && !e.metaKey && !e.altKey) {
                 if (editor && (document.activeElement === editor || editor.contains(document.activeElement) || editor.contains(e.target))) {
                     const delta = e.shiftKey ? -1 : 1;
@@ -2381,9 +2408,13 @@
                         e.stopPropagation();
                         return;
                     }
-                    // Non-list inside editor: keep focus in editor
+                    // Anywhere else Tab types a tab, as in Notepad; Shift+Tab removes one
+                    // just before the caret. It used to do nothing at all here (Ed,
+                    // 2026-09-30: "tab doesn't work"). preventDefault either way, so focus
+                    // stays in the editor.
                     if (document.activeElement === editor || editor.contains(document.activeElement)) {
                         e.preventDefault();
+                        try { typeTabAtCaret(e.shiftKey); } catch (eTab) {}
                         return;
                     }
                 }
@@ -3576,8 +3607,10 @@
                     .replace(/\u00a0/g, ' ')
                     .replace(/\r\n/g, '\n')
                     .replace(/\n+/g, ' ')
-                    .replace(/[ \t]+/g, ' ')
-                    .trim();
+                    // Spaces collapse as HTML shows them; a tab is typed text (Tab key,
+                    // typeTabAtCaret) and stays a tab, even at the start of the line.
+                    .replace(/ +/g, ' ')
+                    .replace(/^ +| +$/g, '');
             }
             // data-src holds the path the author wrote; src may have been rewritten onto
             // the https://docfolder/ virtual host purely for display.
@@ -3625,8 +3658,10 @@
                     .replace(/\u00a0/g, ' ')
                     .replace(/\r\n/g, '\n')
                     .replace(/\n+/g, ' ')
-                    .replace(/[ \t]+/g, ' ')
-                    .trim();
+                    // Spaces collapse as HTML shows them; a tab is typed text (Tab key,
+                    // typeTabAtCaret) and stays a tab, even at the start of the line.
+                    .replace(/ +/g, ' ')
+                    .replace(/^ +| +$/g, '');
             }
 
             function firstMeaningfulChild(root) {

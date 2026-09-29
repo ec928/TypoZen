@@ -2637,3 +2637,9 @@
                 text-decoration: none;
             }
         }
+
+/* A typed tab (Tab outside a list) shows at its width, as in Notepad; plain text
+   rendering would collapse it to one space. Chromium's own inserted tab while
+   typing is a white-space:pre span, so both look the same. */
+#editor { tab-size: 3em; }
+#editor .tz-tab { white-space: pre; }

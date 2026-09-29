@@ -300,6 +300,47 @@
                 return true;
             } });
 
+            // Tab types a tab, as in Notepad. The standard keymap has no Tab, so the
+            // browser moved focus out of the editor and the key did nothing (Ed,
+            // 2026-09-30). A selection over several lines indents each line instead of
+            // being replaced; Shift+Tab takes one tab (or up to four spaces) back off.
+            const selLines = (st, r) => {
+                const a = st.doc.lineAt(r.from), b = st.doc.lineAt(r.to);
+                const end = (r.to === b.from && b.number > a.number) ? b.number - 1 : b.number;
+                const out = [];
+                for (let n = a.number; n <= end; n++) out.push(st.doc.line(n));
+                return out;
+            };
+            keys.push({ key: 'Tab', run: (v) => {
+                const st = v.state;
+                v.dispatch(st.changeByRange((r) => {
+                    if (r.empty || st.doc.lineAt(r.from).number === st.doc.lineAt(r.to).number) {
+                        return { changes: { from: r.from, to: r.to, insert: '\t' },
+                            range: CM.EditorSelection.cursor(r.from + 1) };
+                    }
+                    const ch = st.changes(selLines(st, r).map(l => ({ from: l.from, insert: '\t' })));
+                    return { changes: ch,
+                        range: CM.EditorSelection.range(ch.mapPos(r.anchor, 1), ch.mapPos(r.head, 1)) };
+                }), { scrollIntoView: true, userEvent: 'input' });
+                return true;
+            } });
+            keys.push({ key: 'Shift-Tab', run: (v) => {
+                const st = v.state;
+                const changes = [];
+                for (const r of st.selection.ranges) {
+                    if (r.empty && r.from > 0 && st.doc.sliceString(r.from - 1, r.from) === '\t') {
+                        changes.push({ from: r.from - 1, to: r.from });
+                        continue;
+                    }
+                    for (const l of selLines(st, r)) {
+                        const m = /^(\t| {1,4})/.exec(l.text);
+                        if (m) changes.push({ from: l.from, to: l.from + m[1].length });
+                    }
+                }
+                if (changes.length) v.dispatch({ changes, userEvent: 'delete' });
+                return true;
+            } });
+
             const view = new CM.EditorView({
                 parent: host,
                 state: CM.EditorState.create({

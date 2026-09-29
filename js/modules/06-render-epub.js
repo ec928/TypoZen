@@ -2224,6 +2224,10 @@
             res = res.replace(/\*(?=\S)(.*?\S)\*/g, '<em>$1</em>');
             res = res.replace(/(^|[^\w])_(?=\S)(.*?\S)_(?!\w)/g, '$1<em data-mark="u">$2</em>');
 
+            // A tab shows at its width (Tab types one, typeTabAtCaret); plain HTML
+            // collapses it to a space. The span serializes back to the tab itself.
+            res = res.replace(/\t/g, '<span class="tz-tab">\t</span>');
+
             // 5. Restore code spans as literal text.
             res = res.replace(/@@TZCODE(\d+)@@/g, function (m, i) {
                 return '<code>' + escapeHtml(codeSpans[Number(i)] || '') + '</code>';
