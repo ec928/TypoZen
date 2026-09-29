@@ -1757,6 +1757,13 @@
             color: var(--hi, var(--accent, #60A5FA));
             line-height: 1.2;
         }
+        /* The rest of the product name: part of the title, a step down from the brand. */
+        .tz-about-sub {
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0;
+            color: var(--tx, #E4E4E7);
+        }
         .tz-about-version {
             margin: 3px 0 0;
             font-size: 12px;

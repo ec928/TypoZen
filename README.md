@@ -1,4 +1,4 @@
-# 🧘 TypoZen — Markdown editor, ePub and PDF reader for Windows
+# 🧘 TypoZen: ePub & PDF Reader, Markdown Editor
 **Write in the morning, read in the evening, in the same quiet window.**
 
 TypoZen is a beautifully simple, distraction-free app for Windows that combines a seamless Markdown editor with a proper ePub reader and a full PDF reader.

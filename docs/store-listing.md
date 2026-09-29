@@ -74,7 +74,7 @@ Free, open source, and yours to keep.
 _Up to 20 bullets, 200 characters each._
 
 1. WYSIWYG Markdown editing — type Markdown and see the result as you write; switch to raw Source and back without losing your place
-2. Source is a real code editor: highlighting for Markdown, HTML, XML, CSS, JSON, JavaScript and C#
+2. Source is a real code editor, built on CodeMirror 6: highlighting for Markdown, HTML, XML, CSS, JSON, JavaScript and C#
 3. Opens large files instantly — megabytes of text, with lines hundreds of thousands of characters long
 4. Paginated ePub reader with true two-page spreads, chapter navigation and a reading scrubber
 5. Books keep the publisher's typography, embedded fonts and footnotes; the page, its margins and colours stay yours

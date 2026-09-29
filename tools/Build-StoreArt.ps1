@@ -92,12 +92,13 @@ function New-Art {
     $bRule = New-Object System.Drawing.SolidBrush($accent)
     $g.FillRectangle($bRule, [int](($W - $ruleW) / 2), $ruleY, $ruleW, [Math]::Max(3, [int]($H * 0.004)))
 
-    # What it is, in the fewest words that are still true.
+    # The rest of the product name, as the Store lists it (2026-09-29): with the wordmark it
+    # reads "TypoZen: ePub & PDF Reader, Markdown Editor".
     $tagSize = [single]($W * 0.038)
     $fTag = New-Object System.Drawing.Font($fam, $tagSize, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
     $bTag = New-Object System.Drawing.SolidBrush($muted)
     $tagY = $ruleY + [int]($H * 0.035)
-    $g.DrawString('Markdown editor and ePub reader', $fTag, $bTag, [single]($W / 2), [single]$tagY, $sf)
+    $g.DrawString('ePub & PDF Reader, Markdown Editor', $fTag, $bTag, [single]($W / 2), [single]$tagY, $sf)
 
     $path = Join-Path $out $Name
     $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
