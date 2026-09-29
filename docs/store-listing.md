@@ -86,6 +86,7 @@ _Limit 1,500 characters. For the 0.10 submission (the Store was on 0.9.6)._
 - Preview keeps the indentation of code files.
 - Print and Export PDF print the whole document, with page numbers and named after it. They printed only the first page before.
 - Project Gutenberg books read paragraph by paragraph: read aloud, bookmarks and search no longer jump by whole chapters.
+- Editing large documents in two columns responds far faster.
 
 ---
 
