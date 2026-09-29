@@ -726,6 +726,10 @@
         /* Word wrap off: lines run long and the pane scrolls sideways. Only where there
            is a sideways to scroll -- see the page-mode override further down. */
         body.nowrap #editor .block { white-space: pre; }
+        /* A code file keeps its indentation in Preview with wrapping on as well: its leading
+           spaces are structure, not typing noise. Long lines still wrap. (setSourceDocExt
+           sets the class; Documents are unaffected.) */
+        body.tz-code-doc:not(.nowrap) #editor .block { white-space: pre-wrap; }
         body.nowrap #main-container { overflow-x: auto; }
 
         #editor {

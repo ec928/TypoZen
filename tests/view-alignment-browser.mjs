@@ -197,9 +197,11 @@ try {
     assert(reports.afterScroll.some(b => Math.abs(b - 1999) <= 1), 'and after scrolling to line 2000 (' + JSON.stringify(reports.afterScroll) + ')');
 
     r = await measure('const a = 1;\n\nfunction f() {\n  return a;\n}\n\n\n// end', 1, 'js');
-    // Line 4 is indented: Preview collapses leading spaces (it has no code-document kind),
-    // Source shows them. Its top and right must still match.
-    compare('a code file, blank lines included', r, (k) => k == 4);
+    // Line 4 is indented. Preview used to collapse its leading spaces, so it was excused
+    // here; a code file now keeps them in Preview (body.tz-code-doc), so it must line up too.
+    compare('a code file, blank lines and indentation included', r, () => false);
+    assert(r.pv[3] && r.pv[0] && r.pv[3].x > r.pv[0].x + 5,
+        'Preview shows a code line\'s indentation (' + (r.pv[3] && r.pv[3].x) + ' vs ' + (r.pv[0] && r.pv[0].x) + ')');
 } finally {
     await browser.close();
     clearTimeout(deadline);

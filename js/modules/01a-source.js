@@ -586,6 +586,12 @@
          */
         function setSourceDocExt(ext) {
             if (typeof state !== 'undefined' && state) state.docExt = String(ext == null ? '' : ext).toLowerCase();
+            // Code documents keep their indentation in Preview too (css: body.tz-code-doc).
+            try {
+                const code = typeof window.codeLanguageForPath === 'function'
+                    && !!window.codeLanguageForPath('x.' + (state ? state.docExt : ''));
+                document.body.classList.toggle('tz-code-doc', code);
+            } catch (e) {}
         }
 
         /** True for Source's editing surface and anything inside it. */
