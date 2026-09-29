@@ -193,9 +193,14 @@ try {
     assert(mark && !mark.charInAnchor,
         'control: the page opens mid-paragraph, so the first text on screen is not in the first block that starts there');
 
+    // Marked once, not before each change. Two changes in a row with no page turned between
+    // them are still about the text the reader was on before the first: the page the first
+    // change lands on can open with the tail of an earlier paragraph, and re-reading it as
+    // the reading position walked the reader back a page per change (the first half's 14px
+    // step, 2026-09-29).
+    const m = await page.evaluate(markFirstChar);
     for (const fsNew of [22, 13]) {
         const pageBefore = await page.evaluate(() => PageMap.current());
-        const m = await page.evaluate(markFirstChar);
         await page.evaluate((a) => applyTheme({ Name: 'L' + a.fs, Bg: '#1d2021', Tx: '#ebdbb2', FN: a.font, FS: a.fs }),
             { fs: fsNew, font: FONT });
         const start = Date.now();

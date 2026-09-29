@@ -3,15 +3,6 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
-## Regression: 2-Col book position after a theme change (found 2026-09-29)
-
-`theme-anchor-browser` fails on 0.9.29 (2 of 14): in 2-Col Pages, after a theme text-size
-change the reader lands one page away from the paragraph they were on. Bisected to the
-dynamic two-column gap (0.9.28/0.9.29, `getPageTwoColGap` in `02-layout.js`): with that file
-as of 0.9.27 all 14 pass. The gap itself is applied consistently (layout and page pitch
-both use it); the new geometry exposes an off-by-one in how a book re-finds its page after
-relayout. Not yet investigated further.
-
 ## 0. File associations (added 2026-09-28)
 
 Capture both custom and hardcoded file extensions (e.g. `.md`, `.txt`, `.epub`, `.pdf`) for
@@ -114,6 +105,13 @@ tab-drag auto-scroll, and the `big-file-app` deadline clean-up; Store screenshot
   Ed to decide.
 
 ## Done (recorded so it is not re-raised)
+
+- **2-Col position after a theme change** (found 2026-09-29, `theme-anchor-browser` 2 of 14
+  on 0.9.29). Not the dynamic gap itself: it moved the page breaks and exposed two anchor
+  bugs in `applySpacing`. A second change in a row re-read the page the first had landed on,
+  whose top can be an earlier paragraph's tail, so each change walked back a page; and a
+  blank-line block opening a page made `firstVisibleTextPosition` give up and fall back to
+  the next paragraph. Fixed in `03-shell.js` / `02-layout.js`; 14 of 14.
 
 - **`docs/audit_report.md`** — its findings are all fixed (Ed, 2026-09-28).
 - **Typewriter and Focus modes** are deliberate features and stay. Typewriter keeps the caret

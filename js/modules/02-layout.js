@@ -4700,10 +4700,11 @@
                 for (let b = 0; b < blocks.length; b++) {
                     if (!any(blocks[b].getClientRects())) continue;
                     const walker = document.createTreeWalker(blocks[b], NodeFilter.SHOW_TEXT);
-                    let n;
+                    let n, hasText = false;
                     while ((n = walker.nextNode())) {
                         const v = n.nodeValue || '';
                         if (!v.trim()) continue;
+                        hasText = true;
                         const whole = document.createRange();
                         whole.selectNodeContents(n);
                         if (!any(whole.getClientRects())) continue;
@@ -4716,10 +4717,34 @@
                             }
                         }
                     }
-                    return null;   // the first visible block has no text: an image, a rule
+                    // Only a picture or a rule is a reason to stop: the block is then the best
+                    // anchor there is. A blank line between paragraphs is a block too, and
+                    // one opening a page answered "no text here", which fell back to the
+                    // first block that STARTS on the page -- the paragraph after the one the
+                    // page opens with -- and a theme change lost the text being read (2-Col,
+                    // 2026-09-29). Same for a block whose text is all on the previous page.
+                    const media = 'img,hr,svg,video,canvas,iframe,picture';
+                    if (hasText || !(blocks[b].matches(media) || blocks[b].querySelector(media))) continue;
+                    return null;   // the first visible block is a picture or a rule
                 }
             } catch (e) {}
             return null;
+        }
+
+        /** Is a position from firstVisibleTextPosition still in the DOM and on screen? */
+        function textPositionOnScreen(pos) {
+            if (!editor || !pos || !pos.node || !pos.node.isConnected) return false;
+            try {
+                const len = (pos.node.nodeValue || '').length;
+                if (!(pos.offset < len)) return false;
+                const host = editor.getBoundingClientRect();
+                const r = document.createRange();
+                r.setStart(pos.node, pos.offset);
+                r.setEnd(pos.node, pos.offset + 1);
+                const rc = r.getClientRects()[0];
+                return !!rc && rc.width >= 1 && rc.right > host.left + 1 && rc.left < host.right - 1
+                    && rc.bottom > host.top + 1 && rc.top < host.bottom - 1;
+            } catch (e) { return false; }
         }
 
         function topLeftModelIndexTwoCol() {

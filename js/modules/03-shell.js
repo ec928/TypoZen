@@ -1491,8 +1491,17 @@
          * change is different -- the reader is looking at the text at this moment, and the
          * DOM is the only thing that knows which text that is. Trusting the remembered
          * value here threw the reader back to wherever the last relayout had put them.
+         *
+         * The one exception is the text the previous spacing change anchored on, and only
+         * while it is still on screen. A seek lands on the page holding that text, which
+         * can open with the tail of an earlier paragraph; reading the page afresh on the
+         * next change anchored on that tail instead, and each change walked the reader back
+         * a page (22px then 14px in 2-Col: the paragraph ended up on the page after the
+         * view). Still on screen means no page has been turned since, so it is still what
+         * they were reading.
          */
         let _spacingSeekToken = 0;
+        let _spacingText = null;
 
         /**
          * @param {Object<string,string>} props one or more custom properties, applied
@@ -1506,7 +1515,12 @@
             const anchor = isPaginatedLayout() ? topLeftModelIndexTwoCol() : -1;
             // Read with the block, before anything changes: the character is what the
             // reader is looking at, the block only where it is safe to fall back to.
-            const textAt = isPaginatedLayout() ? firstVisibleTextPosition() : null;
+            let textAt = null;
+            if (isPaginatedLayout()) {
+                textAt = (_spacingText && textPositionOnScreen(_spacingText))
+                    ? _spacingText : firstVisibleTextPosition();
+            }
+            _spacingText = textAt;
             Object.keys(props).forEach(function (p) {
                 document.documentElement.style.setProperty(p, props[p]);
             });
