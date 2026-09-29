@@ -2787,22 +2787,34 @@
            page asks about the text on screen and draws the answers -- Preview here, Source
            in 01a-source.js, both through spellCheckTexts().
 
-           Answers are remembered per paragraph (Preview) or line (Source), keyed by the
-           text itself, so a check asks only about text not seen in that exact form:
-           scrolling back, switching tabs or modes, or a pause in typing that changed one
-           paragraph costs a repaint and, at most, one paragraph sent to the host.
+           Answers are remembered per word, and put together per paragraph (Preview) or
+           line (Source), keyed by the text itself: scrolling back, switching tabs or
+           modes costs a repaint, and a pause in typing sends at most the words it added.
 
            Suggestions are not part of a check. The host works them out for one word when
            the reader selects it (spell_suggest:): doing it for every misspelling on screen
-           took seconds on a page of unknown words, on the window's own thread. */
+           took seconds on a page of unknown words, on the window's own thread.
+
+           The host is asked about WORDS, not paragraphs. Its checker costs about 4-5 ms a
+           character whatever shape the text is in (measured 2026-09-29: 500 characters
+           2.6 s, 3,000 12 s, 7,500 35 s; cutting a paragraph into pieces saved nothing),
+           so the only saving is sending less text. A paragraph's unique words were a
+           third of its length, and a word seen once is never sent again -- so an edit
+           asks about the word typed, not the paragraph around it, and the second page of a
+           document mostly answers from memory. */
 
         let _spellTimer = null;
         let _spellReq = 0;
         let _spellHits = [];                  // words Preview has underlined now
         const _spellCache = new Map();        // text -> [{ start, len, word }]
         const SPELL_CACHE_MAX = 20000;
-        const SPELL_REQUEST_CHARS = 7500;     // under the host's 8,000-character cap
-        const _spellRequests = new Map();     // request id -> { segs, done }
+        const _spellWords = new Map();        // word -> [{ start, len }] within it; [] = spelled right
+        const _spellWordPending = new Map();  // word -> id of the request asking about it
+        const SPELL_WORDS_MAX = 60000;
+        // ~5 s of the checker's time, so a request left behind by scrolling is dropped
+        // soon and a selected word's suggestions do not wait long behind one.
+        const SPELL_REQUEST_CHARS = 1500;
+        const _spellRequests = new Map();     // request id -> { words, texts, dones }
         const _spellSuggs = new Map();        // word -> suggestions, once asked
 
         function blockPlainText(el) {
@@ -2882,56 +2894,113 @@
         }
         window.scheduleSpellCheck = scheduleSpellCheck;
 
-        /** This text's misspellings as last answered; undefined if it was never checked. */
-        function spellCached(text) { return _spellCache.get(text); }
+        /**
+         * The words in `text` the checker could flag, and where each starts. Left out, as
+         * the host's IsCheckableWord leaves them out: anything with a digit, paths,
+         * addresses and identifiers (/ @ : _ or an inner dot), short all-capital acronyms,
+         * and runs too long to be a word. Quotes, dashes and full stops at either end are
+         * trimmed, so "end." and 'word' are asked about as end and word.
+         */
+        const SPELL_TOKEN_RE = /[\p{L}\p{M}\p{N}_@\/:.'’-]+/gu;
+        function spellTokens(text) {
+            const out = [];
+            const re = new RegExp(SPELL_TOKEN_RE);
+            let m;
+            while ((m = re.exec(text))) {
+                let w = m[0], start = m.index;
+                const lead = /^[.:'’-]+/.exec(w);
+                if (lead) { w = w.slice(lead[0].length); start += lead[0].length; }
+                w = w.replace(/[.:'’-]+$/, '');
+                if (w.length < 2 || w.length > 64 || /[\p{N}_@\/:.]/u.test(w)) continue;
+                const letters = w.match(/\p{L}/gu);
+                if (!letters || letters.length < 2) continue;
+                if (letters.length <= 5 && w === w.toUpperCase() && w !== w.toLowerCase()) continue;
+                out.push({ word: w, start: start });
+            }
+            return out;
+        }
+
+        /**
+         * This text's misspellings; undefined while any of its words is unanswered. Put
+         * together from the per-word answers the first time they are all in.
+         */
+        function spellCached(text) {
+            const known = _spellCache.get(text);
+            if (known !== undefined) return known;
+            const hits = [];
+            for (const t of spellTokens(String(text || ''))) {
+                const w = _spellWords.get(t.word);
+                if (w === undefined) return undefined;
+                for (const h of w) {
+                    hits.push({ start: t.start + h.start, len: h.len,
+                        word: text.substr(t.start + h.start, h.len) });
+                }
+            }
+            if (_spellCache.size >= SPELL_CACHE_MAX) _spellCache.clear();
+            _spellCache.set(text, hits);
+            return hits;
+        }
         window.spellCached = spellCached;
 
         /**
-         * Make sure every text in `texts` has an answer, asking the host only about the
-         * ones not already known. `done` runs when they are in -- at once if none were
-         * missing. Texts go in batches under the host's size cap. An answer the host cut
-         * short (it says "capped") is trusted only up to its last hit: the texts after it
-         * are asked about again next time, never remembered as clean.
+         * Make sure every text in `texts` has an answer, asking the host only about words
+         * it has not been asked about. `done` runs when they are in -- at once if none were
+         * missing. A word already asked about in a request still under way is waited for,
+         * not asked again. Words go in batches of SPELL_REQUEST_CHARS. An answer the host
+         * cut short (it says "capped") is trusted only up to its last hit: the words after
+         * it are asked about again next time, never remembered as spelled right.
          */
         function spellCheckTexts(texts, done) {
-            // Requests still queued at the host that cover nothing now on screen are dropped:
+            // Requests still queued at the host that serve nothing now on screen are dropped:
             // after fast scrolling the checker otherwise worked through pages already left,
             // and a selected word's suggestions waited behind them (2026-09-29). The host
             // skips them and answers "dropped" (applySpellHits).
             const onScreen = new Set(texts);
             _spellRequests.forEach(function (req, id) {
-                if (req.dropped || req.segs.some(function (s) { return onScreen.has(s.key); })) return;
+                if (req.dropped || req.texts.some(function (t) { return onScreen.has(t); })) return;
                 req.dropped = true;
                 try { postMsg('spell_drop:' + id); } catch (e) {}
             });
-            const want = [];
-            const seen = new Set();
-            for (const t of texts) {
-                if (!t || seen.has(t) || _spellCache.has(t)) continue;
-                seen.add(t);
-                // No run of two letters: nothing the checker could flag.
-                if (!/\p{L}{2}/u.test(t)) { _spellCache.set(t, []); continue; }
-                want.push(t);
-            }
-            if (!want.length) { if (done) done(); return; }
             let open = 0;
             const finish = function () { if (--open === 0 && done) done(); };
-            let segs = [], body = '';
+            const fresh = [], asked = new Set(), waitOn = new Set();
+            for (const t of texts) {
+                if (!t || spellCached(t) !== undefined) continue;
+                for (const tok of spellTokens(t)) {
+                    const w = tok.word;
+                    if (_spellWords.has(w) || asked.has(w)) continue;
+                    const pendId = _spellWordPending.get(w);
+                    const pend = pendId && _spellRequests.get(pendId);
+                    if (pend && !pend.dropped) {
+                        waitOn.add(pendId);
+                        if (pend.texts.indexOf(t) < 0) pend.texts.push(t);
+                        continue;
+                    }
+                    asked.add(w);
+                    fresh.push(w);
+                }
+            }
+            waitOn.forEach(function (id) { _spellRequests.get(id).dones.push(finish); open++; });
+            let words = [], body = '';
             const flush = function () {
-                if (!segs.length) return;
+                if (!words.length) return;
                 const id = 'sp' + (++_spellReq);
-                _spellRequests.set(id, { segs: segs, done: finish });
+                _spellRequests.set(id, { words: words, texts: texts.slice(), dones: [finish] });
+                for (const w of words) _spellWordPending.set(w.word, id);
                 open++;
                 try { postMsg('spell_check:' + id + '\n' + body); }
-                catch (e) { _spellRequests.delete(id); open--; }
-                segs = []; body = '';
+                catch (e) {
+                    _spellRequests.delete(id);
+                    for (const w of words) _spellWordPending.delete(w.word);
+                    open--;
+                }
+                words = []; body = '';
             };
-            for (const t of want) {
-                const text = t.length > SPELL_REQUEST_CHARS ? t.slice(0, SPELL_REQUEST_CHARS) : t;
-                if (body.length && body.length + 2 + text.length > SPELL_REQUEST_CHARS) flush();
-                if (body.length) body += '\n\n';
-                segs.push({ key: t, offset: body.length, len: text.length });
-                body += text;
+            for (const w of fresh) {
+                if (body.length && body.length + 1 + w.length > SPELL_REQUEST_CHARS) flush();
+                if (body.length) body += '\n';
+                words.push({ word: w, offset: body.length });
+                body += w;
             }
             flush();
             if (open === 0 && done) done();
@@ -2957,25 +3026,34 @@
             const raw = String(payload == null ? '' : payload);
             const nl = raw.indexOf('\n');
             const head = (nl < 0 ? raw : raw.slice(0, nl)).split('\t');
-            const req = _spellRequests.get(head[0]);
+            const id = head[0];
+            const req = _spellRequests.get(id);
             if (!req) return;
-            _spellRequests.delete(head[0]);
-            if (head[1] === 'dropped') return;                 // skipped at our request
-            if (head[1] !== '1') { req.done(); return; }       // no checker: remember nothing
+            _spellRequests.delete(id);
+            const release = function () {
+                for (const w of req.words)
+                    if (_spellWordPending.get(w.word) === id) _spellWordPending.delete(w.word);
+            };
+            const finishAll = function () { req.dones.forEach(function (f) { f(); }); };
+            if (head[1] === 'dropped') { release(); return; }             // skipped at our request
+            if (head[1] !== '1') { release(); finishAll(); return; }      // no checker: remember nothing
             const hits = parseSpellHits(nl < 0 ? '' : raw.slice(nl + 1));
             const capped = head.indexOf('capped') > 1;
             const lastStart = hits.length ? hits[hits.length - 1].start : -1;
-            for (const seg of req.segs) {
-                if (capped && seg.offset + seg.len > lastStart) continue;   // not fully answered
+            if (_spellWords.size >= SPELL_WORDS_MAX) _spellWords.clear();
+            let hi = 0;
+            for (const w of req.words) {
+                const end = w.offset + w.word.length;
                 const own = [];
-                for (const h of hits) {
-                    if (h.start >= seg.offset && h.start < seg.offset + seg.len)
-                        own.push({ start: h.start - seg.offset, len: h.len, word: h.word });
+                for (; hi < hits.length && hits[hi].start < end; hi++) {
+                    if (hits[hi].start >= w.offset)
+                        own.push({ start: hits[hi].start - w.offset, len: Math.min(hits[hi].len, end - hits[hi].start) });
                 }
-                if (_spellCache.size >= SPELL_CACHE_MAX) _spellCache.clear();
-                _spellCache.set(seg.key, own);
+                if (capped && end > lastStart) continue;                  // not fully answered
+                _spellWords.set(w.word, own);
             }
-            req.done();
+            release();
+            finishAll();
         }
         window.applySpellHits = applySpellHits;
 
@@ -2986,6 +3064,10 @@
             _spellCache.forEach(function (hits, key) {
                 if (hits.some(h => String(h.word).toLowerCase() === lw))
                     _spellCache.set(key, hits.filter(h => String(h.word).toLowerCase() !== lw));
+            });
+            _spellWords.forEach(function (hits, w) {
+                const flagged = function (h) { return w.substr(h.start, h.len).toLowerCase() === lw; };
+                if (hits.some(flagged)) _spellWords.set(w, hits.filter(function (h) { return !flagged(h); }));
             });
             _spellSuggs.delete(word);
         }
@@ -3017,7 +3099,7 @@
         function paintPreviewSpelling(items) {
             const ranges = [], words = [];
             for (const it of items) {
-                const hits = _spellCache.get(it.text);
+                const hits = spellCached(it.text);
                 if (!hits) continue;
                 for (const h of hits) {
                     const r = rangeForPlainOffset(it.el, h.start, h.len);
@@ -3038,14 +3120,14 @@
             const items = previewSpellItems();
             if (!items.length) { clearSpellHighlights(); return; }
             paintPreviewSpelling(items);                         // what is already known, now
-            const missing = items.filter(i => !_spellCache.has(i.text)).length;
+            const missing = items.filter(i => spellCached(i.text) === undefined).length;
             if (!missing) return;                                // nothing new on screen
             spellCheckTexts(items.map(i => i.text), function () {
                 if (state.mode === 'source') return;
                 // The screen may have moved while the host answered: paint what is there now.
                 const now = previewSpellItems();
                 paintPreviewSpelling(now);
-                const still = now.filter(i => !_spellCache.has(i.text)).length;
+                const still = now.filter(i => spellCached(i.text) === undefined).length;
                 if (still && still < missing) scheduleSpellCheck();   // a capped answer: the rest
             });
         }

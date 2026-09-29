@@ -3,7 +3,7 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
-## 0. File associations (added 2026-09-28)
+## 0. File associations (added 2026-09-28) — **done**, see Done
 
 Capture both custom and hardcoded file extensions (e.g. `.md`, `.txt`, `.epub`, `.pdf`) for
 proper file type handling and integration. *(Moved here from a Backlog section that had been
@@ -11,7 +11,7 @@ added to the README.)*
 
 ## 1. View settings per document type — **built** (0.9.9–0.9.29, 2026-09-28/29)
 
-Built on branch `feature/per-type-view-settings` (not yet merged to `master`). As built,
+Built on branch `feature/per-type-view-settings`, merged to `master` on 2026-09-29. As built,
 it goes further than the plan below: text size, Word Wrap and columns are per type as
 well, ePub defaults to two columns, and Code's default theme is **Tokyo Night** (Ed,
 2026-09-29: intentional; it replaces Monokai in the table below). The plan as agreed follows.
@@ -63,48 +63,48 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
 
 ## 2. Smaller items
 
-**To follow up (Ed, 2026-09-28):** the spell-check queue, spelling speed on long paragraphs,
-tab-drag auto-scroll, and the `big-file-app` deadline clean-up; Store screenshots one day
-(needs Ed's screenshots); IME (CJK) in Source, low priority. The rest below are open questions or Ed's calls.
+Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 
-- **`perf.log` under Privacy Mode** — fixed in `TypoZen_App.cs` (PerfMark returns when
-  `DebugLogSuppressed`), not yet built or released. Ships with the next build.
-- **Large documents: a Source/Preview switch can land a few lines off.** Preview's
-  virtualised window remounts after the restore (~100 px). Small documents are exact.
-- **Preview drops the indentation of code files** (leading spaces collapse; Source shows
-  them). Changing it changes how Preview draws all text — Ed's call.
 - **Visible-window UI suites** (`disk-conflict`, `format-availability`, `native-surface`,
   `scratch-help`, `select-all`, `shell-seam`, `tab-strip-paint`) not run since 0.9.3 — they
   need Ed away from the machine.
-- **`docs/store-listing.md` is out of date**: the live listing's description and 20
-  features were rewritten for 0.9.6 in Partner Center (2026-09-28); copy them back here.
-- **Store product name** ("ePub Reader & Markdown Editor - TypoZen") does not mention PDFs —
-  branding, Ed's call.
+- **Store product name** ("ePub Reader & Markdown Editor - TypoZen") does not mention PDFs.
+  Agreed to change with the next Store submission; the wording is Ed's.
+
+**Later (Ed, 2026-09-29):**
+
 - **Save All Images in PDF: the fast method often does not work** (Ed, 2026-09-28). In
   several PDFs the direct extraction (PdfPig, reading pictures straight from the file,
   0.8.2) fails and TypoZen falls back to the very slow method. To do: collect the PDFs it
   fails on, find which image encodings or structures PdfPig does not handle, and fix or
   widen the fast path; measure both methods on each file. Debug logging only with Ed's
   permission.
-- **Spell-check queue.** The checker has its own thread (0.9.6), but requests still queue:
-  after fast scrolling it keeps checking pages already left, and a word's suggestions wait
-  behind them (seconds). Drop queued checks that are no longer on screen; let
-  `spell_suggest:` go first.
-- **Spelling speed on long paragraphs.** The Windows checker's cost grows faster than the
-  text, so long paragraphs underline slowly (slow, no longer frozen). Option discussed:
-  check new words rather than whole paragraphs.
 - **Store screenshots** (6, Desktop) predate the Source editor, the PDF reader and the
   themes. Needs new screenshots from Ed.
-- **IME (CJK) composition in Source** — untested since the move to CodeMirror. Only matters
-  for CJK input.
-- **Tab dragging** does not auto-scroll the strip when dragged past its edge.
-- **`big-file-app` deadline clean-up** (ending a frozen app by its profile folder) has not
-  yet been exercised by a real failure.
-- **Release notes:** v0.9.6's notes cover only the freeze fix; the CodeMirror work is written
-  up in v0.9.4 (kept for that reason). Option: fold 0.9.4 and 0.9.5's notes into 0.9.6.
-  Ed to decide.
 
 ## Done (recorded so it is not re-raised)
+
+- **Spelling speed on long paragraphs** (2026-09-29). Measured first: the checker costs
+  ~4-5 ms a character in any shape (3,000 characters 12 s whole, 11.4 s in pieces), so
+  splitting paragraphs would not have helped. The page now sends each word once (per word,
+  cached, `spellTokens` in `02-layout.js`): 3,000 characters' unique words took 3.5 s, and a
+  word already seen costs nothing. Requests are ~1,500 characters so a dropped one is short.
+  Known difference: a word is checked without its sentence, and "The"/"the" are asked
+  separately.
+- **Spell-check queue** — checks run at Background priority on the spelling thread, so
+  suggestions go first; requests for pages scrolled away are dropped (`spell_drop:`).
+- **`perf.log` under Privacy Mode** — PerfMark returns when `DebugLogSuppressed`.
+- **Source/Preview switch in large documents** lands exactly (`view-alignment-browser`,
+  line 1500).
+- **Preview keeps code files' indentation** (`body.tz-code-doc`, pre-wrap).
+- **`docs/store-listing.md`** synced with the live 0.9.6 listing.
+- **IME (CJK) in Source and Preview** — `ime-compose-browser` commits a composed word once.
+- **Tab dragging** auto-scrolls the strip past its edge (confirmed by Ed, 2026-09-29).
+- **`big-file-app` deadline clean-up** ends the apps it launched by PID
+  (`harness-kill-app`).
+- **Release notes:** 0.9.4's notes folded into 0.9.6; 0.9.4 removed.
+- **File associations** (section 0): "Open with" and types for all code extensions and
+  `.pdf`, in the installer and the MSIX.
 
 - **2-Col position after a theme change** (found 2026-09-29, `theme-anchor-browser` 2 of 14
   on 0.9.29). Not the dynamic gap itself: it moved the page breaks and exposed two anchor
@@ -117,7 +117,7 @@ tab-drag auto-scroll, and the `big-file-app` deadline clean-up; Store screenshot
 - **Typewriter and Focus modes** are deliberate features and stay. Typewriter keeps the caret
   line centred and so blocks wheel scrolling by design (2026-09-28).
 - **v0.9.5's GitHub release** was deleted (it carried the 2-Col freeze); tag and archived zip
-  kept. v0.9.4 stays up.
+  kept.
 - **Store 0.9.6.0** submitted with the updated description and features (2026-09-28).
 
 

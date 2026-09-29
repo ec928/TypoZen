@@ -161,9 +161,12 @@ try {
         window.postMsg = postMsg = function (m) { const s = String(m); if (/^spell_(check|drop):/.test(s)) sent.push(s.split('\n')[0]); return real.apply(this, arguments); };
         setSourceDocExt('md'); handleCommand('view_set:mode:preview');
         handleCommand('view_set:columns:1'); handleCommand('view_set:scroll:scroll');   // after the 2-Col check
-        finishLoadContent(Array.from({ length: 3000 }, (_, i) => 'Paragraph ' + i + ' has a misspelt wurd in it.').join('\n\n'), false, false);
+        // Words of its own in every paragraph: checks go by word, and a request holding a
+        // word the new screen still needs is rightly kept.
+        const own = (i) => { let s = ''; do { s += String.fromCharCode(97 + i % 26); i = Math.floor(i / 26); } while (i); return 'zq' + s; };
+        finishLoadContent(Array.from({ length: 3000 }, (_, i) => own(i) + 'x ' + own(i) + 'y ' + own(i) + 'z.').join('\n\n'), false, false);
         await wait(600);
-        _spellCache.clear(); _spellRequests.clear(); sent.length = 0;   // forget the load's own pass
+        _spellCache.clear(); _spellWords.clear(); _spellWordPending.clear(); _spellRequests.clear(); sent.length = 0;   // forget the load's own pass
         runSpellCheckNow(); await wait(100);
         const first = sent.filter(s => s.startsWith('spell_check:')).map(s => s.slice(12));
         const before = previewSpellItems().map(i => i.text.slice(0, 14));
@@ -191,7 +194,7 @@ try {
         out.preview = window.__spellSends.join('\n');
         handleCommand('view_set:mode:source');
         window.__spellSends = [];
-        _spellCache.clear();
+        _spellCache.clear(); _spellWords.clear(); _spellWordPending.clear(); _spellRequests.clear();
         sourceEditor.recheckSpelling();
         await wait(600);
         out.source = window.__spellSends.join('\n');
@@ -200,6 +203,44 @@ try {
     });
     assert(/teh/.test(md.preview) && !/recieve/.test(md.preview), 'Preview checks the prose and skips the fence');
     assert(/teh/.test(md.source) && !/recieve/.test(md.source), 'Source checks the prose and skips the fence');
+
+    // By word (2026-09-29): the checker costs ~4-5 ms a character, so it is sent each new
+    // word once, not paragraphs. The host's answer is played here; its offsets are into the
+    // word list, and must land on every paragraph holding the word.
+    const words = await page.evaluate(async () => {
+        const wait = (ms) => new Promise(res => setTimeout(res, ms));
+        const out = {};
+        setSourceDocExt('md'); handleCommand('view_set:mode:preview');
+        _spellCache.clear(); _spellWords.clear(); _spellWordPending.clear(); _spellRequests.clear();
+        const sent = [];
+        const real = postMsg;
+        window.postMsg = postMsg = function (m) { if (String(m).startsWith('spell_check:')) sent.push(String(m).slice(12)); return real.apply(this, arguments); };
+        finishLoadContent('The cat sat on teh mat, and the "dog" sat on teh rug.\n\nAnother teh here, at 10:30 in C:/tmp for NASA.', false, false);
+        await wait(700);
+        window.postMsg = postMsg = real;
+        out.sends = sent.length;
+        const nl = sent[0] ? sent[0].indexOf('\n') : -1;
+        const id = nl > 0 ? sent[0].slice(0, nl) : '';
+        const list = nl > 0 ? sent[0].slice(nl + 1).split('\n') : [];
+        out.list = list;
+        const at = list.join('\n').indexOf('teh');
+        applySpellHits(id + '\t1\n' + at + '\t3\tteh');
+        await wait(50);
+        const items = previewSpellItems();
+        out.a = items[0] && spellCached(items[0].text);
+        out.b = items[1] && spellCached(items[1].text);
+        out.underlines = _spellHits.length;
+        out.pending = _spellRequests.size;
+        return out;
+    });
+    console.log('  ..   sent ' + JSON.stringify(words.list));
+    assert(words.sends === 1 && words.list.filter(w => w === 'teh').length === 1 && words.list.includes('dog'),
+        'each word goes to the checker once, quotes trimmed (' + words.list.length + ' words)');
+    assert(!words.list.some(w => /\d|\/|:|^NASA$/.test(w)), 'times, paths and short acronyms are not sent');
+    assert(JSON.stringify((words.a || []).map(h => [h.start, h.word])) === '[[15,"teh"],[45,"teh"]]'
+        && JSON.stringify((words.b || []).map(h => [h.start, h.word])) === '[[8,"teh"]]' && words.pending === 0,
+        'the answer lands on every place the word appears (' + JSON.stringify(words.a) + ' / ' + JSON.stringify(words.b) + ')');
+    assert(words.underlines === 3, 'Preview underlines all three (' + words.underlines + ')');
 } finally {
     clearTimeout(deadline);
     await browser.close();
