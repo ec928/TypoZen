@@ -171,7 +171,7 @@ is a word people rarely search for.)
 
 _Up to 200 characters each. One screenshot minimum; 1366×768 or larger._
 
-In the order of the 0.10 screenshots, `dist-storeart\1.png` to `7.png` (Ed, 2026-09-29);
+In the order of the 0.10 screenshots, `dist-storeart\1.png` to `8.png` (Ed, 2026-09-29);
 the first is the one shown in search.
 
 1. Read ePubs in a true two-page spread, with the publisher's own typesetting intact.
@@ -179,8 +179,9 @@ the first is the one shown in search.
 3. 25 built-in themes in dark, light and mono, or build your own — and books take on the theme you choose.
 4. Have any page read aloud in the voices installed in Windows, or in optional neural voices, with the passage highlighted as it is read.
 5. Select any word for its definitions and synonyms from the offline dictionary — nothing leaves your computer.
-6. Write in Markdown and see the result as you type: headings, lists and tables edit in place.
-7. Source is a real code editor, built on CodeMirror 6, with highlighting in your theme's colours.
+6. Select text to format it, highlight it, link it or search for it, with every heading of the document in the outline.
+7. Write in Markdown and see the result as you type: headings, lists and tables edit in place.
+8. Source is a real code editor, built on CodeMirror 6, with highlighting in your theme's colours.
 
 ---
 
