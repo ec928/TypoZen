@@ -3467,29 +3467,7 @@ namespace TypoZen
             try
             {
                 string path = BookPositionsPath();
-                if (!File.Exists(path))
-                {
-                    double waWidth = SystemParameters.WorkArea.Width;
-                    double waHeight = SystemParameters.WorkArea.Height;
-                    
-                    double h = Math.Min(waHeight * 0.85, 1100);
-                    double w1 = Math.Min(waWidth * 0.55, 1100);
-                    double w2 = Math.Min(waWidth * 0.85, 1800);
-                    
-                    double t = SystemParameters.WorkArea.Top + (waHeight - h) / 2;
-                    double l1 = SystemParameters.WorkArea.Left + (waWidth - w1) / 2;
-                    double l2 = SystemParameters.WorkArea.Left + (waWidth - w2) / 2;
-                    
-                    this.Width = w1;
-                    this.Height = h;
-                    this.Top = t;
-                    this.Left = l1;
-                    this.WindowStartupLocation = WindowStartupLocation.Manual;
-                    
-                    _col1Rect = new Rect(l1, t, w1, h);
-                    _col2Rect = new Rect(l2, t, w2, h);
-                    return;
-                }
+                if (!File.Exists(path)) return;
                 foreach (string line in File.ReadAllLines(path))
                 {
                     // "<block>\t<path>", newest first
@@ -4034,29 +4012,7 @@ namespace TypoZen
             try
             {
                 string path = BookmarksPath();
-                if (!File.Exists(path))
-                {
-                    double waWidth = SystemParameters.WorkArea.Width;
-                    double waHeight = SystemParameters.WorkArea.Height;
-                    
-                    double h = Math.Min(waHeight * 0.85, 1100);
-                    double w1 = Math.Min(waWidth * 0.55, 1100);
-                    double w2 = Math.Min(waWidth * 0.85, 1800);
-                    
-                    double t = SystemParameters.WorkArea.Top + (waHeight - h) / 2;
-                    double l1 = SystemParameters.WorkArea.Left + (waWidth - w1) / 2;
-                    double l2 = SystemParameters.WorkArea.Left + (waWidth - w2) / 2;
-                    
-                    this.Width = w1;
-                    this.Height = h;
-                    this.Top = t;
-                    this.Left = l1;
-                    this.WindowStartupLocation = WindowStartupLocation.Manual;
-                    
-                    _col1Rect = new Rect(l1, t, w1, h);
-                    _col2Rect = new Rect(l2, t, w2, h);
-                    return;
-                }
+                if (!File.Exists(path)) return;
                 foreach (string line in File.ReadAllLines(path))
                 {
                     // "<path>\t<payload>" — path first here, unlike book_positions, because
@@ -5143,29 +5099,7 @@ namespace TypoZen
             try
             {
                 string path = RecentFilesPath();
-                if (!File.Exists(path))
-                {
-                    double waWidth = SystemParameters.WorkArea.Width;
-                    double waHeight = SystemParameters.WorkArea.Height;
-                    
-                    double h = Math.Min(waHeight * 0.85, 1100);
-                    double w1 = Math.Min(waWidth * 0.55, 1100);
-                    double w2 = Math.Min(waWidth * 0.85, 1800);
-                    
-                    double t = SystemParameters.WorkArea.Top + (waHeight - h) / 2;
-                    double l1 = SystemParameters.WorkArea.Left + (waWidth - w1) / 2;
-                    double l2 = SystemParameters.WorkArea.Left + (waWidth - w2) / 2;
-                    
-                    this.Width = w1;
-                    this.Height = h;
-                    this.Top = t;
-                    this.Left = l1;
-                    this.WindowStartupLocation = WindowStartupLocation.Manual;
-                    
-                    _col1Rect = new Rect(l1, t, w1, h);
-                    _col2Rect = new Rect(l2, t, w2, h);
-                    return;
-                }
+                if (!File.Exists(path)) return;
                 string json = File.ReadAllText(path, Encoding.UTF8);
                 // Simple ["path1","path2"] parser — no nested objects
                 foreach (Match m in Regex.Matches(json, @"\""((?:\\.|[^\""])*)\"""))
@@ -5635,6 +5569,10 @@ namespace TypoZen
             {
                 try
                 {
+                    try { File.Delete(WindowStatePath()); } catch { }
+                    ApplyDefaultWindowBounds();
+                    ApplyColumnWindowGeometry(_viewColumns);
+                    
                     var prefs = LoadHostPrefs();
                     var fresh = new HostPrefs();
                     fresh.LastFilePath = prefs.LastFilePath;
@@ -5912,34 +5850,35 @@ namespace TypoZen
             catch {}
         }
 
+        private void ApplyDefaultWindowBounds()
+        {
+            double waWidth = SystemParameters.WorkArea.Width;
+            double waHeight = SystemParameters.WorkArea.Height;
+            
+            double h = Math.Min(waHeight * 0.85, 1100);
+            double w1 = Math.Min(waWidth * 0.55, 1100);
+            double w2 = Math.Min(waWidth * 0.85, 1800);
+            
+            double t = SystemParameters.WorkArea.Top + (waHeight - h) / 2;
+            double l1 = SystemParameters.WorkArea.Left + (waWidth - w1) / 2;
+            double l2 = SystemParameters.WorkArea.Left + (waWidth - w2) / 2;
+            
+            this.Width = w1;
+            this.Height = h;
+            this.Top = t;
+            this.Left = l1;
+            this.WindowStartupLocation = WindowStartupLocation.Manual;
+            
+            _col1Rect = new Rect(l1, t, w1, h);
+            _col2Rect = new Rect(l2, t, w2, h);
+        }
+
         private void RestoreWindowState()
         {
             try
             {
                 string path = WindowStatePath();
-                if (!File.Exists(path))
-                {
-                    double waWidth = SystemParameters.WorkArea.Width;
-                    double waHeight = SystemParameters.WorkArea.Height;
-                    
-                    double h = Math.Min(waHeight * 0.85, 1100);
-                    double w1 = Math.Min(waWidth * 0.55, 1100);
-                    double w2 = Math.Min(waWidth * 0.85, 1800);
-                    
-                    double t = SystemParameters.WorkArea.Top + (waHeight - h) / 2;
-                    double l1 = SystemParameters.WorkArea.Left + (waWidth - w1) / 2;
-                    double l2 = SystemParameters.WorkArea.Left + (waWidth - w2) / 2;
-                    
-                    this.Width = w1;
-                    this.Height = h;
-                    this.Top = t;
-                    this.Left = l1;
-                    this.WindowStartupLocation = WindowStartupLocation.Manual;
-                    
-                    _col1Rect = new Rect(l1, t, w1, h);
-                    _col2Rect = new Rect(l2, t, w2, h);
-                    return;
-                }
+                if (!File.Exists(path)) { ApplyDefaultWindowBounds(); return; }
 
                 string json = File.ReadAllText(path, Encoding.UTF8);
                 var mState = Regex.Match(json, @"\""state\""\s*:\s*\""([^\""]+)\""");
@@ -10015,6 +9954,10 @@ namespace TypoZen
             SetMenuChecked("mMarginNarrow", m == "narrow");
             SetMenuChecked("mMarginRegular", m == "regular");
             SetMenuChecked("mMarginWide", m == "wide");
+            
+            try { File.Delete(WindowStatePath()); } catch { }
+            ApplyDefaultWindowBounds();
+            ApplyColumnWindowGeometry(_viewColumns);
             
             SetZoom(1.0);
             
@@ -18330,7 +18273,6 @@ namespace TypoZen
         }
     }
 }
-
 
 
 
