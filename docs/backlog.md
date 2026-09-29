@@ -82,12 +82,6 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
   it narrows to one range. Edits no longer go through it (0.10.15/0.10.16 mount only the
   range holding the edit), but opening still does.
 
-**Reported, not reproduced (2026-09-30):** Ed: Tab "doesn't work at all" in 0.10.16.
-Checked on 0.10.16 and 0.10.15 alike, with real key presses: headless on
-`0-testing-large-scroll-mixed.md` in 1-Col and 2-Col, caret and mouse-drag selections, first
-item, after bold/italic/list/heading; and in the installed app (hidden desktop) on the same
-file. Tab indented and Shift+Tab outdented list items every time; on a plain paragraph Tab
-does nothing, in both versions. Waiting on the exact steps.
 
 **Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range
 boundaries. Seen with 200-block ranges; at 400, stepping across a boundary and back gives the
@@ -103,6 +97,15 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   permission.
 
 ## Done (recorded so it is not re-raised)
+
+- **Tab and the everyday keys** (0.10.17-0.10.18, 2026-09-30). Tab had never worked in
+  ordinary text: Preview swallowed it outside lists, Source had no binding and lost focus,
+  and a typed tab was saved as a space. It now types a tab in both views (Shift+Tab removes
+  one; several Source lines indent together). Backspace/Delete over a blank line left the
+  caret at the wrong end, so the next press deleted a letter. `keyboard-editing-browser`
+  now presses every everyday key in Preview, Source, a large document and 2-Col (68 checks);
+  `tab-key-browser` covers Tab. Known: Enter just before a space drops that space in
+  Preview, which cannot show a line's leading space; Source keeps it.
 
 - **Edits keep the view steady** (0.10.14-0.10.16, 2026-09-29/30). Edits that reload the
   document -- undo/redo; bold, italic, strikethrough, code, heading, quote and list across

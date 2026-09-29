@@ -3173,6 +3173,10 @@
                 removeBlockEl(block);
                 window.isProgrammaticFocus = true;
                 focusBlock(prev);
+                // Now, not only on the timeout: focusBlock leaves the caret at the END of
+                // the line, and a second Backspace pressed before the timeout (quick hands,
+                // key repeat) deleted the last letter there instead of the next join.
+                try { setCaretAtOffset(prev, joinAt); } catch (err4) {}
                 setTimeout(function () {
                     try { setCaretAtOffset(prev, joinAt); } catch (err3) {}
                     ensureCaretVisible(prev);
@@ -3233,6 +3237,9 @@
                 removeBlockEl(next);
                 window.isProgrammaticFocus = true;
                 focusBlock(block);
+                // Now as well as on the timeout: a second Delete pressed before it ran
+                // found the caret at the START of the line and deleted the first letter.
+                try { setCaretAtOffset(block, joinAt); } catch (err2) {}
                 setTimeout(function () {
                     try { setCaretAtOffset(block, joinAt); } catch (err) {}
                     ensureCaretVisible(block);
