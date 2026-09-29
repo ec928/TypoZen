@@ -151,6 +151,33 @@ try {
     assert(cols.paged && cols.chars > 0 && cols.chars < 12000,
         '2-Col checks only the pages on screen (' + cols.chars + ' of ' + cols.total + ' characters)');
 
+    // Scrolled away: requests still waiting for pages no longer on screen are dropped
+    // (spell_drop:), so the host does not work through pages already left (2026-09-29).
+    // Headless has no host, so every request stays pending -- exactly the case.
+    const drops = await page.evaluate(async () => {
+        const wait = (ms) => new Promise(res => setTimeout(res, ms));
+        const sent = [];
+        const real = postMsg;
+        window.postMsg = postMsg = function (m) { const s = String(m); if (/^spell_(check|drop):/.test(s)) sent.push(s.split('\n')[0]); return real.apply(this, arguments); };
+        setSourceDocExt('md'); handleCommand('view_set:mode:preview');
+        handleCommand('view_set:columns:1'); handleCommand('view_set:scroll:scroll');   // after the 2-Col check
+        finishLoadContent(Array.from({ length: 3000 }, (_, i) => 'Paragraph ' + i + ' has a misspelt wurd in it.').join('\n\n'), false, false);
+        await wait(600);
+        _spellCache.clear(); _spellRequests.clear(); sent.length = 0;   // forget the load's own pass
+        runSpellCheckNow(); await wait(100);
+        const first = sent.filter(s => s.startsWith('spell_check:')).map(s => s.slice(12));
+        const before = previewSpellItems().map(i => i.text.slice(0, 14));
+        document.getElementById('main-container').scrollTop = 60000; await wait(300);
+        const after = previewSpellItems().map(i => i.text.slice(0, 14));
+        runSpellCheckNow(); await wait(100);
+        window.postMsg = postMsg = real;
+        const dropped = sent.filter(s => s.startsWith('spell_drop:')).map(s => s.slice(11));
+        return { first, dropped, before: before.slice(0, 3), after: after.slice(0, 3), pending: _spellRequests.size, st: document.getElementById('main-container').scrollTop };
+    });
+    console.log('  ..   ' + JSON.stringify({ before: drops.before, after: drops.after, pending: drops.pending, scrollTop: drops.st }));
+    assert(drops.first.length > 0 && drops.first.every(id => drops.dropped.includes(id)),
+        'scrolling away drops the requests for the pages left (' + drops.dropped.length + ' of ' + drops.first.length + ')');
+
     // Markdown: prose is checked, a fence is not -- in both views.
     const md = await page.evaluate(async () => {
         const wait = (ms) => new Promise(res => setTimeout(res, ms));

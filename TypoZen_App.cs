@@ -3835,6 +3835,13 @@ namespace TypoZen
             WindowsSpell.CheckAsync(text, (available, lastError, hits) =>
             {
                 var sb = new StringBuilder();
+                if (hits == null)
+                {
+                    // Dropped by the page before it started (spell_drop:): say so, no check.
+                    string skipped = "spell_hits:" + id + "\tdropped";
+                    Dispatcher.BeginInvoke(new Action(() => { try { SendMsg(skipped); } catch { } }));
+                    return;
+                }
                 sb.Append("spell_hits:").Append(id).Append('\t').Append(available ? "1" : "0");
                 if (!available && !string.IsNullOrEmpty(lastError))
                     sb.Append('\t').Append(lastError.Replace('\n', ' ').Replace('\t', ' '));
@@ -3852,9 +3859,17 @@ namespace TypoZen
                     }
                 }
                 string reply = sb.ToString();
+                byte late; _spellDropped.TryRemove(id, out late);   // dropped after it had started
                 Dispatcher.BeginInvoke(new Action(() => { try { SendMsg(reply); } catch { } }));
-            });
+            }, () => { byte gone; return !_spellDropped.TryRemove(id, out gone); });
         }
+
+        /// <summary>
+        /// Checks the page no longer needs (spell_drop:<id>): set on the UI thread, read on the
+        /// spelling thread just before each check starts.
+        /// </summary>
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _spellDropped =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
 
         /// <summary>Suggestions for the one word the reader selected (spell_suggest:).</summary>
         private void HandleSpellSuggest(string word)
@@ -7649,6 +7664,11 @@ namespace TypoZen
             else if (msg.StartsWith("spell_check:"))
             {
                 HandleSpellCheck(msg.Substring(12));
+            }
+            else if (msg.StartsWith("spell_drop:"))
+            {
+                string dropId = msg.Substring(11).Trim();
+                if (dropId.Length > 0) _spellDropped[dropId] = 1;
             }
             else if (msg.StartsWith("spell_suggest:"))
             {

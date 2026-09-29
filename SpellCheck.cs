@@ -52,26 +52,34 @@ namespace TypoZen
             }
         }
 
-        /// <summary>Queue work on the spelling thread. Never waits.</summary>
-        public static void Post(Action work)
+        /// <summary>
+        /// Queue work on the spelling thread. Never waits. Checks go at Background priority,
+        /// everything the reader is waiting on (suggestions, Ignore, Add) at Normal, so the
+        /// thread serves those first -- a selected word's suggestions used to queue behind
+        /// every paragraph still waiting to be checked (2026-09-29).
+        /// </summary>
+        public static void Post(Action work,
+            System.Windows.Threading.DispatcherPriority priority = System.Windows.Threading.DispatcherPriority.Normal)
         {
             if (work == null) return;
-            Disp().BeginInvoke(new Action(() => { try { work(); } catch { } }));
+            Disp().BeginInvoke(priority, new Action(() => { try { work(); } catch { } }));
         }
 
         /// <summary>
         /// Check `text` on the spelling thread; `done(available, lastError, hits)` runs there
-        /// too -- the caller marshals back to its own thread.
+        /// too -- the caller marshals back to its own thread. `wanted` is asked just before
+        /// the check starts; if it says no, the check is skipped and `hits` is null.
         /// </summary>
-        public static void CheckAsync(string text, Action<bool, string, Hit[]> done)
+        public static void CheckAsync(string text, Action<bool, string, Hit[]> done, Func<bool> wanted = null)
         {
             Post(() =>
             {
+                if (wanted != null && !wanted()) { if (done != null) done(true, "", null); return; }
                 Ensure();
                 bool ok = _box != null;
                 Hit[] hits = ok && !string.IsNullOrEmpty(text) ? Check(text) : new Hit[0];
                 if (done != null) done(ok, _lastError ?? "", hits);
-            });
+            }, System.Windows.Threading.DispatcherPriority.Background);
         }
 
         /// <summary>Suggestions for one word, on the spelling thread; `done` runs there.</summary>

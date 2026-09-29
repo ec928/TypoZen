@@ -100,11 +100,41 @@ async function run(ext) {
         assert(trip.payload !== null && trip.ms < 1000, 'the host answers within a second -- its UI thread is free');
         assert(/[\t|]receive(\||$)/.test(trip.payload || ''), 'and a selected misspelling gets real suggestions (receive)');
 
-        // The spell checker never blocks the window (2026-09-27: a 2-Col pass over a README
-        // froze the app and it had to be killed). Hand the host a chunk known to take the
-        // checker many seconds -- 2,000 characters of minified script -- and ask for a
-        // definition, which the host answers on its UI thread. It must come straight back.
         if (ext === 'xml') {
+            // The queue (2026-09-29): a selected word's suggestions go ahead of queued checks,
+            // and checks the page drops are skipped. Near-clean 1,500-character paragraphs
+            // (a clean 7,500 takes this checker ~10 s) -- a check already running cannot be interrupted, so what is
+            // asserted is order: the suggestion arrives before the second queued check.
+            const queue = await app.eval(async () => {
+                const prose = ('The quick brown fox jumps over the lazy dog, and the cat sat on it. ').repeat(22).slice(0, 1490) + ' teh';
+                const replies = [], order = [];
+                const prevHits = applySpellHits, prevSugg = window.applySpellSuggestions;
+                window.applySpellHits = applySpellHits = function (p) { const h = String(p).split('\n')[0]; replies.push(h); order.push(h.split('\t')[0]); try { prevHits(p); } catch (e) {} };
+                window.applySpellSuggestions = function (p) { order.push('suggest'); try { prevSugg(p); } catch (e) {} };
+                const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                for (let i = 0; i < 4; i++) postMsg('spell_check:qa' + i + '\n' + prose + i);
+                await wait(50);
+                postMsg('spell_suggest:quikc');
+                for (let i = 0; i < 120 && replies.filter(r => r.startsWith('qa')).length < 4; i++) await wait(250);
+                for (let i = 0; i < 6; i++) postMsg('spell_check:qb' + i + '\n' + prose + 'b' + i);
+                for (let i = 1; i < 6; i++) postMsg('spell_drop:qb' + i);
+                const b = performance.now();
+                for (let i = 0; i < 300 && replies.filter(r => r.startsWith('qb')).length < 6; i++) await wait(100);
+                const dropMs = Math.round(performance.now() - b);
+                window.applySpellHits = applySpellHits = prevHits; window.applySpellSuggestions = prevSugg;
+                const qb = replies.filter(r => r.startsWith('qb'));
+                return { order: order.filter(o => /^(suggest|qa)/.test(o)), dropMs, qb: qb.length, dropped: qb.filter(r => /\tdropped$/.test(r)).length };
+            });
+            console.log('  ..   reply order: ' + queue.order.join(', ') + '; five dropped of six answered in ' + queue.dropMs + ' ms');
+            const sAt = queue.order.indexOf('suggest'), qa1At = queue.order.indexOf('qa1');
+            assert(sAt >= 0 && qa1At >= 0 && sAt < qa1At, "a selected word's suggestions go ahead of queued checks");
+            assert(queue.qb === 6 && queue.dropped === 5, 'checks the page dropped are skipped and answered as dropped (' + queue.dropped + ' of 5)');
+
+            // The spell checker never blocks the window (2026-09-27: a 2-Col pass over a README
+            // froze the app and it had to be killed). Hand the host a chunk known to take the
+            // checker many seconds -- 2,000 characters of minified script -- and ask for a
+            // definition, which the host answers on its UI thread. It must come straight back.
+
             const free = await app.eval(async () => {
                 const defined = () => new Promise(res => {
                     const prev = window.showDefinition;
@@ -127,6 +157,7 @@ async function run(ext) {
             });
             console.log('  ..   a definition during a slow spell check came back in ' + free.ms + ' ms');
             assert(free.ok && free.ms < 1000, 'the window stays responsive while the spell checker works (' + free.ms + ' ms)');
+
         }
     } finally {
         try { await app.close(); } catch (e) {}

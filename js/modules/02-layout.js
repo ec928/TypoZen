@@ -2894,6 +2894,16 @@
          * are asked about again next time, never remembered as clean.
          */
         function spellCheckTexts(texts, done) {
+            // Requests still queued at the host that cover nothing now on screen are dropped:
+            // after fast scrolling the checker otherwise worked through pages already left,
+            // and a selected word's suggestions waited behind them (2026-09-29). The host
+            // skips them and answers "dropped" (applySpellHits).
+            const onScreen = new Set(texts);
+            _spellRequests.forEach(function (req, id) {
+                if (req.dropped || req.segs.some(function (s) { return onScreen.has(s.key); })) return;
+                req.dropped = true;
+                try { postMsg('spell_drop:' + id); } catch (e) {}
+            });
             const want = [];
             const seen = new Set();
             for (const t of texts) {
@@ -2950,6 +2960,7 @@
             const req = _spellRequests.get(head[0]);
             if (!req) return;
             _spellRequests.delete(head[0]);
+            if (head[1] === 'dropped') return;                 // skipped at our request
             if (head[1] !== '1') { req.done(); return; }       // no checker: remember nothing
             const hits = parseSpellHits(nl < 0 ? '' : raw.slice(nl + 1));
             const capped = head.indexOf('capped') > 1;
