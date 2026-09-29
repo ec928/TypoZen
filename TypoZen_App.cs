@@ -14329,6 +14329,7 @@ namespace TypoZen
                         border.CaptureMouse();
                     }
                     ShowTabDropMarker(TabDropSlot(p.X));
+                    UpdateTabDragAutoScroll();
                 };
                 border.MouseLeftButtonUp += (s, e) =>
                 {
@@ -14444,12 +14445,42 @@ namespace TypoZen
             _tabDropMarker.InvalidateVisual();
         }
 
+        // With more tabs than fit, the strip scrolls while a tab is held near either end, so a
+        // tab can be dragged to a place that is off screen (2026-09-29).
+        private System.Windows.Threading.DispatcherTimer _tabDragScrollTimer;
+        private int _tabDragScrollDir;
+        private const double TabDragEdge = 32, TabDragStep = 14;
+
+        private void UpdateTabDragAutoScroll()
+        {
+            var sv = FindElement("tabScroller") as ScrollViewer;
+            if (sv == null || !_tabDragging) { _tabDragScrollDir = 0; return; }
+            double x = Mouse.GetPosition(sv).X;
+            _tabDragScrollDir = x < TabDragEdge ? -1 : (x > sv.ActualWidth - TabDragEdge ? 1 : 0);
+            if (_tabDragScrollDir == 0) { if (_tabDragScrollTimer != null) _tabDragScrollTimer.Stop(); return; }
+            if (_tabDragScrollTimer == null)
+            {
+                _tabDragScrollTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+                _tabDragScrollTimer.Tick += (s, e) =>
+                {
+                    var v = FindElement("tabScroller") as ScrollViewer;
+                    if (v == null || !_tabDragging || _tabDragScrollDir == 0) { _tabDragScrollTimer.Stop(); return; }
+                    v.ScrollToHorizontalOffset(v.HorizontalOffset + _tabDragScrollDir * TabDragStep);
+                    v.UpdateLayout();
+                    ShowTabDropMarker(TabDropSlot(Mouse.GetPosition(_tabStrip).X));
+                };
+            }
+            if (!_tabDragScrollTimer.IsEnabled) _tabDragScrollTimer.Start();
+        }
+
         /// <summary>Stop dragging: capture, marker, state. Safe to call twice.</summary>
         private void EndTabDrag()
         {
             bool was = _tabDragging;
             _tabDragging = false;
             _tabDragFrom = -1;
+            _tabDragScrollDir = 0;
+            if (_tabDragScrollTimer != null) _tabDragScrollTimer.Stop();
             if (_tabDropMarker != null)
             {
                 try
