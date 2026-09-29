@@ -2580,11 +2580,16 @@
            The Pages selectors are repeated so these outrank body.tz-pages' own !important
            rules; the column styles are inline (PageGeometry) and !important beats inline.
            Source is left as it is: CodeMirror draws only the lines on screen. */
-        /* The page's own margins and a page number. Declaring a margin box turns off
-           Chromium's default header and footer -- the date, "TypoZen Editor" and the
-           https://localapp/... address -- which printed on every page of a book. */
+        /* The page's own margins and a page number. Chromium turns off its default header
+           and footer -- the date, the page title and the https://localapp/... address --
+           only on an edge that declares a margin box of its own: with just @bottom-center
+           the footer went and the date and title stayed at the top (Ed, 2026-09-29). So the
+           top gets an empty box too. */
         @page {
             margin: 18mm 16mm 16mm;
+            @top-center {
+                content: "";
+            }
             @bottom-center {
                 content: counter(page);
                 font: 9pt Georgia, serif;
