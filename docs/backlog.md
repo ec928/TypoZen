@@ -3,7 +3,18 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
-## 1. View settings per document type (next — planned for 2026-09-30)
+## 0. File associations (added 2026-09-28)
+
+Capture both custom and hardcoded file extensions (e.g. `.md`, `.txt`, `.epub`, `.pdf`) for
+proper file type handling and integration. *(Moved here from a Backlog section that had been
+added to the README.)*
+
+## 1. View settings per document type — **built** (0.9.9–0.9.29, 2026-09-28/29)
+
+Built on branch `feature/per-type-view-settings` (not yet merged to `master`). As built,
+it goes further than the plan below: text size, Word Wrap and columns are per type as
+well, ePub defaults to two columns, and **Code's default theme is Tokyo Night, not Monokai**
+as decided below — confirm which is intended. The plan as agreed follows.
 
 **Decided (Ed, 2026-09-28):** change nothing in the UI and add no menu items. The existing theme and View settings are saved **per document type** instead of once globally. They stay the user's to set; a change is saved to the type of the document on screen and persists.
 
