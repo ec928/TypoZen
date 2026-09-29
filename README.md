@@ -33,7 +33,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Dual-mode editing:** Seamlessly switch between WYSIWYG Preview and Source. The two lay text out alike, so the line you are on stays where it is.
 - **Source is a real code editor:** built on CodeMirror 6, with highlighting in your theme's colours for Markdown and for code and markup — HTML, XML, CSS, JSON, JavaScript, C# and more.
 - **Live block editing:** Format Markdown and text on the fly, including headings, lists, tables, tasks, emphasis, and fenced code.
-- **Deep immersion:** Engage Focus mode, Typewriter scroll, and chrome auto-hide to eliminate distractions while you work.
+- **Deep immersion:** Engage Focus mode, Typewriter scroll, and ZenMode, which hides the whole UI until you reach for it, to eliminate distractions while you work.
 - **Engineered for massive files:** Preview builds only the part of the document on screen, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it. Source opens files of megabytes, with lines hundreds of thousands of characters long, at once.
 - **Spelling as you type:** wavy underlines under every misspelled word on screen, in Preview and Source (not in code). Select any word for replacements, Ignore, or Add to dictionary.
 
@@ -326,7 +326,7 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 - Sidebar (`Ctrl+\`): live outline (headings, or a book's own TOC) and the Search pane
 - Zoom: `Ctrl++` / `Ctrl+-` / `Ctrl+0` or Ctrl+scroll
 - **Notepad-style chrome** — document tabs in the **title bar** with min/max/close; File/Edit/View and format icons on the command row below
-- **Auto-hide chrome** (View → Auto-hide) — tucks the command row, tab chips and status bar, keeping a slim caption for dragging and window controls. Pointer to the **top** (or bare Alt) restores the menu; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back
+- **ZenMode** (View → ZenMode (autohide UI)) — hides everything but the page: the command row, the tabs, the window buttons and the status bar. Pointer to the **top** (or bare Alt) brings it all back, window buttons and dragging included; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back
 - The menu is **always discoverable** — there is no hide-the-menu toggle. When auto-hide is off it stays put; when on, reach the top of the window
 - **Left-edge sidebar hover** (View → Side Panel Auto-hide) — **off by default**, and separate from chrome auto-hide: wanting a bare reading window is not the same as wanting the outline to follow the mouse. Switched on, and with the sidebar unpinned (closed by the toggle), moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it (stay band covers the full bar so Match case / Whole word stay usable). Opening with the toolbar, `Ctrl+\`, or Alt+S **pins** it until you close it again
 - **Alt+F / E / V / T / H** open the matching top-level menu from the keyboard (including while the editor has focus); **Alt+S** is Search, not a menu letter
@@ -567,7 +567,7 @@ The reasoning behind these decisions — including the failure modes that motiva
 | Focus mode | `F8` |
 | Typewriter scroll | `F9` |
 
-**Menus (no default shortcut):** Themes → Customise Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → Auto-hide, Side Panel Auto-hide · File → Privacy
+**Menus (no default shortcut):** Themes → Customise Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → ZenMode (autohide UI), Side Panel Auto-hide · File → Privacy
 
 Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
 

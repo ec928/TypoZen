@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.10.1";
+        internal const string AppVersion = "0.10.2";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -9015,6 +9015,11 @@ namespace TypoZen
                 var borderContainer = (Border)FindElement("webViewContainer");
                 if (borderContainer != null)
                 {
+                    // The container too, not only the host inside it. It kept the XAML's
+                    // navy, and where the WebView lands a pixel inside it after DPI rounding
+                    // that navy showed as a line along the page's top and left edges -- in
+                    // Zen, with nothing covering it (2026-09-29).
+                    borderContainer.Background = bgBrush;
                     var h = borderContainer.Child as WindowsFormsHost;
                     if (h != null) h.Background = bgBrush;
                 }
@@ -9705,8 +9710,7 @@ namespace TypoZen
 
         private double ChromeHeight()
         {
-            // Always count the caption strip (tabs may be tucked but ─□× remain).
-            // Command row only when expanded.
+            // The caption band when it is up (Zen collapses it), and the command row.
             double h = 0;
             var band = FindElement("tabBar") as FrameworkElement;
             if (band != null && band.Visibility == Visibility.Visible)
@@ -9759,11 +9763,16 @@ namespace TypoZen
 
             bool hidden = menuGone;
 
+            // Zen hides the caption band too, window buttons and all (Ed, 2026-09-29): a
+            // strip of ─□× across a page of prose broke the promise of no UI, and its lower
+            // edge read as a line over the page. The pointer at the top brings the whole
+            // band back (ShouldRevealChrome goes by ChromeHotZonePx, not by the band), and
+            // with it dragging and the buttons.
             var band = FindElement("tabBar") as Border;
             if (band != null)
             {
-                band.Visibility = Visibility.Visible;
-                band.Height = hidden ? CaptionHeightCollapsed : CaptionHeightExpanded;
+                band.Visibility = hidden ? Visibility.Collapsed : Visibility.Visible;
+                band.Height = CaptionHeightExpanded;
                 band.BorderThickness = new Thickness(0);
             }
             var seam = FindElement("tabSeam") as System.Windows.Shapes.Rectangle;
@@ -9775,7 +9784,7 @@ namespace TypoZen
             {
                 var chrome = WindowChrome.GetWindowChrome(this);
                 if (chrome != null)
-                    chrome.CaptionHeight = hidden ? CaptionHeightCollapsed : CaptionHeightExpanded;
+                    chrome.CaptionHeight = hidden ? 0 : CaptionHeightExpanded;
             }
             catch { }
         }
@@ -13101,7 +13110,7 @@ namespace TypoZen
 
                 // --- New View options: chrome modes, word wrap, status bar ---
                 {
-                    // Auto-hide: command row + tab chips tuck; slim caption (─□×) stays.
+                    // Zen: command row, tab chips and the caption band with ─□× all go.
                     var band = FindElement("tabBar") as FrameworkElement;
                     var bar = FindElement("topToolbar") as FrameworkElement;
                     var tabs = FindElement("tabScroller") as FrameworkElement;
@@ -13120,8 +13129,8 @@ namespace TypoZen
                     await Task.Delay(150);
                     bool hidTyping = bar != null && bar.Visibility != Visibility.Visible
                         && tabs != null && tabs.Visibility != Visibility.Visible
-                        && band != null && band.Visibility == Visibility.Visible;
-                    if (hidTyping) Pass("chrome hides when typing starts");
+                        && band != null && band.Visibility != Visibility.Visible;
+                    if (hidTyping) Pass("chrome hides when typing starts, window buttons included");
                     else Fail("chrome did not hide on typing");
 
                     // ...and a menu being open must veto hiding

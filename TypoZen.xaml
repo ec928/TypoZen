@@ -547,7 +547,7 @@
                                       ToolTip="Draw PDF pages in the theme's colours. Good for text; pictures are recoloured too."/>
                             <MenuItem x:Name="mPdfOcr" Header="Read Text in Scanned PDF Pa_ges" IsCheckable="True" IsChecked="True"
                                       ToolTip="Recognise the words on scanned pages with Windows' own text recognition, on this computer, so they can be searched, selected and read aloud. Handwriting and poor scans read badly."/>
-                            <MenuItem x:Name="mChromeAutoHide" Header="Auto-hide UI (_Zen)" IsCheckable="True"/>
+                            <MenuItem x:Name="mChromeAutoHide" Header="_ZenMode (autohide UI)" IsCheckable="True"/>
                             <MenuItem x:Name="mSidebarAutoHide" Header="Side Panel Auto-_hide" IsCheckable="True" IsChecked="False"/>
                             <Separator/>
 
