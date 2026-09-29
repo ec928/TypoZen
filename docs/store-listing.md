@@ -84,7 +84,8 @@ _Limit 1,500 characters. For the 0.10 submission (the Store was on 0.9.6)._
 - TypoZen appears under Open with for code files and PDFs.
 - Two-page spreads keep your place when you change the theme or text size.
 - Preview keeps the indentation of code files.
-- Print and Export PDF print the whole document. They printed only the first page before.
+- Print and Export PDF print the whole document, with page numbers and named after it. They printed only the first page before.
+- Project Gutenberg books read paragraph by paragraph: read aloud, bookmarks and search no longer jump by whole chapters.
 
 ---
 
