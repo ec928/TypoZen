@@ -5856,7 +5856,7 @@ namespace TypoZen
             double waHeight = SystemParameters.WorkArea.Height;
             
             // On ultrawide or 4K/8K monitors, limit to sensible reading dimensions
-            double h = Math.Min(waHeight * 0.85, 1200);
+            double h = Math.Min(waHeight * 0.90, 1200);
             double w1 = Math.Min(waWidth * 0.55, 1000);
             double w2 = Math.Min(waWidth * 0.85, 1700);
             
