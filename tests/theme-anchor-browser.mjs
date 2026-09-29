@@ -156,7 +156,7 @@ try {
         await sleep(100);
     }
     await sleep(600);
-    const anchor = await page.evaluate(() => topLeftModelIndexTwoCol());
+    const anchor = await page.evaluate(() => { const t = firstVisibleTextPosition(); return t ? t.block : topLeftModelIndexTwoCol(); });
     const before = await page.evaluate(anchorState, anchor);
     info('reading block ' + anchor + ' on page ' + before.page + ' of ' + before.count + ' at ' + before.fs);
     assert(anchor > 0 && before.visible, 'control: an anchor block is on screen before the change');

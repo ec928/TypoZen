@@ -486,7 +486,7 @@
             window.addEventListener('resize', () => {
                 if (state.mode === 'source') resizeSourceEditor();
                 // Page breaks depend on the viewport, so a resize retires the map.
-                PageMap.invalidate();
+                PageMap.invalidate(); try { if (typeof PageChunks !== 'undefined') PageChunks.invalidate(); } catch (e) {}
             });
 
             // Anything that changes the editor's width changes the page width, and every
@@ -1570,7 +1570,7 @@
                 }
                 try {
                     PageGeometry.relayout();
-                    PageMap.invalidate();
+                    PageMap.invalidate(); try { if (typeof PageChunks !== 'undefined') PageChunks.invalidate(); } catch (e) {}
                     // The block holding the character, so windowing mounts the range the
                     // text is in; then the character itself, for this jump only.
                     const target = (textAt && textAt.block >= 0) ? textAt.block : anchor;
@@ -2079,7 +2079,7 @@
                 // Reader/Preview/Source changes whether pages apply at all.
                 syncPaginationClass();
                 applyEditorChromeForMode();
-                scheduleColumnSettle(function () { ensurePageWindow(); PageMap.invalidate(); updatePageIndicator(); });
+                scheduleColumnSettle(function () { ensurePageWindow(); PageMap.invalidate(); try { if (typeof PageChunks !== 'undefined') PageChunks.invalidate(); } catch (e) {} updatePageIndicator(); });
                 // The other view's text is now on screen: check its spelling.
                 try { scheduleSpellCheck(); } catch (eSp) {}
                 // Mode changes from the toolbar selector (and host view_set), not a shortcut.
