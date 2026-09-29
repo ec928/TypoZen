@@ -5855,18 +5855,19 @@ namespace TypoZen
             double waWidth = SystemParameters.WorkArea.Width;
             double waHeight = SystemParameters.WorkArea.Height;
             
-            double h = Math.Min(waHeight * 0.85, 1100);
-            double w1 = Math.Min(waWidth * 0.55, 1100);
-            double w2 = Math.Min(waWidth * 0.85, 1800);
+            // On ultrawide or 4K/8K monitors, limit to sensible reading dimensions
+            double h = Math.Min(waHeight * 0.85, 1200);
+            double w1 = Math.Min(waWidth * 0.55, 1000);
+            double w2 = Math.Min(waWidth * 0.85, 1700);
             
             double t = SystemParameters.WorkArea.Top + (waHeight - h) / 2;
             double l1 = SystemParameters.WorkArea.Left + (waWidth - w1) / 2;
             double l2 = SystemParameters.WorkArea.Left + (waWidth - w2) / 2;
             
-            this.Width = w1;
+            this.Width = _isTwoColumnMode ? w2 : w1;
             this.Height = h;
             this.Top = t;
-            this.Left = l1;
+            this.Left = _isTwoColumnMode ? l2 : l1;
             this.WindowStartupLocation = WindowStartupLocation.Manual;
             
             _col1Rect = new Rect(l1, t, w1, h);
