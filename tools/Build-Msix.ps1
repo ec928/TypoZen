@@ -153,6 +153,54 @@ $manifest = @"
               <uap:FileType>.markdown</uap:FileType>
               <uap:FileType>.txt</uap:FileType>
               <uap:FileType>.epub</uap:FileType>
+              <uap:FileType>.pdf</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="typozen.code">
+            <uap:DisplayName>Code or text file</uap:DisplayName>
+            <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.json</uap:FileType>
+              <uap:FileType>.jsonc</uap:FileType>
+              <uap:FileType>.xml</uap:FileType>
+              <uap:FileType>.xaml</uap:FileType>
+              <uap:FileType>.axaml</uap:FileType>
+              <uap:FileType>.csproj</uap:FileType>
+              <uap:FileType>.props</uap:FileType>
+              <uap:FileType>.targets</uap:FileType>
+              <uap:FileType>.config</uap:FileType>
+              <uap:FileType>.resx</uap:FileType>
+              <uap:FileType>.svg</uap:FileType>
+              <uap:FileType>.xsd</uap:FileType>
+              <uap:FileType>.plist</uap:FileType>
+              <uap:FileType>.xsl</uap:FileType>
+              <uap:FileType>.xslt</uap:FileType>
+              <uap:FileType>.html</uap:FileType>
+              <uap:FileType>.htm</uap:FileType>
+              <uap:FileType>.xhtml</uap:FileType>
+              <uap:FileType>.css</uap:FileType>
+              <uap:FileType>.cs</uap:FileType>
+              <uap:FileType>.js</uap:FileType>
+              <uap:FileType>.mjs</uap:FileType>
+              <uap:FileType>.cjs</uap:FileType>
+              <uap:FileType>.ts</uap:FileType>
+              <uap:FileType>.tsx</uap:FileType>
+              <uap:FileType>.jsx</uap:FileType>
+              <uap:FileType>.java</uap:FileType>
+              <uap:FileType>.c</uap:FileType>
+              <uap:FileType>.h</uap:FileType>
+              <uap:FileType>.cpp</uap:FileType>
+              <uap:FileType>.hpp</uap:FileType>
+              <uap:FileType>.cc</uap:FileType>
+              <uap:FileType>.go</uap:FileType>
+              <uap:FileType>.rs</uap:FileType>
+              <uap:FileType>.swift</uap:FileType>
+              <uap:FileType>.kt</uap:FileType>
+              <uap:FileType>.php</uap:FileType>
+              <uap:FileType>.log</uap:FileType>
+              <uap:FileType>.csv</uap:FileType>
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>

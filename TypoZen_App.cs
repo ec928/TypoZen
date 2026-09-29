@@ -7971,16 +7971,35 @@ namespace TypoZen
         /// </summary>
         private enum DocType { Documents, Code, EPub, Pdf }
 
+        /// <summary>
+        /// The one list of code and markup extensions. It decides the Code document type (its
+        /// view settings), which files open straight into Source, and -- through
+        /// tests/file-types-selftest.mjs -- what the installer (tools/TypoZen.iss) and the Store
+        /// package (tools/Build-Msix.ps1) offer under "Open with". It must hold every key of
+        /// 08-code.js's CODE_LANGUAGES, plus markup and data read as plain text (.xsl, .xslt,
+        /// .xhtml, .log, .csv). There were two lists and they disagreed: .xsl opened in Source
+        /// with Documents settings, and .js, .ts and .cs opened in Preview (2026-09-29).
+        /// </summary>
+        internal static readonly string[] CodeExtensions = {
+            ".json", ".jsonc", ".xml", ".xaml", ".axaml", ".csproj", ".props", ".targets", ".config",
+            ".resx", ".svg", ".xsd", ".plist", ".xsl", ".xslt", ".html", ".htm", ".xhtml", ".css",
+            ".cs", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".java", ".c", ".h", ".cpp", ".hpp",
+            ".cc", ".go", ".rs", ".swift", ".kt", ".php", ".log", ".csv" };
+
+        private static bool IsCodePath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            string ext = (Path.GetExtension(path) ?? "").ToLowerInvariant();
+            return ext.Length > 0 && Array.IndexOf(CodeExtensions, ext) >= 0;
+        }
+
         private DocType GetDocType(string path)
         {
             if (string.IsNullOrEmpty(path)) return DocType.Documents;
             string ext = Path.GetExtension(path).ToLowerInvariant();
             if (ext == ".epub") return DocType.EPub;
             if (ext == ".pdf") return DocType.Pdf;
-            
-            string[] codeExts = { ".json", ".jsonc", ".xml", ".xaml", ".axaml", ".csproj", ".props", ".targets", ".config", ".resx", ".svg", ".xsd", ".plist", ".html", ".htm", ".css", ".cs", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".java", ".c", ".h", ".cpp", ".hpp", ".cc", ".go", ".rs", ".swift", ".kt", ".php", ".log", ".csv" };
-            if (Array.IndexOf(codeExts, ext) >= 0) return DocType.Code;
-            
+            if (IsCodePath(path)) return DocType.Code;
             return DocType.Documents;
         }
 
@@ -11438,10 +11457,8 @@ namespace TypoZen
             string ext = Path.GetExtension(path);
             if (string.IsNullOrEmpty(ext)) return false;
             ext = ext.ToLowerInvariant();
-            return ext == ".txt" || ext == ".log" || ext == ".csv"
-                || ext == ".css" || ext == ".xml" || ext == ".xaml"
-                || ext == ".xsl" || ext == ".xslt" || ext == ".json"
-                || ext == ".html" || ext == ".htm" || ext == ".xhtml";
+            // Plain text, and everything of the Code type -- one list, CodeExtensions.
+            return ext == ".txt" || IsCodePath(path);
         }
 
         private static bool IsHtmlPath(string path)
