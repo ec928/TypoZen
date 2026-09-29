@@ -394,14 +394,19 @@
             }
             const hm = typeof HistoryManager !== 'undefined' ? HistoryManager : null;
             const wasRestoring = hm ? hm.isRestoring : false;
+            // The surviving head keeps its place on screen (editViewAnchor).
+            const va = editViewAnchor([fromIdx]);
             if (hm) hm.isRestoring = true;
             try {
                 const focusLine = (typeof modelBlockStartLine === 'function')
                     ? modelBlockStartLine(fromIdx) : 1;
-                loadMarkdownContent(postContent, { stickyLine: focusLine });
+                const loadOpts = { stickyLine: focusLine };
+                if (va) loadOpts.stickyPad = va.top;
+                loadMarkdownContent(postContent, loadOpts);
             } finally {
                 if (hm) hm.isRestoring = wasRestoring;
             }
+            settlePagesAfterReload(fromIdx);
             clearMultiBlockSelFreeze();
             return {
                 focusIndex: fromIdx,
@@ -699,6 +704,60 @@
         }
 
         /**
+         * Where an edit sits on screen, so the reload that applies it can put it back there.
+         *
+         * Edits that reload the document -- formatting across paragraphs, list changes, a
+         * delete across paragraphs, undo and redo -- pinned the edited line 48 px from the
+         * top: bold on four lines half way down the window threw them to the top (Ed,
+         * 2026-09-29). Returns the first of `indices` (model indices) whose top is on
+         * screen, with that top; null when none is, and the view then goes to the edit as
+         * before. Pages keeps its place by page (settlePagesAfterReload), so null there.
+         */
+        function editViewAnchor(indices) {
+            try {
+                if (!editor || !mainContainer || state.mode === 'source') return null;
+                if (typeof isPaginatedLayout === 'function' && isPaginatedLayout()) return null;
+                const h = mainContainer.clientHeight;
+                const top0 = mainContainer.getBoundingClientRect().top;
+                for (let i = 0; i < indices.length; i++) {
+                    const bi = indices[i] | 0;
+                    const el = editor.querySelector('.block[data-model-index="' + bi + '"]');
+                    if (!el) continue;
+                    const top = el.getBoundingClientRect().top - top0;
+                    if (top >= 0 && top < h) return { block: bi, top: Math.round(top) };
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        /**
+         * Pages after an edit reloaded the document.
+         *
+         * A large document is laid out one range at a time, but loadMarkdownContent
+         * rebuilds and paints the WHOLE document (~5 s on a 4,000-line file), then narrows
+         * back to a range with the page numbers counting that range alone (Ed, 2026-09-29:
+         * pages 3-4 shown as 1-2 of ~36 after Ctrl+Y). Drop that build, mount the range
+         * holding the edit as a page turn does, and land on the edit's page through the
+         * page map so the numbers follow. On screen before, that is the page already there.
+         */
+        function settlePagesAfterReload(bi) {
+            try {
+                if (state.mode === 'source' || !isPaginatedLayout()) return;
+                bi = Math.max(0, bi | 0);
+                if (pageWindowingActive()) {
+                    window.__tzPaintGen = (window.__tzPaintGen || 0) + 1;
+                    window.__tzPreviewPainting = false;
+                    PageChunks.ensure(DocumentModel.blocks.length);
+                    mountPageChunk(PageChunks.chunkOfBlock(bi));
+                }
+                const el = elementForModelIndex(bi);
+                const lp = el ? twoColPageOfElement(el) : null;
+                if (lp != null) PageMap.gotoLocal(lp);
+                else updatePageIndicator();
+            } catch (e) {}
+        }
+
+        /**
          * SAFE document mutation for list-related changes.
          * Never write <ul>/<ol> into multiple contenteditable siblings in a loop.
          * Snapshot markdown → mutate strings → one loadMarkdownContent.
@@ -819,14 +878,35 @@
                 HistoryManager.recordEditPair(preContent, postContent);
             }
 
+            // Keep the edited line where it is on screen (editViewAnchor). This reload had
+            // no anchor at all: a list change reloaded to the top of a large document.
+            let firstFocus = (opts.focusIndex != null) ? (opts.focusIndex | 0) : -1;
+            if (firstFocus < 0 && opts.focusIndices) {
+                const fk = Object.keys(opts.focusIndices).map(Number).filter(function (n) {
+                    return n >= 0 && opts.focusIndices[n];
+                });
+                if (fk.length) firstFocus = Math.min.apply(null, fk);
+            }
+            const va = firstFocus >= 0 ? editViewAnchor([firstFocus]) : null;
+            let loadOpts;
+            if (focusStart >= 0) {
+                let focusLine = 1;
+                for (let li = 0; li < focusStart && li < outLines.length; li++) {
+                    focusLine += linesInBlockRaw(outLines[li]);
+                }
+                loadOpts = { stickyLine: focusLine };
+                if (va) loadOpts.stickyPad = va.top;
+            }
+
             const hm = typeof HistoryManager !== 'undefined' ? HistoryManager : null;
             const wasRestoring = hm ? hm.isRestoring : false;
             if (hm) hm.isRestoring = true;
             try {
-                loadMarkdownContent(postContent);
+                loadMarkdownContent(postContent, loadOpts);
             } finally {
                 if (hm) hm.isRestoring = wasRestoring;
             }
+            if (focusStart >= 0) settlePagesAfterReload(focusStart);
             // After reload, serialize may differ slightly from postContent (trailing blanks,
             // coerce). Resync stack TOP to actual getMarkdownContent so first Ctrl+Z is not
             // a no-op that only "undoes" a phantom live frame back to the same list state.
@@ -842,15 +922,25 @@
                 } catch (e) {}
             }
 
-            const newBlocks = Array.prototype.slice.call(editor.querySelectorAll('.block'));
-            if (focusStart >= 0 && newBlocks.length) {
-                const fi = Math.min(focusStart, newBlocks.length - 1);
-                const li = focusEnd >= 0 ? Math.min(focusEnd, newBlocks.length - 1) : fi;
-                _selectedFormatBlocks = newBlocks.slice(Math.max(0, fi), li + 1);
-                currentActiveBlock = newBlocks[li] || newBlocks[fi];
+            // By model index: under virtualization the mounted blocks start wherever the
+            // window does, so a DOM position is not the focused line.
+            const newBlocks = [];
+            if (focusStart >= 0) {
+                const lastI = focusEnd >= 0 ? focusEnd : focusStart;
+                for (let bi = focusStart; bi <= lastI; bi++) {
+                    const el = editor.querySelector('.block[data-model-index="' + bi + '"]');
+                    if (el) newBlocks.push(el);
+                }
+            }
+            if (newBlocks.length) {
+                _selectedFormatBlocks = newBlocks.slice();
+                currentActiveBlock = newBlocks[newBlocks.length - 1];
                 try {
                     if (currentActiveBlock) {
-                        currentActiveBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                        // Only when the edit was off screen: the reload already put an
+                        // on-screen edit back where it was, and Pages goes by page.
+                        if (!va && !isPaginatedLayout())
+                            currentActiveBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                         const sel = window.getSelection();
                         if (sel && _selectedFormatBlocks.length > 0) {
                             const r = document.createRange();
@@ -1514,12 +1604,16 @@
 
             // Reload from KNOWN-GOOD post only (safe). Empty post was the wipe.
             // Prefer sticky line near first selected block so virt remount lands on target.
+            // The first selected line on screen keeps its place (editViewAnchor); with none
+            // on screen, the view goes to the first selected line as before.
+            const focusKeys = Object.keys(focusIndices).map(Number).sort(function (a, b) { return a - b; });
+            const va = editViewAnchor(focusKeys);
+            const anchorIdx = va ? va.block : (focusKeys.length ? focusKeys[0] : -1);
             const stickyFocus = (function () {
-                const keys = Object.keys(focusIndices).map(Number).sort(function (a, b) { return a - b; });
-                if (!keys.length) return 0;
+                if (anchorIdx < 0) return 0;
                 // Approximate document line from block index (1 line/block common case)
                 let line = 1;
-                for (let i = 0; i < keys[0] && i < preLines.length; i++) {
+                for (let i = 0; i < anchorIdx && i < preLines.length; i++) {
                     line += linesInBlockRaw(preLines[i]);
                 }
                 return line;
@@ -1528,15 +1622,18 @@
             const wasRestoring = hm ? hm.isRestoring : false;
             if (hm) hm.isRestoring = true;
             try {
-                loadMarkdownContent(postContent, stickyFocus >= 1 ? { stickyLine: stickyFocus } : undefined);
+                const loadOpts = stickyFocus >= 1 ? { stickyLine: stickyFocus } : undefined;
+                if (loadOpts && va) loadOpts.stickyPad = va.top;
+                loadMarkdownContent(postContent, loadOpts);
             } finally {
                 if (hm) hm.isRestoring = wasRestoring;
             }
             try {
                 if (stickyFocus >= 1 && typeof restoreStickyDocumentLine === 'function') {
-                    restoreStickyDocumentLine(stickyFocus);
+                    restoreStickyDocumentLine(stickyFocus, false, va ? va.top : undefined, !!va);
                 }
             } catch (eSt) {}
+            if (anchorIdx >= 0) settlePagesAfterReload(anchorIdx);
 
             _lastGoodDocRaws = postLines.slice();
             try {
@@ -2860,17 +2957,8 @@
                     // reload below loses the scroll position and _restoreCaret used to pin the
                     // paragraph 48 px from the top, so an undo of a change in plain view threw
                     // it to the top of the window (Ed, 2026-09-29). Put it back where it was.
-                    let keepTop = null;
-                    try {
-                        if (caret && caret.mode !== 'source' && editor && mainContainer
-                            && !(typeof isPaginatedLayout === 'function' && isPaginatedLayout())) {
-                            const el = editor.querySelector('.block[data-model-index="' + (caret.blockIndex | 0) + '"]');
-                            if (el) {
-                                const top = el.getBoundingClientRect().top - mainContainer.getBoundingClientRect().top;
-                                if (top >= 0 && top < mainContainer.clientHeight) keepTop = Math.round(top);
-                            }
-                        }
-                    } catch (eKeep) {}
+                    const va = (caret && caret.mode !== 'source') ? editViewAnchor([caret.blockIndex | 0]) : null;
+                    const keepTop = va ? va.top : null;
                     // Legacy: bare array of block strings
                     if (Array.isArray(data)) {
                         editor.innerHTML = '';
@@ -2905,22 +2993,7 @@
                         // and completely unscrollable until the mode was toggled by hand.
                         try { syncPaginationClass(); } catch (eP) {}
                         try { applyEditorChromeForMode(); } catch (eC) {}
-                        // Pages on a large document lays out one range at a time, and the
-                        // load above rebuilds and paints the WHOLE document instead: ~5 s on
-                        // a 4,000-line file, then narrowed back to a range with the page
-                        // numbers left counting that range alone (Ed, 2026-09-29: pages 3-4
-                        // shown as 1-2 of ~36 after Ctrl+Y). Drop that build and mount the
-                        // range holding the edit, as a page turn does.
-                        try {
-                            if (state.mode !== 'source' && typeof pageWindowingActive === 'function'
-                                && pageWindowingActive()) {
-                                window.__tzPaintGen = (window.__tzPaintGen || 0) + 1;
-                                window.__tzPreviewPainting = false;
-                                const wbi = (caret && caret.mode !== 'source') ? (caret.blockIndex | 0) : 0;
-                                PageChunks.ensure(DocumentModel.blocks.length);
-                                mountPageChunk(PageChunks.chunkOfBlock(wbi));
-                            }
-                        } catch (eW) {}
+                        settlePagesAfterReload((caret && caret.mode !== 'source') ? (caret.blockIndex | 0) : 0);
                     }
                     updateStatsNow();
                     updateOutline();

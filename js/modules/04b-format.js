@@ -1364,7 +1364,7 @@
          * (default 48, so a search hit has context); a mode switch passes 0, so the line
          * lands at the top as in Source, where the next switch reads it back.
          */
-        function restoreStickyDocumentLine(line1Based, noFocus, topPad) {
+        function restoreStickyDocumentLine(line1Based, noFocus, topPad, exact) {
             const pad = topPad == null ? 48 : Math.max(0, topPad | 0);
             let line = Math.max(1, line1Based | 0);
             if (window.markProgrammaticScroll) window.markProgrammaticScroll(800);
@@ -1412,6 +1412,15 @@
                             ensureModelBlockVisible(bi, { topPad: pad });
                         }
                     } catch (eRe) {}
+                    // exact: an edit putting the line back where it was. ensureModelBlockVisible
+                    // lands within ~20 px of the padding (height estimates); close the gap.
+                    try {
+                        if (exact && !isPaginatedLayout()) {
+                            const d = Math.round(el.getBoundingClientRect().top
+                                - mainContainer.getBoundingClientRect().top) - pad;
+                            if (Math.abs(d) > 1) mainContainer.scrollTop += d;
+                        }
+                    } catch (eEx) {}
                 }
                 // Force status to sticky line — getCaretLineNumber often returns 1 right
                 // after mode switch before selection settles.

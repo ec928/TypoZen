@@ -1339,7 +1339,10 @@
 
             const stickyWanted = (opts && opts.stickyLine >= 1) ? (opts.stickyLine | 0) : 0;
             // A mode switch wants the line at the very top, where it was in Source.
-            const stickyPad = (opts && opts.stickyAtTop) ? 0 : undefined;
+            // An edit that reloads passes stickyPad: where the line was on screen before.
+            const stickyPad = (opts && opts.stickyAtTop) ? 0
+                : ((opts && opts.stickyPad != null) ? Math.max(0, opts.stickyPad | 0) : undefined);
+            const stickyExact = !!(opts && opts.stickyPad != null);
 
             // Whether this load seeds a fresh history is decided now, when the load is
             // requested -- not later, when its deferred tail happens to finish.
@@ -1387,7 +1390,7 @@
                 bindVirtScroll();
                 if (stickyWanted && typeof modelBlockStartLineToIndex === 'function') {
                     const bi = modelBlockStartLineToIndex(stickyWanted);
-                    mountVirtWindow(true, { anchorIndex: bi, anchorOffset: -48 });
+                    mountVirtWindow(true, { anchorIndex: bi, anchorOffset: -(stickyPad != null ? stickyPad : 48) });
                 } else {
                     mountVirtWindow(true);
                 }
@@ -1413,7 +1416,7 @@
                 
                 if (stickyWanted) {
                     if (typeof restoreStickyDocumentLine === 'function') {
-                        restoreStickyDocumentLine(stickyWanted, false, stickyPad);
+                        restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact);
                     }
                 } else {
                     try { updateStatsNow(); } catch (eSt) {}
@@ -1472,7 +1475,7 @@
                     setTimeout(function() {
                         // Not if another document has loaded since (a tab switch).
                         if (window.__tzPaintGen !== paintGen) return;
-                        restoreStickyDocumentLine(stickyWanted, false, stickyPad);
+                        restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact);
                     }, 20);
                 }
                 if (progressive) {
