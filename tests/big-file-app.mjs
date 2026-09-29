@@ -19,8 +19,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
-import { launchApp, profileFile, profileDir } from './app-harness.mjs';
+import { launchApp, profileFile, killSuiteApps } from './app-harness.mjs';
 import { settledApp, sleep } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,13 +34,9 @@ let app = null;
 const trace = [];            // steps logged from the page, printed if it stops answering
 const deadline = setTimeout(() => {
     console.error(trace.join('\n')); console.error('BIG FILE APP: deadline -- the app stopped answering');
-    // A frozen app does not close when asked. End the one this suite started -- found by its
-    // throwaway profile folder, so no other TypoZen can match.
-    try {
-        execSync('powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'TypoZen.exe\'\\" | '
-            + 'Where-Object { $_.CommandLine -like \'*' + path.basename(profileDir) + '*\' } | '
-            + 'ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"', { stdio: 'ignore', timeout: 15000 });
-    } catch (e) {}
+    // A frozen app does not close when asked: end the one this suite started (by its
+    // throwaway profile folder -- no other TypoZen can match). Proven by harness-kill-app.mjs.
+    killSuiteApps();
     process.exit(3);
 }, 150000);
 

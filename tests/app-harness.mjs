@@ -74,6 +74,29 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
  */
 export const profileDir = path.join(os.tmpdir(), 'typozen-e2e-' + process.pid);
 
+/** Every app process launchApp started in this run -- the only ones killSuiteApps may end. */
+const _launched = new Set();
+
+/**
+ * End every TypoZen this suite started that is still running, by the process it launched --
+ * never by name, so another TypoZen is never touched. For a deadline handler: an app whose
+ * page has hung does not close when asked. Returns how many were ended.
+ *
+ * It first matched the throwaway profile folder in the command line, which only worked when
+ * the suite happened to open a file inside that folder: the profile is passed in the
+ * environment. harness-kill-app.mjs found that (2026-09-29).
+ */
+export function killSuiteApps() {
+    let n = 0;
+    for (const child of _launched) {
+        let alive = false;
+        try { process.kill(child.pid, 0); alive = true; } catch (e) { }
+        if (!alive) continue;
+        try { killOwn(child); n++; } catch (e) { }
+    }
+    return n;
+}
+
 /** A file inside this suite's throwaway profile (bookmarks.txt, book_positions.txt, …). */
 export function profileFile(name) {
     return path.join(profileDir, name);
@@ -301,6 +324,7 @@ export async function launchApp(options) {
             stdio: 'ignore',
             env: Object.assign({}, process.env, childEnv)
         });
+    _launched.add(child);
     await waitForDevTools(45000);
 
     const browser = await puppeteer.connect({
