@@ -929,6 +929,22 @@
          *   instead of whatever indexAtScrollTop thinks — estimate error must not re-home
          *   the viewport to a different row (2000→700 class of bug).
          */
+        /**
+         * The space a block takes in the flow: its height plus its margins. offsetHeight
+         * alone leaves out the paragraph gap (margin-bottom, --para), and positions summed
+         * from it came up 3px short per mounted block -- about 120px over the 40-block
+         * overscan -- so a Source/Preview switch in a large document landed 3-5 lines off
+         * (2026-09-29). Every recorded block height goes through here.
+         */
+        function blockOuterHeight(el) {
+            let h = el.offsetHeight;
+            try {
+                const cs = getComputedStyle(el);
+                h += (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+            } catch (e) {}
+            return Math.round(h);
+        }
+
         function mountVirtWindow(force, opts) {
             if (!DocumentModel.virtEnabled || !editor || !mainContainer) return;
             // Prevent re-entrant remount loops while correcting scroll
@@ -1046,7 +1062,7 @@
                             if (mi < 0 || oh <= 12) continue;
                             const prev = DocumentModel.blockHeights
                                 ? (DocumentModel.blockHeights[mi] || 0) : 0;
-                            DocumentModel.setMeasuredHeight(mi, oh);
+                            DocumentModel.setMeasuredHeight(mi, blockOuterHeight(nodes[i]));
                             const next = DocumentModel.blockHeights
                                 ? (DocumentModel.blockHeights[mi] || 0) : 0;
                             if (Math.abs(prev - next) >= 2) heightChanged = true;

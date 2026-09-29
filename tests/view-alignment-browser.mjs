@@ -149,11 +149,11 @@ try {
     assert(topAfter.caretOnOpen === 1, 'a file opened in Source puts the caret on line 1 (got ' + topAfter.caretOnOpen + ')');
     assert(topAfter.previewAfterOpen === 'Line 1 of 4000' && topAfter.sourceBack === 'Line 1 of 4000',
         'opened in Source at line 1: Preview and back to Source stay on line 1 (got ' + topAfter.previewAfterOpen + ' / ' + topAfter.sourceBack + ')');
-    // Not exact yet: a document this size is virtualised in Preview, and remounting the
-    // window after the restore leaves the line ~100px down (known, 2026-09-27). What must
-    // hold is that it stays where the user was, not the caret's line 1 or the end.
-    assert(Math.abs(lineOf(topAfter.previewAfterScroll) - 1500) <= 5 && Math.abs(lineOf(topAfter.sourceAfterScroll) - 1500) <= 5,
-        'scrolled to line 1500 without moving the caret: both views stay within 5 lines of 1500 (got ' + topAfter.previewAfterScroll + ' / ' + topAfter.sourceAfterScroll + ')');
+    // A document this size is virtualised in Preview. It used to land ~100px (3-5 lines) low:
+    // block heights were recorded without the paragraph gap, 3px short per mounted block
+    // (blockOuterHeight, 05-model.js; fixed 2026-09-29). Now exact, as for small documents.
+    assert(topAfter.previewAfterScroll === 'Line 1500 of 4000' && topAfter.sourceAfterScroll === 'Line 1500 of 4000',
+        'scrolled to line 1500 without moving the caret: both views are on line 1500 (got ' + topAfter.previewAfterScroll + ' / ' + topAfter.sourceAfterScroll + ')');
     assert(topAfter.smallPreview === 'Line 60 of 4000' && Math.abs(topAfter.smallTop) <= 1,
         'fully mounted Preview: Source at line 60 opens Preview with line 60 at the top (got ' + topAfter.smallPreview + ', line 60 at ' + topAfter.smallTop + 'px)');
 

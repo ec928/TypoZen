@@ -1253,7 +1253,7 @@
                 if (!el) return 9999;
                 try {
                     if (el.offsetHeight > 12) {
-                        DocumentModel.setMeasuredHeight(bi, el.offsetHeight);
+                        DocumentModel.setMeasuredHeight(bi, blockOuterHeight(el));   // margins too (05-model)
                     }
                 } catch (eH) {}
                 try {
