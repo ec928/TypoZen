@@ -68,9 +68,6 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 - **`book-position-app` is intermittent**: now and then the first frame of a resume is drawn
   before the range is recorded as mounted (range -1). The cover is never shown; passes on a
   re-run. A timing edge in the test's frame sampling or in the resume; not chased.
-- **The live Store description says TypoZen "makes absolutely zero network requests"**,
-  untrue once an extension (Kokoro or Qwen voices) is installed. Reworded in
-  docs/store-listing.md (Ed, 2026-09-30); goes into Partner Center with the next submission.
 
 
 **Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range
@@ -121,6 +118,14 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     and tabs stripped from line ends, so the edit never counted as a change. The
     comparison now ignores only line-ending style and trailing newlines. The 0.11.7 check
     typed its tab mid-line, where the strip did not reach.
+  - Store description (2026-09-30): the privacy paragraph no longer claims "zero network
+    requests" (untrue once an extension is installed); Ed updated Partner Center.
+  - 1-Col / 2-Col (0.11.9): switching moved the whole window, because each layout stored
+    and centred its own position (Ed: "too jarring"). Both now share the top-left corner
+    the user last put the window at, each keeping its own size, so a switch only widens or
+    narrows the window to the right; the default 1-Col window starts where the centred
+    2-Col one does. A layout that would run off the screen shifts in only as far as it
+    must, and switching back returns to the user's corner. Measured on the real window.
 - **Not a report:** a "~5 s jank opening a medium document" was listed here from a perf log
   read during the 2026-09-29 audit -- inferred by the assistant, never seen by Ed, and not
   reproducible on 0.11.0 (one 130 ms frame on a 106 KB file). Closed.

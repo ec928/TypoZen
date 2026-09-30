@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.11.8";
+        internal const string AppVersion = "0.11.9";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -5860,18 +5860,22 @@ namespace TypoZen
             double w1 = Math.Min(waWidth * 0.55, 1000);
             double w2 = Math.Min(waWidth * 0.85, 1700);
             
+            // One top-left for both layouts: the 2-column window is centred and the 1-column
+            // one starts at the same corner, so switching only widens or narrows the window
+            // to the right. Each used to be centred on its own, and the whole window jumped
+            // sideways on every switch (Ed, 2026-09-30).
             double t = SystemParameters.WorkArea.Top + (waHeight - h) / 2;
-            double l1 = SystemParameters.WorkArea.Left + (waWidth - w1) / 2;
-            double l2 = SystemParameters.WorkArea.Left + (waWidth - w2) / 2;
-            
+            double l = SystemParameters.WorkArea.Left + (waWidth - w2) / 2;
+
             this.Width = _isTwoColumnMode ? w2 : w1;
             this.Height = h;
             this.Top = t;
-            this.Left = _isTwoColumnMode ? l2 : l1;
+            this.Left = l;
             this.WindowStartupLocation = WindowStartupLocation.Manual;
-            
-            _col1Rect = new Rect(l1, t, w1, h);
-            _col2Rect = new Rect(l2, t, w2, h);
+
+            _col1Rect = new Rect(l, t, w1, h);
+            _col2Rect = new Rect(l, t, w2, h);
+            _columnAnchor = null;
         }
 
         private void RestoreWindowState()
@@ -6311,12 +6315,16 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Remember the window rect for the column count being left, then restore whatever
-        /// the user last used for the one being entered.
+        /// Remember the window size for the column count being left, then take the size
+        /// the user last used for the one being entered -- keeping the window's top-left
+        /// corner where it is, so the switch reads as the window growing or shrinking to
+        /// the right rather than moving (Ed, 2026-09-30).
         ///
         /// 1-column and 2-column want genuinely different window shapes, and deriving one
         /// from the other (say, twice the width at the same height) breaks down as soon as
-        /// the monitor, the margins or the font size differ. Each is simply stored.
+        /// the monitor, the margins or the font size differ. Each size is simply stored.
+        /// The position is not: both layouts share the corner the user last put the
+        /// window at.
         /// </summary>
         private void ApplyColumnWindowGeometry(int toColumns)
         {
@@ -6328,17 +6336,52 @@ namespace TypoZen
             Rect? next = _isTwoColumnMode ? _col2Rect : _col1Rect;
             if (!next.HasValue || next.Value.Width <= 0) return;   // nothing saved yet: keep the current size
 
+            // The corner to keep. If the last switch had to pull the window in to fit the
+            // screen and the user has not moved it since, go back to where they had it, so
+            // 1-Col -> 2-Col -> 1-Col returns to the same place.
+            Point anchor = new Point(this.Left, this.Top);
+            if (_columnAnchor.HasValue && _columnAnchorShown.HasValue &&
+                Math.Abs(_columnAnchorShown.Value.X - this.Left) < 1 && Math.Abs(_columnAnchorShown.Value.Y - this.Top) < 1)
+                anchor = _columnAnchor.Value;
+
             this.Width = next.Value.Width;
             this.Height = next.Value.Height;
-            // Only move the window if the saved position still lands on a connected screen.
-            if (next.Value.Left >= SystemParameters.VirtualScreenLeft - 100 &&
-                next.Value.Top >= SystemParameters.VirtualScreenTop - 100 &&
-                next.Value.Left < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100 &&
-                next.Value.Top < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 100)
+
+            // Keep the corner unless the new size would run off the screen the window is on;
+            // then shift only as far as it takes to fit.
+            Rect wa = WorkAreaOfWindow();
+            double left = anchor.X, top = anchor.Y;
+            if (left + this.Width > wa.Right) left = Math.Max(wa.Left, wa.Right - this.Width);
+            if (top + this.Height > wa.Bottom) top = Math.Max(wa.Top, wa.Bottom - this.Height);
+            this.Left = left;
+            this.Top = top;
+            _columnAnchor = anchor;
+            _columnAnchorShown = new Point(left, top);
+        }
+
+        // The corner the user chose, and where ApplyColumnWindowGeometry actually put the
+        // window (they differ only when a wider layout had to be pulled in to fit).
+        private Point? _columnAnchor = null;
+        private Point? _columnAnchorShown = null;
+
+        /// <summary>The work area of the monitor the window is on, in WPF units.</summary>
+        private Rect WorkAreaOfWindow()
+        {
+            try
             {
-                this.Left = next.Value.Left;
-                this.Top = next.Value.Top;
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                var src = PresentationSource.FromVisual(this);
+                if (hwnd != IntPtr.Zero && src != null && src.CompositionTarget != null)
+                {
+                    var r = WinForms.Screen.FromHandle(hwnd).WorkingArea;
+                    var m = src.CompositionTarget.TransformFromDevice;
+                    Point a = m.Transform(new Point(r.Left, r.Top));
+                    Point b = m.Transform(new Point(r.Right, r.Bottom));
+                    return new Rect(a, b);
+                }
             }
+            catch { }
+            return SystemParameters.WorkArea;
         }
 
         /// <summary>Store the current window rect against the column count in force.</summary>
