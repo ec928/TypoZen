@@ -154,7 +154,7 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     was for, only while that tab is still active, and never creates a tab; switches and
     opens mark themselves in progress BEFORE their blocking page pulls, whose nested message
     loop could run a queued Ctrl+Tab in the middle of them; an open re-checks for a tab with
-    its path just before it would create one. Waiting on Ed's retry to confirm.
+    its path just before it would create one. Ed's retry with real keys: no duplicate.
 - **Not a report:** a "~5 s jank opening a medium document" was listed here from a perf log
   read during the 2026-09-29 audit -- inferred by the assistant, never seen by Ed, and not
   reproducible on 0.11.0 (one 130 ms frame on a 106 KB file). Closed.
