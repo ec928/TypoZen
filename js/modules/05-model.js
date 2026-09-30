@@ -2432,7 +2432,7 @@
             // for both views; the caret turns into a block while overwriting.
             if (e.key === 'Insert' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
                 const a = document.activeElement;
-                if (editor && a && (a === editor || editor.contains(a) || (a.closest && a.closest('.cm-editor')))) {
+                if (editor && a && (a === editor || editor.contains(a) || isSourceNode(a))) {
                     e.preventDefault();
                     tzSetOverwrite(!window.tzOverwrite);
                     return;
