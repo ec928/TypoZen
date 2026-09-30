@@ -65,22 +65,21 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
 
 Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 
-**From the 2026-09-29 audit (Ed: backlog for now):**
-
-- **Print / Export PDF refuses every large document.** `ExportPdf` (TypoZen_App.cs) stops with
-  "too large to print directly … print it from another application" whenever the page holds
-  only part of the document: any novel (Pride and Prejudice, 2,099 blocks, hits it) and any
-  large Markdown file. An ePub has no other application to print from, and the listing
-  advertises printing. Fix: at print time render the whole document from the model into a
-  print-only container (on-screen editor hidden in print); limit or warn for omnibuses.
-- **Opening a medium document janks for ~5 s.** `paintBlockPreviewsProgressive` (05-model.js)
-  paints 100 blocks per frame; each batch changes heights and re-lays out the whole document
-  (Ed's perf log: 40 frames of 80-130 ms, script 6-33 ms of each). Ed: batching differently
-  does not address the root cause -- the root cause is laying out the whole document per
-  batch. Needs a real answer (e.g. only the blocks near the view laid out at all).
-  The same whole-document paint runs when a large document opens straight into 2-Col, before
-  it narrows to one range. Edits no longer go through it (0.10.15/0.10.16 mount only the
-  range holding the edit), but opening still does.
+- **Opening a medium document janks for ~5 s -- not reproduced on 0.11.0.** Ed's perf log
+  (2026-09-29) showed 40 frames of 80-130 ms opening a medium document in 1-Col. On 0.11.0
+  in the real app, spell checker live, a 106 KB / 1,200-line document opens with one 130 ms
+  frame and is settled in 0.2 s (2-Col: one 61 ms frame). The 2-Col half of this item is
+  fixed (see Done). Re-open with the document that did it, if it recurs.
+- **Enter just before a space, in Preview**, drops that space from the new line (Preview
+  cannot show a line's leading space, so screen and file agree). Source keeps it.
+- **Typed tabs nest in Chromium's spans** while typing -- invisible, saved text is right,
+  and it flattens on re-render. Harmless; noted so it is not rediscovered as a bug.
+- **`book-position-app` is intermittent**: now and then the first frame of a resume is drawn
+  before the range is recorded as mounted (range -1). The cover is never shown; passes on a
+  re-run. A timing edge in the test's frame sampling or in the resume; not chased.
+- **The live Store description says TypoZen "makes absolutely zero network requests".**
+  Installing an extension (Kokoro or Qwen voices) downloads; the README says so correctly.
+  Worth correcting in the next Store submission (docs/store-listing.md holds the live text).
 
 
 **Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range
@@ -97,6 +96,28 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   permission.
 
 ## Done (recorded so it is not re-raised)
+
+- **0.11.0 audit and real-app pass** (2026-09-30). All 67
+  real-app suites were run; 6 failed at first, each checked against 0.10.12 and the Store's
+  0.10.10 to tell regressions from drift:
+  - **Print / Export PDF prints long documents whole** instead of refusing (novels, large
+    Markdown) -- a whole copy built from the model, beside the live editor (known-issues.md).
+  - **Book pictures with `srcset` were broken on scaled displays**: the 2x candidate
+    resolved against the app, not the book (every Standard Ebooks picture at 156%).
+  - **PDF: 2 Columns lost the page** (PDF.js 6.3 jumps to page 1 when spreads are switched
+    on while scrolling at page width), surfaced by 0.10.12's new default window sizes.
+  - **Opening a large document straight into 2-Col** built and painted the whole document
+    before narrowing to one range (24 long frames, 1.3 s at 3,000 lines); it now mounts the
+    one range (1 frame, 77 ms).
+  - **Epub cover SVGs** get their natural size from the viewBox, so a clamped cover keeps
+    its shape in scrolling layouts.
+  - Test drift fixed, not app bugs: `big-file` (fixture shrank below a fixed 2,000,000; the
+    host keeps a file's trailing newlines and restores them on save, by design),
+    `epub-open` theme size (set `--fs` by hand, bypassing applySpacing), `core-smoke` (the
+    smallest book now fits one range, so mounted text never changed; it now reads the text
+    in view), `read-aloud` (pinned to a prose book; Alice's one-word first block ended the
+    capture early), `epub-open` cover (measured the box, not the picture, which is
+    letterboxed, never stretched).
 
 - **Tab and the everyday keys** (0.10.17-0.10.18, 2026-09-30). Tab had never worked in
   ordinary text: Preview swallowed it outside lists, Source had no binding and lost focus,

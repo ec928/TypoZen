@@ -264,13 +264,22 @@ silently. **Now:** a whole-editor selection over a partial DOM is answered from
 `DocumentModel`. The `text/html` flavour is omitted in that case rather than fixed, so no
 rich target can take the window while the plain text carries the document.
 
-### Print produced a fraction of the document — **now refused**
+### Print produced a fraction of the document — **now prints whole**
 
 Chromium prints the DOM, so `Ctrl+P` on a long document made a PDF of roughly what was on
 screen, with nothing to indicate the rest was missing. Worse than a skipped paragraph: it is
-an artefact you keep and may send on. **Now:** Print stops and explains, rather than mounting
-the whole document (which is the work windowing exists to avoid). Fails open — an unanswered
-probe prints, so a broken check cannot silently disable Print.
+an artefact you keep and may send on. It was then refused outright, which meant no novel and
+no large Markdown file could be printed at all.
+
+**Now (0.11.0):** the host asks the page for a whole copy first (`tzPreparePrint`, 03-shell.js):
+every block built from the model, beside the live editor and carrying the same id, so every
+`#editor` rule and the book's own stylesheet apply unchanged. It is hidden on screen, and in
+print the live editor is hidden instead; `afterprint` removes it. The live editor is never
+touched, so nothing has to be remounted. Pictures in the copy are made eager and the host
+waits up to 3 s for them. Measured: Pride and Prejudice (2,099 blocks) builds in ~100 ms and
+prints 458 pages with its pictures; `large-scroll-mixed.md` prints 168 pages in Scroll and in
+2-Col (`print-layout-browser`). Above 20,000 blocks (an omnibus) Print still refuses and says
+why. Still fails open: an unanswered probe prints what is in the page.
 
 **Cut / Delete after Select All, and Export as HTML, used the window too — now fixed.**
 `getAncestorBlock` stops at `#editor`, so a `selectNodeContents(editor)` range was not
