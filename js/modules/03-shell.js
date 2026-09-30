@@ -999,6 +999,7 @@
                         .then(function (json) {
                             window._isFetching = false;
                             const ok = loadBookPayload(json, resumeAt);
+                            if (!ok) { try { takePendingViewProfile(true); } catch (eVp) {} }
                             if (ok && resumeAt > 0 && resumeAt < DocumentModel.blocks.length) {
                                 // After the layout, not with it: the book has to be
                                 // paginated before a block can be put on a page, and
@@ -1009,6 +1010,8 @@
                         })
                         .catch(function (err) {
                             window._isFetching = false;
+                            // The book is not coming; its look still belongs to this tab.
+                            try { takePendingViewProfile(true); } catch (eVp) {}
                             try { console.error('TypoZen fetch_and_load_book failed', err); } catch (e) {}
                             try { postMsg('load_failed:' + String(err && err.message ? err.message : err)); } catch (e2) {}
                         });
@@ -1053,6 +1056,7 @@
                         })
                         .catch(function (err) {
                             window._isFetching = false;
+                            try { takePendingViewProfile(true); } catch (eVp) {}
                             try {
                                 console.error('TypoZen fetch_and_load failed', err);
                             } catch (e) {}
@@ -1258,6 +1262,7 @@
                     // one on screen must not be attributed to the one arriving.
                     try { cancelPositionReport(); } catch (eCP) {}
                     try { cancelResumeAt(); } catch (eCR) {}
+                    try { takePendingViewProfile(); } catch (eVp) {}
                     // Empty on purpose. Fake "Untitled Document" / "Start typing here..."
                     // was real markdown: deleting it still left a CSS ::before on the
                     // block (the 10px gutter rail) that innerText then saved as the file.
@@ -1321,7 +1326,14 @@
 
         // --- THEME APPLIER ---
 
-        function applyTheme(t) {
+        /**
+         * @param {Object} t the theme
+         * @param {Object} [opts] {direct: true} sets the font and size straight onto the root
+         *   instead of through applySpacing's re-anchor. For a view profile, which either
+         *   arrives with a document about to be laid out (nothing to re-anchor) or re-anchors
+         *   once for all its properties itself.
+         */
+        function applyTheme(t, opts) {
             const root = document.documentElement.style;
             const bg = t.Bg || '#18181B';
             const tx = t.Tx || '#F4F4F5';
@@ -1407,7 +1419,8 @@
             if (root.getPropertyValue('--font') !== font) metrics['--font'] = font;
             if (root.getPropertyValue('--fs') !== fs + 'px') metrics['--fs'] = fs + 'px';
             const firstApply = !root.getPropertyValue('--fs');
-            if (Object.keys(metrics).length && !firstApply && typeof applySpacing === 'function') {
+            const direct = !!(opts && opts.direct);
+            if (Object.keys(metrics).length && !firstApply && !direct && typeof applySpacing === 'function') {
                 applySpacing(metrics);
             } else {
                 Object.keys(metrics).forEach(function (k) { root.setProperty(k, metrics[k]); });
@@ -1511,7 +1524,10 @@
          *   re-broken, so the reader would be returned to where the half-applied state
          *   happened to put them rather than to where they were reading.
          */
-        function applySpacing(props) {
+        /* @param {Function} [change] further changes to make at the same moment -- after the
+         *   anchor is read, before the relayout -- so a view profile's theme, margins and text
+         *   size share this one re-anchor rather than running a chain each. */
+        function applySpacing(props, change) {
             const anchor = isPaginatedLayout() ? topLeftModelIndexTwoCol() : -1;
             // Read with the block, before anything changes: the character is what the
             // reader is looking at, the block only where it is safe to fall back to.
@@ -1524,6 +1540,7 @@
             Object.keys(props).forEach(function (p) {
                 document.documentElement.style.setProperty(p, props[p]);
             });
+            if (typeof change === 'function') { try { change(); } catch (eCh) {} }
             if (!isPaginatedLayout()) return;
 
             // Twice, because once is not enough and measurably so. The first seek runs
@@ -1591,6 +1608,127 @@
             try {
                 if (document.fonts && document.fonts.ready) document.fonts.ready.then(seek);
             } catch (eF) {}
+        }
+
+        // --- VIEW PROFILE: a document type's whole look, in one step ---
+        //
+        // Theme, margins, justification, line and paragraph spacing and text size all re-break
+        // every line. The host used to send them as six commands after a document was already
+        // on screen (a book only at load_done), and each ran its own relayout and seek-back
+        // chain: switching to a book showed it in the previous tab's look, then changed font,
+        // margins, spacing, background and size one at a time -- 4.6 s, six visible states,
+        // the book paginated about five times (measured 2026-09-30).
+        //
+        // Now they come as one profile. With a document about to load (load:1) the page holds
+        // it and applies it inside that load, just before the new document is laid out, so
+        // its first paint is final and it is laid out once. Otherwise it applies at once with
+        // a single re-anchor. Properties already in force are skipped, so a repeat is free.
+
+        const FONT_SIZE_STEPS = ['12px', '14px', '', '18px', '22px'];
+
+        function fontSizeOverrideCss(index) {
+            const size = FONT_SIZE_STEPS[index] || '';
+            return size ? `:root { --base-font-size: ${size} !important; } #editor, #source-cm { font-size: var(--base-font-size) !important; }` : '';
+        }
+
+        function setFontSizeOverrideCss(css) {
+            let style = document.getElementById("tz-font-size-override");
+            if (!style) {
+                style = document.createElement("style");
+                style.id = "tz-font-size-override";
+                document.head.appendChild(style);
+            }
+            style.textContent = css;
+        }
+
+        /** What in profile p differs from what is in force now. */
+        function viewProfileDiff(p) {
+            const root = document.documentElement.style;
+            const d = { props: {}, theme: null, margin: null, fontCss: null, any: false };
+            const themes = window.allThemes || [];
+            if (p.theme >= 0 && themes[p.theme]
+                && (p.theme !== state.themeIndex || root.getPropertyValue('--bg') !== (themes[p.theme].Bg || '#18181B')))
+                d.theme = p.theme;
+            if (p.margin) {
+                const m = (p.margin === 'regular' || p.margin === 'wide') ? p.margin : 'narrow';
+                if (m !== state.margin) d.margin = m;
+            }
+            if (p.justify === 0 || p.justify === 1) {
+                const al = p.justify ? 'justify' : 'left', hy = p.justify ? 'auto' : 'manual';
+                if (root.getPropertyValue('--tz-align') !== al) d.props['--tz-align'] = al;
+                if (root.getPropertyValue('--tz-hyphens') !== hy) d.props['--tz-hyphens'] = hy;
+            }
+            if (isFinite(p.lh) && p.lh > 0.5 && p.lh < 4 && root.getPropertyValue('--lh') !== String(p.lh))
+                d.props['--lh'] = String(p.lh);
+            if (isFinite(p.para) && p.para >= 0 && p.para < 200 && root.getPropertyValue('--para') !== p.para + 'px')
+                d.props['--para'] = p.para + 'px';
+            if (Number.isInteger(p.fs)) {
+                const el = document.getElementById("tz-font-size-override");
+                const css = fontSizeOverrideCss(p.fs);
+                if (css !== (el ? el.textContent : '')) d.fontCss = css;
+            }
+            d.any = d.theme !== null || d.margin !== null || d.fontCss !== null || Object.keys(d.props).length > 0;
+            return d;
+        }
+
+        /**
+         * @param {boolean} reanchor the document on screen stays: put the reader back on
+         *   the text they were reading, once, after everything has changed.
+         */
+        function applyViewProfile(p, reanchor) {
+            if (!p) return;
+            const d = viewProfileDiff(p);
+            if (d.any) {
+                const change = function () {
+                    if (d.theme !== null) {
+                        const t = window.allThemes[d.theme];
+                        state.themeIndex = d.theme;
+                        state.themeName = t.Name || '';
+                        applyTheme(t, { direct: true });
+                    }
+                    if (d.fontCss !== null) setFontSizeOverrideCss(d.fontCss);
+                    if (d.margin !== null) {
+                        state.margin = d.margin;
+                        applyEditorChromeForMode();
+                        if (state.mode === 'source') { try { resizeSourceEditor(); } catch (eRs) {} }
+                    }
+                };
+                // A tab switch is not a fade: the colours' transitions would otherwise run
+                // behind the layout and land a beat after the text.
+                document.documentElement.classList.add('tz-instant');
+                if (reanchor) {
+                    applySpacing(d.props, change);
+                } else {
+                    Object.keys(d.props).forEach(function (k) {
+                        document.documentElement.style.setProperty(k, d.props[k]);
+                    });
+                    change();
+                }
+                requestAnimationFrame(function () {
+                    requestAnimationFrame(function () {
+                        document.documentElement.classList.remove('tz-instant');
+                    });
+                });
+                scheduleSavePreferences();
+            }
+            // The host repaints its window chrome on this, so it changes with the page.
+            try { postMsg('view_profile_applied:' + (p.theme >= 0 ? p.theme : -1)); } catch (ePa) {}
+        }
+
+        let _pendingViewProfile = null;
+        let _pendingViewProfileTimer = null;
+
+        /**
+         * The profile held for the document now loading, applied: called by every load path
+         * just before it lays the new document out. Returns it (a book also reads its columns).
+         * @param {boolean} [reanchor] only for the fallback, when no load came to take it.
+         */
+        function takePendingViewProfile(reanchor) {
+            if (_pendingViewProfileTimer) { clearTimeout(_pendingViewProfileTimer); _pendingViewProfileTimer = null; }
+            const p = _pendingViewProfile;
+            _pendingViewProfile = null;
+            if (p) applyViewProfile(p, !!reanchor);
+            return p;
         }
 
         // --- COMMAND & FORMATTING HANDLER ---
@@ -1789,21 +1927,27 @@
             }
             if (cmd.startsWith("set_font_size:")) {
                 const sizeIndex = parseInt(cmd.substring(14));
-                let sizes = ['12px', '14px', '', '18px', '22px'];
-                let size = sizes[sizeIndex] || '';
-                
-                let style = document.getElementById("tz-font-size-override");
-                if (!style) {
-                    style = document.createElement("style");
-                    style.id = "tz-font-size-override";
-                    document.head.appendChild(style);
-                }
-                if (size) {
-                    style.textContent = `:root { --base-font-size: ${size} !important; } #editor, #source-cm { font-size: var(--base-font-size) !important; }`;
+                // The anchor is read before the size changes (it was read after, from a page
+                // already re-broken at the new size).
+                applySpacing({}, function () { setFontSizeOverrideCss(fontSizeOverrideCss(sizeIndex)); });
+                return;
+            }
+            if (cmd.startsWith("view_profile:")) {
+                let p = null;
+                try { p = JSON.parse(cmd.substring(13)); } catch (eJ) {}
+                if (!p) return;
+                if (p.load) {
+                    // Held for the document on its way (takePendingViewProfile). If none
+                    // arrives -- a failed read -- it still applies, so the tab never keeps
+                    // the previous one's look.
+                    _pendingViewProfile = p;
+                    if (_pendingViewProfileTimer) clearTimeout(_pendingViewProfileTimer);
+                    _pendingViewProfileTimer = setTimeout(function () { takePendingViewProfile(true); }, 20000);
                 } else {
-                    style.textContent = "";
+                    if (_pendingViewProfileTimer) { clearTimeout(_pendingViewProfileTimer); _pendingViewProfileTimer = null; }
+                    _pendingViewProfile = null;
+                    applyViewProfile(p, true);
                 }
-                applySpacing({}); 
                 return;
             }
 
@@ -1829,6 +1973,9 @@
                         // so upcoming view_set commands don't force massive layout reflows.
                         try { if (typeof editor !== 'undefined' && editor) editor.innerHTML = ''; } catch(e) {}
                         try { if (typeof leaveBookViewForMarkdown === 'function') leaveBookViewForMarkdown(); } catch(e) {}
+                        // The page is empty until the text arrives: show it in the incoming
+                        // tab's look (held by view_profile), not the book's.
+                        try { takePendingViewProfile(); } catch (eVp) {}
                         DocumentModel.kind = 'text';
                         state.mode = 'wysiwyg'; // Fast-forward past slow toggle_mode cycles
                     }

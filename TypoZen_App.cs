@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.11.10";
+        internal const string AppVersion = "0.11.11";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -824,6 +824,9 @@ namespace TypoZen
         private SolidColorBrush _modeSourceBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33A855F7"));
         private ComboBox _cmbThemes;
         private int _currentThemeIndex = 0;
+        // See ApplyViewSettingsForType: the selector is moved without it meaning a choice,
+        // and the chrome waits for the page when a document is about to arrive with the look.
+        private bool _themeComboSilent = false;
 
         /// <summary>
         /// Which document the page is currently showing, as a number that changes on every
@@ -838,9 +841,20 @@ namespace TypoZen
         private int _docGen;
 
         /// <summary>A new document is going on the page: retire reports armed for the old one.</summary>
+        /// <remarks>
+        /// Also forgets which engine tab's text the page holds. Every route that puts a
+        /// document on the page passes through here, so this is the one place that record
+        /// cannot be left naming the text that has just been replaced. OpenBook and OpenPdf
+        /// bumped the generation but never cleared it: open a book from a Markdown tab, switch
+        /// back, and the host skipped the reload as "already on the page" -- the tab showed
+        /// nothing while the page's model still held the book, and reported the book's HTML
+        /// as that file's text (measured 2026-09-30). LoadContentToEditor had the same fix
+        /// for its own route on 2026-09-27.
+        /// </remarks>
         private void BumpDocGen()
         {
             _docGen++;
+            InvalidateEnginePageLoad();
             try { SendMsg("doc_gen:" + _docGen); } catch { }
         }
         private List<ThemeInfo> _themesList = new List<ThemeInfo>();
@@ -1660,9 +1674,9 @@ namespace TypoZen
             BindClick("mToggleReveal", (s, e) => SendMsg("cmd:toggle_reveal"));
             BindClick("mToggleFocus", (s, e) => SendMsg("cmd:toggle_focus"));
             BindClick("mToggleTypewriter", (s, e) => SendMsg("cmd:toggle_typewriter"));
-            BindClick("mMarginNarrow", (s, e) => SendMsg("cmd:set_margin_narrow"));
-            BindClick("mMarginRegular", (s, e) => SendMsg("cmd:set_margin_regular"));
-            BindClick("mMarginWide", (s, e) => SendMsg("cmd:set_margin_wide"));
+            BindClick("mMarginNarrow", (s, e) => SetMarginChoice("narrow"));
+            BindClick("mMarginRegular", (s, e) => SetMarginChoice("regular"));
+            BindClick("mMarginWide", (s, e) => SetMarginChoice("wide"));
             BindClick("mZoomIn", (s, e) => ZoomBy(+ZoomStep));
             BindClick("mZoomOut", (s, e) => ZoomBy(-ZoomStep));
             BindClick("mZoomReset", (s, e) => ResetZoom());
@@ -1849,6 +1863,9 @@ namespace TypoZen
             {
                 _cmbThemes.SelectionChanged += (s, e) =>
                 {
+                    // ApplyViewSettingsForType moves the selector to show the theme it has
+                    // just put in the view profile; that is not the reader choosing one.
+                    if (_themeComboSilent) return;
                     if (_cmbThemes.SelectedIndex >= 0)
                     {
                         ApplyTheme(_cmbThemes.SelectedIndex);
@@ -7510,17 +7527,22 @@ namespace TypoZen
                     FlushPendingHandoffPaths();
                 }
             }
+            // Ctrl+W / Ctrl+Tab from the page. Deferred like open_file_path and the save
+            // shortcut: a switch or close makes a blocking script call (the position snapshot,
+            // the editor pull), which the WebView cannot answer until this callback returns.
+            // Run inline, every Ctrl+Tab from the editor waited out the 400 ms snapshot budget
+            // and switched without saving the reading position (measured 2026-09-30).
             else if (msg == "tab:close")
             {
-                CloseActiveTab();
+                Dispatcher.BeginInvoke(new Action(CloseActiveTab), DispatcherPriority.Normal);
             }
             else if (msg == "tab:next")
             {
-                CycleTab(+1);
+                Dispatcher.BeginInvoke(new Action(() => CycleTab(+1)), DispatcherPriority.Normal);
             }
             else if (msg == "tab:prev")
             {
-                CycleTab(-1);
+                Dispatcher.BeginInvoke(new Action(() => CycleTab(-1)), DispatcherPriority.Normal);
             }
             else if (msg.StartsWith("cmd:search_web:"))
             {
@@ -7930,6 +7952,16 @@ namespace TypoZen
                         _tabs[_activeTabIndex].IsDirty = true;
                 }
                 OnUserTyping();
+            }
+            else if (msg.StartsWith("view_profile_applied:"))
+            {
+                // The page has just put a view profile's colours on screen, with the document
+                // it came with. The window chrome follows now, not when the profile was sent,
+                // so the toolbar does not change a second before the page does.
+                int ti;
+                if (int.TryParse(msg.Substring(21), out ti) && ti >= 0 && ti < _themesList.Count
+                    && ti == _currentThemeIndex && !ReferenceEquals(_themesList[ti], _chromeTheme))
+                    ApplyThemeChrome(_themesList[ti]);
             }
             else if (msg == "load_done")
             {
@@ -8428,14 +8460,9 @@ namespace TypoZen
                 s = ExtractJsonString(pageJson, "mode");
                 if (s == "source" || s == "wysiwyg") prefs.Mode = s;
 
-                s = ExtractJsonString(pageJson, "margin");
-                if (s == "narrow" || s == "regular" || s == "wide") {
-                    tp.Margin = s;
-                    _margin = s;
-                    SetMenuChecked("mMarginNarrow", _margin == "narrow");
-                    SetMenuChecked("mMarginRegular", _margin == "regular");
-                    SetMenuChecked("mMarginWide", _margin == "wide");
-                }
+                // Not "margin": the host owns it and saves it when chosen (SetMarginChoice). A
+                // save_prefs sent just before a tab switch arrives after it, and filed the old
+                // tab's margins under the new tab's document type.
 
                 bool? b;
                 b = ExtractJsonBool(pageJson, "sidebarCollapsed"); if (b.HasValue) prefs.SidebarCollapsed = b.Value;
@@ -8967,14 +8994,37 @@ namespace TypoZen
             WriteHostPrefs(prefs);
         }
 
-        private void ApplyViewSettingsForType(DocType dt) {
+        /// <summary>
+        /// Put a document type's saved look on the page: theme, margins, justification, line
+        /// and paragraph spacing, text size -- as ONE message, applied by the page in one step.
+        /// </summary>
+        /// <param name="contentFollows">
+        /// A new document is about to be loaded. The page then holds the look and applies it
+        /// in the same step that lays the new document out, so the first paint is already the
+        /// final one and the document is laid out once. Without it the page applies at once,
+        /// re-anchoring the reader a single time.
+        /// </param>
+        /// <param name="columns">For a book: its column layout, applied with the look (0 = leave).</param>
+        /// <remarks>
+        /// This used to send six separate commands after the document was already on screen
+        /// (a book only got them at load_done). Each re-broke every line and ran its own
+        /// seek-back chain, so switching to a book showed it first in the previous tab's
+        /// theme and font, then changed font, margins, spacing, background and size one at a
+        /// time: 4.6 s and six visible states, the book paginated about five times (measured
+        /// 2026-09-30). It also sent set_word_wrap, which the page has never handled; wrap is
+        /// RefreshWordWrapMenuAvailability's, because Pages and Reader force it on.
+        /// </remarks>
+        private void ApplyViewSettingsForType(DocType dt, bool contentFollows = false, int columns = 0) {
             var prefs = LoadHostPrefs();
             TypePrefs tp = prefs.PrefsDocuments;
             if (dt == DocType.Code) tp = prefs.PrefsCode;
             else if (dt == DocType.EPub) tp = prefs.PrefsEPub;
             else if (dt == DocType.Pdf) tp = prefs.PrefsPdf;
-            
-            // Apply theme
+
+            // Theme: the host's own record and controls now; the page's colours arrive in the
+            // profile below. The window chrome follows when the page reports it has applied
+            // them (view_profile_applied), so the toolbar and the page change together.
+            int themeIdx = -1;
             if (tp.ThemeIndex >= 0 && tp.ThemeIndex < _themesList.Count) {
                 _currentThemeIndex = tp.ThemeIndex;
                 if (!string.IsNullOrEmpty(tp.ThemeName)) {
@@ -8983,9 +9033,18 @@ namespace TypoZen
                         if (_themesList[i].Name == tp.ThemeName) { _currentThemeIndex = i; break; }
                     }
                 }
-                ApplyTheme(_currentThemeIndex);
+                themeIdx = _currentThemeIndex;
+                if (_cmbThemes != null && _cmbThemes.SelectedIndex != themeIdx)
+                {
+                    _themeComboSilent = true;
+                    try { _cmbThemes.SelectedIndex = themeIdx; }
+                    finally { _themeComboSilent = false; }
+                }
+                if (_themeMenuItems != null)
+                    for (int i = 0; i < _themeMenuItems.Count; i++)
+                        if (_themeMenuItems[i] != null) _themeMenuItems[i].IsChecked = (i == themeIdx);
             }
-            
+
             // Apply others
             _lineSpacing = tp.LineSpacing;
             _paraSpacing = tp.ParaSpacing;
@@ -8993,15 +9052,23 @@ namespace TypoZen
             _justified = tp.Justified;
             _fontSize = tp.FontSize;
             _wordWrap = tp.WordWrap;
-            
-            // Sync to WebView
-            SendMsg("cmd:set_margin_" + _margin);
-            SendMsg("cmd:set_justify:" + (_justified ? "1" : "0"));
-            try { SendMsg("cmd:set_line_spacing:" + LineSpacingPresets[Clamp4(_lineSpacing)].ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch {}
-            try { SendMsg("cmd:set_para_spacing:" + ParaSpacingPresets[Clamp4(_paraSpacing)].ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch {}
-            SendMsg("cmd:set_font_size:" + _fontSize);
-            SendMsg("cmd:set_word_wrap:" + (_wordWrap ? "1" : "0"));
-            
+
+            // Sync to WebView: one message.
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            string lh = "0", para = "-1";
+            try { lh = LineSpacingPresets[Clamp4(_lineSpacing)].ToString(ci); } catch {}
+            try { para = ParaSpacingPresets[Clamp4(_paraSpacing)].ToString(ci); } catch {}
+            SendMsg("cmd:view_profile:{\"theme\":" + themeIdx +
+                ",\"margin\":\"" + _margin + "\"" +
+                ",\"justify\":" + (_justified ? "1" : "0") +
+                ",\"lh\":" + lh +
+                ",\"para\":" + para +
+                ",\"fs\":" + _fontSize +
+                ",\"cols\":" + (columns == 1 || columns == 2 ? columns : 0) +
+                ",\"load\":" + (contentFollows ? "1" : "0") + "}");
+            if (!contentFollows && themeIdx >= 0 && !ReferenceEquals(_themesList[themeIdx], _chromeTheme))
+                ApplyThemeChrome(_themesList[themeIdx]);
+
             // Sync menus
             SetMenuChecked("mMarginNarrow", _margin == "narrow");
             SetMenuChecked("mMarginRegular", _margin == "regular");
@@ -9036,9 +9103,14 @@ namespace TypoZen
         }
 
         /// <summary>Apply Bg/Tx/Hi to WPF chrome (shared by ApplyTheme and live preview).</summary>
+        // The theme the window chrome was last painted with (a live-preview theme included), so
+        // a view profile that leaves the theme as it is does not rebuild the chrome.
+        private ThemeInfo _chromeTheme;
+
         private void ApplyThemeChrome(ThemeInfo t)
         {
             if (t == null) return;
+            _chromeTheme = t;
             try
             {
                 var conv = new BrushConverter();
@@ -10415,6 +10487,23 @@ namespace TypoZen
         }
 
         /// <summary>Height of a line of body text, as a multiple of the font size.</summary>
+        /// <summary>
+        /// Margins, saved for the document type here, as line spacing and the rest are.
+        /// </summary>
+        /// <remarks>
+        /// It used to be the one per-type setting saved by a round trip: the page applied it,
+        /// then its debounced save_prefs (800 ms) carried it back and MergeAndWriteHostPrefs
+        /// filed it under whatever type was current when the message arrived. Switching tab
+        /// inside that window gave the new type the old one's margins, or lost the choice.
+        /// </remarks>
+        private void SetMarginChoice(string margin)
+        {
+            _margin = (margin == "regular" || margin == "wide") ? margin : "narrow";
+            UpdateMarginChecks(_margin);
+            SendMsg("cmd:set_margin_" + _margin);
+            if (!_applyingRestoredSettings) { SaveWindowState(); SaveCurrentTypePrefs(); }
+        }
+
         private void SetLineSpacing(int index)
         {
             _lineSpacing = Clamp4(index);
@@ -14140,8 +14229,10 @@ namespace TypoZen
             // Mode first. Loading a new scratch into the previous tab's Pages layout
             // is how an empty editor painted as a 1-glyph column (the gutter-width
             // placeholder on .block::before).
-            ApplyTabView(tab);
             bool alreadyLoaded = EngineTabAlreadyOnPage(tab, content);
+            // The look travels with the load: the page applies it as it lays the new text
+            // out. When the text is already there, it applies at once instead.
+            ApplyTabView(tab, !alreadyLoaded);
             if (!alreadyLoaded)
             {
                 if (string.IsNullOrEmpty(content) && string.IsNullOrEmpty(tab.FilePath) && !tab.IsDirty)
@@ -14255,10 +14346,12 @@ namespace TypoZen
         }
 
         /// <summary>Apply this tab's mode + columns to the page (does not write the bag).</summary>
-        private void ApplyTabView(DocTab tab)
+        /// <param name="contentFollows">This tab's document is about to be loaded; the page
+        /// applies the look with it (see ApplyViewSettingsForType).</param>
+        private void ApplyTabView(DocTab tab, bool contentFollows = false)
         {
             if (tab == null) return;
-            
+
             if (IsNativeTab(tab))
             {
                 ApplyViewSettingsForType(GetDocType(tab.FilePath));
@@ -14266,21 +14359,18 @@ namespace TypoZen
             }
             if (IsPdfTab(tab))
             {
-                ApplyViewSettingsForType(GetDocType(tab.FilePath));
+                ApplyViewSettingsForType(GetDocType(tab.FilePath), contentFollows);
                 return;       // the PDF viewer keeps its own view
             }
 
             if (IsBookTab(tab))
             {
-                ApplyViewSettingsForType(GetDocType(tab.FilePath));
-                if (tab.Columns <= 0)
-                {
-                    var prefs = LoadHostPrefs();
-                    if (prefs.PrefsEPub.Columns > 0)
-                        tab.Columns = prefs.PrefsEPub.Columns;
-                }
-                // Mode is forced by loadBookPayload; only columns are free.
-                RequestTabColumns(tab);
+                FillBookColumns(tab);
+                ApplyViewSettingsForType(GetDocType(tab.FilePath), contentFollows, tab.Columns);
+                // Mode is forced by loadBookPayload; only columns are free. Arriving with the
+                // book, they are in the profile; afterwards (load_done) this re-states them,
+                // which the page takes as a no-op when nothing differs.
+                if (!contentFollows) RequestTabColumns(tab);
                 return;
             }
 
@@ -14290,6 +14380,10 @@ namespace TypoZen
             if (string.IsNullOrEmpty(mode))
                 mode = "preview";
 
+            // The look first: leaving a book, the mode change below empties the page for a
+            // frame before the text arrives, and the page applies the held look as it does, so
+            // that frame is already in this tab's colours rather than the book's.
+            ApplyViewSettingsForType(GetDocType(tab.FilePath), contentFollows);
             try
             {
                 ApplyHostModeChrome(mode);
@@ -14297,8 +14391,16 @@ namespace TypoZen
             }
             catch { }
 
-            ApplyViewSettingsForType(GetDocType(tab.FilePath));
             RequestTabColumns(tab);
+        }
+
+        /// <summary>A book tab with no column choice of its own takes the ePub default.</summary>
+        private void FillBookColumns(DocTab tab)
+        {
+            if (tab == null || tab.Columns > 0) return;
+            var prefs = LoadHostPrefs();
+            if (prefs.PrefsEPub.Columns > 0)
+                tab.Columns = prefs.PrefsEPub.Columns;
         }
 
         /// <summary>Jump to the tab's ResumeBlock after view apply (remount may have moved us).</summary>
@@ -15257,8 +15359,10 @@ namespace TypoZen
                 return;
             }
 
+            Program.PerfMark("open book: begin");
             string assetDir;
             string payload = EpubReader.ReadToPayload(path, CacheDir(), out assetDir);
+            Program.PerfMark("open book: payload read");
             // assetsBase is baked into the payload -- and into the copy cached beside the
             // extracted book -- as https://localbooks/... Rewrite that one prefix to the
             // host for the mode we are in now, so a cached payload built in the other mode
@@ -15324,9 +15428,14 @@ namespace TypoZen
                     && string.Equals(Path.GetFullPath(_pendingLaunch.FilePath), path,
                                      StringComparison.OrdinalIgnoreCase))
                     resumeAt = -1;
+                // The ePub look and the tab's columns go with the book, so its first paint
+                // is its final one: laid out once, in its own theme, at the reader's place.
+                // Sending the columns separately remounted whatever was on the page first.
+                FillBookColumns(tab);
+                ApplyViewSettingsForType(DocType.EPub, true, tab.Columns);
                 SendMsg("fetch_and_load_book:" + bookUrl
                     + (resumeAt > 0 ? "|at=" + resumeAt : ""));
-                RequestTabColumns(tab);
+                Program.PerfMark("open book: sent to the page");
                 SendBookmarksForCurrentDocument();
 
                 Dispatcher.BeginInvoke(new Action(() =>
@@ -16569,6 +16678,8 @@ namespace TypoZen
                 string serve = (tab.PdfEdited && !string.IsNullOrEmpty(tab.PdfStashPath) && File.Exists(tab.PdfStashPath))
                     ? tab.PdfStashPath : path;
                 _pdfStashStale = false;
+                // The PDF look (its theme) arrives with the PDF, as a book's does.
+                ApplyViewSettingsForType(DocType.Pdf, true);
                 // With the tab's own layout: ApplyTabView skips PDF tabs, so this is the only
                 // way a PDF tab's columns and Pages setting reach the viewer.
                 SendMsg("load_pdf:" + PdfUrlFor(serve) + (page > 1 ? "|page=" + page : "")

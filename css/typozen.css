@@ -36,6 +36,13 @@
             transition: background-color 0.25s ease, color 0.25s ease, font-size 0.2s ease;
         }
 
+        /* A view profile (a tab switch) changes the whole look at once: no fades, and above
+           all no font-size easing, which re-broke lines through every intermediate size while
+           the new document was being laid out. Set by applyViewProfile for two frames. */
+        html.tz-instant, html.tz-instant * {
+            transition: none !important;
+        }
+
         /* Scrollbars */
         ::-webkit-scrollbar {
             width: 8px;

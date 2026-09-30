@@ -30,6 +30,9 @@
          */
         function finishLoadContent(content, markDirty, forcePlain) {
             content = content == null ? '' : String(content);
+            // This document's look, held for it (view_profile in 03-shell.js): in force
+            // before it is laid out, so it paints once, in its final look.
+            try { if (typeof takePendingViewProfile === 'function') takePendingViewProfile(); } catch (eVp) {}
             // Source-vs-Preview is the HOST's decision, made by document type
             // (.txt/.log/.csv). This used to add "or >= LARGE_DOC_CHARS", a second copy
             // of a size rule the host also had — so every markdown file over 16 KB was

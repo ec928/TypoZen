@@ -73,6 +73,19 @@
 
             const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
 
+            // The ePub look and the tab's columns, held for this book (view_profile in
+            // 03-shell.js): in force before anything is laid out, so the book paints once,
+            // already in its own theme, text size and spacing, in its own column layout.
+            // The columns used to arrive as a separate command that remounted whatever was
+            // on the page first, and the look only at load_done.
+            try {
+                const vp = takePendingViewProfile();
+                if (vp && (vp.cols === 1 || vp.cols === 2) && editor) {
+                    editor.classList.toggle('two-col-layout', vp.cols === 2);
+                    state.viewColumns = vp.cols;
+                }
+            } catch (eVp) {}
+
             for (let i = 0; i < data.docs.length; i++) {
                 if (data.docs[i] && data.docs[i].html) data.docs[i].html = xhtmlSelfClosingToHtml(data.docs[i].html);
             }

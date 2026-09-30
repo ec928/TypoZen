@@ -126,6 +126,18 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     narrows the window to the right; the default 1-Col window starts where the centred
     2-Col one does. A layout that would run off the screen shifts in only as far as it
     must, and switching back returns to the user's corner. Measured on the real window.
+  - Tab switch (0.11.11; Ed saw it change "one at a time"): switching to a book showed it in
+    the previous tab's look, then changed font, margins, spacing, background and size one
+    command at a time -- 4.6 s, six visible states, the book paginated about five times. The
+    look settings had been added one by one and were sent after the document was on screen.
+    Now one view profile travels with the document and is applied as it is laid out: the
+    book appears once, final, at 0.56 s. Found on the way: opening a book from a Markdown
+    tab and switching back showed an empty page whose model still held the book (and
+    reported the book's HTML as the file's text); Ctrl+Tab from the editor waited out a
+    400 ms script timeout and lost the reading position; the theme selector's own handler
+    re-sent the theme; margins were saved by a round trip that could file them under the
+    wrong type; font-size changes read the reader's place after re-breaking the lines.
+    Guarded by tab-switch-look-app (8 of its first 9 checks failed on 0.11.10).
 - **Not a report:** a "~5 s jank opening a medium document" was listed here from a perf log
   read during the 2026-09-29 audit -- inferred by the assistant, never seen by Ed, and not
   reproducible on 0.11.0 (one 130 ms frame on a 106 KB file). Closed.

@@ -209,6 +209,9 @@
             } catch (e) { keepBytes = null; }
             if (seq !== S.seq) return;
             teardown();
+            // The PDF look held for this PDF (view_profile, 03-shell.js), in force before
+            // the viewer draws, as a book's is.
+            try { if (typeof takePendingViewProfile === 'function') takePendingViewProfile(); } catch (eVp) {}
             // Before the viewer exists, so pagesinit -> applyView lays it out this way first
             // time rather than drawing 1-column scroll and switching.
             if (view && (view.cols === 1 || view.cols === 2)) S.cols = view.cols;
