@@ -52,7 +52,7 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.11.15 submission (the Store is on 0.10.10; the 0.11.10 submission was stopped before certification)._
+_Limit 1,500 characters. For the 0.11.15 submission (Submission 9, submitted for certification 2026-09-30; the Store was on 0.10.10, and the 0.11.10 submission was stopped before certification)._
 
 - Switching tabs changes the theme, text size and spacing in one step, and books open noticeably faster, large ones most of all.
 - Fixed: a Markdown tab could show an empty page after a book was opened from it, and fast Ctrl+Tab could create a duplicate tab.

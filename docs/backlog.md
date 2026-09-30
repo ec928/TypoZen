@@ -162,6 +162,8 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     (959.04 = 959.04 measured). First try divided by the zoom only and was 25% out at 125%
     scaling. Cold, 0.11.14 -> 0.11.15, ready: Alice 1287 -> 1040, P&P 1045 -> 865, Dune
     1050 -> 960, Nemesis 1006 -> 891, Matter 874 -> 639 ms; Xeelee neutral within its spread.
+    Warm reopens and Ctrl+Tab on 0.11.15 checked by Ed: fine. Released: GitHub v0.11.15, Store
+    Submission 9 in certification (2026-09-30).
   - Ctrl+Tab (0.11.14; Ed): fast Ctrl+Tab just after launch created a duplicate tab of a
     book or PDF, and Ctrl+Tab then stalled on it until the copy was closed. The duplicate
     was never reproduced by page-sent Ctrl+Tab (restored session, 40 ms presses); three holes
