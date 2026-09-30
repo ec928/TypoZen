@@ -216,6 +216,21 @@ try {
         await run(mode, 'after Ctrl+Z of a Tab, typing carries on where the tab was', DOC, at('quick', 3, 2),
             async () => { await kb.press('Tab'); await sleep(700); await chord(['Control'], 'z'); await sleep(400); await kb.type('Q'); },
             DOC.replace('The quick', 'TheQ quick'));
+        // Whitespace alone is an edit. History used to ignore spaces and tabs at the end of a
+        // line, so a Tab on an empty line left the document Unsaved with nothing to undo (Ed,
+        // 2026-09-30). The Down arrow lands on the blank line under "First".
+        await run(mode, 'Ctrl+Z undoes a Tab on an empty line', DOC, at('First', 0, 0),
+            async () => { await kb.press('ArrowDown'); await kb.press('Tab'); await sleep(700); await chord(['Control'], 'z'); await sleep(300); },
+            DOC);
+        await run(mode, 'Ctrl+Z undoes a Space on an empty line', DOC, at('First', 0, 0),
+            async () => { await kb.press('ArrowDown'); await kb.press(' '); await sleep(700); await chord(['Control'], 'z'); await sleep(300); },
+            DOC);
+        await run(mode, 'Ctrl+Z undoes a Tab at the end of a line', DOC, at('quick', 3, 2),
+            async () => { await kb.press('End'); await kb.press('Tab'); await sleep(700); await chord(['Control'], 'z'); await sleep(300); },
+            DOC);
+        await run(mode, 'Ctrl+Z undoes a Space at the end of a line', DOC, at('quick', 3, 2),
+            async () => { await kb.press('End'); await kb.press(' '); await sleep(700); await chord(['Control'], 'z'); await sleep(300); },
+            DOC);
         await run(mode, 'Ctrl+Z on its own undoes typing', DOC, at('quick', 3, 2),
             async () => { await kb.type(' very'); await sleep(700); await chord(['Control'], 'z'); await sleep(300); },
             DOC);

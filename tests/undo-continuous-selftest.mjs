@@ -44,7 +44,7 @@ function createHistory(holder) {
         },
         _sameContent(a, b) {
             const n = s => String(s || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-                .replace(/[ \t]+$/gm, '').replace(/\n+$/, '');
+                .replace(/\n+$/, '');
             return n(a) === n(b);
         },
         _caretOf(s) {

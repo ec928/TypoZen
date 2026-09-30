@@ -2674,13 +2674,17 @@
                 }
             },
 
-            /** Compare history contents ignoring trailing whitespace / \r (serialize noise). */
+            /** Compare history contents ignoring \r and trailing newlines (serialize noise). */
             _sameContent(a, b) {
+                // Line-ending style and the file's final newlines are not edits (the host
+                // restores those on save). Spaces and tabs are: this used to strip them from
+                // the end of every line, so a tab on an empty line, or a space typed at the
+                // end of one, counted as no change -- nothing was recorded, Ctrl+Z did
+                // nothing, and the tab stayed Unsaved (Ed, 2026-09-30).
                 function norm(s) {
                     return String(s == null ? '' : s)
                         .replace(/\r\n/g, '\n')
                         .replace(/\r/g, '\n')
-                        .replace(/[ \t]+$/gm, '')
                         .replace(/\n+$/, '');
                 }
                 return norm(a) === norm(b);

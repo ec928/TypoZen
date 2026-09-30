@@ -62,7 +62,6 @@ function createHistory(holder) {
                 return String(s == null ? '' : s)
                     .replace(/\r\n/g, '\n')
                     .replace(/\r/g, '\n')
-                    .replace(/[ \t]+$/gm, '')
                     .replace(/\n+$/, '');
             }
             return norm(a) === norm(b);

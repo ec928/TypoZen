@@ -116,6 +116,11 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     in) and left focus on nothing, so typing went nowhere; undo now changes only the text.
     Ctrl+B on a selected picture wrapped its Markdown in ** for no visible change (and an
     Unsaved tab); inline formatting now does nothing on a picture alone.
+  - Undo (0.11.8): a Tab or Space on an empty line, or at the end of a line, marked the
+    tab Unsaved and Ctrl+Z did nothing (Ed). Undo history compared snapshots with spaces
+    and tabs stripped from line ends, so the edit never counted as a change. The
+    comparison now ignores only line-ending style and trailing newlines. The 0.11.7 check
+    typed its tab mid-line, where the strip did not reach.
 - **Not a report:** a "~5 s jank opening a medium document" was listed here from a perf log
   read during the 2026-09-29 audit -- inferred by the assistant, never seen by Ed, and not
   reproducible on 0.11.0 (one 130 ms frame on a 106 KB file). Closed.
