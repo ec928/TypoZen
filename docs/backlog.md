@@ -68,9 +68,9 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 - **`book-position-app` is intermittent**: now and then the first frame of a resume is drawn
   before the range is recorded as mounted (range -1). The cover is never shown; passes on a
   re-run. A timing edge in the test's frame sampling or in the resume; not chased.
-- **The live Store description says TypoZen "makes absolutely zero network requests".**
-  Installing an extension (Kokoro or Qwen voices) downloads; the README says so correctly.
-  Worth correcting in the next Store submission (docs/store-listing.md holds the live text).
+- **The live Store description says TypoZen "makes absolutely zero network requests"**,
+  untrue once an extension (Kokoro or Qwen voices) is installed. Reworded in
+  docs/store-listing.md (Ed, 2026-09-30); goes into Partner Center with the next submission.
 
 
 **Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range

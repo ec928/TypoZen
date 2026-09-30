@@ -17,7 +17,10 @@ DisplayName stays "TypoZen".
 
 _Shown in search results and at the top of the listing. Limit 1,000 characters._
 _Synced with the live listing (Submission 8, 0.10.10) on 2026-09-30; the Short description,
-Description and Features below were rewritten in Partner Center and this file now matches._
+Description and Features below were rewritten in Partner Center and this file now matches --
+except the Description's privacy paragraph, reworded after that (Ed, 2026-09-30) because
+"makes absolutely zero network requests" is untrue once an extension is installed. That
+paragraph is NOT yet in Partner Center: paste it in with the next submission._
 
 Read ePubs in a real two-page spread, or have them read to you. Read and annotate PDFs. Write Markdown and watch it become the page as you type. One quiet window, 25 themes, text-to-speech built in, an offline dictionary/thesaurus, and nothing sent anywhere.
 
@@ -39,7 +42,9 @@ Listen and research, completely offline
 Select any text to look up its definition and synonyms using the built-in, completely offline dictionary featuring over 150,000 definitions. Sit back and use Read Aloud to hear your books or PDFs spoken in your local Windows voices. Every word, search, and definition stays strictly on your hard drive.
 
 Private by construction, not by promise
-Choose from 25 hand-crafted themes—from low-glare dark modes to warm, paper-like light modes. TypoZen bundles premium typefaces including Inter, Literata, Merriweather, and Source Sans 3, so your documents look perfect on any machine. Best of all, TypoZen has no accounts, no telemetry, no forced sync, and makes absolutely zero network requests. It is a powerful, offline-first sanctuary for your words.
+TypoZen operates entirely offline. It features no accounts, no telemetry, no forced sync, and makes absolutely zero background network requests. The application only connects to the internet if you explicitly choose to download an optional extension.
+
+Choose from 25 hand-crafted themes—from low-glare dark modes to warm, paper-like light modes. TypoZen bundles premium typefaces including Inter, Literata, Merriweather, and Source Sans 3, so your documents look perfect on any machine.
 
 Free, open-source, and yours to keep.
 
