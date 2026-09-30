@@ -68,6 +68,14 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 - **`book-position-app` is intermittent**: now and then the first frame of a resume is drawn
   before the range is recorded as mounted (range -1). The cover is never shown; passes on a
   re-run. A timing edge in the test's frame sampling or in the resume; not chased.
+- **Page numbers in big books are estimates, and poor ones** (Ed, 2026-09-30). On the Xeelee
+  omnibus, 2-Col, one window size, the last page read 6186, 6600, 8262 and 8188 on different
+  visits, and the total ~7758 to ~8426 while moving around. Only the ranges laid out are
+  counted; every other range is estimated, and the estimate is wrong by thousands of pages.
+  0.11.16 estimated from markup length instead of paragraph count; Ed's A/B at his window
+  showed it no better ("both are pretty terrible"), so 0.11.17 reverted it and kept only the
+  ZenMode fix (invalidateCounts). Needs a different design, not a better guess -- being
+  rethought.
 
 
 **Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range
@@ -171,12 +179,10 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     worked from "nothing mounted" and the total fell to the seed estimate. Resizes (and the
     settle after a mode change) now use invalidateCounts(), which keeps the mounted range and
     what the book has taught the estimate. Guarded by page-resize-app (fails 2/5 on 0.11.15).
-  - Page numbers (0.11.16; Ed: "the total changes all the time"): a range's page count is
-    estimated from its markup length plus 200 per paragraph instead of its paragraph count.
-    Measured on Xeelee (all 57 ranges laid out for the truth): with one range known the total
-    was out by 8.5% on average by paragraphs, 4.9% by this. In the app the total at open went
-    from ~5,458 to ~9,618 against a true ~9,060, and stays within a few percent as ranges
-    are visited. Still an estimate ("~") until every range has been laid out.
+  - Page numbers (0.11.16, **reverted in 0.11.17**): a range's page count was estimated from
+    its markup length plus 200 per paragraph instead of its paragraph count. Chosen on one
+    book at one window size, averaged over the book rather than judged at the start where it
+    is first seen; at Ed's window it was no better. See the open item in section 2.
   - Ctrl+Tab (0.11.14; Ed): fast Ctrl+Tab just after launch created a duplicate tab of a
     book or PDF, and Ctrl+Tab then stalled on it until the copy was closed. The duplicate
     was never reproduced by page-sent Ctrl+Tab (restored session, 40 ms presses); three holes

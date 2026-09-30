@@ -5037,15 +5037,8 @@
             counts: null,
             /** Which entries in counts came from a real layout. */
             measured: null,
-            /**
-             * Pages per unit of weight (weightOfChunk), refined as ranges are measured. Until a
-             * range has been measured (learned false) estimates use seedPerBlock per block.
-             */
+            /** Pages per block, refined as ranges are measured. Seeds the estimates. */
             perBlock: 0.06,
-            learned: false,
-            /** Weight per range, cached for the document in _wDoc. */
-            _w: null,
-            _wDoc: null,
             /**
              * The figure invalidate() goes back to. A property, not a module constant: the
              * selftest lifts this object out with new Function() and evaluates it alone, so
@@ -5094,8 +5087,6 @@
                     this.measured = null;
                     this.mounted = -1;
                     this.perBlock = this.seedPerBlock;
-                    this.learned = false;
-                    this._w = null;
                 }
                 this.docBlocks = Math.max(0, nBlocks | 0);
                 const n = this.chunkCount(nBlocks);
@@ -5111,45 +5102,12 @@
                 return n;
             },
 
-            /**
-             * How much page a range needs, relative to the others: its markup length plus 200
-             * per block (a paragraph's own spacing). Paragraph counts alone were a poor guide
-             * -- a one-line reply and a page of description are one block each -- and every
-             * newly measured range re-estimated every other one by that error, so the total
-             * kept jumping. Measured on the Xeelee omnibus (57 ranges, real counts for all):
-             * with one range known the total was out by 8.5% on average by blocks, 4.9% by
-             * this (2026-09-30). Markup rather than text: it is already in memory, whereas a
-             * book's text costs a parse of every block (0.7 s on that omnibus).
-             * Falls back to the block count where there is no document (the selftest).
-             */
-            weightOfChunk: function (c, nBlocks) {
-                const n = (nBlocks === undefined)
+            /** Pages a range is expected to need, from its block count. */
+            estimateChunkPages: function (c, nBlocks) {
+                const blocks = (nBlocks === undefined)
                     ? this.blocksInChunk(c)
                     : Math.max(1, Math.min(this.size, (nBlocks | 0) - this.firstBlockOfChunk(c)));
-                const blocks = (typeof DocumentModel !== 'undefined' && DocumentModel && DocumentModel.blocks) ? DocumentModel.blocks : null;
-                const a = this.firstBlockOfChunk(c);
-                if (!blocks || blocks.length < a + n) return n;
-                if (!this._w || this._wDoc !== blocks) { this._w = []; this._wDoc = blocks; }
-                if (this._w[c] === undefined) {
-                    let w = 0;
-                    for (let i = a; i < a + n; i++) {
-                        const r = blocks[i] ? blocks[i].raw : '';
-                        w += (r == null ? 0 : String(r).length) + 200;
-                    }
-                    this._w[c] = w;
-                }
-                return this._w[c];
-            },
-
-            /** Pages a range is expected to need. */
-            estimateChunkPages: function (c, nBlocks) {
-                if (!this.learned) {
-                    const blocks = (nBlocks === undefined)
-                        ? this.blocksInChunk(c)
-                        : Math.max(1, Math.min(this.size, (nBlocks | 0) - this.firstBlockOfChunk(c)));
-                    return Math.max(1, Math.round(blocks * this.seedPerBlock));
-                }
-                return Math.max(1, Math.round(this.weightOfChunk(c, nBlocks) * this.perBlock));
+                return Math.max(1, Math.round(blocks * this.perBlock));
             },
 
             /**
@@ -5171,15 +5129,12 @@
                 for (let i = 0; i < this.counts.length; i++) {
                     if (!this.measured[i]) continue;
                     sumPages += this.counts[i];
-                    sumBlocks += this.weightOfChunk(i);
+                    sumBlocks += this.blocksInChunk(i);
                 }
                 if (sumBlocks > 0) {
-                    // Pages per unit of weight: per block where the weight is the block count
-                    // (no document), far smaller per unit of markup -- so no floor but zero.
-                    const next = Math.max(1e-9, Math.min(1, sumPages / sumBlocks));
-                    const changed = !this.learned || Math.abs(next - this.perBlock) > 1e-12;
+                    const next = Math.max(0.005, Math.min(1, sumPages / sumBlocks));
+                    const changed = Math.abs(next - this.perBlock) > 1e-6;
                     this.perBlock = next;
-                    this.learned = true;
                     // Ranges that have never been laid out follow the refined figure. Without
                     // this the total stayed at the seed estimate for every unmeasured range
                     // -- 203 pages reported for a document that is really about 106 -- and
@@ -5257,7 +5212,6 @@
              */
             spliceBlocks: function (atBlock, delta, nBlocksAfter) {
                 if (!this.counts) return;
-                this._w = null;   // blocks moved between ranges: weigh them again
                 const c = this.chunkOfBlock(atBlock);
                 if (c >= 0 && c < this.measured.length) {
                     this.measured[c] = false;
@@ -5283,8 +5237,6 @@
                 this.measured = null;
                 this.mounted = -1;
                 this.perBlock = this.seedPerBlock;
-                this.learned = false;
-                this._w = null;
             },
 
             /**
@@ -5294,15 +5246,13 @@
              * DOM, and navigation then worked from "nothing mounted". After ZenMode made the
              * page taller in the middle of the Xeelee omnibus, Ctrl+Home and the scrubber
              * could not get back to the start and the page numbers were wrong until a tab
-             * switch remounted the book (Ed, 2026-09-30).
+             * switch remounted the book (Ed, 2026-09-30). The refined pages-per-block is kept:
+             * the range on screen is re-measured at the new size straight away and corrects
+             * it, whereas going back to the seed made the total collapse (~5,458 on the omnibus).
              */
             invalidateCounts: function () {
                 this.counts = null;
                 this.measured = null;
-                // What this document has taught about pages per unit is kept: the range on
-                // screen is re-measured at the new size straight away and corrects it, whereas
-                // going back to the seed made the total collapse -- the omnibus read ~5,458
-                // pages after ZenMode, when it has about 9,060 (2026-09-30).
             }
         };
 
