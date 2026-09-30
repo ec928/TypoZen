@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.11.13";
+        internal const string AppVersion = "0.11.14";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -14165,7 +14165,7 @@ namespace TypoZen
                 // Strip updates now; OpenBook is deferred and would leave the strip on the
                 // previous tab until the book finished extracting.
                 RebuildTabStrip();
-                Dispatcher.BeginInvoke(new Action(() => OpenBook(tab.FilePath, true)),
+                Dispatcher.BeginInvoke(new Action(() => OpenBook(tab.FilePath, true, tab)),
                     DispatcherPriority.Normal);
                 return;
             }
@@ -14182,7 +14182,7 @@ namespace TypoZen
                 InvalidateEnginePageLoad();
                 RefreshEditingAvailability();
                 RebuildTabStrip();
-                Dispatcher.BeginInvoke(new Action(() => OpenPdf(tab.FilePath, true)),
+                Dispatcher.BeginInvoke(new Action(() => OpenPdf(tab.FilePath, true, tab)),
                     DispatcherPriority.Normal);
                 return;
             }
@@ -14199,7 +14199,7 @@ namespace TypoZen
                 _isDirty = false;
                 InvalidateEnginePageLoad();
                 RefreshEditingAvailability();
-                Dispatcher.BeginInvoke(new Action(() => OpenNative(tab.FilePath, true)),
+                Dispatcher.BeginInvoke(new Action(() => OpenNative(tab.FilePath, true, tab)),
                     DispatcherPriority.Normal);
                 return;
             }
@@ -14771,19 +14771,24 @@ namespace TypoZen
                 return;
             }
             Program.PerfMark("tab switch: begin (pulling editor state)");
-            // Always attempt pull; stale only allowed when clean. Dirty + fail → stay put.
-            if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
-            {
-                Program.PerfMark("tab switch: ABORTED - editor sync failed");
-                NotifyEditorSyncFailedForTabOp();
-                return;
-            }
-            Program.PerfMark("tab switch: state pulled");
-            // One rule: bag the tab we leave before pointing at another.
-            SnapshotActiveTabView();
+            // In progress from here, BEFORE the pulls below: each waits on the page in a nested
+            // message loop, and a Ctrl+Tab queued behind this one used to run inside that
+            // wait -- a second switch in the middle of the first. Now it finds the flag and is
+            // dropped. (Ed, 2026-09-30: fast Ctrl+Tab just after launch created a duplicate
+            // Xeelee tab and then stalled on it.)
             _tabOpInProgress = true;
             try
             {
+                // Always attempt pull; stale only allowed when clean. Dirty + fail → stay put.
+                if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
+                {
+                    Program.PerfMark("tab switch: ABORTED - editor sync failed");
+                    NotifyEditorSyncFailedForTabOp();
+                    return;
+                }
+                Program.PerfMark("tab switch: state pulled");
+                // One rule: bag the tab we leave before pointing at another.
+                SnapshotActiveTabView();
                 _activeTabIndex = index;
                 ApplyTabToEditor(_tabs[_activeTabIndex]);
             }
@@ -15330,9 +15335,12 @@ namespace TypoZen
         /// <summary>Tab whose book was last re-staged, so one failure cannot loop.</summary>
         private int _restagedBookTabId = -1;
 
-        private void OpenBook(string path, bool forceLoad = false)
+        /// <param name="target">The tab a switch is showing (ApplyTabToEditor). The book loads
+        /// into exactly that tab, only while it is still the active one; never a new tab.</param>
+        private void OpenBook(string path, bool forceLoad = false, DocTab target = null)
         {
             path = Path.GetFullPath(path);
+            if (DeferOrDropSwitchOpen(target, () => OpenBook(path, forceLoad, target))) return;
 
             // Reuse the tab if the book is already open, but always load it.
             //
@@ -15341,16 +15349,7 @@ namespace TypoZen
             // is an empty document. Opening the book then found "already open", switched to
             // the empty tab and stopped -- the book appeared to open and showed nothing.
             // Extraction is cached, so loading again costs a re-read rather than a re-unzip.
-            int existing = -1;
-            for (int i = 0; i < _tabs.Count; i++)
-            {
-                if (!string.IsNullOrEmpty(_tabs[i].FilePath) &&
-                    string.Equals(Path.GetFullPath(_tabs[i].FilePath), path, StringComparison.OrdinalIgnoreCase))
-                {
-                    existing = i;
-                    break;
-                }
-            }
+            int existing = target != null ? _tabs.IndexOf(target) : IndexOfTabPath(path);
 
             if (!forceLoad && existing >= 0 && existing == _activeTabIndex && _editorReady && !string.IsNullOrEmpty(_currentFilePath) && string.Equals(Path.GetFullPath(_currentFilePath), path, StringComparison.OrdinalIgnoreCase))
             {
@@ -15378,15 +15377,21 @@ namespace TypoZen
                 return;
             }
 
+            // In progress before the pulls, which wait on the page in a nested message loop
+            // where a queued tab switch could otherwise run (see SwitchToTab).
+            _tabOpInProgress = true;
             if (existing < 0 || existing != _activeTabIndex)
             {
                 if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
                 {
+                    _tabOpInProgress = false;
                     NotifyEditorSyncFailedForTabOp();
                     return;
                 }
                 SnapshotActiveTabView();
             }
+            // A tab for this book may have appeared while the pulls waited: use it, never a copy.
+            if (existing < 0) existing = IndexOfTabPath(path);
 
             _tabOpInProgress = true;
             try
@@ -16632,29 +16637,29 @@ namespace TypoZen
             return r.Length > 150 ? r.Substring(0, 150) : r;
         }
 
-        private void OpenPdf(string path, bool forceLoad = false)
+        /// <param name="target">As OpenBook: the tab a switch is showing, and only that tab.</param>
+        private void OpenPdf(string path, bool forceLoad = false, DocTab target = null)
         {
             path = Path.GetFullPath(path);
-            int existing = -1;
-            for (int i = 0; i < _tabs.Count; i++)
-            {
-                if (!string.IsNullOrEmpty(_tabs[i].FilePath) &&
-                    string.Equals(Path.GetFullPath(_tabs[i].FilePath), path, StringComparison.OrdinalIgnoreCase))
-                { existing = i; break; }
-            }
+            if (DeferOrDropSwitchOpen(target, () => OpenPdf(path, forceLoad, target))) return;
+            int existing = target != null ? _tabs.IndexOf(target) : IndexOfTabPath(path);
             if (!forceLoad && existing >= 0 && existing == _activeTabIndex && _editorReady
                 && string.Equals(_currentFilePath, path, StringComparison.OrdinalIgnoreCase))
                 return;                                   // already the document on screen
 
+            // In progress before the pulls (see SwitchToTab).
+            _tabOpInProgress = true;
             if (existing < 0 || existing != _activeTabIndex)
             {
                 if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
                 {
+                    _tabOpInProgress = false;
                     NotifyEditorSyncFailedForTabOp();
                     return;
                 }
                 SnapshotActiveTabView();
             }
+            if (existing < 0) existing = IndexOfTabPath(path);
 
             _tabOpInProgress = true;
             try
@@ -16711,7 +16716,8 @@ namespace TypoZen
         /// Open an image / media file or HTML page on the native Chromium surface (read-only).
         /// See docs/archive/native-reader-plan.md.
         /// </summary>
-        private void OpenNative(string path, bool forceLoad = false)
+        /// <param name="target">As OpenBook: the tab a switch is showing, and only that tab.</param>
+        private void OpenNative(string path, bool forceLoad = false, DocTab target = null)
         {
             try
             {
@@ -16719,17 +16725,9 @@ namespace TypoZen
                 path = Path.GetFullPath(path);
                 NativeRole role = ClassifyNativeRole(path);
                 if (role == NativeRole.None) return;
+                if (DeferOrDropSwitchOpen(target, () => OpenNative(path, forceLoad, target))) return;
 
-                int existing = -1;
-                for (int i = 0; i < _tabs.Count; i++)
-                {
-                    if (!string.IsNullOrEmpty(_tabs[i].FilePath) &&
-                        string.Equals(Path.GetFullPath(_tabs[i].FilePath), path, StringComparison.OrdinalIgnoreCase))
-                    {
-                        existing = i;
-                        break;
-                    }
-                }
+                int existing = target != null ? _tabs.IndexOf(target) : IndexOfTabPath(path);
 
                 if (!forceLoad && existing >= 0 && existing == _activeTabIndex
                     && string.Equals(_nativeNavigatedPath, path, StringComparison.OrdinalIgnoreCase)
@@ -16738,14 +16736,18 @@ namespace TypoZen
                     return;
                 }
 
+                // In progress before the pull (see SwitchToTab).
+                _tabOpInProgress = true;
                 if (existing < 0 || existing != _activeTabIndex)
                 {
                     if (!SyncActiveTabFromEditor(allowStaleIfClean: true, timeoutMs: 3000))
                     {
+                        _tabOpInProgress = false;
                         NotifyEditorSyncFailedForTabOp();
                         return;
                     }
                 }
+                if (existing < 0) existing = IndexOfTabPath(path);
 
                 _tabOpInProgress = true;
                 try
@@ -17338,6 +17340,26 @@ namespace TypoZen
                     : "") +
                 "})();" +
                 "</script></body></html>";
+        }
+
+        /// <summary>
+        /// For an open a tab switch deferred (target != null): true when it must not run now.
+        /// While another tab operation is in progress it is re-queued, so it never runs inside
+        /// that operation's nested message loop; once the reader has moved to another tab, or
+        /// the tab is gone, it is dropped -- the tab now shown makes its own open. Loading it
+        /// anyway pulled the view back to it, which is how fast Ctrl+Tab stalled.
+        /// </summary>
+        private bool DeferOrDropSwitchOpen(DocTab target, Action retry)
+        {
+            if (target == null) return false;
+            int k = _tabs.IndexOf(target);
+            if (k < 0 || k != _activeTabIndex) return true;
+            if (_tabOpInProgress)
+            {
+                Dispatcher.BeginInvoke(retry, DispatcherPriority.Background);
+                return true;
+            }
+            return false;
         }
 
         private void EnqueuePendingOpen(string path)

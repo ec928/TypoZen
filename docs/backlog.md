@@ -147,6 +147,14 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     dropped: each made some cold open slower (Ed: no cold start may be slower than before).
     Still open: laying out the first 800-paragraph range (150-370 ms); the window widening
     after a one-column -> two-column switch lays the range out a second time.
+  - Ctrl+Tab (0.11.14; Ed): fast Ctrl+Tab just after launch created a duplicate tab of a
+    book or PDF, and Ctrl+Tab then stalled on it until the copy was closed. The duplicate
+    was never reproduced by page-sent Ctrl+Tab (restored session, 40 ms presses); three holes
+    that could produce it are closed: a switch's deferred open now loads exactly the tab it
+    was for, only while that tab is still active, and never creates a tab; switches and
+    opens mark themselves in progress BEFORE their blocking page pulls, whose nested message
+    loop could run a queued Ctrl+Tab in the middle of them; an open re-checks for a tab with
+    its path just before it would create one. Waiting on Ed's retry to confirm.
 - **Not a report:** a "~5 s jank opening a medium document" was listed here from a perf log
   read during the 2026-09-29 audit -- inferred by the assistant, never seen by Ed, and not
   reproducible on 0.11.0 (one 130 ms frame on a 106 KB file). Closed.
