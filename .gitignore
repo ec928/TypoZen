@@ -27,6 +27,9 @@ TypoZen_Template.runtime.html
 # Test books. Real novels, used because a converter that looks fine on a synthetic
 # fixture is exactly how the current one shipped losing every image and link.
 tests/*.epub
+# Except this one: public domain (Project Gutenberg), and scrub-to-end-app needs it -- it
+# ends in one block holding the whole licence, several pages long.
+!tests/alices-adventures-in-wonderland3.epub
 
 # Extracted books: a per-book asset cache, rebuilt on demand.
 typozen_books/
