@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.10.20";
+        internal const string AppVersion = "0.11.0";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -17363,20 +17363,60 @@ namespace TypoZen
                 // is exactly the work windowing exists to avoid, and on a 45,486-block
                 // omnibus is not obviously survivable; a partial PDF, meanwhile, is an
                 // artefact the reader keeps and may send to someone.
+                //
+                // Now the page builds a whole copy to print from (tzPreparePrint, 03-shell.js),
+                // so a novel or a large Markdown file prints complete. The refusal stays only
+                // where no copy can be made: an omnibus past the page's block limit, or a page
+                // that did not answer -- never a silent partial PDF.
                 string partial = EditorDomPartialForPrint();
                 if (!string.IsNullOrEmpty(partial))
                 {
-                    WinForms.MessageBox.Show(
-                        "This document is too large to print directly.\n\n" +
-                        "TypoZen lays out long documents a piece at a time, so only " +
-                        partial + " blocks are in the page right now. Printing would " +
-                        "produce a PDF containing just that piece, with nothing to show " +
-                        "the rest was missing.\n\n" +
-                        "Save the file and print it from another application instead.",
-                        "Cannot print the whole document",
-                        WinForms.MessageBoxButtons.OK,
-                        WinForms.MessageBoxIcon.Warning);
-                    return;
+                    string prep = null;
+                    try
+                    {
+                        prep = ExecuteScriptBlocking(
+                            "(function(){ try { return window.tzPreparePrint ? window.tzPreparePrint() : ''; }" +
+                            " catch (e) { return ''; } })()", 15000);
+                    }
+                    catch { prep = null; }
+                    prep = (prep ?? "").Trim();
+                    if (!prep.StartsWith("ok:"))
+                    {
+                        bool tooLarge = prep.StartsWith("too-large:");
+                        WinForms.MessageBox.Show(
+                            (tooLarge
+                                ? "This document is too long to print from TypoZen (" +
+                                  prep.Substring(10) + " blocks).\n\n"
+                                : "TypoZen could not prepare the whole document for printing.\n\n") +
+                            "TypoZen lays out long documents a piece at a time, so only " +
+                            partial + " blocks are in the page right now. Printing would " +
+                            "produce a PDF containing just that piece, with nothing to show " +
+                            "the rest was missing.\n\n" +
+                            "Save the file and print it from another application instead.",
+                            "Cannot print the whole document",
+                            WinForms.MessageBoxButtons.OK,
+                            WinForms.MessageBoxIcon.Warning);
+                        return;
+                    }
+                    // The copy's pictures are loading; print them, not their placeholders.
+                    // Waited out on the dispatcher so the window keeps painting, 3 s at most.
+                    var sw = Stopwatch.StartNew();
+                    while (sw.ElapsedMilliseconds < 3000)
+                    {
+                        string left = ExecuteScriptBlocking("String(window.__tzPrintPending | 0)", 500);
+                        if (left == null || left.Trim() == "0") break;
+                        var pause = new DispatcherFrame();
+                        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+                        t.Tick += (s2, e2) => { t.Stop(); pause.Continue = false; };
+                        t.Start();
+                        Dispatcher.PushFrame(pause);
+                    }
+                }
+                else
+                {
+                    // A copy left by an earlier print whose afterprint never came would print
+                    // in place of this document; clear it.
+                    try { _webView.CoreWebView2.ExecuteScriptAsync("window.tzEndPrintCopy && window.tzEndPrintCopy();"); } catch { }
                 }
                 // The page title is what the PDF is named and headed with; the template's
                 // "TypoZen Editor" said nothing about the document. Use the file's own name.
