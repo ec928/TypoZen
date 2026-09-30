@@ -60,6 +60,34 @@
         window.xhtmlSelfClosingToHtml = xhtmlSelfClosingToHtml;
 
         /**
+         * Give the document area (#main-container) the size it is about to have, until the
+         * window has been resized to match; then hand sizing back to the flex layout, which by
+         * then produces the same numbers, so nothing is laid out again. The page shows the
+         * wider layout cropped by the still-narrow window for the moment in between. Released
+         * after 1.5 s whatever happens, so a resize that never comes cannot pin the page.
+         */
+        let _pageSizeHoldRelease = null;
+        function holdPageSizeUntilResize(w, h) {
+            if (_pageSizeHoldRelease) _pageSizeHoldRelease();
+            const mc = mainContainer;
+            mc.style.flex = '0 0 ' + w + 'px';
+            mc.style.width = w + 'px';
+            mc.style.height = h + 'px';
+            let timer = null;
+            const release = function () {
+                if (_pageSizeHoldRelease !== release) return;
+                _pageSizeHoldRelease = null;
+                window.removeEventListener('resize', onResize);
+                clearTimeout(timer);
+                mc.style.flex = ''; mc.style.width = ''; mc.style.height = '';
+            };
+            const onResize = function () { release(); };
+            _pageSizeHoldRelease = release;
+            window.addEventListener('resize', onResize);
+            timer = setTimeout(release, 1500);
+        }
+
+        /**
          * Parse every block of the book on screen into its text (DocumentModel.blockText caches
          * it), a few milliseconds at a time, then set the saved baseline and post the word
          * count. Stops if another document replaces the book.
@@ -128,6 +156,23 @@
             // already in its own theme, text size and spacing, in its own column layout.
             // The columns used to arrive as a separate command that remounted whatever was
             // on the page first, and the look only at load_done.
+            // The window is about to change size for the book's column layout (the host sends
+            // the change, dw/dh, with the profile). Lay the book out at the size the page is
+            // about to have, once, instead of at today's size and again when the window
+            // catches up (150-230 ms more on every one-column -> two-column switch). Measured
+            // here, before the profile restyles the page, while its layout is still clean.
+            let sizeHold = null;
+            try {
+                const pv = (typeof _pendingViewProfile !== 'undefined') ? _pendingViewProfile : null;
+                if (pv && mainContainer && (Math.abs(+pv.dw || 0) >= 1 || Math.abs(+pv.dh || 0) >= 1)) {
+                    // The host's change is in WPF units: x its DPI scale = device pixels,
+                    // / devicePixelRatio (which includes the zoom) = this page's pixels.
+                    const s = (+pv.dpi > 0 ? +pv.dpi : 1) / (window.devicePixelRatio || 1);
+                    const r = mainContainer.getBoundingClientRect();
+                    sizeHold = { w: r.width + (+pv.dw || 0) * s, h: r.height + (+pv.dh || 0) * s };
+                }
+            } catch (eSh) { sizeHold = null; }
+            if (sizeHold) holdPageSizeUntilResize(sizeHold.w, sizeHold.h);
             try {
                 const vp = takePendingViewProfile();
                 if (vp && (vp.cols === 1 || vp.cols === 2) && editor) {

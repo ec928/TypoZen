@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.11.14";
+        internal const string AppVersion = "0.11.15";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -9014,7 +9014,38 @@ namespace TypoZen
         /// 2026-09-30). It also sent set_word_wrap, which the page has never handled; wrap is
         /// RefreshWordWrapMenuAvailability's, because Pages and Reader force it on.
         /// </remarks>
-        private void ApplyViewSettingsForType(DocType dt, bool contentFollows = false, int columns = 0) {
+        /// <summary>
+        /// How much the window will grow when it changes to the saved size for `columns`
+        /// (ApplyColumnWindowGeometry), in WPF units: the saved rect minus the window now.
+        /// Zero when nothing will change. The page converts it to its own pixels with the DPI
+        /// scale sent beside it (WPF units x DPI scale = device pixels; device pixels /
+        /// devicePixelRatio = CSS pixels, zoom included) -- dividing by the zoom alone was 25%
+        /// out at 125% scaling.
+        /// </summary>
+        /// <remarks>
+        /// The window follows the column count only after the page reports it, so a book opened
+        /// from a one-column tab was laid out at the old width and again at the new one. With
+        /// this the page lays it out once, at the width it is about to have (loadBookPayload).
+        /// </remarks>
+        private void PredictColumnWindowChange(int columns, out double dw, out double dh)
+        {
+            dw = 0; dh = 0;
+            if (columns != 1 && columns != 2) return;
+            if (columns == _viewColumns || this.WindowState != WindowState.Normal) return;
+            Rect? next = columns == 2 ? _col2Rect : _col1Rect;
+            if (!next.HasValue || next.Value.Width <= 0) return;
+            dw = next.Value.Width - this.Width;
+            dh = next.Value.Height - this.Height;
+        }
+
+        /// <summary>Device pixels per WPF unit for this window (1.25 at 125% scaling).</summary>
+        private double WpfDpiScale()
+        {
+            try { return VisualTreeHelper.GetDpi(this).DpiScaleX; } catch { return 1.0; }
+        }
+
+        private void ApplyViewSettingsForType(DocType dt, bool contentFollows = false, int columns = 0,
+                                              double widen = 0, double heighten = 0) {
             var prefs = LoadHostPrefs();
             TypePrefs tp = prefs.PrefsDocuments;
             if (dt == DocType.Code) tp = prefs.PrefsCode;
@@ -9065,6 +9096,8 @@ namespace TypoZen
                 ",\"para\":" + para +
                 ",\"fs\":" + _fontSize +
                 ",\"cols\":" + (columns == 1 || columns == 2 ? columns : 0) +
+                ",\"dw\":" + widen.ToString("0.###", ci) + ",\"dh\":" + heighten.ToString("0.###", ci) +
+                ",\"dpi\":" + WpfDpiScale().ToString("0.#####", ci) +
                 ",\"load\":" + (contentFollows ? "1" : "0") + "}");
             if (!contentFollows && themeIdx >= 0 && !ReferenceEquals(_themesList[themeIdx], _chromeTheme))
                 ApplyThemeChrome(_themesList[themeIdx]);
@@ -15437,7 +15470,9 @@ namespace TypoZen
                 // is its final one: laid out once, in its own theme, at the reader's place.
                 // Sending the columns separately remounted whatever was on the page first.
                 FillBookColumns(tab);
-                ApplyViewSettingsForType(DocType.EPub, true, tab.Columns);
+                double dw, dh;
+                PredictColumnWindowChange(tab.Columns, out dw, out dh);
+                ApplyViewSettingsForType(DocType.EPub, true, tab.Columns, dw, dh);
                 SendMsg("fetch_and_load_book:" + bookUrl
                     + (resumeAt > 0 ? "|at=" + resumeAt : ""));
                 Program.PerfMark("open book: sent to the page");

@@ -52,8 +52,10 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.11.10 submission (the Store was on 0.10.10). 0.11.10 is 0.11.9 with a clean package; the text covers both._
+_Limit 1,500 characters. For the 0.11.15 submission (the Store is on 0.10.10; the 0.11.10 submission was stopped before certification)._
 
+- Switching tabs changes the theme, text size and spacing in one step, and books open noticeably faster, large ones most of all.
+- Fixed: a Markdown tab could show an empty page after a book was opened from it, and fast Ctrl+Tab could create a duplicate tab.
 - Tab types a tab, as in Notepad, and Shift+Tab takes one back. Insert switches to overwrite.
 - Spaces are kept exactly as typed, and every edit, even a single space or tab, can be undone. Undo puts the caret back where the change was.
 - Bold, lists, deleting, undo and redo keep the page still instead of jumping.
@@ -73,9 +75,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.11.10.0); every other package removed from the submission, including a 0.11.9.0 upload |
+| 2 | Packages | the newest MSIX (0.11.15.0); every other package removed from the submission, including the 0.11.10.0 upload |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. For 0.11.10 only **What's new** changes; the rest was synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. For 0.11.15 only **What's new** changes; the rest was synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |

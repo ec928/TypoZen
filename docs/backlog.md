@@ -76,6 +76,13 @@ same number for the same view and steps by exactly one. Re-open only if it shows
 
 **Later (Ed, 2026-09-29):**
 
+- **Warm starts, looked at as a whole** (Ed, 2026-09-30: not the text-size check on its own).
+  One consideration when that happens: remember each book's text-size factor permanently,
+  keyed to the file (and dropped if the file changes), so an open applies it with the
+  stylesheet and lays out once. Estimated from 2026-09-30 traces, not measured: Xeelee ~150-
+  180 ms off page-ready (one clean pass), other books ~250-450 ms, first paint 60-195 ms
+  earlier; the very first open of a book still pays the full check. 0.11.12 tried a
+  session-only cache and withdrew it (cold opens measured slower in that build).
 - **Save All Images in PDF: the fast method often does not work** (Ed, 2026-09-28). In
   several PDFs the direct extraction (PdfPig, reading pictures straight from the file,
   0.8.2) fails and TypoZen falls back to the very slow method. To do: collect the PDFs it
@@ -147,6 +154,14 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     dropped: each made some cold open slower (Ed: no cold start may be slower than before).
     Still open: laying out the first 800-paragraph range (150-370 ms); the window widening
     after a one-column -> two-column switch lays the range out a second time.
+  - Book open, one-column tab -> two-column book (0.11.15): the book was laid out in the
+    one-column window and again when the window widened. The host now sends how much the
+    window will change (the saved two-column rect minus the window, in WPF units, plus its
+    DPI scale); the page holds the document area at that size while it lays the book out,
+    then lets go when the window catches up -- one layout, at exactly the final width
+    (959.04 = 959.04 measured). First try divided by the zoom only and was 25% out at 125%
+    scaling. Cold, 0.11.14 -> 0.11.15, ready: Alice 1287 -> 1040, P&P 1045 -> 865, Dune
+    1050 -> 960, Nemesis 1006 -> 891, Matter 874 -> 639 ms; Xeelee neutral within its spread.
   - Ctrl+Tab (0.11.14; Ed): fast Ctrl+Tab just after launch created a duplicate tab of a
     book or PDF, and Ctrl+Tab then stalled on it until the copy was closed. The duplicate
     was never reproduced by page-sent Ctrl+Tab (restored session, 40 ms presses); three holes
