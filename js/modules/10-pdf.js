@@ -89,6 +89,8 @@
         document.documentElement.classList.toggle('tz-pdf-active', on);
         S.active = on;
         window.tzPdfActive = on;
+        // The scrubber follows: a PDF's in Pages mode, or back to the document's.
+        try { if (typeof updatePageScrubber === 'function') updatePageScrubber(); } catch (e) { }
     }
 
     function teardown() {
@@ -143,9 +145,41 @@
         try { if (typeof updateStats === 'function') updateStats(); } catch (e) { }
     }
 
+    /**
+     * The page scrubber in Pages mode (updatePageScrubber, 02-layout.js): which page of how
+     * many, or null outside Pages mode, where the PDF scrolls natively.
+     */
+    window.tzPdfPaging = function () {
+        if (!S.active || !S.viewer || S.scroll !== 'pagination') return null;
+        const pages = S.viewer.pagesCount || 0;
+        if (!pages) return null;
+        return { page: S.viewer.currentPageNumber || 1, pages: pages };
+    };
+    window.tzPdfGotoPage = function (n) {
+        if (!S.active || !S.viewer) return;
+        const pages = S.viewer.pagesCount || 1;
+        S.viewer.currentPageNumber = Math.max(1, Math.min(pages, n | 0));
+    };
+    function refreshScrubber() {
+        try { if (typeof updatePageScrubber === 'function') updatePageScrubber(); } catch (e) { }
+    }
+    /**
+     * In Pages mode, fitted to the window, there is nothing to scroll to: the scroll bar
+     * PDF.js leaves showing moved nothing a reader wanted (Ed, 2026-09-30). Hidden then;
+     * shown again when the reader zooms in and there is somewhere to scroll.
+     */
+    function syncPdfScrollbar() {
+        const host = document.getElementById('pdfView');
+        if (!host || !S.viewer) return;
+        let fitted = false;
+        try { const m = S.viewer.currentScaleValue; fitted = m === 'page-fit' || m === 'page-width' || m === 'auto'; } catch (e) { }
+        host.classList.toggle('tz-pdf-pages-fitted', S.scroll === 'pagination' && fitted);
+    }
+
     /** Where the reader is, for the host to reopen the PDF there. Debounced like books. */
     function reportPage(page) {
         refreshStats();
+        refreshScrubber();
         clearTimeout(S.reportTimer);
         const gen = window.__docGen || 0;
         S.reportTimer = setTimeout(() => {
@@ -213,7 +247,7 @@
             linkService.setViewer(viewer);
             Object.assign(S, { eventBus, linkService, findController, viewer, url });
 
-            eventBus.on('scalechanging', (ev) => { if (seq === S.seq) postZoom(ev && ev.scale, ev && ev.presetValue); });
+            eventBus.on('scalechanging', (ev) => { if (seq === S.seq) { postZoom(ev && ev.scale, ev && ev.presetValue); syncPdfScrollbar(); } });
             // PDF.js's editor asks for a change of tool itself (highlighting a selection from
             // reading mode, say); in its own app the app answers, so here the page does.
             // (PDF.js 6 asks with showannotationeditorui; older builds with switchannotationeditormode.)
@@ -390,6 +424,8 @@
             v.currentScaleValue = (S.scroll === 'pagination' || S.cols === 2) ? 'page-fit' : 'page-width';
             if (v.currentPageNumber !== page) v.currentPageNumber = page;
         } catch (e) { }
+        syncPdfScrollbar();
+        refreshScrubber();
     }
 
     function postView() {

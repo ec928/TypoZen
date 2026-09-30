@@ -2186,6 +2186,14 @@
             // 2. Escape once — quotes included, so nothing below can break out of an attribute.
             res = escapeHtml(res);
 
+            // Spaces are text. HTML shows a line's leading space and a run of spaces as
+            // nothing and one, so a line split just before a space lost it on the next save
+            // (Ed, 2026-09-30). Drawn as no-break spaces they show, as in Notepad, and the
+            // serializer (keepTypedSpaces) keeps them. The last space of a run stays an
+            // ordinary one so the line can still wrap there.
+            res = res.replace(/^ +/, function (m) { return '&nbsp;'.repeat(m.length); })
+                .replace(/ {2,}/g, function (m) { return '&nbsp;'.repeat(m.length - 1) + ' '; });
+
             // 3. Images BEFORE links: ![alt](src) also matches the link pattern, and the
             //    link rule used to win, so images rendered as "!" + hyperlink.
             res = res.replace(/!\[(.*?)\]\((.*?)\)/g, function (m, alt, src) {

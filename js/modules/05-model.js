@@ -1949,6 +1949,16 @@
          * Insert plain text like Ctrl+V. Used by the paste event and host menu (paste_text:).
          * One undo step. Source mode inserts at caret; WYSIWYG uses the block paste path.
          */
+        /**
+         * Text for execCommand('insertText') with its edge spaces kept. Chromium drops an
+         * ordinary space it inserts at the end of a line (a cut "quick " pasted back came
+         * out "quick"); no-break spaces survive, and the serializer (keepTypedSpaces) turns
+         * them back into spaces.
+         */
+        function withKeptEdgeSpaces(s) {
+            return String(s).replace(/^ +| +$/g, function (m) { return ' '.repeat(m.length); });
+        }
+
         function insertPastedPlainText(text) {
             if (text == null || text === '') return;
             // A paste into the middle of a line keeps its own spaces: " Pasted" after a word
@@ -2056,7 +2066,7 @@
                     }
                 } catch (eB) {}
 
-                document.execCommand('insertText', false, blockTexts[0]);
+                document.execCommand('insertText', false, withKeptEdgeSpaces(blockTexts[0]));
                 if (active && active.classList && active.classList.contains('block')) {
                     const raw0 = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
                     active.setAttribute('data-raw', raw0);
@@ -2088,7 +2098,7 @@
                 } else {
                     const sel2 = window.getSelection();
                     if (sel2 && sel2.rangeCount > 0 && sel2.anchorNode && active.contains(sel2.anchorNode)) {
-                        document.execCommand('insertText', false, blockTexts[0]);
+                        document.execCommand('insertText', false, withKeptEdgeSpaces(blockTexts[0]));
                         const raw0 = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
                         active.setAttribute('data-raw', raw0);
                         renderBlockPreview(active, raw0);
@@ -3171,7 +3181,24 @@
                 }
                 if (!multi && typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze
                     && _mbSelFreeze.toIdx > _mbSelFreeze.fromIdx) multi = true;
-                if (!multi) return;  // one block: browser is fine
+                if (!multi) {
+                    // One block: the clipboard is written as Copy writes it -- the plain text
+                    // plus the HTML marked as TypoZen's own. Left to the browser, the HTML was
+                    // unmarked, so pasting it back went through the external-HTML converter,
+                    // which trims: a cut "quick " came back "quick" (2026-09-30).
+                    try {
+                        if (e.clipboardData && sel && sel.rangeCount) {
+                            const holder = document.createElement('div');
+                            holder.setAttribute('data-source', 'typozen');
+                            holder.appendChild(sel.getRangeAt(0).cloneContents());
+                            e.clipboardData.setData('text/plain', selectionToPlainText());
+                            e.clipboardData.setData('text/html', holder.outerHTML);
+                            e.preventDefault();
+                            document.execCommand('delete');
+                        }
+                    } catch (eOne) {}
+                    return;
+                }
 
                 try {
                     if (e.clipboardData) e.clipboardData.setData('text/plain', selectionToPlainText());
@@ -3651,7 +3678,9 @@
             function inlineNodeToMarkdown(node) {
                 if (!node) return '';
                 if (node.nodeType === 3) {
-                    return String(node.nodeValue || '').replace(/\u00a0/g, ' ');
+                    // No-break spaces are kept here and become spaces in keepTypedSpaces,
+                    // after the collapse: they are the spaces a person typed.
+                    return String(node.nodeValue || '');
                 }
                 if (node.nodeType !== 1) return '';
                 const tag = (node.tagName || '').toLowerCase();
@@ -3693,6 +3722,27 @@
                 }
                 return inner;
             }
+            /**
+             * Plain text of a block as the person typed it.
+             *
+             * Ordinary spaces in the DOM collapse as HTML shows them, and a line's own
+             * leading one is dropped; a trailing one is kept (a pasted "quick " lost its
+             * space at the end of a line, where Source keeps it). Spaces that were TYPED are no-break
+             * spaces -- Chromium writes a typed leading space or a second space that way, and
+             * parseInline renders a stored leading space or run of spaces that way -- so they
+             * survive, and only then become ordinary spaces. A tab is typed text and stays.
+             * This used to turn no-break spaces into spaces first and collapse and trim
+             * after: Enter just before a space lost the space ("X" + " brown" saved as
+             * "Xbrown", Ed, 2026-09-30), and a double space typed in Preview saved as one.
+             */
+            function keepTypedSpaces(text) {
+                return String(text || '')
+                    .replace(/\r\n/g, '\n')
+                    .replace(/\n+/g, ' ')
+                    .replace(/ +/g, ' ')
+                    .replace(/^ +/, '')
+                    .replace(/ /g, ' ');
+            }
             // Serialize an element's content with nested marks intact (not innerText).
             function childInlineMd(el) {
                 if (!el) return '';
@@ -3701,14 +3751,7 @@
                 for (let k = 0; k < kids.length; k++) {
                     out += inlineNodeToMarkdown(kids[k]);
                 }
-                return out
-                    .replace(/\u00a0/g, ' ')
-                    .replace(/\r\n/g, '\n')
-                    .replace(/\n+/g, ' ')
-                    // Spaces collapse as HTML shows them; a tab is typed text (Tab key,
-                    // typeTabAtCaret) and stays a tab, even at the start of the line.
-                    .replace(/ +/g, ' ')
-                    .replace(/^ +| +$/g, '');
+                return keepTypedSpaces(out);
             }
             // data-src holds the path the author wrote; src may have been rewritten onto
             // the https://docfolder/ virtual host purely for display.
@@ -3752,14 +3795,7 @@
              * Use the first meaningful child only; body newlines → spaces.
              */
             function childText(el) {
-                return (el.innerText || el.textContent || '')
-                    .replace(/\u00a0/g, ' ')
-                    .replace(/\r\n/g, '\n')
-                    .replace(/\n+/g, ' ')
-                    // Spaces collapse as HTML shows them; a tab is typed text (Tab key,
-                    // typeTabAtCaret) and stays a tab, even at the start of the line.
-                    .replace(/ +/g, ' ')
-                    .replace(/^ +| +$/g, '');
+                return keepTypedSpaces(el.innerText || el.textContent || '');
             }
 
             function firstMeaningfulChild(root) {

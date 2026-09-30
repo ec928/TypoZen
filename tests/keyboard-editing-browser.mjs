@@ -133,9 +133,9 @@ try {
         const SRC = mode === 'source';
         // where: Preview = [text in the block, char offset]; Source = [line, column]
         const at = (text, off, line) => SRC ? [line, off] : [text, off];
-        // Preview shows HTML whitespace, so a run of spaces saves as one and a line's
-        // trailing space is dropped; Source keeps the text exactly.
-        const ws = (g) => SRC ? g : g.replace(/ +/g, ' ').replace(/ +\n/g, '\n').replace(/ +$/, '');
+        // Both views keep spaces exactly as typed. (Preview used to collapse a run of
+        // spaces and drop a line's leading one; this was the expectation until 2026-09-30.)
+        const ws = (g) => g;
 
         await run(mode, 'letters, digits, punctuation, space', DOC, at('quick', 3, 2),
             () => kb.type(' Hello, world! 123 ?:;\'"()'),
@@ -154,9 +154,9 @@ try {
         // One line per paragraph in both views: Enter is one newline, as in Notepad.
         await run(mode, 'Enter splits the line and typing continues on the new one', DOC, at('quick', 9, 2),
             async () => { await kb.press('Enter'); await kb.type('X'); },
-            // Preview never shows a line's leading space, so the caret sits before
-            // "brown" as it appears; Source keeps the space, as Notepad does.
-            SRC ? DOC.replace('quick brown', 'quick\nX brown') : DOC.replace('quick brown', 'quick\nXbrown'));
+            // The new line keeps its leading space in both views, as in Notepad. Preview
+            // dropped it until 2026-09-30 (Ed: "should NOT drop the damn space").
+            DOC.replace('quick brown', 'quick\nX brown'));
         await run(mode, 'Enter at the end of the last line, then type', DOC, at('Last', 9, 4),
             async () => { await kb.press('End'); await kb.press('Enter'); await kb.type('New'); },
             DOC + '\nNew');

@@ -2264,6 +2264,9 @@
             background: var(--bg, #18181B);
         }
         #pdfView[hidden] { display: none; }
+        /* Pages mode, fitted: nothing to scroll to, so no scroll bar pretending otherwise --
+           the page scrubber along the bottom moves through the PDF (10-pdf.js). */
+        #pdfView.tz-pdf-pages-fitted { scrollbar-width: none; }
         /* PDF.js is built for the browser's default content-box, and sets border-box itself
            only where it wants it (pdf_viewer.css, loaded after this file, so it still wins).
            This file's opening "* { box-sizing: border-box }" put each page's 9px border

@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.11.2";
+        internal const string AppVersion = "0.11.3";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1768,6 +1768,24 @@ namespace TypoZen
                         if (_chapterBlockIndex < 0) return;
                         try { if (_webView != null) _webView.Focus(); } catch { }
                         SendMsg("cmd:goto_chapter");
+                    };
+                }
+            }
+            catch { }
+
+            // Status-bar "Page 27/460" on a PDF -> Go to Page, as the page numbers on a book
+            // already do. A PDF had Ctrl+G and Edit > Go to Page, but nothing on screen said so
+            // (Ed, 2026-09-30).
+            try
+            {
+                if (_lblLineCount == null) _lblLineCount = FindElement("lblLineCount") as TextBlock;
+                if (_lblLineCount != null)
+                {
+                    _lblLineCount.MouseLeftButtonUp += (s, e) =>
+                    {
+                        if (!ActiveIsPdf()) return;
+                        try { if (_webView != null) _webView.Focus(); } catch { }
+                        SendMsg("cmd:goto_page");
                     };
                 }
             }
@@ -7557,6 +7575,9 @@ namespace TypoZen
                         // A PDF reports its page in these fields (9th field "pdf").
                         bool pdfStats = parts.Length >= 9 && parts[8] == "pdf";
                         _lblLineCount.Text = (pdfStats ? "Page " : "Ln ") + caret + "/" + total;
+                        // On a PDF it is a control: click to go to a page.
+                        _lblLineCount.ToolTip = pdfStats ? "Go to page (Ctrl+G)" : "Current line / total lines";
+                        _lblLineCount.Cursor = pdfStats ? Cursors.Hand : null;
                     }
                     UpdateStatusDisplay();
                 }

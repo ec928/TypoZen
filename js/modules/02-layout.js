@@ -4031,6 +4031,18 @@
             const host = document.getElementById('page-scrubber');
             const range = document.getElementById('page-scrubber-range');
             if (!host || !range) return;
+            // A PDF in Pages mode gets the same scrubber, over its own pages (tzPdfPaging,
+            // 10-pdf.js). It had a scroll bar there that did nothing useful and no way to
+            // cross the document at a glance (Ed, 2026-09-30).
+            if (window.tzPdfActive) {
+                const p = (typeof window.tzPdfPaging === 'function') ? window.tzPdfPaging() : null;
+                if (!p) { host.style.display = 'none'; return; }
+                host.style.display = 'block';
+                if (_scrubDragging) return;
+                range.max = String(Math.max(0, p.pages - 1));
+                range.value = String(Math.max(0, Math.min(p.page - 1, p.pages - 1)));
+                return;
+            }
             if (!isPaginatedLayout() || !PageMap.ensure()) {
                 host.style.display = 'none';
                 return;
@@ -4053,6 +4065,14 @@
 
             function showBubble() {
                 if (!bubble) return;
+                if (window.tzPdfActive) {
+                    const max = parseInt(range.max, 10) || 0;
+                    const at = parseInt(range.value, 10) || 0;
+                    bubble.textContent = (at + 1) + ' / ' + (max + 1);
+                    bubble.style.left = (max > 0 ? (at / max) * 100 : 0) + '%';
+                    bubble.classList.add('showing');
+                    return;
+                }
                 const total = Math.max(1, PageMap.count());
                 const v = parseInt(range.value, 10) || 0;
                 // Scrubber steps are spreads; the bubble shows leaf pages via the helper.
@@ -4072,6 +4092,10 @@
                 hideBubble();
                 const v = parseInt(range.value, 10);
                 if (!isFinite(v)) return;
+                if (window.tzPdfActive) {
+                    if (typeof window.tzPdfGotoPage === 'function') window.tzPdfGotoPage(v + 1);
+                    return;
+                }
                 const wantedEnd = v >= (parseInt(range.max, 10) || 0);
                 PageMap.goto(v);
                 // Pages beyond the ranges that have been laid out are an estimate, so

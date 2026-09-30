@@ -65,15 +65,6 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
 
 Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 
-- **Opening a medium document janks for ~5 s -- not reproduced on 0.11.0.** Ed's perf log
-  (2026-09-29) showed 40 frames of 80-130 ms opening a medium document in 1-Col. On 0.11.0
-  in the real app, spell checker live, a 106 KB / 1,200-line document opens with one 130 ms
-  frame and is settled in 0.2 s (2-Col: one 61 ms frame). The 2-Col half of this item is
-  fixed (see Done). Re-open with the document that did it, if it recurs.
-- **Enter just before a space, in Preview**, drops that space from the new line (Preview
-  cannot show a line's leading space, so screen and file agree). Source keeps it.
-- **Typed tabs nest in Chromium's spans** while typing -- invisible, saved text is right,
-  and it flattens on re-render. Harmless; noted so it is not rediscovered as a bug.
 - **`book-position-app` is intermittent**: now and then the first frame of a resume is drawn
   before the range is recorded as mounted (range -1). The cover is never shown; passes on a
   re-run. A timing edge in the test's frame sampling or in the resume; not chased.
@@ -96,6 +87,24 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   permission.
 
 ## Done (recorded so it is not re-raised)
+
+- **After 0.11.0, from Ed's testing (0.11.1-0.11.3, 2026-09-30):**
+  - Source/Preview on a PDF closed the PDF behind an empty "Unsaved" document: PDFs moved
+    into the main page and the native-tab lock no longer caught them. Locked now, and the
+    click and the page's own mode commands are ignored on a PDF.
+  - Tab on a clicked picture deleted it (typed over the selection). Tab now goes after it.
+    Letters and Space still replace a selected picture, as in Word (Ed: pictures are
+    deleted deliberately, with Delete; kept as is).
+  - Preview lost spaces: Enter just before a space dropped it, a typed double space saved
+    as one, and a single-line cut left its HTML unmarked so a pasted "quick " came back
+    "quick". Spaces are now kept as typed (keepTypedSpaces, parseInline draws a leading
+    space or a run of spaces as no-break spaces, and a one-line cut writes the clipboard as
+    Copy does).
+  - PDF in Pages mode: the page scrubber now works there, the scroll bar that did nothing
+    is hidden while the page is fitted, and the status bar's "Page x/y" opens Go to Page.
+- **Not a report:** a "~5 s jank opening a medium document" was listed here from a perf log
+  read during the 2026-09-29 audit -- inferred by the assistant, never seen by Ed, and not
+  reproducible on 0.11.0 (one 130 ms frame on a 106 KB file). Closed.
 
 - **0.11.0 audit and real-app pass** (2026-09-30). All 67
   real-app suites were run; 6 failed at first, each checked against 0.10.12 and the Store's
@@ -132,8 +141,7 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   changed nothing on screen and the next word broke mid-word with its first letter hidden
   ("croll marker row 107"; the text itself was intact). Tabs now wrap like any whitespace.
   Insert toggles overwrite in Preview and Source, as in Notepad, with a block caret; it
-  never overwrites the end of a line. Known, harmless: while typing, Chromium nests each
-  new tab's span in the last (the saved text is right, and it flattens on re-render).
+  never overwrites the end of a line.
 
 - **Edits keep the view steady** (0.10.14-0.10.16, 2026-09-29/30). Edits that reload the
   document -- undo/redo; bold, italic, strikethrough, code, heading, quote and list across
