@@ -485,8 +485,9 @@
             });
             window.addEventListener('resize', () => {
                 if (state.mode === 'source') resizeSourceEditor();
-                // Page breaks depend on the viewport, so a resize retires the map.
-                PageMap.invalidate(); try { if (typeof PageChunks !== 'undefined') PageChunks.invalidate(); } catch (e) {}
+                // Page breaks depend on the viewport, so a resize retires the map -- the counts,
+                // not the range on screen (PageChunks.invalidateCounts).
+                PageMap.invalidate(); try { if (typeof PageChunks !== 'undefined') PageChunks.invalidateCounts(); } catch (e) {}
             });
 
             // Anything that changes the editor's width changes the page width, and every
@@ -1591,6 +1592,9 @@
                 }
                 try {
                     PageGeometry.relayout();
+                    // A full invalidate here, deliberately: the seek below remounts the range at
+                    // once, and the remount re-runs the book text-size correction a new theme
+                    // size needs. (It never leaves a stale range, unlike the resize handler.)
                     PageMap.invalidate(); try { if (typeof PageChunks !== 'undefined') PageChunks.invalidate(); } catch (e) {}
                     // The block holding the character, so windowing mounts the range the
                     // text is in; then the character itself, for this jump only.
@@ -2302,7 +2306,7 @@
                 // Reader/Preview/Source changes whether pages apply at all.
                 syncPaginationClass();
                 applyEditorChromeForMode();
-                scheduleColumnSettle(function () { ensurePageWindow(); PageMap.invalidate(); try { if (typeof PageChunks !== 'undefined') PageChunks.invalidate(); } catch (e) {} updatePageIndicator(); });
+                scheduleColumnSettle(function () { ensurePageWindow(); PageMap.invalidate(); try { if (typeof PageChunks !== 'undefined') PageChunks.invalidateCounts(); } catch (e) {} updatePageIndicator(); });
                 // The other view's text is now on screen: check its spelling.
                 try { scheduleSpellCheck(); } catch (eSp) {}
                 // Mode changes from the toolbar selector (and host view_set), not a shortcut.

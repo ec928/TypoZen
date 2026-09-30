@@ -164,6 +164,19 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     1050 -> 960, Nemesis 1006 -> 891, Matter 874 -> 639 ms; Xeelee neutral within its spread.
     Warm reopens and Ctrl+Tab on 0.11.15 checked by Ed: fine. Released: GitHub v0.11.15, Store
     Submission 9 in certification (2026-09-30).
+  - Pages after ZenMode (0.11.16; Ed): turning ZenMode on in the middle of the Xeelee
+    omnibus left the page numbers wrong ("1 | 2 / ~5458" over mid-book text) and the start
+    unreachable until a tab switch. A window resize retired the page map with
+    PageChunks.invalidate(), which also forgot the range still on screen; navigation then
+    worked from "nothing mounted" and the total fell to the seed estimate. Resizes (and the
+    settle after a mode change) now use invalidateCounts(), which keeps the mounted range and
+    what the book has taught the estimate. Guarded by page-resize-app (fails 2/5 on 0.11.15).
+  - Page numbers (0.11.16; Ed: "the total changes all the time"): a range's page count is
+    estimated from its markup length plus 200 per paragraph instead of its paragraph count.
+    Measured on Xeelee (all 57 ranges laid out for the truth): with one range known the total
+    was out by 8.5% on average by paragraphs, 4.9% by this. In the app the total at open went
+    from ~5,458 to ~9,618 against a true ~9,060, and stays within a few percent as ranges
+    are visited. Still an estimate ("~") until every range has been laid out.
   - Ctrl+Tab (0.11.14; Ed): fast Ctrl+Tab just after launch created a duplicate tab of a
     book or PDF, and Ctrl+Tab then stalled on it until the copy was closed. The duplicate
     was never reproduced by page-sent Ctrl+Tab (restored session, 40 ms presses); three holes
