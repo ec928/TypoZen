@@ -24,6 +24,7 @@ function assert(cond, msg) {
 }
 
 const browser = await puppeteer.launch({ headless: 'new' });
+try { await browser.defaultBrowserContext().overridePermissions('file://', ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write']); } catch (e) {}
 try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 800 });
@@ -131,6 +132,27 @@ try {
     await sleep(300);
     assert(picSelected, 'control: clicking the picture selects it');
     assert((await md()).includes('![shot](data:image/png'), 'Tab does not delete the selected picture');
+
+    // Nor does typing or pasting: a picture goes only by a deliberate Delete, Backspace or
+    // Cut (Ed, 2026-09-30). The text goes after it.
+    for (const [label, act] of [
+        ['a letter', async () => { await page.keyboard.type('x'); }],
+        ['Space', async () => { await page.keyboard.press('Space'); }],
+        ['a paste', async () => { await page.keyboard.down('Control'); await page.keyboard.press('v'); await page.keyboard.up('Control'); }],
+        ['Delete (control: a deliberate delete removes it)', async () => { await page.keyboard.press('Delete'); }]
+    ]) {
+        await page.evaluate((p) => loadMarkdownContent('above\n\n![shot](' + p + ')\n\nbelow'), PNG);
+        await sleep(500);
+        const at = await page.evaluate(() => { const b = editor.querySelector('img').getBoundingClientRect(); return { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 }; });
+        await page.mouse.click(at.x, at.y);
+        await sleep(200);
+        if (label.startsWith('a paste')) await page.evaluate(() => navigator.clipboard.writeText('pasted'));
+        await act();
+        await sleep(300);
+        const kept = (await md()).includes('![shot](data:image/png');
+        if (label.startsWith('Delete')) assert(!kept, label);
+        else assert(kept, label + ' over the selected picture keeps it');
+    }
 
     console.log('\n=== Preview: a tab in a file that is opened ===');
     await page.evaluate((t) => loadMarkdownContent('a' + t + 'b\n\n' + t + 'indented'), TAB);

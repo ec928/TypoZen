@@ -2289,6 +2289,8 @@
             }
             if (!text) return;
 
+            // A pasted text never replaces a selected picture (keepSelectedPicture).
+            try { if (typeof keepSelectedPicture === 'function') keepSelectedPicture(); } catch (eKp) {}
             // Pasting over a selection that spans lines: collapse it ourselves first, or
             // the insert lands in a leftover block and the lines never rejoin.
             const over = removeCrossBlockSelection();
@@ -2410,7 +2412,32 @@
             try { document.body.classList.toggle('tz-overwrite', window.tzOverwrite); } catch (e) {}
         }
 
+        /**
+         * A selection holding a picture (or other embed) is not replaced by typing or a
+         * paste: a clicked picture is selected, and a letter or a space deleted it. Only a
+         * deliberate Delete, Backspace or Cut removes a picture (Ed, 2026-09-30). The typing
+         * goes after the selection instead. Tab does the same (typeTabAtCaret).
+         */
+        function keepSelectedPicture() {
+            try {
+                const sel = window.getSelection();
+                if (!sel || sel.isCollapsed || !sel.rangeCount || !editor.contains(sel.anchorNode)) return false;
+                const inSel = sel.getRangeAt(0).cloneContents();
+                if (inSel.querySelector && inSel.querySelector('img, svg, video, audio, iframe, object, embed')) {
+                    sel.collapseToEnd();
+                    return true;
+                }
+            } catch (e) {}
+            return false;
+        }
+        window.keepSelectedPicture = keepSelectedPicture;
+
         if (typeof editor !== 'undefined' && editor) {
+            editor.addEventListener('keydown', function onEditorKeepPicture(e) {
+                if (state.mode === 'source') return;
+                if (e.ctrlKey || e.metaKey || e.altKey || !e.key || e.key.length !== 1) return;
+                keepSelectedPicture();
+            }, true);
             editor.addEventListener('keydown', function onEditorOverwriteKey(e) {
                 if (!window.tzOverwrite || state.mode === 'source') return;
                 if (window.isComposing || e.isComposing || e.keyCode === 229) return;

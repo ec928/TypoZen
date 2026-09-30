@@ -92,9 +92,9 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   - Source/Preview on a PDF closed the PDF behind an empty "Unsaved" document: PDFs moved
     into the main page and the native-tab lock no longer caught them. Locked now, and the
     click and the page's own mode commands are ignored on a PDF.
-  - Tab on a clicked picture deleted it (typed over the selection). Tab now goes after it.
-    Letters and Space still replace a selected picture, as in Word (Ed: pictures are
-    deleted deliberately, with Delete; kept as is).
+  - Tab on a clicked picture deleted it (typed over the selection), and so did a letter,
+    Space or a paste. A picture now goes only by a deliberate Delete, Backspace or Cut (Ed);
+    anything typed or pasted goes after it (keepSelectedPicture, 0.11.4).
   - Preview lost spaces: Enter just before a space dropped it, a typed double space saved
     as one, and a single-line cut left its HTML unmarked so a pasted "quick " came back
     "quick". Spaces are now kept as typed (keepTypedSpaces, parseInline draws a leading
