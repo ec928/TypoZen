@@ -106,6 +106,12 @@ try {
         ib.innerHTML = sanitizeBookHtml('<div style="background-image: url(../Images/plate.png)">p</div>');
         rewriteBookUrls(ib);
         const inlineUrl = ib.firstElementChild.getAttribute('style');
+        // srcset, like src: on a scaled display the 2x candidate is the one loaded.
+        const sb = document.createElement('div');
+        sb.className = 'block'; sb.setAttribute('data-model-index', '0');
+        sb.innerHTML = sanitizeBookHtml('<img src="../Images/t.png" srcset="../Images/t-2x.png 2x, ../Images/t.png 1x" alt="">');
+        rewriteBookUrls(sb);
+        const srcsetOut = (sb.querySelector('img') || { getAttribute: () => '' }).getAttribute('srcset');
         _bookAssetsBase = savedBase; _bookBlockDirs = savedDirs;
         return {
             sheet, was, blockBefore,
@@ -124,7 +130,7 @@ try {
             part: { bb: getComputedStyle(q('h2.part')).breakBefore, ba: getComputedStyle(q('h2.part')).breakAfter },
             media: getComputedStyle(q('p.media')).color,
             chrome: getComputedStyle(probe).color,
-            inline, inlineUrl,
+            inline, inlineUrl, srcsetOut,
             sib: {
                 s2: getComputedStyle(q('p.s2')).letterSpacing,
                 s1: getComputedStyle(q('p.s1')).letterSpacing,
@@ -201,6 +207,8 @@ try {
     assert(/color/.test(r.inline) && /italic/.test(r.inline), 'inline colour and italic are kept');
     assert(/url\("https:\/\/localbooks\/k\/OEBPS\/Images\/plate\.png"\)/.test(r.inlineUrl || ''),
         'an inline url() resolves against its chapter\'s folder (' + r.inlineUrl + ')');
+    assert(r.srcsetOut === 'https://localbooks/k/OEBPS/Images/t-2x.png 2x, https://localbooks/k/OEBPS/Images/t.png 1x',
+        'srcset resolves like src -- the 2x picture a scaled display loads (' + r.srcsetOut + ')');
 } finally {
     await browser.close();
 }

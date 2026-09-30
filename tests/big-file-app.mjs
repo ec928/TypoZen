@@ -75,7 +75,15 @@ async function run(ext) {
             return out;
         });
         console.log('  ..   opened in ' + (Date.now() - t0) + ' ms (' + r.chars + ' chars, .' + r.ext + ', ' + r.mode + '); to the 356 KB line ' + r.toLongLine + ' ms, to the end ' + r.toEnd + ' ms');
-        assert(r.chars > 2000000 && r.ext === ext, 'the whole file is in Source as .' + ext);
+        // Against the fixture's own length (line endings as Source holds them), not a fixed
+        // 2,000,000: the template is regenerated each build and fell to 1.89 MB when the NLP
+        // library left the start-up page (0.10.13), which failed this with the file whole.
+        // Trailing blank lines excepted (the fixture ends in five): by design the page holds
+        // the text without them and the host keeps the exact run (tab.TrailingNewlines) and
+        // puts it back on save, so opening and saving never changes a file's ending.
+        const want = fs.readFileSync(TEMPLATE, 'utf8').replace(/\r\n?/g, '\n').replace(/\n+$/, '').length;
+        assert(r.chars === want && r.ext === ext,
+            'the whole file is in Source as .' + ext + ' (' + r.chars + ' of ' + want + ' chars)');
         assert(r.toLongLine < 2000 && r.toEnd < 2000, 'Source reaches the longest line and the end promptly');
         assert(r.underlines === 0, 'code is not spell-checked: nothing underlined');
 

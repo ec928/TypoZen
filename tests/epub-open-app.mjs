@@ -633,7 +633,16 @@ async function openAndCheck(app, book, deep, opts) {
                             const r = svg.getBoundingClientRect();
                             if (p4.length === 4 && p4[3] && r.height) {
                                 out.coverRatio = p4[2] / p4[3];
-                                out.coverBoxRatio = r.width / r.height;
+                                // What the reader sees, not the box. Without
+                                // preserveAspectRatio="none" an svg draws its viewBox
+                                // uniformly scaled into the box (letterboxed), so the
+                                // picture keeps the viewBox ratio whatever the box's shape;
+                                // only "none" stretches it to the box. In page mode a plate's
+                                // box is the page height, so in a narrow window the box is
+                                // taller than the picture -- by design, and not a distortion.
+                                const par = (svg.getAttribute('preserveAspectRatio') || '') + ' ' +
+                                    (im.getAttribute('preserveAspectRatio') || '');
+                                out.coverBoxRatio = /\bnone\b/.test(par) ? r.width / r.height : p4[2] / p4[3];
                             }
                         }
                     }
@@ -841,14 +850,18 @@ async function openAndCheck(app, book, deep, opts) {
                 parseFloat(getComputedStyle(document.documentElement).fontSize));
             const before = await evalPatiently(app, proseFs);
             await evalPatiently(app, () => {
-                document.documentElement.style.setProperty('--fs', '28px');
+                // Through applySpacing, as applyTheme and the text-size setting apply it. A
+                // bare setProperty on the root skips the book's re-normalisation, which no
+                // user action does, and failed here while a real theme change passed
+                // (measured 2026-09-30: applyTheme FS 28 -> prose 28px in 300 ms).
+                applySpacing({ '--fs': '28px' });
             });
             await waitIdle(app);
             const after = await evalPatiently(app, proseFs);
             const afterRoot = await evalPatiently(app, () =>
                 parseFloat(getComputedStyle(document.documentElement).fontSize));
             await evalPatiently(app, (px) => {
-                document.documentElement.style.setProperty('--fs', px + 'px');
+                applySpacing({ '--fs': px + 'px' });
             }, was);
             const bs = {
                 remLeft: bsSheet.remLeft,

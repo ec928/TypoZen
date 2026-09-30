@@ -45,8 +45,12 @@ console.log('=== progressive is M-band only (not Source-first chars) ===');
     // loadMarkdownContent progressive gate must not use LARGE_DOC_CHARS / text.length
     const loadIdx = mainScript.indexOf('function loadMarkdownContent');
     assert(loadIdx > 0, 'loadMarkdownContent found');
-    // Slice until next top-level function after load body (insertPasted / similar)
-    const loadChunk = mainScript.slice(loadIdx, loadIdx + 12000);
+    // The whole function: up to the next function declared at its own indent. A fixed
+    // 12,000 characters stopped working when a branch was added near the top (the Pages
+    // window mount, 0.11.0) and pushed the progressive gate past the cut.
+    const indent = mainScript.slice(mainScript.lastIndexOf('\n', loadIdx) + 1, loadIdx);
+    const nextFn = mainScript.indexOf('\n' + indent + 'function ', loadIdx + 30);
+    const loadChunk = mainScript.slice(loadIdx, nextFn > loadIdx ? nextFn : loadIdx + 40000);
     assert(loadChunk.includes('PROGRESSIVE_PAINT_BLOCKS')
         || loadChunk.includes('paintFloor'),
         'progressive uses paint block floor');

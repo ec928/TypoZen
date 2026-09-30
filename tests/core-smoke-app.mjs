@@ -78,6 +78,27 @@ async function waitForBlock(app, idx, timeoutMs) {
 }
 
 /** Visible text actually painted into the editor, not the model's idea of it. */
+/**
+ * The text actually in view: blocks whose boxes intersect the editor's visible rectangle.
+ * Not innerText of the editor -- a book small enough to fit one page range (Alice, 800
+ * blocks, the smallest fixture since 2026-09-29) is mounted whole, so the mounted text is
+ * the same before and after a seek even when the view moves.
+ */
+async function visibleText(app) {
+    return evalPatiently(app, () => {
+        const ed = document.querySelector('#editor');
+        if (!ed) return '';
+        const v = ed.getBoundingClientRect();
+        const out = [];
+        for (const b of ed.querySelectorAll('.block')) {
+            const onScreen = Array.from(b.getClientRects()).some(r => r.width > 0 && r.height > 0
+                && r.right > v.left && r.left < v.right && r.bottom > v.top && r.top < v.bottom);
+            if (onScreen) out.push(b.innerText || '');
+        }
+        return out.join('\n').trim();
+    });
+}
+
 async function paintedText(app) {
     return evalPatiently(app, () => {
         const ed = document.querySelector('#editor');
@@ -125,6 +146,7 @@ try {
     assert(model.blocks > 0, 'the book parsed into a document model with blocks in it');
 
     const text = await paintedText(app);
+    const viewBefore = await visibleText(app);
     info('painted ' + text.length + ' characters of text');
     assert(text.length > 200,
         'the reader painted real text on screen -- THE check that was missing when '
@@ -142,9 +164,11 @@ try {
 
     await waitIdle(app, 8000);
     const midText = await paintedText(app);
+    const viewAfter = await visibleText(app);
+    info('in view: ' + viewBefore.length + ' characters before the seek, ' + viewAfter.length + ' after');
     info('painted ' + midText.length + ' characters after the seek');
     assert(midText.length > 200, 'there is real text at the new position too');
-    assert(midText !== text, 'and it is different text -- the view actually moved');
+    assert(viewAfter.length > 0 && viewAfter !== viewBefore, 'and it is different text -- the view actually moved');
 
     // No error-banner assertion on purpose: the obvious selectors (.error-banner,
     // .fault-dialog, #error-overlay) do not exist in this app, so a check on them
