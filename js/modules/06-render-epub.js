@@ -298,6 +298,20 @@
                     if (!raw) continue;
                     const abs = bookResolveUrl(raw, dir);
                     if (abs !== raw) el.setAttribute('src', abs);
+                    // srcset too: on a scaled display the browser takes the 2x candidate,
+                    // and left relative it resolved against the app's own address
+                    // (https://localapp/images/titlepage-2x.png) -- every Standard Ebooks
+                    // picture showed broken at 156% scaling while its src was fine.
+                    const set = el.getAttribute('srcset');
+                    if (set) {
+                        const fixed = set.split(',').map(function (part) {
+                            const bits = part.trim().split(/\s+/);
+                            if (!bits[0]) return part.trim();
+                            bits[0] = bookResolveUrl(bits[0], dir);
+                            return bits.join(' ');
+                        }).join(', ');
+                        if (fixed !== set) el.setAttribute('srcset', fixed);
+                    }
                     if (!el.getAttribute('loading')) el.setAttribute('loading', 'lazy');
                 }
 
@@ -1700,6 +1714,25 @@
         }
 
         function markBookPlate(block) {
+            // An epub cover is usually <svg viewBox="0 0 W H" width="100%" height="100%">:
+            // no natural size, so when max-height clamps it in a scrolling layout the width
+            // stays at the column's and the box goes the wrong shape. An <img> keeps its shape
+            // under the same CSS because it has a natural size -- give the svg its viewBox's.
+            // (In page mode a plate is given the page height outright, and in a narrow column
+            // its box is taller than the picture; the picture is letterboxed inside, not
+            // stretched, since the book's preserveAspectRatio="none" is not kept.)
+            try {
+                const svgs = block.querySelectorAll('svg[viewBox]');
+                for (const s of svgs) {
+                    const w = s.getAttribute('width'), h = s.getAttribute('height');
+                    if (w && h && !/%/.test(w + h)) continue;
+                    const vb = (s.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+                    if (vb.length === 4 && vb[2] > 0 && vb[3] > 0) {
+                        s.setAttribute('width', String(vb[2]));
+                        s.setAttribute('height', String(vb[3]));
+                    }
+                }
+            } catch (eSvg) {}
             const pics = block.querySelectorAll('img, svg');
             if (!pics.length || (block.textContent || '').trim()) {
                 block.classList.remove('tz-plate');

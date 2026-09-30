@@ -379,10 +379,16 @@
     function applyView() {
         const v = S.viewer, ui = S.ui;
         if (!v || !ui) return;
+        // Keep the page. PDF.js 6.3 jumps to page 1 when spreads are switched on while
+        // scrolling vertically at page width (measured: page 3 -> 1 on the spread setter
+        // alone; scroll mode or scale alone keep it), so 2 Columns on page 3 of a PDF showed
+        // page 1 (pdf-reader-app). Put the page back after the three changes.
+        const page = v.currentPageNumber || 1;
         try {
             v.spreadMode = S.cols === 2 ? ui.SpreadMode.ODD : ui.SpreadMode.NONE;
             v.scrollMode = S.scroll === 'pagination' ? ui.ScrollMode.PAGE : ui.ScrollMode.VERTICAL;
             v.currentScaleValue = (S.scroll === 'pagination' || S.cols === 2) ? 'page-fit' : 'page-width';
+            if (v.currentPageNumber !== page) v.currentPageNumber = page;
         } catch (e) { }
     }
 

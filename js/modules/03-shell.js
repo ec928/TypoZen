@@ -1631,6 +1631,75 @@
         }
         try { wireSidebarEdgePointerGuard(); } catch (eW) {}
 
+        // ---- Printing a long document ------------------------------------------------------
+        //
+        // Chromium prints the DOM, and a long document's DOM is only the part on screen
+        // (virtualised scrolling, page windowing). Print used to refuse outright -- any novel,
+        // any large Markdown file -- because printing the window would be a PDF of about 1%
+        // that looks complete. Now the host asks for a whole copy first: every block built
+        // from the model, beside the live editor and carrying the same id, so every #editor
+        // rule and the book's own stylesheet style it exactly as they style the live one.
+        // It is hidden on screen, and in print the live editor is hidden instead (typozen.css,
+        // @media print). The live editor is not touched: nothing to remount afterwards.
+        const PRINT_MAX_BLOCKS = 20000;   // an omnibus (45,000+ blocks) is still refused
+
+        function tzEndPrintCopy() {
+            const copy = window.__tzPrintCopy;
+            window.__tzPrintCopy = null;
+            try { if (copy && copy.parentNode) copy.parentNode.removeChild(copy); } catch (e) {}
+            try { if (editor) editor.classList.remove('tz-print-live-hidden'); } catch (e2) {}
+        }
+        window.tzEndPrintCopy = tzEndPrintCopy;
+
+        /** "ok:<blocks>", "too-large:<blocks>", or "" when no copy is needed or possible. */
+        window.tzPreparePrint = function () {
+            tzEndPrintCopy();
+            try {
+                if (!editor || state.mode === 'source') return '';
+                if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return '';
+                const n = DocumentModel.blocks.length;
+                if (editor.querySelectorAll('.block').length >= n) return '';   // already whole
+                if (n > PRINT_MAX_BLOCKS) return 'too-large:' + n;
+                const copy = document.createElement('div');
+                for (const a of Array.from(editor.attributes)) {
+                    if (a.name === 'contenteditable') continue;
+                    copy.setAttribute(a.name, a.value);
+                }
+                copy.classList.add('tz-print-copy');
+                const frag = bookBlockFragment(0, n);
+                // A book's pictures load lazily, and a lazy image in a copy nobody scrolls
+                // never loads: the Standard Ebooks logo printed as a broken image. Make them
+                // eager before the copy is in the page, count them in, and let the host wait
+                // (up to 3 s) for __tzPrintPending to reach 0 before it opens the dialog.
+                let pending = 0;
+                window.__tzPrintPending = 0;
+                const done = function () { window.__tzPrintPending = Math.max(0, (window.__tzPrintPending | 0) - 1); };
+                for (const img of Array.from(frag.querySelectorAll('img'))) {
+                    if (img.getAttribute('loading') === 'lazy') img.setAttribute('loading', 'eager');
+                    if (img.getAttribute('data-pending') === '1') continue;   // tzRequestPendingImages fills these
+                    pending++;
+                    img.addEventListener('load', done, { once: true });
+                    img.addEventListener('error', done, { once: true });
+                }
+                window.__tzPrintPending = pending;
+                copy.appendChild(frag);
+                editor.parentNode.insertBefore(copy, editor.nextSibling);
+                editor.classList.add('tz-print-live-hidden');
+                window.__tzPrintCopy = copy;
+                try { tzRequestPendingImages(copy); } catch (eI) {}
+                // Any that were already cached have completed without an event.
+                for (const img of Array.from(copy.querySelectorAll('img'))) {
+                    if (img.complete && img.naturalWidth > 0 && img.getAttribute('data-pending') !== '1') done();
+                }
+                return 'ok:' + n;
+            } catch (e) {
+                try { window.tzLogException('print copy', e); } catch (eL) {}
+                tzEndPrintCopy();
+                return '';
+            }
+        };
+        window.addEventListener('afterprint', tzEndPrintCopy);
+
         function handleCommand(cmd) {
             if (cmd.startsWith("word_voice:")) { window.__tzWordVoice = cmd.substring(11); return; }   // tests
             if (cmd.startsWith("speak_word_kokoro:")) {

@@ -1332,6 +1332,8 @@
             try { normaliseBookTextSize(); } catch (eF) {}
             window.__tzPaintGen = (window.__tzPaintGen || 0) + 1;
             const paintGen = window.__tzPaintGen;
+            // A print copy belongs to the document it was made from (tzPreparePrint).
+            try { if (typeof tzEndPrintCopy === 'function') tzEndPrintCopy(); } catch (ePc) {}
 
             if (typeof sourceEditor !== 'undefined' && sourceEditor) {
                 sourceEditor.value = text;
@@ -1428,6 +1430,44 @@
             DocumentModel.virtEnabled = false;
             unbindVirtScroll();
             editor.innerHTML = '';
+
+            // Pages on a document big enough to be windowed: lay out the one range that will
+            // be shown, not the whole document. The full mount below built and painted every
+            // block and only then (afterPaint -> ensurePageWindow) cut back to one range:
+            // 24 long frames and 1.3 s of blocking to open 3,000 lines in 2-Col, measured
+            // 2026-09-30, for 400 blocks that end up on screen. Same shape as the virtual
+            // branch above; mountPageChunk stamps model indices and measures the range.
+            if (typeof pageWindowingActive === 'function' && pageWindowingActive()) {
+                try {
+                    // A new document's page counts describe nothing; an edit's reload of the
+                    // same document keeps them, as spliceBlocks would.
+                    if (!restoringAtStart) PageChunks.invalidate();
+                    clearWarmPageChunk();
+                    PageChunks.ensure(DocumentModel.blocks.length);
+                    const startBi = (stickyWanted && typeof modelBlockStartLineToIndex === 'function')
+                        ? modelBlockStartLineToIndex(stickyWanted) : 0;
+                    mountPageChunk(PageChunks.chunkOfBlock(startBi));
+                    if (!stickyWanted) setFocusedBlock(editor.querySelector('.block'));
+                    seedHistoryAndCache();
+                    window.__tzPreviewPainting = false;
+                    try { syncScratchEmpty(); } catch (eSc) {}
+                    try { updateOutline(); } catch (eO) {}
+                    try { resolveMarksAfterDocumentLoad(); } catch (eRm) {}
+                    try { tzRequestPendingImages(editor); tzScheduleImageRescan(); } catch (eI) {}
+                    if (stickyWanted && typeof restoreStickyDocumentLine === 'function') {
+                        restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact);
+                    } else {
+                        try { PageMap.gotoLocal(0); } catch (eG) {}
+                        try { updateStatsNow(); } catch (eSt) {}
+                    }
+                    try { updatePageIndicator(); } catch (ePI) {}
+                    return;
+                } catch (eWin) {
+                    // Fall through to the whole-document mount, which ensurePageWindow narrows.
+                    try { window.tzLogException('page-window load', eWin); } catch (eL) {}
+                    editor.innerHTML = '';
+                }
+            }
 
             const blockRaws = DocumentModel.blocks.map(function (b) { return b.raw; });
             // M-band progressive: block count only (or explicit deferPaint).

@@ -2636,6 +2636,15 @@
             ::highlight(typozen-spell) {
                 text-decoration: none;
             }
+            /* A long document prints from a whole copy (tzPreparePrint, 03-shell.js): the
+               live editor holds only the part on screen. The copy carries the same id, so
+               every #editor rule and the book's own stylesheet style it identically. */
+            html body #editor.tz-print-live-hidden { display: none !important; }
+            html body #editor.tz-print-copy { display: block !important; }
+        }
+        /* On screen the copy is never seen -- no flash behind the print dialog. */
+        @media screen {
+            #editor.tz-print-copy { display: none !important; }
         }
 
 /* A typed tab (Tab outside a list) shows at its width, as in Notepad; plain text
