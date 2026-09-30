@@ -89,8 +89,8 @@
         document.documentElement.classList.toggle('tz-pdf-active', on);
         S.active = on;
         window.tzPdfActive = on;
-        // The scrubber follows: a PDF's in Pages mode, or back to the document's.
-        try { if (typeof updatePageScrubber === 'function') updatePageScrubber(); } catch (e) { }
+        // The page numbers and scrubber follow: a PDF's in Pages mode, or back to the document's.
+        try { if (typeof updatePageIndicator === 'function') updatePageIndicator(); } catch (e) { }
     }
 
     function teardown() {
@@ -153,7 +153,7 @@
         if (!S.active || !S.viewer || S.scroll !== 'pagination') return null;
         const pages = S.viewer.pagesCount || 0;
         if (!pages) return null;
-        return { page: S.viewer.currentPageNumber || 1, pages: pages };
+        return { page: S.viewer.currentPageNumber || 1, pages: pages, spread: S.cols === 2 };
     };
     window.tzPdfGotoPage = function (n) {
         if (!S.active || !S.viewer) return;
@@ -161,7 +161,8 @@
         S.viewer.currentPageNumber = Math.max(1, Math.min(pages, n | 0));
     };
     function refreshScrubber() {
-        try { if (typeof updatePageScrubber === 'function') updatePageScrubber(); } catch (e) { }
+        // updatePageIndicator refreshes the scrubber too, and numbers the pages in the corner.
+        try { if (typeof updatePageIndicator === 'function') updatePageIndicator(); } catch (e) { }
     }
     /**
      * In Pages mode, fitted to the window, there is nothing to scroll to: the scroll bar

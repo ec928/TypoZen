@@ -3945,6 +3945,33 @@
             try { updatePageScrubber(); } catch (eS) {}
             const host = document.getElementById('page-indicator');
             if (!host) return;
+            // A PDF in Pages mode numbers its own pages here, as a book does. The hidden
+            // document behind it kept its numbers showing instead ("1" and "2 / 2" over page
+            // 447 of 460, Ed, 2026-09-30); clicking already went to the PDF's Go to Page.
+            if (window.tzPdfActive) {
+                const p = (typeof window.tzPdfPaging === 'function') ? window.tzPdfPaging() : null;
+                if (!p) { host.style.display = 'none'; return; }
+                const two = !!p.spread;
+                // Spreads start on odd pages (SpreadMode.ODD): 1-2, 3-4, ...
+                const left = two ? (p.page % 2 ? p.page : p.page - 1) : p.page;
+                const right = Math.min(left + 1, p.pages);
+                host.style.display = 'flex';
+                host.classList.toggle('two-up', two);
+                host.title = 'Click to go to page';
+                host.setAttribute('role', 'button');
+                host.innerHTML = two && right > left
+                    ? '<span class="page-num">' + left + '</span><span class="page-num">' + right + ' / ' + p.pages + '</span>'
+                    : '<span class="page-num">' + left + ' / ' + p.pages + '</span>';
+                if (!host.__tzGotoBound) {
+                    host.__tzGotoBound = true;
+                    host.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openGoToPageDialog();
+                    });
+                }
+                return;
+            }
             // Shown wherever the document is actually paginated, not only in Reader.
             // Preview + Pagination is a real paginated view, and hiding the numbers there
             // meant the one mode being tested was the one with no way to see the page state.

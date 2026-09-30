@@ -100,8 +100,14 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     "quick". Spaces are now kept as typed (keepTypedSpaces, parseInline draws a leading
     space or a run of spaces as no-break spaces, and a one-line cut writes the clipboard as
     Copy does).
-  - PDF in Pages mode: the page scrubber now works there, the scroll bar that did nothing
-    is hidden while the page is fitted, and the status bar's "Page x/y" opens Go to Page.
+  - PDF in Pages mode: the page scrubber now works there, and the scroll bar that did
+    nothing is hidden while the page is fitted (0.11.3). The corner page indicator numbers
+    the PDF's own pages (it showed the hidden document's "1 | 2 / 2") and opens Go to Page;
+    the status-bar click added in 0.11.3 was taken out again as redundant (Ed). A fitted
+    spread was ~14 px taller than the view -- PDF.js's page frame is a 9 px border its
+    page-fit does not budget for -- so one route to a page showed the frame and another
+    cut it off; Pages mode now draws the page without the frame, and nothing scrolls
+    (checked at 640-820 px high, 100/125/156% scaling). 0.11.5.
 - **Not a report:** a "~5 s jank opening a medium document" was listed here from a perf log
   read during the 2026-09-29 audit -- inferred by the assistant, never seen by Ed, and not
   reproducible on 0.11.0 (one 130 ms frame on a 106 KB file). Closed.

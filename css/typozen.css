@@ -2267,6 +2267,15 @@
         /* Pages mode, fitted: nothing to scroll to, so no scroll bar pretending otherwise --
            the page scrubber along the bottom moves through the PDF (10-pdf.js). */
         #pdfView.tz-pdf-pages-fitted { scrollbar-width: none; }
+        /* And no page frame there. PDF.js draws each page's shadow frame in a 9px border
+           that its page-fit does not budget for, so a fitted spread was ~14px taller than
+           the view: a page turn by one route sat at the top with the frame showing, by
+           another scrolled 10px with the frame's top cut off (Ed, 2026-09-30). Without the
+           border the page is its drawing, which fits, and nothing can scroll. */
+        #pdfView.tz-pdf-pages-fitted .pdfViewer .page {
+            border-width: 0 !important;
+            border-image: none !important;
+        }
         /* PDF.js is built for the browser's default content-box, and sets border-box itself
            only where it wants it (pdf_viewer.css, loaded after this file, so it still wins).
            This file's opening "* { box-sizing: border-box }" put each page's 9px border
