@@ -86,7 +86,7 @@ A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing download
 
 - **Real text:** select and copy it; **Find** (`Ctrl+F`) and the **Search** sidebar work across every page, with hits listed by page.
 - **The PDF's own outline** fills the sidebar; click an entry to turn to it. **Go to Page** works as it does for books.
-- **The view buttons apply:** **2 Columns** shows a two-page spread; **Pages** shows one page at a time (wheel and arrow keys turn it). `Ctrl`+wheel zooms and redraws the page sharp; Reset Zoom (`Ctrl+0`) returns to the fit, and the status bar says so ("99% (fit)") while the page is fitted to the window.
+- **The view buttons apply:** **2 Columns** shows a two-page spread; **Pages** shows one page at a time (wheel and arrow keys turn it), fitted to the window with no scroll bar, and the **scrubber** at the foot seeks through the PDF's pages. The corner page indicator shows the PDF's own page numbers (both pages of a spread); click it for Go to Page. Source and Preview do not apply to a PDF and are greyed. `Ctrl`+wheel zooms and redraws the page sharp; Reset Zoom (`Ctrl+0`) returns to the fit, and the status bar says so ("99% (fit)") while the page is fitted to the window.
 - **Your place is remembered** and the PDF reopens on the page you left. Each PDF tab also keeps its own **2 Columns** and **Pages** setting, across restarts.
 - **View → PDF Pages in Theme Colours** redraws pages in the theme's colours. It is off by default because it recolours pictures too.
 - The status bar shows the PDF's word count and **Page N/M**.
@@ -318,6 +318,9 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
   - A plain click still places the caret — this is an editor, and link text has to stay editable. `Ctrl+click` opens directly.
 - Table insert
 - **Tab types a tab**, in Preview and Source, as in Notepad; `Shift+Tab` takes one back. On a list item Tab nests the list instead, and in a table it moves between cells. A run of tabs wraps onto the next line like any other space, and a tab is saved as a tab
+- **Spaces are kept as typed** in Preview as in Source -- a double space, a space at the start of a line, a space or tab at the end of one -- and each is its own step for Undo
+- **A clicked picture is removed only by a deliberate `Delete`, `Backspace` or Cut.** Typing, Space, Tab, paste and bold/italic do nothing to it; `Enter` adds a line after it
+- **Undo** puts the caret back where the change was and leaves the view (Source or Preview) as it is
 - **Insert** switches between inserting and overwriting, in both views; the caret turns into a block while overwriting, and overwriting stops at the end of the line rather than running into the next
 - Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
 - Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps. Grouped in View with Line Spacing and Paragraph Spacing, because all three set the shape of the text block
@@ -342,7 +345,7 @@ Full multi-document editing, with the tab strip living in the title bar.
 - **Scroll arrows** appear only when the strip overflows, and the active tab is always scrolled into view
 - **Per-tab unsaved indicator**, tracked independently of every other tab
 - **Per-tab file fidelity** — each tab remembers its file's line-ending style (LF / CRLF) and whether it ended with a trailing newline, so saving one document never quietly rewrites the whole file's line endings
-- **Per-tab view** — 1-Col / 2-Col **and** Source / Preview belong to the document, not the window: a novel wants a two-column spread and the notes file in the next tab does not. Both are recorded per tab and restored with the session. Only a deliberate choice is written down — the toolbar column button, the Mode buttons, or the session file. What the page happens to be painting mid-load never is, because a book's first paint is one column until its layout arrives and storing that would forget the spread
+- **Per-tab view** — 1-Col / 2-Col **and** Source / Preview belong to the document, not the window: a novel wants a two-column spread and the notes file in the next tab does not. Both are recorded per tab and restored with the session. Only a deliberate choice is written down — the toolbar column button, the Mode buttons, or the session file. What the page happens to be painting mid-load never is, because a book's first paint is one column until its layout arrives and storing that would forget the spread. Switching between them keeps the window's top-left corner where you put it and only widens or narrows the window to the right; each layout remembers its own size, and one that would run off the screen moves in only as far as it has to
 - **Fail-closed switching** — if the editor's content cannot be synced back to the tab, the switch or new-tab operation is _refused_ rather than proceeding and risking unsaved edits
 - **Session restore** reopens your tabs on next launch (bodies only if you've enabled unsaved-document restore under File → Privacy)
 

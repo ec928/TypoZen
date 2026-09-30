@@ -52,18 +52,17 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.10 submission (the Store was on 0.9.6)._
+_Limit 1,500 characters. For the 0.11.9 submission (the Store was on 0.10.10)._
 
-- Each kind of document keeps its own look: ePubs, documents and code each remember their own theme, text size, spacing and margins, and PDFs their own theme.
-- ZenMode hides the whole interface, window buttons included, until you move to the top of the window.
-- Spelling underlines long paragraphs far faster: each word is checked once, not every paragraph again.
-- Switching tabs is much faster, and dragging a tab past the end of a full strip scrolls it.
-- TypoZen appears under Open with for code files and PDFs.
-- Two-page spreads keep your place when you change the theme or text size.
-- Preview keeps the indentation of code files.
-- Print and Export PDF print the whole document, with page numbers and named after it. They printed only the first page before.
-- Project Gutenberg books read paragraph by paragraph: read aloud, bookmarks and search no longer jump by whole chapters.
-- Editing large documents in two columns responds far faster.
+- Tab types a tab, as in Notepad, and Shift+Tab takes one back. Insert switches to overwrite.
+- Spaces are kept exactly as typed, and every edit, even a single space or tab, can be undone. Undo puts the caret back where the change was.
+- Bold, lists, deleting, undo and redo keep the page still instead of jumping.
+- A picture is removed only by Delete, Backspace or Cut; typing or pasting over it no longer deletes it.
+- Print and Export PDF print long documents and whole books.
+- PDFs in Pages mode: the scrubber moves through the PDF, the page indicator shows its page numbers and opens Go to Page, and a spread fits the window exactly.
+- Switching between one and two columns widens the window in place instead of moving it.
+- Book pictures show on scaled displays, and covers keep their shape.
+- Faster startup, and large documents open faster in two columns.
 
 ---
 
@@ -74,9 +73,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX, version above 0.9.6.0; the 0.9.6 package removed from the submission |
+| 2 | Packages | the newest MSIX (0.11.9.0 for the 0.11.9 submission); the previous package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. For 0.11.9 only **What's new** changes; the rest was synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |

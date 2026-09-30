@@ -62,11 +62,21 @@ console.log('=== no ad-hoc * 2 outside the helper (display sites) ===');
 {
     // updatePageIndicator / showBubble must call the helper, not reimplement * 2.
     assert(src.indexOf('pageDisplayFromSpread') >= 0, 'helper present');
-    const ind = src.indexOf('function updatePageIndicator');
-    const indBody = ind >= 0 ? src.slice(ind, ind + 2500) : '';
+    // The whole function, by matching braces. A fixed-length slice broke when a PDF branch
+    // was added at the top of each (0.11.3/0.11.5) and pushed the helper call past it.
+    const bodyOf = (name) => {
+        const at = src.indexOf('function ' + name);
+        if (at < 0) return '';
+        let i = src.indexOf('{', at), depth = 0;
+        for (let j = i; j < src.length; j++) {
+            if (src[j] === '{') depth++;
+            else if (src[j] === '}' && --depth === 0) return src.slice(at, j + 1);
+        }
+        return src.slice(at);
+    };
+    const indBody = bodyOf('updatePageIndicator');
     assert(indBody.indexOf('pageDisplayFromSpread') >= 0, 'updatePageIndicator uses helper');
-    const bub = src.indexOf('function showBubble');
-    const bubBody = bub >= 0 ? src.slice(bub, bub + 800) : '';
+    const bubBody = bodyOf('showBubble');
     assert(bubBody.indexOf('pageDisplayFromSpread') >= 0, 'scrubber bubble uses helper');
 }
 

@@ -28,7 +28,7 @@ One version number, one gate, one deploy target. In order:
 | Zip | `Compress-Archive -Path dist\* …` | archive it; shipped zips are never deleted |
 | Release | `gh release create vX.Y.Z <zip> <setup.exe> --notes-file …` | |
 
-**Do not skip the gate to save time.** It is 58 headless suites and takes seconds; it is
+**Do not skip the gate to save time.** It is 75 headless suites and takes about seven minutes; it is
 not what makes a release slow.
 
 **`bin/` is staging, not disposable.** It exists so a build can be proven before it
@@ -132,7 +132,7 @@ must not be shipped; a zip containing it is shipping a stale artefact.
 
 Two tiers, and the distinction matters more than the count.
 
-**The gate** — 58 suites, headless, invisible, seconds. Runs inside `Build_TypoZen.ps1`.
+**The gate** — 75 suites, headless, invisible, about seven minutes (422 s on 2026-09-30). Runs inside `Build_TypoZen.ps1`.
 Everything that can be tested this way should be.
 
 **The app tier** — `tests/*-app.mjs`, run with `RUN_APP_E2E=1`. These launch the real
