@@ -138,16 +138,15 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     re-sent the theme; margins were saved by a round trip that could file them under the
     wrong type; font-size changes read the reader's place after re-breaking the lines.
     Guarded by tab-switch-look-app (8 of its first 9 checks failed on 0.11.10).
-  - Book open (0.11.12): a book reopened in the same session keeps the text-size factor it
-    settled on (normaliseBookTextSize) and trusts it on its first mount, instead of
-    clearing, re-measuring and re-applying the stylesheet on every open; the book's plain
-    text (saved baseline and word count) is built after the first paint. Median of three,
-    Markdown tab -> book, on screen / page free: Alice 336 -> 196 / 861 -> 469 ms;
-    Pride and Prejudice 437 -> 288 / 938 -> 653; Dune 432 -> 272 / 953 -> 702; Nemesis Games
-    431 -> 288 / 923 -> 658; Matter 569 -> 252 / 868 -> 616; Xeelee omnibus 1206 -> 616 /
-    1539 -> 1706 (the omnibus shows 0.6 s sooner but its 0.6 s text build now runs after).
-    Still open: the floor is laying out the first 800-paragraph range (150-370 ms), and the
-    editor's ResizeObserver re-lays it out once or twice after load (150-200 ms each).
+  - Book open (0.11.13; 0.11.12 withdrawn): spike metric Xeelee omnibus, cold start, page
+    ready -- ~1.89 s -> ~1.1-1.2 s. The book's whole text (saved baseline, word count) was one
+    0.7 s block in the load; it is now built in idle slices with the word count counted as it
+    goes. Cold on the other five books unchanged within run-to-run spread (Alice checked
+    three times after one outlier run). 0.11.12's per-book text-size factor, a narrowed
+    tz-instant selector and resizing the window before a book is laid out were all tried and
+    dropped: each made some cold open slower (Ed: no cold start may be slower than before).
+    Still open: laying out the first 800-paragraph range (150-370 ms); the window widening
+    after a one-column -> two-column switch lays the range out a second time.
 - **Not a report:** a "~5 s jank opening a medium document" was listed here from a perf log
   read during the 2026-09-29 audit -- inferred by the assistant, never seen by Ed, and not
   reproducible on 0.11.0 (one 130 ms frame on a 106 KB file). Closed.

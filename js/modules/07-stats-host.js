@@ -129,7 +129,14 @@
             // Approx words ≈ non-space runs via a lighter path; exact enough for the status bar.
             let words;
             let lines;
-            if (chars >= LARGE_DOC_CHARS) {
+            // Counted already, a slice at a time, by whoever built this text (a book's idle
+            // text build, 06-render-epub.js) -- by the same rule as the large-document count
+            // below, so the figure is identical; only the one-pass scan of megabytes is saved.
+            const pre = opts && opts.precount;
+            if (pre && pre.chars === chars && chars >= LARGE_DOC_CHARS) {
+                words = pre.words;
+                lines = chars === 0 ? 1 : pre.lines;
+            } else if (chars >= LARGE_DOC_CHARS) {
                 let wc = 0;
                 let inWord = false;
                 let lc = 1;

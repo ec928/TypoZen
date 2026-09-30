@@ -990,6 +990,7 @@
                         if (!isFinite(resumeAt)) resumeAt = -1;
                     }
                     const url = spec;
+                    const bookGen = window.__docGen;
                     window._isFetching = true;
                     fetch(url, { cache: 'no-store' })
                         .then(function (r) {
@@ -998,6 +999,9 @@
                         })
                         .then(function (json) {
                             window._isFetching = false;
+                            // Another document was sent while this one was on its way: it
+                            // is not what the tab shows any more.
+                            if (window.__docGen !== bookGen) return;
                             const ok = loadBookPayload(json, resumeAt);
                             if (!ok) { try { takePendingViewProfile(true); } catch (eVp) {} }
                             if (ok && resumeAt > 0 && resumeAt < DocumentModel.blocks.length) {
