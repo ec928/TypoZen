@@ -1978,6 +1978,13 @@
 
             // Inline marks (bold / italic / code / link) — selection-accurate, not whole-block
             if (type === 'bold' || type === 'italic' || type === 'code' || type === 'link' || type === 'strike') {
+                // A picture alone has no text to mark: Ctrl+B on a clicked picture wrapped its
+                // Markdown in ** -- no visible change, and the tab went Unsaved (2026-09-30).
+                try {
+                    const s0 = window.getSelection();
+                    if (typeof selectionHoldsPicture === 'function' && selectionHoldsPicture()
+                        && s0 && !String(s0.toString() || '').trim()) return;
+                } catch (ePic) {}
                 if (tryApplyInlineFormat(type)) return;
                 // Fall through to whole-block wrap only if no usable selection
             }
@@ -2873,7 +2880,7 @@
                         // which is the natural anchor for an undo.
                         let _editCaret = null;
                         try { _editCaret = this._caretOf(current); } catch (eC) {}
-                        this.restore(prevStr, _editCaret);
+                        this.restore(prevStr, _editCaret, 'undo');
 
                         // Resync top to live serialize so the next Ctrl+Z is not a no-op
                         try {
@@ -2915,7 +2922,7 @@
                     const nextStr = this.redoStack.pop();
                     this.undoStack.push(nextStr);
                     this._trimStacks();
-                    this.restore(nextStr);
+                    this.restore(nextStr, undefined, 'redo');
                     try {
                         const actual = getMarkdownContent();
                         const top = this.undoStack[this.undoStack.length - 1];
@@ -2938,7 +2945,34 @@
                 }
             },
 
-            restore(stateStr, caretOverride) {
+            /**
+             * The caret at the change undo or redo just made, as Notepad puts it: at the end of
+             * what changed, in the text as it now reads. _restoreCaret alone
+             * left it at the start of the line, so the next letter typed after a Ctrl+Z
+             * landed at column 0 (2026-09-30). Found by comparing the paragraph's text before
+             * and after the restore; a paragraph that was not on screen keeps _restoreCaret's.
+             */
+            _caretAtChange(blockIndex, beforeText, dir) {
+                try {
+                    if (beforeText == null || state.mode === 'source' || !editor) return;
+                    const block = editor.querySelector('.block[data-model-index="' + (blockIndex | 0) + '"]');
+                    if (!block) return;
+                    const now = block.textContent || '';
+                    // The matching tail first. Where both readings fit -- " very" out of "The
+                    // very quick" is also "very " -- this takes the one the typing made, whose
+                    // edge is the caret's side of the change.
+                    const max = Math.min(now.length, beforeText.length);
+                    let s = 0;
+                    while (s < max && now.charCodeAt(now.length - 1 - s) === beforeText.charCodeAt(beforeText.length - 1 - s)) s++;
+                    // The end of what changed in the text as it is now: after text that came
+                    // back (an undone Backspace, a redone typing), at the spot where text went
+                    // (an undone typing or Tab). One rule for undo and redo.
+                    const off = now.length - s;
+                    if (typeof setCaretAtOffset === 'function') setCaretAtOffset(block, off);
+                } catch (e) {}
+            },
+
+            restore(stateStr, caretOverride, dir) {
                 if (!stateStr) return;
                 try {
                     let data;
@@ -2951,7 +2985,7 @@
                     // wherever the restored state's own caret happened to be. It has to go
                     // through here: restore() schedules its caret work in a rAF, so a
                     // correction applied afterwards was overwritten a frame later.
-                    const caret = caretOverride
+                    let caret = caretOverride
                         || (data && data.caret ? data.caret : this._caretOf(stateStr));
                     // Where the edited paragraph sits on screen now, if it is on screen. The
                     // reload below loses the scroll position and _restoreCaret used to pin the
@@ -2959,30 +2993,40 @@
                     // it to the top of the window (Ed, 2026-09-29). Put it back where it was.
                     const va = (caret && caret.mode !== 'source') ? editViewAnchor([caret.blockIndex | 0]) : null;
                     const keepTop = va ? va.top : null;
+                    // The edited paragraph's text now, to find the change after (_caretAtChange).
+                    let beforeText = null;
+                    try {
+                        if (caret && caret.mode !== 'source' && editor) {
+                            const el0 = editor.querySelector('.block[data-model-index="' + (caret.blockIndex | 0) + '"]');
+                            if (el0) beforeText = el0.textContent || '';
+                        }
+                    } catch (eBt) {}
                     // Legacy: bare array of block strings
                     if (Array.isArray(data)) {
                         editor.innerHTML = '';
                         for (let i = 0; i < data.length; i++) createBlock(data[i]);
                         if (sourceEditor) sourceEditor.value = data.join('\n');
                     } else if (data && typeof data.content === 'string') {
-                        const wantSource = data.mode === 'source';
+                        // Undo changes the text, never the view. This used to put back the
+                        // mode the state was recorded in: a document opened in Preview and
+                        // edited in Source jumped back to Preview on the first Ctrl+Z, with
+                        // focus left on nothing, so the next letters typed went nowhere
+                        // (2026-09-30).
+                        const srcBefore = (state.mode === 'source' && sourceEditor) ? String(sourceEditor.value || '') : null;
                         // isRestoring already true from undo/redo — load must not resetToCurrent
                         loadMarkdownContent(data.content);
-                        if (wantSource && state.mode !== 'source') {
-                            sourceEditor.value = data.content;
-                            editor.style.display = 'none';
-                            sourceEditor.style.display = 'block';
-                            state.mode = 'source';
-                            postMsg('mode_changed:source');
-                            requestAnimationFrame(resizeSourceEditor);
-                        } else if (!wantSource && state.mode === 'source') {
-                            sourceEditor.style.display = 'none';
-                            editor.style.display = 'block';
-                            state.mode = 'wysiwyg';
-                            postMsg('mode_changed:wysiwyg');
-                        } else if (state.mode === 'source') {
+                        if (state.mode === 'source') {
                             sourceEditor.value = data.content;
                             requestAnimationFrame(resizeSourceEditor);
+                            // The caret at the end of what changed, as in Preview (_caretAtChange).
+                            if (srcBefore != null) {
+                                const now = String(sourceEditor.value || '');
+                                const max = Math.min(now.length, srcBefore.length);
+                                let s = 0;
+                                while (s < max && now.charCodeAt(now.length - 1 - s) === srcBefore.charCodeAt(srcBefore.length - 1 - s)) s++;
+                                const off = now.length - s;
+                                caret = { mode: 'source', start: off, end: off };
+                            }
                         }
                         // The branches above swap which element is visible and set
                         // state.mode, but that is only half a mode switch: the container's
@@ -3007,8 +3051,10 @@
                         // After loadMarkdownContent DOM is ready; rAF helps focus stick
                         requestAnimationFrame(function () {
                             self._restoreCaret(caret, keepTop);
+                            self._caretAtChange(caret.blockIndex, beforeText, dir);
                         });
                         this._restoreCaret(caret, keepTop);
+                        this._caretAtChange(caret.blockIndex, beforeText, dir);
                     } else if (state.mode !== 'source' && editor && editor.firstElementChild) {
                         currentActiveBlock = editor.firstElementChild;
                     }

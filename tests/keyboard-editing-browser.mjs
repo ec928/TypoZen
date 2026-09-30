@@ -205,6 +205,17 @@ try {
         await run(mode, 'Ctrl+Z undoes typing, Ctrl+Y redoes it', DOC, at('quick', 3, 2),
             async () => { await kb.type(' very'); await sleep(700); await chord(['Control'], 'z'); await sleep(300); await chord(['Control'], 'y'); await sleep(300); },
             DOC.replace('The quick', 'The very quick'));
+        // The caret comes back where the change was, as in Notepad: typing after a Ctrl+Z
+        // carries on there, not at the start of the line (2026-09-30).
+        await run(mode, 'after Ctrl+Z, typing carries on where the undone typing was', DOC, at('quick', 3, 2),
+            async () => { await kb.type(' very'); await sleep(700); await chord(['Control'], 'z'); await sleep(400); await kb.type('Q'); },
+            DOC.replace('The quick', 'TheQ quick'));
+        await run(mode, 'after Ctrl+Z of a Backspace, the caret is after the restored letter', DOC, at('quick', 9, 2),
+            async () => { await kb.press('Backspace'); await sleep(700); await chord(['Control'], 'z'); await sleep(400); await kb.type('Q'); },
+            DOC.replace('The quick', 'The quickQ'));
+        await run(mode, 'after Ctrl+Z of a Tab, typing carries on where the tab was', DOC, at('quick', 3, 2),
+            async () => { await kb.press('Tab'); await sleep(700); await chord(['Control'], 'z'); await sleep(400); await kb.type('Q'); },
+            DOC.replace('The quick', 'TheQ quick'));
         await run(mode, 'Ctrl+Z on its own undoes typing', DOC, at('quick', 3, 2),
             async () => { await kb.type(' very'); await sleep(700); await chord(['Control'], 'z'); await sleep(300); },
             DOC);
