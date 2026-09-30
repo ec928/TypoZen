@@ -2289,8 +2289,8 @@
             }
             if (!text) return;
 
-            // A pasted text never replaces a selected picture (keepSelectedPicture).
-            try { if (typeof keepSelectedPicture === 'function') keepSelectedPicture(); } catch (eKp) {}
+            // A paste over a selected picture does nothing (selectionHoldsPicture).
+            try { if (typeof selectionHoldsPicture === 'function' && selectionHoldsPicture()) return; } catch (eKp) {}
             // Pasting over a selection that spans lines: collapse it ourselves first, or
             // the insert lands in a leftover block and the lines never rejoin.
             const over = removeCrossBlockSelection();
@@ -2375,17 +2375,8 @@
             if (!sel || !sel.rangeCount || !sel.anchorNode || !editor.contains(sel.anchorNode)) return false;
             const a = getAncestorBlock(sel.anchorNode);
             if (!a || a !== getAncestorBlock(sel.focusNode)) return false;
-            // A clicked picture is a selection, and typing a tab replaced it: the picture
-            // vanished (Ed, 2026-09-30). Tab never deletes a picture or other embed -- it
-            // goes after the selection instead.
-            if (!sel.isCollapsed) {
-                try {
-                    const inSel = sel.getRangeAt(0).cloneContents();
-                    if (inSel.querySelector && inSel.querySelector('img, svg, video, audio, iframe, object, embed')) {
-                        sel.collapseToEnd();
-                    }
-                } catch (eSel) {}
-            }
+            // With a picture selected, Tab does nothing, as typing does (selectionHoldsPicture).
+            if (typeof selectionHoldsPicture === 'function' && selectionHoldsPicture()) return false;
             if (outdent) {
                 if (!sel.isCollapsed) return false;
                 const n = sel.anchorNode, o = sel.anchorOffset;
@@ -2413,30 +2404,39 @@
         }
 
         /**
-         * A selection holding a picture (or other embed) is not replaced by typing or a
-         * paste: a clicked picture is selected, and a letter or a space deleted it. Only a
-         * deliberate Delete, Backspace or Cut removes a picture (Ed, 2026-09-30). The typing
-         * goes after the selection instead. Tab does the same (typeTabAtCaret).
+         * Is a picture (or other embed) selected? A clicked picture is a selection, and
+         * typing over it first deleted it, then (0.11.4) put the letters after it -- on the
+         * picture's own Markdown line, easy to miss under a large picture, while the tab went
+         * "Unsaved" for no visible change (Ed, 2026-09-30). One rule now: with a picture
+         * selected, typing, Space, Tab and paste do nothing. Delete, Backspace and Cut remove
+         * it (deliberately); Enter adds a line after it.
          */
-        function keepSelectedPicture() {
+        function selectionHoldsPicture() {
             try {
                 const sel = window.getSelection();
                 if (!sel || sel.isCollapsed || !sel.rangeCount || !editor.contains(sel.anchorNode)) return false;
                 const inSel = sel.getRangeAt(0).cloneContents();
-                if (inSel.querySelector && inSel.querySelector('img, svg, video, audio, iframe, object, embed')) {
-                    sel.collapseToEnd();
-                    return true;
-                }
+                return !!(inSel.querySelector && inSel.querySelector('img, svg, video, audio, iframe, object, embed'));
             } catch (e) {}
             return false;
         }
-        window.keepSelectedPicture = keepSelectedPicture;
+        window.selectionHoldsPicture = selectionHoldsPicture;
 
         if (typeof editor !== 'undefined' && editor) {
             editor.addEventListener('keydown', function onEditorKeepPicture(e) {
                 if (state.mode === 'source') return;
                 if (e.ctrlKey || e.metaKey || e.altKey || !e.key || e.key.length !== 1) return;
-                keepSelectedPicture();
+                if (!selectionHoldsPicture()) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            }, true);
+            // IME and other input that bypasses keydown: the same rule at beforeinput.
+            editor.addEventListener('beforeinput', function onEditorKeepPictureInput(e) {
+                if (state.mode === 'source') return;
+                if (e.inputType !== 'insertText' && e.inputType !== 'insertCompositionText'
+                    && e.inputType !== 'insertReplacementText') return;
+                if (selectionHoldsPicture()) e.preventDefault();
             }, true);
             editor.addEventListener('keydown', function onEditorOverwriteKey(e) {
                 if (!window.tzOverwrite || state.mode === 'source') return;

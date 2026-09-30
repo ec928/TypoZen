@@ -131,7 +131,7 @@ try {
     await page.keyboard.press('Tab');
     await sleep(300);
     assert(picSelected, 'control: clicking the picture selects it');
-    assert((await md()).includes('![shot](data:image/png'), 'Tab does not delete the selected picture');
+    assert((await md()) === 'above\n\n![shot](' + PNG + ')\n\nbelow', 'Tab on a selected picture changes nothing');
 
     // Nor does typing or pasting: a picture goes only by a deliberate Delete, Backspace or
     // Cut (Ed, 2026-09-30). The text goes after it.
@@ -149,9 +149,11 @@ try {
         if (label.startsWith('a paste')) await page.evaluate(() => navigator.clipboard.writeText('pasted'));
         await act();
         await sleep(300);
-        const kept = (await md()).includes('![shot](data:image/png');
+        const now = await md();
+        const kept = now.includes('![shot](data:image/png');
         if (label.startsWith('Delete')) assert(!kept, label);
-        else assert(kept, label + ' over the selected picture keeps it');
+        else assert(now === 'above\n\n![shot](' + PNG + ')\n\nbelow',
+            label + ' on a selected picture changes nothing -- the picture stays and the document is as it was');
     }
 
     console.log('\n=== Preview: a tab in a file that is opened ===');

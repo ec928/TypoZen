@@ -93,8 +93,10 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     into the main page and the native-tab lock no longer caught them. Locked now, and the
     click and the page's own mode commands are ignored on a PDF.
   - Tab on a clicked picture deleted it (typed over the selection), and so did a letter,
-    Space or a paste. A picture now goes only by a deliberate Delete, Backspace or Cut (Ed);
-    anything typed or pasted goes after it (keepSelectedPicture, 0.11.4).
+    Space or a paste. 0.11.4 put the typing after the picture instead -- on the picture's
+    own Markdown line, easy to miss, with the tab marked Unsaved for no visible change (Ed).
+    0.11.6: with a picture selected, typing, Space, Tab and paste do nothing; Delete,
+    Backspace and Cut remove it; Enter adds a line after it (selectionHoldsPicture).
   - Preview lost spaces: Enter just before a space dropped it, a typed double space saved
     as one, and a single-line cut left its HTML unmarked so a pasted "quick " came back
     "quick". Spaces are now kept as typed (keepTypedSpaces, parseInline draws a leading
