@@ -59,6 +59,22 @@ Get-ChildItem $bin -Force | Where-Object {
     }
 }
 
+# The package must hold nothing the portable build does not. bin\ used to only ever gain
+# files, so the 0.11.9 package carried 14.5 MB of fonts, scripts and build tools that had
+# long left the source -- and nothing noticed, because the app never reads them. dist\ is
+# assembled fresh from source each time; when it holds this same exe, it is the reference.
+$dist = Join-Path $root 'dist'
+$distExe = Join-Path $dist 'TypoZen.exe'
+if ((Test-Path $distExe) -and ((Get-FileHash $distExe).Hash -eq (Get-FileHash (Join-Path $bin 'TypoZen.exe')).Hash)) {
+    $extra = @(Get-ChildItem $stage -Recurse -File | ForEach-Object { $_.FullName.Substring($stage.Length + 1) } |
+        Where-Object { -not (Test-Path (Join-Path $dist $_)) })
+    if ($extra.Count) {
+        throw ("The package would hold {0} file(s) the portable build does not -- stale files in bin\?`n  " -f $extra.Count) + ($extra -join "`n  ")
+    }
+} else {
+    Write-Host "  (dist\ does not hold this exe; the stale-file check was skipped. Run Build-Portable.ps1 first.)" -ForegroundColor Yellow
+}
+
 # ---- Store assets ----------------------------------------------------------------------
 # Drawn at each target size rather than rescaled from the .ico: the mark carries a stroked
 # arc and a text shadow, both of which smear when a 44px tile is resampled from 256px.

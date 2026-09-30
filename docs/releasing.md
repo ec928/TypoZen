@@ -120,6 +120,15 @@ appeared to do nothing because it never reached the running app.
   from the project root, so the Store package and the portable zip could ship different
   bytes of the same file.
 
+- The opposite failure: staging only ever **added**. `css/`, `js/` and `fonts/` were copied
+  over the top of `bin/`, so a file removed from source stayed there for good, and
+  `Build-Msix.ps1` packs `bin/` whole. The 0.11.9 package was 32 MB where the zip was
+  17.5: the Merriweather TTFs the woff2 subsets had replaced, stale `fonts/fonts`,
+  `js/js` and `css/css` copies, and every build script in `tools/`. The app never read
+  them, so nothing failed. Staging now replaces each asset folder, and `Build-Msix.ps1`
+  refuses to pack a file that the portable build (`dist/`, assembled fresh) does not have.
+  0.11.10 is 0.11.9 rebuilt with a clean 17.8 MB package, for the Store.
+
 If you add a runtime asset directory add it to `$assetDirs`, and a root-level file that
 ships to `$assetFiles`. Do not copy either by hand.
 

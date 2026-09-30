@@ -314,10 +314,25 @@ if (Test-Path (Join-Path $appDir "TypoZen.pdb")) {
 # fonts/ is in this list for the same reason: it was populated by hand, so anything
 # added to it -- a face, or the OFL licence text that has to travel with these faces --
 # reached the app and the MSIX only if someone remembered to copy it across.
+#
+# Each folder is REPLACED, not copied over. Copying over the top only ever added: a file
+# removed from source stayed in bin\ for good, and Build-Msix.ps1 packs bin\ whole. The
+# 0.11.9 MSIX carried 14.5 MB the zip did not -- the Merriweather TTFs the woff2 subsets
+# replaced, stale fonts\fonts, js\js and css\css copies from a hand copy on 2026-09-21,
+# and every build script in tools\. bin\ itself is kept; only these folders are rebuilt.
 $assetDirs = @("css", "js", "fonts")
 foreach ($d in $assetDirs) {
     $src = Join-Path $appDir $d
-    if (Test-Path $src) { Copy-Item $src -Destination $binDir -Recurse -Force }
+    $dst = Join-Path $binDir $d
+    if (Test-Path $src) {
+        if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
+        Copy-Item $src -Destination $binDir -Recurse -Force
+    }
+}
+# tools\ in bin\ holds only the narration sidecar (below); anything else there is a stray.
+$binTools = Join-Path $binDir "tools"
+if (Test-Path $binTools) {
+    Get-ChildItem $binTools -Force | Where-Object { $_.Name -ne 'qwen-narrator' } | Remove-Item -Recurse -Force
 }
 # The same argument as $assetDirs, for the files that sit at the project root. These
 # were populated in bin\ by hand once and never refreshed, so bin\ silently drifted from
