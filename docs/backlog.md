@@ -175,6 +175,12 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     its markup length plus 200 per paragraph instead of its paragraph count. Chosen on one
     book at one window size, averaged over the book rather than judged at the start where it
     is first seen; at Ed's window it was no better.
+  - Scrubber to the end (0.11.19; Ed): dragging to the end of the Gutenberg Alice
+    (alices-adventures-in-wonderland3.epub) stopped at 162 / 180 every time; PageDown still
+    reached the end. The drag went to the page holding the last block, and that book's last
+    block is the whole licence, 11 pages long. It now lands on the last character of that
+    block. Guarded by scrub-to-end-app (a real mouse drag; fails on 0.11.18). Other callers
+    that jump to a block (outline, search, resume, speech) want its start and are unchanged.
   - Page numbers (0.11.18; Ed's design): on the Xeelee omnibus the last page read 6186, 6600,
     8262 and 8188 on different visits at one window size. Every range not laid out was
     re-estimated each time a new one was, so the whole book's numbers moved together. Books

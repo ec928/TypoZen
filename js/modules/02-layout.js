@@ -4138,8 +4138,8 @@
                     // Chasing count()-1 chased a number that moved underneath the chase:
                     // each arrival measured another range, the total changed, and three
                     // attempts still stopped 126 blocks short of the end of the 45,486-block
-                    // omnibus. Asking for the page holding the last block needs no estimate
-                    // and cannot be short, because that page is the last page by definition.
+                    // omnibus. Asking for the page holding the last block's last character
+                    // needs no estimate and cannot be short.
                     let landed = false;
                     try {
                         const lastBlock = (typeof DocumentModel !== 'undefined'
@@ -4147,6 +4147,9 @@
                             ? DocumentModel.blocks.length - 1 : -1;
                         if (lastBlock >= 0 && typeof goToPageHoldingBlock === 'function') {
                             goToPageHoldingBlock(lastBlock);
+                            // Its last character, not its first line: a last block can
+                            // span pages (holdBlockEndForCurrentGoto).
+                            holdBlockEndForCurrentGoto();
                             landed = true;
                         }
                     } catch (eEnd) {}
@@ -5831,8 +5834,42 @@
         function holdTextForCurrentGoto(pos) {
             _gotoText = (pos && pos.node) ? { gen: _gotoBlockGen, node: pos.node, offset: pos.offset | 0 } : null;
         }
-        function gotoTextRange(gen) {
+        /**
+         * Land this jump on the LAST character of its block rather than its first line. For the
+         * end of the book: the page holding the last block is only the last page when that block
+         * fits on one. Alice (Project Gutenberg) ends in one block holding the whole licence, 11
+         * pages long, so dragging the scrubber to the end stopped on page 97 of 108 -- where the
+         * licence starts (Ed, 2026-09-30). Resolved when the jump measures, since the block may
+         * not be mounted when it is asked for.
+         */
+        function holdBlockEndForCurrentGoto() {
+            _gotoText = { gen: _gotoBlockGen, end: true };
+        }
+        function lastCharRangeOfBlock(block) {
+            const el = elementForModelIndex(block);
+            if (!el) return null;
+            const nodes = [];
+            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+            for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n);
+            // Last visible character: whitespace between elements has no box to measure.
+            for (let k = nodes.length - 1; k >= 0; k--) {
+                const s = nodes[k].nodeValue || '';
+                for (let i = s.length - 1; i >= 0; i--) {
+                    if (/\S/.test(s[i])) {
+                        const r = document.createRange();
+                        r.setStart(nodes[k], i);
+                        r.setEnd(nodes[k], i + 1);
+                        return r;
+                    }
+                }
+            }
+            return null;
+        }
+        function gotoTextRange(gen, block) {
             const t = _gotoText;
+            if (t && t.end && t.gen === gen) {
+                try { return lastCharRangeOfBlock(block); } catch (eE) { return null; }
+            }
             if (!t || t.gen !== gen || !t.node || !t.node.isConnected) return null;
             try {
                 const len = (t.node.nodeValue || '').length;
@@ -5930,7 +5967,7 @@
                 // Locally there is nothing to disagree with.
                 // twoColPageOfElement only reads getBoundingClientRect, which a Range has
                 // too, so measuring the character uses exactly the page math below.
-                const textHere = gotoTextRange(gen);
+                const textHere = gotoTextRange(gen, anchorBlock);
                 if (pageWindowingActive()) {
                     const el = textHere || elementForModelIndex(anchorBlock);
                     const lp = twoColPageOfElement(el);
@@ -5970,7 +6007,7 @@
                         // Same generation, same target: only re-measure local page, do not
                         // start a brand-new multi-frame chain (that was the thrash fuel).
                         // Same target as the landing, or this re-lands on the block.
-                        const textThere = gotoTextRange(gen);
+                        const textThere = gotoTextRange(gen, anchorBlock);
                         if (pageWindowingActive()) {
                             const el2 = textThere || elementForModelIndex(anchorBlock);
                             if (el2) {
