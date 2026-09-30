@@ -117,6 +117,21 @@ try {
         'after them "scroll" is on screen and whole, not split as "s" + "croll" (' + JSON.stringify(wrapped) + ')');
     await page.setViewport({ width: 1200, height: 800 });
 
+    console.log('\n=== Preview: Tab on a clicked picture keeps the picture ===');
+    // Clicking a picture selects it, and a typed tab replaced the selection: the picture
+    // vanished (Ed, 2026-09-30).
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAeCAIAAADcj6HcAAAAKklEQVR42u3OMQ0AAAgDIN8/tHcW0BIE3rsFFBUVFRUVFRUVFRUVFRUVH+kxjwFfrr6mAAAAAElFTkSuQmCC';
+    await page.evaluate((p) => loadMarkdownContent('above\n\n![shot](' + p + ')\n\nbelow'), PNG);
+    await sleep(600);
+    const pic = await page.evaluate(() => { const b = editor.querySelector('img').getBoundingClientRect(); return { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 }; });
+    await page.mouse.click(pic.x, pic.y);
+    await sleep(200);
+    const picSelected = await page.evaluate(() => { const s = getSelection(); return !s.isCollapsed && s.getRangeAt(0).cloneContents().querySelectorAll('img').length === 1; });
+    await page.keyboard.press('Tab');
+    await sleep(300);
+    assert(picSelected, 'control: clicking the picture selects it');
+    assert((await md()).includes('![shot](data:image/png'), 'Tab does not delete the selected picture');
+
     console.log('\n=== Preview: a tab in a file that is opened ===');
     await page.evaluate((t) => loadMarkdownContent('a' + t + 'b\n\n' + t + 'indented'), TAB);
     await sleep(600);

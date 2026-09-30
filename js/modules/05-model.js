@@ -2363,6 +2363,17 @@
             if (!sel || !sel.rangeCount || !sel.anchorNode || !editor.contains(sel.anchorNode)) return false;
             const a = getAncestorBlock(sel.anchorNode);
             if (!a || a !== getAncestorBlock(sel.focusNode)) return false;
+            // A clicked picture is a selection, and typing a tab replaced it: the picture
+            // vanished (Ed, 2026-09-30). Tab never deletes a picture or other embed -- it
+            // goes after the selection instead.
+            if (!sel.isCollapsed) {
+                try {
+                    const inSel = sel.getRangeAt(0).cloneContents();
+                    if (inSel.querySelector && inSel.querySelector('img, svg, video, audio, iframe, object, embed')) {
+                        sel.collapseToEnd();
+                    }
+                } catch (eSel) {}
+            }
             if (outdent) {
                 if (!sel.isCollapsed) return false;
                 const n = sel.anchorNode, o = sel.anchorOffset;
