@@ -106,6 +106,13 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   now presses every everyday key in Preview, Source, a large document and 2-Col (68 checks);
   `tab-key-browser` covers Tab. Known: Enter just before a space drops that space in
   Preview, which cannot show a line's leading space; Source keeps it.
+- **Tabs wrap; Insert overwrites** (0.10.19, 2026-09-30). A run of typed tabs sat in
+  Chromium's `white-space:pre` span, which cannot wrap: past the right edge more Tabs
+  changed nothing on screen and the next word broke mid-word with its first letter hidden
+  ("croll marker row 107"; the text itself was intact). Tabs now wrap like any whitespace.
+  Insert toggles overwrite in Preview and Source, as in Notepad, with a block caret; it
+  never overwrites the end of a line. Known, harmless: while typing, Chromium nests each
+  new tab's span in the last (the saved text is right, and it flattens on re-render).
 
 - **Edits keep the view steady** (0.10.14-0.10.16, 2026-09-29/30). Edits that reload the
   document -- undo/redo; bold, italic, strikethrough, code, heading, quote and list across

@@ -2337,6 +2337,36 @@
             return document.execCommand('insertText', false, '\t');
         }
 
+        /**
+         * Overwrite mode (Insert key). Typing replaces the character after the caret
+         * instead of pushing it along; never the end of a line, so text cannot run into
+         * the next one. Preview: onEditorOverwriteKey below. Source: the inputHandler in
+         * 01a-source.js. Both read window.tzOverwrite.
+         */
+        window.tzOverwrite = false;
+        function tzSetOverwrite(on) {
+            window.tzOverwrite = !!on;
+            try { document.body.classList.toggle('tz-overwrite', window.tzOverwrite); } catch (e) {}
+        }
+
+        if (typeof editor !== 'undefined' && editor) {
+            editor.addEventListener('keydown', function onEditorOverwriteKey(e) {
+                if (!window.tzOverwrite || state.mode === 'source') return;
+                if (window.isComposing || e.isComposing || e.keyCode === 229) return;
+                if (e.ctrlKey || e.metaKey || e.altKey || !e.key || e.key.length !== 1) return;
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount || !sel.isCollapsed || !sel.anchorNode
+                    || !editor.contains(sel.anchorNode)) return;
+                const block = getAncestorBlock(sel.anchorNode);
+                if (!block || isCaretAtEndOfBlock(block)) return;
+                // Select the next character; the browser's own insert then replaces it.
+                sel.modify('extend', 'forward', 'character');
+                if (getAncestorBlock(sel.focusNode) !== block || /\n/.test(sel.toString())) {
+                    sel.collapseToStart();
+                }
+            }, true);
+        }
+
         // Alt reveals hidden chrome. The page is the ONLY component that sees this key
         // while the editor has focus: the WebView's HWND belongs to the browser process,
         // so it never reaches the host's message loop or WPF's KeyDown.
@@ -2397,6 +2427,16 @@
             if (isFindBarOpen()) {
                 const t = e.target;
                 if (t && (t.id === 'findInput' || (t.closest && t.closest('#findBar')))) return;
+            }
+            // Insert switches between inserting and overwriting, as in Notepad. One mode
+            // for both views; the caret turns into a block while overwriting.
+            if (e.key === 'Insert' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                const a = document.activeElement;
+                if (editor && a && (a === editor || editor.contains(a) || (a.closest && a.closest('.cm-editor')))) {
+                    e.preventDefault();
+                    tzSetOverwrite(!window.tzOverwrite);
+                    return;
+                }
             }
             // Tab: nested list indent (safe reload path only, never multi writeBlockRaw);
             // otherwise a tab character (typeTabAtCaret).

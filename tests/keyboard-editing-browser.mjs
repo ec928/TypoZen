@@ -102,7 +102,7 @@ try {
     }
 
     async function load(md, mode) {
-        await page.evaluate(() => { try { handleCommand('view_set:mode:preview'); } catch (e) {} });
+        await page.evaluate(() => { try { tzSetOverwrite(false); handleCommand('view_set:mode:preview'); } catch (e) {} });
         await page.evaluate((m) => loadMarkdownContent(m), md);
         await sleep(350);
         if (mode === 'source') {
@@ -236,6 +236,12 @@ try {
         await run(mode, 'Escape does not change the text', DOC, at('quick', 4, 2),
             async () => { await kb.press('Escape'); await kb.type('X'); },
             (g) => g.indexOf('X') >= 0 && g.replace('X', '') === DOC);
+        await run(mode, 'Insert: typing overwrites; Insert again: typing inserts', DOC, at('quick', 4, 2),
+            async () => { await kb.press('Insert'); await kb.type('slow'); await kb.press('Insert'); await kb.type('X'); },
+            DOC.replace('quick', 'slowXk'));
+        await run(mode, 'Overwrite stops at the end of the line', DOC, at('Last', 6, 4),
+            async () => { await kb.press('Insert'); await kb.type('ONGER'); },
+            DOC.replace('Last line', 'Last lONGER'));
         await run(mode, 'Space at the end of a line, then more words', DOC, at('Last', 9, 4),
             async () => { await kb.press('End'); await kb.type(' and more'); },
             DOC.replace('Last line', 'Last line and more'));

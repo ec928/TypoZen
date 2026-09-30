@@ -354,6 +354,16 @@
                             'aria-label': 'Source'
                         }),
                         CM.keymap.of(keys),
+                        // Overwrite mode (Insert; window.tzOverwrite, 05-model.js): a typed
+                        // character replaces the next one, never the end of the line.
+                        CM.EditorView.inputHandler.of((v, from, to, text) => {
+                            if (!window.tzOverwrite || from !== to || text.length !== 1) return false;
+                            const line = v.state.doc.lineAt(from);
+                            if (from >= line.to) return false;
+                            v.dispatch({ changes: { from, to: from + 1, insert: text },
+                                selection: { anchor: from + 1 }, scrollIntoView: true, userEvent: 'input.type' });
+                            return true;
+                        }),
                         language.of([]),
                         codePlugin,
                         listPlugin,

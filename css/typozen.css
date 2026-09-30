@@ -2639,7 +2639,14 @@
         }
 
 /* A typed tab (Tab outside a list) shows at its width, as in Notepad; plain text
-   rendering would collapse it to one space. Chromium's own inserted tab while
-   typing is a white-space:pre span, so both look the same. */
+   rendering would collapse it to one space. break-spaces, not pre: a run of tabs
+   wraps onto the next line like any whitespace. Under pre it could not wrap, so
+   tabs past the right edge vanished (more Tabs "stopped working") and the word after
+   them broke mid-word with its first letter off-screen (Ed, 2026-09-30). Chromium's
+   own span for a typed tab carries an inline white-space:pre, hence !important. */
 #editor { tab-size: 3em; }
-#editor .tz-tab { white-space: pre; }
+/* Overwrite mode (Insert key): a block caret, as editors show it. */
+body.tz-overwrite #editor,
+body.tz-overwrite .cm-content { caret-shape: block; }
+#editor .tz-tab,
+#editor .block span[style*="white-space"] { white-space: break-spaces !important; }

@@ -79,6 +79,44 @@ try {
     await sleep(400);
     assert((await md()) === '123456\n\n123456\n\nlast line', 'Ctrl+Z takes the typing back');
 
+    console.log('\n=== Preview: many tabs wrap like any whitespace ===');
+    // Chromium puts typed tabs in a white-space:pre span, which cannot wrap: past the
+    // right edge more Tabs changed nothing and the word after them broke mid-word with
+    // its first letter off-screen ("croll marker row 107", Ed, 2026-09-30).
+    await page.setViewport({ width: 800, height: 800 });
+    await page.evaluate(() => loadMarkdownContent('Line 107 of 4582 — scroll marker row 107\n\nnext line'));
+    await sleep(600);
+    const at107 = await page.evaluate(() => {
+        const el = editor.querySelector('.block[data-model-index="0"]');
+        const tn = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+        const k = tn.nodeValue.indexOf('scroll');
+        const r = document.createRange(); r.setStart(tn, k); r.setEnd(tn, k);
+        const b = r.getBoundingClientRect(); return { x: b.left + 1, y: b.top + b.height / 2 };
+    });
+    await page.mouse.click(at107.x, at107.y);
+    await sleep(150);
+    for (let i = 0; i < 24; i++) await page.keyboard.press('Tab');
+    await sleep(300);
+    const wrapped = await page.evaluate(() => {
+        const el = editor.querySelector('.block[data-model-index="0"]');
+        const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let n;
+        while ((n = tw.nextNode())) {
+            const k = n.nodeValue.indexOf('scroll');
+            if (k < 0) continue;
+            const r = document.createRange();
+            r.setStart(n, k); r.setEnd(n, k + 1); const s = r.getBoundingClientRect();
+            r.setStart(n, k + 1); r.setEnd(n, k + 2); const c = r.getBoundingClientRect();
+            const box = el.getBoundingClientRect();
+            return { onScreen: s.width > 0 && s.right <= box.right + 1, whole: Math.abs(s.top - c.top) < 2, lines: Math.round(box.height / s.height) };
+        }
+        return null;
+    });
+    assert((await md()).startsWith('Line 107 of 4582 — ' + TAB.repeat(24) + 'scroll'), 'all 24 tabs are in the text');
+    assert(wrapped && wrapped.onScreen && wrapped.whole,
+        'after them "scroll" is on screen and whole, not split as "s" + "croll" (' + JSON.stringify(wrapped) + ')');
+    await page.setViewport({ width: 1200, height: 800 });
+
     console.log('\n=== Preview: a tab in a file that is opened ===');
     await page.evaluate((t) => loadMarkdownContent('a' + t + 'b\n\n' + t + 'indented'), TAB);
     await sleep(600);
