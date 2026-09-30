@@ -102,6 +102,7 @@
             _bookTitleIndex = null;
             _bookPosLast = -1;
             _bookTextScaleK = 0;
+            _bookTrustDivisorOnce = false;
             if (_bookPosTimer) { clearTimeout(_bookPosTimer); _bookPosTimer = null; }
 
             // A different book is arriving: the scroller must start at the beginning.
@@ -127,21 +128,33 @@
             // divide the publisher's own numbers rather than numbers it divided before.
             _bookCssTexts = data.css || [];
             _bookCssDirs = data.cssDirs || [];
-            _bookEmDivisor = 1;
-            try { applyBookStyles(_bookCssTexts, data.assetsBase || ''); } catch (eS) {}
+            // A book seen before in this session opens with the text-size factor it settled
+            // on (normaliseBookTextSize), so it is laid out once at the right size. Measuring
+            // from scratch on every open cleared the correction, re-measured and re-applied the
+            // stylesheet, then ran three more passes after the book was on screen -- 0.45 to
+            // 0.6 s of relayout per open, most of it after the book appeared (2026-09-30).
+            const knownDivisor = _bookEmDivisorByBook[bookTextKey()];
+            _bookEmDivisor = knownDivisor > 0 ? knownDivisor : 1;
+            try { applyBookStyles(_bookCssTexts, data.assetsBase || '', knownDivisor > 0 ? knownDivisor : undefined); } catch (eS) {}
+            if (knownDivisor > 0 && editor) {
+                editor.style.fontSize = 'var(--fs, 16px)';
+                _bookTextScaleK = 1;
+            }
             try { applyBookLanguage(data.docs); } catch (eLang) {}
 
             DocumentModel.fromBookBlocks(split.blocks, toc);
             _contentCache = null;
-            // Immediately, not thirty lines further down.
+            // Immediately, not thirty lines further down: the Markdown text that was last
+            // saved must not survive as this document's baseline. A Markdown tab that had never
+            // been touched once came back marked unsaved, and closing offered to save the
+            // book's text over it.
             //
-            // Between the model becoming the book and lastSavedContent being told about it,
-            // the document is "different from what was last saved" -- which is what dirty
-            // means. Anything in that window that posts stats reports a dirty document, and
-            // the host applies that flag to whichever tab it currently thinks is active. A
-            // Markdown tab that had never been touched came back marked unsaved, and closing
-            // offered to save the book's text over it.
-            state.lastSavedContent = DocumentModel.toPlainText();
+            // Empty for now; the book's plain text is put here once the book is on screen
+            // (below, with the word count, which needs the same text). Every dirty check
+            // answers "clean" for a book outright (07-stats-host.js), and building the text
+            // here held the first paint: 8-80 ms on a novel, 0.7 s on a 45,000-paragraph
+            // omnibus (2026-09-30).
+            state.lastSavedContent = '';
 
             // A book is read-only and paginated: that is what it is, not a preference.
             // Going through the same commands a reader would use keeps one code path.
@@ -219,13 +232,31 @@
             }
 
             currentActiveBlock = editor.querySelector('.block');
-            // Theme-sized body text: run now and again after layout/fonts settle.
-            try { scheduleNormaliseBookTextSize(); } catch (eN) {}
+            // Theme-sized body text. First time this session: run now and again after
+            // layout/fonts settle. With the factor already known (applied above) the first
+            // mount is trusted: the pass mountPageChunk schedules is skipped once. Measuring
+            // again there moved the factor by a fraction of a percent, re-applied the
+            // stylesheet and set off a ~180 ms relayout -- 0.3 s of busy page after the book
+            // appeared, for a sub-1% size change (measured 2026-09-30). Later mounts, as the
+            // reader pages into new ranges, still refine it.
+            if (knownDivisor > 0) {
+                _bookTrustDivisorOnce = true;
+            } else {
+                try { scheduleNormaliseBookTextSize(); } catch (eN) {}
+            }
             // Page numbers and the scrubber, now rather than at the first page turn: a book
             // that has just opened is exactly when a reader looks for where they are.
             try { updatePageIndicator(); } catch (eP) {}
             try { updateOutline(); } catch (eO) {}
-            try { updateStatsNow(); } catch (eSt) {}
+            // The whole book's text -- the saved baseline and the word count both need it --
+            // after the first paint, not before. Built once; the count reads it from cache.
+            const loadedModel = DocumentModel.blocks;
+            afterFirstPaint(function () {
+                // Unless another document has replaced the book in the meantime.
+                if (DocumentModel.blocks !== loadedModel || DocumentModel.kind !== 'epub') return;
+                try { state.lastSavedContent = DocumentModel.toPlainText(); } catch (eLs) {}
+                try { updateStatsNow(); } catch (eSt) {}
+            });
             try { HistoryManager.clear(); } catch (eH) {}
             // Marks often arrive while the previous document is still in the model (host
             // sends marks_load with fetch_and_load_book). Markdown re-resolves at the end
@@ -962,6 +993,7 @@
                 editor.style.fontSize = 'var(--fs, 16px)';
             }
             _bookTextScaleK = 1;
+            rememberBookDivisor();
 
             // Within a hair of correct: leave it alone. Re-applying the stylesheet
             // re-fragments the whole multi-column flow, so a no-op pass is not free.
@@ -976,6 +1008,7 @@
             if (Math.abs(emFactor - _bookEmDivisor) < 0.005) return;
 
             _bookEmDivisor = emFactor;
+            rememberBookDivisor();
             try { applyBookStyles(_bookCssTexts, _bookAssetsBase, emFactor); } catch (eD) { return; }
             window.showDebugTelemetry('book text: body at ' + dominant + 'px against --fs=' +
                 themePx + 'px, declared sizes divided by ' + emFactor.toFixed(4));
@@ -991,9 +1024,32 @@
             } catch (ePg) {}
         }
 
+        // The factor each book settled on, this session, keyed by its extraction folder (the
+        // host part of the URL changes with Privacy Mode, the folder does not). In memory
+        // only: a book's first open after launch measures, as before.
+        const _bookEmDivisorByBook = {};
+        function bookTextKey() {
+            return String(_bookAssetsBase || '').replace(/^[a-z]+:\/\/[^\/]+\//i, '');
+        }
+        function rememberBookDivisor() {
+            const k = bookTextKey();
+            if (k && _bookEmDivisor > 0) _bookEmDivisorByBook[k] = _bookEmDivisor;
+        }
+
+        // Set by loadBookPayload when it applied a remembered factor: the next scheduled
+        // text-size pass (the one after the first mount) is skipped.
+        let _bookTrustDivisorOnce = false;
+
+        /** Run fn once the frame now being built has been painted. */
+        function afterFirstPaint(fn) {
+            if (typeof requestAnimationFrame !== 'function') { setTimeout(fn, 0); return; }
+            requestAnimationFrame(function () { setTimeout(fn, 0); });
+        }
+
         /** Schedule normalise after layout paints (fonts, multicol, page window). */
         function scheduleNormaliseBookTextSize() {
             if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') return;
+            if (_bookTrustDivisorOnce) { _bookTrustDivisorOnce = false; return; }
             // Once a factor is in place, one shot instead of three.
             //
             // This used to return outright, which is what made the first measurement final:
