@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.11.0";
+        internal const string AppVersion = "0.11.1";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -6133,6 +6133,13 @@ namespace TypoZen
                 // (same Mode control as Markdown — no separate "View Source" command).
                 if (selector == "mode" && HandleHtmlModeSegmentClick(value))
                     return;
+                // A PDF has one mode: reading it. Source and Preview sent the page a mode
+                // change, which closes the PDF -- it vanished behind an empty "Unsaved"
+                // document until the file was opened again (Ed, 2026-09-30). The segments are
+                // locked for a PDF too (RenderViewSelectors); this is the guard behind that.
+                if (selector == "mode" && _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    && _tabs[_activeTabIndex] != null && IsPdfTab(_tabs[_activeTabIndex]))
+                    return;
                 // Intentional view change for THIS tab (same bag as columns).
                 if (selector == "mode"
                     && _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
@@ -6253,10 +6260,15 @@ namespace TypoZen
             bool isNativeHtml = isNative && IsHtmlPath(_currentFilePath);
             bool isEngineHtml = !isNative && !isBook && IsHtmlPath(_currentFilePath);
             bool readOnlyDoc = isBook || isNative;
+            // A PDF is shown in the main page now (10-pdf.js), not as a native tab, so the
+            // isNative test above no longer catches it and Source/Preview stayed live on a
+            // PDF -- pressing either closed it. Locked like a book's.
+            bool isPdf = IsPdfPath(_currentFilePath)
+                || (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && IsPdfTab(_tabs[_activeTabIndex]));
             // HTML: Source always available; Preview always locked; Reader for render.
             // PDF/image/media: Source+Preview locked.
-            bool lockSource = readOnlyDoc && !isNativeHtml && !isEngineHtml;
-            bool lockPreview = isNative || isBook || isEngineHtml || isNativeHtml;
+            bool lockSource = (readOnlyDoc && !isNativeHtml && !isEngineHtml) || isPdf;
+            bool lockPreview = isNative || isBook || isEngineHtml || isNativeHtml || isPdf;
 
             if (_btnColumnToggle != null)
             {

@@ -1972,6 +1972,9 @@
             // about 1.2 s on a 74 KB file, most of the 1.7 s a switch into Source took. The
             // direct request enters Source through the same branch as Reader -> Source, so
             // there is one way into Source, not two to keep in step.
+            // A PDF has one mode. Switching the editor underneath it left the PDF hidden
+            // behind an empty document, with no way back but reopening (Ed, 2026-09-30).
+            if ((cmd === "toggle_mode" || cmd === "mode_to_source") && window.tzPdfActive) return;
             if (cmd === "toggle_mode" || cmd === "mode_to_source") {
                 const directToSource = cmd === "mode_to_source";
                 if (directToSource && state.mode === 'source') return;

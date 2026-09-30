@@ -134,6 +134,30 @@ try {
     await book.close();
 }
 
+// --- A PDF: one mode, reading it. Source and Preview were live on a PDF (it moved into the
+//     main page, so the "native tab" test that locks them no longer caught it); pressing
+//     either closed the PDF behind an empty "Unsaved" document (Ed, 2026-09-30).
+console.log('\n=== a PDF ===');
+const pdf = await launchApp({ file: 'tests/pdf-sample.pdf', settleMs: 8000, visible: true });
+try {
+    const on = await pdf.eval(() => !!window.tzPdfActive && window.tzPdfState().pages);
+    assert(on === 3, 'control: the PDF opened (' + on + ' pages)');
+    await sleep(800);
+    const all = shell('controls').controls;
+    const seg = (id) => { const c = all.find(x => x.id === id); return c ? c.enabled : 'missing'; };
+    info('Source ' + seg('btnModeSource') + ', Preview ' + seg('btnModePreview') + ', Reader ' + seg('btnModeReader'));
+    assert(seg('btnModeSource') === false && seg('btnModePreview') === false,
+        'Source and Preview are greyed on a PDF');
+    assert(seg('btnModeReader') === true, 'and Reader is not');
+    // The page's own mode command (keyboard) must not take the PDF away either.
+    await pdf.eval(() => { handleCommand('toggle_mode'); handleCommand('mode_to_source'); });
+    await sleep(800);
+    const still = await pdf.eval(() => ({ active: !!window.tzPdfActive, pages: window.tzPdfState().pages, mode: state.mode }));
+    assert(still.active && still.pages === 3, 'a mode command leaves the PDF on screen (' + JSON.stringify(still) + ')');
+} finally {
+    await pdf.close();
+}
+
 console.log('\npassed=' + passed + ' failed=' + failed);
 console.log(failed ? 'FORMAT AVAILABILITY FAILED' : 'FORMAT AVAILABILITY PASSED');
 process.exit(failed ? 1 : 0);
