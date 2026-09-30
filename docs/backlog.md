@@ -68,14 +68,6 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 - **`book-position-app` is intermittent**: now and then the first frame of a resume is drawn
   before the range is recorded as mounted (range -1). The cover is never shown; passes on a
   re-run. A timing edge in the test's frame sampling or in the resume; not chased.
-- **Page numbers in big books are estimates, and poor ones** (Ed, 2026-09-30). On the Xeelee
-  omnibus, 2-Col, one window size, the last page read 6186, 6600, 8262 and 8188 on different
-  visits, and the total ~7758 to ~8426 while moving around. Only the ranges laid out are
-  counted; every other range is estimated, and the estimate is wrong by thousands of pages.
-  0.11.16 estimated from markup length instead of paragraph count; Ed's A/B at his window
-  showed it no better ("both are pretty terrible"), so 0.11.17 reverted it and kept only the
-  ZenMode fix (invalidateCounts). Needs a different design, not a better guess -- being
-  rethought.
 
 
 **Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range
@@ -182,7 +174,16 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   - Page numbers (0.11.16, **reverted in 0.11.17**): a range's page count was estimated from
     its markup length plus 200 per paragraph instead of its paragraph count. Chosen on one
     book at one window size, averaged over the book rather than judged at the start where it
-    is first seen; at Ed's window it was no better. See the open item in section 2.
+    is first seen; at Ed's window it was no better.
+  - Page numbers (0.11.18; Ed's design): on the Xeelee omnibus the last page read 6186, 6600,
+    8262 and 8188 on different visits at one window size. Every range not laid out was
+    re-estimated each time a new one was, so the whole book's numbers moved together. Books
+    now take words per page from the first range laid out and hold it until the layout
+    changes (ZenMode, font, window); unvisited ranges are their words / that rate. A/B on
+    Xeelee, 2-Col, 1700x1037: total spread while moving 228 -> 7 pages, error at open 5.3% ->
+    2.3%, page-number error mean 67 -> 38. Ed at his layout: "2 / ~5974" at open, "5976 /
+    ~5976" at the end. Counting every range for exact numbers was measured (57 ranges, ~9 s
+    of work, 122-213 ms blocks, +190 MB, again after every layout change) and declined.
   - Ctrl+Tab (0.11.14; Ed): fast Ctrl+Tab just after launch created a duplicate tab of a
     book or PDF, and Ctrl+Tab then stalled on it until the copy was closed. The duplicate
     was never reproduced by page-sent Ctrl+Tab (restored session, 40 ms presses); three holes
