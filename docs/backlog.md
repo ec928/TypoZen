@@ -96,6 +96,7 @@ same number for the same view and steps by exactly one. Re-open only if it shows
 
 ## Done (recorded so it is not re-raised)
 
+- **0.12.1 (2026-10-01, local baseline -- not released):** scrubber marks: chapter starts as hairlines and, in an omnibus, novel starts as taller marks; in paginated documents, section and subsection headings.
 - **0.12.0 (2026-10-01, Ed's redesign, local baseline -- not released):** book page numbers
   by chapter ("Chapter 2 of 38 • Page 2 of 15", the book's name first in an omnibus), sections
   classified from structure and the book's own numbering, the scrubber by position in the
