@@ -2089,8 +2089,16 @@ namespace TypoZen
 
         private void TypoZenWindow_SizeChangedForTabs(object sender, SizeChangedEventArgs e)
         {
+            // Titles share the strip's width, so a resize changes how much each may show.
+            try
+            {
+                double w = ComputeTabTitleMaxWidth();
+                if (Math.Abs(w - _tabTitleWidthBuilt) > 4) RebuildTabStrip();
+            }
+            catch { }
             try { UpdateTabScrollButtons(); } catch { }
         }
+        private double _tabTitleWidthBuilt = -1;
 
         /// <summary>
         /// Show ‹ › only when tabs overflow; keep the title bar free of a fat H-scrollbar.
@@ -2114,10 +2122,26 @@ namespace TypoZen
                 rightBtn.IsEnabled = overflow && scroller.HorizontalOffset < scroller.ScrollableWidth - 1;
         }
 
-        /// <summary>Notepad-style: shrink tab title max-width as more tabs open.</summary>
+        /// <summary>How wide each tab title may be: the strip shared out, or by tab count before it is measured.</summary>
         private double ComputeTabTitleMaxWidth()
         {
             int n = Math.Max(1, _tabs.Count);
+            // The room the strip really has, shared out: a fixed 90px each for twelve tabs cut
+            // every title short while half the strip stood empty (Ed, 2026-10-01). Per chip,
+            // besides its title: padding, the type symbol and the divider (~37px); the active
+            // chip also keeps its close button (~62px in all), and the strip ends in +.
+            var scroller = FindElement("tabScroller") as FrameworkElement;
+            double avail = scroller != null ? scroller.ActualWidth : 0;
+            foreach (string b in new[] { "btnTabScrollLeft", "btnTabScrollRight" })
+            {
+                var el = FindElement(b) as FrameworkElement;
+                if (el != null && el.Visibility == Visibility.Visible) avail += el.ActualWidth;
+            }
+            if (avail > 200)
+            {
+                double share = (avail - 30 - 62 - (n - 1) * 37) / n;   // 30: the + button
+                return Math.Max(56, Math.Min(240, Math.Floor(share)));
+            }
             // Fit more tabs before overflow; still readable.
             if (n <= 5) return 160;
             if (n <= 8) return 120;
@@ -14564,6 +14588,7 @@ namespace TypoZen
             const double tabChipH = 24;
             const double activeExtra = 7; // gap + 1px seam
             double titleMax = ComputeTabTitleMaxWidth();
+            _tabTitleWidthBuilt = titleMax;
 
             for (int i = 0; i < _tabs.Count; i++)
             {
@@ -14633,12 +14658,15 @@ namespace TypoZen
                     FontSize = 13,
                     FontWeight = FontWeights.Bold,
                     Padding = new Thickness(6, 0, 2, 0),
-                    Margin = new Thickness(6, 0, 0, 0),
+                    // Inactive: drawn over the end of the title on hover rather than holding
+                    // 30px of blank space on every tab (Ed, 2026-10-01). The negative margin
+                    // cancels its own width, so the title does not jump when it appears.
+                    Margin = active ? new Thickness(6, 0, 0, 0) : new Thickness(-22, 0, 0, 0),
                     MinWidth = 22,
+                    Width = active ? double.NaN : 22,
                     Background = Brushes.Transparent,
                     BorderThickness = new Thickness(0),
                     Foreground = _tabTextMuted,
-                    // Inactive: hidden until hover (Opacity 0 keeps width so title doesn't jump).
                     Opacity = active ? 0.85 : 0,
                     IsHitTestVisible = active,
                     Cursor = Cursors.Hand,
@@ -14657,13 +14685,15 @@ namespace TypoZen
                     {
                         border.Background = _tabHoverBg;
                         title.Opacity = 0.92;
-                        closeBtn.Opacity = 0.55;
+                        closeBtn.Background = _tabHoverBg;
+                        closeBtn.Opacity = 1;
                         closeBtn.IsHitTestVisible = true;
                     };
                     border.MouseLeave += (s, e) =>
                     {
                         border.Background = Brushes.Transparent;
                         title.Opacity = 0.72;
+                        closeBtn.Background = Brushes.Transparent;
                         closeBtn.Opacity = 0;
                         closeBtn.IsHitTestVisible = false;
                     };
