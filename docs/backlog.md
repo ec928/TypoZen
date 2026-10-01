@@ -96,6 +96,15 @@ same number for the same view and steps by exactly one. Re-open only if it shows
 
 ## Done (recorded so it is not re-raised)
 
+- **0.12.0 (2026-10-01, Ed's redesign, local baseline -- not released):** book page numbers
+  by chapter ("Chapter 2 of 38 • Page 2 of 15", the book's name first in an omnibus), sections
+  classified from structure and the book's own numbering, the scrubber by position in the
+  text, the status bar per document type with the right-hand page rule, tab type symbols,
+  the narrator marked and left-aligned, the book text size held per book, and the first page
+  turn after opening no longer lost. Entries for each are under the chapter-pages branch
+  below. Open: check Endurance's chapter numbering (numbers may restart per part) and what
+  Vacuum Diagrams' numbered entries are, before scrubber chapter marks are built.
+
 - **After 0.11.0, from Ed's testing (0.11.1-0.11.3, 2026-09-30):**
   - Source/Preview on a PDF closed the PDF behind an empty "Unsaved" document: PDFs moved
     into the main page and the native-tab lock no longer caught them. Locked now, and the
