@@ -125,6 +125,8 @@
                 if (i < blocks.length) { setTimeout(slice, 0); return; }
                 prefix[blocks.length] = c.words;
                 _bookWordPrefix = { blocks: blocks, prefix: prefix };
+                // Chapter marks on the scrubber move to their positions by words.
+                try { if (typeof updatePageScrubber === 'function') updatePageScrubber(); } catch (eSc) {}
                 try { if (typeof _lastProgressPosted !== 'undefined') _lastProgressPosted = -1; postBookProgress(); } catch (ePg) {}
                 // Two more steps, each short: join the text (its parts are cached), then post
                 // the count without re-scanning it.

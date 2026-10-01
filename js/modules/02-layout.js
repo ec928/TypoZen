@@ -4181,13 +4181,82 @@
             if (scrubberIsBookProgress()) {
                 range.max = '1000';
                 range.value = String(Math.round(bookProgress() * 1000));
+                try { paintChapterMarks(); } catch (eCm) {}
                 try { schedulePaintScrubberTicks(); } catch (eTk0) {}
                 return;
             }
+            try { paintChapterMarks(); } catch (eCm0) {}
             const total = Math.max(1, PageMap.count());
             range.max = String(total - 1);
             range.value = String(Math.max(0, Math.min(PageMap.current(), total - 1)));
             try { schedulePaintScrubberTicks(); } catch (eTk) {}
+        }
+
+        /**
+         * Where each chapter starts, along the scrubber -- and in an omnibus, where each novel
+         * starts, taller (Ed, 2026-10-01). Drawn on a canvas behind the track at the same text
+         * position the thumb uses, so a mark is where dragging to it lands. Hundreds of marks
+         * as CSS gradients (how bookmark ticks are drawn) would restyle on every turn; this
+         * redraws only when the width, the theme, the book or the word count changes.
+         */
+        let _chapterMarksKey = '';
+        function paintChapterMarks() {
+            const host = document.getElementById('page-scrubber');
+            const range = document.getElementById('page-scrubber-range');
+            if (!host || !range) return;
+            let cv = document.getElementById('page-scrubber-marks');
+            const on = scrubberIsBookProgress();
+            if (!on) {
+                if (cv) cv.style.display = 'none';
+                _chapterMarksKey = '';
+                return;
+            }
+            if (!cv) {
+                cv = document.createElement('canvas');
+                cv.id = 'page-scrubber-marks';
+                cv.setAttribute('aria-hidden', 'true');
+                host.insertBefore(cv, range);
+            }
+            cv.style.display = 'block';
+            const w = range.clientWidth, h = range.clientHeight || 14;
+            const tx = getComputedStyle(document.documentElement).getPropertyValue('--tx').trim() || '#888888';
+            const dpr = window.devicePixelRatio || 1;
+            const key = w + 'x' + h + '|' + dpr + '|' + tx + '|' + _bookUnits.length + '|' + (bookWordPrefix() ? 'w' : 'b')
+                + '|' + (DocumentModel.blocks ? DocumentModel.blocks.length : 0);
+            if (key === _chapterMarksKey) return;
+            _chapterMarksKey = key;
+            cv.width = Math.max(1, Math.round(w * dpr));
+            cv.height = Math.max(1, Math.round(h * dpr));
+            const ctx = cv.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            // The thumb's centre travels from half a thumb in from each end (11px thumb).
+            const half = 5.5;
+            const xAt = function (bi) { return half + (w - 2 * half) * bookProgressOfBlock(bi); };
+            const chapters = [], novels = [];
+            let lastBook = -1;
+            for (const u of _bookUnits) {
+                if ((u.bookId | 0) > 0 && u.bookId !== lastBook) { novels.push(xAt(u.start)); lastBook = u.bookId; }
+                if (u.isChapter && !/ • Section (?!1 of)/.test(u.label)) chapters.push(xAt(u.start));
+            }
+            // A chapter mark is skipped where it would touch the one before it (closer than
+            // 3px reads as a smear) or a novel's mark; the rest are drawn.
+            const mid = h / 2;
+            ctx.fillStyle = tx;
+            ctx.globalAlpha = 0.38;
+            let lastX = -10;
+            for (const x of chapters) {
+                if (x - lastX < 3) continue;
+                if (novels.length > 1 && novels.some(function (n) { return Math.abs(n - x) < 3; })) { lastX = x; continue; }
+                ctx.fillRect(Math.round(x) - 0.5, mid - 3, 1, 6);
+                lastX = x;
+            }
+            if (novels.length > 1) {
+                ctx.fillStyle = tx;
+                ctx.globalAlpha = 0.75;
+                for (const x of novels) ctx.fillRect(Math.round(x) - 1, mid - 6, 2, 12);
+            }
+            ctx.globalAlpha = 1;
         }
 
         /** Books move by position in the text, not by whole-book page numbers (there are none). */

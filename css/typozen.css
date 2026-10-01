@@ -1133,6 +1133,16 @@
             background: var(--tick-image, none);
             z-index: 0;
         }
+        /* Chapter and novel starts (paintChapterMarks), behind the thumb with the ticks. */
+        #page-scrubber-marks {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 14px;
+            pointer-events: none;
+            z-index: 0;
+        }
         #page-scrubber-range { position: relative; z-index: 1; }
 
         #page-scrubber-range {
