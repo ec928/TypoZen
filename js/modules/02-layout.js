@@ -4161,6 +4161,7 @@
             // 10-pdf.js). It had a scroll bar there that did nothing useful and no way to
             // cross the document at a glance (Ed, 2026-09-30).
             if (window.tzPdfActive) {
+                try { paintChapterMarks(); } catch (eCmP) {}   // hides the marks: a PDF has none
                 const p = (typeof window.tzPdfPaging === 'function') ? window.tzPdfPaging() : null;
                 if (!p) { host.style.display = 'none'; return; }
                 host.style.display = 'block';
@@ -4194,10 +4195,11 @@
 
         /**
          * Where each chapter starts, along the scrubber -- and in an omnibus, where each novel
-         * starts, taller (Ed, 2026-10-01). Drawn on a canvas behind the track at the same text
-         * position the thumb uses, so a mark is where dragging to it lands. Hundreds of marks
-         * as CSS gradients (how bookmark ticks are drawn) would restyle on every turn; this
-         * redraws only when the width, the theme, the book or the word count changes.
+         * starts, taller; in a paginated document, its sections and subsections by heading (Ed,
+         * 2026-10-01). Drawn on a canvas behind the track at the same coordinate the thumb uses
+         * (text position for a book, page for a document), so a mark is where dragging to it
+         * lands. Hundreds of marks as CSS gradients (how bookmark ticks are drawn) would restyle
+         * on every turn; this redraws only when the width, theme, document or page total changes.
          */
         let _chapterMarksKey = '';
         function paintChapterMarks() {
@@ -4205,8 +4207,10 @@
             const range = document.getElementById('page-scrubber-range');
             if (!host || !range) return;
             let cv = document.getElementById('page-scrubber-marks');
-            const on = scrubberIsBookProgress();
-            if (!on) {
+            const book = scrubberIsBookProgress();
+            const doc = !book && !window.tzPdfActive && typeof DocumentModel !== 'undefined' && DocumentModel
+                && DocumentModel.kind !== 'epub' && DocumentModel.blocks && isPaginatedLayout();
+            if (!book && !doc) {
                 if (cv) cv.style.display = 'none';
                 _chapterMarksKey = '';
                 return;
@@ -4221,8 +4225,11 @@
             const w = range.clientWidth, h = range.clientHeight || 14;
             const tx = getComputedStyle(document.documentElement).getPropertyValue('--tx').trim() || '#888888';
             const dpr = window.devicePixelRatio || 1;
-            const key = w + 'x' + h + '|' + dpr + '|' + tx + '|' + _bookUnits.length + '|' + (bookWordPrefix() ? 'w' : 'b')
-                + '|' + (DocumentModel.blocks ? DocumentModel.blocks.length : 0);
+            // A document's thumb moves by page, and its page total is part estimate until every
+            // range has been laid out, so the total is in the key: marks follow it as it settles.
+            const pages = doc ? Math.max(1, PageMap.count()) : 0;
+            const key = (book ? 'b' : 'd') + '|' + w + 'x' + h + '|' + dpr + '|' + tx + '|' + (book ? _bookUnits.length : pages)
+                + '|' + (book && bookWordPrefix() ? 'w' : '') + '|' + DocumentModel.blocks.length + '|' + (window.__docGen || 0);
             if (key === _chapterMarksKey) return;
             _chapterMarksKey = key;
             cv.width = Math.max(1, Math.round(w * dpr));
@@ -4232,30 +4239,54 @@
             ctx.clearRect(0, 0, w, h);
             // The thumb's centre travels from half a thumb in from each end (11px thumb).
             const half = 5.5;
-            const xAt = function (bi) { return half + (w - 2 * half) * bookProgressOfBlock(bi); };
-            const chapters = [], novels = [];
-            let lastBook = -1;
-            for (const u of _bookUnits) {
-                if ((u.bookId | 0) > 0 && u.bookId !== lastBook) { novels.push(xAt(u.start)); lastBook = u.bookId; }
-                if (u.isChapter && !/ • Section (?!1 of)/.test(u.label)) chapters.push(xAt(u.start));
+            const minor = [], major = [];
+            if (book) {
+                const xAt = function (bi) { return half + (w - 2 * half) * bookProgressOfBlock(bi); };
+                let lastBook = -1;
+                for (const u of _bookUnits) {
+                    if ((u.bookId | 0) > 0 && u.bookId !== lastBook) { major.push(xAt(u.start)); lastBook = u.bookId; }
+                    if (u.isChapter && !/ • Section (?!1 of)/.test(u.label)) minor.push(xAt(u.start));
+                }
+                if (major.length < 2) major.length = 0;   // one book: no novel marks
+            } else {
+                // Headings, by one rule for any document: the top level used more than once is
+                // its sections (taller marks) -- a level used once is the title -- and the next
+                // level down its subsections (hairlines). Placed by page, as the thumb moves.
+                const heads = [];
+                const blocks = DocumentModel.blocks;
+                for (let i = 0; i < blocks.length; i++) {
+                    const m = /^(#{1,6})\s/.exec(String(blocks[i] && blocks[i].raw != null ? blocks[i].raw : ''));
+                    if (m) heads.push({ bi: i, level: m[1].length });
+                }
+                const counts = [0, 0, 0, 0, 0, 0, 0];
+                for (const hd of heads) counts[hd.level]++;
+                let top = 0, next = 0;
+                for (let l = 1; l <= 6; l++) if (counts[l] >= 2) { top = l; break; }
+                if (top) for (let l = top + 1; l <= 6; l++) if (counts[l] >= 1) { next = l; break; }
+                const den = Math.max(1, pages - 1);
+                const xAt = function (bi) {
+                    const p = PageMap.pageOfBlock(bi);
+                    return half + (w - 2 * half) * Math.max(0, Math.min(1, (p >= 0 ? p : 0) / den));
+                };
+                for (const hd of heads) {
+                    if (hd.level === top) major.push(xAt(hd.bi));
+                    else if (hd.level === next) minor.push(xAt(hd.bi));
+                }
             }
-            // A chapter mark is skipped where it would touch the one before it (closer than
-            // 3px reads as a smear) or a novel's mark; the rest are drawn.
+            // A minor mark is skipped where it would touch the one before it (closer than 3px
+            // reads as a smear) or a major mark; the rest are drawn.
             const mid = h / 2;
             ctx.fillStyle = tx;
             ctx.globalAlpha = 0.38;
             let lastX = -10;
-            for (const x of chapters) {
+            for (const x of minor) {
                 if (x - lastX < 3) continue;
-                if (novels.length > 1 && novels.some(function (n) { return Math.abs(n - x) < 3; })) { lastX = x; continue; }
+                if (major.some(function (n) { return Math.abs(n - x) < 3; })) { lastX = x; continue; }
                 ctx.fillRect(Math.round(x) - 0.5, mid - 3, 1, 6);
                 lastX = x;
             }
-            if (novels.length > 1) {
-                ctx.fillStyle = tx;
-                ctx.globalAlpha = 0.75;
-                for (const x of novels) ctx.fillRect(Math.round(x) - 1, mid - 6, 2, 12);
-            }
+            ctx.globalAlpha = 0.75;
+            for (const x of major) ctx.fillRect(Math.round(x) - 1, mid - 6, 2, 12);
             ctx.globalAlpha = 1;
         }
 
