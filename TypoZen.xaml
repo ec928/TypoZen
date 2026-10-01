@@ -725,12 +725,15 @@
                 </StackPanel>
 
                 <!-- The Read Aloud engine and voice, and what the Qwen narrator is doing while
-                     the reader waits for it, centred between the file and the counts.
-                     Filled by UpdateVoiceStatus. -->
-                <TextBlock x:Name="lblVoice" Grid.Column="1" Text="" FontSize="11" FontWeight="Normal" Opacity="0.72"
-                           HorizontalAlignment="Center" Margin="12,0"
-                           TextTrimming="CharacterEllipsis" MaxWidth="260" VerticalAlignment="Center"
-                           ToolTip="Read Aloud voice. Change it in File > Read Aloud."/>
+                     the reader waits for it, after the file name, marked with the Read Aloud
+                     button's own symbol so it reads as the narrator. Filled by UpdateVoiceStatus. -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center"
+                            Margin="16,0,12,0" Opacity="0.72"
+                            ToolTip="Read Aloud voice. Change it in File > Read Aloud.">
+                    <TextBlock x:Name="lblVoiceIcon" Text="" FontSize="12" Margin="0,1,5,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="lblVoice" Text="" FontSize="11" FontWeight="Normal"
+                               TextTrimming="CharacterEllipsis" MaxWidth="260" VerticalAlignment="Center"/>
+                </StackPanel>
 
                 <!-- Which of these show, and in what order, depends on the document type
                      (ApplyStatusLayout): a book, a document or code, or a PDF. -->

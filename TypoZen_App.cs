@@ -10706,14 +10706,7 @@ namespace TypoZen
         {
             var btn = this.FindName("btnReadAloud") as System.Windows.Controls.Button;
             if (btn == null) return;
-            if (_iconFont == null)
-            {
-                _iconFont = "Segoe MDL2 Assets";
-                foreach (var f in Fonts.SystemFontFamilies)
-                    if (f.Source == "Segoe Fluent Icons") { _iconFont = f.Source; break; }
-            }
-            bool fluent = _iconFont == "Segoe Fluent Icons";
-            btn.FontFamily = new FontFamily(_iconFont);
+            btn.FontFamily = new FontFamily(IconFont());
             if (reading)
             {
                 btn.Content = "";                                   // StopSolid
@@ -10725,13 +10718,31 @@ namespace TypoZen
             }
             else
             {
-                btn.Content = fluent ? "" : "";               // ReadAloud / Volume
+                btn.Content = ReadAloudGlyph();
                 btn.ToolTip = "Read aloud (the selection, or the page)";
                 btn.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
                 btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
             }
         }
         private string _iconFont;
+
+        /// <summary>Segoe Fluent Icons where Windows has it (11), else Segoe MDL2 Assets (10).</summary>
+        private string IconFont()
+        {
+            if (_iconFont == null)
+            {
+                _iconFont = "Segoe MDL2 Assets";
+                foreach (var f in Fonts.SystemFontFamilies)
+                    if (f.Source == "Segoe Fluent Icons") { _iconFont = f.Source; break; }
+            }
+            return _iconFont;
+        }
+
+        /// <summary>Read Aloud's symbol: the A with sound waves, or MDL2's speaker (Volume).</summary>
+        private string ReadAloudGlyph()
+        {
+            return IconFont() == "Segoe Fluent Icons" ? "" : "";
+        }
 
         private string _ttsVoiceId = "";
         private double _ttsSpeed = 1.0;
@@ -11271,6 +11282,12 @@ namespace TypoZen
                     text = "Windows: " + name;
                 }
                 lbl.Text = text;
+                var icon = FindElement("lblVoiceIcon") as TextBlock;
+                if (icon != null)
+                {
+                    icon.FontFamily = new FontFamily(IconFont());
+                    icon.Text = string.IsNullOrEmpty(text) ? "" : ReadAloudGlyph();
+                }
             }
             catch (Exception ex) { LogFault("voice status", ex); }
         }
@@ -14605,7 +14622,7 @@ namespace TypoZen
                     FontSize = 12,
                     Foreground = active ? _tabText : _tabTextMuted,
                     Opacity = active ? 0.9 : 0.6,
-                    Margin = new Thickness(0, 1, 6, 0),
+                    Margin = new Thickness(0, 1, 3, 0),
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 row.Children.Add(icon);
