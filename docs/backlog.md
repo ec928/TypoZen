@@ -74,6 +74,14 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 boundaries. Seen with 200-block ranges; at 400, stepping across a boundary and back gives the
 same number for the same view and steps by exactly one. Re-open only if it shows up in use.
 
+- **The same page of a book changes text size depending on where the reader has been** (found
+  2026-10-01 from Ed's Dune contents page). The book text-size correction re-derives its divisor
+  from the range on screen: Dune opens at 1.60 and reaches 2.03 after a visit to mid-book, so
+  the publisher's small styles on the contents page go from 12.6px to 10.0px. Identical on
+  0.11.19 and the chapter-pages branch on the same path; the branch only changed which range
+  sets it first. Dune's files use different body sizes, so one divisor cannot fit them all.
+  Ties in with the warm-start item below (remember each book's factor).
+
 **Later (Ed, 2026-09-29):**
 
 - **Warm starts, looked at as a whole** (Ed, 2026-09-30: not the text-size check on its own).

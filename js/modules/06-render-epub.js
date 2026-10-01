@@ -1145,6 +1145,16 @@
                 if (!u.title) u.title = name;
             }
 
+            // In an omnibus, which book you are in comes first: "Ring • Chapter 1 of 35" (Ed,
+            // 2026-10-01: a chapter number alone loses you among twelve novels). The book's own
+            // title page is just its name.
+            if (omnibus) {
+                for (const u of units) {
+                    if (!u.book || !u.book.title || u.label === u.book.title) continue;
+                    u.label = u.book.title + ' • ' + u.label;
+                }
+            }
+
             // 5. Too long to lay out at once: sections of up to 800 blocks.
             const out = [];
             for (const u of units) {
