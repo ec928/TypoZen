@@ -724,16 +724,23 @@
                                ToolTip="An unexpected error stopped TypoZen trusting what is in memory to overwrite your files. Save anything you need with File &gt; Save As, then restart TypoZen."/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.72">
-                    <!-- The Read Aloud engine and voice, and what the Qwen narrator is doing while
-                         the reader waits for it. Filled by UpdateVoiceStatus. -->
-                    <TextBlock x:Name="lblVoice" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
-                               TextTrimming="CharacterEllipsis" MaxWidth="260" VerticalAlignment="Center"
-                               ToolTip="Read Aloud voice. Change it in File > Read Aloud."/>
+                <!-- The Read Aloud engine and voice, and what the Qwen narrator is doing while
+                     the reader waits for it, centred between the file and the counts.
+                     Filled by UpdateVoiceStatus. -->
+                <TextBlock x:Name="lblVoice" Grid.Column="1" Text="" FontSize="11" FontWeight="Normal" Opacity="0.72"
+                           HorizontalAlignment="Center" Margin="12,0"
+                           TextTrimming="CharacterEllipsis" MaxWidth="260" VerticalAlignment="Center"
+                           ToolTip="Read Aloud voice. Change it in File > Read Aloud."/>
+
+                <!-- Which of these show, and in what order, depends on the document type
+                     (ApplyStatusLayout): a book, a document or code, or a PDF. -->
+                <StackPanel x:Name="statusCounts" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0" Opacity="0.72">
                     <TextBlock x:Name="lblChapter" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
                                TextTrimming="CharacterEllipsis" MaxWidth="220"
                                Cursor="Hand" VerticalAlignment="Center"
                                ToolTip="Current chapter — click to jump to its start"/>
+                    <TextBlock x:Name="lblProgress" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
+                               Visibility="Collapsed" ToolTip="How far through the book, by words"/>
                     <TextBlock x:Name="lblWordCount" Text="0 words" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Word count (selection / document when text is selected)"/>
                     <TextBlock x:Name="lblLineCount" Text="Ln 1/1" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Current line / total lines"/>
                     <TextBlock x:Name="lblCharCount" Text="0 chars" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Character count (selection / document when text is selected)"/>

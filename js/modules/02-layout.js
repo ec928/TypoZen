@@ -1245,7 +1245,12 @@
             if (!_marks.length) { host.style.removeProperty('--tick-image'); return; }
             let stops = [];
             try {
-                if (isPaginatedLayout() && typeof PageMap !== 'undefined' && PageMap.ensure
+                if (scrubberIsBookProgress()) {
+                    // Same coordinate as the thumb: position in the text.
+                    for (let i = 0; i < _marks.length; i++) {
+                        if (_marks[i].block >= 0) stops.push(Math.max(0, Math.min(100, bookProgressOfBlock(_marks[i].block) * 100)));
+                    }
+                } else if (isPaginatedLayout() && typeof PageMap !== 'undefined' && PageMap.ensure
                     && PageMap.ensure() && PageMap.pageOfBlock) {
                     const total = Math.max(1, PageMap.count());
                     const den = Math.max(1, total - 1);
@@ -3904,6 +3909,98 @@
             } catch (e) { return false; }
         }
 
+        /**
+         * Where the reader is in a book, in the book's own terms: the unit (chapter, or named
+         * front/back matter) the page belongs to, and its page within that unit -- counted from
+         * the layout on screen, never estimated (Ed, 2026-10-01). In 2-Col it describes the
+         * right-hand page, which is where the label sits. Null when this is not a book or the
+         * layout cannot be measured yet.
+         *
+         * Exact because a unit is always laid out whole: ranges are cut on unit boundaries
+         * (PageChunks.setBounds) and every unit starts a page (data-unit-start).
+         */
+        let _unitLeafCache = { key: '', list: null };
+        function bookPagePosition() {
+            try {
+                if (typeof _bookUnits === 'undefined' || !_bookUnits || !_bookUnits.length) return null;
+                if (!editor || !DocumentModel || DocumentModel.kind !== 'epub' || !DocumentModel.blocks) return null;
+                const n = DocumentModel.blocks.length;
+                const twoCol = editor.classList.contains('two-col-layout');
+                const stride = PageGeometry.stride();
+                if (!(stride > 1)) return null;
+                const pitch = twoCol ? stride / 2 : stride;
+                let leaves;
+                if (twoCol) {
+                    leaves = Math.max(1, Math.round((editor.scrollWidth + getPageTwoColGap()) / pitch));
+                    if (PageGeometry._spreadPad()) leaves = Math.max(1, leaves - 1);
+                } else {
+                    leaves = PageGeometry.localCount();
+                }
+                const spread = PageGeometry.localIndex();
+                let leaf = twoCol ? spread * 2 + 1 : spread;
+                if (leaf > leaves - 1) leaf = leaves - 1;
+
+                let a = 0, b = n;
+                if (pageWindowingActive() && PageChunks.mounted >= 0) {
+                    a = PageChunks.firstBlockOfChunk(PageChunks.mounted);
+                    b = PageChunks.endBlockOfChunk(PageChunks.mounted, n);
+                }
+                const key = a + ':' + b + ':' + editor.scrollWidth + ':' + pitch + ':' + editor.clientHeight;
+                if (_unitLeafCache.key !== key) {
+                    const edRect = editor.getBoundingClientRect();
+                    const sl = editor.scrollLeft || 0;
+                    const leafOf = function (bi) {
+                        for (let k = bi; k < Math.min(b, bi + 8); k++) {
+                            const el = elementForModelIndex(k);
+                            if (!el) continue;
+                            const r = el.getBoundingClientRect();
+                            if (!r || (r.width === 0 && r.height === 0)) continue;
+                            return Math.max(0, Math.floor(((r.left - edRect.left) + sl + PAGE_EDGE_SLOP) / pitch));
+                        }
+                        return null;
+                    };
+                    const list = [];
+                    for (let i = 0; i < _bookUnits.length; i++) {
+                        const u = _bookUnits[i];
+                        if (u.end <= a || u.start >= b) continue;
+                        const lf = u.start <= a ? 0 : leafOf(u.start);
+                        if (lf == null) continue;
+                        if (list.length && lf <= list[list.length - 1].leaf) { list[list.length - 1] = { u: u, leaf: lf }; continue; }
+                        list.push({ u: u, leaf: lf });
+                    }
+                    _unitLeafCache = { key: key, list: list };
+                }
+                const list = _unitLeafCache.list;
+                if (!list || !list.length) return null;
+                let k = 0;
+                while (k + 1 < list.length && list[k + 1].leaf <= leaf) k++;
+                const first = list[k].leaf;
+                const next = (k + 1 < list.length) ? list[k + 1].leaf : leaves;
+                return { label: list[k].u.label, title: list[k].u.title, page: leaf - first + 1,
+                    pages: Math.max(1, next - first), unit: list[k].u,
+                    atEnd: b >= n && leaf >= leaves - 1 };
+            } catch (e) { return null; }
+        }
+
+        /** Progress to the status bar ("progress:24"), only when the percentage changes. */
+        let _lastProgressPosted = -1;
+        function postBookProgress() {
+            const p = Math.max(0, Math.min(100, Math.round(bookProgress() * 100)));
+            if (p === _lastProgressPosted) return;
+            _lastProgressPosted = p;
+            try { postMsg('progress:' + p); } catch (e) {}
+        }
+
+        /** Progress through a book, 0..1, by words before the page on screen. */
+        function bookProgress() {
+            try {
+                const pos = bookPagePosition();
+                if (pos && pos.atEnd) return 1;
+                const bi = (typeof currentReadingBlock === 'function') ? currentReadingBlock() : -1;
+                return bookProgressOfBlock(bi >= 0 ? bi : 0);
+            } catch (e) { return 0; }
+        }
+
         function pageDisplayFromSpread(spread0, spreadCount, twoCol) {
             const n = Math.max(1, spreadCount | 0);
             const s = Math.max(0, Math.min(spread0 | 0, n - 1));
@@ -3979,6 +4076,26 @@
                 host.style.display = 'none';
                 return;
             }
+            // A book says where you are in its own terms -- "Chapter 2 of 38 • Page 2 of 15",
+            // "Copyright • Page 1 of 2" -- under the right-hand page only, with nothing under
+            // the left. Counted, not estimated (bookPagePosition).
+            const bookPos = bookPagePosition();
+            if (bookPos) {
+                const two = editor.classList.contains('two-col-layout');
+                host.style.display = 'flex';
+                host.classList.toggle('two-up', two);
+                host.title = bookPos.title || '';
+                host.removeAttribute('role');
+                host.textContent = '';
+                if (two) host.appendChild(Object.assign(document.createElement('span'), { className: 'page-num' }));
+                const s = document.createElement('span');
+                s.className = 'page-num';
+                s.textContent = bookPos.label + ' • Page ' + bookPos.page + ' of ' + bookPos.pages;
+                host.appendChild(s);
+                try { postBookProgress(); } catch (eBp) {}
+                try { if (typeof postChapterLabel === 'function') postChapterLabel(); } catch (eCh0) {}
+                return;
+            }
             // count(), not pages.length. Under page windowing pages.length is the MOUNTED
             // range's page count while current() is the spread within the whole document.
             const twoCol = editor.classList.contains('two-col-layout');
@@ -4018,6 +4135,9 @@
          */
         function openGoToPageDialog() {
             if (window.tzPdfActive && typeof window.tzPdfGotoPrompt === 'function') { window.tzPdfGotoPrompt(); return; }
+            // A book has no whole-book page numbers to go to; the outline and scrubber move
+            // through it instead.
+            if (bookPagePosition()) return;
             if (!isPaginatedLayout() || !PageMap.ensure()) return;
             const twoCol = !!(editor && editor.classList.contains('two-col-layout'));
             const d = pageDisplayFromSpread(PageMap.current(), PageMap.count(), twoCol);
@@ -4078,10 +4198,23 @@
             // While a drag is in flight the thumb belongs to the reader: writing a position
             // into it from the view they have not arrived at yet fights their hand.
             if (_scrubDragging) return;
+            // A book: the track is the whole text, in thousandths, by words read.
+            if (scrubberIsBookProgress()) {
+                range.max = '1000';
+                range.value = String(Math.round(bookProgress() * 1000));
+                try { schedulePaintScrubberTicks(); } catch (eTk0) {}
+                return;
+            }
             const total = Math.max(1, PageMap.count());
             range.max = String(total - 1);
             range.value = String(Math.max(0, Math.min(PageMap.current(), total - 1)));
             try { schedulePaintScrubberTicks(); } catch (eTk) {}
+        }
+
+        /** Books move by position in the text, not by whole-book page numbers (there are none). */
+        function scrubberIsBookProgress() {
+            return !window.tzPdfActive && typeof _bookUnits !== 'undefined' && _bookUnits && _bookUnits.length > 0
+                && DocumentModel && DocumentModel.kind === 'epub';
         }
 
         function bindPageScrubber() {
@@ -4097,6 +4230,14 @@
                     const at = parseInt(range.value, 10) || 0;
                     bubble.textContent = (at + 1) + ' / ' + (max + 1);
                     bubble.style.left = (max > 0 ? (at / max) * 100 : 0) + '%';
+                    bubble.classList.add('showing');
+                    return;
+                }
+                if (scrubberIsBookProgress()) {
+                    const at = parseInt(range.value, 10) || 0;
+                    const u = bookUnitOfBlock(bookBlockAtProgress(at / 1000));
+                    bubble.textContent = (u ? u.label + ' • ' : '') + Math.round(at / 10) + '%';
+                    bubble.style.left = (at / 10) + '%';
                     bubble.classList.add('showing');
                     return;
                 }
@@ -4124,7 +4265,16 @@
                     return;
                 }
                 const wantedEnd = v >= (parseInt(range.max, 10) || 0);
-                PageMap.goto(v);
+                if (scrubberIsBookProgress()) {
+                    try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
+                    if (!wantedEnd) {
+                        goToPageHoldingBlock(bookBlockAtProgress(v / 1000));
+                        updatePageIndicator();
+                        return;
+                    }
+                } else {
+                    PageMap.goto(v);
+                }
                 // Pages beyond the ranges that have been laid out are an estimate, so
                 // arriving somewhere re-measures it and the total moves: dragging to the end
                 // of a 2,907-page estimate landed on page 5,210 of a now 5,355-page book --
@@ -5067,22 +5217,66 @@
             /** Blocks in the document, so the last (partial) range is not counted as full. */
             docBlocks: 0,
 
+            /**
+             * Range starts for a book, aligned to its chapters (bookRangeStarts), so a chapter
+             * is laid out whole and its pages can be counted exactly. Only for the document they
+             * were made for (_boundsDoc); anything else uses fixed-size ranges.
+             */
+            _bounds: null,
+            _boundsDoc: null,
+            setBounds: function (starts, docBlocksArr) {
+                const ok = !!(starts && starts.length && starts[0] === 0);
+                this._bounds = ok ? starts.slice() : null;
+                this._boundsDoc = ok ? docBlocksArr : null;
+                this.counts = null;
+                this.measured = null;
+                this.mounted = -1;
+                this.perBlock = this.seedPerBlock;
+                this.wordsPerPage = 0;
+                this._words = null;
+            },
+            bounds: function () {
+                if (!this._bounds) return null;
+                const dm = (typeof DocumentModel !== 'undefined') ? DocumentModel : null;
+                return (dm && dm.blocks === this._boundsDoc) ? this._bounds : null;
+            },
+
             chunkCount: function (nBlocks) {
+                const b = this.bounds();
+                if (b) return b.length;
                 return Math.max(1, Math.ceil(Math.max(0, nBlocks | 0) / this.size));
             },
 
             chunkOfBlock: function (bi) {
+                const b = this.bounds();
+                if (b) {
+                    let lo = 0, hi = b.length - 1;
+                    const x = Math.max(0, bi | 0);
+                    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (b[mid] <= x) lo = mid; else hi = mid - 1; }
+                    return lo;
+                }
                 const c = Math.floor(Math.max(0, bi | 0) / this.size);
                 return this.counts ? Math.min(c, this.counts.length - 1) : c;
             },
 
-            firstBlockOfChunk: function (c) { return Math.max(0, c | 0) * this.size; },
+            firstBlockOfChunk: function (c) {
+                const b = this.bounds();
+                if (b) return b[Math.max(0, Math.min(c | 0, b.length - 1))];
+                return Math.max(0, c | 0) * this.size;
+            },
+
+            /** One past the last block of a range. */
+            endBlockOfChunk: function (c, nBlocks) {
+                const total = (nBlocks !== undefined) ? (nBlocks | 0)
+                    : (this.docBlocks > 0 ? this.docBlocks : (this.counts ? this.counts.length * this.size : 0));
+                const b = this.bounds();
+                if (b) return (c + 1 < b.length) ? b[c + 1] : total;
+                return Math.min(total, this.firstBlockOfChunk(c) + this.size);
+            },
 
             /** How many blocks a range really holds. The last one is short. */
             blocksInChunk: function (c) {
-                const start = this.firstBlockOfChunk(c);
-                const total = this.docBlocks > 0 ? this.docBlocks : (this.counts ? this.counts.length * this.size : 0);
-                return Math.max(1, Math.min(this.size, total - start));
+                return Math.max(1, this.endBlockOfChunk(c) - this.firstBlockOfChunk(c));
             },
 
             /** Build or resize the map. Existing measurements survive. */
@@ -5130,7 +5324,7 @@
                 const blocks = dm.blocks;
                 if (!this._words || this._wordsDoc !== blocks) { this._words = []; this._wordsDoc = blocks; }
                 if (this._words[c] !== undefined) return this._words[c];
-                const a = this.firstBlockOfChunk(c), b = Math.min(blocks.length, a + this.size);
+                const a = this.firstBlockOfChunk(c), b = Math.min(blocks.length, this.endBlockOfChunk(c, blocks.length));
                 let w = 0;
                 for (let i = a; i < b; i++) {
                     const r = blocks[i] && blocks[i].raw != null ? String(blocks[i].raw) : '';
@@ -5155,7 +5349,7 @@
                 }
                 const blocks = (nBlocks === undefined)
                     ? this.blocksInChunk(c)
-                    : Math.max(1, Math.min(this.size, (nBlocks | 0) - this.firstBlockOfChunk(c)));
+                    : Math.max(1, this.endBlockOfChunk(c, nBlocks) - this.firstBlockOfChunk(c));
                 return Math.max(1, Math.round(blocks * this.perBlock));
             },
 
@@ -5378,7 +5572,7 @@
             PageChunks.ensure(n);
             c = Math.max(0, Math.min(c | 0, PageChunks.counts.length - 1));
             const start = PageChunks.firstBlockOfChunk(c);
-            const end = Math.min(n, start + PageChunks.size);
+            const end = Math.min(n, PageChunks.endBlockOfChunk(c, n));
             const frag = bookBlockFragment(start, end);
             return { index: c, nBlocks: n, frag: frag, start: start, end: end };
         }
@@ -5430,7 +5624,7 @@
             // back to 1 worked: 30 is still inside chunk 0, 33 is not.
             const _span = (typeof selectionHoldSpan === 'function') ? selectionHoldSpan() : null;
             const _base0 = PageChunks.firstBlockOfChunk(c);
-            const _base1 = Math.min(n, _base0 + PageChunks.size);
+            const _base1 = Math.min(n, PageChunks.endBlockOfChunk(c, n));
             const _wide = !!(_span && (_span.lo < _base0 || _span.hi >= _base1));
 
             if (_wide) {
@@ -5520,7 +5714,7 @@
             try {
                 if (!pageWindowingActive()) return false;
                 const mountedBlocks = editor ? editor.querySelectorAll('.block').length : 0;
-                if (PageChunks.mounted >= 0 && mountedBlocks <= PageChunks.size) return false;
+                if (PageChunks.mounted >= 0 && mountedBlocks <= Math.max(PageChunks.size, PageChunks.blocksInChunk(PageChunks.mounted))) return false;
                 DocumentModel.virtEnabled = false;
                 unbindVirtScroll();
                 PageChunks.ensure(DocumentModel.blocks.length);

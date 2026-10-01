@@ -107,7 +107,7 @@
         try { if (S.linkService) S.linkService.setDocument(null); } catch (e) { }
         try { if (S.doc) S.doc.destroy(); } catch (e) { }
         S.viewer = S.eventBus = S.linkService = S.findController = S.doc = null;
-        S.pageTexts = S.pageItems = S.pageStarts = S.outline = null;
+        S.pageTexts = S.pageItems = S.pageStarts = S.outline = S.outlinePages = null;
         S.haystack = '';
         S.findMatches = [];
         S.pendingReveal = false;
@@ -178,7 +178,46 @@
     }
 
     /** Where the reader is, for the host to reopen the PDF there. Debounced like books. */
+    /**
+     * The outline entry each page sits under, for the status bar ("Active outline node",
+     * Ed, 2026-10-01): every entry resolved to its page once, then looked up per page turn.
+     */
+    async function resolveOutlinePages(doc, seq) {
+        const flat = [];
+        const walk = async (items) => {
+            for (const it of items || []) {
+                if (seq !== S.seq) return;
+                if (!it || !it.title) continue;
+                let page = -1;
+                try {
+                    let dest = it.dest;
+                    if (typeof dest === 'string') dest = await doc.getDestination(dest);
+                    if (Array.isArray(dest) && dest[0] != null) {
+                        page = (typeof dest[0] === 'object') ? await doc.getPageIndex(dest[0]) : (dest[0] | 0);
+                    }
+                } catch (e) { page = -1; }
+                if (page >= 0) flat.push({ page: page + 1, title: String(it.title).replace(/\s+/g, ' ').trim() });
+                await walk(it.items);
+            }
+        };
+        await walk(S.outline);
+        if (seq !== S.seq) return;
+        flat.sort((a, b) => a.page - b.page);
+        S.outlinePages = flat;
+        S.outlinePosted = null;
+        try { postOutlineAt(S.viewer ? S.viewer.currentPageNumber : 1); } catch (e) { }
+    }
+    function postOutlineAt(page) {
+        const list = S.outlinePages;
+        let title = '';
+        if (list && list.length) for (const e of list) { if (e.page <= page) title = e.title; else break; }
+        if (title === S.outlinePosted) return;
+        S.outlinePosted = title;
+        try { postMsg('chapter:-1\t' + title); } catch (e) { }
+    }
+
     function reportPage(page) {
+        try { postOutlineAt(page); } catch (eO) { }
         refreshStats();
         refreshScrubber();
         clearTimeout(S.reportTimer);
@@ -323,6 +362,7 @@
                 if (seq !== S.seq) return;
                 S.outline = o || [];
                 try { if (typeof updateOutline === 'function') updateOutline(); } catch (e) { }
+                resolveOutlinePages(doc, seq);
             }).catch(() => { });
             extractText(doc, seq);
         } catch (err) {

@@ -110,16 +110,22 @@
                 c.chars += t.length;
             };
             const alive = function () { return DocumentModel.blocks === blocks && DocumentModel.kind === 'epub'; };
+            // Words before each block, for progress through the book and the scrubber.
+            const prefix = new Int32Array(blocks.length + 1);
             const slice = function () {
                 if (!alive()) return;
                 const until = performance.now() + 8;
                 while (i < blocks.length && performance.now() < until) {
                     for (let n = 0; n < 50 && i < blocks.length; n++, i++) {
                         if (i > 0) { c.lines++; c.chars++; inWord = false; }   // the '\n' between blocks
+                        prefix[i] = c.words;
                         count(DocumentModel.blockText(i));
                     }
                 }
                 if (i < blocks.length) { setTimeout(slice, 0); return; }
+                prefix[blocks.length] = c.words;
+                _bookWordPrefix = { blocks: blocks, prefix: prefix };
+                try { if (typeof _lastProgressPosted !== 'undefined') _lastProgressPosted = -1; postBookProgress(); } catch (ePg) {}
                 // Two more steps, each short: join the text (its parts are cached), then post
                 // the count without re-scanning it.
                 setTimeout(function () {
@@ -189,6 +195,11 @@
                 split.blocks, split.docStarts);
             _bookDocStarts = {};
             for (let i = 0; i < split.docStarts.length; i++) _bookDocStarts[split.docStarts[i]] = 1;
+            try {
+                _bookUnits = bookBuildUnits(toc, split.blocks, data.landmarks, split.docStart);
+            } catch (eU) { _bookUnits = []; }
+            _bookUnitStarts = {};
+            for (let i = 0; i < _bookUnits.length; i++) if (_bookUnits[i].start > 0) _bookUnitStarts[_bookUnits[i].start] = 1;
             _bookPlateBlocks = bookFindPlateBlocks(split.blocks, split.docStarts);
             _bookAssetsBase = String(data.assetsBase || '');
             _bookDocIndex = split.docStart;
@@ -227,6 +238,9 @@
             try { applyBookLanguage(data.docs); } catch (eLang) {}
 
             DocumentModel.fromBookBlocks(split.blocks, toc);
+            // Ranges laid out together end on unit boundaries, so the whole of a chapter is
+            // always laid out at once and its pages can be counted, not estimated.
+            try { PageChunks.setBounds(bookRangeStarts(_bookUnits, split.blocks.length), DocumentModel.blocks); } catch (eB) {}
             _contentCache = null;
             // Immediately, not thirty lines further down.
             //
@@ -726,6 +740,7 @@
                 const el = createPreviewBlockEl(raw, false, i);
                 el.setAttribute('data-model-index', String(i));
                 if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
+                if (_bookUnitStarts[i]) el.setAttribute('data-unit-start', '1');
                 frag.appendChild(el);
             }
             return frag;
@@ -913,6 +928,197 @@
                 });
             }
             return out;
+        }
+
+        /**
+         * The book's sections as a reader names them (Ed, 2026-10-01: "a cover is not a
+         * chapter"; spine items are not chapters). Built from the table of contents, which is
+         * the book's own list of what it contains, in order:
+         *
+         *  - Front and back matter keeps its own name: Cover, Title Page, Copyright, Contents,
+         *    Dedication, About the Author, Prologue, Epilogue... The book's landmarks/guide say
+         *    so where it has them; otherwise the entry's title does.
+         *  - A part or a book of an omnibus (a contents entry with entries under it, or one
+         *    titled Part/Book/Volume) is named too: "Raft", "Book One - DUNE".
+         *  - Everything else is a chapter, numbered within its book: "Chapter 3 of 30".
+         *  - Anything before the first entry is the cover or front matter.
+         *  - A unit too long to lay out at once (a book with no chapters) is split into
+         *    sections: "Book One - DUNE • Section 3 of 9".
+         *
+         * Returns [{ start, end, label }] covering every block, in order.
+         */
+        const BOOK_NAMED_SECTION = new RegExp('^(cover|title ?page|title$|half ?title|copyright|imprint|colophon|' +
+            '(table of )?contents|dedication|epigraph|acknowledge?ments?|about the (author|authors|publisher|book)|' +
+            'also by\\b|by the same author|other (books|titles|works) by|books by|praise for|maps?\\b|' +
+            'foreword|preface|introduction|prologue|epilogue|afterword|postscript|appendi(x|ces|xes)\\b|glossary|' +
+            '(end ?)?notes\\b|index\\b|bibliography|further reading|timeline|chronology|dramatis personae|' +
+            'cast of characters|characters\\b|terminology|cartographic|credits|newsletter|excerpt|preview|' +
+            'a note (on|from|about)|(author|translator)\'?s? note|front ?matter|back ?matter|' +
+            'list of illustrations|illustrations\\b|frontispiece|landmarks|start reading|reading group)', 'i');
+        const BOOK_PART = /^(part|book|volume|vol\.)\b/i;
+        const BOOK_LANDMARK_NAMES = {
+            'cover': 'Cover', 'title-page': 'Title Page', 'titlepage': 'Title Page', 'copyright-page': 'Copyright',
+            'toc': 'Contents', 'dedication': 'Dedication', 'acknowledgements': 'Acknowledgements',
+            'foreword': 'Foreword', 'preface': 'Preface', 'prologue': 'Prologue', 'epilogue': 'Epilogue',
+            'afterword': 'Afterword', 'appendix': 'Appendix', 'glossary': 'Glossary', 'index': 'Index',
+            'bibliography': 'Bibliography', 'colophon': 'Colophon', 'imprint': 'Imprint', 'loi': 'Illustrations',
+            'epigraph': 'Epigraph', 'notes': 'Notes', 'endnotes': 'Notes'
+        };
+        const BOOK_UNIT_MAX_BLOCKS = 1600;
+
+        function bookBuildUnits(toc, blocks, landmarks, docStart) {
+            const n = blocks ? blocks.length : 0;
+            if (!n) return [];
+            // Landmark type per block, from the book's own markings.
+            const markAt = {};
+            const keys = docStart ? Object.keys(docStart) : [];
+            for (let i = 0; i < (landmarks ? landmarks.length : 0); i++) {
+                const lm = landmarks[i];
+                if (!lm || !lm.type || !lm.href) continue;
+                const want = bookNormalizeHref(lm.href);
+                let bi = Object.prototype.hasOwnProperty.call(docStart, want) ? docStart[want] : -1;
+                if (bi < 0) {
+                    const bare = want.slice(want.lastIndexOf('/') + 1);
+                    for (let k = 0; k < keys.length; k++) if (keys[k] === bare || keys[k].endsWith('/' + bare)) { bi = docStart[keys[k]]; break; }
+                }
+                if (bi >= 0 && !markAt[bi]) markAt[bi] = String(lm.type).toLowerCase();
+            }
+            // Entries in contents order, with whether each has entries nested under it, and
+            // which book it belongs to (the nearest entry above it at a shallower level).
+            const list = [];
+            const stack = [];
+            for (let i = 0; i < (toc ? toc.length : 0); i++) {
+                const e = toc[i];
+                if (!e || !(e.blockIndex >= 0) || e.blockIndex >= n) continue;
+                const lv = Math.max(1, e.level | 0 || 1);
+                while (stack.length && stack[stack.length - 1].level >= lv) stack.pop();
+                const parent = stack.length ? stack[stack.length - 1] : null;
+                if (parent) parent.hasChildren = true;
+                const item = { title: String(e.title || '').replace(/\s+/g, ' ').trim(), level: lv, start: e.blockIndex,
+                    parent: parent, hasChildren: false };
+                list.push(item);
+                stack.push(item);
+            }
+            // One unit per starting block: where several entries land on the same block (a
+            // book's heading and its first chapter), the deepest names the pages.
+            const byStart = [];
+            for (let i = 0; i < list.length; i++) {
+                const it = list[i];
+                if (byStart.length && byStart[byStart.length - 1].start === it.start) byStart[byStart.length - 1] = it;
+                else if (!byStart.length || it.start > byStart[byStart.length - 1].start) byStart.push(it);
+            }
+            const kindOf = function (it) {
+                const mark = markAt[it.start];
+                if (mark && mark !== 'bodymatter' && mark !== 'chapter' && mark !== 'text' && mark !== 'start') return 'named';
+                if (mark === 'chapter') return 'chapter';
+                if (it.hasChildren || BOOK_PART.test(it.title)) return 'named';
+                if (BOOK_NAMED_SECTION.test(it.title.replace(/^[^A-Za-z]+/, ''))) return 'named';
+                return 'chapter';
+            };
+            const units = [];
+            if (!byStart.length || byStart[0].start > 0) {
+                const mark = markAt[0];
+                units.push({ start: 0, end: byStart.length ? byStart[0].start : n, kind: 'named',
+                    title: (mark && BOOK_LANDMARK_NAMES[mark]) || 'Cover', parent: null });
+            }
+            for (let i = 0; i < byStart.length; i++) {
+                const it = byStart[i];
+                const end = i + 1 < byStart.length ? byStart[i + 1].start : n;
+                const kind = kindOf(it);
+                const mark = markAt[it.start];
+                const title = (kind === 'named' && !it.title && mark && BOOK_LANDMARK_NAMES[mark]) ? BOOK_LANDMARK_NAMES[mark] : it.title;
+                units.push({ start: it.start, end: end, kind: kind, title: title, parent: it.parent });
+            }
+            // Number chapters within their book, not within a part of it: Coalescent's "Chapter
+            // 56" sits in Part Two, and counting from the part called it "Chapter 22 of 25".
+            for (const u of units) {
+                let p = u.parent;
+                while (p && /^part\b/i.test(p.title)) p = p.parent;
+                u.parent = p;
+            }
+            const tally = new Map();
+            for (const u of units) if (u.kind === 'chapter') tally.set(u.parent, (tally.get(u.parent) || 0) + 1);
+            const seen = new Map();
+            for (const u of units) {
+                if (u.kind !== 'chapter') {
+                    // The book's own wording, except a run-together "Titlepage".
+                    u.label = (u.title || 'Untitled').replace(/^title( ?page)?$/i, 'Title Page');
+                    continue;
+                }
+                const k = (seen.get(u.parent) || 0) + 1;
+                seen.set(u.parent, k);
+                u.label = 'Chapter ' + k + ' of ' + tally.get(u.parent);
+            }
+            // Too long to lay out at once: sections of up to 800 blocks.
+            const out = [];
+            for (const u of units) {
+                const len = u.end - u.start;
+                if (len <= BOOK_UNIT_MAX_BLOCKS) { out.push({ start: u.start, end: u.end, label: u.label, title: u.title }); continue; }
+                const m = Math.ceil(len / 800);
+                for (let s = 0; s < m; s++) {
+                    const a = u.start + Math.floor(len * s / m), b = u.start + Math.floor(len * (s + 1) / m);
+                    out.push({ start: a, end: b, label: u.label + ' • Section ' + (s + 1) + ' of ' + m, title: u.title });
+                }
+            }
+            return out;
+        }
+
+        /**
+         * Where each range laid out together starts: whole units, packed up to 800 blocks, so
+         * a chapter is never split across two ranges (a unit over 800 is a range of its own).
+         */
+        function bookRangeStarts(units, n) {
+            if (!units || !units.length) return null;
+            const starts = [0];
+            let rangeStart = 0;
+            for (let i = 0; i < units.length; i++) {
+                const u = units[i];
+                if (u.start > rangeStart && u.end - rangeStart > 800) {
+                    starts.push(u.start);
+                    rangeStart = u.start;
+                }
+            }
+            return starts;
+        }
+
+        /** Words before each block of the open book (buildBookTextInIdle), or null until counted. */
+        let _bookWordPrefix = null;
+        function bookWordPrefix() {
+            const w = _bookWordPrefix;
+            return (w && DocumentModel && w.blocks === DocumentModel.blocks) ? w.prefix : null;
+        }
+        /** How far through the book a block is, 0..1: by words once counted, by blocks until then. */
+        function bookProgressOfBlock(bi) {
+            const n = DocumentModel && DocumentModel.blocks ? DocumentModel.blocks.length : 0;
+            if (!n) return 0;
+            const p = bookWordPrefix();
+            const i = Math.max(0, Math.min(n, bi | 0));
+            if (p && p[n] > 0) return p[i] / p[n];
+            return i / n;
+        }
+        /** The block at a fraction of the way through the book. */
+        function bookBlockAtProgress(f) {
+            const n = DocumentModel && DocumentModel.blocks ? DocumentModel.blocks.length : 0;
+            if (!n) return 0;
+            const p = bookWordPrefix();
+            const x = Math.max(0, Math.min(1, f));
+            if (!p || !(p[n] > 0)) return Math.min(n - 1, Math.floor(x * n));
+            const want = x * p[n];
+            let lo = 0, hi = n - 1;
+            while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (p[mid] <= want) lo = mid; else hi = mid - 1; }
+            return lo;
+        }
+
+        /** The unit holding a block, or null. */
+        function bookUnitOfBlock(bi) {
+            const u = _bookUnits;
+            if (!u || !u.length) return null;
+            let lo = 0, hi = u.length - 1;
+            while (lo < hi) {
+                const mid = (lo + hi + 1) >> 1;
+                if (u[mid].start <= bi) lo = mid; else hi = mid - 1;
+            }
+            return u[lo];
         }
 
         /**
@@ -1230,6 +1436,7 @@
             _bookDocIndex = {};
             _bookBlockDirs = [];
             try { _bookDocStarts = {}; } catch (e2) {}
+            try { _bookUnits = []; _bookUnitStarts = {}; PageChunks.setBounds(null); } catch (e2u) {}
             try { _bookPlateBlocks = null; } catch (e2b) {}
             try { _bookCssTexts = []; _bookCssDirs = []; _bookEmDivisor = 1; } catch (e2c) {}
             try { _bookAnchorIndex = null; } catch (e3) {}

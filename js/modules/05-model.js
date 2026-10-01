@@ -1125,6 +1125,7 @@
                         const el = createPreviewBlockEl(raw, false, i);
                         el.setAttribute('data-model-index', String(i));
                         if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
+                        if (_bookUnitStarts[i]) el.setAttribute('data-unit-start', '1');
                         frag.appendChild(el);
                     }
 
@@ -1226,8 +1227,16 @@
             }
         }
 
-        /** Block indices that begin a spine document, i.e. a chapter. */
+        /** Block indices that begin a spine document. */
         let _bookDocStarts = {};
+        /**
+         * The book's sections as a reader names them -- chapters, and front and back matter by
+         * their own names -- in order: [{ start, end, label }] over block indices (bookBuildUnits).
+         * Page numbers count within one of these. Empty for anything that is not a book.
+         */
+        let _bookUnits = [];
+        /** Block indices that begin a unit: each starts a new page, like a printed chapter. */
+        let _bookUnitStarts = {};
 
         function syncScratchEmpty() {
             const wrap = document.getElementById('editor-wrapper');
@@ -1539,6 +1548,7 @@
                     const el = createPreviewBlockEl(blockRaws[i], progressive, i);
                     el.setAttribute('data-model-index', String(i));
                     if (_bookDocStarts[i]) el.setAttribute('data-chapter-start', '1');
+                    if (_bookUnitStarts[i]) el.setAttribute('data-unit-start', '1');
                     frag.appendChild(el);
                 }
                 editor.appendChild(frag);

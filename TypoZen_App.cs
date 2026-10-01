@@ -787,6 +787,7 @@ namespace TypoZen
         private TextBlock _lblLineCount;
         private TextBlock _lblCharCount;
         private TextBlock _lblReadingTime;
+        private TextBlock _lblProgress;
         private TextBlock _lblEncoding;
         private TextBlock _lblZoom;
         private Border _statusIndicator;
@@ -1597,6 +1598,7 @@ namespace TypoZen
             _lblLineCount = (TextBlock)FindElement("lblLineCount");
             _lblCharCount = (TextBlock)FindElement("lblCharCount");
             _lblReadingTime = (TextBlock)FindElement("lblReadingTime");
+            _lblProgress = FindElement("lblProgress") as TextBlock;
             _lblEncoding = FindElement("lblEncoding") as TextBlock;
             _lblZoom = (TextBlock)FindElement("lblZoom");
             _statusIndicator = (Border)FindElement("statusIndicator");
@@ -7621,7 +7623,7 @@ namespace TypoZen
                         // and "1037" three inches to the left.
                         // A PDF reports its page in these fields (9th field "pdf").
                         bool pdfStats = parts.Length >= 9 && parts[8] == "pdf";
-                        _lblLineCount.Text = (pdfStats ? "Page " : "Ln ") + caret + "/" + total;
+                        _lblLineCount.Text = pdfStats ? ("Page " + caret + " of " + total) : ("Ln " + caret + "/" + total);
                     }
                     UpdateStatusDisplay();
                 }
@@ -7854,6 +7856,15 @@ namespace TypoZen
                 Dispatcher.BeginInvoke(new Action(() =>
                     SetToolbarActive(FindElement("btnToggleSidebar") as Button, _sidebarOpen)),
                     DispatcherPriority.Normal);
+            }
+            else if (msg.StartsWith("progress:"))
+            {
+                // "progress:24" -- how far through the book, by words. Books only.
+                string pct = msg.Substring(9);
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (_lblProgress != null) _lblProgress.Text = string.IsNullOrEmpty(pct) ? "" : ("Progress: " + pct + "%");
+                }));
             }
             else if (msg.StartsWith("chapter:"))
             {
@@ -14378,12 +14389,39 @@ namespace TypoZen
             catch { }
         }
 
+        /// <summary>
+        /// The status bar's counts, per document type (Ed, 2026-10-01), left to right:
+        ///   Book:     Chapter title • Progress: 24% • Words • Read time • Zoom
+        ///   Document: Active heading • Words • Chars • Ln X/Y • Zoom
+        ///   PDF:      Outline entry • Page X of Y • Words • Zoom
+        /// The theme follows in its own column; the narrator sits centred.
+        /// </summary>
+        private void ApplyStatusLayout(DocType dt)
+        {
+            var panel = FindElement("statusCounts") as Panel;
+            if (panel == null) return;
+            TextBlock[] order;
+            switch (dt)
+            {
+                case DocType.EPub: order = new[] { _lblChapter, _lblProgress, _lblWordCount, _lblReadingTime, _lblEncoding, _lblZoom }; break;
+                case DocType.Pdf: order = new[] { _lblChapter, _lblLineCount, _lblWordCount, _lblEncoding, _lblZoom }; break;
+                default: order = new[] { _lblChapter, _lblWordCount, _lblCharCount, _lblLineCount, _lblEncoding, _lblZoom }; break;
+            }
+            var all = new[] { _lblChapter, _lblProgress, _lblWordCount, _lblLineCount, _lblCharCount, _lblReadingTime, _lblEncoding, _lblZoom };
+            foreach (var t in all) if (t != null && t.Parent == panel) panel.Children.Remove(t);
+            foreach (var t in order) if (t != null) { panel.Children.Add(t); if (t != _lblEncoding) t.Visibility = Visibility.Visible; }
+            foreach (var t in all) if (t != null && Array.IndexOf(order, t) < 0) { panel.Children.Add(t); t.Visibility = Visibility.Collapsed; }
+            // The last one shown carries no trailing gap before the theme.
+            foreach (var t in all) if (t != null) t.Margin = new Thickness(0, 0, t == _lblZoom ? 0 : 12, 0);
+        }
+
         /// <summary>Apply this tab's mode + columns to the page (does not write the bag).</summary>
         /// <param name="contentFollows">This tab's document is about to be loaded; the page
         /// applies the look with it (see ApplyViewSettingsForType).</param>
         private void ApplyTabView(DocTab tab, bool contentFollows = false)
         {
             if (tab == null) return;
+            try { ApplyStatusLayout(IsBookTab(tab) ? DocType.EPub : IsPdfTab(tab) ? DocType.Pdf : GetDocType(tab.FilePath)); } catch { }
 
             if (IsNativeTab(tab))
             {
@@ -14451,6 +14489,27 @@ namespace TypoZen
         {
             if (tab == null || tab.Columns <= 0) return;
             SendMsg("cmd:view_set:columns:" + (tab.Columns == 2 ? "2" : "1"));
+        }
+
+        /// <summary>Windows' own icon font: Fluent on Windows 11, MDL2 on Windows 10.</summary>
+        private static readonly FontFamily TabIconFont = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
+
+        /// <summary>
+        /// The symbol for a tab's kind: book, Markdown/text, code, PDF (Ed's choice), and an
+        /// image, video or audio file.
+        /// </summary>
+        private string TabGlyph(DocTab tab)
+        {
+            if (IsBookTab(tab)) return "";
+            if (IsPdfTab(tab)) return "";
+            if (IsNativeTab(tab))
+            {
+                if (tab.NativeRole == NativeRole.Image) return "";
+                if (tab.NativeRole == NativeRole.Video) return "";
+                if (tab.NativeRole == NativeRole.Audio) return "";
+                if (tab.NativeRole == NativeRole.Page) return "";
+            }
+            return GetDocType(tab.FilePath) == DocType.Code ? "" : "";
         }
 
         private void RebuildTabStrip()
@@ -14527,6 +14586,19 @@ namespace TypoZen
                     TextTrimming = TextTrimming.CharacterEllipsis
                 };
                 title.ToolTip = string.IsNullOrEmpty(tab.FilePath) ? "Untitled document" : tab.FilePath;
+
+                // What kind of tab this is, as a symbol before its name (Ed, 2026-10-01).
+                var icon = new TextBlock
+                {
+                    Text = TabGlyph(tab),
+                    FontFamily = TabIconFont,
+                    FontSize = 12,
+                    Foreground = active ? _tabText : _tabTextMuted,
+                    Opacity = active ? 0.9 : 0.6,
+                    Margin = new Thickness(0, 1, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                row.Children.Add(icon);
 
                 var closeBtn = new Button
                 {

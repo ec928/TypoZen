@@ -843,6 +843,11 @@
         #editor.page-mode .block[data-chapter-start] {
             break-before: column;
         }
+        /* And so does a chapter that sits inside a larger file (Alice, Matter): its pages are
+           counted as "Page 2 of 15", which only means something if the chapter starts one. */
+        #editor.page-mode .block[data-unit-start] {
+            break-before: column;
+        }
 
         /* A cover or plate is bounded by the page it sits on. Book CSS routinely sizes
            images for a 6-inch reader page in absolute units, which on a desktop column

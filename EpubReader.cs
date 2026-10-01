@@ -124,6 +124,9 @@ namespace TypoZen
         /// Extract a book and describe it as JSON for the page.
         /// Returns null when the file is not a readable epub, so the caller can fall back.
         /// </summary>
+        /// <summary>First member of every payload; a cached payload without it is rebuilt.</summary>
+        private const string PayloadFormat = "\"fmt\":2";
+
         public static string ReadToPayload(string epubPath, string stateDir, out string assetDir)
         {
             assetDir = null;
@@ -163,7 +166,9 @@ namespace TypoZen
                             if (stampNow == stampWas)
                             {
                                 string cached = File.ReadAllText(payloadPath, new UTF8Encoding(false));
-                                if (!string.IsNullOrEmpty(cached)) return cached;
+                                // Only a payload in today's format: one cached before the TOC
+                                // kept its nesting would serve a flat contents list forever.
+                                if (!string.IsNullOrEmpty(cached) && cached.StartsWith("{" + PayloadFormat, StringComparison.Ordinal)) return cached;
                             }
                         }
                         catch { }
@@ -203,9 +208,11 @@ namespace TypoZen
                     }
 
                     var toc = ReadToc(zip, opfXml, opfDir, manifest);
+                    var landmarks = ReadLandmarks(zip, opfXml, opfDir);
 
                     var sb = new StringBuilder();
-                    sb.Append("{\"title\":").Append(JsonStr(MetaOf(opfXml, "title")));
+                    sb.Append("{").Append(PayloadFormat).Append(",\"title\":").Append(JsonStr(MetaOf(opfXml, "title")));
+                    sb.Append(",\"landmarks\":[").Append(string.Join(",", landmarks)).Append("]");
                     sb.Append(",\"author\":").Append(JsonStr(MetaOf(opfXml, "creator")));
                     sb.Append(",\"assetsBase\":").Append(JsonStr(
                         // Books have their own virtual host, mapped to whichever root
@@ -303,18 +310,30 @@ namespace TypoZen
                 }
             }
 
+            // Nesting is kept: an omnibus is books holding chapters (Xeelee: three levels), and
+            // chapters are numbered within their book. Both used to come out flat at level 1,
+            // and the nav reader took every link in the nav document -- landmarks and page
+            // lists included -- as a chapter.
             if (navHref != null)
             {
                 string nav = ReadEntry(zip, Join(opfDir, navHref)) ?? ReadEntry(zip, navHref);
                 if (nav != null)
                 {
                     string navDir = DirOf(Join(opfDir, navHref));
-                    foreach (Match a in Regex.Matches(nav,
-                        "<a\\b[^>]*href\\s*=\\s*\"([^\"]+)\"[^>]*>([\\s\\S]*?)</a>", RegexOptions.IgnoreCase))
+                    var tocNav = Regex.Match(nav,
+                        "<nav\\b[^>]*(?:epub:type\\s*=\\s*\"[^\"]*\\btoc\\b[^\"]*\"|role\\s*=\\s*\"doc-toc\")[^>]*>([\\s\\S]*?)</nav>",
+                        RegexOptions.IgnoreCase);
+                    string body = tocNav.Success ? tocNav.Groups[1].Value : nav;
+                    int depth = 0;
+                    foreach (Match t in Regex.Matches(body,
+                        "<ol\\b[^>]*>|</ol>|<a\\b[^>]*href\\s*=\\s*\"([^\"]+)\"[^>]*>([\\s\\S]*?)</a>", RegexOptions.IgnoreCase))
                     {
-                        string href = RelativeToOpf(navDir, opfDir, a.Groups[1].Value);
-                        string text = StripTags(a.Groups[2].Value);
-                        if (text.Length > 0) outp.Add(TocJson(text, 1, href));
+                        string v = t.Value;
+                        if (v.StartsWith("</", StringComparison.Ordinal)) { depth = Math.Max(0, depth - 1); continue; }
+                        if (v.StartsWith("<ol", StringComparison.OrdinalIgnoreCase)) { depth++; continue; }
+                        string href = RelativeToOpf(navDir, opfDir, t.Groups[1].Value);
+                        string text = StripTags(t.Groups[2].Value);
+                        if (text.Length > 0) outp.Add(TocJson(text, Math.Max(1, depth), href));
                     }
                     if (outp.Count > 0) return outp;
                 }
@@ -326,17 +345,59 @@ namespace TypoZen
                 if (ncx != null)
                 {
                     string ncxDir = DirOf(Join(opfDir, ncxHref));
-                    foreach (Match np in Regex.Matches(ncx,
-                        "<navPoint\\b[\\s\\S]*?</navPoint>", RegexOptions.IgnoreCase))
+                    int depth = 0;
+                    string label = null;
+                    foreach (Match t in Regex.Matches(ncx,
+                        "<navPoint\\b[^>]*>|</navPoint>|<text[^>]*>([\\s\\S]*?)</text>|<content\\b[^>]*src\\s*=\\s*\"([^\"]+)\"",
+                        RegexOptions.IgnoreCase))
                     {
-                        var label = Regex.Match(np.Value, "<text[^>]*>([\\s\\S]*?)</text>", RegexOptions.IgnoreCase);
-                        var content = Regex.Match(np.Value, "<content\\b[^>]*src\\s*=\\s*\"([^\"]+)\"", RegexOptions.IgnoreCase);
-                        if (!label.Success || !content.Success) continue;
-                        string text = StripTags(label.Groups[1].Value);
-                        if (text.Length == 0) continue;
-                        outp.Add(TocJson(text, 1, RelativeToOpf(ncxDir, opfDir, content.Groups[1].Value)));
+                        string v = t.Value;
+                        if (v.StartsWith("</", StringComparison.Ordinal)) { depth = Math.Max(0, depth - 1); continue; }
+                        if (v.StartsWith("<navPoint", StringComparison.OrdinalIgnoreCase)) { depth++; label = null; continue; }
+                        if (v.StartsWith("<text", StringComparison.OrdinalIgnoreCase)) { if (label == null) label = StripTags(t.Groups[1].Value); continue; }
+                        if (depth == 0 || string.IsNullOrEmpty(label)) continue;   // docTitle / pageList
+                        outp.Add(TocJson(label, depth, RelativeToOpf(ncxDir, opfDir, t.Groups[2].Value)));
+                        label = "";
                     }
                 }
+            }
+            return outp;
+        }
+
+        /// <summary>
+        /// What the book says its sections are: EPUB 2 guide references and EPUB 3 landmarks,
+        /// as { type, href } relative to the OPF. Few books carry them (of six test books, one
+        /// marks its title page, imprint and chapters properly), so the page also reads titles;
+        /// where they exist they are the book's own word and win.
+        /// </summary>
+        private static List<string> ReadLandmarks(ZipArchive zip, string opfXml, string opfDir)
+        {
+            var outp = new List<string>();
+            foreach (Match m in Regex.Matches(opfXml, "<reference\\b[^>]*>", RegexOptions.IgnoreCase))
+            {
+                string type = Attr(m.Value, "type");
+                string href = Attr(m.Value, "href");
+                if (type != null && href != null)
+                    outp.Add("{\"type\":" + JsonStr(type.ToLowerInvariant()) + ",\"href\":" + JsonStr(RelativeToOpf(opfDir, opfDir, href)) + "}");
+            }
+            foreach (Match m in Regex.Matches(opfXml, "<item\\b[^>]*>", RegexOptions.IgnoreCase))
+            {
+                string props = Attr(m.Value, "properties") ?? "";
+                string navHref = Attr(m.Value, "href");
+                if (navHref == null || props.IndexOf("nav", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                string nav = ReadEntry(zip, Join(opfDir, navHref)) ?? ReadEntry(zip, navHref);
+                if (nav == null) break;
+                string navDir = DirOf(Join(opfDir, navHref));
+                var lm = Regex.Match(nav, "<nav\\b[^>]*epub:type\\s*=\\s*\"[^\"]*landmarks[^\"]*\"[^>]*>([\\s\\S]*?)</nav>", RegexOptions.IgnoreCase);
+                if (!lm.Success) break;
+                foreach (Match a in Regex.Matches(lm.Groups[1].Value, "<a\\b[^>]*>", RegexOptions.IgnoreCase))
+                {
+                    string type = Attr(a.Value, "epub:type");
+                    string href = Attr(a.Value, "href");
+                    if (type != null && href != null)
+                        outp.Add("{\"type\":" + JsonStr(type.ToLowerInvariant()) + ",\"href\":" + JsonStr(RelativeToOpf(navDir, opfDir, href)) + "}");
+                }
+                break;
             }
             return outp;
         }
