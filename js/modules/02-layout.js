@@ -4277,16 +4277,16 @@
             // reads as a smear) or a major mark; the rest are drawn.
             const mid = h / 2;
             ctx.fillStyle = tx;
-            ctx.globalAlpha = 0.38;
+            ctx.globalAlpha = 0.3;
             let lastX = -10;
             for (const x of minor) {
                 if (x - lastX < 3) continue;
                 if (major.some(function (n) { return Math.abs(n - x) < 3; })) { lastX = x; continue; }
-                ctx.fillRect(Math.round(x) - 0.5, mid - 3, 1, 6);
+                ctx.fillRect(Math.round(x) - 0.5, mid - 2, 1, 4);
                 lastX = x;
             }
-            ctx.globalAlpha = 0.75;
-            for (const x of major) ctx.fillRect(Math.round(x) - 1, mid - 6, 2, 12);
+            ctx.globalAlpha = 0.45;   // quiet: glanced at, not read (Ed, 2026-10-01)
+            for (const x of major) ctx.fillRect(Math.round(x) - 0.5, mid - 4, 1, 8);
             ctx.globalAlpha = 1;
         }
 
