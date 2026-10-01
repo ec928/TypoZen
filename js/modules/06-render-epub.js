@@ -196,7 +196,7 @@
             _bookDocStarts = {};
             for (let i = 0; i < split.docStarts.length; i++) _bookDocStarts[split.docStarts[i]] = 1;
             try {
-                _bookUnits = bookBuildUnits(toc, split.blocks, data.landmarks, split.docStart);
+                _bookUnits = bookBuildUnits(toc, split.blocks, data.landmarks, split.docStart, split.docStarts);
             } catch (eU) { _bookUnits = []; }
             _bookUnitStarts = {};
             for (let i = 0; i < _bookUnits.length; i++) if (_bookUnits[i].start > 0) _bookUnitStarts[_bookUnits[i].start] = 1;
@@ -931,31 +931,30 @@
         }
 
         /**
-         * The book's sections as a reader names them (Ed, 2026-10-01: "a cover is not a
-         * chapter"; spine items are not chapters). Built from the table of contents, which is
-         * the book's own list of what it contains, in order:
+         * The book's sections as a reader names them (Ed, 2026-10-01): chapters, and front and
+         * back matter by their own names. Book-agnostic by design -- it reads structure and the
+         * book's own words, never a list of section names:
          *
-         *  - Front and back matter keeps its own name: Cover, Title Page, Copyright, Contents,
-         *    Dedication, About the Author, Prologue, Epilogue... The book's landmarks/guide say
-         *    so where it has them; otherwise the entry's title does.
-         *  - A part or a book of an omnibus (a contents entry with entries under it, or one
-         *    titled Part/Book/Volume) is named too: "Raft", "Book One - DUNE".
-         *  - Everything else is a chapter, numbered within its book: "Chapter 3 of 30".
-         *  - Anything before the first entry is the cover or front matter.
-         *  - A unit too long to lay out at once (a book with no chapters) is split into
-         *    sections: "Book One - DUNE • Section 3 of 9".
+         *  1. Boundaries are structural: every file start and every contents entry starts a
+         *     unit, and every unit starts a page. A file with no entry of its own continues the
+         *     unit before it (a long chapter split across files), unless that unit is a divider
+         *     -- a part's title page -- whose chapters the contents does not list (Dune: "Book
+         *     One - DUNE" and then one file per chapter).
+         *  2. A unit's name is the book's own: its contents entry, else its first heading, else
+         *     the book's landmark for it, else what contains it. An image with no words is the
+         *     cover.
+         *  3. Chapters come from the book's own numbering where it numbers them ("Chapter 56",
+         *     "16. Seed Drill", "XXXIII", "Chapter Twenty-four") -- the label uses that number
+         *     and everything unnumbered is named, not counted (Prologue, Epilogue, "The
+         *     Expeditionary"). A book that does not number its chapters has them counted in
+         *     order: the files under its parts if it has them, else the units holding the body
+         *     of the text, between its front and back matter.
+         *  4. An omnibus is read as several books: each top-level contents entry with entries
+         *     under it numbers its own chapters.
+         *  5. A unit too long to lay out at once is split into sections.
          *
-         * Returns [{ start, end, label }] covering every block, in order.
+         * Returns [{ start, end, label, title }] covering every block, in order.
          */
-        const BOOK_NAMED_SECTION = new RegExp('^(cover|title ?page|title$|half ?title|copyright|imprint|colophon|' +
-            '(table of )?contents|dedication|epigraph|acknowledge?ments?|about the (author|authors|publisher|book)|' +
-            'also by\\b|by the same author|other (books|titles|works) by|books by|praise for|maps?\\b|' +
-            'foreword|preface|introduction|prologue|epilogue|afterword|postscript|appendi(x|ces|xes)\\b|glossary|' +
-            '(end ?)?notes\\b|index\\b|bibliography|further reading|timeline|chronology|dramatis personae|' +
-            'cast of characters|characters\\b|terminology|cartographic|credits|newsletter|excerpt|preview|' +
-            'a note (on|from|about)|(author|translator)\'?s? note|front ?matter|back ?matter|' +
-            'list of illustrations|illustrations\\b|frontispiece|landmarks|start reading|reading group)', 'i');
-        const BOOK_PART = /^(part|book|volume|vol\.)\b/i;
         const BOOK_LANDMARK_NAMES = {
             'cover': 'Cover', 'title-page': 'Title Page', 'titlepage': 'Title Page', 'copyright-page': 'Copyright',
             'toc': 'Contents', 'dedication': 'Dedication', 'acknowledgements': 'Acknowledgements',
@@ -964,12 +963,60 @@
             'bibliography': 'Bibliography', 'colophon': 'Colophon', 'imprint': 'Imprint', 'loi': 'Illustrations',
             'epigraph': 'Epigraph', 'notes': 'Notes', 'endnotes': 'Notes'
         };
+        const BOOK_BODY_MARKS = { 'bodymatter': 1, 'chapter': 1, 'text': 1, 'start': 1 };
         const BOOK_UNIT_MAX_BLOCKS = 1600;
+        const BOOK_DIVIDER_WORDS = 150;
 
-        function bookBuildUnits(toc, blocks, landmarks, docStart) {
+        /** The number a chapter title carries, or 0: "Chapter 56", "16. Seed Drill", "XXXIII". */
+        const BOOK_NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+            eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
+            nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+        function bookTitleNumber(title) {
+            const t = String(title || '').trim();
+            let m = t.match(/^(?:chapter|ch\.)\s+([^\s:.\-–—]+(?:[\s-][^\s:.\-–—]+)?)/i);
+            const word = m ? m[1] : (t.match(/^([0-9]+|[ivxlcdm]+)(?=$|[\s.:\-–—])/i) || [])[1];
+            if (!word) return 0;
+            if (/^[0-9]+$/.test(word)) return +word;
+            if (/^[ivxlcdm]+$/i.test(word)) {
+                const v = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+                const s = word.toLowerCase();
+                let n = 0;
+                for (let i = 0; i < s.length; i++) {
+                    const a = v[s[i]], b = i + 1 < s.length ? v[s[i + 1]] : 0;
+                    n += a < b ? -a : a;
+                }
+                return n > 0 && n < 400 ? n : 0;
+            }
+            let n = 0;
+            for (const part of word.toLowerCase().split(/[\s-]+/)) {
+                if (!BOOK_NUMBER_WORDS[part]) return 0;
+                n += BOOK_NUMBER_WORDS[part];
+            }
+            return n;
+        }
+
+        function bookBuildUnits(toc, blocks, landmarks, docStart, docStarts) {
             const n = blocks ? blocks.length : 0;
             if (!n) return [];
-            // Landmark type per block, from the book's own markings.
+            const textOf = function (i) { return String(blocks[i] || '').replace(/<[^>]*>/g, ' '); };
+            const wordsIn = function (a, b, cap) {
+                let w = 0;
+                for (let i = a; i < b && w < cap; i++) { const t = textOf(i).match(/\S+/g); if (t) w += t.length; }
+                return w;
+            };
+            const rawLen = function (a, b) { let s = 0; for (let i = a; i < b; i++) s += String(blocks[i] || '').length; return s; };
+            const headingIn = function (a, b) {
+                for (let i = a; i < Math.min(b, a + 6); i++) {
+                    const m = String(blocks[i] || '').match(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i);
+                    if (m) { const t = htmlFragmentToText(m[1]).replace(/\s+/g, ' ').trim(); if (t) return t; }
+                }
+                return '';
+            };
+            const imageOnly = function (a, b) {
+                return wordsIn(a, b, 5) < 5 && /<(img|image|svg)\b/i.test(blocks.slice(a, Math.min(b, a + 4)).join(''));
+            };
+
+            // The book's landmarks, by block.
             const markAt = {};
             const keys = docStart ? Object.keys(docStart) : [];
             for (let i = 0; i < (landmarks ? landmarks.length : 0); i++) {
@@ -983,9 +1030,9 @@
                 }
                 if (bi >= 0 && !markAt[bi]) markAt[bi] = String(lm.type).toLowerCase();
             }
-            // Entries in contents order, with whether each has entries nested under it, and
-            // which book it belongs to (the nearest entry above it at a shallower level).
-            const list = [];
+
+            // Contents entries with their nesting: parent, and whether entries sit under them.
+            const entries = [];
             const stack = [];
             for (let i = 0; i < (toc ? toc.length : 0); i++) {
                 const e = toc[i];
@@ -994,70 +1041,120 @@
                 while (stack.length && stack[stack.length - 1].level >= lv) stack.pop();
                 const parent = stack.length ? stack[stack.length - 1] : null;
                 if (parent) parent.hasChildren = true;
-                const item = { title: String(e.title || '').replace(/\s+/g, ' ').trim(), level: lv, start: e.blockIndex,
+                const it = { title: String(e.title || '').replace(/\s+/g, ' ').trim(), level: lv, start: e.blockIndex,
                     parent: parent, hasChildren: false };
-                list.push(item);
-                stack.push(item);
+                entries.push(it);
+                stack.push(it);
             }
-            // One unit per starting block: where several entries land on the same block (a
-            // book's heading and its first chapter), the deepest names the pages.
-            const byStart = [];
-            for (let i = 0; i < list.length; i++) {
-                const it = list[i];
-                if (byStart.length && byStart[byStart.length - 1].start === it.start) byStart[byStart.length - 1] = it;
-                else if (!byStart.length || it.start > byStart[byStart.length - 1].start) byStart.push(it);
-            }
-            const kindOf = function (it) {
-                const mark = markAt[it.start];
-                if (mark && mark !== 'bodymatter' && mark !== 'chapter' && mark !== 'text' && mark !== 'start') return 'named';
-                if (mark === 'chapter') return 'chapter';
-                if (it.hasChildren || BOOK_PART.test(it.title)) return 'named';
-                if (BOOK_NAMED_SECTION.test(it.title.replace(/^[^A-Za-z]+/, ''))) return 'named';
-                return 'chapter';
+            // The entry naming each block: where several land on one block, the deepest.
+            const entryAt = {};
+            for (const it of entries) entryAt[it.start] = it;
+            // The book each entry belongs to: its top-level ancestor, when the contents is an
+            // omnibus (top-level entries holding others); otherwise one book.
+            const omnibus = entries.some(function (it) { return it.level === 1 && it.hasChildren; })
+                && entries.filter(function (it) { return it.level === 1 && it.hasChildren; }).length > 1;
+            const bookOf = function (it) {
+                if (!omnibus || !it) return null;
+                let p = it;
+                while (p.parent) p = p.parent;
+                return p.hasChildren ? p : null;
             };
+
+            // 1. Boundaries: every contents entry and every file start.
+            const starts = {};
+            starts[0] = 1;
+            for (const it of entries) starts[it.start] = 1;
+            for (const s of (docStarts || [])) if (s >= 0 && s < n) starts[s] = 1;
+            const cuts = Object.keys(starts).map(Number).sort(function (a, b) { return a - b; });
             const units = [];
-            if (!byStart.length || byStart[0].start > 0) {
-                const mark = markAt[0];
-                units.push({ start: 0, end: byStart.length ? byStart[0].start : n, kind: 'named',
-                    title: (mark && BOOK_LANDMARK_NAMES[mark]) || 'Cover', parent: null });
-            }
-            for (let i = 0; i < byStart.length; i++) {
-                const it = byStart[i];
-                const end = i + 1 < byStart.length ? byStart[i + 1].start : n;
-                const kind = kindOf(it);
-                const mark = markAt[it.start];
-                const title = (kind === 'named' && !it.title && mark && BOOK_LANDMARK_NAMES[mark]) ? BOOK_LANDMARK_NAMES[mark] : it.title;
-                units.push({ start: it.start, end: end, kind: kind, title: title, parent: it.parent });
-            }
-            // Number chapters within their book, not within a part of it: Coalescent's "Chapter
-            // 56" sits in Part Two, and counting from the part called it "Chapter 22 of 25".
-            for (const u of units) {
-                let p = u.parent;
-                while (p && /^part\b/i.test(p.title)) p = p.parent;
-                u.parent = p;
-            }
-            const tally = new Map();
-            for (const u of units) if (u.kind === 'chapter') tally.set(u.parent, (tally.get(u.parent) || 0) + 1);
-            const seen = new Map();
-            for (const u of units) {
-                if (u.kind !== 'chapter') {
-                    // The book's own wording, except a run-together "Titlepage".
-                    u.label = (u.title || 'Untitled').replace(/^title( ?page)?$/i, 'Title Page');
+            let current = null;      // the contents entry the unit is under
+            const partEntries = new Set();   // entries whose own first unit is a divider
+            for (let k = 0; k < cuts.length; k++) {
+                const a = cuts[k], b = k + 1 < cuts.length ? cuts[k + 1] : n;
+                const own = entryAt[a] || null;
+                if (own) current = own;
+                const heading = own ? '' : headingIn(a, b);
+                const prev = units[units.length - 1];
+                // A file with no entry and no heading continues the unit before it -- unless that
+                // unit is a divider, in which case it is one of the divider's unlisted chapters.
+                if (own && b - a < 400 && wordsIn(a, b, BOOK_DIVIDER_WORDS) < BOOK_DIVIDER_WORDS && !entryAt[b]) partEntries.add(own);
+                if (!own && !heading && !markAt[a] && prev && prev.entry && prev.entry === current && !partEntries.has(current)) {
+                    prev.end = b;
                     continue;
                 }
-                const k = (seen.get(u.parent) || 0) + 1;
-                seen.set(u.parent, k);
-                u.label = 'Chapter ' + k + ' of ' + tally.get(u.parent);
+                const u = { start: a, end: b, entry: current, own: !!own, title: own ? own.title : heading,
+                    mark: markAt[a] || '', divider: false, derived: !own && !!current };
+                if (!u.title && u.mark && BOOK_LANDMARK_NAMES[u.mark]) u.title = BOOK_LANDMARK_NAMES[u.mark];
+                if (!current && !u.title) u.title = (!units.length && imageOnly(a, b)) ? 'Cover' : 'Front Matter';
+                units.push(u);
             }
-            // Too long to lay out at once: sections of up to 800 blocks.
+            for (const u of units) {
+                const len = rawLen(u.start, u.end);
+                u.size = len;
+                u.divider = len < 6000 && wordsIn(u.start, u.end, BOOK_DIVIDER_WORDS) < BOOK_DIVIDER_WORDS;
+                u.number = u.own ? bookTitleNumber(u.title) : 0;
+                u.book = bookOf(u.entry);
+            }
+
+            // 3. Chapters, per book.
+            const books = [];
+            for (const u of units) if (books.indexOf(u.book) < 0) books.push(u.book);
+            for (const bk of books) {
+                const mine = units.filter(function (u) { return u.book === bk; });
+                const numbered = mine.filter(function (u) { return u.number > 0 && !u.divider; });
+                let chapters, numberOf;
+                if (numbered.length >= 3) {
+                    chapters = numbered;
+                    numberOf = function (u) { return u.number; };
+                } else {
+                    // The files under a part whose chapters are not listed, if the book has them.
+                    const derived = mine.filter(function (u) { return u.derived && !u.divider; });
+                    if (derived.length >= 3) {
+                        chapters = derived;
+                    } else {
+                        // Otherwise the body: from the first to the last unit holding a real share
+                        // of the text, or the book's own bodymatter mark where it has one.
+                        const sizes = mine.map(function (u) { return u.size; }).sort(function (x, y) { return x - y; });
+                        const median = sizes.length ? sizes[sizes.length >> 1] : 0;
+                        const big = function (u) { return !u.divider && u.size >= median * 0.5; };
+                        let first = mine.findIndex(function (u) { return BOOK_BODY_MARKS[u.mark]; });
+                        if (first < 0) first = mine.findIndex(big);
+                        let last = -1;
+                        for (let i = mine.length - 1; i >= 0; i--) if (big(mine[i])) { last = i; break; }
+                        chapters = (first >= 0 && last >= first)
+                            ? mine.slice(first, last + 1).filter(function (u) { return !u.divider && !(u.mark && !BOOK_BODY_MARKS[u.mark]); })
+                            : [];
+                    }
+                    const order = new Map();
+                    chapters.forEach(function (u, i) { order.set(u, i + 1); });
+                    numberOf = function (u) { return order.get(u); };
+                }
+                const total = chapters.reduce(function (m, u) { return Math.max(m, numberOf(u)); }, 0);
+                for (const u of mine) {
+                    if (chapters.indexOf(u) >= 0) u.label = 'Chapter ' + numberOf(u) + ' of ' + total;
+                }
+            }
+            // 2. Everything else by its own name, or by what contains it.
+            for (let i = 0; i < units.length; i++) {
+                const u = units[i];
+                if (u.label) continue;
+                let name = u.title;
+                if (!name && u.entry) name = u.entry.title;
+                if (!name) name = 'Untitled';
+                u.label = name;
+                if (!u.title) u.title = name;
+            }
+
+            // 5. Too long to lay out at once: sections of up to 800 blocks.
             const out = [];
             for (const u of units) {
                 const len = u.end - u.start;
-                if (len <= BOOK_UNIT_MAX_BLOCKS) { out.push({ start: u.start, end: u.end, label: u.label, title: u.title }); continue; }
+                const title = u.entry && !u.own ? u.entry.title : u.title;
+                if (len <= BOOK_UNIT_MAX_BLOCKS) { out.push({ start: u.start, end: u.end, label: u.label, title: title }); continue; }
                 const m = Math.ceil(len / 800);
                 for (let s = 0; s < m; s++) {
                     const a = u.start + Math.floor(len * s / m), b = u.start + Math.floor(len * (s + 1) / m);
-                    out.push({ start: a, end: b, label: u.label + ' • Section ' + (s + 1) + ' of ' + m, title: u.title });
+                    out.push({ start: a, end: b, label: u.label + ' • Section ' + (s + 1) + ' of ' + m, title: title });
                 }
             }
             return out;
