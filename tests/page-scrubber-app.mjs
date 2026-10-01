@@ -96,10 +96,13 @@ try {
         out.startPage = PageMap.current();
 
         // Halfway, then the scrubber must report where the reader now is.
-        await drag(Math.floor(parseInt(range.max, 10) / 2));
+        // A book's thumb is a position in its text, in thousandths (there are no whole-book
+        // page numbers since 2026-10-01): where the reader lands must be where they asked.
+        out.midWant = Math.floor(parseInt(range.max, 10) / 2);
+        await drag(out.midWant);
         out.midBlock = topLeftModelIndexTwoCol();
         out.midValue = parseInt(range.value, 10);
-        out.midCurrent = PageMap.current();
+        out.midCurrent = Math.round(bookProgress() * 1000);
 
         // A book cannot leave a paginated layout: Reader is pages, and the selectors
         // refuse to take a read-only document anywhere else.
@@ -132,9 +135,9 @@ try {
         ', thumb ' + r.midValue);
     assert(r.midBlock > 0 && r.midBlock < r.blocks,
         'dragging to the middle lands inside the book (' + r.midBlock + ')');
-    assert(Math.abs(r.midValue - r.midCurrent) <= 2,
-        'and the thumb reports where the reader actually is (' +
-        r.midValue + ' vs ' + r.midCurrent + ')');
+    assert(Math.abs(r.midValue - r.midCurrent) <= 2 && Math.abs(r.midCurrent - r.midWant) <= 10,
+        'and the thumb reports where the reader actually is, which is where they asked to go (' +
+        r.midValue + ' vs ' + r.midCurrent + ', asked ' + r.midWant + ' of 1000)');
 
     assert(r.stillPaginated,
         'a book stays paginated when asked to scroll, rather than landing somewhere ' +
@@ -170,17 +173,14 @@ try {
             range.value = String(v);
             range.dispatchEvent(new Event('change', { bubbles: true }));
             await sleep(3000);
-            return PageMap.current();
+            return Math.round(bookProgress() * 1000);
         };
         const out = [];
         for (const f of [0, 0.25, 0.55, 0.88]) {
             const want = Math.floor(parseInt(range.max, 10) * f);
             const first = await seek(want);
             const got = await seek(want);
-            // The total can have shrunk under the request; the last page is then the
-            // honest answer to "go further than the book goes".
-            const target = Math.min(want, Math.max(0, PageMap.count() - 1));
-            out.push({ want: want, first: first, got: got, target: target, of: PageMap.count() });
+            out.push({ want: want, first: first, got: got, target: want, of: 1000 });
         }
         return out;
     });
@@ -188,12 +188,13 @@ try {
         info('asked ' + s.want + ' -> first ' + s.first + ', settled ' + s.got +
              ' (target ' + s.target + ' of ' + s.of + ', off by ' + (s.got - s.target) + ')');
     }
-    const adrift = seeks.filter(s => Math.abs(s.got - s.target) > 1);
+    // Within 1% of the book: a seek lands on the page holding that point in the text.
+    const adrift = seeks.filter(s => Math.abs(s.got - s.target) > 10);
     assert(adrift.length === 0,
         'every scrubber seek lands on the page it was asked for (' + adrift.length +
         ' of ' + seeks.length + ' adrift' +
         (adrift.length ? ', worst ' + Math.max(...adrift.map(s => Math.abs(s.got - s.target))) +
-            ' pages' : '') + ')');
+            ' thousandths' : '') + ')');
 
     console.log('\n=== where the scrubber leaves you is where a column switch keeps you ===');
     // Read into the book by turning pages, drag the thumb back to the title, then switch

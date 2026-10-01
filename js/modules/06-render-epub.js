@@ -1211,6 +1211,9 @@
             if (!n) return 0;
             const p = bookWordPrefix();
             const x = Math.max(0, Math.min(1, f));
+            // The start is the first block, cover and all: by words alone 0% is the last block
+            // before the first word, one block in on a book whose cover has none (Xeelee).
+            if (x <= 0) return 0;
             if (!p || !(p[n] > 0)) return Math.min(n - 1, Math.floor(x * n));
             const want = x * p[n];
             let lo = 0, hi = n - 1;

@@ -951,11 +951,14 @@ async function openAndCheck(app, book, deep, opts) {
                 (pg.offenders.length ? ' | ' + JSON.stringify(pg.offenders) : ''));
             assert(pg.laidOut === 0 || pg.atTop === pg.laidOut,
                 'every laid-out chapter start begins a column (' + pg.atTop + ' of ' + pg.laidOut + ')');
-            const asInts = pg.nums.map(n => parseInt(n, 10)).filter(n => !isNaN(n));
-            assert(asInts.length === 2 && asInts[1] === asInts[0] + 1,
-                'the two page numbers of a spread are consecutive (' + JSON.stringify(pg.nums) + ')');
-            assert(asInts[0] <= pg.total * 2,
-                'and within the document, not a page number from another coordinate system');
+            // A book labels a spread in its own terms, under the right-hand page only:
+            // "Chapter 14 of 27 • Page 6 of 30" (2026-10-01). Whole-book page numbers are gone.
+            const m = pg.nums.length === 2 ? /Page (\d+) of (\d+)$/.exec(pg.nums[1]) : null;
+            assert(pg.nums.length === 2 && pg.nums[0] === '' && !!m,
+                'a spread is labelled once, under the right-hand page, with its page in its chapter ('
+                + JSON.stringify(pg.nums) + ')');
+            assert(!!m && +m[1] >= 1 && +m[1] <= +m[2],
+                'and that page lies within its chapter (' + (m ? m[1] + ' of ' + m[2] : 'no label') + ')');
         }
 
     }
