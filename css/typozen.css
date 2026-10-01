@@ -1076,14 +1076,15 @@
                from the bottom) had the track running through it at 10px and the thumb over
                its lower half. Both live in the same 26px PAGE_FOOT_RESERVE; this stacks them
                in it instead of making the page shorter. */
-            bottom: 11px;
+            bottom: 13px;
             display: none;
             justify-content: flex-end;
             /* Clickable for go-to-page; scrubber sits above on its own layer. */
             pointer-events: auto;
             z-index: 5;
             font-family: var(--ui-font);
-            font-size: 12px;
+            /* Small: it is there to be glanced at, not read (Ed, 2026-10-01). */
+            font-size: 11px;
             color: var(--tx-muted, #A1A1AA);
             opacity: 0.75;
             cursor: pointer;
@@ -1098,6 +1099,8 @@
             opacity: 1;
             color: var(--tx, #E4E4E7);
         }
+        /* A book's label goes nowhere when clicked; the scrubber moves through the book. */
+        #page-indicator.book-label, #page-indicator.book-label .page-num { cursor: default; }
         /* One number per column, each sitting under its own column. */
         #page-indicator.two-up { justify-content: space-between; }
         #page-indicator.two-up .page-num { width: 50%; }

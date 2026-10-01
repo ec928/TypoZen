@@ -124,6 +124,18 @@
      * The status bar on a PDF: words and characters of its text, and the page in place of
      * the line (07-stats-host.js asks for this while a PDF is on screen).
      */
+    /**
+     * The page the status bar describes: the right-hand page of a two-page spread, the page
+     * itself otherwise -- the same rule as a book's label (Ed, 2026-10-01).
+     */
+    function statusPage(page) {
+        const pages = (S.viewer && S.viewer.pagesCount) || 1;
+        const p = Math.max(1, page | 0);
+        if (S.cols !== 2 || S.scroll !== 'pagination') return p;
+        const left = (p % 2) ? p : p - 1;   // spreads start on odd pages: 1-2, 3-4
+        return Math.min(left + 1, pages);
+    }
+
     window.tzPdfStats = function () {
         if (!S.active || !S.viewer) return null;
         if (S.statsFor !== S.haystack) {
@@ -137,7 +149,7 @@
             // The page texts, not the search haystack: its page separators are not the
             // PDF's characters (a PDF with no text showed "22 chars" -- 11 separators).
             chars: (S.pageTexts || []).reduce((n, t) => n + (t ? t.length : 0), 0),
-            page: S.viewer.currentPageNumber || 1,
+            page: statusPage(S.viewer.currentPageNumber || 1),
             pages: S.viewer.pagesCount || 0
         };
     };
@@ -205,7 +217,7 @@
         flat.sort((a, b) => a.page - b.page);
         S.outlinePages = flat;
         S.outlinePosted = null;
-        try { postOutlineAt(S.viewer ? S.viewer.currentPageNumber : 1); } catch (e) { }
+        try { postOutlineAt(statusPage(S.viewer ? S.viewer.currentPageNumber : 1)); } catch (e) { }
     }
     function postOutlineAt(page) {
         const list = S.outlinePages;
@@ -217,7 +229,7 @@
     }
 
     function reportPage(page) {
-        try { postOutlineAt(page); } catch (eO) { }
+        try { postOutlineAt(statusPage(page)); } catch (eO) { }
         refreshStats();
         refreshScrubber();
         clearTimeout(S.reportTimer);

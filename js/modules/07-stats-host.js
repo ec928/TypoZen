@@ -569,7 +569,14 @@
                 // layout change has left scrollLeft stale, and the remembered anchor is the
                 // right answer for exactly that gap.
                 if (atBlock >= 0) bi = atBlock;
-                else if (typeof currentReadingBlock === 'function') bi = currentReadingBlock();
+                // A book names the chapter of the page carrying the label -- the right-hand
+                // page in 2-Col -- so the status bar and the label never disagree (Ed,
+                // 2026-10-01: Chapter One on the right, "Prologue" in the status bar).
+                if (!(bi >= 0) && typeof bookPagePosition === 'function') {
+                    const pos = bookPagePosition();
+                    if (pos && pos.unit) bi = pos.unit.start;
+                }
+                if (!(bi >= 0) && typeof currentReadingBlock === 'function') bi = currentReadingBlock();
                 if (!(bi >= 0) && typeof _readingAnchor === 'number' && _readingAnchor >= 0) {
                     bi = _readingAnchor;
                 }

@@ -3919,7 +3919,6 @@
          * Exact because a unit is always laid out whole: ranges are cut on unit boundaries
          * (PageChunks.setBounds) and every unit starts a page (data-unit-start).
          */
-        let _unitLeafCache = { key: '', list: null };
         function bookPagePosition() {
             try {
                 if (typeof _bookUnits === 'undefined' || !_bookUnits || !_bookUnits.length) return null;
@@ -3945,8 +3944,12 @@
                     a = PageChunks.firstBlockOfChunk(PageChunks.mounted);
                     b = PageChunks.endBlockOfChunk(PageChunks.mounted, n);
                 }
-                const key = a + ':' + b + ':' + editor.scrollWidth + ':' + pitch + ':' + editor.clientHeight;
-                if (_unitLeafCache.key !== key) {
+                // Measured on every call, never cached: a text-size correction can move a
+                // chapter by a page while the range keeps its width, and a cache keyed on the
+                // width then labelled Chapter One's first page as the Prologue's last (Ed,
+                // 2026-10-01, Nemesis Games). It is a few dozen rectangles from a settled layout.
+                const list = [];
+                {
                     const edRect = editor.getBoundingClientRect();
                     const sl = editor.scrollLeft || 0;
                     const leafOf = function (bi) {
@@ -3959,7 +3962,6 @@
                         }
                         return null;
                     };
-                    const list = [];
                     for (let i = 0; i < _bookUnits.length; i++) {
                         const u = _bookUnits[i];
                         if (u.end <= a || u.start >= b) continue;
@@ -3968,10 +3970,8 @@
                         if (list.length && lf <= list[list.length - 1].leaf) { list[list.length - 1] = { u: u, leaf: lf }; continue; }
                         list.push({ u: u, leaf: lf });
                     }
-                    _unitLeafCache = { key: key, list: list };
                 }
-                const list = _unitLeafCache.list;
-                if (!list || !list.length) return null;
+                if (!list.length) return null;
                 let k = 0;
                 while (k + 1 < list.length && list[k + 1].leaf <= leaf) k++;
                 const first = list[k].leaf;
@@ -4061,6 +4061,7 @@
                 const two = editor.classList.contains('two-col-layout');
                 host.style.display = 'flex';
                 host.classList.toggle('two-up', two);
+                host.classList.add('book-label');
                 host.title = bookPos.title || '';
                 host.removeAttribute('role');
                 host.textContent = '';
@@ -4073,6 +4074,7 @@
                 try { if (typeof postChapterLabel === 'function') postChapterLabel(); } catch (eCh0) {}
                 return;
             }
+            host.classList.remove('book-label');
             // count(), not pages.length. Under page windowing pages.length is the MOUNTED
             // range's page count while current() is the spread within the whole document.
             const twoCol = editor.classList.contains('two-col-layout');
@@ -5176,19 +5178,6 @@
              * nowhere else.
              */
             seedPerBlock: 0.06,
-            /**
-             * Books: words per page, taken once per layout from the first range laid out, then
-             * held. Unmeasured ranges are estimated as their words / this. 0 = not yet sampled.
-             * Held rather than refined on every measurement: refining re-estimated every range
-             * not yet visited each time a new one was laid out, so the whole book's numbers
-             * moved at once as the reader moved around (Ed, 2026-09-30).
-             */
-            wordsPerPage: 0,
-            /** The page changed size since wordsPerPage was taken: take it again (invalidateCounts). */
-            _wordsRateStale: false,
-            /** Words per range, cached for the document in _wordsDoc. */
-            _words: null,
-            _wordsDoc: null,
             /** The range currently laid out, or -1. */
             mounted: -1,
             /** Blocks in the document, so the last (partial) range is not counted as full. */
@@ -5209,8 +5198,6 @@
                 this.measured = null;
                 this.mounted = -1;
                 this.perBlock = this.seedPerBlock;
-                this.wordsPerPage = 0;
-                this._words = null;
             },
             bounds: function () {
                 if (!this._bounds) return null;
@@ -5274,7 +5261,6 @@
                     this.measured = null;
                     this.mounted = -1;
                     this.perBlock = this.seedPerBlock;
-                    this.wordsPerPage = 0;
                 }
                 this.docBlocks = Math.max(0, nBlocks | 0);
                 const n = this.chunkCount(nBlocks);
@@ -5290,40 +5276,8 @@
                 return n;
             },
 
-            /**
-             * Words in a range of a book, counted from its markup (tags skipped, runs of
-             * non-space counted), cached per document. null when this is not a book -- or
-             * where there is no document (the selftest) -- and the paragraph estimate applies.
-             */
-            wordsOfChunk: function (c) {
-                const dm = (typeof DocumentModel !== 'undefined') ? DocumentModel : null;
-                if (!dm || dm.kind !== 'epub' || !dm.blocks) return null;
-                const blocks = dm.blocks;
-                if (!this._words || this._wordsDoc !== blocks) { this._words = []; this._wordsDoc = blocks; }
-                if (this._words[c] !== undefined) return this._words[c];
-                const a = this.firstBlockOfChunk(c), b = Math.min(blocks.length, this.endBlockOfChunk(c, blocks.length));
-                let w = 0;
-                for (let i = a; i < b; i++) {
-                    const r = blocks[i] && blocks[i].raw != null ? String(blocks[i].raw) : '';
-                    let inTag = false, inWord = false;
-                    for (let k = 0; k < r.length; k++) {
-                        const ch = r.charCodeAt(k);
-                        if (inTag) { if (ch === 62) inTag = false; continue; }         // '>'
-                        if (ch === 60) { inTag = true; inWord = false; continue; }      // '<'
-                        if (ch === 32 || ch === 9 || ch === 10 || ch === 13 || ch === 160) { inWord = false; continue; }
-                        if (!inWord) { inWord = true; w++; }
-                    }
-                }
-                this._words[c] = w;
-                return w;
-            },
-
-            /** Pages a range is expected to need: its words at the sampled rate, else by block count. */
+            /** Pages a range is expected to need, from its block count. */
             estimateChunkPages: function (c, nBlocks) {
-                if (this.wordsPerPage > 0) {
-                    const w = this.wordsOfChunk(c);
-                    if (w !== null) return Math.max(1, Math.round(w / this.wordsPerPage));
-                }
                 const blocks = (nBlocks === undefined)
                     ? this.blocksInChunk(c)
                     : Math.max(1, this.endBlockOfChunk(c, nBlocks) - this.firstBlockOfChunk(c));
@@ -5338,19 +5292,6 @@
                 if (!this.counts || c < 0 || c >= this.counts.length) return;
                 this.counts[c] = Math.max(1, pages | 0);
                 this.measured[c] = true;
-                // Books: sample words per page from the first range laid out in this layout,
-                // re-estimate the rest from it once, and hold it. Later ranges only replace
-                // their own estimate with their real count.
-                const words = this.wordsOfChunk(c);
-                if (words !== null) {
-                    if ((this.wordsPerPage > 0 && !this._wordsRateStale) || !(words > 0)) return;
-                    this.wordsPerPage = words / this.counts[c];
-                    this._wordsRateStale = false;
-                    for (let i = 0; i < this.counts.length; i++) {
-                        if (!this.measured[i]) this.counts[i] = this.estimateChunkPages(i);
-                    }
-                    return;
-                }
                 // Refine the estimate for ranges not yet laid out.
                 // Each measured range contributes the blocks it actually holds. Adding a
                 // full size for every one counts the last, short range as though it were
@@ -5445,7 +5386,6 @@
              */
             spliceBlocks: function (atBlock, delta, nBlocksAfter) {
                 if (!this.counts) return;
-                this._words = null;   // blocks moved between ranges: count them again
                 const c = this.chunkOfBlock(atBlock);
                 if (c >= 0 && c < this.measured.length) {
                     this.measured[c] = false;
@@ -5471,8 +5411,6 @@
                 this.measured = null;
                 this.mounted = -1;
                 this.perBlock = this.seedPerBlock;
-                this.wordsPerPage = 0;
-                this._wordsRateStale = false;
             },
 
             /**
@@ -5489,9 +5427,6 @@
             invalidateCounts: function () {
                 this.counts = null;
                 this.measured = null;
-                // Words per page belongs to the old size: keep estimating with it until the
-                // range on screen is re-measured, then take the rate afresh from that.
-                this._wordsRateStale = true;
             }
         };
 
