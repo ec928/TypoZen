@@ -152,7 +152,10 @@ async function openAndCheck(app, book, deep, opts) {
         book + ': only part of the book is laid out (' + st.mounted + ' of ' +
         st.blocks + ')');
 
-    // The body renders at the size the theme asked for.
+    // The body renders at the reader's text size: the editor's size, which the text-size
+    // setting sets over the theme's base (2026-10-01; it was measured against the theme's --fs,
+    // and books that declare their body in em ignored the reader's setting while books that
+    // inherit it followed it -- Matter 16px beside Dune 18px).
     //
     // Measured from the element that directly owns each text node, weighted by characters.
     // Both of those matter, and getting either wrong is what hid this for so long: the
@@ -180,19 +183,18 @@ async function openAndCheck(app, book, deep, opts) {
         let dominant = 0, best = 0;
         counts.forEach((c, px) => { if (c > best) { best = c; dominant = px; } });
         return {
-            themeFs: parseFloat(getComputedStyle(document.documentElement)
-                .getPropertyValue('--fs')) || 0,
+            themeFs: parseFloat(getComputedStyle(ed).fontSize) || 0,
             dominant: dominant,
             share: total ? best / total : 0
         };
     });
     const ratio = size.themeFs ? size.dominant / size.themeFs : 0;
-    info('body ' + size.dominant + 'px against theme ' + size.themeFs + 'px (' +
+    info('body ' + size.dominant + 'px against the reader\'s ' + size.themeFs + 'px (' +
         ratio.toFixed(3) + 'x, ' + Math.round(size.share * 100) + '% of characters)');
     assert(size.share > 0.5,
         book + ': one size covers the body (' + Math.round(size.share * 100) + '% of characters)');
     assert(ratio > 0.94 && ratio < 1.06,
-        book + ': body text renders at the theme size (' + size.dominant + 'px vs ' +
+        book + ': body text renders at the reader\'s text size (' + size.dominant + 'px vs ' +
         size.themeFs + 'px, ' + ratio.toFixed(3) + 'x)');
 
     // The cover fills the page it is on -- and is still on it.
@@ -846,28 +848,32 @@ async function openAndCheck(app, book, deep, opts) {
                 }
                 return 0;
             };
-            const was = await evalPatiently(app, () =>
-                parseFloat(getComputedStyle(document.documentElement).fontSize));
+            // The reader's size is the editor's: the text-size setting over the theme's base.
+            const edFs = () => parseFloat(getComputedStyle(document.getElementById('editor')).fontSize);
+            const was = await evalPatiently(app, edFs);
             const before = await evalPatiently(app, proseFs);
-            await evalPatiently(app, () => {
-                // Through applySpacing, as applyTheme and the text-size setting apply it. A
-                // bare setProperty on the root skips the book's re-normalisation, which no
-                // user action does, and failed here while a real theme change passed
-                // (measured 2026-09-30: applyTheme FS 28 -> prose 28px in 300 ms).
-                applySpacing({ '--fs': '28px' });
-            });
+            // Changed the way the setting does (set_font_size, through applySpacing): 4 is
+            // Extra large, 22px.
+            await evalPatiently(app, () => handleCommand('set_font_size:4'));
             await waitIdle(app);
             const after = await evalPatiently(app, proseFs);
-            const afterRoot = await evalPatiently(app, () =>
-                parseFloat(getComputedStyle(document.documentElement).fontSize));
+            const afterRoot = await evalPatiently(app, edFs);
+            // On the default size the theme's base governs, and the book follows that.
+            await evalPatiently(app, () => { handleCommand('set_font_size:2'); applySpacing({ '--fs': '28px' }); });
+            await waitIdle(app);
+            const themed = await evalPatiently(app, proseFs);
+            const themedEd = await evalPatiently(app, edFs);
             await evalPatiently(app, (px) => {
-                applySpacing({ '--fs': px + 'px' });
+                const i = ['12px', '14px', '', '18px', '22px'].indexOf(px + 'px');
+                applySpacing({ '--fs': '16px' });
+                handleCommand('set_font_size:' + (i >= 0 ? i : 2));
             }, was);
             const bs = {
                 remLeft: bsSheet.remLeft,
                 pagedBreaks: bsSheet.pagedBreaks,
                 columnBreaks: bsSheet.columnBreaks,
-                editorFont: was + 'px', before: before, after: after, afterRoot: afterRoot
+                editorFont: was + 'px', before: before, after: after, afterRoot: afterRoot,
+                themed: themed, themedEd: themedEd
             };
             info('book css: ' + bs.pagedBreaks + ' paged breaks left, ' + bs.columnBreaks +
                  ' turned into column breaks, rem units left: ' + bs.remLeft);
@@ -877,14 +883,17 @@ async function openAndCheck(app, book, deep, opts) {
             assert(bs.pagedBreaks === 0,
                 'the book’s own page breaks are column breaks, which is the only kind ' +
                 'a multi-column layout performs');
-            info('prose at a ' + bs.editorFont + ' theme: ' + bs.before +
-                 'px, and at a ' + bs.afterRoot + 'px theme: ' + bs.after + 'px');
+            info('prose at a ' + bs.editorFont + ' reader size: ' + bs.before +
+                 'px; at ' + bs.afterRoot + 'px: ' + bs.after + 'px; default size on a 28px theme: ' + bs.themed + 'px');
             assert(Math.abs(bs.before - parseFloat(bs.editorFont)) <= 0.5,
-                'the book’s body text renders at the size the theme asks for (' +
+                'the book’s body text renders at the reader’s text size (' +
                 bs.before + ' against ' + bs.editorFont + ')');
             assert(Math.abs(bs.after - bs.afterRoot) <= 1.0,
-                'and follows the theme when it changes (' +
+                'and follows the text-size setting when it changes (' +
                 bs.after + ' against ' + bs.afterRoot + 'px)');
+            assert(Math.abs(bs.themed - bs.themedEd) <= 1.0 && bs.themedEd >= 27,
+                'and on the default size, follows the theme’s base size (' +
+                bs.themed + ' against ' + bs.themedEd + 'px)');
         }
 
         console.log('\n--- chapters start pages, and page numbers agree ---');

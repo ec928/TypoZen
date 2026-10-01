@@ -74,13 +74,6 @@ Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 boundaries. Seen with 200-block ranges; at 400, stepping across a boundary and back gives the
 same number for the same view and steps by exactly one. Re-open only if it shows up in use.
 
-- **The same page of a book changes text size depending on where the reader has been** (found
-  2026-10-01 from Ed's Dune contents page). The book text-size correction re-derives its divisor
-  from the range on screen: Dune opens at 1.60 and reaches 2.03 after a visit to mid-book, so
-  the publisher's small styles on the contents page go from 12.6px to 10.0px. Identical on
-  0.11.19 and the chapter-pages branch on the same path; the branch only changed which range
-  sets it first. Dune's files use different body sizes, so one divisor cannot fit them all.
-  Ties in with the warm-start item below (remember each book's factor).
 
 **Later (Ed, 2026-09-29):**
 
@@ -91,6 +84,9 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   180 ms off page-ready (one clean pass), other books ~250-450 ms, first paint 60-195 ms
   earlier; the very first open of a book still pays the full check. 0.11.12 tried a
   session-only cache and withdrew it (cold opens measured slower in that build).
+  Since the chapter-pages branch the factor is per book, measured once from chapter text and
+  applied before layout (no correction pass at all), so most of that saving has already been
+  taken; persisting it would only skip one style read per book.
 - **Save All Images in PDF: the fast method often does not work** (Ed, 2026-09-28). In
   several PDFs the direct extraction (PdfPig, reading pictures straight from the file,
   0.8.2) fails and TypoZen falls back to the very slow method. To do: collect the PDFs it
@@ -183,6 +179,18 @@ same number for the same view and steps by exactly one. Re-open only if it shows
     its markup length plus 200 per paragraph instead of its paragraph count. Chosen on one
     book at one window size, averaged over the book rather than judged at the start where it
     is first seen; at Ed's window it was no better.
+  - Book text size held still (chapter-pages branch; Ed: the same Dune contents page at two
+    sizes). The correction divided every em/% font-size in the book's CSS and re-measured on
+    every mount; nested sizes compound, so no divisor fit and it never settled (Dune 1.13 ->
+    1.42 -> 1.60 in its first second, 1.80 mid-book, 2.03 on return), and each correction
+    re-laid out a page already on screen. Now each paragraph box takes an em factor per book
+    (per novel in an omnibus) -- linear, so publisher proportions are exact -- measured once
+    from chapter text before layout and held. It also targets the reader's chosen size, not
+    the theme's --fs: Matter's body had been 16px beside Dune's 18px. Body measured at 18px at
+    2/50/90% of Dune, Matter, Xeelee and Alice, identical on return.
+  - First PageDown after opening (same branch): a page turn now cancels any programmatic jump
+    still settling (open, resume, column switch). The leftover open-anchor jump landed in the
+    same frame as the turn and took it back.
   - Scrubber to the end (0.11.19; Ed): dragging to the end of the Gutenberg Alice
     (alices-adventures-in-wonderland3.epub) stopped at 162 / 180 every time; PageDown still
     reached the end. The drag went to the page holding the last block, and that book's last

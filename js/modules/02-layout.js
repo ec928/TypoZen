@@ -5573,6 +5573,9 @@
                 } catch (eT) {}
             }
 
+            // The book's text size before the range is laid out, so the one layout below is
+            // the final one (normaliseBookTextSize: computed styles only).
+            try { if (typeof normaliseBookTextSize === 'function') normaliseBookTextSize(true); } catch (eTs) {}
             // One relayout after attach (was two — second only repeated measure work).
             try { PageGeometry.relayout(); } catch (eG) {}
             // Only when the mount really is this chunk. localCount() over a widened mount
@@ -5793,6 +5796,12 @@
              * lands a page earlier every time.
              */
             step: function (dir) {
+                // A page turn is the reader's latest word on where they are: any programmatic
+                // jump still settling (an open, a resume, a column switch) is superseded, or it
+                // lands after the turn and takes it back. The first PageDown after opening a
+                // book was lost exactly so -- turned to spread 1, re-landed on spread 0 within
+                // the same frame (2026-10-01).
+                try { if (typeof cancelPendingGoto === 'function') cancelPendingGoto(); } catch (eCg) {}
                 let ok;
                 if (!pageWindowingActive()) {
                     ok = this.goto(this.current() + (dir < 0 ? -1 : 1));
@@ -6000,6 +6009,15 @@
          * with its own, which is why only a book sitting on its first page showed it.
          * Pending rechecks from a jump are retired with it for the same reason.
          */
+        /** Retire any goToPageHoldingBlock still settling, keeping the reading anchor. */
+        function cancelPendingGoto() {
+            _gotoBlockGen++;
+            if (_gotoRecheckTimer) {
+                try { clearTimeout(_gotoRecheckTimer); } catch (eT) {}
+                _gotoRecheckTimer = null;
+            }
+        }
+
         function forgetReadingAnchor() {
             _gotoBlockGen++;
             if (_gotoRecheckTimer) {

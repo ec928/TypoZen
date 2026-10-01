@@ -208,6 +208,8 @@
             _bookTitleIndex = null;
             _bookPosLast = -1;
             _bookTextScaleK = 0;
+            _bookTextKs = {};    // a new book: its text size is measured afresh
+            _bookTextProvisional = {};
             if (_bookPosTimer) { clearTimeout(_bookPosTimer); _bookPosTimer = null; }
 
             // A different book is arriving: the scroller must start at the beginning.
@@ -1099,6 +1101,8 @@
             // 3. Chapters, per book.
             const books = [];
             for (const u of units) if (books.indexOf(u.book) < 0) books.push(u.book);
+            // Which book a unit's text belongs to, for its text size (normaliseBookTextSize).
+            for (const u of units) u.bookId = u.book ? books.indexOf(u.book) + 1 : 0;
             for (const bk of books) {
                 const mine = units.filter(function (u) { return u.book === bk; });
                 const numbered = mine.filter(function (u) { return u.number > 0 && !u.divider; });
@@ -1131,7 +1135,7 @@
                 }
                 const total = chapters.reduce(function (m, u) { return Math.max(m, numberOf(u)); }, 0);
                 for (const u of mine) {
-                    if (chapters.indexOf(u) >= 0) u.label = 'Chapter ' + numberOf(u) + ' of ' + total;
+                    if (chapters.indexOf(u) >= 0) { u.label = 'Chapter ' + numberOf(u) + ' of ' + total; u.isChapter = true; }
                 }
             }
             // 2. Everything else by its own name, or by what contains it.
@@ -1162,11 +1166,11 @@
                 // The name the status bar shows: the unit's own (its entry or heading), else the
                 // entry it sits under (each of Dune's chapter files shows "Book One - DUNE").
                 const title = (u.own || u.named || !u.entry) ? u.title : u.entry.title;
-                if (len <= BOOK_UNIT_MAX_BLOCKS) { out.push({ start: u.start, end: u.end, label: u.label, title: title }); continue; }
+                if (len <= BOOK_UNIT_MAX_BLOCKS) { out.push({ start: u.start, end: u.end, label: u.label, title: title, isChapter: !!u.isChapter, bookId: u.bookId | 0 }); continue; }
                 const m = Math.ceil(len / 800);
                 for (let s = 0; s < m; s++) {
                     const a = u.start + Math.floor(len * s / m), b = u.start + Math.floor(len * (s + 1) / m);
-                    out.push({ start: a, end: b, label: u.label + ' • Section ' + (s + 1) + ' of ' + m, title: title });
+                    out.push({ start: a, end: b, label: u.label + ' • Section ' + (s + 1) + ' of ' + m, title: title, isChapter: !!u.isChapter, bookId: u.bookId | 0 });
                 }
             }
             return out;
@@ -1261,148 +1265,126 @@
          * Expressed as a multiple of --fs rather than a fixed pixel size, so changing the
          * theme's font size still moves the book.
          */
-        /**
-         * Make body text render at the theme's --fs size.
-         *
-         * Publishers often set p { font-size: 0.88em } (Xeelee). We measure the dominant
-         * body size against the theme size and scale #editor so body ≈ --fs while keeping
-         * relative sizes (headings still larger). Uses --fs, not documentElement (the UI
-         * root is often 16px while the theme asks for something else).
-         *
-         * Safe to call after every page-window remount; short-circuits when already correct.
-         */
-        // Last scale factor applied to #editor for an epub. Avoids clear→remeasure→set on
-        // every page turn, which kept scrollWidth moving and fed goToPage re-anchor thrash.
+        // 1 once a book's text size has been set (normaliseBookTextSize), 0 otherwise.
         let _bookTextScaleK = 0;
-        // The publisher's stylesheets as delivered, and the divisor currently applied to
-        // their declared sizes. Both belong to the book that is open.
+        // The publisher's stylesheets as delivered. Their declared sizes are no longer divided
+        // (_bookEmDivisor stays 1): the container is scaled instead, see normaliseBookTextSize.
         let _bookCssTexts = [];
         // Each stylesheet's folder relative to the OPF (EpubReader cssDirs), because a url()
         // in CSS is relative to the stylesheet: "Styles/" for OEBPS/Styles/x.css.
         let _bookCssDirs = [];
         let _bookEmDivisor = 1;
 
-        function normaliseBookTextSize() {
+        /**
+         * The book's body text at the reader's size: one factor per book, measured once and
+         * then held, applied to each paragraph box (2026-10-01).
+         *
+         * A publisher sizes against a device default it cannot see -- Xeelee 0.88em, Matter
+         * 1.33333em -- so the body has to be brought to the reader's size. This used to divide
+         * every em and % font-size in the book's CSS by a divisor and re-measure whenever a range
+         * mounted. Two things made that unstable: a nested size is divided once per level (a
+         * 1.33em span in a 1.33em div divided twice), so no divisor is right and each
+         * re-measurement lands somewhere new; and each correction re-laid the page out after it
+         * was on screen. Dune went 1.13 -> 1.42 -> 1.60 in its first second (a key press then was
+         * lost), to 1.80 after a jump mid-book (the view moved after landing), and to 2.03 on
+         * coming back -- the same contents page smaller than before (Ed, 2026-10-01). It also
+         * aimed at the theme's --fs, not the reader's chosen size, so Matter's body came out at
+         * 16px beside Dune's 18px.
+         *
+         * Now each paragraph box (.block) carries a font-size in em of the editor, so every
+         * em-relative size inside it moves by the same factor -- linear, the publisher's
+         * proportions kept exactly, one measurement enough. The factor is the reader's size over
+         * the book's body size with no factor in force, from chapter text (front matter carries
+         * other classes), and it does not depend on the reader's size, so it is never taken
+         * again. An omnibus is several books from different sources, each with its own factor
+         * (Xeelee's later novels set their body smaller than Raft does). It needs computed
+         * styles, not layout, so mountPageChunk applies it before laying a range out.
+         */
+        let _bookTextKs = {};   // book id (bookId on the units) -> held factor
+        let _bookTextProvisional = {};   // book id -> factor from non-chapter text, until held
+
+        /** beforeLayout: the caller lays the range out next, so no relayout here (mountPageChunk). */
+        function normaliseBookTextSize(beforeLayout) {
             if (!editor) return;
             if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') {
                 editor.style.fontSize = '';
                 _bookTextScaleK = 0;
                 return;
             }
-
-            // Theme size: --fs on the document (set by applyTheme), not the browser root.
-            let themePx = 0;
-            try {
-                const raw = getComputedStyle(document.documentElement).getPropertyValue('--fs').trim();
-                if (raw) themePx = parseFloat(raw);
-            } catch (e0) {}
-            if (!(themePx > 0)) {
-                try { themePx = parseFloat(getComputedStyle(editor).fontSize); } catch (e1) {}
-            }
-            if (!(themePx > 0)) themePx = 16;
-
-            // Refine, rather than lock on the first measurement.
-            //
-            // This used to return here as soon as any correction had been applied, so the
-            // factor was whatever the very first mounted range happened to imply -- and
-            // page windowing mounts one range at a time, so on a book that opens at its
-            // cover that range is front matter, whose title page and copyright block carry
-            // different em factors from the body. Two launches of the same book measured
-            // 0.6564 and 0.7447 for a factor that should be 0.75, purely on where the
-            // reader had left off. The body then rendered at 0.88x and 0.99x of the theme.
-            //
-            // So when a correction is already in place we measure the text *as corrected*
-            // and adjust the existing factor by however far off it landed, which needs no
-            // clearing and therefore none of the reflow the old comment was avoiding. It
-            // converges on the true factor as more of the book is seen, instead of
-            // freezing whatever the first glimpse suggested.
-            const alreadyCorrected = _bookTextScaleK > 0 && !!editor.style.fontSize;
-            if (!alreadyCorrected) {
-                // Nothing applied yet: measure the book's own CSS against the theme base.
-                editor.style.fontSize = '';
-            }
-
-            const counts = new Map();
-            const blocks = editor.querySelectorAll('.block');
-            let sampled = 0, chars = 0;
-            for (let i = 0; i < blocks.length && sampled < 60; i++) {
-                // Prefer long body paragraphs; fall back to medium lines if the window
-                // is front-matter (page windowing mounts one range at a time).
-                const t = (blocks[i].innerText || '').trim();
-                if (t.length < 40) continue;
-
-                // Measure the element that OWNS the text, not the one that contains it.
-                //
-                // This used to read blocks[i].querySelector('p') || firstElementChild.
-                // Matter's blocks are div.block > div.calibre7 > span.calibre15, with no
-                // <p> anywhere: the fallback measured div.calibre7, which inherits the
-                // theme's 14px, so the book looked correct and was left alone -- while
-                // 99.2% of its body text painted from span.calibre15 at 1.33333em, a third
-                // larger than the theme asked for. Xeelee only ever worked because its
-                // blocks happen to be div.block > p.bodytext, so querySelector('p') landed
-                // on the right element by luck. Side by side in two tabs, the correct book
-                // looked 25% smaller than the broken one, which is how this was reported.
-                const walker = document.createTreeWalker(blocks[i], NodeFilter.SHOW_TEXT, null);
-                let node;
-                while ((node = walker.nextNode())) {
-                    const s = (node.nodeValue || '').trim();
-                    if (s.length < 20) continue;          // skip glue between inline tags
-                    const owner = node.parentElement;
-                    if (!owner) continue;
-                    const fs = Math.round(parseFloat(getComputedStyle(owner).fontSize) * 100) / 100;
-                    if (!fs || fs < 6) continue;
-                    // Weighted by characters, because what the eye judges is the size of
-                    // the bulk of the text -- not how many elements it is spread across.
-                    // A drop cap is one element and one character; a chapter is one
-                    // element and four thousand.
-                    counts.set(fs, (counts.get(fs) || 0) + s.length);
-                    chars += s.length;
-                }
-                sampled++;
-            }
-            if (!chars) {
-                // No measurable body yet — force 1em base so later remounts can refine.
-                editor.style.fontSize = 'var(--fs, 16px)';
-                _bookTextScaleK = 1;
-                return;
-            }
-
-            let dominant = 0, best = 0;
-            counts.forEach(function (n, fs) { if (n > best) { best = n; dominant = fs; } });
-            if (!(dominant > 0)) return;
-
-            // How far the body is from the theme size, right now, as rendered.
-            const off = themePx / dominant;
-            if (!isFinite(off) || off <= 0) return;
-
-            // The editor always sits at exactly --fs. Text the publisher left unstyled is
-            // then correct without anyone doing anything to it, which is the whole point of
-            // correcting the declarations rather than the container.
-            if (editor.style.fontSize !== 'var(--fs, 16px)') {
-                editor.style.fontSize = 'var(--fs, 16px)';
-            }
+            if (editor.style.fontSize !== 'var(--fs, 16px)') editor.style.fontSize = 'var(--fs, 16px)';
             _bookTextScaleK = 1;
-
-            // Within a hair of correct: leave it alone. Re-applying the stylesheet
-            // re-fragments the whole multi-column flow, so a no-op pass is not free.
-            if (Math.abs(off - 1) < 0.02) return;
-
-            // What the publisher's body class actually asks for, in em. Cumulative, because
-            // the sizes just measured were rendered through the divisor already in force --
-            // and the first measurement can come from front matter, whose classes differ
-            // from the body's, so this has to be able to correct itself later.
-            const emFactor = _bookEmDivisor * (dominant / themePx);
-            if (!(emFactor >= 0.4 && emFactor <= 2.5)) return;
-            if (Math.abs(emFactor - _bookEmDivisor) < 0.005) return;
-
-            _bookEmDivisor = emFactor;
-            try { applyBookStyles(_bookCssTexts, _bookAssetsBase, emFactor); } catch (eD) { return; }
-            window.showDebugTelemetry('book text: body at ' + dominant + 'px against --fs=' +
-                themePx + 'px, declared sizes divided by ' + emFactor.toFixed(4));
-            // Font change reflows multicol; re-lock page columns and stay on this page.
+            const readerPx = parseFloat(getComputedStyle(editor).fontSize) || 16;
+            const blocks = editor.querySelectorAll('.block');
+            const unitOf = function (el) {
+                const bi = DocumentModel.modelIndexOfEl ? DocumentModel.modelIndexOfEl(el) : -1;
+                return (bi >= 0 && typeof bookUnitOfBlock === 'function') ? bookUnitOfBlock(bi) : null;
+            };
+            // Group what is mounted by book; measure any book not yet known, unscaled.
+            const groups = new Map();
+            for (let i = 0; i < blocks.length; i++) {
+                const u = unitOf(blocks[i]);
+                const id = u ? (u.bookId | 0) : 0;
+                if (!groups.has(id)) groups.set(id, []);
+                groups.get(id).push({ el: blocks[i], chapter: !!(u && u.isChapter) });
+            }
+            const provisional = _bookTextProvisional;
+            groups.forEach(function (list, id) {
+                if (_bookTextKs[id] > 0) return;
+                // Measured once already without chapter text, and still none mounted: keep that
+                // answer. Measuring means clearing the boxes' sizes, and doing it on every call
+                // re-laid the page out after each turn (the omnibus's own front matter has no
+                // chapters), which re-anchored the view behind a key press.
+                if (provisional[id] > 0 && !list.some(function (item) { return item.chapter; })) return;
+                const measure = function (chaptersOnly) {
+                    const counts = new Map();
+                    let chars = 0;
+                    for (const item of list) {
+                        if (chaptersOnly && !item.chapter) continue;
+                        if (item.el.style.fontSize) item.el.style.fontSize = '';
+                        // The element that owns each run of text, weighted by its characters:
+                        // what the eye judges is the bulk of the text, not a drop cap.
+                        const walker = document.createTreeWalker(item.el, NodeFilter.SHOW_TEXT, null);
+                        let node;
+                        while ((node = walker.nextNode())) {
+                            const s = (node.nodeValue || '').trim();
+                            if (s.length < 20 || !node.parentElement) continue;
+                            const fs = Math.round(parseFloat(getComputedStyle(node.parentElement).fontSize) * 100) / 100;
+                            if (!fs || fs < 6) continue;
+                            counts.set(fs, (counts.get(fs) || 0) + s.length);
+                            chars += s.length;
+                        }
+                        if (chars >= 20000) break;
+                    }
+                    let dominant = 0, best = 0;
+                    counts.forEach(function (n, fs) { if (n > best) { best = n; dominant = fs; } });
+                    return { dominant: dominant, chars: chars };
+                };
+                // Chapter text where enough of it is mounted, and only then held; otherwise the
+                // best this range offers, taken again when the book's chapters mount.
+                let s = measure(true);
+                const held = s.chars >= 2000 && s.dominant > 0;
+                if (!held) s = measure(false);
+                let k = s.dominant > 0 ? readerPx / s.dominant : 1;
+                if (!isFinite(k) || k < 0.4 || k > 2.5) k = 1;
+                if (Math.abs(k - 1) < 0.02) k = 1;
+                if (held) _bookTextKs[id] = k; else provisional[id] = k;
+                window.showDebugTelemetry('book text: book ' + id + ' body at ' + s.dominant + 'px against ' +
+                    readerPx + 'px, scaled by ' + k.toFixed(4) + (held ? ' (held)' : ' (provisional)'));
+            });
+            // Every mounted paragraph box at its book's factor.
+            let changed = false;
+            groups.forEach(function (list, id) {
+                const k = _bookTextKs[id] > 0 ? _bookTextKs[id] : (provisional[id] || 1);
+                const want = Math.abs(k - 1) < 0.0005 ? '' : (k.toFixed(4) + 'em');
+                for (const item of list) {
+                    if (item.el.style.fontSize !== want) { item.el.style.fontSize = want; changed = true; }
+                }
+            });
+            if (!changed || beforeLayout) return;
+            // If the range was already laid out, lay it out again on the same page.
             try {
                 if (typeof isPaginatedLayout === 'function' && isPaginatedLayout()
-                    && typeof PageGeometry !== 'undefined') {
+                    && typeof PageGeometry !== 'undefined' && PageGeometry._stride > 0) {
                     const page = PageGeometry.localIndex();
                     PageGeometry.relayout();
                     PageGeometry.go(page);
@@ -1411,29 +1393,14 @@
             } catch (ePg) {}
         }
 
-        /** Schedule normalise after layout paints (fonts, multicol, page window). */
+        /**
+         * Apply the book's text factors to what is mounted, measuring any book not known yet.
+         * Synchronous: computed styles only. Once a book's factor is held this only restyles
+         * newly mounted boxes.
+         */
         function scheduleNormaliseBookTextSize() {
             if (typeof DocumentModel === 'undefined' || DocumentModel.kind !== 'epub') return;
-            // Once a factor is in place, one shot instead of three.
-            //
-            // This used to return outright, which is what made the first measurement final:
-            // every later remount -- the ones that mount actual body text rather than the
-            // cover -- was skipped here before normaliseBookTextSize could refine anything.
-            // It still needs to be cheap, because it runs on every page turn, so the
-            // multi-shot schedule is dropped and the single call short-circuits inside
-            // normaliseBookTextSize when the body is already within 2% of the theme.
-            const pinned = _bookTextScaleK > 0 && editor && editor.style.fontSize;
-            const run = function () {
-                try { normaliseBookTextSize(); } catch (e) {}
-            };
-            run();
-            if (pinned) return;
-            if (typeof requestAnimationFrame === 'function') {
-                requestAnimationFrame(function () {
-                    requestAnimationFrame(run);
-                });
-            }
-            setTimeout(run, 120);
+            try { normaliseBookTextSize(); } catch (e) {}
         }
 
         /**
@@ -1543,7 +1510,7 @@
                     editor.style.height = '';
                 }
             } catch (e1) {}
-            try { _bookTextScaleK = 0; } catch (eK) {}
+            try { _bookTextScaleK = 0; _bookTextKs = {}; _bookTextProvisional = {}; } catch (eK) {}
             _bookAssetsBase = '';
             _bookDocIndex = {};
             _bookBlockDirs = [];
