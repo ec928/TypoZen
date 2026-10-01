@@ -9057,6 +9057,10 @@ namespace TypoZen
 
         private void ApplyViewSettingsForType(DocType dt, bool contentFollows = false, int columns = 0,
                                               double widen = 0, double heighten = 0) {
+            // Every document type comes through here on the way to the screen -- books, PDFs
+            // and native tabs open by their own routes, and ApplyTabView alone missed them, so
+            // a PDF kept the book's status layout, which has no page count (Ed, 2026-10-01).
+            try { ApplyStatusLayout(dt); } catch { }
             var prefs = LoadHostPrefs();
             TypePrefs tp = prefs.PrefsDocuments;
             if (dt == DocType.Code) tp = prefs.PrefsCode;
@@ -14396,6 +14400,13 @@ namespace TypoZen
         ///   PDF:      Outline entry • Page X of Y • Words • Zoom
         /// The theme follows in its own column; the narrator sits centred.
         /// </summary>
+        private DocType StatusTypeOf(DocTab tab)
+        {
+            if (IsBookTab(tab)) return DocType.EPub;
+            if (IsPdfTab(tab)) return DocType.Pdf;
+            return GetDocType(tab.FilePath);
+        }
+
         private void ApplyStatusLayout(DocType dt)
         {
             var panel = FindElement("statusCounts") as Panel;
@@ -14421,7 +14432,6 @@ namespace TypoZen
         private void ApplyTabView(DocTab tab, bool contentFollows = false)
         {
             if (tab == null) return;
-            try { ApplyStatusLayout(IsBookTab(tab) ? DocType.EPub : IsPdfTab(tab) ? DocType.Pdf : GetDocType(tab.FilePath)); } catch { }
 
             if (IsNativeTab(tab))
             {
@@ -14895,6 +14905,8 @@ namespace TypoZen
                 // One rule: bag the tab we leave before pointing at another.
                 SnapshotActiveTabView();
                 _activeTabIndex = index;
+                // The status layout follows the tab at once, whatever route its document takes.
+                try { ApplyStatusLayout(StatusTypeOf(_tabs[_activeTabIndex])); } catch { }
                 ApplyTabToEditor(_tabs[_activeTabIndex]);
             }
             finally { _tabOpInProgress = false; }
