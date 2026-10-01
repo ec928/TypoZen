@@ -1082,7 +1082,7 @@
                     prev.end = b;
                     continue;
                 }
-                const u = { start: a, end: b, entry: current, own: !!own, title: own ? own.title : heading,
+                const u = { start: a, end: b, entry: current, own: !!own, named: !!heading, title: own ? own.title : heading,
                     mark: markAt[a] || '', divider: false, derived: !own && !!current };
                 if (!u.title && u.mark && BOOK_LANDMARK_NAMES[u.mark]) u.title = BOOK_LANDMARK_NAMES[u.mark];
                 if (!current && !u.title) u.title = (!units.length && imageOnly(a, b)) ? 'Cover' : 'Front Matter';
@@ -1159,7 +1159,9 @@
             const out = [];
             for (const u of units) {
                 const len = u.end - u.start;
-                const title = u.entry && !u.own ? u.entry.title : u.title;
+                // The name the status bar shows: the unit's own (its entry or heading), else the
+                // entry it sits under (each of Dune's chapter files shows "Book One - DUNE").
+                const title = (u.own || u.named || !u.entry) ? u.title : u.entry.title;
                 if (len <= BOOK_UNIT_MAX_BLOCKS) { out.push({ start: u.start, end: u.end, label: u.label, title: title }); continue; }
                 const m = Math.ceil(len / 800);
                 for (let s = 0; s < m; s++) {

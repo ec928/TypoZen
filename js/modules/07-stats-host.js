@@ -568,14 +568,16 @@
                 // The fallback still matters: topLeftModelIndexTwoCol returns -1 while a
                 // layout change has left scrollLeft stale, and the remembered anchor is the
                 // right answer for exactly that gap.
-                if (atBlock >= 0) bi = atBlock;
                 // A book names the chapter of the page carrying the label -- the right-hand
                 // page in 2-Col -- so the status bar and the label never disagree (Ed,
-                // 2026-10-01: Chapter One on the right, "Prologue" in the status bar).
-                if (!(bi >= 0) && typeof bookPagePosition === 'function') {
+                // 2026-10-01: Chapter One on the right, "Prologue" in the status bar). Ahead of
+                // atBlock: refreshMarkState passes the top of the LEFT page after every turn,
+                // and taking it first put the Prologue back a moment after each fix.
+                if (typeof bookPagePosition === 'function') {
                     const pos = bookPagePosition();
                     if (pos && pos.unit) bi = pos.unit.start;
                 }
+                if (!(bi >= 0) && atBlock >= 0) bi = atBlock;
                 if (!(bi >= 0) && typeof currentReadingBlock === 'function') bi = currentReadingBlock();
                 if (!(bi >= 0) && typeof _readingAnchor === 'number' && _readingAnchor >= 0) {
                     bi = _readingAnchor;
@@ -586,7 +588,14 @@
             let title = '';
             let chapterBi = -1;
             const list = _chapterEntries;
-            if (list && list.length) {
+            // A book: the name of the unit the label describes, which may come from its own
+            // heading rather than a contents entry ("Nemesis Games" after "Copyright").
+            const unit = (typeof bookUnitOfBlock === 'function' && typeof _bookUnits !== 'undefined'
+                && _bookUnits && _bookUnits.length) ? bookUnitOfBlock(bi) : null;
+            if (unit && unit.title) {
+                title = unit.title;
+                chapterBi = unit.start;
+            } else if (list && list.length) {
                 for (let i = 0; i < list.length; i++) {
                     if ((list[i].bi | 0) <= bi) {
                         title = list[i].title || '';
