@@ -1174,14 +1174,15 @@
         #page-scrubber-range::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 11px;
-            height: 11px;
-            margin-top: -4px;
+            width: 9px;
+            height: 9px;
+            margin-top: -3px;
             border-radius: 50%;
             background: var(--accent, #A78BFA);
             border: none;
+            opacity: 0.75;
         }
-        #page-scrubber-range:hover::-webkit-slider-thumb { transform: scale(1.15); }
+        #page-scrubber-range:hover::-webkit-slider-thumb { opacity: 1.0; transform: scale(1.15); }
         #page-scrubber-range:focus { outline: none; }
         #page-scrubber-range:focus-visible::-webkit-slider-thumb {
             box-shadow: 0 0 0 3px var(--accent-soft, rgba(167, 139, 250, 0.35));

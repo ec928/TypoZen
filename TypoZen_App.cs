@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.12.2";
+        internal const string AppVersion = "0.12.3";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -6458,7 +6458,7 @@ namespace TypoZen
         // something it could not use. One value, not one per control: "unavailable"
         // should look the same everywhere, and the Column and Scroll buttons quieting by
         // the same amount is the point, not a side effect.
-        private const double LockedOpacity = 0.30;
+        private const double LockedOpacity = 0.50;
 
         // UIElement, not Control: IsEnabled and Opacity both live there, and the segment
         // groups are Borders, which are Decorators rather than Controls.
@@ -14632,7 +14632,6 @@ namespace TypoZen
                     FontSize = 12,
                     FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal,
                     Foreground = active ? _tabText : _tabTextMuted,
-                    Opacity = active ? 1.0 : 0.72,
                     VerticalAlignment = VerticalAlignment.Center,
                     MaxWidth = titleMax,
                     TextTrimming = TextTrimming.CharacterEllipsis
@@ -14684,7 +14683,6 @@ namespace TypoZen
                     border.MouseEnter += (s, e) =>
                     {
                         border.Background = _tabHoverBg;
-                        title.Opacity = 0.92;
                         closeBtn.Background = _tabHoverBg;
                         closeBtn.Opacity = 1;
                         closeBtn.IsHitTestVisible = true;
@@ -14692,7 +14690,6 @@ namespace TypoZen
                     border.MouseLeave += (s, e) =>
                     {
                         border.Background = Brushes.Transparent;
-                        title.Opacity = 0.72;
                         closeBtn.Background = Brushes.Transparent;
                         closeBtn.Opacity = 0;
                         closeBtn.IsHitTestVisible = false;
