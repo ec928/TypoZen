@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.12.6";
+        internal const string AppVersion = "0.12.7";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -14738,7 +14738,23 @@ namespace TypoZen
 
                 row.Children.Add(title);
                 row.Children.Add(closeBtn);
-                border.Child = row;
+                
+                var innerGrid = new Grid();
+                if (active)
+                {
+                    var topAccent = new Border
+                    {
+                        Height = 2,
+                        Background = _modeSourceBorder, // Reusing the primary accent color brush
+                        VerticalAlignment = VerticalAlignment.Top,
+                        CornerRadius = new CornerRadius(8, 8, 0, 0),
+                        Margin = new Thickness(-10, -4, -6, 0), // Negates Padding(10, 4, 6, 4)
+                        IsHitTestVisible = false
+                    };
+                    innerGrid.Children.Add(topAccent);
+                }
+                innerGrid.Children.Add(row);
+                border.Child = innerGrid;
                 _tabStrip.Children.Add(border);
                 _tabChips.Add(border);
 
