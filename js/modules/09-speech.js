@@ -1822,15 +1822,47 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
     if (!silent) showKokoroStatus("Starting the Kokoro engine...");
 
     try {
-        const module = await import(_kokoroExt.base + 'engine.js');
-        window._KokoroTTS = module.KokoroTTS;
-        // The ONNX runtime fetches its own .wasm; without this it would go to a CDN.
-        try { module.env.wasmPaths = _kokoroExt.base; } catch (e) {}
-
         if (!silent) showKokoroStatus("Loading the voice model...");
-        _kokoroEngine = await window._KokoroTTS.from_pretrained(_kokoroExt.model, {
-            dtype: _kokoroExt.dtype,
-            device: "webgpu"
+        
+        const worker = new Worker('js/kokoro-worker.js', { type: 'module' });
+        let pendingGenerate = {};
+        let generateIdCounter = 0;
+
+        _kokoroEngine = {
+            generate: function(text, options) {
+                return new Promise((resolve, reject) => {
+                    const id = generateIdCounter++;
+                    pendingGenerate[id] = { resolve, reject };
+                    worker.postMessage({ type: 'generate', id: id, text: text, voice: options.voice, speed: options.speed });
+                });
+            }
+        };
+
+        await new Promise((resolve, reject) => {
+            worker.onmessage = function(e) {
+                const data = e.data;
+                if (data.type === 'init_done') {
+                    resolve();
+                } else if (data.type === 'init_error') {
+                    reject(new Error(data.error));
+                } else if (data.type === 'generate_done') {
+                    const p = pendingGenerate[data.id];
+                    if (p) {
+                        p.resolve({ audio: data.audio, sampling_rate: data.sampling_rate });
+                        delete pendingGenerate[data.id];
+                    }
+                } else if (data.type === 'generate_error') {
+                    const p = pendingGenerate[data.id];
+                    if (p) {
+                        p.reject(new Error(data.error));
+                        delete pendingGenerate[data.id];
+                    }
+                }
+            };
+            worker.onerror = function(err) {
+                reject(err);
+            };
+            worker.postMessage({ type: 'init', ext: _kokoroExt });
         });
 
         _isKokoroReady = true;
