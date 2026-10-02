@@ -4065,11 +4065,15 @@
                 host.title = bookPos.title || '';
                 host.removeAttribute('role');
                 host.textContent = '';
-                if (two) host.appendChild(Object.assign(document.createElement('span'), { className: 'page-num' }));
-                const s = document.createElement('span');
-                s.className = 'page-num';
-                s.textContent = bookPos.label + ' • Page ' + bookPos.page + ' of ' + bookPos.pages;
-                host.appendChild(s);
+                const sLeft = document.createElement('span');
+                sLeft.className = 'page-num';
+                sLeft.textContent = bookPos.label;
+                host.appendChild(sLeft);
+                
+                const sRight = document.createElement('span');
+                sRight.className = 'page-num';
+                sRight.textContent = 'Page ' + bookPos.page + ' of ' + bookPos.pages;
+                host.appendChild(sRight);
                 try { postBookProgress(); } catch (eBp) {}
                 try { if (typeof postChapterLabel === 'function') postChapterLabel(); } catch (eCh0) {}
                 return;

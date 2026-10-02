@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.12.10";
+        internal const string AppVersion = "0.12.11";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -2110,16 +2110,21 @@ namespace TypoZen
             var right = FindElement("btnTabScrollRight") as UIElement;
             if (scroller == null) return;
             bool overflow = scroller.ExtentWidth > scroller.ViewportWidth + 1;
+            
+            bool canScrollLeft = overflow && scroller.HorizontalOffset > 1;
+            bool canScrollRight = overflow && scroller.HorizontalOffset < scroller.ScrollableWidth - 1;
+
             if (left != null)
-                left.Visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
+                left.Visibility = _chromeHidden ? Visibility.Collapsed : (overflow ? (canScrollLeft ? Visibility.Visible : Visibility.Hidden) : Visibility.Collapsed);
             if (right != null)
-                right.Visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
+                right.Visibility = _chromeHidden ? Visibility.Collapsed : (overflow ? (canScrollRight ? Visibility.Visible : Visibility.Hidden) : Visibility.Collapsed);
+
             var leftBtn = left as Button;
             if (leftBtn != null)
-                leftBtn.IsEnabled = overflow && scroller.HorizontalOffset > 1;
+                leftBtn.IsEnabled = canScrollLeft;
             var rightBtn = right as Button;
             if (rightBtn != null)
-                rightBtn.IsEnabled = overflow && scroller.HorizontalOffset < scroller.ScrollableWidth - 1;
+                rightBtn.IsEnabled = canScrollRight;
         }
 
         /// <summary>How wide each tab title may be: the strip shared out, or by tab count before it is measured.</summary>
@@ -9982,6 +9987,7 @@ namespace TypoZen
 
             var scroller = FindElement("tabScroller") as UIElement;
             if (scroller != null) scroller.Visibility = menuGone ? Visibility.Collapsed : Visibility.Visible;
+            UpdateTabScrollButtons();
 
             var sbar = FindElement("statusBar") as UIElement;
             if (sbar != null) sbar.Visibility = statusGone ? Visibility.Collapsed : Visibility.Visible;

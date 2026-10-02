@@ -787,8 +787,8 @@
            ids, so a book's own table rules (#editor table, one id) cannot undo it. */
         #editor-wrapper > #editor .block table { max-width: 100%; }
         #editor-wrapper > #editor .block :is(td, th) { overflow-wrap: anywhere; }
-        #editor-wrapper > #editor .block .zen-table { width: max-content; min-width: 100%; max-width: none; }
-        #editor-wrapper > #editor .block .zen-table :is(td, th) { overflow-wrap: break-word; max-width: 21ch; }
+        /* Markdown tables rely on proportional sizing; 'anywhere' destroys it by lowering min-content to 1ch. */
+        #editor-wrapper > #editor .block table.zen-table :is(td, th) { overflow-wrap: break-word; }
         
         /* --- Fenced code -----------------------------------------------------------
            Painted with the CSS Custom Highlight API, so these are ::highlight() rules
@@ -1104,8 +1104,9 @@
         /* A book's label goes nowhere when clicked; the scrubber moves through the book. */
         #page-indicator.book-label, #page-indicator.book-label .page-num { cursor: default; }
         /* One number per column, each sitting under its own column. */
-        #page-indicator.two-up { justify-content: space-between; }
+        #page-indicator.book-label, #page-indicator.two-up { justify-content: space-between; }
         #page-indicator.two-up .page-num { width: 50%; }
+        #page-indicator.book-label .page-num:first-child, #page-indicator.two-up .page-num:first-child { text-align: left; }
 
         /* Position in the whole book, in pages.
            Sits below the numbers, in space applyPageModeHeight() reserves for it, because
