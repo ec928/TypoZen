@@ -15100,10 +15100,10 @@ namespace TypoZen
             {
                 dlg.Filter =
                     "Supported files|*.md;*.txt;*.markdown;*.epub;*.pdf;" +
-                    "*.html;*.htm;*.xhtml;*.css;*.xml;*.xaml;*.xsl;*.xslt;*.json;" +
+                    "*.html;*.htm;*.xhtml;*.css;*.xml;*.xaml;*.xsl;*.xslt;*.json;*.cs;" +
                     "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.ico;*.svg;*.avif;*.jfif;" +
                     "*.mp4;*.webm;*.ogv;*.mov;*.mp3;*.wav;*.ogg;*.m4a;*.flac|" +
-                    "Documents|*.md;*.txt;*.markdown;*.epub;*.css;*.xml;*.xaml;*.json|" +
+                    "Documents|*.md;*.txt;*.markdown;*.epub;*.css;*.xml;*.xaml;*.json;*.cs|" +
                     "HTML pages|*.html;*.htm;*.xhtml|" +
                     "PDF|*.pdf|" +
                     "Images|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.ico;*.svg;*.avif;*.jfif|" +
@@ -18687,6 +18687,7 @@ namespace TypoZen
         }
     }
 }
+
 
 
 
