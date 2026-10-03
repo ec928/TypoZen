@@ -1052,8 +1052,29 @@
         #editor.page-mode .block,
         #editor.page-mode pre,
         #editor.page-mode blockquote,
+        #editor.page-mode .table-wrapper,
         #editor.page-mode table {
             break-inside: auto;
+        }
+        #editor.page-mode .table-wrapper {
+            overflow-x: visible;
+        }
+        /* JS fallback: if the table physically exceeds the column, we lock it with a scrollbar to stop the bleed. */
+        #editor.page-mode .table-wrapper.is-wide {
+            overflow-x: auto;
+            break-inside: avoid;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+        }
+        /* Give scrollable tables room to breathe, but respect the 21ch column limit requested previously 
+           so columns don't become infinitely wide. */
+        #editor-wrapper > #editor.page-mode .block .table-wrapper.is-wide .zen-table {
+            width: max-content;
+            max-width: 250%;
+        }
+        #editor-wrapper > #editor.page-mode .block .table-wrapper.is-wide .zen-table :is(td, th) {
+            max-width: 21ch;
         }
         /* But never leave a heading stranded at the foot of a page. */
         #editor.page-mode h1, #editor.page-mode h2, #editor.page-mode h3,

@@ -517,6 +517,7 @@
                     if (w === _lastPageW) return;
                     const first = !_lastPageW;
                     _lastPageW = w;
+                    try { if (typeof checkWideTables === 'function') checkWideTables(); } catch (eW) {}
                     if (first) return;
                     // Pane width changed (sidebar, zoom, host resize): re-lock geometry and
                     // re-anchor so we do not keep an old scrollLeft against a new stride.
@@ -528,6 +529,7 @@
                 };
                 const ro = new ResizeObserver(function () {
                     if (!isPaginatedLayout()) { _lastPageW = 0; return; }
+                    try { if (typeof checkWideTables === 'function') checkWideTables(); } catch (e) {}
                     if (_roPending) return;
                     _roPending = true;
                     requestAnimationFrame(applyGeometry);

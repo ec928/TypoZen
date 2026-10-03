@@ -1698,6 +1698,7 @@
                         // under virtualisation, and a Highlight range over a detached node
                         // paints nothing, so it has to be rebuilt on the same signal.
                         try { if (typeof paintCodeFences === 'function') paintCodeFences(); } catch (e) {}
+                        try { if (typeof checkWideTables === 'function') checkWideTables(); } catch (e) {}
                     }, 60);
                 }).observe(editor, { childList: true, subtree: true });
             } catch (eObs) {}
@@ -7754,3 +7755,23 @@ let _tablePopTimer = null;
                 }
             }
         }, 1000);
+
+
+        function checkWideTables() {
+            if (typeof isPaginatedLayout !== 'function' || !isPaginatedLayout()) return;
+            const wrappers = document.querySelectorAll('#editor.page-mode .table-wrapper');
+            for (let i = 0; i < wrappers.length; i++) {
+                const w = wrappers[i];
+                const cw = w.clientWidth;
+                if (cw === 0) continue;
+                
+                // Read from a clean layout, never dirty the DOM before measuring!
+                if (w.classList.contains('is-wide')) {
+                    const t = w.querySelector('.zen-table');
+                    if (t && t.offsetWidth <= cw) w.classList.remove('is-wide');
+                } else {
+                    if (w.scrollWidth > cw + 2) w.classList.add('is-wide');
+                }
+            }
+        }
+

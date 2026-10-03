@@ -689,8 +689,8 @@ TypoZen opens by document _type_, not size. View settings are saved per document
 |---|---|---|---|---|---|---|---|---|---|
 | **Code** | HTML, XML, XAML, CSS, JSON, JS/TS, C#, etc. plus `.log` and `.csv` | Tokyo Night | Tight | Tight | Narrow | off | Normal | off | n/a |
 | **Documents** | `.md`, `.txt`, untitled | Gruvbox | Normal | Normal | Narrow | off | Normal | on | n/a |
-| **ePub** | `.epub` | RosǸ Pine Dawn | Relaxed | Loose | Regular | off | Large | n/a | Inherits from ePub TypePrefs |
-| **PDF** | `.pdf` | Catppuccin Latte | ?" | ?" | ?" | ?" | ?" | ?" | n/a |
+| **ePub** | `.epub` | Rosé Pine Dawn | Relaxed | Loose | Regular | off | Large | n/a | Inherits from ePub TypePrefs |
+| **PDF** | `.pdf` | Catppuccin Latte | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 
 These are the out-of-box defaults. PDF takes the theme only (PDF.js lays the page out itself). Images, video and rendered HTML pages have no text layout of TypoZen's and are not a type.
 
