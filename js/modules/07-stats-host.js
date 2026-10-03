@@ -532,6 +532,9 @@
                     } else if ((m = lineStr.match(/^\s*<(Window|Page|UserControl|Grid|StackPanel|DockPanel|WrapPanel|ScrollViewer|Canvas|ListView|TreeView|TabControl|Menu)\b/))) {
                         title = '<' + m[1] + '>';
                         level = lineStr.search(/\S/) / 4 + 1;
+                    } else if ((m = lineStr.match(/^(#{1,6})\s+(.+)/))) {
+                        title = m[2].replace(/[*_]/g, '');
+                        level = m[1].length;
                     }
                     if (title) {
                         const line1Based = i + 1;
@@ -809,4 +812,6 @@
 
         tzMark('(page) top-level script evaluated');
     
+
+
 
