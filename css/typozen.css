@@ -225,7 +225,7 @@
             font-weight: 600;
         }
         .search-item.active .search-text,
-        .search-item.active .search-line { color: var(--tx, #F4F4F5); }
+        .search-item.active .search-line { color: inherit; }
         /* Hover is a neutral wash, deliberately not the accent. Hover and the selected row
            both used var(--accent-bg) -- the differing fallbacks never applied, because that
            variable is always set -- so they rendered identically and a hovered row looked
@@ -439,9 +439,9 @@
         /* The selected row owns the accent, and keeps it while hovered. */
         .search-item.active,
         .search-item.active:hover {
-            background-color: var(--accent-bg, rgba(59,130,246,0.25));
+            background-color: var(--accent, #3B82F6);
             border-left: 2px solid var(--accent, #3B82F6);
-            color: var(--tx, #F4F4F5);
+            color: var(--accent-tx, #18181B);
             font-weight: 600;
         }
 
@@ -1308,8 +1308,6 @@
            own, so the current hit can be solid accent with --accent-tx like Preview's. */
         #source-cm .tz-src-hit {
             background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
-            text-decoration: underline 2px var(--accent, #3B82F6);
-            text-underline-offset: 3px;
         }
         #source-cm .tz-src-hit.cur {
             background-color: var(--accent, #f59e0b);
@@ -1420,8 +1418,6 @@
         ::highlight(typozen-find) {
             background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
             color: inherit;
-            text-decoration: underline 2px var(--accent, #3B82F6);
-            text-underline-offset: 3px;
         }
         ::highlight(typozen-find-current) {
             background-color: var(--accent, #f59e0b);
@@ -1434,7 +1430,6 @@
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-find) {
             color: transparent;
             background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
-            text-decoration: underline 2px var(--accent, #3B82F6);
         }
         #pdfView :is(.textLayer, .tzOcrLayer) span::highlight(typozen-find-current) {
             color: transparent;

@@ -1368,18 +1368,38 @@
             root.setProperty('--bg', bg);
             root.setProperty('--tx', tx);
             root.setProperty('--accent', accent);
-            // Black or white on the accent, chosen by measured contrast rather than by a
-            // brightness cutoff. The 0.299/0.587/0.114 rule got it backwards for mid-tone
-            // accents: Solarized Light's #268BD2 sits just under the threshold, so it took
-            // white at 3.68 when black scores 5.70. Same for Solarized Dark, Rose Pine Dawn
-            // and One Light. It matters most on the current search match, which paints text
-            // directly on solid accent.
+            // WCAG 3.0 APCA contrast calculation for the accent text.
+            // Priority 1: Theme background (Bg) punches through for ambient cohesion if |Lc| >= 50.
+            // Fallback: True Black or True White, whichever has higher |Lc|.
             root.setProperty('--accent-tx', (function () {
-                const ch = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
-                const L = 0.2126 * ch(ar) + 0.7152 * ch(ag) + 0.0722 * ch(ab);
-                const onWhite = 1.05 / (L + 0.05);
-                const onBlack = (L + 0.05) / 0.05;
-                return onBlack >= onWhite ? '#000000' : '#FFFFFF';
+                const toY = (r, g, b) => 0.2126729 * Math.pow(r/255, 2.4) + 0.7151522 * Math.pow(g/255, 2.4) + 0.0721750 * Math.pow(b/255, 2.4);
+                const calcLc = (txtY, bgY) => {
+                    bgY = Math.max(bgY, 0.022);
+                    txtY = Math.max(txtY, 0.022);
+                    if (Math.abs(bgY - txtY) < 0.0005) return 0;
+                    if (bgY > txtY) {
+                        const sapc = (Math.pow(bgY, 0.56) - Math.pow(txtY, 0.57)) * 1.14;
+                        return sapc < 0.1 ? 0 : (sapc - 0.027) * 100;
+                    } else {
+                        const sapc = (Math.pow(bgY, 0.65) - Math.pow(txtY, 0.62)) * 1.14;
+                        return sapc > -0.1 ? 0 : (sapc + 0.027) * 100;
+                    }
+                };
+
+                const hiY = toY(ar, ag, ab);
+                
+                let bgY = 0;
+                if (bg.startsWith('#') && bg.length >= 7) {
+                    const br = parseInt(bg.substr(1, 2), 16) || 0;
+                    const bg_g = parseInt(bg.substr(3, 2), 16) || 0;
+                    const bb = parseInt(bg.substr(5, 2), 16) || 0;
+                    bgY = toY(br, bg_g, bb);
+                    if (Math.abs(calcLc(bgY, hiY)) >= 50) return bg;
+                }
+
+                const LcBlack = calcLc(0, hiY);
+                const LcWhite = calcLc(1.0, hiY);
+                return Math.abs(LcBlack) > Math.abs(LcWhite) ? '#000000' : '#FFFFFF';
             })());
             // Search highlighting is built from the theme accent, not from a fixed amber.
             // It used to be hardcoded #f59e0b over rgba(255,180,0,.45), which happened to
@@ -1871,7 +1891,7 @@
             // shell, so hiding it has to come through here. A class, because
             // updatePageScrubber writes display on every page turn and would undo anything
             // set directly.
-            if (cmd === "scrubber_on") { document.body.classList.remove("tz-no-scrubber"); return; }
+            if (cmd === "scrubber_on") { document.body.classList.remove("tz-no-scrubber"); requestAnimationFrame(() => { if (typeof updatePageScrubber === 'function') updatePageScrubber(); }); return; }
             if (cmd === "scrubber_off") { document.body.classList.add("tz-no-scrubber"); return; }
 
             // Reading comfort. Both are plain CSS custom properties on the root: line-height
