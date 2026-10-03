@@ -1137,7 +1137,16 @@
                 }
                 const total = chapters.reduce(function (m, u) { return Math.max(m, numberOf(u)); }, 0);
                 for (const u of mine) {
-                    if (chapters.indexOf(u) >= 0) { u.label = 'Chapter ' + numberOf(u) + ' of ' + total; u.isChapter = true; }
+                    if (chapters.indexOf(u) >= 0) {
+                        const numStr = 'Chapter ' + numberOf(u) + ' of ' + total;
+                        const clean = (u.title || '').trim().replace(/^(chapter\s*\d+[\s\.\-:]*|\d+[\s\.\-:]*)/i, '').trim();
+                        if (clean && clean.toLowerCase() !== 'chapter') {
+                            u.label = numStr + ' • ' + clean;
+                        } else {
+                            u.label = numStr;
+                        }
+                        u.isChapter = true;
+                    }
                 }
             }
             // 2. Everything else by its own name, or by what contains it.

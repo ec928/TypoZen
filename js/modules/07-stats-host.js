@@ -462,6 +462,34 @@
             return false;
         }
 
+        window.syncOutlineSelection = function(forceScroll) {
+            if (!outlineList || !outlineList.offsetParent) return; // Not visible
+            let targetBi = -1;
+            if (typeof _currentChapterBi === 'number') targetBi = _currentChapterBi;
+            if (targetBi < 0) return;
+
+            const items = outlineList.querySelectorAll('.outline-item[data-bi]');
+            let targetEl = null;
+            for (let i = 0; i < items.length; i++) {
+                const el = items[i];
+                const bi = parseInt(el.getAttribute('data-bi'), 10);
+                if (bi === targetBi) {
+                    targetEl = el;
+                    if (!el.classList.contains('active')) el.classList.add('active');
+                } else {
+                    if (el.classList.contains('active')) el.classList.remove('active');
+                }
+            }
+
+            if (targetEl) {
+                const listRect = outlineList.getBoundingClientRect();
+                const elRect = targetEl.getBoundingClientRect();
+                if (forceScroll || elRect.top < listRect.top || elRect.bottom > listRect.bottom) {
+                    try { targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+                }
+            }
+        };
+
         function updateOutline() {
             if (!outlineList) return;
             // A PDF on screen shows its own outline (10-pdf.js).
@@ -515,6 +543,7 @@
                 const item = document.createElement('div');
                 item.className = 'outline-item outline-h' + level;
                 item.innerText = title;
+                item.setAttribute('data-bi', idx | 0);
                 item.onclick = function () { jumpToModelBlock(idx); };
                 outlineList.appendChild(item);
             }
@@ -604,6 +633,7 @@
                 }
             }
             _currentChapterBi = chapterBi;
+            try { if (typeof syncOutlineSelection === 'function') syncOutlineSelection(); } catch (e) {}
             if (title === _lastChapterPosted && chapterBi === _lastChapterBiPosted) return;
             _lastChapterPosted = title;
             _lastChapterBiPosted = chapterBi;
@@ -645,6 +675,11 @@
 
         window.switchTab = function(tab, noFocus) {
             if (tab !== 'outline' && tab !== 'search' && tab !== 'marks') tab = 'outline';
+            if (tab === 'outline') {
+                setTimeout(function() {
+                    try { if (typeof syncOutlineSelection === 'function') syncOutlineSelection(true); } catch (e) {}
+                }, 10);
+            }
             // Marks list: try to rescue anything still lost, and only then. A rescue pass
             // (onlyUnresolved) rather than a full re-resolve — opening a pane is not a
             // reason to move a mark that already found its block, and the same sentence

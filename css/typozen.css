@@ -437,11 +437,13 @@
         .search-more:hover { opacity: 1; }
 
         /* The selected row owns the accent, and keeps it while hovered. */
+        .outline-item.active,
+        .outline-item.active:hover,
         .search-item.active,
         .search-item.active:hover {
-            background-color: var(--accent, #3B82F6);
-            border-left: 2px solid var(--accent, #3B82F6);
-            color: var(--accent-tx, #18181B);
+            background: var(--accent-bg, rgba(59, 130, 246, 0.25));
+            box-shadow: inset 2px 0 0 0 var(--accent, #3B82F6);
+            color: var(--tx, #F4F4F5);
             font-weight: 600;
         }
 
@@ -1117,6 +1119,10 @@
             text-align: right;
             font-variant-numeric: tabular-nums;
             cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
         }
         #page-indicator:hover {
             opacity: 1;
@@ -1127,7 +1133,8 @@
         /* One number per column, each sitting under its own column. */
         #page-indicator.book-label, #page-indicator.two-up { justify-content: space-between; }
         #page-indicator.two-up .page-num { width: 50%; }
-        #page-indicator.book-label .page-num:first-child, #page-indicator.two-up .page-num:first-child { text-align: left; }
+        #page-indicator.book-label .page-num:first-child { text-align: left; max-width: 70%; }
+        #page-indicator.two-up .page-num:first-child { text-align: left; max-width: none; }
 
         /* Position in the whole book, in pages.
            Sits below the numbers, in space applyPageModeHeight() reserves for it, because
