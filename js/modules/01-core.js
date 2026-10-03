@@ -314,9 +314,9 @@
         function getPageMarginPads() {
             // Real page margins (side padding), not max-width / line-length tricks.
             const m = state.margin || 'narrow';
-            if (m === 'narrow') return { top: 0, right: 16, bottom: 0, left: 16 };
-            if (m === 'wide') return { top: 0, right: 160, bottom: 0, left: 160 };
-            return { top: 0, right: 64, bottom: 0, left: 64 };
+            if (m === 'narrow') return { top: 2, right: 16, bottom: 0, left: 16 };
+            if (m === 'wide') return { top: 2, right: 160, bottom: 0, left: 160 };
+            return { top: 2, right: 64, bottom: 0, left: 64 };
         }
 
         /**
@@ -369,7 +369,7 @@
             const wrapLeft = Math.max(0, p.left - BLOCK_SIDE_PAD);
             if (state.mode === 'source') {
                 // Right pad 0 → scrollbar of #source-editor sits on the pane edge (like Preview).
-                wrapper.style.padding = '0 0 0 ' + wrapLeft + 'px';
+                wrapper.style.padding = p.top + 'px 0 0 ' + wrapLeft + 'px';
                 if (mainContainer) {
                     mainContainer.style.overflowY = 'hidden'; // one scrollbar only (textarea)
                     mainContainer.style.overflowX = 'hidden';
@@ -384,8 +384,7 @@
             } else {
                 // Less .block's own 8px side padding, so Preview's text starts and ends where
                 // Source's does: the margin setting is the distance to the text in both views.
-                wrapper.style.padding = '0 ' + Math.max(0, p.right - BLOCK_SIDE_PAD) + 'px 0 '
-                    + wrapLeft + 'px';
+                wrapper.style.padding = p.top + 'px ' + Math.max(0, p.right - BLOCK_SIDE_PAD) + 'px 0 ' + wrapLeft + 'px';
 
                 // Configure the container BEFORE measuring it. This used to run the other
                 // way round, so clientHeight was read while main-container still carried
@@ -561,4 +560,6 @@
                 return 1;
             }
         }
+
+
 

@@ -1116,7 +1116,7 @@
             cursor: pointer;
         }
         #page-indicator .page-num {
-            padding: 0 16px;
+            padding: 2px 16px 0;
             text-align: right;
             font-variant-numeric: tabular-nums;
             cursor: pointer;
@@ -2364,7 +2364,7 @@
         #pdfView .pdf-problem {
             max-width: 34em;
             margin: 18vh auto 0;
-            padding: 0 16px;
+            padding: 2px 16px 0;
             color: var(--tx, #F4F4F5);
             font-family: var(--ui-font, inherit);
             line-height: 1.5;
@@ -2723,4 +2723,5 @@ body.tz-overwrite #editor,
 body.tz-overwrite .cm-content { caret-shape: block; }
 #editor .tz-tab,
 #editor .block span[style*="white-space"] { white-space: break-spaces !important; }
+
 
