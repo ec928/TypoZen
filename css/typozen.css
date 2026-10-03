@@ -1102,7 +1102,7 @@
                from the bottom) had the track running through it at 10px and the thumb over
                its lower half. Both live in the same 26px PAGE_FOOT_RESERVE; this stacks them
                in it instead of making the page shorter. */
-            bottom: 13px;
+            bottom: 12px;
             display: none;
             justify-content: flex-end;
             /* Clickable for go-to-page; scrubber sits above on its own layer. */
@@ -2723,5 +2723,6 @@ body.tz-overwrite #editor,
 body.tz-overwrite .cm-content { caret-shape: block; }
 #editor .tz-tab,
 #editor .block span[style*="white-space"] { white-space: break-spaces !important; }
+
 
 
