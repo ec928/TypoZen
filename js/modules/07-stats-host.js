@@ -514,9 +514,10 @@
                     if (m) {
                         title = m[1] + ' ' + m[2];
                         level = 1;
-                    } else if ((m = lineStr.match(/^\s*(?:public\s+|private\s+|protected\s+|internal\s+|export\s+|static\s+|async\s+|virtual\s+|override\s+|new\s+)*[A-Za-z0-9_<>\[\]\?]+\s+([A-Za-z0-9_]+)\s*\(/))) {
-                        const name = m[1];
-                        if (!/^(if|while|for|foreach|switch|catch|using|lock|typeof|sizeof|nameof)$/.test(name)) {
+                    } else if ((m = lineStr.match(/^\s*(?:public\s+|private\s+|protected\s+|internal\s+|export\s+|static\s+|async\s+|virtual\s+|override\s+|new\s+)*([A-Za-z0-9_<>\[\]\?]+)\s+([A-Za-z0-9_]+)\s*\(/))) {
+                        const name = m[2];
+                        const retType = m[1];
+                        if (!/^(if|while|for|foreach|switch|catch|using|lock|typeof|sizeof|nameof)$/.test(name) && !/^(else|return|new|await|throw|yield|case|var|let|const|typeof)$/.test(retType)) {
                             title = name + '()';
                             level = lineStr.search(/\S/) / 4 + 1;
                         }
@@ -812,6 +813,7 @@
 
         tzMark('(page) top-level script evaluated');
     
+
 
 
 
