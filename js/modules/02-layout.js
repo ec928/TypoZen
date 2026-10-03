@@ -162,7 +162,11 @@
 
         function clearFindHighlights() {
             try {
-                if (CSS && CSS.highlights) {
+                if (window.CSS && CSS.highlights) {
+                    const h1 = CSS.highlights.get('typozen-find');
+                    if (h1) h1.clear();
+                    const h2 = CSS.highlights.get('typozen-find-current');
+                    if (h2) h2.clear();
                     CSS.highlights.delete('typozen-find');
                     CSS.highlights.delete('typozen-find-current');
                 }
@@ -3372,7 +3376,8 @@
 
         function rememberLastSearchText(q) {
             _lastSearchQuery = String(q == null ? '' : q);
-            scheduleSavePreferences();
+            if (!_lastSearchQuery) savePreferences(true);
+            else scheduleSavePreferences();
         }
 
         function currentReadingBlockIndex() {
@@ -3569,6 +3574,7 @@
             try { cancelSidebarSearchIdle(); } catch (eC) {}
             try { closeSearchHistoryMenu(); } catch (eM) {}
             input.value = '';
+            rememberLastSearchText('');
             runFind('', false, { navigate: false });
             updateSidebarSearchCount();
             updateSearchSidebar();
@@ -3815,6 +3821,7 @@
                     cancelSidebarSearchIdle();
                     const input = document.getElementById('sidebarSearchInput');
                     if (input) input.value = '';
+                    rememberLastSearchText('');
                     runFind('', false, { navigate: false });
                     updateSidebarSearchCount();
                     updateSearchSidebar();
@@ -4548,11 +4555,11 @@
         // Native scrollbars are hidden (body.tz-pages); the scrubber is the only track.
         // -----------------------------------------------------------------------------
         const PAGE_EDGE_SLOP = 12;
-        const PAGE_FOOT_RESERVE = 26;
+        const PAGE_FOOT_RESERVE = 40;
         function getPageTwoColGap() {
             try {
                 if (typeof getPageMarginPads === 'function') {
-                    return getPageMarginPads().left;
+                    return Math.max(64, getPageMarginPads().left);
                 }
             } catch (e) {}
             return 60;
@@ -7774,4 +7781,6 @@ let _tablePopTimer = null;
                 }
             }
         }
+
+
 

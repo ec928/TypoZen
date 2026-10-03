@@ -48,6 +48,7 @@
             width: 8px;
             height: 8px;
         }
+        ::-webkit-scrollbar-corner { background: transparent; }
         ::-webkit-scrollbar-track {
             background: transparent;
         }
@@ -2722,3 +2723,4 @@ body.tz-overwrite #editor,
 body.tz-overwrite .cm-content { caret-shape: block; }
 #editor .tz-tab,
 #editor .block span[style*="white-space"] { white-space: break-spaces !important; }
+
