@@ -1317,10 +1317,12 @@
         #source-cm .tz-src-hit {
             background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
         }
-        #source-cm .tz-src-hit.cur {
-            background-color: var(--accent, #f59e0b);
-            color: var(--accent-tx, #111);
-            text-decoration: none;
+        #source-cm .tz-src-hit.cur,
+        #source-cm .tz-src-hit.cur::selection,
+        #source-cm .tz-src-hit.cur *::selection {
+            background-color: var(--accent, #f59e0b) !important;
+            color: var(--accent-tx, #111) !important;
+            text-decoration: none !important;
         }
 
         /* Document-scoped Find & Replace (not Chromium page-find) */
@@ -2737,3 +2739,44 @@ body.tz-overwrite .cm-content { caret-shape: block; }
     color: var(--accent-tx, var(--tx)) !important;
     font-weight: bold;
 }
+
+/* Source mode: Prototyping features */
+#source-cm .cm-foldGutter {
+    color: var(--tx-muted, #A1A1AA);
+    width: 14px;
+    text-align: center;
+    cursor: pointer;
+}
+#source-cm .cm-foldGutter:hover {
+    color: var(--tx, #FFF);
+}
+#source-cm .cm-foldPlaceholder {
+    background: var(--accent-bg, rgba(255,255,255,0.1));
+    border: none;
+    color: var(--tx-muted, #A1A1AA);
+    padding: 0 4px;
+    border-radius: 3px;
+}
+#source-cm .cm-matchingBracket {
+    background-color: var(--select-bg) !important;
+    border: 1px solid var(--accent, #4CAF50) !important;
+    border-radius: 3px;
+    color: inherit !important;
+}
+#source-cm .cm-nonmatchingBracket {
+    background-color: rgba(255, 0, 0, 0.2);
+    border-bottom: 1px solid #FF0000;
+}
+#source-cm .cm-nonmatchingBracket {
+    background-color: rgba(255, 0, 0, 0.3) !important;
+    border-bottom: 2px solid #FF0000 !important;
+}
+.tz-indent-guide {
+    border-left: 1px solid color-mix(in srgb, var(--tx) 20%, transparent) !important;
+}
+
+
+
+
+
+

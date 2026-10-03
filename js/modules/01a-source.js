@@ -1,4 +1,3 @@
-// TypoZen module: 01a-source.js
 // Source mode's editing surface. Classic script; shares page globals.
 // Load order is fixed -- see js/modules/load-order.json and TypoZen_Template.html.
 //
@@ -82,6 +81,44 @@
                 { tag: t.quote, class: 'tzmd-quote' },
                 { tag: [t.processingInstruction, t.contentSeparator], class: 'tzmd-mark' }
             ]);
+                                    const indentFold = CM.foldService.of((state, lineStart, lineEnd) => {
+                const line = state.doc.lineAt(lineStart);
+                const indent = (text) => { let m = text.match(/^[ \t]*/); return m ? m[0].length : 0; };
+                const myIndent = indent(line.text);
+                if (line.text.trim() === '') return null;
+                
+                let endPos = null;
+                let nextLineNum = line.number + 1;
+                let foundLarger = false;
+                while (nextLineNum <= state.doc.lines) {
+                    const next = state.doc.line(nextLineNum);
+                    if (next.text.trim() !== '') {
+                        if (indent(next.text) > myIndent) {
+                            foundLarger = true;
+                            endPos = next.to;
+                        } else {
+                            break;
+                        }
+                    } else if (foundLarger) {
+                        endPos = next.to;
+                    }
+                    nextLineNum++;
+                }
+                if (foundLarger && endPos) return {from: line.to, to: endPos};
+                return null;
+            });
+            const braceFold = CM.foldService.of((state, lineStart, lineEnd) => {
+                const line = state.doc.lineAt(lineStart);
+                const openBrace = line.text.lastIndexOf('{');
+                if (openBrace > -1) {
+                    const pos = line.from + openBrace;
+                    const match = CM.matchBrackets(state, pos, 1);
+                    if (match && match.matched) {
+                        return {from: pos + 1, to: match.end.from};
+                    }
+                }
+                return null;
+            });
             const language = new CM.Compartment();
             const kindChanged = CM.StateEffect.define();
             let kind = '', codeLang = null;
@@ -245,6 +282,31 @@
                 destroy() { clearTimeout(this.timer); }
             });
 
+                        const indentGuidesPlugin = CM.ViewPlugin.fromClass(class {
+                constructor(view) { this.decorations = this.build(view); }
+                update(u) { if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view); }
+                build(view) {
+                    const builder = new CM.RangeSetBuilder();
+                    for (let {from, to} of view.visibleRanges) {
+                        let pos = from;
+                        while (pos <= to) {
+                            let line = view.state.doc.lineAt(pos);
+                            let text = line.text;
+                            let spaces = 0;
+                            while (spaces < text.length && text[spaces] === ' ') spaces++;
+                            
+                            // 4-space indents
+                            let i = 0;
+                            while (i + 4 <= spaces) {
+                                builder.add(line.from + i, line.from + i + 4, CM.Decoration.mark({class: 'tz-indent-guide'}));
+                                i += 4;
+                            }
+                            pos = line.to + 1;
+                        }
+                    }
+                    return builder.finish();
+                }
+            }, { decorations: v => v.decorations });
             const codePlugin = CM.ViewPlugin.fromClass(class {
                 constructor(v) { this.decorations = buildCode(v); }
                 update(u) {
@@ -365,8 +427,13 @@
                             return true;
                         }),
                         language.of([]),
+                          braceFold,
+                          indentFold,
                         (CM.lineNumbers ? CM.lineNumbers() : []),
-                        codePlugin,
+                        (CM.foldGutter ? CM.foldGutter() : []),
+                        (CM.bracketMatching ? CM.bracketMatching() : []),
+                        indentGuidesPlugin,
+                          codePlugin,
                         listPlugin,
                         cmSpellField,
                         cmSpellPlugin,
@@ -663,4 +730,9 @@
         function isSourceFocused() {
             return isSourceNode(document.activeElement);
         }
+
+
+
+
+
 

@@ -558,8 +558,7 @@
                     if (e.target && e.target.closest && e.target.closest('#selPop')) return;
                     // The pointer is the anchor in Source, where the selection has no
                     // rectangle of its own. Preview ignores it and uses the range's box.
-                    const at = { left: e.clientX, top: e.clientY, width: 0, height: 0,
-                                 bottom: e.clientY };
+                    const at = { left: e.clientX, top: e.clientY, width: 0, height: 0, bottom: e.clientY, target: e.target };
                     setTimeout(function () { try { showSelPop(at); } catch (e2) {} }, 10);
                 });
                 document.addEventListener('selectionchange', function () {
@@ -2915,4 +2914,5 @@
             if (modal) modal.style.display = 'none';
             insertMarkdownTable(cols, rows);
         }
+
 

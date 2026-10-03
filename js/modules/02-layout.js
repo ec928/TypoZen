@@ -2268,8 +2268,19 @@
          * position and Preview keeps using the selection's own box.
          */
         function showSelPop(anchor) {
+            if (window._tzSuppressSelPop) { hideSelPop(); return; }
             const pop = document.getElementById('selPop');
             if (!pop) return;
+
+            if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' && document.activeElement.id !== 'sourceEditor')) {
+                hideSelPop(); return;
+            }
+
+            if (anchor && anchor.target && anchor.target.closest) {
+                if (anchor.target.closest('#sidebar') || anchor.target.closest('.title-bar') || anchor.target.closest('#findBar')) {
+                    hideSelPop(); return;
+                }
+            }
 
             // Annotating a PDF: a selection is the highlight tool's, not the popup's.
             if (window.tzPdfEditing) { hideSelPop(); return; }
@@ -3625,6 +3636,8 @@
             const input = document.getElementById('sidebarSearchInput');
             if (!input || input.__tzWired) return;
             input.__tzWired = true;
+            input.addEventListener('focus', function() { try { hideSelPop(); } catch(e){} });
+            input.addEventListener('mousedown', function() { try { hideSelPop(); } catch(e){} });
             wireSearchOptionButtons();
             syncSearchHistoryButton();
 
@@ -6522,7 +6535,9 @@
             if (!sourceEditor) return;
             try {
                 if (takeFocus) sourceEditor.focus();
+                window._tzSuppressSelPop = true;
                 sourceEditor.setSelectionRange(start, end);
+                setTimeout(() => { window._tzSuppressSelPop = false; }, 100);
             } catch (e) {}
             try { paintSourceHighlights(); } catch (eP) {}
             // CodeMirror knows where every line is laid out, wrapped or not.
@@ -7692,6 +7707,16 @@ let _tablePopTimer = null;
             const pop = document.getElementById('tablePop');
             if (!pop) return;
 
+            if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' && document.activeElement.id !== 'sourceEditor')) {
+                hideSelPop(); return;
+            }
+
+            if (anchor && anchor.target && anchor.target.closest) {
+                if (anchor.target.closest('#sidebar') || anchor.target.closest('.title-bar') || anchor.target.closest('#findBar')) {
+                    hideSelPop(); return;
+                }
+            }
+
             // Mutual exclusivity with selPop
             if (typeof hideSelPop === 'function') hideSelPop();
 
@@ -7781,6 +7806,12 @@ let _tablePopTimer = null;
                 }
             }
         }
+
+
+
+
+
+
 
 
 
