@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.13.4";
+        internal const string AppVersion = "0.13.5";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -9941,8 +9941,8 @@ namespace TypoZen
         }
 
         // Full caption with tab chips vs slim strip (drag + min/max/close only).
-        private const double CaptionHeightExpanded = 36;
-        private const double CaptionHeightCollapsed = 28;
+        private const double CaptionHeightExpanded = 30;
+        private const double CaptionHeightCollapsed = 24;
 
         private double ChromeHeight()
         {
