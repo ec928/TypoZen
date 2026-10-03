@@ -700,7 +700,7 @@
         </Border>
 
         <!-- Status bar: quieter type so the document stays primary. REVERT: restore Padding 12,6 + SemiBold. -->
-        <Border x:Name="statusBar" DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" Padding="10,3">
+        <Border x:Name="statusBar" DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" Padding="10,4,10,2">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -760,7 +760,7 @@
 
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
                     <Border x:Name="themeIndicatorBorder" CornerRadius="4" Padding="7,1" Background="#1E293B" Opacity="0.85">
-                        <TextBlock x:Name="lblThemeName" Text="Theme: Nord" FontSize="10" FontWeight="Normal" Opacity="0.9"/>
+                        <TextBlock x:Name="lblThemeName" Text="Theme: Nord" FontSize="10" FontWeight="Normal" Opacity="0.9" Margin="0,1,0,0"/>
                     </Border>
                 </StackPanel>
 
@@ -778,5 +778,6 @@
     </DockPanel>
     </Grid>
 </Window>
+
 
 
