@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.13.3";
+        internal const string AppVersion = "0.13.4";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -14591,8 +14591,8 @@ namespace TypoZen
             //   Inactive: height 24 → bottom at 29, gap above seam.
             //   Active: same top, height 31 → covers through the seam line; open bottom,
             //   fill = command bar so it reads as continuous with the menu.
-            const double tabChipH = 24;
-            const double activeExtra = 7; // gap + 1px seam
+            const double tabChipH = 22;
+            const double activeExtra = 5; // gap + 1px seam
             double titleMax = ComputeTabTitleMaxWidth();
             _tabTitleWidthBuilt = titleMax;
 
@@ -14611,8 +14611,8 @@ namespace TypoZen
                         ? new CornerRadius(8, 8, 0, 0)
                         : new CornerRadius(0),
                     Padding = active
-                        ? new Thickness(10, 4, 6, 4)
-                        : new Thickness(8, 3, 4, 3),
+                        ? new Thickness(10, 2, 6, 2)
+                        : new Thickness(8, 2, 4, 2),
                     Margin = new Thickness(0, 0, 0, 0),
                     Cursor = Cursors.Hand,
                     Background = active ? _tabActiveBg : Brushes.Transparent,

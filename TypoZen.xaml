@@ -170,8 +170,8 @@
         <!-- A single two-state toolbar button: shows the current value, flips on click.
              Same outline and metrics as a SegmentGroup so it sits with the Mode control. -->
         <Style x:Key="ToolbarStateButton" TargetType="Button">
-            <Setter Property="Padding" Value="10,3"/>
-            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="MinHeight" Value="24"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -213,12 +213,12 @@
             <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
             <Setter Property="Opacity" Value="0.5"/>
             <Setter Property="VerticalAlignment" Value="Stretch"/>
-            <Setter Property="Margin" Value="0,3"/>
+            <Setter Property="Margin" Value="0,2"/>
         </Style>
 
         <Style x:Key="SegmentButton" TargetType="Button">
-            <Setter Property="Padding" Value="10,3"/>
-            <Setter Property="MinHeight" Value="26"/>
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="MinHeight" Value="24"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -255,8 +255,8 @@
         </Style>
 
         <Style x:Key="GhostToolbarButton" TargetType="Button">
-            <Setter Property="Padding" Value="6,4"/>
-            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="MinHeight" Value="24"/>
             <Setter Property="MinWidth" Value="30"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -293,7 +293,7 @@
         <!-- H / list / table dropdowns: same hit box + accent hover as GhostToolbarButton -->
         <ControlTemplate x:Key="ToolMenuHeaderTemplate" TargetType="MenuItem">
             <Border x:Name="templateRoot" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
-                    CornerRadius="4" Padding="6,4" MinHeight="28" MinWidth="30" SnapsToDevicePixels="True">
+                    CornerRadius="4" Padding="6,2" MinHeight="24" MinWidth="30" SnapsToDevicePixels="True">
                 <Grid>
                     <ContentPresenter x:Name="headerPresenter" ContentSource="Header"
                                       HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
@@ -357,7 +357,7 @@
           active tab can paint over the line; a Border's stroke sits outside the child
           arrange rect and can never be covered.
         -->
-        <Border x:Name="tabBar" DockPanel.Dock="Top" Height="36" BorderThickness="0" Padding="8,0,0,0"
+        <Border x:Name="tabBar" DockPanel.Dock="Top" Height="30" BorderThickness="0" Padding="8,0,0,0"
                 ClipToBounds="False">
             <Grid ClipToBounds="False">
                 <Grid.ColumnDefinitions>
@@ -377,18 +377,17 @@
                     </Grid.ColumnDefinitions>
                     <Button x:Name="btnTabScrollLeft" Grid.Column="0" Content="‹" FontSize="14" FontWeight="Bold"
                             Width="22" BorderThickness="0" Background="Transparent" Padding="0"
-                            VerticalAlignment="Top" Margin="0,5,0,0" Height="24"
+                            VerticalAlignment="Top" Margin="0,3,0,0" Height="22"
                             ToolTip="Scroll tabs left" Visibility="Collapsed"/>
                     <ScrollViewer x:Name="tabScroller" Grid.Column="1"
                                   HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
                                   Focusable="False" VerticalAlignment="Stretch"
                                   ClipToBounds="False" PanningMode="HorizontalOnly">
-                        <StackPanel x:Name="tabStrip" Orientation="Horizontal" VerticalAlignment="Top"
-                                    Margin="0,5,0,0"/>
+                        <StackPanel x:Name="tabStrip" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,3,0,0"/>
                     </ScrollViewer>
                     <Button x:Name="btnTabScrollRight" Grid.Column="2" Content="›" FontSize="14" FontWeight="Bold"
                             Width="22" BorderThickness="0" Background="Transparent" Padding="0"
-                            VerticalAlignment="Top" Margin="0,5,0,0" Height="24"
+                            VerticalAlignment="Top" Margin="0,3,0,0" Height="22"
                             ToolTip="Scroll tabs right" Visibility="Collapsed"/>
                 </Grid>
                 <StackPanel x:Name="captionButtons" Grid.Column="1" Orientation="Horizontal"
@@ -406,7 +405,7 @@
             </Grid>
         </Border>
 
-        <Border x:Name="topToolbar" DockPanel.Dock="Top" BorderThickness="0,0,0,1" Padding="4,2,8,2">
+        <Border x:Name="topToolbar" DockPanel.Dock="Top" BorderThickness="0,0,0,1" Padding="2,1,6,1">
             <Grid>
                <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1*"/>
@@ -779,3 +778,4 @@
     </DockPanel>
     </Grid>
 </Window>
+
