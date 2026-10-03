@@ -4555,7 +4555,7 @@
         // Native scrollbars are hidden (body.tz-pages); the scrubber is the only track.
         // -----------------------------------------------------------------------------
         const PAGE_EDGE_SLOP = 12;
-        const PAGE_FOOT_RESERVE = 26;
+        const PAGE_FOOT_RESERVE = 30;
         function getPageTwoColGap() {
             try {
                 if (typeof getPageMarginPads === 'function') {
@@ -7781,6 +7781,7 @@ let _tablePopTimer = null;
                 }
             }
         }
+
 
 
 
