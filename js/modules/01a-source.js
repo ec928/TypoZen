@@ -365,6 +365,7 @@
                             return true;
                         }),
                         language.of([]),
+                        (CM.lineNumbers ? CM.lineNumbers() : []),
                         codePlugin,
                         listPlugin,
                         cmSpellField,
@@ -662,3 +663,4 @@
         function isSourceFocused() {
             return isSourceNode(document.activeElement);
         }
+

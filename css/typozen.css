@@ -2726,3 +2726,14 @@ body.tz-overwrite .cm-content { caret-shape: block; }
 
 
 
+#source-cm .cm-gutters {
+    background: transparent !important;
+    border-right: 1px solid color-mix(in srgb, var(--tx) 10%, transparent) !important;
+    color: var(--tx-muted, #A1A1AA) !important;
+    padding-right: 8px;
+}
+#source-cm .cm-activeLineGutter {
+    background: transparent !important;
+    color: var(--accent-tx, var(--tx)) !important;
+    font-weight: bold;
+}

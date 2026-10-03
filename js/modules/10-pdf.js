@@ -114,7 +114,7 @@
         S.blocks = null; S.blocksKey = ''; S.readEl = null; S.flashEl = null; S.textReady = false; S.password = null;
         S.ocrRun++; S.ocrPages = {}; S.ocrBoxes = {}; S.ocrSize = {}; S.ocrStats = null;
         S.editMode = 'none'; window.tzPdfEditing = false; S.modified = false;
-        try { CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch (e) { }
+        try { const h1=CSS.highlights.get('typozen-find'); if(h1)h1.clear(); const h2=CSS.highlights.get('typozen-find-current'); if(h2)h2.clear(); CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch(e){}
         clearBand('read'); clearBand('arrive');
         const host = document.getElementById('pdfView');
         if (host) host.innerHTML = '';
@@ -705,7 +705,7 @@
     function paintFind() {
         const m = S.findMatches || [];
         const idx = S.findIndex;
-        try { CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch (e) { }
+        try { const h1=CSS.highlights.get('typozen-find'); if(h1)h1.clear(); const h2=CSS.highlights.get('typozen-find-current'); if(h2)h2.clear(); CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch(e){}
         if (!m.length || !window.Highlight || !CSS.highlights) return null;
         const all = [];
         let current = null;

@@ -9,9 +9,10 @@ export {
     Transaction, Prec, RangeSetBuilder
 } from '@codemirror/state';
 export {
-    EditorView, ViewPlugin, Decoration, keymap
+    EditorView, ViewPlugin, Decoration, keymap, lineNumbers
 } from '@codemirror/view';
 export { standardKeymap } from '@codemirror/commands';
 export { syntaxHighlighting, HighlightStyle, syntaxTree, ensureSyntaxTree } from '@codemirror/language';
 export { markdownLanguage } from '@codemirror/lang-markdown';
 export { tags } from '@lezer/highlight';
+
