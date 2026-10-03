@@ -170,8 +170,8 @@
         <!-- A single two-state toolbar button: shows the current value, flips on click.
              Same outline and metrics as a SegmentGroup so it sits with the Mode control. -->
         <Style x:Key="ToolbarStateButton" TargetType="Button">
-            <Setter Property="Padding" Value="8,2"/>
-            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="MinHeight" Value="22"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -217,8 +217,8 @@
         </Style>
 
         <Style x:Key="SegmentButton" TargetType="Button">
-            <Setter Property="Padding" Value="8,2"/>
-            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="MinHeight" Value="22"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -255,8 +255,8 @@
         </Style>
 
         <Style x:Key="GhostToolbarButton" TargetType="Button">
-            <Setter Property="Padding" Value="6,2"/>
-            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Padding" Value="4,1"/>
+            <Setter Property="MinHeight" Value="22"/>
             <Setter Property="MinWidth" Value="30"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -293,7 +293,7 @@
         <!-- H / list / table dropdowns: same hit box + accent hover as GhostToolbarButton -->
         <ControlTemplate x:Key="ToolMenuHeaderTemplate" TargetType="MenuItem">
             <Border x:Name="templateRoot" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
-                    CornerRadius="4" Padding="6,2" MinHeight="24" MinWidth="30" SnapsToDevicePixels="True">
+                    CornerRadius="4" Padding="4,1" MinHeight="22" MinWidth="30" SnapsToDevicePixels="True">
                 <Grid>
                     <ContentPresenter x:Name="headerPresenter" ContentSource="Header"
                                       HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
@@ -405,7 +405,7 @@
             </Grid>
         </Border>
 
-        <Border x:Name="topToolbar" DockPanel.Dock="Top" BorderThickness="0,0,0,1" Padding="2,1,6,1">
+        <Border x:Name="topToolbar" DockPanel.Dock="Top" BorderThickness="0,0,0,1" Padding="2,0,6,0">
             <Grid>
                <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1*"/>
@@ -778,4 +778,5 @@
     </DockPanel>
     </Grid>
 </Window>
+
 
