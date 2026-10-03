@@ -502,6 +502,57 @@
             let found = 0;
             _chapterEntries = [];
 
+            if (state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) {
+                const text = sourceEditor.value || '';
+                const lines = text.split(/\r?\n/);
+                for (let i = 0; i < lines.length; i++) {
+                    const lineStr = lines[i];
+                    if (!lineStr.trim()) continue;
+                    let title = null;
+                    let level = 1;
+                    let m = lineStr.match(/^\s*(?:public\s+|private\s+|protected\s+|internal\s+|export\s+|default\s+|abstract\s+|sealed\s+|static\s+|partial\s+)*(class|struct|interface|enum|record|namespace)\s+([A-Za-z0-9_]+)/);
+                    if (m) {
+                        title = m[1] + ' ' + m[2];
+                        level = 1;
+                    } else if ((m = lineStr.match(/^\s*(?:public\s+|private\s+|protected\s+|internal\s+|export\s+|static\s+|async\s+|virtual\s+|override\s+|new\s+)*[A-Za-z0-9_<>\[\]\?]+\s+([A-Za-z0-9_]+)\s*\(/))) {
+                        const name = m[1];
+                        if (!/^(if|while|for|foreach|switch|catch|using|lock|typeof|sizeof|nameof)$/.test(name)) {
+                            title = name + '()';
+                            level = lineStr.search(/\S/) / 4 + 1;
+                        }
+                    } else if ((m = lineStr.match(/^\s*(?:export\s+)?function\s+([A-Za-z0-9_]+)/))) {
+                        title = 'function ' + m[1];
+                        level = lineStr.search(/\S/) / 4 + 1;
+                    } else if ((m = lineStr.match(/^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:function|\([^)]*\)\s*=>)/))) {
+                        title = m[1] + '()';
+                        level = lineStr.search(/\S/) / 4 + 1;
+                    } else if ((m = lineStr.match(/^\s*<([A-Z][A-Za-z0-9_]*)\b[^>]*(?:x:Name|Name|id|class)="([^"]+)"/i))) {
+                        title = '<' + m[1] + '> ' + m[2];
+                        level = lineStr.search(/\S/) / 4 + 1;
+                    } else if ((m = lineStr.match(/^\s*<(Window|Page|UserControl|Grid|StackPanel|DockPanel|WrapPanel|ScrollViewer|Canvas|ListView|TreeView|TabControl|Menu)\b/))) {
+                        title = '<' + m[1] + '>';
+                        level = lineStr.search(/\S/) / 4 + 1;
+                    }
+                    if (title) {
+                        const line1Based = i + 1;
+                        found++;
+                        const item = document.createElement('div');
+                        item.className = 'outline-item outline-h' + Math.floor(Math.max(1, Math.min(6, level)));
+                        item.innerText = title;
+                        item.onclick = function () { 
+                            try { if (typeof captureReturnJump === 'function') captureReturnJump(); } catch (eRj) {}
+                            restoreStickyDocumentLine(line1Based); 
+                            try { updateStatsNow({ forceCaretLine: line1Based }); } catch (eU) {}
+                        };
+                        outlineList.appendChild(item);
+                    }
+                }
+                if (found === 0) {
+                    outlineList.innerHTML = '<div class="outline-item" style="opacity:0.5;">No headings found...</div>';
+                }
+                return;
+            }
+
             // Prefer DocumentModel so outline works when Preview is virtualized
             // (most blocks are not in the DOM).
             const useModel = DocumentModel && DocumentModel.blocks && DocumentModel.blocks.length;
@@ -758,3 +809,4 @@
 
         tzMark('(page) top-level script evaluated');
     
+
