@@ -45,11 +45,31 @@ if ($env:RUN_PENDING_E2E -eq "1") { $suites += $pendingSuites }
 if ($env:RUN_APP_E2E -eq "1") { $suites += $appSuites }
 
 foreach ($suite in $suites) {
-    # Redirect inside cmd, not PowerShell: PS 5.1 turns a native command's stderr into
-    # ErrorRecords even when redirecting to a file, which litters the captured output
-    # with NativeCommandError noise for suites that exit 0.
-    $stdout = & cmd /c "node `"$($suite.FullName)`" 2>`"$errFile`""
-    if ($LASTEXITCODE -ne 0) {
+    $retries = 3
+    $success = $false
+
+    for ($i = 0; $i -lt $retries; $i++) {
+        # Redirect inside cmd, not PowerShell: PS 5.1 turns a native command's stderr into
+        # ErrorRecords even when redirecting to a file, which litters the captured output
+        # with NativeCommandError noise for suites that exit 0.
+        $stdout = & cmd /c "node `"$($suite.FullName)`" 2>`"$errFile`""
+        
+        if ($LASTEXITCODE -eq 0) {
+            $success = $true
+            break
+        }
+
+        # If it failed, check why. Only retry on instant sandbox crashes.
+        $errText = (Get-Content $errFile -ErrorAction SilentlyContinue) -join "`n"
+        if ($errText -match "TargetCloseError" -or $errText -match "Protocol error") {
+            Write-Host ("  RETRY " + $suite.Name + " (sandbox crash, attempt " + ($i + 1) + " of " + $retries + ")") -ForegroundColor Yellow
+        } else {
+            # Genuine test failure or timeout. Fail fast, do not retry.
+            break
+        }
+    }
+
+    if (-not $success) {
         $failedSuites += $suite.Name
         Write-Host ("  FAIL " + $suite.Name) -ForegroundColor Red
         $stdout | ForEach-Object { Write-Host ("      " + $_) }
