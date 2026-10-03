@@ -1427,6 +1427,8 @@
            --accent-tx, which the theme code already picks for contrast against it. */
         ::highlight(typozen-find) {
             background-color: var(--find-soft, rgba(255, 180, 0, 0.30));
+            text-decoration: underline 2px var(--accent, #f59e0b);
+            text-underline-offset: 2px;
             color: inherit;
         }
         ::highlight(typozen-find-current) {
@@ -2774,6 +2776,7 @@ body.tz-overwrite .cm-content { caret-shape: block; }
 .tz-indent-guide {
     border-left: 1px solid color-mix(in srgb, var(--tx) 20%, transparent) !important;
 }
+
 
 
 

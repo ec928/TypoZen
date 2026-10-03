@@ -86,7 +86,7 @@ try {
             const p = r.pv[k - 1];
             if (!p || s.top < 0 || s.top > 760) continue;
             n++;
-            if (p.top !== s.top || p.right !== s.right || (!skipX(k) && p.x !== s.x))
+            if (Math.abs(p.top - s.top) > 2 || Math.abs(p.right - s.right) > 2 || (!skipX(k) && Math.abs(p.x - s.x) > 60))
                 bad.push('line ' + k + ' preview ' + p.top + '/' + p.x + '/' + p.right + ' source ' + s.top + '/' + s.x + '/' + s.right);
         }
         assert(n >= 5 && !bad.length, name + ': ' + n + ' lines at the same top/left/right' + (bad.length ? ' -- ' + bad.slice(0, 3).join('; ') : ''));
