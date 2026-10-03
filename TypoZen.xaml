@@ -700,7 +700,7 @@
         </Border>
 
         <!-- Status bar: quieter type so the document stays primary. REVERT: restore Padding 12,6 + SemiBold. -->
-        <Border x:Name="statusBar" DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" Padding="10,4">
+        <Border x:Name="statusBar" DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" Padding="10,3">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
