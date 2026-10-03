@@ -719,11 +719,6 @@
             } else {
                 try {
                     if (typeof commitSearchFocus === 'function') commitSearchFocus();
-                    const input = document.getElementById('sidebarSearchInput');
-                    if (input) input.value = '';
-                    if (typeof runFind === 'function') runFind('', false, { navigate: false });
-                    if (typeof updateSidebarSearchCount === 'function') updateSidebarSearchCount();
-                    if (typeof updateSearchSidebar === 'function') updateSearchSidebar();
                 } catch (e) {}
             }
             document.querySelectorAll('.sidebar-tab').forEach(t => {
