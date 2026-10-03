@@ -31,7 +31,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 ### Writing
 
 - **Dual-mode editing:** Seamlessly switch between WYSIWYG Preview and Source. The two lay text out alike, so the line you are on stays where it is.
-- **Source is a real code editor:** built on CodeMirror 6, with highlighting in your theme's colours for Markdown and for code and markup — HTML, XML, CSS, JSON, JavaScript, C# and more.
+- **Source is a real code editor:** built on CodeMirror 6, with highlighting in your theme's colours for Markdown and for code and markup � HTML, XML, CSS, JSON, JavaScript, C# and more, plus features like structural code outline, line numbers, bracket matching, folding, and indent guides.
 - **Live block editing:** Format Markdown and text on the fly, including headings, lists, tables, tasks, emphasis, and fenced code.
 - **Deep immersion:** Engage Focus mode, Typewriter scroll, and ZenMode, which hides the whole UI until you reach for it, to eliminate distractions while you work.
 - **Engineered for massive files:** Preview builds only the part of the document on screen, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it. Source opens files of megabytes, with lines hundreds of thousands of characters long, at once.
@@ -735,3 +735,4 @@ in it are reproduced from each font file's own `name` table.
 
 ---
 _Built with zen and focus for writers, developers, and Markdown enthusiasts._
+
