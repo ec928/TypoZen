@@ -161,7 +161,7 @@
         function getPlainOffsetsInBlock(block) {
             if (!block) return null;
             const sel = window.getSelection();
-            if (sel && sel.rangeCount > 0 && !sel.isCollapsed
+            if (sel && sel.rangeCount > 0
                 && block.contains(sel.anchorNode) && block.contains(sel.focusNode)) {
                 try {
                     const range = sel.getRangeAt(0);
