@@ -36,6 +36,7 @@ because this repository is public.
 
 ## Do not invent defects
 
+- **Codebase size is not a defect.** Do not blame regressions on the size of `TypoZen_App.cs` (or any other large file) unless you have traced the exact execution path and proven it. Large files do not magically route edits to the wrong line.
 - A failing or silent **test suite** is not automatically a product bug. Suite health (harness, fixtures, env) stays out of `known-issues.md` until a user-visible defect is reproduced.
 - Do not list “pre-existing / not investigated” suite lines. Characterise or drop.
 - Folklore from older comments is not product law. Prefer the keyboard matrix below and the handlers that implement it.
