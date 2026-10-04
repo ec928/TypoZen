@@ -213,7 +213,7 @@ The module map stays in **`docs/for-agents.md`** (single source of truth). The C
 
 | # | Step | Risk | Status |
 |---|---|---|---|
-| 0 | Write `tools/Verify-PureMove.ps1`; ~~delete Part 1's leftover scratch files (S3)~~ — deleted 2026-10-04 | none | ◐ |
+| 0 | ~~Write `tools/Verify-PureMove.ps1`~~ — done, self-tested (see script header); ~~delete Part 1's leftover scratch files (S3)~~ — deleted 2026-10-04 | none | ☑ |
 | 1 | `Program` → `TypoZen_Program.cs` | very low | ☐ |
 | 2 | `ThemeInfo`, `CustomFontWindow`, `ThemeCustomizeWindow` → `TypoZen_Dialogs.cs` | very low | ☐ |
 | 3 | `FolderPicker`, `CloseAtEndFileStream` → `TypoZen_Interop.cs` | very low | ☐ |
