@@ -1,4 +1,4 @@
-﻿# 🧘 TypoZen: ePub & PDF Reader, Markdown Editor
+# 🧘 TypoZen: ePub & PDF Reader, Markdown Editor
 **Write in the morning, read in the evening, in the same quiet window.**
 
 TypoZen is a beautifully simple, distraction-free app for Windows that combines a seamless Markdown editor with a proper ePub reader and a full PDF reader.
@@ -380,7 +380,7 @@ Full multi-document editing, with the tab strip living in the title bar.
 
 **All set `FS` to 16** (base size for document and book normalisation). Palettes are reduced to four colours for the shell + page -- background, text, accent (`Hi`) and highlighter (`Hi2`, marks and highlights) -- and are not full syntax-highlight schemes. The highlighter is chosen from each palette and kept clear of its accent; on dark themes it is never a yellow, which reads as brown as a see-through wash over a dark page.
 
-Font stacks are TypoZen’s pairing: reading-oriented entries lean **Literata** / **Merriweather** (Gruvbox Light leads with Literata, Merriweather fallback); UI-oriented entries lean **Inter** / **Source Sans 3**; Mono uses **Cascadia Mono** / **Consolas** (on Windows).
+Font stacks are TypoZen’s pairing: reading-oriented entries lean **Literata** / **Merriweather** (Gruvbox Light leads with Literata, Merriweather fallback); UI-oriented entries lean **Inter** / **Source Sans 3**; Mono uses **JetBrains Mono** (on Windows).
 
 **For epub / long reading** prefer serif + soft paper or low-glare dark over Mono/IDE themes:
 
