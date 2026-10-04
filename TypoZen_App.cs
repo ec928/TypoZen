@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.14.0";
+        internal const string AppVersion = "0.14.1";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4230,10 +4230,31 @@ namespace TypoZen
             string content = ReadTextFileDetect(tab.FilePath, out enc);
             tab.LineEnding = DetectLineEnding(content);
             tab.TrailingNewlines = DetectTrailingNewlines(content);
-            tab.Content = content.Replace("\r\n", "\n").TrimEnd('\n');
+            // No prompt here (session restore, background loads): the file was already opened
+            // once through LoadFileFromPath, which asked. NULs still cannot reach the page.
+            tab.Content = StripNulChars(content).Replace("\r\n", "\n").TrimEnd('\n');
             tab.SourceEncoding = enc;
             tab.IsDirty = false;
             StampTabDisk(tab, tab.FilePath, content);
+        }
+
+        /// <summary>Number of NUL (U+0000) characters in <paramref name="s"/>.</summary>
+        private static int CountNulChars(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return 0;
+            int n = 0;
+            for (int i = 0; i < s.Length; i++) if (s[i] == '\0') n++;
+            return n;
+        }
+
+        /// <summary>
+        /// Remove NUL characters. The page bridge (PostWebMessageAsString) is null-terminated,
+        /// so a NUL in a document silently cut off everything after it in the editor.
+        /// </summary>
+        private static string StripNulChars(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.IndexOf('\0') < 0) return s ?? "";
+            return s.Replace("\0", "");
         }
 
         /// <summary>
@@ -4527,7 +4548,7 @@ namespace TypoZen
                     encodingName = tab.SourceEncoding ?? "UTF-8";
                 tab.LineEnding = DetectLineEnding(diskText);
                 tab.TrailingNewlines = DetectTrailingNewlines(diskText);
-                tab.Content = (diskText ?? "").Replace("\r\n", "\n").TrimEnd('\n');
+                tab.Content = StripNulChars(diskText ?? "").Replace("\r\n", "\n").TrimEnd('\n');
                 tab.SourceEncoding = encodingName;
                 tab.IsDirty = false;
                 tab.Kind = DocKind.Engine;
@@ -15287,6 +15308,34 @@ namespace TypoZen
 
                 string encodingName;
                 string raw = ReadTextFileDetect(path, out encodingName);
+                // The disk stamp keeps the bytes as read, so the change watcher does not take
+                // the cleaned text for an outside edit.
+                string diskRaw = raw;
+                // NUL characters (U+0000) cut the document short: the page bridge
+                // (PostWebMessageAsString) is a null-terminated string, so everything after
+                // the first NUL never reached the editor -- and the page then reported the
+                // shortened text as an unsaved change, one Ctrl+S from truncating the file
+                // on disk (2026-10-04). Ask, then load without them.
+                if (raw.IndexOf('\0') >= 0)
+                {
+                    int nulCount = CountNulChars(raw);
+                    if (!_e2eMode)
+                    {
+                        var nulChoice = WinForms.MessageBox.Show(
+                            "This file appears to be corrupted.\n\n" +
+                            Path.GetFileName(path) + " contains " + nulCount.ToString("N0") +
+                            " null character" + (nulCount == 1 ? "" : "s") +
+                            ", which a text document should not have.\n\n" +
+                            "Open it with the null characters removed? The file on disk is not " +
+                            "changed unless you save.",
+                            "Corrupted File",
+                            WinForms.MessageBoxButtons.YesNo,
+                            WinForms.MessageBoxIcon.Warning,
+                            WinForms.MessageBoxDefaultButton.Button2);
+                        if (nulChoice != WinForms.DialogResult.Yes) return;
+                    }
+                    raw = StripNulChars(raw);
+                }
                 string lineEnding = DetectLineEnding(raw);
                 string trailing = DetectTrailingNewlines(raw);
                 string content = raw.Replace("\r\n", "\n").TrimEnd('\n');
@@ -15330,7 +15379,7 @@ namespace TypoZen
                             {
                                 // Keep edits: accept current disk so we do not prompt again
                                 // until it changes once more.
-                                StampTabDisk(_tabs[i], path, raw);
+                                StampTabDisk(_tabs[i], path, diskRaw);
                                 if (i != _activeTabIndex)
                                 {
                                     _tabOpInProgress = true;
@@ -15401,7 +15450,7 @@ namespace TypoZen
                                     try { SendMsg("cmd:view_set:mode:source"); } catch { }
                                 }
                             }
-                            StampTabDisk(_tabs[i], path, raw);
+                            StampTabDisk(_tabs[i], path, diskRaw);
                             try { SyncDiskWatchers(); } catch { }
                         }
                         finally { _tabOpInProgress = false; }
@@ -15437,7 +15486,7 @@ namespace TypoZen
                     tab.SourceEncoding = encodingName;
                     tab.LineEnding = lineEnding;
                     tab.TrailingNewlines = trailing;
-                    StampTabDisk(tab, path, raw);
+                    StampTabDisk(tab, path, diskRaw);
                     ApplyTabToEditor(tab);
                     try { SyncDiskWatchers(); } catch { }
                     if (forceEditorText || PreferSourceModeForPath(path))
