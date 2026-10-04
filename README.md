@@ -47,7 +47,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 
 ### Look, Session & Privacy
 - **Bundled premium typography:** Included fonts (Inter, Literata, Merriweather, Source Sans 3, JetBrains Mono) ensure perfect rendering without any network requests.
-- **25 curated built-in themes:** Choose from dark, light, and mono themes, or use **Customise Theme...** to build and save your own palettes. Every state takes its colour from the theme, one colour per meaning: the accent for what is current (selection, the search match you are on, the paragraph being read aloud), a highlighter colour of the theme's own for marks, and faint washes of the text colour for hover and the cursor's paragraph.
+- **25 curated built-in themes:** Choose from dark, light, and mono themes, or use **Customise Theme…** to build and save your own palettes. Every state takes its colour from the theme, one colour per meaning: the accent for what is current (selection, the search match you are on, the paragraph being read aloud), a highlighter colour of the theme's own for marks, and faint washes of the text colour for hover and the cursor's paragraph.
 - **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions. Drag tabs into any order; the order is kept.
 - **Offline & Portable:** Zero telemetry, and nothing on the network unless you install an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
 - **Extensions, if you want them:** **File > Extensions** offers **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, and **Qwen narration** — an AI narrator that reads a book in character voices (experimental; needs an NVIDIA graphics card). All are optional downloads, all run entirely on your computer once installed, and removing one takes its menu away again.
@@ -376,14 +376,13 @@ Full multi-document editing, with the tab strip living in the title bar.
 | **Dark** | Ayu Mirage, Catppuccin Mocha, Everforest, GitHub Dark Classic, Gruvbox, Gruvbox Serif, Kanagawa, Material Oceanic, Material Palenight, One Dark, Rosé Pine, Solarized Dark, Tomorrow Night, VSCode Dark+ |
 | **Light** | Ayu Light, Catppuccin Latte, Gruvbox Light, One Light, Rosé Pine Dawn, Solarized Light, VSCode Light+ |
 | **Mono** | Dracula, Monokai, Nord, Tokyo Night |
-| **Custom Themes** | Custom saved themes, plus **Customise Theme...** |
+| **Custom Themes** | Custom saved themes, plus **Customise Theme…** |
 
 **All set `FS` to 16** (base size for document and book normalisation). Palettes are reduced to four colours for the shell + page -- background, text, accent (`Hi`) and highlighter (`Hi2`, marks and highlights) -- and are not full syntax-highlight schemes. The highlighter is chosen from each palette and kept clear of its accent; on dark themes it is never a yellow, which reads as brown as a see-through wash over a dark page.
 
 Font stacks are TypoZen’s pairing: reading-oriented entries lean **Literata** / **Merriweather** (Gruvbox Light leads with Literata, Merriweather fallback); UI-oriented entries lean **Inter** / **Source Sans 3**; Mono uses **JetBrains Mono** (on Windows).
 
 **For epub / long reading** prefer serif + soft paper or low-glare dark over Mono/IDE themes:
-
 | Situation | Themes |
 | --- | --- |
 | Daytime novel | **Rosé Pine Dawn**, **Solarized Light**, **Gruvbox Light** |
