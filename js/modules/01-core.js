@@ -263,11 +263,55 @@
                 }
 
                 const wantAdvance = next.scroll === 'pagination';
-                if (!!state.pageAdvance !== wantAdvance) state.pageAdvance = wantAdvance;
-                // Pagination is a layout, so the class has to follow the state however the
-                // state was reached. Setting the flag alone left 2-Column in Preview with
-                // no page-mode class, and therefore no columns at all.
-                syncPaginationClass();
+                if (!!state.pageAdvance !== wantAdvance) {
+                    let anchorBlockIndex = -1;
+                    let anchorLineNumber = 1;
+
+                    if (typeof DocumentModel !== 'undefined' && DocumentModel.kind !== 'epub') {
+                        try {
+                            if (typeof isPaginatedLayout === 'function' && isPaginatedLayout()) {
+                                if (typeof topLeftModelIndexTwoCol === 'function') {
+                                    anchorBlockIndex = topLeftModelIndexTwoCol();
+                                }
+                                if (anchorBlockIndex < 0 && typeof _readingAnchor === 'number' && _readingAnchor >= 0) {
+                                    anchorBlockIndex = _readingAnchor;
+                                }
+                            } else if (typeof mainContainer !== 'undefined') {
+                                const cRect = mainContainer.getBoundingClientRect();
+                                let cy = cRect.top + Math.max(100, cRect.height * 0.25);
+                                let cx = cRect.left + (cRect.width / 2);
+                                let el = document.elementFromPoint(cx, cy);
+                                if (el) {
+                                    let block = el.closest('.block');
+                                    if (block && typeof DocumentModel.modelIndexOfEl === 'function') {
+                                        anchorBlockIndex = DocumentModel.modelIndexOfEl(block);
+                                    }
+                                }
+                                if (anchorBlockIndex < 0 && typeof modelIndexAtViewportCenter === 'function') {
+                                    anchorBlockIndex = modelIndexAtViewportCenter();
+                                }
+                            }
+                            
+                            if (anchorBlockIndex >= 0 && typeof modelBlockStartLine === 'function') {
+                                anchorLineNumber = modelBlockStartLine(anchorBlockIndex);
+                            }
+                        } catch(e) {}
+                    }
+                    
+                    state.pageAdvance = wantAdvance;
+                    syncPaginationClass();
+                    
+                    if (anchorBlockIndex >= 0) {
+                        if (wantAdvance && typeof goToPageHoldingBlock === 'function') {
+                            goToPageHoldingBlock(anchorBlockIndex);
+                        } else if (!wantAdvance && typeof restoreStickyDocumentLine === 'function') {
+                            requestAnimationFrame(function() { restoreStickyDocumentLine(anchorLineNumber, true, 0); });
+                        }
+                    }
+                } else {
+                    syncPaginationClass();
+                }
+
                 applyEditorChromeForMode();
                 // Always re-sync editability. toggle_mode is skipped when already on the
                 // target mode, which left contenteditable=false after book→Preview if

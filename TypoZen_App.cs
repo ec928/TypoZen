@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.14.1";
+        internal const string AppVersion = "0.14.2";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -8184,7 +8184,8 @@ namespace TypoZen
             ".json", ".jsonc", ".xml", ".xaml", ".axaml", ".csproj", ".props", ".targets", ".config",
             ".resx", ".svg", ".xsd", ".plist", ".xsl", ".xslt", ".html", ".htm", ".xhtml", ".css",
             ".cs", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".java", ".c", ".h", ".cpp", ".hpp",
-            ".cc", ".go", ".rs", ".swift", ".kt", ".php", ".log", ".csv" };
+            ".cc", ".go", ".rs", ".swift", ".kt", ".php", ".log", ".csv",
+            ".bat", ".cmd", ".sh", ".bash", ".ps1", ".ini", ".yaml", ".yml", ".sql", ".toml", ".env" };
 
         private static bool IsCodePath(string path)
         {
@@ -11787,8 +11788,8 @@ namespace TypoZen
             string ext = Path.GetExtension(path);
             if (string.IsNullOrEmpty(ext)) return false;
             ext = ext.ToLowerInvariant();
-            // Plain text, and everything of the Code type -- one list, CodeExtensions.
-            return ext == ".txt" || IsCodePath(path);
+            // Code extensions default to source mode. TXT and MD default to Preview.
+            return IsCodePath(path);
         }
 
         private static bool IsHtmlPath(string path)

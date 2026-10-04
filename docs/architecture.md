@@ -252,3 +252,237 @@ The module map stays in **`docs/for-agents.md`** (single source of truth). The C
 **Steps 6–11 are deferred** (3.0): do one only when work in that area is actually painful, using the same rules.
 
 **Explicitly not in this plan:** the Part 1 JSON messaging rewrite (P5), outline `iterLines()` (P6), splitting `02-layout.js`, and any behaviour change.
+
+
+## Architecture
+TypoZen is a **native shell around a browser engine**. The WPF side owns the window, tabs, menus and file I/O; everything inside the document area is HTML, CSS and JavaScript running in WebView2. Nearly every design decision follows from that split.
+
+### Stack
+| Layer | Shell (native) | Document surface (web) |
+| --- | --- | --- |
+| Runtime | .NET Framework 4.7.2 — `TypoZen.exe`, `WinExe` | same process |
+| UI | **WPF** — `TypoZen.xaml`, loaded at runtime via `XamlReader.Load` | `TypoZen_Template.html` — HTML + CSS |
+| Controls | Title-bar tabs, menus, sidebar, status bar | `contenteditable` div; **vanilla JS, no framework** |
+| Bridge | `WindowsFormsHost` → WebView2 (**WinForms flavour**) | `window.chrome.webview` messages |
+| Theming | Recursive logical/visual tree walk + `SystemColors` brush keys | CSS from the same `TypoZen_Themes.json` |
+| Typography | — | 4 families bundled in `fonts/`, `local()` first |
+| Engine | Tabs, session, file I/O, themes — all of it in `TypoZenWindow` (`TypoZen_App.cs`) | `js/modules/*` — `DocumentModel`, `HistoryManager`, virtualization |
+| Build | MSBuild / `Build_TypoZen.ps1` (CodeDom over all `*.cs`) | Runtime assets — edit without recompiling |
+
+Because the XAML, HTML template and theme JSON are all loaded at runtime, the shell chrome, editor engine and themes can be changed without touching C# or rebuilding. Only the `.cs` sources require a recompile — see [Build](#build) for what those are.
+
+> Sibling project **ZenSeek** uses the same content approach — WebView2 rendering a generated HTML document against a shared-shape theme JSON — but hosts it from a PowerShell script with a WinForms reader window rather than a compiled WPF shell.
+
+### Document model
+`DocumentModel` holds one canonical raw Markdown string per block and is the **authority for save, tab sync and host serialization** — the DOM is a projection of it, not a peer.
+
+In Live Preview each line also carries a rendered form, so the two must never disagree. The invariants that keep them honest:
+
+- **`data-raw` is canonical.** Every edit path updates it in the same transaction as the DOM.
+- **Flush before leaving.** The active block is written back before any save, tab switch, mode toggle or host pull.
+- **No length heuristics.** Truth is never decided by "whichever copy is longer" — that rule silently reverted deletions on save, and it is gone.
+- **Model indices, not DOM ordinals.** Under virtualization the first mounted block is not block 0, so formatting, undo, find and caret restore all resolve through model indices.
+- **A whole-document mutation reads the model, not the mounted DOM.** `mutateDocumentMarkdown` snapshots every block, mutates, and reloads the document from the result — so snapshotting `editor.querySelectorAll('.block')` meant rebuilding a virtualized document from the ~99 blocks on screen. Its indices are model indices throughout: what the mutator sees, what `opts.focusIndices` means, and what `_selectedFormatRaws` was already keyed by. Those three agreed only while the mounted window started at block 0, which is why a list indent deep in a document silently did nothing — a bounds check in the caller was the only thing keeping the call away from it.
+- **A model splice renumbers the mounted DOM.** `data-model-index` is not decoration: `syncMountedToModel()` writes each mounted element's `data-raw` back into the slot its attribute names. Inserting or removing a block shifts every row after it, so the attributes on already-mounted elements must move too — `insertBlockAfterIndex` / `removeBlockAt` / `removeBlockRange` call `shiftMountedModelIndices` for exactly that. Leave them stale and the next remount copies the DOM's content into the _wrong_ rows: a mid-document paste destroyed the line after the caret this way, and a cross-block delete lost an untouched line.
+- **A structural edit splices the height map, it does not discard it.** `invalidateHeights()` throws away every measurement taken so far, so the next `prefixHeight()` for a distant row is rebuilt from estimates and the viewport pin moves with the error — 1562px per pasted block on a 3769-block document. `spliceHeights` keeps every untouched row's real height.
+- **An element returned by `createBlock` may already be detached.** Under virtualization it remounts, which replaces every mounted element. Chain off the model index and re-resolve, never off the returned node.
+- **Ordinary notes are never virtualized.** Virtualization is for large documents only; normal writing gets the full WYSIWYG DOM.
+- **Progressive paint is M-band only**, gated on block count — never on a character count.
+
+### Books
+A book is a second **document kind**, not a second document model. `DocumentModel.kind` is `'markdown'` or `'epub'`, and everything downstream branches on it rather than on a separate code path: search, the outline, the word count, page windowing and the column round trip are the same code for both.
+
+| Piece | Where | Does |
+| --- | --- | --- |
+| `EpubReader.cs` | shell | Unzips to a cache folder, reads `container.xml` → OPF → spine, returns one JSON payload: title, author, assets base, stylesheets, TOC, documents. **No HTML processing at all.** |
+| `loadBookPayload()` | page | Splits each spine document into blocks, builds the TOC, applies the book's CSS, mounts |
+| `bookBlocksFromDocs()` | page | One block per top-level element of each `<body>`; also returns each block's owning document directory |
+| `applyBookStyles()` | page | Scopes every rule to `#editor` and applies the four corrections listed under Highlights |
+| `rewriteBookUrls()` | page | Resolves `src` / `href` / `xlink:href` **against the document the block came from** |
+
+Two things about that last row, because both were wrong first:
+
+- **An image href is relative to its own spine document, not to the book root.** One test book keeps documents in `OEBPS/Text/` and images in `OEBPS/Images/`, so its covers are `../Images/…`; the other is flat at the archive root and resolved correctly under a shared base by accident. A single assets base works for exactly one of them.
+- **A cover is usually not an `<img>`.** Both test books wrap it in `<svg><image xlink:href="…"></svg>`, which no `img` rule and no `src` rewrite touches.
+
+Two things make reopening a book cheap. `EpubReader` caches the assembled payload beside the extracted assets against the same stamp, so a reopen is a file read rather than a re-read and re-escape of every spine document. And `SyncActiveTabFromEditor` skips a book entirely: it is read-only, never dirty, never saved, and reloaded from the file rather than from `Content`, so pulling it was marshalling the whole book across the WebView bridge on every tab switch — 1,043,141 characters, which the page produces in 2 ms and the bridge takes six seconds to hand over.
+
+A book's block `raw` is the publisher's markup, so `renderBlockPreview` sets it as HTML and returns before any of the Markdown renderer runs. The editor refuses to become editable while a book is open, `GetDirtyTabs()` skips `.epub` tabs, and `ReadTextFileDetect` returns empty for one — a book cannot be edited, marked dirty, or saved over.
+
+### Page windowing
+Pagination lays out the whole document, because the browser can only fragment content it has already laid out. That is correct and it is why an unwindowed 40,656-block omnibus put every block into one multi-column flow. `PageChunks` splits the document into fixed block ranges, lays out **one range at a time**, and keeps a per-range page count — cumulative sums give the global page number, exactly as `blockHeights` + `prefixHeight()` give the global scroll offset.
+
+- Unmeasured ranges are estimated from pages-per-block and refined as they are laid out — but only **upward**. Refining an unmeasured range downward removed pages the reader had already been shown, and the act of seeking was what removed them: seeking mounts a range, mounting measures it, measuring shrank the total. Ask for page 267 of 268, land on 261.
+- Because part of the total can be a guess, the UI marks it (`pageTotalIsApproximate`) rather than presenting an estimate as an exact figure.
+- **Blocks are the anchor, not page numbers.** Page numbers move as estimates are refined; block indices do not, and the column round trip already depends on that.
+- The range on screen is measured exactly, never trusted from its estimate.
+- A structural edit **splices** the map rather than discarding it, the same rule as the height map.
+
+`PageChunks.size` is 800 blocks. It was 400, tuned on a Markdown fixture; measured on two real novels, the cost that matters is the page turn that crosses a range boundary and has to lay out the next one:
+
+| Range size | In-range turn | Boundary crossing | Pages per range |
+| ---------- | ------------- | ----------------- | --------------- |
+| 200        | 1 ms          | 18 / 20 ms        | 7 / 16          |
+| **800**    | **2 ms**      | **74 / 84 ms**    | **28 / 62**     |
+| 1600       | 3 ms          | 201 / 172 ms      | 55 / 124        |
+
+Amortised over the pages between crossings it is flat at every size, so the choice is the worst case a reader feels against how much of the book is laid out at once — which is also how far the editor's own scrollbar reaches.
+
+**The scrubber exists because that scrollbar cannot reach the ends.** It addresses pages; `PageMap.goto()` already mounts the range a page falls in, so seeking anywhere is the same operation as turning a page. It seeks on release rather than on every input event, because a drag would otherwise mount a range per pixel of travel.
+
+### Thresholds
+Live constants in `TypoZen_Template.html`. Changing them changes which strategy a document gets, so they are listed here rather than left to be rediscovered:
+
+| Constant | Default | Role |
+| --- | --- | --- |
+| `VIRT_MIN_BLOCKS` | 2 000 | Virtualize at or above this block count |
+| `VIRT_MIN_CHARS` | 120 000 | Virtualize at or above ~120 KB |
+| `PROGRESSIVE_PAINT_BLOCKS` | 800 | M-band: full mount, deferred HTML paint |
+| `PROGRESSIVE_CREATE_BATCH_BLOCKS` | 1 500 | M-band: create blocks in `requestAnimationFrame` batches |
+| `overscan` | 40 | Blocks kept mounted above and below the viewport |
+| `LARGE_DOC_CHARS` | 16 000 | Stats/preferences throttling only — **not** an open-mode or paint threshold |
+| `PAGE_WINDOW_MIN_BLOCKS` | 800 | Page windowing engages at or above this block count |
+| `PageChunks.size` | 800 | Blocks per laid-out range while paginated (measured — see Page windowing) |
+| `PageChunks.perBlock` | 0.06 | Seed pages-per-block for ranges not yet measured |
+| `PAGE_FOOT_RESERVE` | 26 px | Strip at the foot of a page for the numbers and the scrubber |
+| `MaxRememberedBooks` | 64 | Reading positions kept in `book_positions.txt` |
+
+`LARGE_DOC_CHARS` is **only** for stats/preferences throttling. It is no longer aliased from a historical `SOURCE_FIRST_CHARS` name — size does not choose Source vs Preview; document type does.
+
+Which path a Preview load takes:
+
+| Condition | Path |
+| --- | --- |
+| blocks ≥ 2 000 **or** chars ≥ 120 KB | **Virtualized** — progressive never runs |
+| 1 500 ≤ blocks < 2 000 | Progressive paint **+ windowed creation** |
+| 800 ≤ blocks < 1 500 | Progressive paint, full DOM |
+| blocks < 800 | Immediate full paint |
+
+Two rules worth keeping: don't gate progressive paint on a character count (it belongs to block count), and don't lower the virtualization floor toward 16 KB without a deliberate product decision — ordinary notes are meant to stay full WYSIWYG.
+
+### Editor engine
+Preview is standalone vanilla JavaScript — no framework. Source is [CodeMirror 6](https://codemirror.net/), bundled into the app (`js/vendor/codemirror/`, built by `tools/Update-CodeMirror.ps1`), behind an adapter that gives the rest of the editor a textarea-like surface (`js/modules/01a-source.js`).
+
+- **Custom snapshot undo/redo** (`HistoryManager`) rather than the fragile `contenteditable` undo stack, with byte- and step-capped history
+- **2-stage Backspace** on list and heading prefixes — first press strips the marker, second merges blocks
+- Precision join-point caret placement on merge and split
+- Cross-boundary selection guard for multi-block delete
+- **IME composition protection** — CJK and accent composition is never interrupted
+- Plain-text-oriented paste; multi-line paste becomes clean blocks
+- Horizontal rules: `---`, `***`, `___`, and spaced forms `- - -`, `* * *`, `_ _ _`
+
+The reasoning behind these decisions — including the failure modes that motivated them — is preserved in [`docs/archive/`](docs/archive/). Those records are historical; this README describes what the code does now.
+
+---
+## Build
+From the project folder:
+
+```powershell
+.\Build_TypoZen.ps1
+```
+
+- Uses **MSBuild** when available; otherwise compiles with **`CSharpCodeProvider`** (CodeDom) against the WebView2 DLLs beside the sources. The provider is used rather than `Add-Type` because `Add-Type` collapses every failure into one opaque message with no file or line.
+- Output: `TypoZen.exe` in the project folder
+- The full self-test suite runs first — a failing suite fails the build
+
+**Compiled sources.** Three files, and the CodeDom path finds them by globbing **`*.cs` in the project folder** — so anything with that extension dropped beside them is compiled too. A throwaway experiment goes somewhere else, or gets another extension.
+
+| Source | Holds |
+| --- | --- |
+| `TypoZen_App.cs` | `Program` (entry point, single-instance pipe, CLI), `TypoZenWindow` (the whole shell: tabs, session, menus, themes, file I/O, host↔page bridge), `ThemeInfo`, `ThemeCustomizeWindow` |
+| `EpubReader.cs` | `EpubReader` — unzip, `container.xml` → OPF → spine, and the cached JSON payload. No HTML processing (see [Books](#books)) |
+| `TypoZen_Launch.cs` | `LaunchRequest` — how a document was asked for: path plus ZenSeek's `--reader` / `--search` / `--line` / `--match-index` hints |
+
+**Referenced assemblies.** Three DLLs sit beside the sources — `Microsoft.Web.WebView2.Core`, `Microsoft.Web.WebView2.WinForms` and `WebView2Loader`. The **WinForms** flavour only: the control is hosted in a `WindowsFormsHost`, nothing imports `Microsoft.Web.WebView2.Wpf`, and neither of the other two assemblies references it, so it is not shipped. The build fails with a named list if any is missing, and falls back to a sibling `Text Search` folder for the ones it cannot find. `TypoZen.ico` is passed as `/win32icon`. `TypoZen.csproj` describes the same build for MSBuild and Visual Studio — **keep it and `Build_TypoZen.ps1` in step**, since each carries its own copy of the reference list.
+
+**PdfPig** (Save All Images in PDF, `PdfPictures.cs`) is ten more DLLs beside the sources, about 5.5 MB: PdfPig 0.1.16's .NET Framework 4.7.1 build (`UglyToad.PdfPig`, `.Core`, `.Fonts`, `.Tokenization`, `.Tokens`) and what it needs (`Microsoft.Bcl.HashCode`, `System.Memory`, `System.Buffers`, `System.Numerics.Vectors`, `System.Runtime.CompilerServices.Unsafe`), from nuget.org. Their versions match one another exactly, so no binding redirects are needed. The build compiles with the .NET Framework C# compiler, which cannot use `Span<T>`: use PdfPig's `RawMemory` and `TryGetBytesAsMemory`, never `RawBytes` or any `Span`-typed member. They are listed in `$pdfDlls` in both build scripts, in `tools/Build-Portable.ps1` and in `TypoZen.csproj`.
+
+**Runtime assets** (edit without recompiling C#):
+
+- `TypoZen.xaml` — shell and menus
+- `TypoZen_Template.html` — page shell; loads CSS and the engine modules by reference
+- `js/modules/` — editor engine (ordered classic scripts; see `js/modules/load-order.json`)
+- `js/typozen.js` — **deprecated stub** that throws if loaded; do not edit
+- `css/typozen.css` — editor styling
+- `TypoZen_Themes.json` — themes
+- `fonts/` — bundled typefaces, with `fonts/OFL.txt` (their licence travels with them)
+
+The engine is nine modules sharing one global scope (not ES modules), loaded in the order `js/modules/load-order.json` gives:
+
+| Module | Concern |
+| --- | --- |
+| `01-core.js` | State, view selectors, margins, sticky line helpers |
+| `02-layout.js` | Find/search (history, Up/Down hits), pagination, page windowing, column memory |
+| `03-shell.js` | `onload`, themes, host commands, table picker |
+| `04-lists.js` | List engine (indent, parse, Tab/Backspace ladder) |
+| `04b-format.js` | Inline format, clipboard, keyboard editing paths |
+| `05-model.js` | `DocumentModel`, virtualization, page keyboard, load/save of content |
+| `06-render-epub.js` | Markdown render, epub load, book links/styles |
+| `07-stats-host.js` | Stats bar, outline, host sync, export |
+| `08-code.js` | Fence syntax highlight (Highlight API only — not a code editor) |
+
+Edit a module and reload — no bundler step for the app. Tests concat the same files via `tests/engine-source.mjs` / `tests/build-test-template.mjs`.
+
+Rebuild after changing any of the three `.cs` sources. The build also parses `TypoZen.xaml` before compiling: it is loaded at runtime by `XamlReader`, so markup errors are invisible to the compiler and would otherwise surface as a crash on launch.
+
+**Other scripts in the folder:** `Build_TypoZen.bat` (double-click wrapper for the build) · `TypoZen_Debug.bat` (launch with `--debug`; see [Debugging](#debugging)) · `Create_Shortcut.ps1` · `Generate_Icon.ps1`
+
+**Not in source control, rebuilt on demand:** `TypoZen_Template.runtime.html` (stamped with `?v=` at launch so WebView2 cannot cache stale modules), `TypoZen_Template_Test.html` (the jsdom fixture, regenerated by `tests/build-test-template.mjs`), `obj/` (MSBuild intermediates), `TypoZen.pdb`, `%LocalAppData%\TypoZen_Cache\typozen_load\` (staged document and book payloads, swept after 5 minutes; under Privacy Mode an opaque TEMP folder instead), `%LocalAppData%\TypoZen_Cache\typozen_books\` (extracted book assets), `%LocalAppData%\TypoZen_Cache\debug.log`.
+
+### Tests
+
+```powershell
+.\tests\run-tests.ps1                          # default gate — jsdom + browser suites
+$env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + the suites driving the real TypoZen.exe
+```
+
+Tests are split into four tiers depending on what they need to observe:
+
+| Tier | Naming | Runs by default | Sees |
+| --- | --- | --- | --- |
+| jsdom | `*-selftest.mjs`, `*-e2e.mjs` | yes | model, string and DOM-structure logic |
+| browser | `*-browser.mjs` | yes | real layout, via headless Chrome |
+| application | `*-app.mjs` | `RUN_APP_E2E=1` | the shipped `.exe` — WPF shell, real window |
+| pending | `*-pending.mjs` | `RUN_PENDING_E2E=1` | behaviour not built yet |
+
+- **jsdom** covers the document model, parse checks, and logic that doesn't depend on a layout engine.
+- **Browser** suites load `TypoZen_Template.html` in headless Chrome to assert real layout, geometry, and search performance.
+- **Application** suites use `puppeteer-core` to attach to `TypoZen.exe --debug` via the DevTools protocol, verifying WPF shell interactions and complex paginated layout behaviours. `disk-conflict-app.mjs` is the one that can see the dirty-tab disk prompt: a `MessageBox` pumps the UI thread, so the suite answers it with `TYPOZEN_DISK_PROMPT=Yes|No|Cancel` rather than clicking the dialog. In-process `TYPOZEN_TAB_E2E` requires `--debug` as well as the env var (same gate as the disk stubs), and still skips the feature unless that env is set, so suites that rewrite the open file do not silent-reload.
+- The bookmark, annotation and privacy suites (`marks-surfaces-app`, `annotations-app`, `privacy-app`) are written against one recurring failure shape rather than against their features: **two things deciding one answer**. They assert that _pressing a control does what the control said it would_, and — for anything that claims to suppress a write — they run a **control** first, so a green result means the suppression did something rather than that the trace was never written.
+- `book-to-markdown-app.mjs` guards the transition that put a Markdown document into a book's column: **leaving a book leaves nothing behind**, and **a pane that cannot be measured is refused rather than invented**. It deliberately does _not_ assert the rendering — `column-width` is a preferred width, so a single leaked column stretches to fill the pane and looks perfectly healthy; two earlier versions of that assertion passed with the bug present. The geometry checks are strictly more sensitive, because the leak has to happen before it can fragment anything.
+- Some of them also drive the **chrome from outside the process** through `tests/shell-ui.ps1`, which reports menus, tab chips, dialogs and — via `-Command controls` — whether each toolbar control is actually enabled, over UI Automation as JSON. `format-availability-app.mjs` is the one that needs that last part: "greyed out" is a claim about the running window that no page-level suite can see. That is the only tier that can see what is actually painted: the page knows nothing about tabs, and the session file is written from the same model the model tests read, so both agreed with each other while the tab strip disagreed with both — see `tab-strip-paint-app.mjs`.
+
+### Known issues and agent notes
+Open defects and deliberate limitations: [docs/known-issues.md](docs/known-issues.md) — reproduced and characterised only (not bare suite names).
+
+**Agents / other tools:** read [docs/for-agents.md](docs/for-agents.md) first — keyboard matrix, non-goals (no code editor revival, no inventing defects from suite noise), and where truth lives. Parked developer-editor work: [docs/developer-editor-analysis.md](docs/developer-editor-analysis.md).
+
+### Debugging
+A normal run writes no log and opens no port. To debug:
+
+```powershell
+.\TypoZen_Debug.bat "tests\large-scroll-mixed.md"
+```
+
+This turns on the page's telemetry channel (appending to `debug.log`) and opens the DevTools port the application harness attaches to.
+
+### Startup profiling
+Set `TYPOZEN_PERF` to write a startup timeline:
+
+```powershell
+$env:TYPOZEN_PERF = '1'        # this shell only — never set it persistently
+.\TypoZen.exe "some\file.md"
+Get-Content "$env:LOCALAPPDATA\TypoZen_Cache_Portable\perf.log"
+```
+
+Marks are milliseconds from entry to `Main`; the log is appended, so delete it between runs.
+
+---
+### Developer & Diagnostic Tools
+
+TypoZen includes built-in tools to help diagnose layout and focus issues:
+
+- **Developer Debug HUD (`Ctrl+Shift+D`)**: Toggle a real-time, on-screen HUD (also accessible via `Help -> Toggle Debug HUD`). It overlays current focus state, exact layout metrics (pagination, scroll position, page width), and search state. When toggled off, it has zero performance overhead.
+- **Telemetry Logging (`TypoZen_Debug.bat`)**: Launching TypoZen via this script passes the `--debug` flag, which records high-volume layout telemetry (such as progressive rendering and column measurements) to a `debug.log` file in the application directory.
+
+---
