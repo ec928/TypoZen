@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.14.2";
+        internal const string AppVersion = "0.14.3";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -15208,13 +15208,32 @@ namespace TypoZen
                 return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
             }
 
-            // No BOM: strict UTF-8 first (also covers plain ASCII), then system ANSI.
+            // No BOM: strict UTF-8 first (also covers plain ASCII).
             try
             {
                 return new UTF8Encoding(false, true).GetString(bytes);
             }
             catch (DecoderFallbackException)
             {
+                // Heuristic Fallback: 
+                // If it fails strict UTF-8, it might just be a corrupted UTF-8 file (e.g. 1 bad byte).
+                // We decode using a replacement fallback and count the number of replaced characters ().
+                // If the corruption rate is very low (< 0.1% of the string, or just a few bytes), 
+                // we tolerate it as UTF-8 so the rest of the document survives.
+                // Otherwise, we assume it's actually a legacy ANSI file and decode it that way.
+                
+                string lenient = new UTF8Encoding(false, false).GetString(bytes);
+                int badCount = 0;
+                for (int i = 0; i < lenient.Length; i++) {
+                    if (lenient[i] == '\uFFFD') badCount++;
+                }
+                
+                if (badCount < 10 || badCount < lenient.Length * 0.001) 
+                {
+                    encodingName = "UTF-8 (Recovered)";
+                    return lenient;
+                }
+                
                 encodingName = "ANSI (codepage " + Encoding.Default.CodePage + ")";
                 return Encoding.Default.GetString(bytes);
             }

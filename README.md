@@ -1,4 +1,4 @@
-# 🧘 TypoZen: ePub & PDF Reader, Markdown Editor
+﻿# 🧘 TypoZen: ePub & PDF Reader, Markdown Editor
 **Write in the morning, read in the evening, in the same quiet window.**
 
 TypoZen is a beautifully simple, distraction-free app for Windows that combines a seamless Markdown editor with a proper ePub reader and a full PDF reader.
@@ -10,7 +10,6 @@ Whether you're drafting a new note or settling in with a good book, TypoZen give
 *(For the technically curious: Under the hood, TypoZen is a lightweight, native Windows app built with WPF and WebView2, offering both a live block-based preview and a Source mode built on CodeMirror 6 for Markdown and code.)*
 
 ---
-
 ## Get TypoZen
 **[Install from the Microsoft Store](https://apps.microsoft.com/detail/9NGKCK27GTS1)** (Recommended)  
 The easiest way. It installs cleanly, updates automatically, and gives no security warnings.
@@ -26,8 +25,6 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 *Requirements: Windows 10 version 1809 or later, 64-bit. Requires the WebView2 runtime, which is already present on current Windows.*
 
 ---
-
-
 ## Highlights
 
 ### Writing
@@ -54,23 +51,43 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions. Drag tabs into any order; the order is kept.
 - **Offline & Portable:** Zero telemetry, and nothing on the network unless you install an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
 - **Extensions, if you want them:** **File > Extensions** offers **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, and **Qwen narration** — an AI narrator that reads a book in character voices (experimental; needs an NVIDIA graphics card). All are optional downloads, all run entirely on your computer once installed, and removing one takes its menu away again.
+---
+## Architecture & Tech Stack
+TypoZen is a hybrid native-web application designed for speed, local-first privacy, and an ultra-lightweight footprint.
 
-### Files & Links
-- **Format support & Default Modes:** TypoZen opens files intelligently based on their type. *Note: If you toggle a tab to Source or Preview mode, TypoZen remembers that preference for that specific tab via session memory. Click the Mode buttons to reset it!*
-  - **Preview Mode (Default):** Markdown (`.md`), Plain Text (`.txt`).
-  - **Source Mode (Raw text editor):** Scripts and config (`.bat`, `.sh`, `.ps1`, `.ini`, `.yaml`), Code and data (`.json`, `.xml`, `.cs`, `.js`, `.css`, `.csv`, `.log`, etc.).
-  - **Native Media (Chromium viewer):** Images (`.png`, `.jpg`, `.svg`, etc.), Video (`.mp4`, `.webm`, etc.), Audio (`.mp3`, `.wav`, etc.), and HTML pages.
-  - **Dedicated Viewers:** PDFs (`.pdf` in PDF.js) and E-books (`.epub` in Reader).
+- **Frontend & Engine:** A vanilla web stack running inside a Microsoft Edge **WebView2** control.
+  - Markdown/Code editing is powered by **CodeMirror 6** for virtualized, massive-file performance.
+  - The ePub reader is a bespoke, paginated HTML engine using native browser multi-column layouts.
+  - PDF rendering is driven entirely client-side by Mozilla's **PDF.js**.
+- **Backend (Host):** A monolithic **C# WPF** application (TypoZen_App.cs) that handles window management, deep OS integration, native file I/O, and fast inter-process communication (IPC) with the WebView2 control.
+- **Data & Extraction (C#):** **PdfPig** is used natively for lightning-fast image extraction and offline document parsing without relying on the browser.
+- **Extensions & AI:**
+  - **Kokoro-JS:** Provides high-quality on-device neural Text-to-Speech (TTS) using ONNX models without internet connectivity.
+  - **Qwen Narrator:** Uses local LLM integration for contextual, character-based story narration (requires NVIDIA GPU).
+  - **Compromise.js:** A lightweight, offline Part-Of-Speech tagger used to resolve grammatical homographs for the speech engine.
+
+### Supported Formats & Behaviors
+TypoZen opens files intelligently based on their type. View settings are saved per document type and can be customized by the user.
+
+| Media Type | Extensions | Default Mode | Default Layout (User Editable?) | Default Theme | Font Size / Spacing |
+|---|---|---|---|---|---|
+| **Code / Scripts** | .html, .css, .js, .cs, .json, .bat, .ps1, .log, .csv | Source | Scroll (Fixed) | Tokyo Night | Small / Tight |
+| **Documents** | .md, .txt, untitled | Preview | Scroll (Yes) | Gruvbox | Normal / Normal |
+| **E-books** | .epub | Reader | Pagination 2-Col (Yes) | Rosé Pine Dawn | Large / Relaxed |
+| **PDFs** | .pdf | PDF View | Scroll 1-Col (Yes) | Catppuccin Latte | N/A |
+| **Native Media** | .png, .jpg, .mp4, .mp3 | Read-only | N/A | N/A | N/A |
+
+*Note: If you toggle a tab to Source or Preview mode, or change its column layout, TypoZen remembers that preference for that specific tab via session memory. Click the Mode buttons to reset it!*
+
 - **Saving and Exporting:** Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF. When installed, TypoZen appears under **Open with** in Explorer for Markdown, text, epub, code files and PDFs.
-- **Smart linking:** Hover links for Open, Show in Folder, and Edit. Local files open in a tab, `http` links open in your browser, and `#heading` jumps seamlessly within the document.
+- **Smart linking:** Hover links for Open, Show in Folder, and Edit. Local files open in a tab, http links open in your browser, and #heading jumps seamlessly within the document.
 
 ---
-
 ## Writing & Editing
 
 ### Dual-mode editing
 - **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, emphasis)
-- **Source Mode** — the raw Markdown/text, highlighted in the theme's colours: headings in their Preview sizes, **bold**, *italic*, `code` and links as Preview shows them, and the markup itself (`#`, `**`, `>`, a link's address) in one muted colour so the text reads first. Code blocks, and CSS, XML, XAML, HTML and JSON files, are coloured by the same lexers as Preview's code blocks; `.txt`, logs and CSV stay plain. Edited with [CodeMirror 6](https://codemirror.net/), which draws only the lines on screen, so typing in a 5 MB log keeps up (about 60 ms a key, where it was over 200) — one scrollbar, never nested
+- **Source Mode** - the raw Markdown/text, highlighted in your theme's colors. Code blocks and markup files (CSS, HTML, JSON, C#) are automatically syntax-highlighted. Built on CodeMirror 6 for massive-file performance.
 - Switch with the **Mode** control on the toolbar (Source / Preview / Reader); the lit segment is the **current** mode
 - **Sticky mode switching** — the line at the top of the screen stays at the top when you toggle, for both the status readout _and_ the scroll position. Source and Preview lay a line out alike (same margins, width and spacing), so text does not shift between them
 - **Large code files** — a 2.2 MB HTML file with a 356 KB line opens in Source and reaches that line in a fraction of a second; code is not spell-checked
@@ -78,26 +95,15 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Reveal markdown on focus** can be enabled to automatically show markdown details while still in preview WYSIWYG mode
 
 ### Large documents
-TypoZen opens by document _type_, not size — Markdown of any size opens in Live Preview, and the engine picks its own strategy:
-
-| Band | Strategy |
-| --- | --- |
-| **S** — small | Full DOM, immediate paint |
-| **M** — medium | Full DOM, progressive paint in `requestAnimationFrame` batches (≥ ~800 blocks; windowed creation ≥ ~1500) |
-| **L / XL** — large | **Virtualized Preview** — only viewport ± overscan is mounted (≥ ~2000 blocks or ~120 KB) |
-
-Virtualized Preview keeps a per-block height map, estimated from the raw Markdown and refined from real measurements as blocks mount, with **scroll anchoring** so correcting a height never moves the content under your cursor. `.txt` / `.log` / `.csv` open in Source, which is the Notepad-class path.
+TypoZen opens Markdown of any size in Live Preview.
+- **Virtualized Preview:** For massive files, TypoZen mounts only what is on-screen, keeping scrolling perfectly smooth without dropping your reading place.
+- **Raw Performance:** `.txt`, `.log`, and `.csv` files open natively in Source mode for raw Notepad-class performance.
 
 ### Writing tools
-- **Spelling** — the Windows spell checker underlines every misspelling on screen, in Preview and Source alike, except in code; select any word for replacements, Ignore, or Add to dictionary. The bundled `dictionary.tsv` is Look up, not this
-- Find / Find & Replace (`Ctrl+F` / `Ctrl+H`) — searches the whole document model, so matches off-screen in a virtualized document are still found
-- **Every match is highlighted, in Source as well as Preview, in the same colours:** a
-  soft wash with an accent underline, and the current match in solid accent. Preview
-  paints them with the CSS Custom Highlight API; Source draws them on its own text, so
-  they stay on their words while you type, scroll or re-wrap, and follow the search as
-  it re-runs after an edit
-- Search sidebar (`Alt+S`) with **match case** and **whole word** as two glyph buttons in the search row. They drive the Ctrl+F checkboxes rather than holding a second copy, so the two views of one search cannot disagree. Both options (and which sidebar tab you last used — Outline vs Search) are **remembered** across restarts
-- **Recent searches** — the Search tab is a combo box: the last **8** committed queries (Enter, or a pick from the list) are kept **globally** (not per tab) in `settings.json`. Click the chevron or press ↓ on an empty box for the dropdown. Remove one with **×**, clear all from the menu footer or **File → Privacy → Clear Recent Searches**. **Alt+S** also restores the last text left in the Search box (selection still wins when you have one). Full **Clear Stored Data** still wipes history too
+- **Spelling:** The native Windows spell checker underlines misspellings in both Preview and Source modes (except inside code blocks). Right-click for replacements.
+- **Find & Replace (`Ctrl+F` / `Ctrl+H`):** Searches the entire document model instantly, even virtualized off-screen sections.
+- **Live Match Highlighting:** All search matches are highlighted concurrently in both Source and Preview modes.
+- **Search Sidebar (`Alt+S`):** Dedicated sidebar with match-case and whole-word toggles. Remembers your last 8 searches across all sessions.
 - **Search mode** (a live result list — sidebar need not stay open): **Up / Down** step previous / next match with eyes on the text; **Left / Right** turn the page when the layout is paginated. Without results, Up/Down are normal (caret in Preview, page turn in Reader). **F3** / **Shift+F3** also step next/prev. Same Up/Down behaviour the results list has always used
 - **Links** — hover a link for **Open Link**, **Show in Folder** and **Edit Link**; select text and use **Add Link** in the selection popover to make one. Both open a dialog with the visible text and the target.
   - A link to a file, relative to the document that contains it (`[notes](other-file.md)`) opens as a tab. Resolution happens in the host, because only the host knows where the document lives.
@@ -271,7 +277,7 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your _reading position_, which is automatic, written atomically as you read, and unaffected by any of this.
 
-## Dictionary, Narration & Extensions
+## Extensions & Local AI
 
 ### Looking a word up
 Select text and a popover appears beside it — **Highlight** and **Find in document**, and for a single word the lookup itself. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
@@ -335,44 +341,7 @@ The list is **grouped by what each voice actually is**, read from the voice's ow
 
 **More voices.** Any voice installed into Windows appears in Configure Voice with no change to TypoZen — commercial SAPI 5 voice packs, for example. Windows' Narrator "natural" voices are a special case: Windows makes them available to Narrator only, not to other apps. Third-party adapters exist that register them as ordinary SAPI 5 voices, and TypoZen lists whatever such an adapter registers; they are not part of TypoZen, depend on details of Windows that can change with an update, and some also offer online voices that send the text being read to a web service.
 
-## Files, Export & Preferences
-
-### Format support & Smart Links
-TypoZen opens files intelligently based on their type. *Note: If you toggle a tab to Source or Preview mode, TypoZen remembers that preference for that specific tab via session memory. Click the Mode buttons to reset it!*
-
-- **Preview Mode (Default):** Markdown (.md), Plain Text (.txt).
-- **Source Mode (Raw text editor):** Scripts and config (.bat, .sh, .ps1, .ini, .yaml), Code and data (.json, .xml, .cs, .js, .css, .csv, .log, etc.).
-- **Native Media (Chromium viewer):** Images (.png, .jpg, .svg, etc.), Video (.mp4, .webm, etc.), Audio (.mp3, .wav, etc.), and HTML pages.
-- **Dedicated Viewers:** PDFs (.pdf in PDF.js) and E-books (.epub in Reader).
-
-**Smart linking:** Hover links for Open, Show in Folder, and Edit. Local files open in a tab, http links open in your browser, and #heading jumps seamlessly within the document.
-
-
-### Default Media Interactions & Preferences
-TypoZen opens by document _type_, not size. View settings are saved per document type and can be customized by the user:
-
-| Type | Files | Theme | Line | Paragraph | Margins | Justified | Font Size | Word Wrap | Columns |
-|---|---|---|---|---|---|---|---|---|---|
-| **Code** | HTML, XML, XAML, CSS, JSON, JS/TS, C#, Scripts (`.bat`, `.sh`, `.ps1`, `.ini`, etc.), plus `.log` and `.csv` | Tokyo Night | Tight | Tight | Narrow | off | Small | off | n/a |
-| **Documents** | `.md`, `.txt`, untitled | Gruvbox | Normal | Normal | Narrow | off | Normal | on | n/a |
-| **ePub** | `.epub` | Rosé Pine Dawn | Relaxed | Loose | Regular | off | Large | n/a | 2-Col |
-| **PDF** | `.pdf` | Catppuccin Latte | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
-
-These are the out-of-box defaults. PDF takes the theme only (PDF.js lays the page out itself). Images, video and rendered HTML pages have no text layout of TypoZen's and are not a type.
-
-### Hardcoded Interactions (Not customizable by user)
-The following behaviors are hardcoded per media type for *newly opened* files and cannot be configured globally as defaults. While some can be toggled per-tab (and saved to the session), their initial state on open is fixed:
-
-| Type | Default Mode | Default Layout | Default Columns | User can change Mode per-tab? | User can change Layout per-tab? | User can change Columns per-tab? |
-|---|---|---|---|---|---|---|
-| **Code** | Source | Scroll | 1-Col | Yes (to Preview/Reader) | No (Source is strictly Scroll) | No (Source is strictly 1-Col) |
-| **Documents** | Preview | Scroll | 1-Col | Yes | Yes (in Preview/Reader) | Yes (in Preview/Reader) |
-| **ePub** | Reader | Pagination | 2-Col | No (forced by engine) | Yes (can toggle Scroll/Pagination) | Yes |
-| **PDF** | PDF View | Scroll | 1-Col | No (forced by engine) | Yes (can toggle Scroll/Pagination) | Yes |
-
----
-
-### Files & export
+## Files & Export
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
 - **Atomic document save** — write to a temp file, flush, then replace the target
 - **Reload when the file changes on disk** — engine documents only (not books or PDF/images). A stamp of write-time, size and a cheap fingerprint is taken on load and after Save. Coming back to the window, switching to the tab, a watcher on the file's folder, or Save / Autosave, compares that stamp. If the tab is **clean**, it reloads quietly. If it is **dirty**, a prompt offers Reload (discard edits), Keep editing (the next Save overwrites disk), or Save As. Autosave will not overwrite an external edit: it shows the same prompt instead. OneDrive touching mtime without changing bytes is ignored; TypoZen's own atomic save is ignored for two seconds so the temp/`Replace` dance does not look like someone else's write. Untitled buffers have no path and are not watched.
@@ -395,9 +364,7 @@ Full multi-document editing, with the tab strip living in the title bar.
 - **Session restore** reopens your tabs on next launch (bodies only if you've enabled unsaved-document restore under File → Privacy)
 
 
-### Installation & App Data Paths
-- **Executable Location:** If you use the `.exe` installer, TypoZen installs per-user to `%LOCALAPPDATA%\Programs\TypoZen`.
-- **Settings & Cache:** TypoZen's preferences, themes, and session data are stored in `%LOCALAPPDATA%\TypoZen_Cache` (or `TypoZen_Cache_Portable` / `TypoZen_Cache_Store` depending on which version you run).
+
 
 ## Customization, Session & Privacy
 
@@ -523,6 +490,8 @@ of them permit commercial use and redistribution:
 | PDF.js (the PDF viewer) | Apache 2.0, with its own component notices | `js/vendor/pdfjs/LICENSE` and beside it |
 | PdfPig and the .NET libraries it needs | Apache 2.0; MIT | `THIRD-PARTY-NOTICES.txt` |
 | CodeMirror 6 (Source mode's editor) | MIT | `THIRD-PARTY-NOTICES.txt` |
+| Kokoro (Optional Extension) | Relies on its own license and terms | Fetched on install |
+| Qwen (Optional Extension) | Relies on its own license and terms | Fetched on install |
 
 **Privacy:** [PRIVACY.md](PRIVACY.md) — TypoZen sends nothing anywhere; everything it
 remembers is in `%LOCALAPPDATA%\TypoZen_Cache_Portable` and can be cleared from **File → Privacy**.
