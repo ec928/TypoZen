@@ -138,6 +138,27 @@ Checked against the code on 2026-10-04 (0.14.1). Grouped by kind.
 
 # Part 3 — Current Proposal
 
+## 3.0 Is it worth doing? Recommendation (2026-10-04)
+
+**Short answer: modest value. Do steps 0–5; defer 6–11.**
+
+**It does not:**
+- Make the app faster or better for users. The compiled program is the same.
+- Fix regressions. Past regressions came from behaviour bugs (layout, alignment, state) and process mistakes (e.g. S1), not edits landing in the wrong place because the file is big. Targeted search and replace edits the 18.7k-line file reliably.
+- Fix an AI's refactoring record. The Part 1 failures were unchecked facts and unverified steps, which file size doesn't cause.
+
+**It does:**
+- Make the code easier to find your way around, for people and AIs: cheaper reads, and an edit is less likely to match the wrong one of two similar blocks.
+- Separate concerns. Test code stops sitting next to the code it tests, and a theme change no longer means opening the file that handles saving.
+
+**Costs:** a few hours, plus a small risk that `Verify-PureMove.ps1` and the test gate should catch. `git blame` on moved code points at the move commit; use `git log -C` / `--follow` to see past it.
+
+**Recommendation:**
+1. **Do steps 0–5:** `Program`, the standalone dialog and helper classes, then the self-tests and E2E harness. About an hour, near-zero risk because no code depends on how they're arranged, and most of the size reduction. (The exact line count moved hasn't been measured yet.)
+2. **Defer steps 6–11** (splitting `TypoZenWindow` into areas). They're the riskier part and give the least back. Pick one up only when working in that area actually becomes painful.
+3. **If regressions are the real problem, put the effort elsewhere:** tests around the behaviours that keep breaking. `js/modules/02-layout.js` (7.8k lines, layout and find code) has caused more regressions than `TypoZen_App.cs`.
+4. Skipping the refactor entirely is also a defensible choice. Feature work being paused only makes now the cheapest time to do it.
+
 ## 3.1 Where TypoZen lives (verified 0.14.1)
 
 > Belongs in `README.md` (section "Files and folders"). Copy it there when Part 3 is accepted, and keep this as the detailed version.
@@ -219,7 +240,7 @@ The module map stays in **`docs/for-agents.md`** (single source of truth). The C
 | 3 | `FolderPicker`, `CloseAtEndFileStream` → `TypoZen_Interop.cs` | very low | ☐ |
 | 4 | Mark `TypoZenWindow` `partial` (one-word change, verified with the gate) | very low | ☐ |
 | 5 | Self-tests and E2E harness → `TypoZen_App.SelfTest.cs` | low | ☐ |
-| — | **Checkpoint:** internal build to author, tag `refactor-a` | | ☐ |
+| — | **Checkpoint:** internal build to author, tag `refactor-a`. **Recommended stopping point (3.0).** | | ☐ |
 | 6 | Prefs → `TypoZen_App.Prefs.cs` | low | ☐ |
 | 7 | Themes → `TypoZen_App.Themes.cs` | low | ☐ |
 | 8 | PDF → `TypoZen_App.Pdf.cs` | low | ☐ |
@@ -227,5 +248,7 @@ The module map stays in **`docs/for-agents.md`** (single source of truth). The C
 | 10 | WebView bridge → `TypoZen_App.WebView.cs` | medium | ☐ |
 | 11 | Tabs and session → `TypoZen_App.Tabs.cs` | medium | ☐ |
 | — | **Checkpoint:** internal build, tag `refactor-b`; update `for-agents.md` and the `typozen-internals` skill with the new file map | | ☐ |
+
+**Steps 6–11 are deferred** (3.0): do one only when work in that area is actually painful, using the same rules.
 
 **Explicitly not in this plan:** the Part 1 JSON messaging rewrite (P5), outline `iterLines()` (P6), splitting `02-layout.js`, and any behaviour change.
