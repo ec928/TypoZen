@@ -132,6 +132,10 @@ namespace TypoZen
         {
             public Dictionary<string, string> Voices = new Dictionary<string, string>();
             public Dictionary<string, string> Names = new Dictionary<string, string>();
+            // Optional standing instruction per character, sent with that character's lines
+            // the same way Settings.Instruction is sent with the narration. Empty means the
+            // line keeps the stock in-character wording.
+            public Dictionary<string, string> Instructions = new Dictionary<string, string>();
         }
 
         private static string SettingsPath(string cacheDir) { return Path.Combine(RootDir(cacheDir), "narrator.json"); }
@@ -240,7 +244,12 @@ namespace TypoZen
 
         private static Cast Copy(Cast c)
         {
-            return new Cast { Voices = new Dictionary<string, string>(c.Voices), Names = new Dictionary<string, string>(c.Names) };
+            return new Cast
+            {
+                Voices = new Dictionary<string, string>(c.Voices),
+                Names = new Dictionary<string, string>(c.Names),
+                Instructions = new Dictionary<string, string>(c.Instructions)
+            };
         }
 
         public static Cast LoadCast(string cacheDir, string book)
@@ -250,7 +259,7 @@ namespace TypoZen
             lock (SessionCasts)
                 if (SessionCasts.TryGetValue(CastPath(cacheDir, book), out held)) return Copy(held);
             var d = ReadJson(CastPath(cacheDir, book));
-            return new Cast { Voices = StringMap(d, "cast"), Names = StringMap(d, "names") };
+            return new Cast { Voices = StringMap(d, "cast"), Names = StringMap(d, "names"), Instructions = StringMap(d, "say") };
         }
 
         public static void SaveCast(string cacheDir, string book, Cast c)
@@ -265,7 +274,7 @@ namespace TypoZen
             // Saved for good now, so the session's copy no longer stands in front of the file.
             lock (SessionCasts) SessionCasts.Remove(path);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            var d = new Dictionary<string, object> { { "book", book }, { "cast", c.Voices }, { "names", c.Names } };
+            var d = new Dictionary<string, object> { { "book", book }, { "cast", c.Voices }, { "names", c.Names }, { "say", c.Instructions } };
             File.WriteAllText(path, new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
         }
 
@@ -355,13 +364,15 @@ namespace TypoZen
         public static string PageSettingsJson(string cacheDir, string book, double speed, bool privateMode)
         {
             var s = LoadSettings(cacheDir);
+            var cast = LoadCast(cacheDir, book);
             string current = CurrentVoice(cacheDir), name = current;
             foreach (var v in SavedVoices(cacheDir)) if (v.Key == current) name = v.Value;
             var d = new Dictionary<string, object>
             {
                 { "voice", s.Voice }, { "voiceName", name }, { "instruction", s.Instruction }, { "cue", s.Cue },
                 { "direct", s.Direct }, { "speed", speed },
-                { "cast", LoadCast(cacheDir, book).Voices },
+                { "cast", cast.Voices },
+                { "castSay", cast.Instructions },
                 // Render into this session's private folder, not the lasting cache.
                 { "private", privateMode }
             };

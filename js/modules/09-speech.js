@@ -493,6 +493,9 @@ let _narrInstruction = null;    // null: not sent, and the narrator uses its sta
 let _narrCue = '';
 let _narrSpeed = 1;
 let _narrCast = {};
+// Optional instruction per cast character (character key to text). Sent with that
+// character's lines. Empty means the stock in-character line.
+let _narrCastSay = {};
 // Emotion cues from speech tags, sent as each piece's direction. The host's settings decide
 // (Narrator settings, Emotion cues; on unless the reader turns them off).
 let _narrDirect = false;
@@ -501,7 +504,7 @@ let _narrPrivate = false;
 window.setNarratorSettings = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
-        const before = JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrDirect]);
+        const before = JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrCastSay, _narrDirect]);
         _narrVoice = s.voice || '';
         _narrVoiceName = s.voiceName || '';
         _narrStyle = s.style || '';
@@ -510,11 +513,12 @@ window.setNarratorSettings = function (json) {
         _narrDirect = s.direct === true;
         _narrSpeed = Math.max(0.5, Math.min(2, parseFloat(s.speed) || 1));
         _narrCast = s.cast || {};
+        _narrCastSay = (s.castSay && typeof s.castSay === 'object') ? s.castSay : {};
         _narrPrivate = !!s.private;
         if (_renderedAudio) _renderedAudio.playbackRate = _narrSpeed;
         // A new voice, style or cast while narrating: start again at the paragraph being read,
         // in the new voice, rather than play out what was already rendered in the old one.
-        if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrDirect]) && _narrActive && isPlaying) {
+        if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrCastSay, _narrDirect]) && _narrActive && isPlaying) {
             narrLog('settings changed while narrating: restarting at the current paragraph');
             _qwenPending = null;
             try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
@@ -714,7 +718,8 @@ async function renderNarration(base, batch, reading) {
                 voice: _narrVoice,
                 style: _narrStyle,
                 blocks: batch.map(p => ({ id: p.id, text: p.text, direction: _narrDirect ? (p.direction || '') : '',
-                                          voice: p.voice || '', role: p.role || 'narration' })),
+                                          voice: p.voice || '', role: p.role || 'narration',
+                                          instruction: p.role === 'dialogue' ? (p.instruction || '') : '' })),
                 reading: reading,
                 group_size: batch.length,
                 private: _narrPrivate
@@ -935,77 +940,47 @@ function blockPieces(text) {
 }
 
 /**
- * Stage directions the author wrote in brackets. This model takes one plain-language
- * instruction per piece and speaks a bracket it does not know, so a tag on this list
- * becomes the instruction and is left out of the spoken words. A bracket that is not
- * here, such as [check spelling], stays in the text and is read.
- *
- * The direction is still only sent when Emotion cues is on. With cues off the tag is
- * silent and nothing is added to the instruction.
+ * Brackets stay in the spoken text. CustomVoice and VoiceDesign perform these as the
+ * line is said; rewriting one into an instruction and deleting it is what made them
+ * stop. A span tag at the front of a piece is repeated on later pieces of the same
+ * split, because each piece is a separate generation. A point event is left where it
+ * was written.
  */
-const AUTHOR_TAG_WORDS = {
-    weeping: 'tearful, the voice breaking',
-    wept: 'tearful, the voice breaking',
-    crying: 'tearful, the voice breaking',
-    sobbing: 'tearful, the voice breaking',
-    sob: 'tearful, the voice breaking',
-    whispering: 'whispered, hushed',
-    whispers: 'whispered, hushed',
-    whisper: 'whispered, hushed',
-    shouting: 'shouted, loud and forceful',
-    shouts: 'shouted, loud and forceful',
-    shout: 'shouted, loud and forceful',
-    angry: 'sharp and angry',
-    sad: 'sad',
-    excited: 'excited',
-    sarcastic: 'sarcastic',
-    panicked: 'breathless, shocked',
-    panic: 'breathless, shocked',
-    gasp: 'breathless, shocked',
-    tired: 'weary',
-    weary: 'weary',
-    sighing: 'weary, with a sigh',
-    sighed: 'weary, with a sigh',
-    sigh: 'weary, with a sigh',
-    laughing: 'amused, with a smile in the voice',
-    laughs: 'amused, with a smile in the voice',
-    laugh: 'amused, with a smile in the voice',
-    giggles: 'amused, with a smile in the voice',
-    giggle: 'amused, with a smile in the voice'
-};
-function authorTagBody() {
-    return Object.keys(AUTHOR_TAG_WORDS).sort(function (a, b) { return b.length - a.length; }).join('|');
-}
-/** The first whitelisted tag in the text, as the instruction phrase for that piece. */
-function authorTagDirection(text) {
-    const m = new RegExp('\\[(' + authorTagBody() + ')\\]', 'i').exec(String(text || ''));
-    return m ? (AUTHOR_TAG_WORDS[m[1].toLowerCase()] || '') : '';
-}
-/** Take whitelisted tags out, and only the spaces that padded them. */
-function stripAuthorTags(text) {
+const SPAN_TAG = /^(?:excited|sad|angry|amazed|serious|sarcastic|curious|mischievously|crying|panicked|tired|asmr|singing|whispers|very slowly|very fast|like dracula|deep and loud shouting)$/i;
+
+/** One space either side of a bracket that was glued to a word. Existing spaces stay. */
+function padBracketTags(text) {
     return String(text || '')
-        .replace(new RegExp('[ \\t]*\\[(' + authorTagBody() + ')\\][ \\t]*', 'gi'), ' ')
-        .replace(/^ +| +$/g, '');
+        .replace(/(\S)(\[[^\]\n]+\])/g, '$1 $2')
+        .replace(/(\[[^\]\n]+\])(\S)/g, '$1 $2');
 }
-/** A whitelisted tag with nothing but whitespace between it and the quotation at quoteStart. */
-function leadingAuthorTag(text, quoteStart) {
+/** A bracket with nothing but whitespace between it and the quotation at quoteStart. */
+function leadingBracket(text, quoteStart) {
     const head = String(text || '').slice(0, quoteStart);
-    const m = head.match(new RegExp('\\[(' + authorTagBody() + ')\\]\\s*$', 'i'));
+    const m = head.match(/\[[^\]\n]+\]\s*$/);
     if (!m) return null;
-    const words = AUTHOR_TAG_WORDS[m[1].toLowerCase()];
-    return words ? { words: words, at: m.index } : null;
+    return { at: m.index, raw: m[0].replace(/\s+$/, '') };
+}
+/** Later pieces of one split keep a span tag that opened the first piece. */
+function carrySpan(pieces) {
+    if (!pieces.length) return pieces;
+    const m = /^\s*\[([^\]\n]+)\]/.exec(pieces[0]);
+    if (!m || !SPAN_TAG.test(m[1].trim())) return pieces;
+    const tag = '[' + m[1].trim() + ']';
+    return pieces.map(function (p, i) {
+        if (i === 0 || /^\s*\[/.test(p)) return p;
+        return tag + ' ' + p;
+    });
 }
 /**
- * One paragraph as the narrator hears it. An author tag colours every piece of the
- * paragraph, including the later sentences of a long one. A guessed cue, from "she
- * snapped" and the like, stays with the piece it was found in.
+ * One paragraph as the narrator hears it. Brackets are part of the words. A guessed
+ * cue, from "she snapped" and the like, stays with the piece it was found in.
  */
 function paragraphPieces(text, el) {
-    const author = authorTagDirection(text);
-    const spoken = stripAuthorTags(text);
+    const spoken = padBracketTags(text).trim();
     if (!/[A-Za-z0-9]/.test(spoken)) return [];
-    return blockPieces(spoken).map(function (t) {
-        return { text: t, direction: author || narrationDirection(t, el || null) };
+    return carrySpan(blockPieces(spoken)).map(function (t) {
+        return { text: t, direction: narrationDirection(t, el || null) };
     });
 }
 
@@ -1327,19 +1302,28 @@ function quoteDirection(q) {
  * narration around them -- including lines by characters with no voice of their own -- in
  * the narrator's.
  */
+function castSay(key) {
+    const s = _narrCastSay && _narrCastSay[key];
+    return typeof s === 'string' ? s.trim() : '';
+}
 function castPieces(text, quotes, from) {
     const out = [];
     // from: Read from here started inside this paragraph; nothing before it is voiced, and
     // a quotation it lands in is voiced from there.
     from = from > 0 ? from : 0;
     let cursor = from, narr = '';
+    const talk = (spoken, voice, dir, key) => {
+        const instruction = castSay(key);
+        carrySpan(blockPieces(spoken)).forEach(p => out.push({
+            role: 'dialogue', text: p, voice: voice, direction: dir, speaker: key, instruction: instruction
+        }));
+    };
     const flush = () => {
         const raw = narr;
         narr = '';
-        const author = authorTagDirection(raw);
-        const spoken = stripAuthorTags(raw).trim();
+        const spoken = padBracketTags(raw).trim();
         if (!/[A-Za-z0-9]/.test(spoken)) return;
-        blockPieces(spoken).forEach(p => out.push({ role: 'narration', text: p, direction: author || narrationDirection(p, null) }));
+        carrySpan(blockPieces(spoken)).forEach(p => out.push({ role: 'narration', text: p, direction: narrationDirection(p, null) }));
     };
     for (const q of quotes) {
         const voice = q.key && _narrCast[q.key];
@@ -1347,22 +1331,23 @@ function castPieces(text, quotes, from) {
         if (q.end <= from) continue;
         if (q.start < from) {
             const rest = text.slice(from, q.end).replace(/["'“”‘’]+\s*$/, '').trim();
-            const spoken = stripAuthorTags(rest).trim();
+            const spoken = padBracketTags(rest).trim();
             if (/[A-Za-z0-9]/.test(spoken)) {
-                const dir = authorTagDirection(rest) || quoteDirection(q);
-                blockPieces(spoken).forEach(p => out.push({ role: 'dialogue', text: p, voice: voice, direction: dir, speaker: q.key }));
+                talk(spoken, voice, quoteDirection(q), q.key);
             }
             cursor = q.end;
             continue;
         }
-        // A tag sitting against the quotation belongs to the speaker, not the narrator.
-        const lead = leadingAuthorTag(text, q.start);
+        // A bracket sitting against the quotation is spoken by that character.
+        const lead = leadingBracket(text, q.start);
         const peel = lead && lead.at >= cursor;
         narr += text.slice(cursor, peel ? lead.at : q.start);
+        // The quote was the rest of this sentence. A comma left on the lead-in
+        // ("Anna whispered,") is an unfinished sentence, and the model keeps talking.
+        narr = narr.replace(/,\s*$/, '.');
         flush();
-        const dir = authorTagDirection(q.inner) || (peel ? lead.words : '') || quoteDirection(q);
-        const spoken = stripAuthorTags(q.inner.trim());
-        if (/[A-Za-z0-9]/.test(spoken)) blockPieces(spoken).forEach(p => out.push({ role: 'dialogue', text: p, voice: voice, direction: dir, speaker: q.key }));
+        const spoken = padBracketTags((peel ? lead.raw + ' ' : '') + q.inner.trim()).trim();
+        if (/[A-Za-z0-9]/.test(spoken)) talk(spoken, voice, quoteDirection(q), q.key);
         cursor = q.end;
     }
     narr += text.slice(cursor);

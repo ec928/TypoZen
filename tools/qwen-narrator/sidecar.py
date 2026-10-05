@@ -422,7 +422,7 @@ class Narrator(object):
         tok.decode = decode_each
 
     @staticmethod
-    def instruction(style, direction, role='narration', whole=None, cue=None):
+    def instruction(style, direction, role='narration', whole=None, cue=None, own=None):
         """The full instruction for one piece.
 
         `whole` is the reader's own instruction, exactly as Narrator Settings shows it: it is
@@ -431,11 +431,20 @@ class Narrator(object):
         older form: the reader's style inside a standing sentence, plus LIGHT_DIALOGUE or the
         direction. With no style and no direction that is NARRATION_CRAFT exactly, so audio
         rendered before styles existed stays valid. A cast line (role 'dialogue') is spoken in
-        the character's voice and takes only its own direction.
+        the character's voice. `own` is that character's instruction from the cast; when it is
+        set it is used the same way `whole` is. With none, the line takes only its own direction.
         """
         direction = (direction or '').strip()[:80]
         style = (style or '').strip()[:300]
         if role == 'dialogue':
+            spoken = (own or '').strip()[:1500]
+            if spoken:
+                if not direction:
+                    return spoken
+                if direction == 'thought':
+                    return (spoken + THOUGHT_SUFFIX).strip()
+                cue = (cue or '').strip()[:400] or DIRECTED_SUFFIX.strip().replace('%s', '{cue}')
+                return (spoken + ' ' + cue.replace('{cue}', direction)).strip()
             return DIALOGUE_DIRECTED % direction if direction and direction != 'thought' else DIALOGUE
         if whole is not None:
             whole = whole.strip()[:1500]
@@ -532,7 +541,10 @@ class Narrator(object):
         if private:
             os.makedirs(self.private_dir, exist_ok=True)
         voices = [self.known_voice(b.get('voice') or voice) for b in blocks]
-        instructions = [self.instruction(style, b.get('direction'), b.get('role') or 'narration', whole, cue) for b in blocks]
+        instructions = [self.instruction(
+            style, b.get('direction'), b.get('role') or 'narration', whole, cue,
+            b.get('instruction') if (b.get('role') or 'narration') == 'dialogue' else None)
+            for b in blocks]
         keys = [self.key_for(b['text'], v, i, seed) for b, v, i in zip(blocks, voices, instructions)]
         found = [self.find(k, private) for k in keys]
         have = [f[0] for f in found]

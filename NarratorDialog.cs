@@ -352,7 +352,8 @@ namespace TypoZen
             var libBusy = new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 8), Visibility = Visibility.Collapsed };
 
             // ================================================================ Cast
-            var castRows = new List<Tuple<string, string, ComboBox>>();     // key, name, choice
+            var castRows = new List<Tuple<string, string, ComboBox, TextBox>>();     // key, name, voice, instruction
+            var castPlays = new List<Button>();
             var castPanel = new StackPanel();
             Button findCast = null;
             StackPanel castPage = null;
@@ -361,13 +362,19 @@ namespace TypoZen
                 castPage = new StackPanel();
                 castPage.Children.Add(heading("Cast for this book"));
                 castPage.Children.Add(note("Give characters voices of their own: their lines are spoken in that voice, and the narrator reads the rest. Who speaks is read from the text (\"said Ferbin\"); an untagged or ambiguous line stays with the narrator."));
-                castPage.Children.Add(note("A character's line is told only: \"Speak this line of dialogue as the character would say it, naturally and in character.\""));
+                castPage.Children.Add(note("Instruction is optional. When it is filled in, that character's lines are told it, the same way the narrator's instruction is told to the narration. Leave it empty and the line is told only to speak in character."));
                 if (QwenNarrator.PrivateMode)
                     castPage.Children.Add(note("Privacy Mode is on: this book's cast is kept until TypoZen closes and is not saved to disk."));
                 findCast = button("Find characters");
                 findCast.HorizontalAlignment = HorizontalAlignment.Left;
                 findCast.Margin = new Thickness(0, 0, 0, 8);
                 castPage.Children.Add(findCast);
+                castPage.Children.Add(row(new UIElement[] {
+                    new TextBlock { Width = 28, Margin = new Thickness(0, 0, 8, 0) },
+                    new TextBlock { Text = "Character", Width = 200, Opacity = 0.7 },
+                    new TextBlock { Text = "Voice", Width = 220, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
+                    new TextBlock { Text = "Instruction", Width = 420, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 }
+                }));
                 castPage.Children.Add(castPanel);
             }
 
@@ -455,7 +462,7 @@ namespace TypoZen
             };
             Func<string, ComboBox> voicePicker = selected =>
             {
-                var cb = new ComboBox { Width = 250, Tag = selected ?? "" };
+                var cb = new ComboBox { Width = 220, Margin = new Thickness(8, 0, 0, 0), Tag = selected ?? "" };
                 cb.Items.Add(new VoiceItem { Id = "", Name = "Narrator's voice" });
                 foreach (var v in voices) cb.Items.Add(v);
                 cb.SelectedIndex = 0;
@@ -485,13 +492,90 @@ namespace TypoZen
                 return cb;
             };
 
-            Action<string, string, string> addCastRow = (key, name, chosen) =>
+            // Assigned below, once the busy-button list exists. The row's play button calls it.
+            Action<string, double, Action> work = null;
+            Action<string, string, string, string> addCastRow = (key, name, chosen, line) =>
             {
                 foreach (var r in castRows) if (r.Item1 == key) return;
                 var cb = voicePicker(chosen);
-                castRows.Add(Tuple.Create(key, name, cb));
-                var label = new TextBlock { Text = name, Width = 250, VerticalAlignment = VerticalAlignment.Center };
-                castPanel.Children.Add(row(new UIElement[] { label, cb }));
+                var sayBox = new TextBox
+                {
+                    Text = line ?? "", Width = 420, Height = 28, Margin = new Thickness(8, 0, 0, 0),
+                    VerticalContentAlignment = VerticalAlignment.Center, MaxLength = 1500,
+                    ToolTip = "Sent with this character's lines. Leave empty to keep the usual in-character line."
+                };
+                // One short line, in the voice and instruction on this row, the same way a cast
+                // line is told them. The box is read at the click, so it can be heard before Save.
+                var playLine = button("\u25B6");
+                playLine.Width = 28;
+                playLine.Padding = new Thickness(0);
+                playLine.FocusVisualStyle = null;
+                playLine.ToolTip = "Play \u201cYou should have waited for me.\u201d in the voice chosen here, told the instruction in this row.";
+                if (busyWhat != null) playLine.IsEnabled = false;
+                castPlays.Add(playLine);
+                playLine.Click += (s, e) =>
+                {
+                    string id = castRowVoice(cb);
+                    if (id.Length == 0)
+                    {
+                        var narr = voiceBox.SelectedItem as VoiceItem;
+                        id = narr != null && narr.Id != null ? narr.Id : (settings.Voice ?? "");
+                    }
+                    if (id.Length == 0) { say("Choose a voice for this character first."); return; }
+                    string spoken = (sayBox.Text ?? "").Trim();
+                    string who = name ?? "";
+                    int cut = who.IndexOf("  (");
+                    if (cut > 0) who = who.Substring(0, cut);
+                    try { if (player != null) player.Stop(); } catch { }
+                    if (playing != null)
+                    {
+                        playing = null;
+                        try { sendToPage("cmd:narrator_trial_stop"); } catch { }
+                        if (applyPlay != null) applyPlay();
+                    }
+                    work("Playing " + who + ":", 12, () =>
+                    {
+                        var body = new Dictionary<string, object>
+                        {
+                            { "voice", id },
+                            { "blocks", new object[] {
+                                new Dictionary<string, object> {
+                                    { "id", 0 },
+                                    { "text", "You should have waited for me." },
+                                    { "role", "dialogue" },
+                                    { "voice", id },
+                                    { "instruction", spoken }
+                                }
+                            }}
+                        };
+                        string json = QwenNarrator.Call("POST", "/render", new JavaScriptSerializer().Serialize(body), 120000);
+                        var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+                        Dictionary<string, object> item = null;
+                        object items;
+                        if (d != null && d.TryGetValue("items", out items))
+                            foreach (var o in (items as System.Collections.IEnumerable) ?? new object[0])
+                            {
+                                item = o as Dictionary<string, object>;
+                                if (item != null) break;
+                            }
+                        if (item == null) { say("Nothing came back to play."); return; }
+                        string file = Convert.ToString(item["file"]);
+                        object priv;
+                        bool isPrivate = item.TryGetValue("private", out priv) && priv is bool && (bool)priv;
+                        string folder = isPrivate && !string.IsNullOrEmpty(QwenNarrator.PrivateCacheDir)
+                            ? QwenNarrator.PrivateCacheDir
+                            : QwenNarrator.CacheDir(cacheDir);
+                        win.Dispatcher.Invoke((Action)(() => play(System.IO.Path.Combine(folder, file))));
+                        say("");
+                    });
+                };
+                castRows.Add(Tuple.Create(key, name, cb, sayBox));
+                var label = new TextBlock
+                {
+                    Text = name, Width = 200, VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = name
+                };
+                castPanel.Children.Add(row(new UIElement[] { playLine, label, cb, sayBox }));
             };
 
             // A voice the library can act on: one of the reader's, not built in.
@@ -517,11 +601,12 @@ namespace TypoZen
                     if (voices[i].Id == keepLib) libList.SelectedIndex = i;
                 }
                 // The cast pickers are rebuilt with the new list, keeping each choice.
-                var old = new List<Tuple<string, string, ComboBox>>(castRows);
+                var old = new List<Tuple<string, string, ComboBox, TextBox>>(castRows);
                 castRows.Clear();
+                castPlays.Clear();
                 castPanel.Children.Clear();
                 foreach (var r in old)
-                    addCastRow(r.Item1, r.Item2, castRowVoice(r.Item3));
+                    addCastRow(r.Item1, r.Item2, castRowVoice(r.Item3), r.Item4.Text);
                 refreshLibButtons();
             };
 
@@ -550,9 +635,10 @@ namespace TypoZen
             var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, design, importVoice, playA, takeA };
             if (findCast != null) busyButtons.Add(findCast);
             // `expect` is the usual time in seconds, shown against a running clock; 0 for none.
-            Action<string, double, Action> work = (what, expect, job) =>
+            work = (what, expect, job) =>
             {
                 foreach (var b in busyButtons) b.IsEnabled = false;
+                foreach (var b in castPlays) b.IsEnabled = false;
                 playB.IsEnabled = takeB.IsEnabled = false;
                 busyWhat = what; busySince = DateTime.Now; busyExpect = expect;
                 var bar = busyNow;
@@ -572,6 +658,7 @@ namespace TypoZen
                             bar.Visibility = Visibility.Collapsed;
                             if (busyWhat != null) { busyWhat = null; line.Text = ""; }
                             foreach (var b in busyButtons) b.IsEnabled = true;
+                            foreach (var b in castPlays) b.IsEnabled = true;
                             playB.IsEnabled = takeB.IsEnabled = kept != null;
                             if (applyPlay != null) applyPlay();
                             refreshLibButtons();
@@ -1084,7 +1171,9 @@ namespace TypoZen
                                 string key = Convert.ToString(c["key"]);
                                 string name = Convert.ToString(c["name"]) + "  (" + Convert.ToString(c["lines"]) + " lines)";
                                 string chosen;
-                                addCastRow(key, name, cast.Voices.TryGetValue(key, out chosen) ? chosen : "");
+                                string line;
+                                addCastRow(key, name, cast.Voices.TryGetValue(key, out chosen) ? chosen : "",
+                                           cast.Instructions.TryGetValue(key, out line) ? line : "");
                             }
                             say(list.Count == 0
                                 ? (whole ? "No named speakers found in this book."
@@ -1110,8 +1199,20 @@ namespace TypoZen
                     foreach (var r in castRows)
                     {
                         string id = castRowVoice(r.Item3);
-                        if (id.Length > 0) { cast.Voices[r.Item1] = id; cast.Names[r.Item1] = r.Item2; }
-                        else { cast.Voices.Remove(r.Item1); cast.Names.Remove(r.Item1); }
+                        string line = (r.Item4.Text ?? "").Trim();
+                        if (id.Length > 0)
+                        {
+                            cast.Voices[r.Item1] = id;
+                            cast.Names[r.Item1] = r.Item2;
+                            if (line.Length > 0) cast.Instructions[r.Item1] = line;
+                            else cast.Instructions.Remove(r.Item1);
+                        }
+                        else
+                        {
+                            cast.Voices.Remove(r.Item1);
+                            cast.Names.Remove(r.Item1);
+                            cast.Instructions.Remove(r.Item1);
+                        }
                     }
                     QwenNarrator.SaveCast(cacheDir, book, cast);
                     if (saved != null) saved();
@@ -1133,6 +1234,9 @@ namespace TypoZen
                     string now = castRowVoice(r.Item3), was;
                     if (!cast.Voices.TryGetValue(r.Item1, out was)) was = "";
                     if (now != was) return true;
+                    string sayNow = (r.Item4.Text ?? "").Trim(), sayWas;
+                    if (!cast.Instructions.TryGetValue(r.Item1, out sayWas)) sayWas = "";
+                    if (sayNow != sayWas.Trim()) return true;
                 }
                 return false;
             };
@@ -1226,7 +1330,9 @@ namespace TypoZen
             foreach (var kv in cast.Voices)
             {
                 string name;
-                addCastRow(kv.Key, cast.Names.TryGetValue(kv.Key, out name) ? name : kv.Key, kv.Value);
+                string savedSay;
+                addCastRow(kv.Key, cast.Names.TryGetValue(kv.Key, out name) ? name : kv.Key, kv.Value,
+                           cast.Instructions.TryGetValue(kv.Key, out savedSay) ? savedSay : "");
             }
 
             // The saved voices are on disk: list them now, so the choice is there while the

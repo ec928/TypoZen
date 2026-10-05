@@ -1,13 +1,10 @@
 /**
  * Author stage directions and the cast scan (js/modules/09-speech.js).
  *
- * A bracket on the whitelist becomes the instruction for that piece and is left out of
- * the spoken text. A bracket that is not on the list is read. A tag against a quotation
- * goes with the speaker. Find characters reads the whole markdown or text file, and only
- * the loaded chapter of an epub.
- *
- * Emotion cues off still drops the tag from the speech: the sender blanks direction
- * unless the box is ticked. This checks those two lines are still there.
+ * A bracket stays in the spoken text of whoever says that part of the line. A span tag
+ * that opens a split piece is repeated on the later pieces. A tag against a quotation
+ * goes with the speaker, still as a bracket. Find characters reads the whole markdown
+ * or text file, and only the loaded chapter of an epub.
  *
  *   node tests/narration-tags-selftest.mjs
  */
@@ -41,16 +38,16 @@ const box = { model: null };
 const api = new Function('document', 'window', 'box', [
     'let DocumentModel = box.model;',
     'let _narrCast = {};',
+    'let _narrCastSay = {};',
     'function narrLog() {}',
     src.slice(start, end + 1),
     'return {',
-    '  authorTagDirection: authorTagDirection,',
-    '  stripAuthorTags: stripAuthorTags,',
     '  paragraphPieces: paragraphPieces,',
     '  castPieces: castPieces,',
     '  narrationQuotes: narrationQuotes,',
     '  narrationCastScan: window.narrationCastScan,',
     '  setCast: function (c) { _narrCast = c; },',
+    '  setCastSay: function (c) { _narrCastSay = c || {}; },',
     '  setModel: function (m) { DocumentModel = m; }',
     '};'
 ].join('\n'))(document, window, box);
@@ -65,21 +62,20 @@ function eq(name, got, want) {
     check(name, same, 'got  ' + JSON.stringify(got) + '\n         want ' + JSON.stringify(want));
 }
 
-console.log('--- tags become an instruction and leave the spoken text');
-eq('weeping', api.authorTagDirection('Go   [weeping]   please'), 'tearful, the voice breaking');
-eq('Weeping', api.authorTagDirection('[Weeping] Please'), 'tearful, the voice breaking');
-eq('sighing not sigh', api.authorTagDirection('[sighing] no'), 'weary, with a sigh');
-eq('padding only', api.stripAuthorTags('Go  please   [weeping]   now'), 'Go  please now');
-eq('note stays', api.stripAuthorTags('Go   [check spelling]   on'), 'Go   [check spelling]   on');
+console.log('--- brackets stay in the spoken text');
 {
-    const pieces = api.paragraphPieces('[weeping] Please let me go.', null);
-    eq('spoken without the tag', pieces.map(p => p.text), ['Please let me go.']);
-    eq('direction from the tag', pieces.map(p => p.direction), ['tearful, the voice breaking']);
+    const pieces = api.paragraphPieces('[crying] Please let me go.', null);
+    eq('a span tag is spoken', pieces.map(p => p.text), ['[crying] Please let me go.']);
+    eq('a span tag is not an instruction', pieces.map(p => p.direction), ['']);
+}
+{
+    const pieces = api.paragraphPieces('hello[gasp]world', null);
+    eq('a glued tag gets one space each side', pieces.map(p => p.text), ['hello [gasp] world']);
 }
 {
     const pieces = api.paragraphPieces('See [check spelling] here.', null);
-    eq('unknown bracket is read', pieces.map(p => p.text), ['See [check spelling] here.']);
-    eq('unknown bracket is not a cue', pieces.map(p => p.direction), ['']);
+    eq('an unknown bracket is read', pieces.map(p => p.text), ['See [check spelling] here.']);
+    eq('an unknown bracket is not a cue', pieces.map(p => p.direction), ['']);
 }
 {
     const sentence = 'She walked to the door and stood there looking out at the road. ';
@@ -87,29 +83,28 @@ eq('note stays', api.stripAuthorTags('Go   [check spelling]   on'), 'Go   [check
     while (body.length < 450) body += sentence;
     const pieces = api.paragraphPieces('[panicked] ' + body, null);
     check('a long paragraph is more than one piece', pieces.length >= 2, 'pieces ' + pieces.length);
-    check('the tag colours every piece', pieces.every(p => p.direction === 'breathless, shocked'));
-    check('the tag is not spoken in any piece', pieces.every(p => p.text.indexOf('[') < 0 && p.text.indexOf('panicked') < 0));
+    check('a span tag opens every piece of the split', pieces.every(p => p.text.indexOf('[panicked]') === 0));
+    check('the span is not turned into an instruction', pieces.every(p => p.direction === ''));
 }
-eq('a line that is only a tag is not spoken', api.paragraphPieces('[laughing]', null), []);
+eq('a line that is only a tag is spoken', api.paragraphPieces('[laughing]', null).map(p => p.text), ['[laughing]']);
 
 console.log('--- a tag against a quotation goes with the speaker');
 api.setCast({ anna: 'qwen-ryan' });
 {
-    const text = '[weeping]   "Please let me go," Anna said.';
+    const text = '[crying]   "Please let me go," Anna said.';
     const pieces = api.castPieces(text, api.narrationQuotes(text), 0);
     const talk = pieces.filter(p => p.role === 'dialogue');
     const narr = pieces.filter(p => p.role === 'narration');
-    eq('dialogue text', talk.map(p => p.text), ['Please let me go,']);
+    eq('dialogue text', talk.map(p => p.text), ['[crying] Please let me go,']);
     eq('dialogue voice', talk.map(p => p.voice), ['qwen-ryan']);
-    eq('dialogue direction', talk.map(p => p.direction), ['tearful, the voice breaking']);
+    eq('dialogue direction', talk.map(p => p.direction), ['']);
     eq('narration does not say the tag', narr.map(p => p.text), ['Anna said.']);
-    check('narration is not the weep', narr.every(p => p.direction === ''));
 }
 {
-    const text = '"Please [weeping] let me go," Anna said.';
+    const text = '"Please [crying] let me go," Anna said.';
     const talk = api.castPieces(text, api.narrationQuotes(text), 0).filter(p => p.role === 'dialogue');
-    eq('tag inside the quote is not spoken', talk.map(p => p.text), ['Please let me go,']);
-    eq('tag inside the quote is the direction', talk.map(p => p.direction), ['tearful, the voice breaking']);
+    eq('tag inside the quote is spoken', talk.map(p => p.text), ['Please [crying] let me go,']);
+    eq('tag inside the quote is not an instruction', talk.map(p => p.direction), ['']);
 }
 {
     const text = '"Get out," Anna snapped.';
@@ -140,14 +135,15 @@ api.setCast({ anna: 'qwen-ryan' });
 {
     const text = '[sad] "Get out," Anna snapped.';
     const pieces = api.castPieces(text, api.narrationQuotes(text), 0);
-    eq('the author tag wins over the verb', pieces.filter(p => p.role === 'dialogue').map(p => p.direction), ['sad']);
-    check('the tag is not in the narration', pieces.filter(p => p.role === 'narration').every(p => p.text.indexOf('sad') < 0 && p.text.indexOf('[') < 0));
+    eq('the bracket stays on the speaker', pieces.filter(p => p.role === 'dialogue').map(p => p.text), ['[sad] Get out,']);
+    eq('the speech verb is still the cue', pieces.filter(p => p.role === 'dialogue').map(p => p.direction), ['sharp and angry']);
+    check('the tag is not in the narration', pieces.filter(p => p.role === 'narration').every(p => p.text.indexOf('[') < 0));
 }
 {
     const text = 'He was [sad] for a while. "Hello," Anna said.';
     const pieces = api.castPieces(text, api.narrationQuotes(text), 0);
-    eq('a tag with words after it stays narration', pieces.filter(p => p.role === 'narration').map(p => p.text), ['He was for a while.', 'Anna said.']);
-    eq('that narration takes the tag', pieces.filter(p => p.role === 'narration').map(p => p.direction), ['sad', '']);
+    eq('a tag with words after it stays narration', pieces.filter(p => p.role === 'narration').map(p => p.text), ['He was [sad] for a while.', 'Anna said.']);
+    eq('that narration is not given an instruction', pieces.filter(p => p.role === 'narration').map(p => p.direction), ['', '']);
     eq('the quotation is not given it', pieces.filter(p => p.role === 'dialogue').map(p => p.direction), ['']);
 }
 {
@@ -157,7 +153,45 @@ api.setCast({ anna: 'qwen-ryan' });
     const text = '[panicked] "' + inner + '" Anna said.';
     const talk = api.castPieces(text, api.narrationQuotes(text), 0).filter(p => p.role === 'dialogue');
     check('a long quotation is more than one piece', talk.length >= 2, 'pieces ' + talk.length);
-    check('each piece of the quotation keeps the tag', talk.every(p => p.direction === 'breathless, shocked' && p.text.indexOf('[') < 0));
+    check('each piece of the quotation keeps the span tag', talk.every(p => p.text.indexOf('[panicked]') === 0));
+}
+
+console.log('--- a character instruction goes out with that character');
+{
+    api.setCastSay({ anna: '  Speak in a sad, sorrowful tone, voice low and heavy.  ' });
+    const text = '"Get out," Anna snapped.';
+    const pieces = api.castPieces(text, api.narrationQuotes(text), 0);
+    const talk = pieces.filter(p => p.role === 'dialogue');
+    eq('the character instruction is on the line', talk.map(p => p.instruction),
+        ['Speak in a sad, sorrowful tone, voice low and heavy.']);
+    eq('the speech verb is still recorded', talk.map(p => p.direction), ['sharp and angry']);
+    check('narration is not given the character instruction',
+        pieces.filter(p => p.role === 'narration').every(p => !p.instruction));
+}
+{
+    api.setCastSay({});
+    const text = '"Hello," Anna said.';
+    const talk = api.castPieces(text, api.narrationQuotes(text), 0).filter(p => p.role === 'dialogue');
+    eq('a character with no instruction sends none', talk.map(p => p.instruction), ['']);
+}
+
+console.log('--- a lead-in cut off by a quote does not end on a comma');
+{
+    const line = 'Get out of this house and do not come back until I say so.';
+    const text = 'Anna whispered, "' + line + '"';
+    const pieces = api.castPieces(text, api.narrationQuotes(text), 0);
+    eq('the lead-in comma is closed', pieces.filter(p => p.role === 'narration').map(p => p.text), ['Anna whispered.']);
+    eq('the quote stays with the character', pieces.filter(p => p.role === 'dialogue').map(p => p.text), [line]);
+}
+{
+    const text = 'Anna whispered: "Get out."';
+    const pieces = api.castPieces(text, api.narrationQuotes(text), 0);
+    eq('a lead-in colon stays', pieces.filter(p => p.role === 'narration').map(p => p.text), ['Anna whispered:']);
+}
+{
+    const text = '"Get out," Anna whispered.';
+    const pieces = api.castPieces(text, api.narrationQuotes(text), 0);
+    eq('a tag after the quote keeps its period', pieces.filter(p => p.role === 'narration').map(p => p.text), ['Anna whispered.']);
 }
 
 console.log('--- a quotation is enough; the comma is not');

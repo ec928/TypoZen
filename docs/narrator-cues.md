@@ -1,6 +1,6 @@
 # Narrator tags and cues
 
-What you can write so the Qwen narrator changes delivery. The switch is **File → Read Aloud → Narrator settings → Emotion cues**: "Add a cue to lines tagged with how they are said". With that off, a tag on the list below is still left unspoken, and the "Told" column below is left blank. The words stay the same. The narrator then judges the line from the words alone.
+What you can write so the Qwen narrator changes delivery. A bracket is spoken by the voice that has that part of the line. It is not turned into an instruction, and it is not deleted. Leave **Emotion cues** off. That switch only adds an instruction for speech words such as "snapped", and a designed voice does not follow it.
 
 The lines in this document were run through the speech splitter with Julie, Paul and Anna each given a voice. **Says** is the text that voice is sent. **Told** is the instruction added when Emotion cues are on. **Try it** shows that instruction under "What the narrator was told".
 
@@ -58,9 +58,9 @@ Paul: "I'm going home now [clears throat]"
 | Narrator | Paul: | |
 | Paul | I'm going home now [clears throat] | |
 
-### A mood tag
+### A bracket in the line
 
-`[giggles]` is on the list, so the brackets are removed. Julie is told the mood. The words after the quote are not:
+`[giggles]` stays in Julie's line. Nothing is added to the instruction:
 
 ```
 Julie said "hello world! [giggles]" in a cheery voice
@@ -69,25 +69,25 @@ Julie said "hello world! [giggles]" in a cheery voice
 | Who | Says | Told |
 |---|---|---|
 | Narrator | Julie said | |
-| Julie | hello world! | amused, with a smile in the voice |
+| Julie | hello world! [giggles] | |
 | Narrator | in a cheery voice | |
 
-With nobody given a voice, the narrator is sent one piece, `Julie said "hello world! " in a cheery voice`, told the same thing. The quotation marks stay in that piece. A character's piece does not include them.
+With nobody given a voice, the narrator is sent one piece, `Julie said "hello world! [giggles]" in a cheery voice`, told nothing. The quotation marks stay in that piece. A character's piece does not include them.
 
-A mood tag against the quote, with only space between, goes to the speaker. It is not read out:
+A bracket against the quote, with only space between, is spoken by that character:
 
 ```
-[weeping] "Please let me go," Anna said.
+[crying] "Please let me go," Anna said.
 ```
 
 | Who | Says | Told |
 |---|---|---|
-| Anna | Please let me go, | tearful, the voice breaking |
+| Anna | [crying] Please let me go, | |
 | Narrator | Anna said. | |
 
-The same happens when the tag is inside the quote. `"Please [weeping] let me go," Anna said.` sends Anna `Please let me go,`, told the same thing.
+The same happens when the tag is inside the quote. `"Please [crying] let me go," Anna said.` sends Anna `Please [crying] let me go,`.
 
-Words between the tag and the quote leave the mood on the narration. The quote is not given it:
+Words between the tag and the quote leave the bracket on the narration. The quote is not given it:
 
 ```
 He was [sad] for a while. "Hello," Anna said.
@@ -95,11 +95,9 @@ He was [sad] for a while. "Hello," Anna said.
 
 | Who | Says | Told |
 |---|---|---|
-| Narrator | He was for a while. | sad |
+| Narrator | He was [sad] for a while. | |
 | Anna | Hello, | |
 | Narrator | Anna said. | |
-
-The first tag on the list is the one that counts for that quote. A second tag in the same quote does not change it.
 
 ### A speech tag
 
@@ -130,7 +128,7 @@ The first tag on the list is the one that counts for that quote. A second tag in
 | Anna | Wait— | breaking off |
 | Narrator | Anna said. | |
 
-`She said "hello".` has no mood word and no exclamation. The narrator is sent the whole line, `She said "hello".`, and told nothing. "Said", "asked" and "told" add nothing. A bracket on the list overrides a speech verb in the same line: the `[giggles]` line above is amused, not emphatic, even though the quote has an exclamation mark.
+`She said "hello".` has no mood word and no exclamation. The narrator is sent the whole line, `She said "hello".`, and told nothing. "Said", "asked" and "told" add nothing. A bracket is not an instruction, so it does not replace "snapped" or an exclamation. Those are sent only when Emotion cues is on.
 
 A pronoun is not a cast voice. `"Go," she whispered.` stays one narrator piece, `"Go," she whispered.`, told "whispered, hushed".
 
@@ -147,25 +145,13 @@ A pronoun is not a cast voice. `"Go," she whispered.` stays one narrator piece, 
 
 ## Bracket words
 
-One word, no spaces inside the brackets: `[weeping]`, `[Weeping]`. Capitalisation does not matter. Spaces around the bracket are optional.
+These are left in the spoken text, exactly as written. Capitalisation does not matter. A bracket glued to a word gets one space on that side. The model takes these tokens and not their cousins: `[crying]`, not `[weeping]`; `[whispers]`, not `[whisper]`; `[laughing]`, not `[laugh]`.
 
-| You write | Told |
-|---|---|
-| `[weeping]` `[wept]` `[crying]` `[sobbing]` `[sob]` | tearful, the voice breaking |
-| `[whisper]` `[whispers]` `[whispering]` | whispered, hushed |
-| `[shout]` `[shouts]` `[shouting]` | shouted, loud and forceful |
-| `[angry]` | sharp and angry |
-| `[sad]` | sad |
-| `[excited]` | excited |
-| `[sarcastic]` | sarcastic |
-| `[panicked]` `[panic]` `[gasp]` | breathless, shocked |
-| `[tired]` `[weary]` | weary |
-| `[sigh]` `[sighed]` `[sighing]` | weary, with a sigh |
-| `[laugh]` `[laughs]` `[laughing]` `[giggle]` `[giggles]` | amused, with a smile in the voice |
+A point event is a sound at that spot: `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]`.
 
-`[gasp]` is that mood. It is not a gasp played in the middle of the sentence. `[giggles]` above is the worked case.
+A span changes the delivery from there on: `[excited]` `[sad]` `[angry]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]`.
 
-These are the only bracket words. `[shouted]`, `[whispered]`, `[giggling]`, `[sobs]`, `[sighs]`, `[cough]`, `[clears throat]`, `[snorts]`, `[singing]`, `[asmr]`, `[like dracula]` and `[check spelling]` are read aloud, the way `[clears throat]` is above. In ordinary prose, "she shouted" and "she whispered" are still cues, through the speech tags below.
+Anything else in brackets, such as `[check spelling]`, is also read aloud. It is not on the model's list. In ordinary prose, "she shouted" and "she whispered" are still cues, through the speech tags below, and only when Emotion cues is on.
 
 ## Speech words
 
