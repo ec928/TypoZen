@@ -52,7 +52,7 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.14.11 package. The notes below are this release. The last notes kept here were for the 0.11.15 submission; if the Store is still on a build before 0.14.11, confirm these cover the gap before submitting._
+_Limit 1,500 characters. These notes are the 0.14.11 package, uploaded to the Store on 2026-10-05. GitHub v0.14.11, the installer, and the installed app are the same version._
 
 The Qwen narrator, once installed from Extensions:
 
@@ -74,7 +74,7 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
 | 2 | Packages | the newest MSIX (0.14.11.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. For 0.11.15 only **What's new** changes; the rest was synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.14.11 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |
