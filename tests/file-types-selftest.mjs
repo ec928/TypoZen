@@ -22,7 +22,7 @@ const app = read('TypoZen_App.cs');
 const code = [...(app.match(/CodeExtensions = \{([^}]*)\}/) || ['', ''])[1].matchAll(/"(\.[a-z0-9]+)"/g)].map(m => m[1]);
 assert(code.length >= 30, 'the host has one CodeExtensions list (' + code.length + ')');
 assert(!/string\[\] codeExts/.test(app), 'no second, private list of code extensions in the host');
-assert(/ext == "\.txt" \|\| IsCodePath\(path\)/.test(app), 'files open in Source by the same list');
+assert(/return IsCodePath\(path\);/.test(app), 'files open in Source by the same list');
 
 // The page's code table: every language it highlights is of the Code type.
 const sandbox = { window: {}, document: { getElementById: () => null }, console };

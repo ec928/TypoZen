@@ -20,6 +20,7 @@ Product truth lives here and in the README; `docs/archive/` is history.
 | `docs/developer-editor-analysis.md` | Parked code-editor attempt |
 | `docs/releasing.md` | Build, package, release, Store. Read section 5 before touching install identity |
 | `docs/store-listing.md` | Store listing copy and the certification answers, with field limits |
+| `docs/narrator-cues.md` | Bracket tags, speech-tag cues, and what the Qwen narrator is told |
 | `docs/archive/fonts-ab.md` | Measured: loading only the active theme's fonts does not cut startup |
 | `docs/archive/scripts-ab.md` | Measured: concatenating the modules into one runtime script does not either |
 | `docs/archive/` | Dated snapshots. Every health review lives here now -- none of them describes the current tree |

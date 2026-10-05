@@ -24,8 +24,8 @@ try {
     const page = await browser.newPage();
     await page.goto('file:///' + path.join(appDir, 'TypoZen_Template.html').replace(/\\/g, '/'), { waitUntil: 'load' });
     await page.waitForFunction(() => typeof handleCommand === 'function', { timeout: 15000 });
-    await page.evaluate(m => loadMarkdownContent(m), 'Hello world here.\n\nThe **strong words** end.\n');
-    await page.waitForFunction(() => document.querySelectorAll('#editor .block').length >= 2, { timeout: 10000 });
+    await page.evaluate(m => loadMarkdownContent(m), 'Hello world here.\n\nThe **strong words** end.\n\nGo please.\n');
+    await page.waitForFunction(() => document.querySelectorAll('#editor .block').length >= 3, { timeout: 10000 });
 
     // Put the caret after `word` inside `blockText`'s block, then paste `text`.
     const pasteAt = (blockText, word, text) => page.evaluate((bt, w, t) => {
@@ -42,6 +42,11 @@ try {
 
     let md = await pasteAt('Hello world', 'Hello', ' there');
     assert(md.includes('Hello there world here.'), 'a paste keeps its leading space  (' + JSON.stringify(md.split('\n')[0]) + ')');
+
+    md = await pasteAt('Go please.', 'Go', '   [weeping]   ');
+    const spaced = md.split('\n').find(l => l.includes('[weeping]')) || '';
+    assert(spaced === 'Go   [weeping]    please.',
+        'a paste keeps an internal run of spaces  (' + JSON.stringify(spaced) + ')');
 
     md = await pasteAt('strong words', 'strong', ' **very**');
     const line = md.split('\n').find(l => l.includes('strong')) || '';

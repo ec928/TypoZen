@@ -1963,13 +1963,17 @@
          * One undo step. Source mode inserts at caret; WYSIWYG uses the block paste path.
          */
         /**
-         * Text for execCommand('insertText') with its edge spaces kept. Chromium drops an
+         * Text for execCommand('insertText') with its spaces kept. Chromium drops an
          * ordinary space it inserts at the end of a line (a cut "quick " pasted back came
-         * out "quick"); no-break spaces survive, and the serializer (keepTypedSpaces) turns
-         * them back into spaces.
+         * out "quick"). keepTypedSpaces then collapses every remaining ordinary run and
+         * only afterwards turns no-break spaces back into spaces — a second space you
+         * type arrives as a no-break space, so it survives, but a paste is ordinary
+         * spaces, so "go!   [weeping]" was saved and shown as "go! [weeping]".
          */
         function withKeptEdgeSpaces(s) {
-            return String(s).replace(/^ +| +$/g, function (m) { return ' '.repeat(m.length); });
+            return String(s)
+                .replace(/ {2,}/g, function (m) { return ' '.repeat(m.length); })
+                .replace(/^ | $/g, ' ');
         }
 
         function insertPastedPlainText(text) {

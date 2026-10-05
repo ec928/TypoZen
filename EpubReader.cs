@@ -531,7 +531,13 @@ namespace TypoZen
 
                 string rel = Uri.UnescapeDataString(uri.Groups[1].Value).Replace('\\', '/').TrimStart('/');
                 string file = Path.GetFullPath(Path.Combine(dir, rel.Replace('/', Path.DirectorySeparatorChar)));
-                if (!file.StartsWith(Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase) || !File.Exists(file)) continue;
+                // Same trailing-separator prefix as ExtractIfStale. Without it,
+                // dir + "_evil" matches and a hostile encryption.xml can XOR a sibling.
+                string rootPrefix = Path.GetFullPath(dir);
+                if (!rootPrefix.EndsWith(Path.DirectorySeparatorChar.ToString())
+                    && !rootPrefix.EndsWith(Path.AltDirectorySeparatorChar.ToString()))
+                    rootPrefix += Path.DirectorySeparatorChar;
+                if (!file.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase) || !File.Exists(file)) continue;
                 byte[] bytes = File.ReadAllBytes(file);
                 int n = Math.Min(length, bytes.Length);
                 for (int i = 0; i < n; i++) bytes[i] ^= key[i % key.Length];

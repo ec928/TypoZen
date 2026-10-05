@@ -217,6 +217,17 @@ $manifest = @"
               <uap:FileType>.php</uap:FileType>
               <uap:FileType>.log</uap:FileType>
               <uap:FileType>.csv</uap:FileType>
+              <uap:FileType>.bat</uap:FileType>
+              <uap:FileType>.cmd</uap:FileType>
+              <uap:FileType>.sh</uap:FileType>
+              <uap:FileType>.bash</uap:FileType>
+              <uap:FileType>.ps1</uap:FileType>
+              <uap:FileType>.ini</uap:FileType>
+              <uap:FileType>.yaml</uap:FileType>
+              <uap:FileType>.yml</uap:FileType>
+              <uap:FileType>.sql</uap:FileType>
+              <uap:FileType>.toml</uap:FileType>
+              <uap:FileType>.env</uap:FileType>
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>

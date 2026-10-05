@@ -653,7 +653,7 @@ window.narrationTrial = async function (json) {
         if (isPlaying) stopReading();
         const pieces = [];
         String(o.text || '').split(/\r?\n/).map(l => l.trim()).filter(l => /[A-Za-z0-9]/.test(l)).forEach(line => {
-            blockPieces(speakNumbers(line)).forEach(t => pieces.push({ text: t, direction: narrationDirection(t, null) }));
+            paragraphPieces(speakNumbers(line), null).forEach(p => pieces.push(p));
         });
         if (!pieces.length) throw new Error('there is no text to read');
         const items = [];
@@ -935,6 +935,81 @@ function blockPieces(text) {
 }
 
 /**
+ * Stage directions the author wrote in brackets. This model takes one plain-language
+ * instruction per piece and speaks a bracket it does not know, so a tag on this list
+ * becomes the instruction and is left out of the spoken words. A bracket that is not
+ * here, such as [check spelling], stays in the text and is read.
+ *
+ * The direction is still only sent when Emotion cues is on. With cues off the tag is
+ * silent and nothing is added to the instruction.
+ */
+const AUTHOR_TAG_WORDS = {
+    weeping: 'tearful, the voice breaking',
+    wept: 'tearful, the voice breaking',
+    crying: 'tearful, the voice breaking',
+    sobbing: 'tearful, the voice breaking',
+    sob: 'tearful, the voice breaking',
+    whispering: 'whispered, hushed',
+    whispers: 'whispered, hushed',
+    whisper: 'whispered, hushed',
+    shouting: 'shouted, loud and forceful',
+    shouts: 'shouted, loud and forceful',
+    shout: 'shouted, loud and forceful',
+    angry: 'sharp and angry',
+    sad: 'sad',
+    excited: 'excited',
+    sarcastic: 'sarcastic',
+    panicked: 'breathless, shocked',
+    panic: 'breathless, shocked',
+    gasp: 'breathless, shocked',
+    tired: 'weary',
+    weary: 'weary',
+    sighing: 'weary, with a sigh',
+    sighed: 'weary, with a sigh',
+    sigh: 'weary, with a sigh',
+    laughing: 'amused, with a smile in the voice',
+    laughs: 'amused, with a smile in the voice',
+    laugh: 'amused, with a smile in the voice',
+    giggles: 'amused, with a smile in the voice',
+    giggle: 'amused, with a smile in the voice'
+};
+function authorTagBody() {
+    return Object.keys(AUTHOR_TAG_WORDS).sort(function (a, b) { return b.length - a.length; }).join('|');
+}
+/** The first whitelisted tag in the text, as the instruction phrase for that piece. */
+function authorTagDirection(text) {
+    const m = new RegExp('\\[(' + authorTagBody() + ')\\]', 'i').exec(String(text || ''));
+    return m ? (AUTHOR_TAG_WORDS[m[1].toLowerCase()] || '') : '';
+}
+/** Take whitelisted tags out, and only the spaces that padded them. */
+function stripAuthorTags(text) {
+    return String(text || '')
+        .replace(new RegExp('[ \\t]*\\[(' + authorTagBody() + ')\\][ \\t]*', 'gi'), ' ')
+        .replace(/^ +| +$/g, '');
+}
+/** A whitelisted tag with nothing but whitespace between it and the quotation at quoteStart. */
+function leadingAuthorTag(text, quoteStart) {
+    const head = String(text || '').slice(0, quoteStart);
+    const m = head.match(new RegExp('\\[(' + authorTagBody() + ')\\]\\s*$', 'i'));
+    if (!m) return null;
+    const words = AUTHOR_TAG_WORDS[m[1].toLowerCase()];
+    return words ? { words: words, at: m.index } : null;
+}
+/**
+ * One paragraph as the narrator hears it. An author tag colours every piece of the
+ * paragraph, including the later sentences of a long one. A guessed cue, from "she
+ * snapped" and the like, stays with the piece it was found in.
+ */
+function paragraphPieces(text, el) {
+    const author = authorTagDirection(text);
+    const spoken = stripAuthorTags(text);
+    if (!/[A-Za-z0-9]/.test(spoken)) return [];
+    return blockPieces(spoken).map(function (t) {
+        return { text: t, direction: author || narrationDirection(t, el || null) };
+    });
+}
+
+/**
  * Direction (docs/archive/qwen-tts-plan.md 4, slice 3): how the spoken lines in a piece should sound,
  * read from the text around them. '' is plain narration, the narrator's standing style.
  *
@@ -974,6 +1049,22 @@ const DIRECTION_ADVERBS = [
     [/\b(urgently|hurriedly)\b/i, 'urgent']
 ];
 
+// A speech tag after a quote: "Anna snapped", "she whispered". Not the next sentence.
+const SPEECH_TAG = /^\s*(\S+\s+){0,3}?(said|asked|replied|protested|continued|began|added|told|cried|called|answered|admitted|agreed|whispered|murmured|muttered|shouted|yelled|snapped|hissed|laughed|sighed|gasped|wept|sobbed|pleaded|begged|demanded|insisted|stammered|growled|barked|roared|screamed)\b/i;
+
+/**
+ * The words around one quotation that can colour it. The lead-in is the same sentence only,
+ * back to the previous full stop. What follows counts only when it is still that sentence:
+ * "she whispered", or "Anna snapped". "Anna was quietly snoring" is the next sentence.
+ */
+function quoteCueTag(text, index, length) {
+    const before = text.slice(Math.max(0, index - 80), index).split(/[.!?…”"]\s/).pop() || '';
+    const after = text.slice(index + length, index + length + 80).split(/[.!?…“"]/)[0] || '';
+    const parts = [before];
+    if (/^\s*[a-z]/.test(after) || SPEECH_TAG.test(after)) parts.push(after);
+    return parts.join(' ');
+}
+
 function narrationDirection(text, el) {
     const quotes = text.match(/[“"][^”"]+[”"]/g) || [];
     if (!quotes.length) {
@@ -993,7 +1084,6 @@ function narrationDirection(text, el) {
     // or a name then a speech verb ('" Ferbin protested angrily'); before it, a clause that
     // leads in with a comma or colon. The next sentence is not a tag -- '"Hmm." She relaxed
     // and was quietly snoring' is not a soft line.
-    const SPEECH = /^\s*(\S+\s+){0,3}?(said|asked|replied|protested|continued|began|added|told|cried|called|answered|admitted|agreed|whispered|murmured|muttered|shouted|yelled|snapped|hissed|laughed|sighed|gasped|wept|sobbed|pleaded|begged|demanded|insisted|stammered|growled|barked|roared|screamed)\b/i;
     const tags = [];
     const re = /[“"][^”"]+[”"]/g;
     let m;
@@ -1001,7 +1091,7 @@ function narrationDirection(text, el) {
         const before = text.slice(Math.max(0, m.index - 60), m.index).split(/[.!?…”"]\s/).pop();
         if (/[,:]\s*$/.test(before)) tags.push(before);
         const after = text.slice(m.index + m[0].length, m.index + m[0].length + 60).split(/[.!?…“"]/)[0];
-        if (/^\s*[a-z]/.test(after) || SPEECH.test(after)) tags.push(after);
+        if (/^\s*[a-z]/.test(after) || SPEECH_TAG.test(after)) tags.push(after);
     }
     const outside = tags.join(' | ');
     const found = [];
@@ -1016,9 +1106,11 @@ function narrationDirection(text, el) {
 }
 
 /**
- * Cast (slice 4): who speaks each quotation, from its tag -- '"...," Ferbin protested',
- * 'said the drone', '"..." he said' -- so that a character given a voice of their own in this
- * book's cast speaks their lines while the narrator reads everything else.
+ * Cast (slice 4): who speaks each quotation. A capitalised name within six words of the
+ * quotation, outside it, is the speaker. A speech verb in those words changes which name:
+ * the name before the verb speaks ("Jill told Paul" is Jill; Paul was spoken to), and
+ * "... said Jill" still counts because nobody is named before the verb. With no verb, the
+ * nearer name wins. Commas and colons are not required.
  *
  * A character is keyed by the last word of their name, lower case: "tyl Loesp" and "Loesp"
  * are one person, "the King" is "king". A pronoun only resolves when the paragraph names
@@ -1026,35 +1118,98 @@ function narrationDirection(text, el) {
  * wrong, where a line in the wrong character's voice would. An untagged line in an unbroken
  * run of dialogue goes to whoever spoke two paragraphs before.
  */
-const SPEECH_VERB = 'said|says|asked|replied|protested|continued|began|added|told|cried|called|answered|admitted|agreed|' +
-    'whispered|murmured|muttered|shouted|yelled|snapped|hissed|laughed|sighed|gasped|wept|sobbed|pleaded|begged|' +
-    'demanded|insisted|stammered|growled|barked|roared|screamed|announced|explained|observed|remarked|suggested|' +
-    'warned|retorted|exclaimed|responded|conceded|repeated|interrupted|breathed';
-const SPEAKER = "(?:the\\s+)?(?:[a-z]{2,4}\\s+)?[A-Z][\\w’'-]+(?:\\s+[A-Z][\\w’'-]+)?|the\\s+[a-z]+";
-const TAG_SPEAKER_VERB = new RegExp('^[\\s,]*(' + SPEAKER + '|he|she|it|they|I)\\s+(?:[a-z]+ly\\s+)?(?:' + SPEECH_VERB + ')\\b');
-const TAG_VERB_SPEAKER = new RegExp('^[\\s,]*(?:' + SPEECH_VERB + ')\\s+(' + SPEAKER + ')\\b');
-const TAG_BEFORE_QUOTE = new RegExp('(' + SPEAKER + ')\\s+(?:[a-z]+ly\\s+)?(?:' + SPEECH_VERB + ')[^.!?]*[,:]\\s*$');
+// Sentence words that are capitalised and are not people. Without this, "After" would be
+// a character whenever it was the only capital word near a quotation.
+const NOT_A_NAME = /^(After|Then|But|And|When|While|Before|Once|Suddenly|However|Meanwhile|Later|Soon|Still|There|Here|Yes|No|Oh|Well|Now|So|Yet|Thus|Therefore|Perhaps|Maybe|He|She|It|They|We|You|I)$/;
+// Dialogue tags only. "talked" is not one: "Bob talked, then Jill said" is Jill.
+const SPEECH_VERB = /^(say|says|said|ask|asks|asked|reply|replies|replied|protested|continued|began|added|tell|tells|told|cried|call|calls|called|answered|admitted|agreed|whispered|murmured|muttered|shouted|yelled|snapped|hissed|laughed|sighed|gasped|wept|sobbed|pleaded|begged|demanded|insisted|stammered|growled|barked|roared|screamed|announced|explained|observed|remarked|suggested|warned|retorted|exclaimed|responded|conceded|repeated|interrupted|breathed)$/i;
+
+function quoteWords(text) {
+    return String(text || '').split(/\s+/).map(function (w) {
+        return w.replace(/^[^A-Za-z0-9'’]+|[^A-Za-z0-9'’]+$/g, '');
+    }).filter(Boolean);
+}
+
+function looksLikeName(word) {
+    return /^[A-Z][A-Za-z'’-]{1,}$/.test(word) && !NOT_A_NAME.test(word);
+}
+
+function isPronoun(word) {
+    return /^(he|she|it|they|we|you|i)$/i.test(word);
+}
+
+function nameSpan(words, idx) {
+    let a = idx, b = idx;
+    while (a > 0 && looksLikeName(words[a - 1])) a--;
+    while (b + 1 < words.length && looksLikeName(words[b + 1])) b++;
+    return words.slice(a, b + 1).join(' ');
+}
+
+/**
+ * Speaker on one side of a quotation. words are in reading order; nearEnd means the
+ * quotation follows them. Only the six words beside the quotation count.
+ */
+function speakerBeside(words, nearEnd) {
+    const n = words.length;
+    if (!n) return null;
+    const inWindow = i => nearEnd ? (n - 1 - i) < 6 : i < 6;
+    const distOf = i => nearEnd ? (n - i) : (i + 1);
+    let verbAt = -1;
+    if (nearEnd) {
+        for (let i = n - 1; i >= 0 && inWindow(i); i--) {
+            if (SPEECH_VERB.test(words[i])) { verbAt = i; break; }
+        }
+    } else {
+        for (let i = 0; i < n && inWindow(i); i++) {
+            if (SPEECH_VERB.test(words[i])) { verbAt = i; break; }
+        }
+    }
+    if (verbAt >= 0) {
+        // The subject stands before the verb. The name after it was spoken to.
+        for (let i = verbAt - 1; i >= 0 && inWindow(i); i--) {
+            if (isPronoun(words[i])) return { who: words[i], dist: distOf(verbAt), verb: true };
+            if (looksLikeName(words[i])) return { who: nameSpan(words, i), dist: distOf(verbAt), verb: true };
+        }
+        for (let i = verbAt + 1; i < n && inWindow(i); i++) {
+            if (isPronoun(words[i])) return { who: words[i], dist: distOf(verbAt), verb: true };
+            if (looksLikeName(words[i])) return { who: nameSpan(words, i), dist: distOf(verbAt), verb: true };
+        }
+        return null;
+    }
+    for (let i = nearEnd ? n - 1 : 0; inWindow(i) && i >= 0 && i < n; i += nearEnd ? -1 : 1) {
+        if (!looksLikeName(words[i])) continue;
+        return { who: nameSpan(words, i), dist: distOf(i), verb: false };
+    }
+    return null;
+}
 
 function speakerKey(who) {
     if (!who || /^(he|she|it|they|i)$/i.test(who)) return '';
     return who.replace(/^the\s+/i, '').trim().split(/\s+/).pop().replace(/[’']s$/, '').toLowerCase();
 }
 
-/** The quotations in a paragraph, each with its tag and the speaker the tag names, if any. */
+/** The quotations in a paragraph, each with the name within six words of it, if any. */
 function narrationQuotes(text) {
     const out = [];
     const re = /[“"]([^”"]+)[”"]/g;
     let m;
     while ((m = re.exec(text))) {
-        const after = text.slice(m.index + m[0].length, m.index + m[0].length + 80);
-        const before = text.slice(Math.max(0, m.index - 80), m.index);
-        let who = null, tag = '', t;
-        if ((t = TAG_SPEAKER_VERB.exec(after) || TAG_VERB_SPEAKER.exec(after))) {
-            who = t[1]; tag = after.split(/[.!?…“"]/)[0];
-        } else if ((t = TAG_BEFORE_QUOTE.exec(before))) {
-            who = t[1]; tag = before.split(/[.!?…”"]\s/).pop();
-        }
-        out.push({ start: m.index, end: m.index + m[0].length, inner: m[1], who: who, tag: tag, key: speakerKey(who) });
+        const before = quoteWords(text.slice(0, m.index));
+        const after = quoteWords(text.slice(m.index + m[0].length));
+        const left = speakerBeside(before, true);
+        const right = speakerBeside(after, false);
+        // A speech verb beats a bare name. Two verbs: the closer one. Otherwise the nearer name.
+        let pick = null;
+        if (left && right) {
+            if (left.verb !== right.verb) pick = left.verb ? left : right;
+            else pick = left.dist <= right.dist ? left : right;
+        } else pick = left || right;
+        const who = pick ? pick.who : null;
+        out.push({
+            start: m.index, end: m.index + m[0].length, inner: m[1], who: who,
+            tag: quoteCueTag(text, m.index, m[0].length),
+            key: speakerKey(who)
+        });
     }
     return out;
 }
@@ -1090,11 +1245,17 @@ function attributeParagraphs(texts, known) {
     return result;
 }
 
+function blockPlain(el) {
+    if (el == null) return '';
+    if (typeof el === 'string') return el;
+    return el.innerText || '';
+}
+
 /** Speaker keys named outright (not by pronoun) anywhere in the loaded book. */
 function knownSpeakers(all) {
     const known = new Set();
     for (const el of all) {
-        const t = el.innerText || '';
+        const t = blockPlain(el);
         if (!/[“"]/.test(t)) continue;
         for (const q of narrationQuotes(t)) if (q.key) known.add(q.key);
     }
@@ -1102,15 +1263,33 @@ function knownSpeakers(all) {
 }
 
 /**
- * The characters in the loaded book with how many lines each speaks, for the cast list in
- * Narrator settings. Sent to the host as host_narrator_cast.
+ * Paragraph texts Find characters reads. A markdown or text file keeps the whole book
+ * in DocumentModel; the preview only mounts a window of it, so a scan of the blocks on
+ * screen missed anyone further on. An epub's model is not that window's plain text, so
+ * the scan stays on the chapter that is loaded.
+ */
+function castScanTexts() {
+    if (typeof DocumentModel !== 'undefined' && DocumentModel && DocumentModel.kind !== 'epub'
+        && Array.isArray(DocumentModel.blocks) && DocumentModel.blocks.length) {
+        return {
+            whole: true,
+            texts: DocumentModel.blocks.map(b => String(b && b.raw || '').trim())
+        };
+    }
+    const all = (typeof document !== 'undefined' && document.querySelectorAll)
+        ? Array.from(document.querySelectorAll('#editor .block')) : [];
+    return { whole: false, texts: all.map(el => (el.innerText || '').trim()) };
+}
+
+/**
+ * The characters with how many lines each speaks, for the cast list in Narrator settings.
+ * Sent to the host as host_narrator_cast. `whole` says whether this was the full book.
  */
 window.narrationCastScan = function () {
-    const all = Array.from(document.querySelectorAll('#editor .block'));
-    const known = knownSpeakers(all);
-    const texts = all.map(el => (el.innerText || '').trim());
+    const src = castScanTexts();
+    const known = knownSpeakers(src.texts);
     const counts = {}, names = {};
-    attributeParagraphs(texts, known).forEach(qs => qs.forEach(q => {
+    attributeParagraphs(src.texts, known).forEach(qs => qs.forEach(q => {
         if (!q.key) return;
         counts[q.key] = (counts[q.key] || 0) + 1;
         if (q.who && !/^(he|she|it|they|i)$/i.test(q.who)) {
@@ -1123,8 +1302,11 @@ window.narrationCastScan = function () {
         const name = Object.keys(forms).sort((a, b) => forms[b] - forms[a])[0] || k;
         return { key: k, name: name, lines: counts[k] };
     }).sort((a, b) => b.lines - a.lines);
-    narrLog('cast scan: ' + list.length + ' characters over ' + all.length + ' blocks');
-    try { window.chrome.webview.postMessage('host_narrator_cast:' + JSON.stringify(list)); } catch (e) {}
+    narrLog('cast scan: ' + list.length + ' characters over ' + src.texts.length + ' blocks'
+        + (src.whole ? ', whole book' : ', loaded part'));
+    try {
+        window.chrome.webview.postMessage('host_narrator_cast:' + JSON.stringify({ whole: src.whole, characters: list }));
+    } catch (e) {}
     return list;
 };
 
@@ -1152,9 +1334,12 @@ function castPieces(text, quotes, from) {
     from = from > 0 ? from : 0;
     let cursor = from, narr = '';
     const flush = () => {
-        const t = narr.trim();
-        if (/[A-Za-z0-9]/.test(t)) blockPieces(t).forEach(p => out.push({ role: 'narration', text: p, direction: narrationDirection(p, null) }));
+        const raw = narr;
         narr = '';
+        const author = authorTagDirection(raw);
+        const spoken = stripAuthorTags(raw).trim();
+        if (!/[A-Za-z0-9]/.test(spoken)) return;
+        blockPieces(spoken).forEach(p => out.push({ role: 'narration', text: p, direction: author || narrationDirection(p, null) }));
     };
     for (const q of quotes) {
         const voice = q.key && _narrCast[q.key];
@@ -1162,13 +1347,22 @@ function castPieces(text, quotes, from) {
         if (q.end <= from) continue;
         if (q.start < from) {
             const rest = text.slice(from, q.end).replace(/["'“”‘’]+\s*$/, '').trim();
-            if (rest) blockPieces(rest).forEach(p => out.push({ role: 'dialogue', text: p, voice: voice, direction: quoteDirection(q), speaker: q.key }));
+            const spoken = stripAuthorTags(rest).trim();
+            if (/[A-Za-z0-9]/.test(spoken)) {
+                const dir = authorTagDirection(rest) || quoteDirection(q);
+                blockPieces(spoken).forEach(p => out.push({ role: 'dialogue', text: p, voice: voice, direction: dir, speaker: q.key }));
+            }
             cursor = q.end;
             continue;
         }
-        narr += text.slice(cursor, q.start);
+        // A tag sitting against the quotation belongs to the speaker, not the narrator.
+        const lead = leadingAuthorTag(text, q.start);
+        const peel = lead && lead.at >= cursor;
+        narr += text.slice(cursor, peel ? lead.at : q.start);
         flush();
-        blockPieces(q.inner.trim()).forEach(p => out.push({ role: 'dialogue', text: p, voice: voice, direction: quoteDirection(q), speaker: q.key }));
+        const dir = authorTagDirection(q.inner) || (peel ? lead.words : '') || quoteDirection(q);
+        const spoken = stripAuthorTags(q.inner.trim());
+        if (/[A-Za-z0-9]/.test(spoken)) blockPieces(spoken).forEach(p => out.push({ role: 'dialogue', text: p, voice: voice, direction: dir, speaker: q.key }));
         cursor = q.end;
     }
     narr += text.slice(cursor);
@@ -1230,8 +1424,8 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
             continue;
         }
         if (cut > 0) text = text.slice(cut).trim();
-        blockPieces(text).forEach((t, k) => pieces.push({
-            el: all[i], at: at, id: at * 100 + k, text: t, direction: narrationDirection(t, all[i])
+        paragraphPieces(text, all[i]).forEach((p, k) => pieces.push({
+            el: all[i], at: at, id: at * 100 + k, text: p.text, direction: p.direction
         }));
     }
     if (graduated) return graduatedBatches(pieces, maxBatches);

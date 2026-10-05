@@ -434,13 +434,54 @@ namespace TypoZen
                 catch (Exception ex) { say("Could not play the sample: " + ex.Message); }
             };
 
+            // The voice a cast row is set to. Rows are built before the voice list exists, so
+            // the combo's only item is then "Narrator's voice" and its selection is not a
+            // choice. Tag keeps the id the row was given until the reader actually picks one,
+            // including Narrator's voice. Save uses this, so opening the window cannot wipe a
+            // character.
+            Func<ComboBox, string> castRowVoice = cb =>
+            {
+                var sel = cb == null ? null : cb.SelectedItem as VoiceItem;
+                string shown = sel != null && sel.Id != null ? sel.Id : "";
+                string want = cb != null && cb.Tag is string ? (string)cb.Tag : "";
+                if (shown.Length > 0) return shown;
+                if (want.Length == 0 || cb == null) return "";
+                foreach (var o in cb.Items)
+                {
+                    var v = o as VoiceItem;
+                    if (v != null && v.Id == want) return "";
+                }
+                return want;
+            };
             Func<string, ComboBox> voicePicker = selected =>
             {
-                var cb = new ComboBox { Width = 250 };
+                var cb = new ComboBox { Width = 250, Tag = selected ?? "" };
                 cb.Items.Add(new VoiceItem { Id = "", Name = "Narrator's voice" });
                 foreach (var v in voices) cb.Items.Add(v);
                 cb.SelectedIndex = 0;
                 for (int i = 1; i < cb.Items.Count; i++) if (((VoiceItem)cb.Items[i]).Id == selected) cb.SelectedIndex = i;
+                cb.SelectionChanged += (s, e) =>
+                {
+                    var item = cb.SelectedItem as VoiceItem;
+                    if (item == null) return;
+                    string id = item.Id ?? "";
+                    if (id.Length == 0)
+                    {
+                        string want = cb.Tag as string ?? "";
+                        if (want.Length > 0)
+                        {
+                            bool listed = false;
+                            foreach (var o in cb.Items)
+                            {
+                                var v = o as VoiceItem;
+                                if (v != null && v.Id == want) { listed = true; break; }
+                            }
+                            // The placeholder, while the saved voice is not in the list yet.
+                            if (!listed) return;
+                        }
+                    }
+                    cb.Tag = id;
+                };
                 return cb;
             };
 
@@ -480,10 +521,7 @@ namespace TypoZen
                 castRows.Clear();
                 castPanel.Children.Clear();
                 foreach (var r in old)
-                {
-                    var sel = r.Item3.SelectedItem as VoiceItem;
-                    addCastRow(r.Item1, r.Item2, sel != null ? sel.Id : "");
-                }
+                    addCastRow(r.Item1, r.Item2, castRowVoice(r.Item3));
                 refreshLibButtons();
             };
 
@@ -1019,7 +1057,26 @@ namespace TypoZen
                     {
                         try
                         {
-                            var list = new JavaScriptSerializer().Deserialize<List<Dictionary<string, object>>>(json);
+                            bool whole = false;
+                            List<Dictionary<string, object>> list;
+                            var ser = new JavaScriptSerializer();
+                            if (json != null && json.TrimStart().StartsWith("{"))
+                            {
+                                var wrap = ser.Deserialize<Dictionary<string, object>>(json);
+                                object w, chars;
+                                list = new List<Dictionary<string, object>>();
+                                if (wrap != null && wrap.TryGetValue("whole", out w) && w is bool) whole = (bool)w;
+                                if (wrap != null && wrap.TryGetValue("characters", out chars))
+                                {
+                                    foreach (var o in (chars as System.Collections.IEnumerable) ?? new object[0])
+                                    {
+                                        var c = o as Dictionary<string, object>;
+                                        if (c != null) list.Add(c);
+                                    }
+                                }
+                            }
+                            else list = ser.Deserialize<List<Dictionary<string, object>>>(json)
+                                       ?? new List<Dictionary<string, object>>();
                             int shown = 0;
                             foreach (var c in list)
                             {
@@ -1029,8 +1086,11 @@ namespace TypoZen
                                 string chosen;
                                 addCastRow(key, name, cast.Voices.TryGetValue(key, out chosen) ? chosen : "");
                             }
-                            say(list.Count == 0 ? "No named speakers found in the part of the book that is loaded."
-                                                : "The most frequent speakers in the loaded part of the book. Give voices to the ones you want.");
+                            say(list.Count == 0
+                                ? (whole ? "No named speakers found in this book."
+                                         : "No named speakers found in the part of the book that is loaded.")
+                                : (whole ? "The most frequent speakers in this book. Give voices to the ones you want."
+                                         : "The most frequent speakers in the loaded part of the book. Give voices to the ones you want."));
                         }
                         catch (Exception ex) { say("Could not read the character list: " + ex.Message); }
                     }));
@@ -1049,8 +1109,8 @@ namespace TypoZen
                     QwenNarrator.SaveSettings(cacheDir, settings);
                     foreach (var r in castRows)
                     {
-                        var sel = r.Item3.SelectedItem as VoiceItem;
-                        if (sel != null && sel.Id.Length > 0) { cast.Voices[r.Item1] = sel.Id; cast.Names[r.Item1] = r.Item2; }
+                        string id = castRowVoice(r.Item3);
+                        if (id.Length > 0) { cast.Voices[r.Item1] = id; cast.Names[r.Item1] = r.Item2; }
                         else { cast.Voices.Remove(r.Item1); cast.Names.Remove(r.Item1); }
                     }
                     QwenNarrator.SaveCast(cacheDir, book, cast);
@@ -1070,8 +1130,7 @@ namespace TypoZen
                     || cue != (settings.Cue ?? "").Trim() || (directBox.IsChecked == true) != settings.Direct) return true;
                 foreach (var r in castRows)
                 {
-                    var sel = r.Item3.SelectedItem as VoiceItem;
-                    string now = sel != null ? sel.Id : "", was;
+                    string now = castRowVoice(r.Item3), was;
                     if (!cast.Voices.TryGetValue(r.Item1, out was)) was = "";
                     if (now != was) return true;
                 }

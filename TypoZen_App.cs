@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.14.6";
+        internal const string AppVersion = "0.14.8";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -2636,7 +2636,10 @@ namespace TypoZen
                 if (vkFn == 0x70) // VK_F1
                 {
                     handled = true;
-                    Dispatcher.BeginInvoke(new Action(() => SendMsg("cmd:help_syntax")),
+                    // ShowHelpPanel, not SendMsg. SendMsg drops every cmd: while a
+                    // native tab is showing, so F1 was swallowed and Help never opened.
+                    // The Help menu already uses ShowHelpPanel.
+                    Dispatcher.BeginInvoke(new Action(() => ShowHelpPanel("cmd:help_syntax")),
                         DispatcherPriority.Send);
                     return;
                 }
@@ -2851,7 +2854,7 @@ namespace TypoZen
                     e.Handled = true;
                 }
             }
-            else if (e.Key == Key.F1) { SendMsg("cmd:help_syntax"); e.Handled = true; }
+            else if (e.Key == Key.F1) { ShowHelpPanel("cmd:help_syntax"); e.Handled = true; }
             else if (e.Key == Key.F7) { SendMsg("cmd:toggle_reveal"); e.Handled = true; }
             else if (e.Key == Key.F8) { SendMsg("cmd:toggle_focus"); e.Handled = true; }
             else if (e.Key == Key.F9) { SendMsg("cmd:toggle_typewriter"); e.Handled = true; }
@@ -6635,7 +6638,7 @@ namespace TypoZen
             // attach to the real WebView2, with the real WPF host, real window size and real
             // focus behaviour. Off unless --debug, so an ordinary run never opens a port.
             string extraArgs =
-                "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1, MAP localbooks 127.0.0.1, MAP localview 127.0.0.1, MAP localload 127.0.0.1, MAP localpdf 127.0.0.1\""
+                "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1, MAP localbooks 127.0.0.1, MAP localbooksp 127.0.0.1, MAP localview 127.0.0.1, MAP localload 127.0.0.1, MAP localloadp 127.0.0.1, MAP localpdf 127.0.0.1\""
                 + " --disable-background-networking"
                 + " --disable-component-update"
                 + " --disable-sync"
@@ -6687,8 +6690,9 @@ namespace TypoZen
                 // is remote (a VPN, say) that NXDOMAIN round trip costs ~2 s *per navigation*
                 // before the mapping is consulted. Measured here: 2,063 ms -> 61 ms.
                 // Pinning them to loopback skips the lookup. localbooks / localview /
-                // localload were added later and must stay on this list or they pay
-                // the same NXDOMAIN cost. The app itself makes no network requests.
+                // localload were added later, and Privacy Mode's localloadp / localbooksp
+                // after that. Each must stay on this list or it pays the same NXDOMAIN
+                // cost. The app itself makes no network requests.
                 // Second group: WebView2's browser process otherwise runs Chromium background
                 // services on startup - component updates, Safe Browsing list refreshes, sync -
                 // even though this app never requests a URL. Switched off here.
