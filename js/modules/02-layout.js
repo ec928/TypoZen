@@ -3224,15 +3224,27 @@
         };
 
         function applySpellFix(replacement) {
-            const word = _selPopWord || (window.getSelection() && window.getSelection().toString()) || '';
-            if (!replacement) return;
+            const word = _selPopWord || '';
+            if (!replacement || !word) return;
             hideSelPop();
+            // The row was built for one word. Reading used to move the selection
+            // onto a later paragraph before the click landed, and the replacement
+            // then deleted that whole stretch. A selection that is no longer the
+            // word is left alone.
+            const sameWord = function (text) {
+                const tw = String(text || '').match(/(\s+)$/);
+                const core = tw ? String(text).slice(0, String(text).length - tw[1].length) : String(text || '');
+                return core === word;
+            };
             if (state.mode === 'source' && sourceEditor) {
                 const a = sourceEditor.selectionStart, b = sourceEditor.selectionEnd;
-                if (b > a) {
+                if (b > a && sameWord(sourceEditor.value.slice(a, b))) {
                     const v = sourceEditor.value;
-                    sourceEditor.value = v.slice(0, a) + replacement + v.slice(b);
-                    sourceEditor.selectionStart = sourceEditor.selectionEnd = a + replacement.length;
+                    const selected = v.slice(a, b);
+                    const tw = selected.match(/(\s+)$/);
+                    const put = tw ? replacement + tw[1] : replacement;
+                    sourceEditor.value = v.slice(0, a) + put + v.slice(b);
+                    sourceEditor.selectionStart = sourceEditor.selectionEnd = a + put.length;
                     sourceEditor.dispatchEvent(new Event('input', { bubbles: true }));
                 }
                 scheduleSpellCheck();
@@ -3240,6 +3252,8 @@
             }
             const sel = window.getSelection();
             if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+            const selText = sel.toString() || '';
+            if (!sameWord(selText)) return;
             try {
                 if (typeof HistoryManager !== 'undefined') HistoryManager.beginEdit();
                 const range = sel.getRangeAt(0);
@@ -3247,7 +3261,6 @@
                 // space: "tre " instead of "tre". deleteContents would eat it, so
                 // "tree" lands right against the next word → "treetree". Keep
                 // whatever whitespace the browser included beyond the word itself.
-                const selText = sel.toString() || '';
                 const trailingWs = selText.match(/(\s+)$/);
                 if (trailingWs) replacement = replacement + trailingWs[1];
                 range.deleteContents();

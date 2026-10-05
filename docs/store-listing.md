@@ -52,7 +52,7 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.14.10 package. The notes below are this release. The last notes kept here were for the 0.11.15 submission; if the Store is still on a build before 0.14.10, confirm these cover the gap before submitting._
+_Limit 1,500 characters. For the 0.14.11 package. The notes below are this release. The last notes kept here were for the 0.11.15 submission; if the Store is still on a build before 0.14.11, confirm these cover the gap before submitting._
 
 The Qwen narrator, once installed from Extensions:
 
@@ -61,6 +61,7 @@ The Qwen narrator, once installed from Extensions:
 - A double bracket, [[shouts loudly]], anywhere in that sentence overrides every instruction, including the character's default, and is not spoken.
 - With Emotion cues on, and no bracket, the words of a speech tag are added to the standing instruction. "said", "asked" and "told" are left out, so "sadly said" adds "sadly".
 - The narrator and a character's quotation are read separately. Keep the speaker's name within eight words of the quotation.
+- Selecting text while the narrator is reading no longer raises the browser spelling menu. Accepting one of those suggestions used to delete the following paragraphs.
 
 ---
 
@@ -71,7 +72,7 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.14.10.0); every other package removed from the submission |
+| 2 | Packages | the newest MSIX (0.14.11.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
 | 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. For 0.11.15 only **What's new** changes; the rest was synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |

@@ -53,6 +53,8 @@ const source = fs.readFileSync(path.join(root, 'js', 'modules', '01a-source.js')
 assert(/id="source-cm"/.test(html) && /contentAttributes\.of\(\{\s*spellcheck:\s*'false'/.test(source),
     'Source (CodeMirror in #source-cm) has Chromium spellcheck off');
 assert(/id="editor"[^>]*spellcheck="false"/.test(html), 'Preview editor has Chromium spellcheck off');
+assert(/<html[^>]*spellcheck="false"/.test(html) && /<html[^>]*writingsuggestions="false"/.test(html),
+    'the document does not opt in to the browser spelling menu');
 assert(/spellCheckTexts/.test(source) && /spellCached/.test(source) && /typozen-spell/.test(source) && /recheckSpelling\(\)/.test(source),
     'Source checks its visible lines through the shared, remembering checker and draws typozen-spell');
 // Suggestions only when a word is selected: a check finds misspellings, nothing more.

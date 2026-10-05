@@ -116,6 +116,21 @@ function readingBlocks() {
 let _currentTTSBlockEl = null;
 let _currentTTSChunkIdx = null;
 
+// True from pointer-down until pointer-up. Reading must not scroll or steal a
+// selection the reader is in the middle of making.
+window._tzPointerSelecting = false;
+document.addEventListener('pointerdown', function () { window._tzPointerSelecting = true; }, true);
+document.addEventListener('pointerup', function () { window._tzPointerSelecting = false; }, true);
+document.addEventListener('pointercancel', function () { window._tzPointerSelecting = false; }, true);
+
+function readerHoldingSelection() {
+    try {
+        if (window._tzPointerSelecting) return true;
+        const s = window.getSelection();
+        return !!(s && !s.isCollapsed);
+    } catch (e) { return false; }
+}
+
 window.restoreTTSFocus = function() {
     if (!isPlaying || _currentTTSChunkIdx == null) return;
     const editor = document.getElementById('editor');
@@ -358,7 +373,12 @@ function playNextChunk() {
     const editor = document.getElementById('editor');
     let targetEl = chunk.el;
 
-    if (chunk.idx != null && typeof goToPageHoldingBlock === 'function' && typeof isPaginatedLayout === 'function' && isPaginatedLayout()) {
+    // The caret stays where the reader left it. Moving it onto the paragraph
+    // being read is what raised the browser spelling menu (Anna / Anan / Amna)
+    // over a selection, and accepting one of those suggestions deleted the
+    // paragraphs after the line. The highlight is the reading marker.
+    const holdSel = readerHoldingSelection();
+    if (!holdSel && chunk.idx != null && typeof goToPageHoldingBlock === 'function' && typeof isPaginatedLayout === 'function' && isPaginatedLayout()) {
         goToPageHoldingBlock(chunk.idx);
         // Wait a frame for DOM to update after page turn
         requestAnimationFrame(() => {
@@ -368,16 +388,6 @@ function playNextChunk() {
                 if (targetEl) {
                     targetEl.classList.add('tts-active');
                     _currentTTSBlockEl = targetEl;
-                    
-                    try {
-                        const sel = window.getSelection();
-                        const range = document.createRange();
-                        range.selectNodeContents(targetEl);
-                        range.collapse(true);
-                        sel.removeAllRanges();
-                        sel.addRange(range);
-                        if (typeof updateStats === 'function') updateStats();
-                    } catch (e) {}
                 }
             }
             // Same rule as the unpaginated branch below: a chunk that already has audio
@@ -400,21 +410,11 @@ function playNextChunk() {
             window.tzPdfReadFocus(targetEl);
             _currentTTSBlockEl = targetEl;
         } else if (targetEl) {
-            if (typeof targetEl.scrollIntoView === 'function' && !(typeof isPaginatedLayout === 'function' && isPaginatedLayout())) {
+            if (!holdSel && typeof targetEl.scrollIntoView === 'function' && !(typeof isPaginatedLayout === 'function' && isPaginatedLayout())) {
                 targetEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
             }
             targetEl.classList.add('tts-active');
             _currentTTSBlockEl = targetEl;
-            
-            try {
-                const sel = window.getSelection();
-                const range = document.createRange();
-                range.selectNodeContents(targetEl);
-                range.collapse(true);
-                sel.removeAllRanges();
-                sel.addRange(range);
-                if (typeof updateStats === 'function') updateStats();
-            } catch (e) {}
         }
         // Pre-rendered narration arrives as a chunk like any other, with a URL on it.
         // Nothing above this line knows the difference, which is the point: the highlight,

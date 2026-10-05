@@ -2455,6 +2455,16 @@
                     && e.inputType !== 'insertReplacementText') return;
                 if (selectionHoldsPicture()) e.preventDefault();
             }, true);
+            // The browser's spelling menu replaces the marker it stored, not the word
+            // on screen. In this editor that marker covered the paragraphs after the
+            // line, and accepting a suggestion deleted them (Ed, 2026-10-05). The
+            // selection popover replaces a word itself. The document does not ask
+            // the browser to check spelling.
+            editor.addEventListener('beforeinput', function onEditorRejectBrowserSpell(e) {
+                if (state.mode === 'source') return;
+                if (!e || e.inputType !== 'insertReplacementText') return;
+                e.preventDefault();
+            }, true);
             editor.addEventListener('keydown', function onEditorOverwriteKey(e) {
                 if (!window.tzOverwrite || state.mode === 'source') return;
                 if (window.isComposing || e.isComposing || e.keyCode === 229) return;
