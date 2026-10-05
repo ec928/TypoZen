@@ -52,19 +52,15 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.11.15 submission (Submission 9, submitted for certification 2026-09-30; the Store was on 0.10.10, and the 0.11.10 submission was stopped before certification)._
+_Limit 1,500 characters. For the 0.14.10 package. The notes below are this release. The last notes kept here were for the 0.11.15 submission; if the Store is still on a build before 0.14.10, confirm these cover the gap before submitting._
 
-- Switching tabs changes the theme, text size and spacing in one step, and books open noticeably faster, large ones most of all.
-- Fixed: a Markdown tab could show an empty page after a book was opened from it, and fast Ctrl+Tab could create a duplicate tab.
-- Tab types a tab, as in Notepad, and Shift+Tab takes one back. Insert switches to overwrite.
-- Spaces are kept exactly as typed, and every edit, even a single space or tab, can be undone. Undo puts the caret back where the change was.
-- Bold, lists, deleting, undo and redo keep the page still instead of jumping.
-- A picture is removed only by Delete, Backspace or Cut; typing or pasting over it no longer deletes it.
-- Print and Export PDF print long documents and whole books.
-- PDFs in Pages mode: the scrubber moves through the PDF, the page indicator shows its page numbers and opens Go to Page, and a spread fits the window exactly.
-- Switching between one and two columns widens the window in place instead of moving it.
-- Book pictures show on scaled displays, and covers keep their shape.
-- Faster startup, and large documents open faster in two columns.
+The Qwen narrator, once installed from Extensions:
+
+- Design a voice, then give each character in a book their own voice and a standing instruction. A row's play button speaks a short line in that voice.
+- A bracket to the right of a speaker, such as Anna [whispers softly], "Get out.", is that line's instruction and is not spoken. It replaces her standing instruction for that line.
+- A double bracket, [[shouts loudly]], anywhere in that sentence overrides every instruction, including the character's default, and is not spoken.
+- With Emotion cues on, and no bracket, the words of a speech tag are added to the standing instruction. "said", "asked" and "told" are left out, so "sadly said" adds "sadly".
+- The narrator and a character's quotation are read separately. Keep the speaker's name within eight words of the quotation.
 
 ---
 
@@ -75,7 +71,7 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.11.15.0); every other package removed from the submission, including the 0.11.10.0 upload |
+| 2 | Packages | the newest MSIX (0.14.10.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
 | 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. For 0.11.15 only **What's new** changes; the rest was synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |

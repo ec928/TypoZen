@@ -223,7 +223,7 @@ namespace TypoZen
             var directBox = check("Add a cue to lines tagged with how they are said");
             directBox.IsChecked = settings.Direct;
             left.Children.Add(directBox);
-            var cueExample = note("“Go,” she whispered  →  whispered, hushed.  Off, the narrator judges emotion from the text alone.");
+            var cueExample = note("“Go,” she whispered  →  the standing instruction, then whispered.  Off, only the standing instruction is sent.");
             cueExample.Margin = new Thickness(22, 0, 0, 4);
             left.Children.Add(cueExample);
             var cueBox = new TextBox { Text = settings.Cue, TextWrapping = TextWrapping.Wrap, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };

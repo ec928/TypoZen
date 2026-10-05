@@ -94,7 +94,8 @@ namespace TypoZen
         private const string LegacyDialogue = " Give the spoken lines a light, distinct colour without acting them out.";
         private const string StylePrefix = "Narrate as an audiobook reader of literary fiction. ";
         /// <summary>
-        /// How an emotion cue is worded when it is added; {cue} is the cue ("whispered, hushed").
+        /// How a punctuation cue is worded when it is added; {cue} is emphatic or breaking off.
+        /// A speech tag's own words are added by the page, not passed through this sentence.
         /// The plain "Voice the lines in quotation marks as {cue}." was the default in 0.6.19, on
         /// the reasoning that "restraint" fights the cue; by ear it came out less angry than this
         /// wording on "I know," she snapped, against the same cues-off clip (2026-09-26, one take

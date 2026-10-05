@@ -64,9 +64,9 @@ NARRATION_BASE = (
 LIGHT_DIALOGUE = " Give the spoken lines a light, distinct colour without acting them out."
 NARRATION_CRAFT = NARRATION_BASE + LIGHT_DIALOGUE
 
-# Direction (slice 3): the page reads how a paragraph's spoken lines should sound from the text
-# around them -- "whispered, hushed", "sharp and angry" -- and it is added to the instruction
-# for that paragraph only. 'thought' is a paragraph that is a character's private thought.
+# A speech tag's own words arrive as the instruction. A direction that still arrives
+# (emphatic, breaking off, or thought) is wrapped with the wording below. 'thought' is a
+# paragraph that is a character's private thought.
 DIRECTED_SUFFIX = (" Voice the lines in quotation marks as %s, clearly but with restraint, "
                    "and keep the narration around them measured.")
 THOUGHT_SUFFIX = " This passage is a character's private thought: read it quieter and more inward."
@@ -541,10 +541,19 @@ class Narrator(object):
         if private:
             os.makedirs(self.private_dir, exist_ok=True)
         voices = [self.known_voice(b.get('voice') or voice) for b in blocks]
-        instructions = [self.instruction(
-            style, b.get('direction'), b.get('role') or 'narration', whole, cue,
-            b.get('instruction') if (b.get('role') or 'narration') == 'dialogue' else None)
-            for b in blocks]
+        def told(b):
+            # A line instruction on a narration piece replaces the narrator's standing
+            # instruction for that piece. On a cast line it is `own`, already the override.
+            role = b.get('role') or 'narration'
+            piece = b.get('instruction')
+            use_whole = whole
+            own = None
+            if role == 'dialogue':
+                own = piece
+            elif isinstance(piece, str) and piece.strip():
+                use_whole = piece
+            return self.instruction(style, b.get('direction'), role, use_whole, cue, own)
+        instructions = [told(b) for b in blocks]
         keys = [self.key_for(b['text'], v, i, seed) for b, v, i in zip(blocks, voices, instructions)]
         found = [self.find(k, private) for k in keys]
         have = [f[0] for f in found]

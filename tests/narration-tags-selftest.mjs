@@ -1,10 +1,14 @@
 /**
  * Author stage directions and the cast scan (js/modules/09-speech.js).
  *
- * A bracket stays in the spoken text of whoever says that part of the line. A span tag
- * that opens a split piece is repeated on the later pieces. A tag against a quotation
- * goes with the speaker, still as a bracket. Find characters reads the whole markdown
- * or text file, and only the loaded chapter of an epub.
+ * A bracket stays in the spoken text of whoever says that part of the line, except a
+ * line instruction: a bracket to the right of a named speaker, or, with no speaker,
+ * a bracket beside the quotation. That one is told and not spoken, and it replaces
+ * the cast instruction or the narrator's for that quotation. [[tag]] anywhere in
+ * that quotation's sentence does the same and beats the cast box, the narrator box,
+ * a speech tag, and a single bracket. A span tag that opens a
+ * split piece is repeated on the later pieces. Find characters reads the whole
+ * markdown or text file, and only the loaded chapter of an epub.
  *
  *   node tests/narration-tags-selftest.mjs
  */
@@ -16,14 +20,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const src = fs.readFileSync(path.join(here, '..', 'js', 'modules', '09-speech.js'), 'utf8');
 
 const start = src.indexOf('const NARRATION_PIECE_CAP');
-const at = src.indexOf('function castPieces');
+const at = src.indexOf('function narrationBatches');
 if (start < 0 || at < start) throw new Error('narration slice not found');
 let i = src.indexOf('{', at), depth = 0, end = -1;
 for (; i < src.length; i++) {
     if (src[i] === '{') depth++;
     else if (src[i] === '}' && --depth === 0) { end = i; break; }
 }
-if (end < 0) throw new Error('castPieces did not close');
+if (end < 0) throw new Error('narrationBatches did not close');
 
 const posted = [];
 const document = {
@@ -39,12 +43,14 @@ const api = new Function('document', 'window', 'box', [
     'let DocumentModel = box.model;',
     'let _narrCast = {};',
     'let _narrCastSay = {};',
+    'const NARRATION_BATCH = 8;',
     'function narrLog() {}',
     src.slice(start, end + 1),
     'return {',
     '  paragraphPieces: paragraphPieces,',
     '  castPieces: castPieces,',
     '  narrationQuotes: narrationQuotes,',
+    '  narrationBatches: narrationBatches,',
     '  narrationCastScan: window.narrationCastScan,',
     '  setCast: function (c) { _narrCast = c; },',
     '  setCastSay: function (c) { _narrCastSay = c || {}; },',
@@ -109,7 +115,7 @@ api.setCast({ anna: 'qwen-ryan' });
 {
     const text = '"Get out," Anna snapped.';
     const talk = api.castPieces(text, api.narrationQuotes(text), 0).filter(p => p.role === 'dialogue');
-    eq('a speech verb is still a cue', talk.map(p => p.direction), ['sharp and angry']);
+    eq('a speech verb is still a cue', talk.map(p => p.direction), ['snapped']);
 }
 {
     const text = '"Hmm." Anna was quietly snoring.';
@@ -120,12 +126,12 @@ api.setCast({ anna: 'qwen-ryan' });
 {
     const text = '"Get out," Anna snapped. She was quietly snoring.';
     const talk = api.castPieces(text, api.narrationQuotes(text), 0).filter(p => p.role === 'dialogue');
-    eq('a speech tag still cues when another sentence follows', talk.map(p => p.direction), ['sharp and angry']);
+    eq('a speech tag still cues when another sentence follows', talk.map(p => p.direction), ['snapped']);
 }
 {
     const text = 'Anna said quietly "Hello there."';
     const talk = api.castPieces(text, api.narrationQuotes(text), 0).filter(p => p.role === 'dialogue');
-    eq('an adverb in the same sentence still cues', talk.map(p => p.direction), ['quiet and soft']);
+    eq('an adverb in the same sentence still cues', talk.map(p => p.direction), ['said quietly']);
 }
 {
     const text = 'She was shouting. "Hello," Anna said.';
@@ -136,7 +142,7 @@ api.setCast({ anna: 'qwen-ryan' });
     const text = '[sad] "Get out," Anna snapped.';
     const pieces = api.castPieces(text, api.narrationQuotes(text), 0);
     eq('the bracket stays on the speaker', pieces.filter(p => p.role === 'dialogue').map(p => p.text), ['[sad] Get out,']);
-    eq('the speech verb is still the cue', pieces.filter(p => p.role === 'dialogue').map(p => p.direction), ['sharp and angry']);
+    eq('the speech verb is still the cue', pieces.filter(p => p.role === 'dialogue').map(p => p.direction), ['snapped']);
     check('the tag is not in the narration', pieces.filter(p => p.role === 'narration').every(p => p.text.indexOf('[') < 0));
 }
 {
@@ -164,7 +170,7 @@ console.log('--- a character instruction goes out with that character');
     const talk = pieces.filter(p => p.role === 'dialogue');
     eq('the character instruction is on the line', talk.map(p => p.instruction),
         ['Speak in a sad, sorrowful tone, voice low and heavy.']);
-    eq('the speech verb is still recorded', talk.map(p => p.direction), ['sharp and angry']);
+    eq('the speech verb is still recorded', talk.map(p => p.direction), ['snapped']);
     check('narration is not given the character instruction',
         pieces.filter(p => p.role === 'narration').every(p => !p.instruction));
 }
@@ -209,7 +215,8 @@ eq('Jill, after a long wait, said:', speakerKeys('Jill, after a long wait, said:
 eq('Jill, said', speakerKeys('Jill, said "Hello there."'), ['jill']);
 eq('Jill said, after a long wait,', speakerKeys('Jill said, after a long wait, "Hello there."'), ['jill']);
 eq('a name six words away', speakerKeys('Jill one two three four five "Hello there."'), ['jill']);
-eq('a name seven words away', speakerKeys('Jill one two three four five six "Hello there."'), ['']);
+eq('a name eight words away', speakerKeys('Jill one two three four five six seven "Hello there."'), ['jill']);
+eq('a name nine words away', speakerKeys('Jill one two three four five six seven eight "Hello there."'), ['']);
 eq('the nearer name wins', speakerKeys('Bob talked, then Jill said "Hello there."'), ['jill']);
 eq('Jill told Paul', speakerKeys('Jill told Paul "Hello there."'), ['jill']);
 eq('Jill asked Paul', speakerKeys('Jill asked Paul "Hello there."'), ['jill']);
@@ -269,11 +276,249 @@ api.setModel({
     eq('epub scan is not the whole book', msg.whole, false);
 }
 
-console.log('--- emotion cues still gate the instruction');
-check('narration blanks direction when cues are off',
-    /direction: _narrDirect \? \(p\.direction \|\| ''\) : ''/.test(src));
-check('Try it blanks direction when cues are off',
-    /direction: o\.direct \? p\.direction : ''/.test(src));
+console.log('--- a bracket to the right of a character replaces that character\'s instruction');
+function lineOf(text) {
+    return api.castPieces(text, api.narrationQuotes(text), 0);
+}
+api.setCast({ anna: 'qwen-ryan' });
+api.setCastSay({ anna: 'Sad, low pitched, slow speech' });
+{
+    const text = 'Anna [whispers softly with slow speech], "Get out."';
+    const pieces = lineOf(text);
+    const talk = pieces.filter(p => p.role === 'dialogue');
+    eq('the bracket is not spoken on her line', talk.map(p => p.text), ['Get out.']);
+    eq('the bracket replaces the cast instruction', talk.map(p => p.instruction),
+        ['whispers softly with slow speech']);
+    eq('the name stays with the narrator', pieces.filter(p => p.role === 'narration').map(p => p.text), ['Anna.']);
+    eq('softly inside the bracket is not a cue', talk.map(p => p.direction), ['']);
+    check('the narrator is not given her instruction',
+        pieces.filter(p => p.role === 'narration').every(p => !p.instruction));
+}
+{
+    const text = '"Get out," Anna [whispers softly].';
+    const pieces = lineOf(text);
+    const talk = pieces.filter(p => p.role === 'dialogue');
+    eq('a trailing bracket replaces the cast instruction', talk.map(p => p.instruction), ['whispers softly']);
+    eq('a trailing bracket is not spoken', talk.map(p => p.text), ['Get out,']);
+    eq('the trailing name stays narration', pieces.filter(p => p.role === 'narration').map(p => p.text), ['Anna.']);
+}
+{
+    const text = 'Anna [whispers softly] "Get out."';
+    const talk = lineOf(text).filter(p => p.role === 'dialogue');
+    eq('a glued bracket is an instruction, not a spoken tag', talk.map(p => p.text), ['Get out.']);
+    eq('a glued bracket is the line instruction', talk.map(p => p.instruction), ['whispers softly']);
+}
+eq('a long bracket does not hide the name',
+    api.narrationQuotes('Anna [one two three four five six seven], "Hello there."').map(q => q.key), ['anna']);
+{
+    const text = '[sad] Anna, "Hello."';
+    const pieces = lineOf(text);
+    eq('a bracket to the left of the name stays spoken',
+        pieces.filter(p => p.role === 'narration').map(p => p.text), ['[sad] Anna.']);
+    eq('a bracket to the left does not replace the cast instruction',
+        pieces.filter(p => p.role === 'dialogue').map(p => p.instruction), ['Sad, low pitched, slow speech']);
+}
+{
+    const text = 'Anna said "[whispered] Get out."';
+    const talk = lineOf(text).filter(p => p.role === 'dialogue');
+    eq('a bracket inside the quote stays spoken', talk.map(p => p.text), ['[whispered] Get out.']);
+    eq('a bracket inside the quote is not the line instruction', talk.map(p => p.instruction),
+        ['Sad, low pitched, slow speech']);
+}
+{
+    api.setCast({});
+    const text = 'Anna [whispers softly], "Get out."';
+    const pieces = lineOf(text);
+    eq('an unvoiced name stays narration', pieces.filter(p => p.role === 'narration' && p.text.indexOf('Anna') >= 0).map(p => p.text), ['Anna.']);
+    const quote = pieces.filter(p => p.text.indexOf('Get out') >= 0);
+    eq('an unvoiced quote is spoken by the narrator', quote.map(p => p.role), ['narration']);
+    eq('an unvoiced quote keeps its marks', quote.map(p => p.text), ['"Get out."']);
+    eq('an unvoiced quote takes the bracket', quote.map(p => p.instruction), ['whispers softly']);
+}
+
+console.log('--- with no character, a bracket beside a quote replaces the narrator\'s instruction');
+function read(text) {
+    api.setCast({ anna: 'qwen-ryan' });
+    api.setCastSay({ anna: 'Sad, low pitched, slow speech' });
+    const el = { innerText: text, getAttribute: function () { return null; } };
+    const batches = api.narrationBatches([el], 0, 1);
+    return batches.length ? batches[0] : [];
+}
+{
+    const pieces = read('She shut the door. [whispers softly with slow speech] "Get out." Then she waited.');
+    eq('the quotation is its own piece', pieces.map(p => p.text),
+        ['She shut the door.', '"Get out."', 'Then she waited.']);
+    eq('only the quotation takes the bracket', pieces.map(p => p.instruction || ''),
+        ['', 'whispers softly with slow speech', '']);
+    eq('the quotation stays with the narrator', pieces.map(p => p.role),
+        ['narration', 'narration', 'narration']);
+}
+{
+    const pieces = read('[whispers softly with slow speech] "Get out."');
+    eq('a leading bracket on a bare quote is the instruction', pieces.map(p => p.instruction || ''),
+        ['whispers softly with slow speech']);
+    eq('a leading bracket on a bare quote is not spoken', pieces.map(p => p.text), ['"Get out."']);
+}
+{
+    const pieces = read('"Get out." [whispers softly]');
+    eq('a trailing bracket on a bare quote is the instruction', pieces.map(p => p.instruction || ''),
+        ['whispers softly']);
+    eq('a trailing bracket on a bare quote is not spoken', pieces.map(p => p.text), ['"Get out."']);
+}
+{
+    const pieces = read('"Hi". [whispers]');
+    eq('a bracket after the sentence is not an instruction', pieces.map(p => p.instruction || ''), ['']);
+    check('a bracket after the sentence stays spoken', pieces.some(p => p.text.indexOf('[whispers]') >= 0));
+}
+{
+    api.setCast({});
+    api.setCastSay({});
+    const el = { innerText: '[whispers softly] "Get out."', getAttribute: function () { return null; } };
+    const pieces = api.narrationBatches([el], 0, 1)[0];
+    eq('no cast at all still gives the narrator the bracket', pieces.map(p => p.instruction || ''),
+        ['whispers softly']);
+    eq('no cast at all does not speak the bracket', pieces.map(p => p.text), ['"Get out."']);
+}
+{
+    const pieces = read('Anna [whispers softly with slow speech], "Get out."');
+    const talk = pieces.filter(p => p.role === 'dialogue');
+    eq('a cast line still uses the bracket when the book is read', talk.map(p => p.instruction),
+        ['whispers softly with slow speech']);
+    eq('a cast line still does not speak the bracket', talk.map(p => p.text), ['Get out.']);
+}
+
+console.log('--- [[tag]] overrides every other instruction and is not spoken');
+{
+    const whisper = 'whispers, speaks very quietly, softly, low pitched and very slowly';
+    api.setCast({ anna: 'qwen-ryan' });
+    api.setCastSay({ anna: whisper });
+    {
+        const text = 'Anna [[shouts loudly]] sadly said "Goodbye everyone"';
+        const pieces = lineOf(text);
+        const talk = pieces.filter(p => p.role === 'dialogue');
+        eq('a double bracket is not spoken', talk.map(p => p.text), ['Goodbye everyone']);
+        eq('a double bracket replaces the cast box', talk.map(p => p.instruction), ['shouts loudly']);
+        eq('a double bracket is marked as the line instruction', talk.map(p => p.bracket), [true]);
+        check('the lead-in does not speak the double bracket',
+            pieces.filter(p => p.role === 'narration').every(p => p.text.indexOf('[[') < 0 && p.text.indexOf('shouts') < 0));
+        check('the lead-in keeps the narrator instruction',
+            pieces.filter(p => p.role === 'narration').every(p => !p.instruction));
+    }
+    {
+        const text = '[[shouts loudly]] "Goodbye," Anna said.';
+        const pieces = lineOf(text);
+        const talk = pieces.filter(p => p.role === 'dialogue');
+        eq('a double bracket to the left of the name is the instruction', talk.map(p => p.instruction), ['shouts loudly']);
+        eq('a double bracket to the left is not spoken', talk.map(p => p.text), ['Goodbye,']);
+        check('the name is still found to the right of a double bracket',
+            pieces.some(p => p.role === 'narration' && p.text.indexOf('Anna') >= 0));
+    }
+    {
+        const text = 'Anna said "[[shouts loudly]] Goodbye everyone"';
+        const pieces = lineOf(text);
+        const talk = pieces.filter(p => p.role === 'dialogue');
+        eq('a double bracket inside the quote is the instruction', talk.map(p => p.instruction), ['shouts loudly']);
+        eq('a double bracket inside the quote is not spoken', talk.map(p => p.text), ['Goodbye everyone']);
+        check('no piece speaks a double bracket', pieces.every(p => p.text.indexOf('[[') < 0 && p.text.indexOf(']]') < 0));
+    }
+    {
+        const text = 'Anna [whispers softly] [[shouts loudly]], "Get out."';
+        const pieces = lineOf(text);
+        const talk = pieces.filter(p => p.role === 'dialogue');
+        eq('a double bracket beats a single bracket', talk.map(p => p.instruction), ['shouts loudly']);
+        eq('neither bracket is spoken', talk.map(p => p.text), ['Get out.']);
+        check('the single bracket is not left in the lead-in',
+            pieces.filter(p => p.role === 'narration').every(p => p.text.indexOf('[') < 0));
+    }
+    eq('a long double bracket does not hide the name',
+        api.narrationQuotes('Anna [[one two three four five six seven eight nine]], "Hello there."').map(q => q.key), ['anna']);
+    {
+        const text = '[[shouts loudly]] The door opened. Anna said "Hello."';
+        const pieces = lineOf(text);
+        const talk = pieces.filter(p => p.role === 'dialogue');
+        eq('a double bracket in the previous sentence does not replace Anna', talk.map(p => p.instruction), [whisper]);
+        eq('that earlier tag is the narrator\'s instruction',
+            pieces.filter(p => p.role === 'narration').map(p => p.instruction), ['shouts loudly']);
+        check('that earlier tag is not spoken',
+            pieces.every(p => p.text.indexOf('[[') < 0 && p.text.indexOf('shouts') < 0));
+    }
+    {
+        const pieces = api.paragraphPieces('[[measured and quiet]] The door opened.', null);
+        eq('narration keeps the double bracket as its instruction', pieces.map(p => p.instruction), ['measured and quiet']);
+        eq('narration does not speak the double bracket', pieces.map(p => p.text), ['The door opened.']);
+        eq('narration marks the double bracket', pieces.map(p => p.bracket), [true]);
+    }
+    {
+        api.setCast({});
+        api.setCastSay({});
+        const el = { innerText: '[[measured and quiet]] The door opened.', getAttribute: function () { return null; } };
+        const pieces = api.narrationBatches([el], 0, 1)[0];
+        eq('a reading with no cast sends the double bracket', pieces.map(p => p.instruction || ''), ['measured and quiet']);
+        eq('a reading with no cast does not speak it', pieces.map(p => p.text), ['The door opened.']);
+    }
+    api.setCast({ anna: 'qwen-ryan' });
+    api.setCastSay({ anna: 'Sad, low pitched, slow speech' });
+}
+
+console.log('--- a speech tag is the instruction, in the words written there');
+{
+    const text = 'Anna shouts, speaks loudly, forcefully, fast: "Get out of this house and do not come back until I say so."';
+    const pieces = api.paragraphPieces(text, null);
+    eq('the clause, without the name, is the cue', pieces.map(p => p.direction),
+        ['shouts, speaks loudly, forcefully, fast']);
+    api.setCast({ anna: 'qwen-ryan' });
+    api.setCastSay({ anna: 'Sad, low pitched, slow speech' });
+    const talk = api.castPieces(text, api.narrationQuotes(text), 0).filter(p => p.role === 'dialogue');
+    eq('Anna still speaks the quote', talk.map(p => p.text),
+        ['Get out of this house and do not come back until I say so.']);
+    eq('the same clause is on her line', talk.map(p => p.direction),
+        ['shouts, speaks loudly, forcefully, fast']);
+    check('a bracket is what wins over that clause', talk.every(p => !p.bracket));
+}
+
+console.log('--- a speech tag is added to the standing instruction');
+{
+    const at = src.indexOf('function cueInstruction');
+    let i = src.indexOf('{', at), depth = 0, end = -1;
+    for (; i < src.length; i++) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}' && --depth === 0) { end = i; break; }
+    }
+    const cueInstruction = new Function(src.slice(at, end + 1) + '\nreturn cueInstruction;')();
+    const whisper = 'whispers, speaks very quietly, softly, low pitched and very slowly';
+    eq('sadly is added to Anna\'s default',
+        cueInstruction({ role: 'dialogue', instruction: whisper, direction: 'sadly said' }, true).instruction,
+        whisper + ', sadly');
+    eq('with no default the speech tag is the instruction',
+        cueInstruction({ role: 'dialogue', instruction: '', direction: 'sadly said' }, true).instruction,
+        'sadly');
+    eq('cues off keeps the default',
+        cueInstruction({ role: 'dialogue', instruction: whisper, direction: 'sadly said' }, false).instruction,
+        whisper);
+    eq('a bracket still replaces the default',
+        cueInstruction({ role: 'dialogue', instruction: 'shouts loudly', direction: 'sadly said', bracket: true }, true).instruction,
+        'shouts loudly');
+    api.setCast({ anna: 'qwen-ryan' });
+    api.setCastSay({ anna: whisper });
+    {
+        const talk = api.castPieces(
+            'Anna [[shouts loudly]] sadly said "Goodbye everyone"',
+            api.narrationQuotes('Anna [[shouts loudly]] sadly said "Goodbye everyone"'), 0)
+            .filter(p => p.role === 'dialogue')[0];
+        eq('the sent instruction is only the double bracket',
+            cueInstruction(talk, true, whisper).instruction, 'shouts loudly');
+        eq('cues off still sends only the double bracket',
+            cueInstruction(talk, false, whisper).instruction, 'shouts loudly');
+    }
+    eq('the narrator default keeps the speech tag too',
+        cueInstruction({ role: 'narration', direction: 'sadly said' }, true, 'measured and unhurried').instruction,
+        'measured and unhurried, sadly');
+}
+check('cues off sends no direction',
+    /direction: cuesOn \? dir : ''/.test(src));
+check('reading and Try it both pass the standing instruction',
+    /cueInstruction\(p, _narrDirect, _narrInstruction\)/.test(src)
+    && /cueInstruction\(p, !!o\.direct, o\.instruction\)/.test(src));
 
 console.log(failed ? 'NARRATION-TAGS FAILED (' + failed + ' of ' + (passed + failed) + ')'
                    : 'NARRATION-TAGS PASSED (' + passed + ')');

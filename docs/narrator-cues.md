@@ -1,6 +1,6 @@
 # Narrator tags and cues
 
-What you can write so the Qwen narrator changes delivery. A bracket is spoken by the voice that has that part of the line. It is not turned into an instruction, and it is not deleted. Leave **Emotion cues** off. That switch only adds an instruction for speech words such as "snapped", and a designed voice does not follow it.
+What you can write so the Qwen narrator changes delivery. A bracket written beside a speaker or a quotation is that line's instruction and is not spoken. `[[tag]]` anywhere in that line overrides every other instruction, and it is not spoken. With **Emotion cues** on, and no such bracket, the speech tag beside the quotation is added to the standing instruction, in the words written there.
 
 The lines in this document were run through the speech splitter with Julie, Paul and Anna each given a voice. **Says** is the text that voice is sent. **Told** is the instruction added when Emotion cues are on. **Try it** shows that instruction under "What the narrator was told".
 
@@ -107,7 +107,7 @@ He was [sad] for a while. "Hello," Anna said.
 
 | Who | Says | Told |
 |---|---|---|
-| Anna | Get out, | sharp and angry |
+| Anna | Get out, | snapped |
 | Narrator | Anna snapped. | |
 
 ```
@@ -128,9 +128,9 @@ He was [sad] for a while. "Hello," Anna said.
 | Anna | Wait— | breaking off |
 | Narrator | Anna said. | |
 
-`She said "hello".` has no mood word and no exclamation. The narrator is sent the whole line, `She said "hello".`, and told nothing. "Said", "asked" and "told" add nothing. A bracket is not an instruction, so it does not replace "snapped" or an exclamation. Those are sent only when Emotion cues is on.
+`She said "hello".` has no mood word and no exclamation. The narrator is sent the whole line, `She said "hello".`, and told nothing. "Said", "asked" and "told" add nothing. A single bracket inside the quotation is not a cue, so it does not replace "snapped" or an exclamation. Those are sent only when Emotion cues is on.
 
-A pronoun is not a cast voice. `"Go," she whispered.` stays one narrator piece, `"Go," she whispered.`, told "whispered, hushed".
+A pronoun is not a cast voice. `"Go," she whispered.` stays one narrator piece, `"Go," she whispered.`, told "whispered".
 
 ```
 "Hmm." Anna was quietly snoring.
@@ -141,7 +141,7 @@ A pronoun is not a cast voice. `"Go," she whispered.` stays one narrator piece, 
 | Anna | Hmm. | |
 | Narrator | Anna was quietly snoring. | |
 
-"Quietly" is the next sentence, so it does not colour Anna's line. With nobody given a voice, the narrator is sent the whole line and told nothing. `"Get out," Anna snapped. She was quietly snoring.` still tells Anna "sharp and angry": "snapped" is the tag on that quote, and the snoring is the sentence after it.
+"Quietly" is the next sentence, so it does not colour Anna's line. With nobody given a voice, the narrator is sent the whole line and told nothing. `"Get out," Anna snapped. She was quietly snoring.` still tells Anna "snapped": that is the tag on that quote, and the snoring is the sentence after it.
 
 ## Bracket words
 
@@ -151,51 +151,28 @@ A point event is a sound at that spot: `[laughing]` `[giggles]` `[gasp]` `[sighi
 
 A span changes the delivery from there on: `[excited]` `[sad]` `[angry]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]`.
 
-Anything else in brackets, such as `[check spelling]`, is also read aloud. It is not on the model's list. In ordinary prose, "she shouted" and "she whispered" are still cues, through the speech tags below, and only when Emotion cues is on.
+A single bracket written to the right of a named speaker is that line's instruction, and it is not spoken: `Anna [whispers softly with slow speech], "Get out."` tells Anna those words and replaces her cast instruction for that line only. With no speaker, the same bracket beside the quotation tells the narrator, and replaces the narrator's standing instruction for that quotation only: `[whispers softly with slow speech] "Get out."` The words around it keep the standing instruction. A single bracket inside the quotation, to the left of the name, or after the sentence's period, is still read aloud. Anything else in single brackets, such as `[check spelling]`, is also read aloud. It is not on the model's list. In ordinary prose, "she shouted" and "she whispered" are still cues, through the speech tags below, and only when Emotion cues is on.
+
+A double bracket overrides every other instruction, and it is not spoken. `[[shouts loudly]]` works anywhere in the quotation's sentence: to the right of the name, to the left of it, or inside the quotation. It replaces the cast box, the narrator box, a speech tag that would have been added, and a single bracket on that line. With Anna's box set to `whispers, speaks very quietly, softly, low pitched and very slowly`, the line `Anna [[shouts loudly]] sadly said "Goodbye"` tells Anna only `shouts loudly`. The words "sadly said" stay with the narrator. A double bracket in an earlier sentence does not change her line. In narration with no quotation, `[[measured and quiet]] The door opened.` replaces the narrator's standing instruction for that paragraph, and the brackets are not spoken.
 
 ## Speech words
 
-With no bracket, the speech tag that touches the quotation supplies the cue. The first match in this list wins. A verb wins over an adverb. `"Get out," Anna snapped.` above is the worked case for the first of these.
+With no bracket, and Emotion cues on, the speech tag that touches the quotation is added to the standing instruction. The name is left out, and so are "said", "asked" and "told". Nothing is substituted.
 
-| In the speech tag | Told |
-|---|---|
-| shout, shouted, shouting, yell, yelled, roar, roared, bellow, bellowed, scream, screamed, cried out | shouted, loud and forceful |
-| whisper, whispered, whispering, murmur, murmured | whispered, hushed |
-| snap, snapped, bark, barked, spat, growl, growled, hiss, hissed, snarl, snarled | sharp and angry |
-| mutter, muttered, grumble, grumbled | muttered, low and grudging |
-| laugh, laughed, laughing, chuckle, chuckled, giggle, giggled | amused, with a smile in the voice |
-| sob, sobbed, sobbing, wept | tearful, the voice breaking |
-| sigh, sighed | weary, with a sigh |
-| plead, pleaded, beg, begged, implored | pleading, earnest |
-| gasp, gasped | breathless, shocked |
-| demand, demanded, insisted | insistent |
-| stammer, stammered, stuttered | hesitant, stumbling |
+`Anna shouts, speaks loudly, forcefully, fast: "Get out..."` tells that quote `shouts, speaks loudly, forcefully, fast` when the box is empty. If Anna's box is `whispers, speaks very quietly`, and the line is `Anna sadly said "Goodbye"`, she is told `whispers, speaks very quietly, sadly`. A single bracket on the same line is used instead of the box. A double bracket is used instead of the box and the speech tag.
 
-| Adverb, if no verb above matched | Told |
-|---|---|
-| quietly, softly, gently | quiet and soft |
-| angrily, furiously, savagely | angry |
-| coldly, icily, flatly | cold and clipped |
-| dryly, drily, wryly | dry and understated |
-| sadly, mournfully, miserably | sad |
-| nervously, anxiously, uneasily | nervous |
-| excitedly, eagerly | excited |
-| wearily, tiredly | weary |
-| sarcastically, mockingly | sarcastic |
-| urgently, hurriedly | urgent |
-
-If none of those words is there, the quote's punctuation is the cue. An exclamation mark: emphatic, as in `"Hello!" Anna said.` The quote ending in an em dash, an en dash, or an ellipsis: breaking off, as in `"Wait—" Anna said.`
+If the tag has no such words, the quote's punctuation is still a cue. An exclamation mark: emphatic, as in `"Hello!" Anna said.` The quote ending in an em dash, an en dash, or an ellipsis: breaking off, as in `"Wait—" Anna said.`
 
 A paragraph with no quotation marks, and at least about seven tenths of it in italics, is read as a private thought: quieter and more inward. That stays with the narrator.
 
 ## The wording of the instruction
 
-For narration, your instruction is used as written. When the piece has a cue, the cue wording is added after it. `{cue}` becomes the phrase in the Told column. The default wording is:
+For narration, your instruction is used as written. A speech tag's own words are added after it, and are not wrapped. A punctuation cue still uses the cue wording, added after your instruction. `{cue}` is emphatic or breaking off. The default wording is:
 
 > Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured.
 
 Cue wording is the fold under Emotion cues. Restore default wording puts that sentence back.
 
-A character who has a voice is told only about that line. Your standing instruction is not added. Anna's snapped line is told: "Speak this line of dialogue as the character would say it: sharp and angry." A character line with no cue is told: "Speak this line of dialogue as the character would say it, naturally and in character."
+A character who has a voice is told her cast box, with the speech tag added after it when there is one. Anna's snapped line, with an empty box, is told `snapped`. A character line with no cue and an empty cast box is told: "Speak this line of dialogue as the character would say it, naturally and in character."
 
 Designed voice-prints follow a cue less readily than Ryan and Aiden, the two speakers trained to follow one.
