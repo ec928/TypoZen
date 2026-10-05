@@ -310,13 +310,11 @@ Two things make reopening a book cheap. `EpubReader` caches the assembled payloa
 A book's block `raw` is the publisher's markup, so `renderBlockPreview` sets it as HTML and returns before any of the Markdown renderer runs. The editor refuses to become editable while a book is open, `GetDirtyTabs()` skips `.epub` tabs, and `ReadTextFileDetect` returns empty for one — a book cannot be edited, marked dirty, or saved over.
 
 ### Page windowing
-Pagination lays out the whole document, because the browser can only fragment content it has already laid out. That is correct and it is why an unwindowed 40,656-block omnibus put every block into one multi-column flow. `PageChunks` splits the document into fixed block ranges, lays out **one range at a time**, and keeps a per-range page count — cumulative sums give the global page number, exactly as `blockHeights` + `prefixHeight()` give the global scroll offset.
+Pagination lays out the whole document, because the browser can only fragment content it has already laid out. That is correct and it is why an unwindowed 40,656-block omnibus put every block into one multi-column flow. `PageChunks` splits the document into fixed block ranges and lays out **one range at a time**.
 
-- Unmeasured ranges are estimated from pages-per-block and refined as they are laid out — but only **upward**. Refining an unmeasured range downward removed pages the reader had already been shown, and the act of seeking was what removed them: seeking mounts a range, mounting measures it, measuring shrank the total. Ask for page 267 of 268, land on 261.
-- Because part of the total can be a guess, the UI marks it (`pageTotalIsApproximate`) rather than presenting an estimate as an exact figure.
-- **Blocks are the anchor, not page numbers.** Page numbers move as estimates are refined; block indices do not, and the column round trip already depends on that.
-- The range on screen is measured exactly, never trusted from its estimate.
-- A structural edit **splices** the map rather than discarding it, the same rule as the height map.
+**A book has no whole-book page total.** The footer is the unit on screen and the page within that unit, counted from the layout, not estimated. Dune reads "Chapter 4 of 48" and "Page 2 of 23". A unit is laid out whole: ranges are cut on unit boundaries (`bookRangeStarts`, `PageChunks.setBounds`) and every unit starts a page, so that count is exact. There is no `~` and no Go to page. The outline and the scrubber move through the book. The scrubber is position in the text, by words, with a mark at each chapter start and, in an omnibus, a taller mark at each novel. The status percentage is that same position.
+
+A paginated Markdown document still has a whole-document page number. `PageChunks` keeps a per-range page count and the sums of those counts are the number on screen. Unmeasured ranges are estimated from pages-per-block and refined in **both directions** as ranges are laid out. A ratchet that only grew was tried and reverted: every unvisited range stayed at the seed and the total sat at about double the document. While any range is still estimated the total is marked `~` (`pageTotalIsApproximate`). The page you are on is measured. Block indices, not those page numbers, are what a column change and a resume use. The range on screen is measured exactly. A structural edit splices the map rather than discarding it, the same rule as the height map.
 
 `PageChunks.size` is 800 blocks. It was 400, tuned on a Markdown fixture; measured on two real novels, the cost that matters is the page turn that crosses a range boundary and has to lay out the next one:
 
@@ -328,7 +326,7 @@ Pagination lays out the whole document, because the browser can only fragment co
 
 Amortised over the pages between crossings it is flat at every size, so the choice is the worst case a reader feels against how much of the book is laid out at once — which is also how far the editor's own scrollbar reaches.
 
-**The scrubber exists because that scrollbar cannot reach the ends.** It addresses pages; `PageMap.goto()` already mounts the range a page falls in, so seeking anywhere is the same operation as turning a page. It seeks on release rather than on every input event, because a drag would otherwise mount a range per pixel of travel.
+**The scrubber exists because that scrollbar cannot reach the ends.** On a book it addresses position in the text. On a paginated document it addresses pages, and `PageMap.goto()` mounts the range a page falls in, so seeking anywhere is the same operation as turning a page. It seeks on release rather than on every input event, because a drag would otherwise mount a range per pixel of travel.
 
 ### Thresholds
 Live constants in `TypoZen_Template.html`. Changing them changes which strategy a document gets, so they are listed here rather than left to be rediscovered:
