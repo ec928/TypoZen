@@ -217,8 +217,7 @@ $manifest = @"
               <uap:FileType>.php</uap:FileType>
               <uap:FileType>.log</uap:FileType>
               <uap:FileType>.csv</uap:FileType>
-              <uap:FileType>.bat</uap:FileType>
-              <uap:FileType>.cmd</uap:FileType>
+              <!-- .bat and .cmd are rejected by the manifest validator. The installer still offers them. -->
               <uap:FileType>.sh</uap:FileType>
               <uap:FileType>.bash</uap:FileType>
               <uap:FileType>.ps1</uap:FileType>

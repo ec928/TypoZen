@@ -41,8 +41,12 @@ assert(issMissing.length === 0, 'the installer offers TypoZen for all ' + want.l
 assert(!/Software\\Classes\\\.(html|js|css|xml|json)\\/.test(iss), 'the installer does not make TypoZen the default for code files');
 const msix = read('tools/Build-Msix.ps1');
 const msixTypes = [...msix.matchAll(/<uap:FileType>(\.[a-z0-9]+)<\/uap:FileType>/g)].map(m => m[1]);
-const msixMissing = want.filter(e => !msixTypes.includes(e));
-assert(msixMissing.length === 0, 'the Store package declares all ' + want.length + ' types' + (msixMissing.length ? ' (missing ' + msixMissing.join(' ') + ')' : ''));
+// MakeAppx rejects these. The installer still offers them; the Store package cannot.
+const storeBlocked = ['.bat', '.cmd'];
+const msixWant = want.filter(e => !storeBlocked.includes(e));
+const msixMissing = msixWant.filter(e => !msixTypes.includes(e));
+assert(msixMissing.length === 0, 'the Store package declares all ' + msixWant.length + ' types it is allowed' + (msixMissing.length ? ' (missing ' + msixMissing.join(' ') + ')' : ''));
+assert(storeBlocked.every(e => !msixTypes.includes(e)), 'the Store package does not declare .bat or .cmd');
 assert(new Set(msixTypes).size === msixTypes.length, 'no type declared twice in the Store package');
 
 console.log('\npassed=' + passed + ' failed=' + failed);
