@@ -1821,13 +1821,36 @@
                     // wrong one of the two; sizes are all the two readers have in common.
                     const want = job.only ? job.only[String(p)] : null;
                     let k = want && want.start ? want.start : 0;
-                    for (const { id, img } of list) {
-                        if (state.cancelled) break;
-                        if (want && !want.all) {
-                            const at = img ? want.sizes.findIndex(s => s[0] === img.width && s[1] === img.height) : -1;
-                            if (at < 0) continue;
-                            want.sizes.splice(at, 1);
+                    // Which of this page's pictures are the host's leftovers. By size first. The
+                    // two readers can disagree on a size, though -- a picture whose transparency
+                    // mask is larger is decoded at the mask's size here (PdfPig 2x2, PDF.js
+                    // 76x102), and a form-drawn picture came back 200x100 there and 1x1 here --
+                    // and an unmatched leftover used to be dropped without a word: the save
+                    // reported it handed over and wrote nothing. So whatever is still missing
+                    // after the size pass is made up from this page's other pictures, leaving
+                    // out those matching a size the host saved. At worst that saves a picture
+                    // twice; it never loses one.
+                    let picks = list;
+                    if (want && !want.all) {
+                        const sizes = want.sizes.slice(), saved = (want.saved || []).slice();
+                        const chosen = new Set();
+                        const take = (arr, img) => {
+                            const at = img ? arr.findIndex(s => s[0] === img.width && s[1] === img.height) : -1;
+                            if (at >= 0) arr.splice(at, 1);
+                            return at >= 0;
+                        };
+                        list.forEach((it, i) => { if (take(sizes, it.img)) chosen.add(i); });
+                        if (sizes.length) {
+                            for (let i = 0; i < list.length && sizes.length; i++) {
+                                if (chosen.has(i) || take(saved, list[i].img)) continue;
+                                chosen.add(i);
+                                sizes.pop();
+                            }
                         }
+                        picks = list.filter((_, i) => chosen.has(i));
+                    }
+                    for (const { id, img } of picks) {
+                        if (state.cancelled) break;
                         // A picture that cannot be read is counted and reported, never dropped
                         // silently; the reasons go to the page for diagnosis.
                         const unreadable = (why) => { result.unreadable++; (window.__tzExportTrace = window.__tzExportTrace || []).push('p' + p + ' ' + id + ': ' + why); };

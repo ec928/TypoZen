@@ -83,12 +83,6 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   Since the chapter-pages branch the factor is per book, measured once from chapter text and
   applied before layout (no correction pass at all), so most of that saving has already been
   taken; persisting it would only skip one style read per book.
-- **Save All Images in PDF: the fast method often does not work** (Ed, 2026-09-28). In
-  several PDFs the direct extraction (PdfPig, reading pictures straight from the file,
-  0.8.2) fails and TypoZen falls back to the very slow method. To do: collect the PDFs it
-  fails on, find which image encodings or structures PdfPig does not handle, and fix or
-  widen the fast path; measure both methods on each file. Debug logging only with Ed's
-  permission.
 
 ## Done (recorded so it is not re-raised)
 
@@ -108,6 +102,15 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   nothing mounted yet, range -1, as "the front of the book"), and `packaged-smoke-app`'s
   seek check (compared text that does not change in a one-chunk book). The 0.14.12 Store
   package passed `packaged-smoke-app` 8/8 via `tools/Test-Packaged.ps1`.
+- **Save All Images in PDF, fast method** (raised 2026-09-28, closed 2026-10-06). Tried on 17
+  of pdf.js's image-encoding test PDFs (JPEG 2000, JBIG2, CCITT, CMYK and progressive JPEG,
+  indexed, CalGray, 1-bit, soft masks). PdfPig handles most itself; JBIG2, progressive JPEG,
+  soft-masked and some Flate pictures go to the viewer, as designed, and the time is the
+  same either way at these sizes. Found and fixed instead: pictures the two readers size
+  differently (a soft mask larger than its picture; a form-drawn picture) were handed to the
+  viewer and **silently not saved** -- the viewer matched by size only. It now makes up the
+  shortfall from the page's other pictures (`pdf-smask-size.pdf`, `pdf-pictures-direct-app`).
+  All 17 now save every picture.
 
 - **0.12.1 (2026-10-01, local baseline -- not released):** scrubber marks: chapter starts as hairlines and, in an omnibus, novel starts as taller marks; in paginated documents, section and subsection headings.
 - **0.12.0 (2026-10-01, Ed's redesign, local baseline -- not released):** book page numbers

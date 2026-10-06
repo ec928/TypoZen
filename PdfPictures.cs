@@ -39,6 +39,10 @@ namespace TypoZen
             public string Error = "";
             /// <summary>Per page, the pictures written here, so the viewer numbers on after them.</summary>
             public Dictionary<int, int> WrittenOnPage = new Dictionary<int, int>();
+            /// <summary>Per page, the stored sizes of the pictures written here. The viewer
+            /// uses them to tell which of its pictures the host already has when a fallback's
+            /// size does not match anything it decoded (the two readers can disagree).</summary>
+            public Dictionary<int, List<int[]>> SavedSizesOnPage = new Dictionary<int, List<int[]>>();
             public List<Fallback> Fallbacks = new List<Fallback>();
         }
 
@@ -105,6 +109,9 @@ namespace TypoZen
                             fs.Write(bytes, 0, bytes.Length);
                         result.Files++;
                         if (original) result.Originals++; else result.Converted++;
+                        List<int[]> saved;
+                        if (!result.SavedSizesOnPage.TryGetValue(p, out saved)) result.SavedSizesOnPage[p] = saved = new List<int[]>();
+                        saved.Add(new[] { w, h });
                     }
                     if (k > 0) result.WrittenOnPage[p] = k;
                     done++;

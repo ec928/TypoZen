@@ -16641,7 +16641,10 @@ namespace TypoZen
                 {
                     int start;
                     r.WrittenOnPage.TryGetValue(f.Page, out start);
-                    entry = new Dictionary<string, object> { { "sizes", new List<int[]>() }, { "all", false }, { "start", start } };
+                    List<int[]> saved;
+                    r.SavedSizesOnPage.TryGetValue(f.Page, out saved);
+                    entry = new Dictionary<string, object> { { "sizes", new List<int[]>() }, { "all", false }, { "start", start },
+                        { "saved", saved ?? new List<int[]>() } };
                     only[key] = entry;
                     fallbackPages.Add(f.Page);
                 }

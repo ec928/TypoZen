@@ -87,6 +87,21 @@ try {
     const r4 = await exportRun(app, Object.assign({ folder: d1, method: 'original', skipSmall: true, dedupe: true, perPage: false }, base), 20000);
     const again = files(d1);
     ok(r4 && again.length === 6 && again.filter(f => / \(2\)\./.test(f)).length === 3, 'a second save beside the first is numbered, not written over', JSON.stringify(again));
+
+    // A picture the two readers size differently (tests/pdf-smask-size.pdf, from
+    // make-pdf-smask-size.mjs): 2x2 to PdfPig, 40x40 -- its mask's size -- to PDF.js. The host
+    // hands it to the viewer as 2x2, which matches nothing the viewer decoded; it used to be
+    // reported as handed over and never written.
+    const SM = path.join(here, 'pdf-smask-size.pdf');
+    await app.eval((p) => postMsg('open_file_path:' + p), SM);
+    ok(!!await waitFor(app, () => { const s = window.tzPdfState && window.tzPdfState(); return s && /pdf-smask-size/.test(decodeURIComponent(s.url || '')) && s.pages === 1; }, 15000), 'the mask-size PDF opens');
+    const d5 = path.join(OUT, 'smask-size');
+    const r5 = await exportRun(app, Object.assign({ folder: d5, method: 'original', skipSmall: false, dedupe: true, perPage: false },
+        Object.assign({}, base, { pages: [1] })), 20000);
+    const g5 = files(d5);
+    const i5 = g5.filter(f => f.endsWith('.png')).map(f => png(fs.readFileSync(path.join(d5, f))));
+    ok(r5 && r5.viewer === 1 && g5.length === 1 && i5[0] && i5[0].w === 40 && i5[0].h === 40,
+        'a picture sized differently by the two readers is still saved, once', JSON.stringify({ g5, i5, r5 }));
 } catch (e) { ok(false, 'stopped', e && e.message); }
 finally {
     if (app) { try { await app.closeGracefully(); } catch (e) { try { await app.close(); } catch (e2) { } } }
