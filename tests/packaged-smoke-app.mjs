@@ -10,14 +10,14 @@
  * into %LocalAppData%\Packages\<family>\LocalCache\Local, so the profile -- and the
  * extensions folder inside it -- is a different place from the loose build's.
  *
- * Needs Developer Mode. Register, launch with a book, then run this:
+ * Needs Developer Mode. Register the built package, launch it with a book, then run this:
  *
- *   .	ools\Build-Msix.ps1 -Register
- *   $f = (Get-AppxPackage *TypoZen*).PackageFamilyName
- *   <activate "$f!TypoZen" with --debug "<path to an .epub>">
+ *   .\tools\Test-Packaged.ps1          (unpacks dist-msix\TypoZen.msix, registers, launches)
  *   node tests/packaged-smoke-app.mjs
+ *   .\tools\Test-Packaged.ps1 -Remove  (after closing the app)
  *
- * Remove it again with: Get-AppxPackage *TypoZen* | Remove-AppxPackage
+ * Build-Msix.ps1 -Register also works, but it registers a fresh stage of bin\, which can
+ * carry later work than the package being submitted.
  *
  * Run it against a freshly registered package. The package keeps its own profile across
  * launches and re-registration, so a second run reopens the book where the first one left
@@ -55,6 +55,20 @@ console.log('        "' + text.slice(0, 90) + '..."');
 const model = await page.evaluate(() => (typeof DocumentModel !== 'undefined' && DocumentModel.blocks) ? DocumentModel.blocks.length : -1);
 check(model > 0, 'the book parsed into a document model', model + ' blocks');
 
+// The text actually on screen. Comparing the head of #editor's text cannot see a seek in
+// a book whose whole text is one mounted chunk (Alice: 800 blocks, one chunk) -- the view
+// moved and the head stayed the same, so the check failed on a correct build.
+const onScreen = () => page.evaluate(() => {
+    const ed = document.getElementById('editor'), mc = document.getElementById('main-container');
+    if (!ed || !mc) return '';
+    const r = mc.getBoundingClientRect();
+    return [...ed.querySelectorAll('.block')].filter(b => {
+        const q = b.getBoundingClientRect();
+        return q.bottom > r.top && q.top < r.bottom && q.right > r.left && q.left < r.right;
+    }).map(b => b.innerText).join(' ').replace(/\s+/g, ' ').trim().slice(0, 2000);
+});
+const viewBefore = await onScreen();
+
 // Same move the core smoke makes: seek to the middle and prove different text arrives.
 const target = await page.evaluate(() => {
     const i = Math.floor(DocumentModel.blocks.length * 0.5);
@@ -66,8 +80,10 @@ const midText = await page.evaluate(() => {
     const el = document.getElementById('editor') || document.body;
     return (el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 4000);
 });
-check(midText.length > 200 && midText !== text, 'it moves through the book -- different text at block ' + target,
-      midText.length + ' chars');
+const viewAfter = await onScreen();
+check(midText.length > 200 && viewAfter.length > 50 && viewAfter !== viewBefore,
+      'it moves through the book -- different text on screen at block ' + target,
+      viewBefore.length + ' -> ' + viewAfter.length + ' chars on screen');
 
 const ext = await page.evaluate(() => (typeof _kokoroExt === 'undefined' ? 'undefined' : JSON.stringify(_kokoroExt)));
 check(ext !== 'undefined', 'the extension hook is present in the packaged build', ext);
