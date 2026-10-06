@@ -96,6 +96,17 @@ same number for the same view and steps by exactly one. Re-open only if it shows
 
 ## Done (recorded so it is not re-raised)
 
+- **0.14.12 (2026-10-06, released):** from the 2026-10-06 health review
+  (`docs/health-review-2026-10-06.md`, which also lists what was deferred) and Ed's
+  testing: Replace All corrupting text after `İ` and its quadratic splice; the table
+  toolbar, dead since 0.13.15 (`anchor` undeclared); Highlight selection also bookmarking
+  the paragraph at the top of the view; PDF read aloud reading the footer first, then
+  skipping running headers and footers entirely (chapter headings still read); saving
+  turning form feed / backspace into `f` / `b`; outline and status line re-reading the
+  document on caret moves and scrolls; a Content-Security-Policy on the editor page.
+  **Dropped:** the per-keystroke model rebuild in Source -- single-digit milliseconds at
+  1 MB, not worth the risk (Ed).
+
 - **0.12.1 (2026-10-01, local baseline -- not released):** scrubber marks: chapter starts as hairlines and, in an omnibus, novel starts as taller marks; in paginated documents, section and subsection headings.
 - **0.12.0 (2026-10-01, Ed's redesign, local baseline -- not released):** book page numbers
   by chapter ("Chapter 2 of 38 • Page 2 of 15", the book's name first in an omnibus), sections
