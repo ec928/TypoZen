@@ -161,7 +161,7 @@
                 caretLine = forced;
                 if (lines < caretLine) lines = caretLine;
             } else {
-                try { caretLine = getCaretLineNumber(content); } catch (eC) { caretLine = 1; }
+                try { caretLine = getCaretLineNumber(content, lines); } catch (eC) { caretLine = 1; }
                 if (caretLine < 1) caretLine = 1;
                 if (caretLine > lines) caretLine = lines;
                 // After search/mark jump, focus often sits on the sidebar. getCaretLineNumber
@@ -223,7 +223,7 @@
                 if (!updateStats._outlineTimer) {
                     updateStats._outlineTimer = setTimeout(() => {
                         updateStats._outlineTimer = null;
-                        updateOutline();
+                        updateOutlineIfHeadingsChanged();
                     }, 250);
                 }
             }
@@ -490,8 +490,44 @@
             }
         };
 
+        /**
+         * What the Markdown outline is built from: every heading block's index and text.
+         * null where there is no cheap answer (Source, a PDF, a book, no model), which
+         * means "always rebuild" -- the behaviour before this existed.
+         */
+        let _outlineSig = null;
+        function outlineSignature() {
+            if (window.tzPdfActive || state.mode === 'source') return null;
+            if (typeof DocumentModel === 'undefined' || DocumentModel.kind === 'epub'
+                || !DocumentModel.blocks || !DocumentModel.blocks.length) return null;
+            const b = DocumentModel.blocks;
+            const parts = [];
+            for (let i = 0; i < b.length; i++) {
+                const r = b[i] && b[i].raw;
+                if (r && r.charCodeAt(0) === 35 && /^#{1,6}\s/.test(r)) parts.push(i + '\u0001' + r);
+            }
+            return parts.join('\u0002');
+        }
+
+        /**
+         * The stats pass's outline refresh. It ran after every edit, caret move and scroll
+         * and rebuilt the whole sidebar list each time, although only a heading changing can
+         * change it. Every other caller still rebuilds unconditionally through
+         * updateOutline(), which records what it built, so a mode switch or a load can never
+         * leave this comparing against an outline that is no longer on screen.
+         */
+        function updateOutlineIfHeadingsChanged() {
+            const sig = outlineSignature();
+            if (sig !== null && sig === _outlineSig) {
+                try { postChapterLabel(); } catch (eCh) {}
+                return;
+            }
+            updateOutline();
+        }
+
         function updateOutline() {
             if (!outlineList) return;
+            _outlineSig = outlineSignature();
             // A PDF on screen shows its own outline (10-pdf.js).
             if (window.tzPdfActive && typeof window.tzPdfOutline === 'function') {
                 _chapterEntries = [];

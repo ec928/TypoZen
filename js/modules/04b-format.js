@@ -933,9 +933,11 @@
          * Under virtualization, only a window of .block nodes is mounted — counting those
          * alone reported "Ln 73/4532" while viewing the last line. Prefer model indices.
          */
-        function getCaretLineNumber(precomputedContent) {
+        function getCaretLineNumber(precomputedContent, knownTotal) {
             try {
-                const total = getTotalLineCount(precomputedContent);
+                // The stats pass has just counted the lines of this same text; splitting it
+                // again here doubled that work on every pass.
+                const total = knownTotal >= 1 ? knownTotal : getTotalLineCount(precomputedContent);
                 let caret = 1;
 
                 if (state.mode === 'source' && sourceEditor) {
@@ -1597,7 +1599,10 @@
                     if (state.typewriterMode) applyTypewriterScroll(true);
                 }
                 updateStats();
-                updateOutline();
+                // Moving between blocks only changes the outline if the block left was a
+                // heading that was edited; rebuilding the list on every block change was
+                // the bulk of the outline's cost while arrowing through a document.
+                updateOutlineIfHeadingsChanged();
             } else {
                 updateCaretLineStatus();
                 if (state.typewriterMode) applyTypewriterScroll(false);
