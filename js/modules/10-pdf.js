@@ -864,6 +864,54 @@
         return raw.replace(/(\p{L})-\n(\p{Ll})/gu, '$1$2').replace(/\s+/g, ' ').trim();
     }
 
+    /**
+     * Page furniture in reading order: a running head first, a footer last.
+     *
+     * Paragraphs come in the order the PDF stores its text, and many PDFs store the page
+     * number and running title before the body -- so Read aloud spoke "2 Alice's Adventures
+     * in Wonderland" and only then went back to the top of the page (Ed, 2026-10-06).
+     *
+     * Only furniture moves: a span of at most two lines lying wholly below everything else
+     * on the page with clear space between (a footer), or wholly above it (a header). The
+     * rest keeps the PDF's own order, which is what puts a two-column page's columns in
+     * sequence; sorting the whole page by height would interleave them.
+     */
+    function readingOrder(p, spans) {
+        const items = S.pageItems && S.pageItems[p];
+        if (!items || spans.length < 2) return spans;
+        const hTyp = median(items.map(it => it.h).filter(h => h > 0)) || 10;
+        const info = spans.map(([a, b]) => {
+            let top = -Infinity, bottom = Infinity;
+            const ys = new Set();
+            for (const it of items) {
+                if (it.start < a || it.start >= b) continue;
+                top = Math.max(top, it.y + (it.h || hTyp));
+                bottom = Math.min(bottom, it.y);
+                ys.add(Math.round(it.y));
+            }
+            return { span: [a, b], top, bottom, lines: ys.size };
+        });
+        const heads = [], body = [], feet = [];
+        for (let k = 0; k < info.length; k++) {
+            const s = info[k];
+            if (!(s.lines >= 1 && s.lines <= 2)) { body.push(s); continue; }
+            let othersTop = -Infinity, othersBottom = Infinity;
+            for (let j = 0; j < info.length; j++) {
+                if (j === k || !(info[j].lines >= 1)) continue;
+                // A page number and a running title can be separate spans on one line.
+                if (info[j].lines <= 2 && info[j].bottom <= s.top && info[j].top >= s.bottom) continue;
+                othersTop = Math.max(othersTop, info[j].top);
+                othersBottom = Math.min(othersBottom, info[j].bottom);
+            }
+            if (s.top < othersBottom - 1.5 * hTyp) feet.push(s);           // PDF y grows upwards
+            else if (s.bottom > othersTop + 1.5 * hTyp) heads.push(s);
+            else body.push(s);
+        }
+        if (!heads.length && !feet.length) return spans;
+        const down = (u, v) => v.top - u.top;
+        return heads.sort(down).concat(body, feet.sort(down)).map(s => s.span);
+    }
+
     /** Every paragraph of the PDF, as blocks; the same objects until more text arrives. */
     function blocks() {
         const texts = S.pageTexts || [];
@@ -871,7 +919,7 @@
         if (S.blocks && S.blocksKey === key) return S.blocks;
         const list = [];
         for (let p = 0; p < texts.length; p++) {
-            for (const [a, b] of paragraphSpans(p)) {
+            for (const [a, b] of readingOrder(p, paragraphSpans(p))) {
                 const raw = texts[p].slice(a, b);
                 const text = readable(raw);
                 if (!/[\p{L}\p{N}]/u.test(text)) continue;
@@ -935,13 +983,18 @@
 
     /** Index of the block holding a page offset, or the next one on that page. */
     function blockIndexAt(page, off) {
+        // A page's blocks are in reading order, which is not always offset order (a footer
+        // stored first in the PDF is read last -- readingOrder), so look for the block that
+        // holds the offset rather than the first that ends after it.
         const list = blocks();
-        let next = -1;
+        let next = -1, nextStart = Infinity;
         for (let i = 0; i < list.length; i++) {
             const bp = +list[i].dataset.pdfPage;
             if (bp < page) continue;
             if (bp > page) return next >= 0 ? next : i;
-            if (off < +list[i].dataset.pdfEnd) return i;
+            const a = +list[i].dataset.pdfStart, b = +list[i].dataset.pdfEnd;
+            if (off >= a && off < b) return i;
+            if (a > off && a < nextStart) { next = i; nextStart = a; }
         }
         return next;
     }
