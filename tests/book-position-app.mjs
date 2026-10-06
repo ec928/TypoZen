@@ -190,7 +190,10 @@ try {
     const frames = [];
     for (let i = 0; i < 30 && frames.length < 6; i++) {
         await sleep(250);
-        const f = await app.eval(() => (DocumentModel.kind === 'epub')
+        // Nothing mounted yet (-1) is not a frame of the book: the model says ePub a moment
+        // before any range is on screen, and judging that sample as "the front of the book"
+        // made this fail now and then on a correct build. The cover would be range 0.
+        const f = await app.eval(() => (DocumentModel.kind === 'epub' && PageChunks.mounted !== -1)
             ? { c: PageChunks.mounted, at: currentReadingBlock() } : null);
         if (f) frames.push(f);
     }

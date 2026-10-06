@@ -65,10 +65,6 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
 
 Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 
-- **`book-position-app` is intermittent**: now and then the first frame of a resume is drawn
-  before the range is recorded as mounted (range -1). The cover is never shown; passes on a
-  re-run. A timing edge in the test's frame sampling or in the resume; not chased.
-
 
 **Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range
 boundaries. Seen with 200-block ranges; at 400, stepping across a boundary and back gives the
@@ -106,6 +102,12 @@ same number for the same view and steps by exactly one. Re-open only if it shows
   document on caret moves and scrolls; a Content-Security-Policy on the editor page.
   **Dropped:** the per-keystroke model rebuild in Source -- single-digit milliseconds at
   1 MB, not worth the risk (Ed).
+- **After 0.14.12 (2026-10-06, local):** a missing picture requested once instead of three
+  times (host answers `image_missing:`); closing the find bar releases focus at once.
+  Flaky tests fixed: `pdf-ocr-app` (that focus), `book-position-app` (sampled a frame with
+  nothing mounted yet, range -1, as "the front of the book"), and `packaged-smoke-app`'s
+  seek check (compared text that does not change in a one-chunk book). The 0.14.12 Store
+  package passed `packaged-smoke-app` 8/8 via `tools/Test-Packaged.ps1`.
 
 - **0.12.1 (2026-10-01, local baseline -- not released):** scrubber marks: chapter starts as hairlines and, in an omnibus, novel starts as taller marks; in paginated documents, section and subsection headings.
 - **0.12.0 (2026-10-01, Ed's redesign, local baseline -- not released):** book page numbers
