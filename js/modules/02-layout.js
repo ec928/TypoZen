@@ -6399,20 +6399,35 @@
             if (!query || !haystack) return matches;
             const matchCase = opts && opts.matchCase;
             const wholeWord = opts && opts.wholeWord;
-            const h = matchCase ? haystack : haystack.toLowerCase();
-            const q = matchCase ? query : query.toLowerCase();
+            // Offsets must be into `haystack` itself: Replace splices by them. Lowercasing
+            // a copy and searching that is not safe -- toLowerCase() can change length
+            // ('İ' becomes two code units), so every match after one was shifted and
+            // Replace All wrote into the middle of the neighbouring words. A regex with the
+            // i flag folds case per character without changing the text it reports on.
+            const re = matchCase ? null
+                : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
             let from = 0;
-            while (from <= h.length - q.length) {
-                const idx = h.indexOf(q, from);
-                if (idx < 0) break;
+            while (from <= haystack.length - query.length) {
+                let idx, len;
+                if (re) {
+                    re.lastIndex = from;
+                    const m = re.exec(haystack);
+                    if (!m) break;
+                    idx = m.index;
+                    len = m[0].length;
+                } else {
+                    idx = haystack.indexOf(query, from);
+                    if (idx < 0) break;
+                    len = query.length;
+                }
                 let ok = true;
                 if (wholeWord) {
                     const before = idx > 0 ? haystack.charAt(idx - 1) : '';
-                    const after = idx + q.length < haystack.length ? haystack.charAt(idx + q.length) : '';
+                    const after = idx + len < haystack.length ? haystack.charAt(idx + len) : '';
                     if (isWordChar(before) || isWordChar(after)) ok = false;
                 }
-                if (ok) matches.push({ start: idx, end: idx + query.length });
-                from = idx + Math.max(1, q.length);
+                if (ok) matches.push({ start: idx, end: idx + len });
+                from = idx + Math.max(1, len);
             }
             return matches;
         }
@@ -7278,12 +7293,16 @@
                 runFind(q, false, { navigate: false });
                 return;
             }
-            let next = hay;
-            for (let i = matches.length - 1; i >= 0; i--) {
-                const m = matches[i];
-                next = next.slice(0, m.start) + rep + next.slice(m.end);
+            // One pass. Splicing each match into the whole string copied the document once
+            // per match: 213 ms for 234 matches in 206 KB, seconds on a 1 MB file.
+            const parts = [];
+            let last = 0;
+            for (let i = 0; i < matches.length; i++) {
+                parts.push(hay.slice(last, matches[i].start), rep);
+                last = matches[i].end;
             }
-            applyReplacedDocument(next);
+            parts.push(hay.slice(last));
+            applyReplacedDocument(parts.join(''));
             runFind(q, false, { navigate: false });
             setFindStatus('Replaced ' + matches.length);
             focusFindInput(false);

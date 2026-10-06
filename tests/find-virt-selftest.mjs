@@ -66,6 +66,18 @@ console.log('=== findAllIndices (shared) ===');
     assert(m.length === 2 && m[0].start === 0 && m[1].start === 8, 'two matches');
     const ww = api.findAllIndices('cat catalog cat', 'cat', { wholeWord: true });
     assert(ww.length === 2, 'whole word skips catalog (got ' + ww.length + ')');
+    // 'İ' lowercases to two code units: offsets taken from a lowercased copy landed one
+    // character early, and Replace All wrote "cdog" into the text.
+    const hay = 'İstanbul Cat cat';
+    const tr = api.findAllIndices(hay, 'cat', {});
+    assert(tr.length === 2 && tr.every(x => hay.slice(x.start, x.end).toLowerCase() === 'cat'),
+        'offsets after İ point at the match (got ' + JSON.stringify(tr.map(x => hay.slice(x.start, x.end))) + ')');
+    const trw = api.findAllIndices('İ cat catalog', 'cat', { wholeWord: true });
+    assert(trw.length === 1 && trw[0].start === 2, 'whole word after İ (got ' + JSON.stringify(trw) + ')');
+    const meta = api.findAllIndices('a.b axb (c) (c)', '(c)', {});
+    assert(meta.length === 2 && meta[0].start === 8, 'regex characters in the query are literal');
+    const mc = api.findAllIndices('Cat cat', 'cat', { matchCase: true });
+    assert(mc.length === 1 && mc[0].start === 4, 'match case');
 }
 
 console.log('=== markdownOffsetToBlock mapping ===');
