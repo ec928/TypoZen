@@ -68,7 +68,8 @@ try {
         const s = getSelection(); s.removeAllRanges(); s.addRange(r);
         showSelPop();
         const vis = (id) => { const e = document.getElementById(id); return !!e && !e.hidden && !e.closest('[hidden]'); };
-        return { text: s.toString(), pop: vis('selPop'), lookup: vis('selPopLookup') };
+        const ae = document.activeElement;
+        return { text: s.toString(), pop: vis('selPop'), lookup: vis('selPopLookup'), ae: ae && (ae.id || ae.tagName), suppress: !!window._tzSuppressSelPop, editing: !!window.tzPdfEditing };
     });
     ok(selected && selected.text === 'harbour' && selected.pop && selected.lookup, 'a recognised word can be selected, with Look up offered', JSON.stringify(selected));
     await app.eval(() => { hideSelPop(); getSelection().removeAllRanges(); });

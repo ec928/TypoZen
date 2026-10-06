@@ -124,7 +124,17 @@
         /** Hide Ctrl+F chrome only — never touch shared findState / sidebar results. */
         function hideFindBarChrome() {
             const bar = document.getElementById('findBar');
-            if (bar) bar.classList.remove('open');
+            if (!bar) return;
+            bar.classList.remove('open');
+            // Hidden, the bar must not keep focus. Chromium only moves focus off a
+            // display:none element at its next rendered frame, so until then the hidden
+            // input still held it -- and showSelPop, which stands down while an input has
+            // focus, refused to appear. Where no frames are drawn (a window on a hidden
+            // desktop) that "until then" never ended. Blur now: the same end state, at once.
+            try {
+                const ae = document.activeElement;
+                if (ae && bar.contains(ae) && typeof ae.blur === 'function') ae.blur();
+            } catch (e) {}
         }
 
         function closeFindBar() {
