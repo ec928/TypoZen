@@ -46,8 +46,20 @@ try {
     console.log('=== the line put at the top is the line read back ===');
     for (const want of [900, 2000, 3500]) {
         await page.evaluate((n) => scrollSourceToHardLine(n, false), want);
-        await page.evaluate(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 50))));
-        const got = await page.evaluate(() => hardLineFromSourceScrollTop());
+        // Read it once it has stopped moving: CodeMirror refines its line heights over a
+        // few frames, and a fixed 50 ms wait read "2003 for 2000" when the gate ran suites
+        // in parallel and frames came slower. Two frames agreeing, within 2 s.
+        const got = await page.evaluate(() => new Promise((resolve) => {
+            const t0 = performance.now();
+            let last = null;
+            const tick = () => {
+                const now = hardLineFromSourceScrollTop();
+                if (now === last || performance.now() - t0 > 2000) return resolve(now);
+                last = now;
+                requestAnimationFrame(() => setTimeout(tick, 30));
+            };
+            requestAnimationFrame(() => setTimeout(tick, 30));
+        }));
         info('line ' + want + ' -> read back ' + got);
         if (exact) assert(Math.abs(got - want) <= 1, 'line ' + want + ' reads back as ' + got);
     }
