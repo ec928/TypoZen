@@ -886,6 +886,12 @@
                 while (n > 1 && !(DocumentModel.blocks[n - 1] && String(DocumentModel.blocks[n - 1].raw || '').trim())) n--;
                 return Math.max(1, modelBlockStartLine(n) - 1);
             }
+            // Source: CodeMirror already knows its line count. getMarkdownContent() here
+            // rebuilt the whole document model and split the text, on every caret move.
+            if (precomputedContent == null && state.mode === 'source'
+                && sourceEditor && sourceEditor.view) {
+                return sourceEditor.view.state.doc.lines;
+            }
             const content = precomputedContent != null ? precomputedContent : getMarkdownContent();
             if (!content || content.length === 0) return 1;
             return content.split(/\r?\n/).length;
@@ -934,7 +940,9 @@
 
                 if (state.mode === 'source' && sourceEditor) {
                     const pos = sourceEditor.selectionStart || 0;
-                    caret = sourceEditor.value.substring(0, pos).split(/\r?\n/).length || 1;
+                    caret = sourceEditor.view
+                        ? sourceEditor.view.state.doc.lineAt(pos).number
+                        : (sourceEditor.value.substring(0, pos).split(/\r?\n/).length || 1);
                 } else {
                     const sel = window.getSelection();
                     const selInEditor = !!(sel && sel.anchorNode && editor
@@ -1546,8 +1554,11 @@
             const line = getCaretLineNumber();
             if (line === _lastCaretLine) return;
             _lastCaretLine = line;
-            // Piggy-back on stats so the host updates "Ln X" without a new protocol
-            updateStats();
+            // Piggy-back on stats so the host updates "Ln X" without a new protocol.
+            // Only the caret moved, so the text is unchanged: keep the content cache.
+            // Invalidating it here made scrolling a large document re-join and re-count
+            // the whole text every stats pass although nothing had been edited.
+            updateStats(false);
         }
 
         function updateActiveBlock() {
