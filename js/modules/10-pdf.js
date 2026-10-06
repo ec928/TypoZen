@@ -872,13 +872,24 @@
      * in Wonderland" and only then went back to the top of the page (Ed, 2026-10-06).
      *
      * Only furniture moves: a span of at most two lines lying wholly below everything else
-     * on the page with clear space between (a footer), or wholly above it (a header). The
-     * rest keeps the PDF's own order, which is what puts a two-column page's columns in
-     * sequence; sorting the whole page by height would interleave them.
+     * on the page (a footer) or wholly above it (a header), and either
+     *   - repeated: the same words, numbers aside, in that place on at least three pages --
+     *     what a running footer is. On a page of prose the body runs close to the footer,
+     *     so position alone did not tell them apart and 45 of the Alice PDF's footers were
+     *     missed; or
+     *   - set apart by clear space, for a document too short to repeat anything.
+     * The rest keeps the PDF's own order, which is what puts a two-column page's columns in
+     * sequence; sorting the whole page by height would interleave them, and a column's last
+     * line is neither repeated nor set apart.
      */
-    function readingOrder(p, spans) {
+    function furnitureKey(raw) {
+        return raw.replace(/\d+/g, '#').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+    /** Where each of page p's spans sits, and whether it could be a header or footer. */
+    function pagePlacement(p, spans) {
         const items = S.pageItems && S.pageItems[p];
-        if (!items || spans.length < 2) return spans;
+        const text = (S.pageTexts && S.pageTexts[p]) || '';
+        if (!items || spans.length < 2) return null;
         const hTyp = median(items.map(it => it.h).filter(h => h > 0)) || 10;
         const info = spans.map(([a, b]) => {
             let top = -Infinity, bottom = Infinity;
@@ -889,12 +900,11 @@
                 bottom = Math.min(bottom, it.y);
                 ys.add(Math.round(it.y));
             }
-            return { span: [a, b], top, bottom, lines: ys.size };
+            return { span: [a, b], top, bottom, lines: ys.size, key: furnitureKey(text.slice(a, b)) };
         });
-        const heads = [], body = [], feet = [];
         for (let k = 0; k < info.length; k++) {
             const s = info[k];
-            if (!(s.lines >= 1 && s.lines <= 2)) { body.push(s); continue; }
+            if (!(s.lines >= 1 && s.lines <= 2)) continue;
             let othersTop = -Infinity, othersBottom = Infinity;
             for (let j = 0; j < info.length; j++) {
                 if (j === k || !(info[j].lines >= 1)) continue;
@@ -903,13 +913,28 @@
                 othersTop = Math.max(othersTop, info[j].top);
                 othersBottom = Math.min(othersBottom, info[j].bottom);
             }
-            if (s.top < othersBottom - 1.5 * hTyp) feet.push(s);           // PDF y grows upwards
-            else if (s.bottom > othersTop + 1.5 * hTyp) heads.push(s);
+            // PDF y grows upwards.
+            if (s.top < othersBottom) { s.below = true; s.farBelow = s.top < othersBottom - 1.5 * hTyp; }
+            else if (s.bottom > othersTop) { s.above = true; s.farAbove = s.bottom > othersTop + 1.5 * hTyp; }
+        }
+        return info;
+    }
+    /** Page p's spans in reading order; a footer comes back as [a, b, 'foot']. */
+    function readingOrder(info, spans, repeats) {
+        if (!info) return spans;
+        const heads = [], body = [], feet = [];
+        const often = (s) => s.key && (repeats.get(s.key) || 0) >= 3;
+        for (const s of info) {
+            if (s.below && (s.farBelow || often(s))) feet.push(s);
+            else if (s.above && (s.farAbove || often(s))) heads.push(s);
             else body.push(s);
         }
         if (!heads.length && !feet.length) return spans;
         const down = (u, v) => v.top - u.top;
-        return heads.sort(down).concat(body, feet.sort(down)).map(s => s.span);
+        // A footer is marked as such: Read aloud skips it (Ed, 2026-10-06), while Find,
+        // marks and selection still see it as text on the page.
+        return heads.sort(down).map(s => s.span)
+            .concat(body.map(s => s.span), feet.sort(down).map(s => [s.span[0], s.span[1], 'foot']));
     }
 
     /** Every paragraph of the PDF, as blocks; the same objects until more text arrives. */
@@ -918,8 +943,26 @@
         const key = texts.map(t => (t == null ? '-' : t.length)).join(',');
         if (S.blocks && S.blocksKey === key) return S.blocks;
         const list = [];
+        // Two passes: a footer is known by recurring, so every page is placed before any
+        // is ordered. Counted once per page per position, below and above separately.
+        const spansOf = [], placed = [], repeats = new Map();
         for (let p = 0; p < texts.length; p++) {
-            for (const [a, b] of readingOrder(p, paragraphSpans(p))) {
+            spansOf[p] = paragraphSpans(p);
+            placed[p] = pagePlacement(p, spansOf[p]);
+            const seen = new Set();
+            for (const s of placed[p] || []) {
+                if (!(s.below || s.above) || !s.key) continue;
+                const k = (s.below ? 'v' : '^') + s.key;
+                if (seen.has(k)) continue;
+                seen.add(k);
+                repeats.set(k, (repeats.get(k) || 0) + 1);
+            }
+        }
+        for (const s of placed.flat()) {
+            if (s && (s.below || s.above)) s.key = (s.below ? 'v' : '^') + s.key;
+        }
+        for (let p = 0; p < texts.length; p++) {
+            for (const [a, b, kind] of readingOrder(placed[p], spansOf[p], repeats)) {
                 const raw = texts[p].slice(a, b);
                 const text = readable(raw);
                 if (!/[\p{L}\p{N}]/u.test(text)) continue;
@@ -930,6 +973,7 @@
                 el.dataset.pdfStart = String(a);
                 el.dataset.pdfEnd = String(b);
                 el.__pdfRaw = raw;
+                if (kind === 'foot') el.dataset.pdfFooter = '1';
                 list.push(el);
             }
         }

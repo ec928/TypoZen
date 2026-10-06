@@ -36,6 +36,34 @@ try {
     const p2body = pages.p2.slice(1, -1);
     assert(p2body.indexOf('Full leisurely we glide;') < p2body.indexOf('Not more than once a minute.'),
         'the poem keeps its order');
+
+    console.log('\n=== Read aloud skips footers ===');
+    // Start reading at the top of page 2 the way Read aloud does, and keep what it is handed
+    // instead of speaking it.
+    const heard = await app.eval(async () => {
+        const list = window.tzPdfBlocks();
+        const title = list.findIndex(b => +b.dataset.pdfPage === 1);
+        window.tzPdfGotoBlock(title);
+        await new Promise(r => setTimeout(r, 1200));
+        window.getSelection().removeAllRanges();
+        let chunks = null;
+        const real = startReadingChunks;
+        startReadingChunks = function (c) { chunks = c.map(x => x.text); };
+        try { speakSelection(); } finally { startReadingChunks = real; }
+        const narr = narrationBatches(list, title, 3, true).flat().map(p => p.text);
+        return { chunks: chunks ? chunks.slice(0, 60) : null, narr: narr.slice(0, 60),
+            footers: list.filter(b => b.dataset.pdfFooter === '1').map(b => b.textContent), pages: new Set(list.map(b => b.dataset.pdfPage)).size };
+    });
+    const footerLike = (t) => /Wonderland\s*\d+$|Planet eBook\.com$/.test(t);
+    assert(heard.footers.length >= heard.pages - 5, 'nearly every page has its footer marked (' + heard.footers.length + ' of ' + heard.pages + ' pages)');
+    assert(heard.footers.every(footerLike), 'and nothing else is (' + JSON.stringify(heard.footers.filter(t => !footerLike(t)).slice(0, 5)) + ')');
+    assert(heard.chunks && /^All in the Golden Afternoon/.test(heard.chunks[0]),
+        'reading starts at the top of page 2 (' + (heard.chunks && heard.chunks[0]) + ')');
+    assert(heard.chunks && heard.chunks.length > 30 && !heard.chunks.some(footerLike),
+        'Windows/Kokoro reading passes over every footer (' + JSON.stringify((heard.chunks || []).filter(footerLike)) + ')');
+    assert(heard.chunks && heard.chunks.some(t => /^Anon, to sudden silence/.test(t)), 'and carries on to page 3');
+    assert(heard.narr.length > 20 && !heard.narr.some(footerLike),
+        'the narrator\'s batches leave footers out too (' + JSON.stringify(heard.narr.filter(footerLike)) + ')');
 } catch (e) {
     failed++; console.error('  FAIL ' + e.message.split('\n')[0]);
 } finally {

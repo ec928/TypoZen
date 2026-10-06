@@ -189,7 +189,9 @@ function speakSelection() {
         if (at < 0) return;
         // From the cursor's word, not the top of its paragraph (Read from here).
         const fromCaret = typeof window.tzPdfTextFromCaret === 'function' ? window.tzPdfTextFromCaret(all[at]) : null;
-        startReadingChunks(all.slice(at).map((el, i) => ({ el: el, text: (i === 0 && fromCaret) ? fromCaret : el.textContent })));
+        startReadingChunks(all.slice(at)
+            .map((el, i) => ({ el: el, text: (i === 0 && fromCaret) ? fromCaret : el.textContent }))
+            .filter(c => readAloud(c.el)));
         return;
     }
 
@@ -943,7 +945,18 @@ function speakNumbers(text) {
 
 /** A paragraph's text as the narrator should hear it: numbers as words (speakNumbers). */
 function narrationText(el) {
+    // A PDF page's footer is not read (narrationBatches skips a paragraph with no text).
+    if (!readAloud(el)) return '';
     return speakNumbers((el && el.innerText || '').trim());
+}
+
+/**
+ * Whether reading through the document speaks this paragraph. Not a PDF page's footer --
+ * its page number and running title, between every page (Ed, 2026-10-06). A selection
+ * made over one is still read: that is asked for, not passed on the way.
+ */
+function readAloud(el) {
+    return !(el && el.dataset && el.dataset.pdfFooter === '1');
 }
 
 /** A paragraph as one piece, or several at sentence ends when it is over the cap. */
