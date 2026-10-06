@@ -2915,4 +2915,24 @@
             insertMarkdownTable(cols, rows);
         }
 
+        // Wired here rather than as onclick="" in the template: the page's
+        // Content-Security-Policy allows no inline script, handlers included.
+        (function wireTableModal() {
+            const modal = document.getElementById('tableModal');
+            if (!modal) return;
+            modal.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') { closeTableModal(); e.preventDefault(); }
+            });
+            ['tblCols', 'tblRows'].forEach(function (id) {
+                const input = document.getElementById(id);
+                if (input) input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') { confirmInsertTable(); e.preventDefault(); }
+                });
+            });
+            const cancel = document.getElementById('tblCancel');
+            if (cancel) cancel.addEventListener('click', closeTableModal);
+            const insert = document.getElementById('tblInsert');
+            if (insert) insert.addEventListener('click', confirmInsertTable);
+        })();
+
 

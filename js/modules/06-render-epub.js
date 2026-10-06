@@ -2261,7 +2261,7 @@
                     block.innerHTML =
                         `<ul class="task-list"><li class="task-list-item">` +
                         `<input type="checkbox" class="task-checkbox" contenteditable="false" ` +
-                        `${list.checked ? 'checked ' : ''}onclick="toggleTask(this, event)" />` +
+                        `${list.checked ? 'checked ' : ''}/>` +
                         `<span class="task-text">${text || '&nbsp;'}</span>` +
                         `</li></ul>`;
                     return;
@@ -2649,17 +2649,18 @@
                     .replace(/ /g, '%20')
                     .replace(/#/g, '%23')
                     .replace(/\?/g, '%3F');
-                // onerror: if the mapped host does not serve the file, ask the host for the
-                // bytes instead. An <img> that fails with alt="" collapses to nothing, so
+                // On a load error (caught for every .zen-img by the capturing listener beside
+                // toggleTask -- no inline onerror, the page's CSP refuses it): if the mapped
+                // host does not serve the file, ask the host for the bytes instead. An <img> that fails with alt="" collapses to nothing, so
                 // without this a missing mapping looks exactly like "no image was inserted".
                 return '<img src="' + display + '" data-src="' + u + '" alt="' + alt +
-                    '" onerror="tzImageFallback(this)" contenteditable="false" draggable="true" class="zen-img"' +
+                    '" contenteditable="false" draggable="true" class="zen-img"' +
                     ' style="max-width:100%;border-radius:6px;margin:8px 0;" />';
             });
             res = res.replace(/\[(.*?)\]\((.*?)\)/g, function (m, label, href) {
                 const u = safeUrl(href, false);
                 if (!u) return label;
-                return '<a href="' + u + '" target="_blank" onclick="event.stopPropagation()">' + label + '</a>';
+                return '<a href="' + u + '" target="_blank">' + label + '</a>';
             });
 
             // 4. Emphasis. Longest marker first. Markers must hug non-space text so
@@ -2720,6 +2721,26 @@
                 updateStats();
             }
         }
+
+        // Rendered markup carries no inline handlers -- the page's Content-Security-Policy
+        // refuses them -- so the two that rendered blocks need are caught here instead.
+        //
+        // Task checkbox: in the capture phase, so it runs before the editor's own click
+        // listeners and toggleTask's stopPropagation keeps them out of it, as the inline
+        // handler on the checkbox did. The browser has already flipped `checked` by now.
+        if (typeof editor !== 'undefined' && editor) {
+            editor.addEventListener('click', function (e) {
+                const t = e.target;
+                if (t && t.classList && t.classList.contains('task-checkbox')) toggleTask(t, e);
+            }, true);
+        }
+        // Image load failure: error does not bubble, but it can be captured, and on the
+        // document this covers every place a rendered block's <img> ends up.
+        document.addEventListener('error', function (e) {
+            const t = e.target;
+            if (t && t.tagName === 'IMG' && t.classList.contains('zen-img')
+                && typeof tzImageFallback === 'function') tzImageFallback(t);
+        }, true);
 
         /**
          * Serialize the document to markdown.

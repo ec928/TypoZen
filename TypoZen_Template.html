@@ -3,11 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Script runs only from the app's own files. Book HTML is sanitised before it enters
+         the page, and this is the second barrier: if anything executable ever slipped past
+         the sanitiser it still could not run in a page that can message the host. So no
+         inline <script> and no inline event-handler attributes in this file -- wire handlers in the
+         modules. wasm-unsafe-eval lets pdf.js compile WebAssembly; it does not allow eval().
+         Images, styles and media are not restricted: books bring their own. -->
+    <meta http-equiv="Content-Security-Policy"
+          content="script-src 'self' https://localapp 'wasm-unsafe-eval'; object-src 'none'; base-uri 'none'">
     <title>TypoZen Editor</title>
     <!-- First statement in the document: with this and the mark before the main script,
          a slow start can be attributed to the navigation itself vs parsing vs our own JS.
          That distinction is what found the DNS stall (see TypoZen_App.cs, CreateAsync). -->
-    <script>window.__tzHead = Math.round(performance.now());</script>
+    <script src="js/perf-mark.js" data-mark="__tzHead"></script>
     <!--
       Fonts ship with the app (fonts/), so nothing is fetched from the network — ever.
 
@@ -120,9 +128,9 @@
     <!-- Sidebar -->
     <div id="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-tab active" data-tab="outline" onclick="switchTab('outline')">Outline</div>
-            <div class="sidebar-tab" data-tab="search" onclick="switchTab('search')" title="Search (Alt+S)">Search</div>
-            <div class="sidebar-tab" data-tab="marks" onclick="switchTab('marks')" title="Bookmarks in this document">Marks</div>
+            <div class="sidebar-tab active" data-tab="outline">Outline</div>
+            <div class="sidebar-tab" data-tab="search" title="Search (Alt+S)">Search</div>
+            <div class="sidebar-tab" data-tab="marks" title="Bookmarks in this document">Marks</div>
         </div>
         <div class="sidebar-content">
             <div id="tab-outline" class="tab-pane active">
@@ -351,20 +359,20 @@
     </div>
 
     <!-- Table Insert Modal (custom size) -->
-    <div id="tableModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.65); z-index:99999; align-items:center; justify-content:center; backdrop-filter:blur(4px);" onkeydown="if(event.key==='Escape'){closeTableModal(); event.preventDefault();}">
+    <div id="tableModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.65); z-index:99999; align-items:center; justify-content:center; backdrop-filter:blur(4px);">
         <div style="background:var(--bg, #1E293B); border:1px solid var(--border, #3F3F46); border-radius:10px; padding:22px; width:320px; box-shadow:0 20px 40px rgba(0,0,0,0.6); color:var(--tx, #F8FAFC); font-family:var(--font-sans, 'Inter', sans-serif);">
             <h3 style="margin:0 0 16px 0; font-size:16px; font-weight:600; color:var(--hi, #60A5FA);">Insert Markdown Table</h3>
             <div style="margin-bottom:14px;">
                 <label style="display:block; font-size:12px; opacity:0.85; margin-bottom:5px; font-weight:500;">Columns</label>
-                <input id="tblCols" type="number" min="1" max="20" value="3" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border, #3F3F46); background:var(--surface, rgba(255,255,255,0.05)); color:var(--tx, #F8FAFC); font-size:14px; box-sizing:border-box; outline:none;" onkeydown="if(event.key==='Enter'){confirmInsertTable(); event.preventDefault();}else if(event.key==='Escape'){closeTableModal(); event.preventDefault();}"/>
+                <input id="tblCols" type="number" min="1" max="20" value="3" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border, #3F3F46); background:var(--surface, rgba(255,255,255,0.05)); color:var(--tx, #F8FAFC); font-size:14px; box-sizing:border-box; outline:none;"/>
             </div>
             <div style="margin-bottom:22px;">
                 <label style="display:block; font-size:12px; opacity:0.85; margin-bottom:5px; font-weight:500;">Data rows (header is added automatically)</label>
-                <input id="tblRows" type="number" min="1" max="50" value="3" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border, #3F3F46); background:var(--surface, rgba(255,255,255,0.05)); color:var(--tx, #F8FAFC); font-size:14px; box-sizing:border-box; outline:none;" onkeydown="if(event.key==='Enter'){confirmInsertTable(); event.preventDefault();}else if(event.key==='Escape'){closeTableModal(); event.preventDefault();}"/>
+                <input id="tblRows" type="number" min="1" max="50" value="3" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border, #3F3F46); background:var(--surface, rgba(255,255,255,0.05)); color:var(--tx, #F8FAFC); font-size:14px; box-sizing:border-box; outline:none;"/>
             </div>
             <div style="display:flex; justify-content:flex-end; gap:10px;">
-                <button onclick="closeTableModal()" style="padding:7px 14px; border-radius:6px; border:1px solid var(--border, #3F3F46); background:transparent; color:var(--tx, #F8FAFC); cursor:pointer; font-size:13px; font-weight:500;">Cancel</button>
-                <button onclick="confirmInsertTable()" style="padding:7px 16px; border-radius:6px; border:none; background:var(--accent, #3B82F6); color:var(--accent-tx, #FFF); font-weight:600; cursor:pointer; font-size:13px; box-shadow:0 2px 6px rgba(59,130,246,0.35);">Insert Table</button>
+                <button id="tblCancel" style="padding:7px 14px; border-radius:6px; border:1px solid var(--border, #3F3F46); background:transparent; color:var(--tx, #F8FAFC); cursor:pointer; font-size:13px; font-weight:500;">Cancel</button>
+                <button id="tblInsert" style="padding:7px 16px; border-radius:6px; border:none; background:var(--accent, #3B82F6); color:var(--accent-tx, #FFF); font-weight:600; cursor:pointer; font-size:13px; box-shadow:0 2px 6px rgba(59,130,246,0.35);">Insert Table</button>
             </div>
         </div>
     </div>
@@ -545,7 +553,7 @@
         </div>
     </div>
 
-    <script>window.__tzBeforeMain = Math.round(performance.now());</script>
+    <script src="js/perf-mark.js" data-mark="__tzBeforeMain"></script>
     <!-- Source mode's editor (docs/archive/codemirror-source-plan.md). Outside the engine block:
          the jsdom test page leaves it out, so its suites exercise the textarea path. -->
     <script src="js/vendor/codemirror/codemirror.js"></script>

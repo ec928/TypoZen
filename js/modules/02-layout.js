@@ -317,6 +317,22 @@
             updateSearchSidebar();
         };
 
+        // One listener on the list for every row it will ever hold. The rows used to carry
+        // onclick="" in their markup, which the page's Content-Security-Policy refuses.
+        (function wireSearchResultClicks() {
+            const list = document.getElementById('search-results-list');
+            if (!list) return;
+            list.addEventListener('click', function (e) {
+                const item = e.target && e.target.closest ? e.target.closest('.search-item') : null;
+                if (!item || !list.contains(item)) return;
+                if (item.classList.contains('search-more')) { window.searchShowMore(); return; }
+                const i = parseInt(item.getAttribute('data-i'), 10);
+                if (!(i >= 0)) return;
+                window.findJumpTo(i);
+                try { list.focus({ preventScroll: true }); } catch (eF) {}
+            });
+        })();
+
         /**
          * Document line numbers for a list of ascending model-markdown offsets, in one
          * walk of the blocks.
@@ -537,14 +553,15 @@
                     ? ((kind === 'pdf' ? '' : 'Line ') + lines[i] + ' — image (match in path) — click to jump · '
                         + (i + 1) + ' of ' + findState.matches.length)
                     : ((kind === 'pdf' ? '' : 'Line ') + lines[i] + ' — match ' + (i + 1) + ' of ' + findState.matches.length);
-                html += '<div class="search-item' + rowExtra + active + '" onclick="window.findJumpTo(' + i + '); try { this.closest(\'#search-results-list\').focus({preventScroll:true}); } catch(e) {}"' +
+                // Clicks are handled by wireSearchResultClicks (no inline handlers: CSP).
+                html += '<div class="search-item' + rowExtra + active + '" data-i="' + i + '"' +
                     ' title="' + tip.replace(/"/g, '&quot;') + '">' +
                     '<span class="search-line">' + lines[i] + '</span>' +
                     '<span class="search-text">' + snippet + '</span></div>';
             }
             if (findState.matches.length > limit) {
                 const rest = findState.matches.length - limit;
-                html += `<div class="search-item search-more" onclick="window.searchShowMore()" ` +
+                html += `<div class="search-item search-more" ` +
                     `title="Show more results">+${rest} more — click or scroll to show ` +
                     `${Math.min(rest, SEARCH_RENDER_CHUNK)}</div>`;
             }

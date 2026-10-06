@@ -821,6 +821,11 @@
             // Remember Outline vs Search across restarts (global pref, not per tab).
             try { if (typeof scheduleSavePreferences === 'function') scheduleSavePreferences(); } catch (eSp) {}
         };
+        // Wired here rather than as onclick="" in the template: the page's
+        // Content-Security-Policy allows no inline script, handlers included.
+        document.querySelectorAll('.sidebar-tab[data-tab]').forEach(function (t) {
+            t.addEventListener('click', function () { window.switchTab(t.getAttribute('data-tab')); });
+        });
 
         function generateExportHtml() {
             // The model is the document. editor.innerHTML is a window under
