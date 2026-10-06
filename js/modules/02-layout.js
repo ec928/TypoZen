@@ -1813,10 +1813,21 @@
                 // mousedown, not click: the button taking focus collapses the
                 // selection before a click handler ever runs, so by then there is
                 // nothing left to highlight.
+                // The click that follows a mousedown which already highlighted belongs to
+                // that highlight. By then the selection is gone, so without this it fell
+                // through to "Mark this paragraph" and bookmarked whatever paragraph was at
+                // the top of the view as well -- two marks for one press.
+                // Time-limited, so a press released off the button cannot swallow a later
+                // keyboard activation.
+                let highlightedOnDownAt = 0;
                 add.addEventListener('mousedown', function (ev) {
-                    if (annotateSelection()) { ev.preventDefault(); return; }
+                    highlightedOnDownAt = 0;
+                    if (annotateSelection()) { highlightedOnDownAt = Date.now(); ev.preventDefault(); }
                 });
                 add.addEventListener('click', function () {
+                    const fromDown = highlightedOnDownAt && Date.now() - highlightedOnDownAt < 2000;
+                    highlightedOnDownAt = 0;
+                    if (fromDown) return;
                     if (annotateSelection()) return;
                     toggleMarkAtBlock(markTargetBlock());
                 });
