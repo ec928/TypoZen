@@ -945,18 +945,20 @@ function speakNumbers(text) {
 
 /** A paragraph's text as the narrator should hear it: numbers as words (speakNumbers). */
 function narrationText(el) {
-    // A PDF page's footer is not read (narrationBatches skips a paragraph with no text).
+    // A PDF page's header and footer are not read (narrationBatches skips a paragraph
+    // with no text).
     if (!readAloud(el)) return '';
     return speakNumbers((el && el.innerText || '').trim());
 }
 
 /**
- * Whether reading through the document speaks this paragraph. Not a PDF page's footer --
- * its page number and running title, between every page (Ed, 2026-10-06). A selection
- * made over one is still read: that is asked for, not passed on the way.
+ * Whether reading through the document speaks this paragraph. Not a PDF page's running
+ * header or footer -- page numbers and running titles, between every page. This is an
+ * ebook reader, not a screen reader (Ed, 2026-10-06). A selection made over one is still
+ * read: that is asked for, not passed on the way.
  */
 function readAloud(el) {
-    return !(el && el.dataset && el.dataset.pdfFooter === '1');
+    return !(el && el.dataset && (el.dataset.pdfFooter === '1' || el.dataset.pdfHeader === '1'));
 }
 
 /** A paragraph as one piece, or several at sentence ends when it is over the cap. */

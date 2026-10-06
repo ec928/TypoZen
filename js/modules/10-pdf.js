@@ -873,7 +873,8 @@
      *
      * Only furniture moves: a span of at most two lines lying wholly below everything else
      * on the page (a footer) or wholly above it (a header), and either
-     *   - repeated: the same words, numbers aside, in that place on at least three pages --
+     *   - repeated: the same words, numbers aside, in that place on at least three pages
+     *     and a fifth of them --
      *     what a running footer is. On a page of prose the body runs close to the footer,
      *     so position alone did not tell them apart and 45 of the Alice PDF's footers were
      *     missed; or
@@ -920,10 +921,10 @@
         return info;
     }
     /** Page p's spans in reading order; a footer comes back as [a, b, 'foot']. */
-    function readingOrder(info, spans, repeats) {
+    function readingOrder(info, spans, repeats, minRepeats) {
         if (!info) return spans;
         const heads = [], body = [], feet = [];
-        const often = (s) => s.key && (repeats.get(s.key) || 0) >= 3;
+        const often = (s) => s.key && (repeats.get(s.key) || 0) >= minRepeats;
         for (const s of info) {
             if (s.below && (s.farBelow || often(s))) feet.push(s);
             else if (s.above && (s.farAbove || often(s))) heads.push(s);
@@ -931,9 +932,11 @@
         }
         if (!heads.length && !feet.length) return spans;
         const down = (u, v) => v.top - u.top;
-        // A footer is marked as such: Read aloud skips it (Ed, 2026-10-06), while Find,
-        // marks and selection still see it as text on the page.
-        return heads.sort(down).map(s => s.span)
+        // Furniture is marked as such: Read aloud skips it (Ed, 2026-10-06: "an ebook reader
+        // shouldn't be reading the headers"), while Find, marks and selection still see it
+        // as text on the page. A footer either way; a header only when it recurs -- one set
+        // apart by space alone is as likely a chapter title, which must still be read.
+        return heads.sort(down).map(s => often(s) ? [s.span[0], s.span[1], 'head'] : s.span)
             .concat(body.map(s => s.span), feet.sort(down).map(s => [s.span[0], s.span[1], 'foot']));
     }
 
@@ -961,8 +964,11 @@
         for (const s of placed.flat()) {
             if (s && (s.below || s.above)) s.key = (s.below ? 'v' : '^') + s.key;
         }
+        // Running furniture is on most pages; a chapter opening ("Chapter #" alone at the top)
+        // is on a few. At least three pages, and at least a fifth of them.
+        const minRepeats = Math.max(3, Math.ceil(texts.length / 5));
         for (let p = 0; p < texts.length; p++) {
-            for (const [a, b, kind] of readingOrder(placed[p], spansOf[p], repeats)) {
+            for (const [a, b, kind] of readingOrder(placed[p], spansOf[p], repeats, minRepeats)) {
                 const raw = texts[p].slice(a, b);
                 const text = readable(raw);
                 if (!/[\p{L}\p{N}]/u.test(text)) continue;
@@ -974,6 +980,7 @@
                 el.dataset.pdfEnd = String(b);
                 el.__pdfRaw = raw;
                 if (kind === 'foot') el.dataset.pdfFooter = '1';
+                if (kind === 'head') el.dataset.pdfHeader = '1';
                 list.push(el);
             }
         }

@@ -64,6 +64,35 @@ try {
     assert(heard.chunks && heard.chunks.some(t => /^Anon, to sudden silence/.test(t)), 'and carries on to page 3');
     assert(heard.narr.length > 20 && !heard.narr.some(footerLike),
         'the narrator\'s batches leave footers out too (' + JSON.stringify(heard.narr.filter(footerLike)) + ')');
+    assert(await app.eval(() => window.tzPdfBlocks().filter(b => b.dataset.pdfHeader === '1').length) === 0,
+        'Alice has no running header, and nothing is taken for one (its titles are read)');
+    await app.close(); app = null;
+    await sleep(1500);
+
+    console.log('\n=== running headers are skipped, chapter headings are not ===');
+    // tests/pdf-running-head.pdf (make-pdf-running-head.mjs): "The Lantern Keeper" atop
+    // every page, a page number below, "CHAPTER n" opening every fourth page.
+    app = await launchApp({ file: 'tests/pdf-running-head.pdf', settleMs: 8000 });
+    const t1 = Date.now();
+    while (Date.now() - t1 < 30000 && !(await app.eval(() => window.tzPdfTextReady && window.tzPdfTextReady()))) await sleep(250);
+    const rh = await app.eval(() => {
+        const list = window.tzPdfBlocks();
+        const pages = new Set(list.map(b => b.dataset.pdfPage)).size;
+        const heads = list.filter(b => b.dataset.pdfHeader === '1').map(b => b.textContent);
+        const feet = list.filter(b => b.dataset.pdfFooter === '1').map(b => b.textContent);
+        const chapters = list.filter(b => /^CHAPTER \d/.test(b.textContent));
+        window.tzPdfGotoBlock(0);
+        const narr = narrationBatches(list, 0, 40, true).flat().map(p => p.text);
+        return { pages, heads, feet, chaptersTagged: chapters.filter(b => b.dataset.pdfHeader || b.dataset.pdfFooter).length,
+            chapters: chapters.length, narr };
+    });
+    assert(rh.heads.length === rh.pages && rh.heads.every(t => t === 'The Lantern Keeper'),
+        'every page\'s running header is marked, and nothing else (' + rh.heads.length + ' of ' + rh.pages + ')');
+    assert(rh.feet.length === rh.pages && rh.feet.every(t => /^\d+$/.test(t)), 'every page number is marked a footer');
+    assert(rh.chapters === 4 && rh.chaptersTagged === 0, 'the four chapter headings are not');
+    assert(!rh.narr.some(t => /Lantern Keeper/.test(t)) && !rh.narr.some(t => /^\d+$/.test(t)),
+        'reading aloud never says the header or a page number');
+    assert(rh.narr.filter(t => /^CHAPTER/.test(t)).length === 4, 'and does say every chapter heading');
 } catch (e) {
     failed++; console.error('  FAIL ' + e.message.split('\n')[0]);
 } finally {
