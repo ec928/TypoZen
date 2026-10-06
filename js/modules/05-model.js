@@ -1290,6 +1290,7 @@
             // A document replaces a PDF on screen (10-pdf.js hides the editor while one is shown).
             try { if (window.tzPdfActive && typeof window.tzClosePdf === 'function') window.tzClosePdf(); } catch (eP) {}
             _contentCache = null;
+            tzForgetMissingImages();
             try { if (typeof clearWarmPageChunk === 'function') clearWarmPageChunk(); } catch (eW) {}
             try { releaseDocumentStateForHost(); } catch (e0) {}
             const text = markdown == null ? '' : String(markdown);
@@ -2175,8 +2176,36 @@
                 const rel = img.getAttribute('data-src');
                 if (!rel) return;
                 if (_tzImageData[rel]) { img.src = _tzImageData[rel]; return; }
+                // Already asked by tzRequestPendingImages, or the host has said there is no
+                // such picture: asking again only repeats the question.
+                if (_tzImageAsked[rel] || _tzImageMissing[rel]) return;
+                _tzImageAsked[rel] = true;
                 postMsg('image_data_req:' + rel);
             } catch (e) {}
+        }
+
+        // Paths the host has answered "no such picture" for (image_missing:). Not asked for
+        // again until the next document load -- the picture may have been added by then.
+        // Without this a missing picture was requested twice per render: once up front and
+        // once more by the rescan, which could not tell "missing" from "reply lost".
+        const _tzImageMissing = {};
+
+        /** The host could not serve rel: stop waiting for it and stop asking. */
+        function tzImageMissing(rel) {
+            if (!rel) return;
+            _tzImageMissing[rel] = true;
+            delete _tzImageAsked[rel];
+            try {
+                const all = document.querySelectorAll('img[data-pending]');
+                for (let i = 0; i < all.length; i++) {
+                    if (all[i].getAttribute('data-src') === rel) all[i].removeAttribute('data-pending');
+                }
+            } catch (e) {}
+        }
+
+        /** A new document: anything it lacks gets one fresh request. */
+        function tzForgetMissingImages() {
+            try { for (const k in _tzImageMissing) delete _tzImageMissing[k]; } catch (e) {}
         }
 
         /** Apply bytes the host returned to every image referencing that path. */
@@ -2232,6 +2261,7 @@
                         pending[i].removeAttribute('data-pending');
                         continue;
                     }
+                    if (_tzImageMissing[rel]) { pending[i].removeAttribute('data-pending'); continue; }
                     if (_tzImageAsked[rel]) continue;
                     _tzImageAsked[rel] = true;
                     postMsg('image_data_req:' + rel);

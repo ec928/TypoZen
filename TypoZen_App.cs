@@ -7680,20 +7680,23 @@ namespace TypoZen
                 // Fallback when the https://docfolder mapping does not serve the file.
                 // Read the bytes here and hand them back as a data: URI — no virtual host,
                 // no cross-origin question, works regardless of path oddities.
+                // Answer every request: a silent return looked to the page exactly like a
+                // lost reply, so it asked again for every missing picture.
+                string rel = null;
                 try
                 {
-                    string rel = msg.Substring(15);
+                    rel = msg.Substring(15);
                     string pendingFile = ResolvePendingImage(rel);
                     if (pendingFile != null)
                     {
                         SendMsg("image_data:" + rel + "\n" + ImageDataUri(pendingFile));
                         return;
                     }
-                    if (string.IsNullOrEmpty(_currentFilePath)) return;
+                    if (string.IsNullOrEmpty(_currentFilePath)) { SendMsg("image_missing:" + rel); return; }
                     // Reject path traversal early
-                    if (rel.IndexOf("..", StringComparison.Ordinal) >= 0) return;
+                    if (rel.IndexOf("..", StringComparison.Ordinal) >= 0) { SendMsg("image_missing:" + rel); return; }
                     string docDir = Path.GetDirectoryName(Path.GetFullPath(_currentFilePath));
-                    if (string.IsNullOrEmpty(docDir)) return;
+                    if (string.IsNullOrEmpty(docDir)) { SendMsg("image_missing:" + rel); return; }
                     string docDirPrefix = Path.GetFullPath(docDir);
                     if (!docDirPrefix.EndsWith(Path.DirectorySeparatorChar.ToString())
                         && !docDirPrefix.EndsWith(Path.AltDirectorySeparatorChar.ToString()))
@@ -7701,16 +7704,16 @@ namespace TypoZen
                     string candidate = Path.GetFullPath(Path.Combine(docDir, rel.Replace('/', Path.DirectorySeparatorChar)));
 
                     // Must live under the document folder (trailing-separator prefix check).
-                    if (!candidate.StartsWith(docDirPrefix, StringComparison.OrdinalIgnoreCase)) return;
-                    if (!File.Exists(candidate)) return;
+                    if (!candidate.StartsWith(docDirPrefix, StringComparison.OrdinalIgnoreCase)) { SendMsg("image_missing:" + rel); return; }
+                    if (!File.Exists(candidate)) { SendMsg("image_missing:" + rel); return; }
                     var info = new FileInfo(candidate);
-                    if (info.Length > 12 * 1024 * 1024) return;   // don't inline huge files
+                    if (info.Length > 12 * 1024 * 1024) { SendMsg("image_missing:" + rel); return; }   // don't inline huge files
 
                     string ext = (Path.GetExtension(candidate) ?? "").TrimStart('.').ToLowerInvariant();
                     // Only serve image types (not arbitrary co-located files).
                     if (ext != "png" && ext != "jpg" && ext != "jpeg" && ext != "gif"
                         && ext != "webp" && ext != "bmp" && ext != "svg")
-                        return;
+                        { SendMsg("image_missing:" + rel); return; }
                     string mime =
                         ext == "jpg" || ext == "jpeg" ? "image/jpeg" :
                         ext == "gif" ? "image/gif" :
@@ -7720,8 +7723,11 @@ namespace TypoZen
 
                     string b64 = Convert.ToBase64String(File.ReadAllBytes(candidate));
                     SendMsg("image_data:" + rel + "\n" + "data:" + mime + ";base64," + b64);
+                    return;
                 }
                 catch { }
+                // Only an exception gets here: every other path has answered and returned.
+                if (rel != null) { try { SendMsg("image_missing:" + rel); } catch { } }
             }
             else if (msg.StartsWith("image_paste:", StringComparison.Ordinal))
             {

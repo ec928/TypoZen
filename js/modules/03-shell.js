@@ -1216,6 +1216,10 @@
                     const nl = body.indexOf('\n');
                     if (nl > 0) tzApplyImageData(body.slice(0, nl), body.slice(nl + 1));
                 }
+                else if (msg.startsWith("image_missing:")) {
+                    // The host cannot serve that picture (no such file, not an image, too big).
+                    tzImageMissing(msg.substring(14));
+                }
                 else if (msg.startsWith("insert_image:")) {
                     // Host saved the image beside the document and gave us a relative path.
                     const rel = msg.substring(13);
