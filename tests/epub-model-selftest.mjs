@@ -74,6 +74,14 @@ console.log('--- 2. book markup is rendered, minus anything executable ---');
     assert(out.indexOf('onclick') === -1, 'event handler attributes are removed');
     assert(!/javascript:/i.test(out), 'javascript: URLs are removed from href and src');
     assert(out.indexOf('hi') !== -1, 'and the text survives all of that');
+    // A URL parser drops tabs and newlines inside a scheme and leading control characters,
+    // so each of these is still javascript: to the browser. A regex on the raw value missed them.
+    const hidden = sanitizeBookHtml(
+        '<a href="java\tscript:steal()">t</a><a href="java\nscript:steal()">n</a>' +
+        '<a href="\u0001 javascript:steal()">c</a><img src="JaVa\r\nScRiPt:steal()">' +
+        '<a href="chapter2.xhtml">ok</a>');
+    assert(!/script:/i.test(hidden.replace(/\s/g, '')), 'javascript: hidden by tab, newline or control character is removed');
+    assert(hidden.indexOf('chapter2.xhtml') !== -1, 'an ordinary link is kept');
 
     // Everything else that can execute or navigate. These were added when the engine was
     // split into modules and nothing asserted them, so a later tidy-up could have dropped

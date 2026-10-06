@@ -2049,15 +2049,19 @@
                         const name = attrs[a].name.toLowerCase();
                         const val = String(attrs[a].value || '');
                         if (name.indexOf('on') === 0) { el.removeAttribute(attrs[a].name); continue; }
+                        // Read the scheme the way the browser will: a URL parser drops tabs
+                        // and newlines anywhere and leading control characters, so
+                        // "java\tscript:" is still javascript: and a plain regex missed it.
+                        const url = val.replace(/[\t\n\r]/g, '').replace(/^[\u0000- ]+/, '');
                         // External SVG use / xlink can pull remote markup; strip those.
                         if ((name === 'href' || name === 'src' || name === 'xlink:href')
-                            && (/^\s*javascript:/i.test(val)
-                                || /^\s*data\s*:\s*text\/html/i.test(val)
+                            && (/^javascript:/i.test(url)
+                                || /^data\s*:\s*text\/html/i.test(url)
                                 // localName, not tagName: an SVG element's tagName keeps
                                 // the case it was written in, so 'use' never equalled 'USE'
                                 // and this guard had never once fired. HTML elements report
                                 // uppercase, which is what made it look right.
-                                || (el.localName === 'use' && /^\s*https?:/i.test(val)))) {
+                                || (el.localName === 'use' && /^https?:/i.test(url)))) {
                             el.removeAttribute(attrs[a].name);
                         }
                     }
