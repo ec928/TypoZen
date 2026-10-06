@@ -3445,34 +3445,10 @@ namespace TypoZen
             {
                 if (encoded.Length >= 2 && encoded[0] == '"' && encoded[encoded.Length - 1] == '"')
                 {
-                    // Lightweight JSON string unescape
-                    string s = encoded.Substring(1, encoded.Length - 2);
-                    var sb = new StringBuilder(s.Length);
-                    for (int i = 0; i < s.Length; i++)
-                    {
-                        if (s[i] == '\\' && i + 1 < s.Length)
-                        {
-                            char n = s[++i];
-                            if (n == 'n') sb.Append('\n');
-                            else if (n == 'r') sb.Append('\r');
-                            else if (n == 't') sb.Append('\t');
-                            else if (n == '"' || n == '\\' || n == '/') sb.Append(n);
-                            else if (n == 'u' && i + 4 < s.Length)
-                            {
-                                string hex = s.Substring(i + 1, 4);
-                                int cp;
-                                if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out cp))
-                                {
-                                    sb.Append((char)cp);
-                                    i += 4;
-                                }
-                                else sb.Append(n);
-                            }
-                            else sb.Append(n);
-                        }
-                        else sb.Append(s[i]);
-                    }
-                    return sb.ToString();
+                    // The shared one-pass unescape. This had its own copy, which read \b and
+                    // \f as the letters b and f, so a document holding either character came
+                    // back changed from every host pull.
+                    return JsonUnescape(encoded.Substring(1, encoded.Length - 2));
                 }
             }
             catch { }
@@ -4925,7 +4901,7 @@ namespace TypoZen
                 string path = TabSessionPath();
                 if (!File.Exists(path)) return false;
                 string text = File.ReadAllText(path, Encoding.UTF8);
-                if (string.IsNullOrEmpty(text) || !text.StartsWith("TZTABS1")) return false;
+                if (string.IsNullOrEmpty(text) || !text.StartsWith("TZTABS1", StringComparison.Ordinal)) return false;
 
                 string bodyDir = TabSessionBodiesDir();
                 int active = 0;
@@ -4934,8 +4910,8 @@ namespace TypoZen
                 for (int i = 0; i < lines.Length; i++)
                 {
                     string line = lines[i].TrimEnd();
-                    if (line.StartsWith("active=")) int.TryParse(line.Substring(7), out active);
-                    else if (line.StartsWith("count=")) int.TryParse(line.Substring(6), out count);
+                    if (line.StartsWith("active=", StringComparison.Ordinal)) int.TryParse(line.Substring(7), out active);
+                    else if (line.StartsWith("count=", StringComparison.Ordinal)) int.TryParse(line.Substring(6), out count);
                 }
                 if (count <= 0) return false;
                 if (count > MaxSessionTabs) count = MaxSessionTabs;
@@ -4964,17 +4940,17 @@ namespace TypoZen
                     for (int i = start; i < lines.Length; i++)
                     {
                         string line = lines[i].TrimEnd();
-                        if (line.StartsWith("[tab ")) break;
-                        if (line.StartsWith("path=")) tabPath = line.Substring(5);
-                        else if (line.StartsWith("dirty=")) dirty = line.Substring(6) == "1";
-                        else if (line.StartsWith("kind=")) kindTok = line.Substring(5);
-                        else if (line.StartsWith("le=")) le = line.Substring(3);
-                        else if (line.StartsWith("trail=")) trailTok = line.Substring(6);
-                        else if (line.StartsWith("resume=")) int.TryParse(line.Substring(7), out resumeBlock);
-                        else if (line.StartsWith("cols=")) int.TryParse(line.Substring(5), out cols);
-                        else if (line.StartsWith("scroll=")) scrollTok = line.Substring(7).Trim();
-                        else if (line.StartsWith("mode=")) modeTok = line.Substring(5).Trim();
-                        else if (line.StartsWith("body=")) bodyName = line.Substring(5);
+                        if (line.StartsWith("[tab ", StringComparison.Ordinal)) break;
+                        if (line.StartsWith("path=", StringComparison.Ordinal)) tabPath = line.Substring(5);
+                        else if (line.StartsWith("dirty=", StringComparison.Ordinal)) dirty = line.Substring(6) == "1";
+                        else if (line.StartsWith("kind=", StringComparison.Ordinal)) kindTok = line.Substring(5);
+                        else if (line.StartsWith("le=", StringComparison.Ordinal)) le = line.Substring(3);
+                        else if (line.StartsWith("trail=", StringComparison.Ordinal)) trailTok = line.Substring(6);
+                        else if (line.StartsWith("resume=", StringComparison.Ordinal)) int.TryParse(line.Substring(7), out resumeBlock);
+                        else if (line.StartsWith("cols=", StringComparison.Ordinal)) int.TryParse(line.Substring(5), out cols);
+                        else if (line.StartsWith("scroll=", StringComparison.Ordinal)) scrollTok = line.Substring(7).Trim();
+                        else if (line.StartsWith("mode=", StringComparison.Ordinal)) modeTok = line.Substring(5).Trim();
+                        else if (line.StartsWith("body=", StringComparison.Ordinal)) bodyName = line.Substring(5);
                     }
 
                     var tab = new DocTab
@@ -5373,7 +5349,7 @@ namespace TypoZen
                 foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
                 {
                     string w = line.Trim().TrimStart('﻿');
-                    if (w.Length > 0 && !w.StartsWith("#")) n++;
+                    if (w.Length > 0 && !w.StartsWith("#", StringComparison.Ordinal)) n++;
                 }
                 if (n == 0) return "none added";
                 return n + (n == 1 ? " word" : " words");
@@ -6967,13 +6943,13 @@ namespace TypoZen
 
             // Page-side startup marks, batched and flushed at "ready". Format: perf:<ms>|<label>
             // The page clock starts at navigation, so these are offsets within template load.
-            if (msg.StartsWith("perf:"))
+            if (msg.StartsWith("perf:", StringComparison.Ordinal))
             {
                 int bar = msg.IndexOf('|');
                 if (bar > 5) Program.PerfMark("        page +" + msg.Substring(5, bar - 5) + " ms  " + msg.Substring(bar + 1));
                 return;
             }
-            else if (msg.StartsWith("telemetry:"))
+            else if (msg.StartsWith("telemetry:", StringComparison.Ordinal))
             {
                 // Only with --debug. Normal runs must not write a log beside the exe.
                 if (!Program.DebugLogEnabled) return;
@@ -7037,7 +7013,7 @@ namespace TypoZen
                         if (ExtensionCatalog.VoiceId(row) == id)
                         {
                             string g = ExtensionCatalog.VoiceGroup(row);
-                            culture = g.StartsWith("British") ? "en-GB" : "en-US";
+                            culture = g.StartsWith("British", StringComparison.Ordinal) ? "en-GB" : "en-US";
                             gender = g.EndsWith("female") ? "Female" : "Male";
                         }
                 }
@@ -7049,7 +7025,7 @@ namespace TypoZen
                 SendMsg("cmd:word_voice:" + id + "|" + culture + "|" + gender + "|" + (k ? "kokoro" : "windows"));
                 return;
             }
-            else if (msg.StartsWith("host_word_play:"))
+            else if (msg.StartsWith("host_word_play:", StringComparison.Ordinal))
             {
                 // Look up's speaker with the Qwen narrator chosen: the word in the closest quick
                 // voice, not the narrator (seconds to start, for one word). Ed, 2026-09-26.
@@ -7074,7 +7050,7 @@ namespace TypoZen
                 _ = TypoZen_TTS.PlayAsync(word, voice, _ttsSpeed);
                 return;
             }
-            else if (msg.StartsWith("host_tts_play:"))
+            else if (msg.StartsWith("host_tts_play:", StringComparison.Ordinal))
             {
                 string json = msg.Substring("host_tts_play:".Length);
                 var dict = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
@@ -7126,7 +7102,7 @@ namespace TypoZen
                 ShowReadAloudState(true);
                 return;
             }
-            else if (msg.StartsWith("host_kokoro_voice_restored:"))
+            else if (msg.StartsWith("host_kokoro_voice_restored:", StringComparison.Ordinal))
             {
                 bool wasQwen = _kokoroVoiceId == QwenNarrator.VoiceId;
                 _kokoroVoiceId = msg.Substring(27);
@@ -7136,21 +7112,21 @@ namespace TypoZen
                 if (!wasQwen && _kokoroVoiceId == QwenNarrator.VoiceId) WarmNarrator();
                 return;
             }
-            else if (msg.StartsWith("host_narrator_cast:"))
+            else if (msg.StartsWith("host_narrator_cast:", StringComparison.Ordinal))
             {
                 // The page's answer to Narrator settings' "Find characters".
                 var cb = NarratorDialog.CastScanArrived;
                 if (cb != null) cb(msg.Substring(19));
                 return;
             }
-            else if (msg.StartsWith("host_narrator_trial:"))
+            else if (msg.StartsWith("host_narrator_trial:", StringComparison.Ordinal))
             {
                 // Narrator settings' Try it: the pieces and what the narrator was told, or the end.
                 var cb = NarratorDialog.TrialArrived;
                 if (cb != null) cb(msg.Substring(20));
                 return;
             }
-            else if (msg.StartsWith("host_narration_phase:"))
+            else if (msg.StartsWith("host_narration_phase:", StringComparison.Ordinal))
             {
                 // The page's side of the narrator's state: preparing, reading, or "" when done.
                 _narrationPhase = msg.Substring(21);
@@ -7193,14 +7169,14 @@ namespace TypoZen
                 ResetZoom();
                 return;
             }
-            if (msg.StartsWith("pdf_export_info:"))
+            if (msg.StartsWith("pdf_export_info:", StringComparison.Ordinal))
             {
                 // Out of the WebView's message callback before a modal dialog opens.
                 string info = msg.Substring(16);
                 Dispatcher.BeginInvoke(new Action(() => ShowPdfExportDialog(info)));
                 return;
             }
-            if (msg.StartsWith("pdf_modified:"))
+            if (msg.StartsWith("pdf_modified:", StringComparison.Ordinal))
             {
                 // The first annotation or form entry since opening or saving (10-pdf.js).
                 if (_tabOpInProgress || msg.Substring(13) != "1" || !ActiveIsPdf()) return;
@@ -7215,43 +7191,43 @@ namespace TypoZen
                 }
                 return;
             }
-            if (msg.StartsWith("pdf_edit_mode:"))
+            if (msg.StartsWith("pdf_edit_mode:", StringComparison.Ordinal))
             {
                 _pdfEditMode = msg.Substring(14);
                 SetAnnotateChecks(_pdfEditMode);
                 return;
             }
-            if (msg.StartsWith("pdf_save_test:"))
+            if (msg.StartsWith("pdf_save_test:", StringComparison.Ordinal))
             {
                 // Not inline: the save waits on the page, which cannot answer until this returns.
                 string p = msg.Substring(14);
                 Dispatcher.BeginInvoke(new Action(() => SavePdfForTest(p)), DispatcherPriority.Normal);
                 return;
             }
-            if (msg.StartsWith("pdf_ocr_status:"))
+            if (msg.StartsWith("pdf_ocr_status:", StringComparison.Ordinal))
             {
                 // "Reading scanned pages 3 of 12", or why they cannot be read (10-pdf.js).
                 string text = msg.Substring(15);
                 if (_lblChapter != null && ActiveIsPdf()) _lblChapter.Text = text;
                 return;
             }
-            if (msg.StartsWith("pdf_export_test:"))
+            if (msg.StartsWith("pdf_export_test:", StringComparison.Ordinal))
             {
                 StartPdfExportForTest(msg.Substring(16));
                 return;
             }
-            if (msg.StartsWith("pdf_export_progress:"))
+            if (msg.StartsWith("pdf_export_progress:", StringComparison.Ordinal))
             {
                 PdfExportProgress(msg.Substring(20));
                 return;
             }
-            if (msg.StartsWith("pdf_export_done:"))
+            if (msg.StartsWith("pdf_export_done:", StringComparison.Ordinal))
             {
                 string done = msg.Substring(16);
                 Dispatcher.BeginInvoke(new Action(() => PdfExportDone(done)));
                 return;
             }
-            if (msg.StartsWith("pdf_zoom:"))
+            if (msg.StartsWith("pdf_zoom:", StringComparison.Ordinal))
             {
                 // "<pct>" or "<pct>,fit" while the page is fitted to the window.
                 string[] z = msg.Substring(9).Split(',');
@@ -7270,7 +7246,7 @@ namespace TypoZen
             // would be a way to make opening a note launch a program. Everything else that
             // looks like a path goes through open_doc below, which opens it as a document
             // and cannot run it.
-            if (msg.StartsWith("open_external:"))
+            if (msg.StartsWith("open_external:", StringComparison.Ordinal))
             {
                 try
                 {
@@ -7294,7 +7270,7 @@ namespace TypoZen
             // so a link to an .exe becomes a failed document open rather than a program.
             // "Show in Folder" on the link chip. Same resolution as open_doc, then the
             // same Explorer call the status-bar path already makes.
-            if (msg.StartsWith("reveal_doc:"))
+            if (msg.StartsWith("reveal_doc:", StringComparison.Ordinal))
             {
                 try
                 {
@@ -7315,7 +7291,7 @@ namespace TypoZen
                 return;
             }
 
-            if (msg.StartsWith("open_doc:"))
+            if (msg.StartsWith("open_doc:", StringComparison.Ordinal))
             {
                 try
                 {
@@ -7387,7 +7363,7 @@ namespace TypoZen
                 return;
             }
 
-            if (msg.StartsWith("ready"))
+            if (msg.StartsWith("ready", StringComparison.Ordinal))
             {
                 Program.PerfMark("page reported ready (template JS initialised)");
                 string prefsPath = PrefsPath();
@@ -7600,7 +7576,7 @@ namespace TypoZen
             {
                 Dispatcher.BeginInvoke(new Action(() => CycleTab(-1)), DispatcherPriority.Normal);
             }
-            else if (msg.StartsWith("cmd:search_web:"))
+            else if (msg.StartsWith("cmd:search_web:", StringComparison.Ordinal))
             {
                 try
                 {
@@ -7613,7 +7589,7 @@ namespace TypoZen
                 }
                 catch { }
             }
-            else if (msg.StartsWith("save_prefs:"))
+            else if (msg.StartsWith("save_prefs:", StringComparison.Ordinal))
             {
                 try
                 {
@@ -7624,7 +7600,7 @@ namespace TypoZen
                 }
                 catch {}
             }
-            else if (msg.StartsWith("stats:"))
+            else if (msg.StartsWith("stats:", StringComparison.Ordinal))
             {
                 // words, chars, readTime, isDirty, totalLines, caretLine [, selWords, selChars]
                 var parts = msg.Substring(6).Split(',');
@@ -7682,7 +7658,7 @@ namespace TypoZen
                     UpdateStatusDisplay();
                 }
             }
-            else if (msg.StartsWith("view_flags:"))
+            else if (msg.StartsWith("view_flags:", StringComparison.Ordinal))
             {
                 // view_flags:reveal=1,focus=0,typewriter=1
                 try
@@ -7699,7 +7675,7 @@ namespace TypoZen
             // No save_content: / save_as_content: messages: saving pulls content
             // synchronously (SaveTabNow) so a reply can never land after the active tab
             // changed.
-            else if (msg.StartsWith("image_data_req:"))
+            else if (msg.StartsWith("image_data_req:", StringComparison.Ordinal))
             {
                 // Fallback when the https://docfolder mapping does not serve the file.
                 // Read the bytes here and hand them back as a data: URI — no virtual host,
@@ -7747,7 +7723,7 @@ namespace TypoZen
                 }
                 catch { }
             }
-            else if (msg.StartsWith("image_paste:"))
+            else if (msg.StartsWith("image_paste:", StringComparison.Ordinal))
             {
                 // image_paste:<ext>:<base64>
                 try
@@ -7772,19 +7748,19 @@ namespace TypoZen
                         WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                 }
             }
-            else if (msg.StartsWith("export_html_content:"))
+            else if (msg.StartsWith("export_html_content:", StringComparison.Ordinal))
             {
                 string html = msg.Substring(20);
                 ExecuteExportHtml(html);
             }
-            else if (msg.StartsWith("menu_access:"))
+            else if (msg.StartsWith("menu_access:", StringComparison.Ordinal))
             {
                 // Alt+<letter>, forwarded from the page. Open the top-level menu whose
                 // access key matches — derived from the "_File" style headers, so it stays
                 // correct if a header is renamed.
                 OpenMenuByAccessKey(msg.Length > 12 ? msg[12] : '\0');
             }
-            else if (msg.StartsWith("book_position:"))
+            else if (msg.StartsWith("book_position:", StringComparison.Ordinal))
             {
                 // Historical name: any saved path (epub or markdown) may remember a block.
                 // "<block>" or "<block>|gen=<n>". A report without a generation is from
@@ -7822,36 +7798,36 @@ namespace TypoZen
                     }
                 }
             }
-            else if (msg.StartsWith("define:"))
+            else if (msg.StartsWith("define:", StringComparison.Ordinal))
             {
                 AnswerDefinition(msg.Substring(7).Trim());
             }
-            else if (msg.StartsWith("spell_check:"))
+            else if (msg.StartsWith("spell_check:", StringComparison.Ordinal))
             {
                 HandleSpellCheck(msg.Substring(12));
             }
-            else if (msg.StartsWith("spell_drop:"))
+            else if (msg.StartsWith("spell_drop:", StringComparison.Ordinal))
             {
                 string dropId = msg.Substring(11).Trim();
                 if (dropId.Length > 0) _spellDropped[dropId] = 1;
             }
-            else if (msg.StartsWith("spell_suggest:"))
+            else if (msg.StartsWith("spell_suggest:", StringComparison.Ordinal))
             {
                 HandleSpellSuggest(msg.Substring(14));
             }
-            else if (msg.StartsWith("spell_add:"))
+            else if (msg.StartsWith("spell_add:", StringComparison.Ordinal))
             {
                 // On the spelling thread, in order with the checks queued before it.
                 string addWord = msg.Substring(10).Trim();
                 bool persist = !SuppressDocumentTraces();
                 WindowsSpell.Post(() => WindowsSpell.Add(addWord, persist));
             }
-            else if (msg.StartsWith("spell_ignore:"))
+            else if (msg.StartsWith("spell_ignore:", StringComparison.Ordinal))
             {
                 string ignoreWord = msg.Substring(13).Trim();
                 WindowsSpell.Post(() => WindowsSpell.Ignore(ignoreWord));
             }
-            else if (msg.StartsWith("marks_set:"))
+            else if (msg.StartsWith("marks_set:", StringComparison.Ordinal))
             {
                 // The page owns the format and sends the whole list; the host keys it
                 // by path and writes it. Not while a tab operation is in flight, for the
@@ -7866,7 +7842,7 @@ namespace TypoZen
                     catch { }
                 }
             }
-            else if (msg.StartsWith("view_state:"))
+            else if (msg.StartsWith("view_state:", StringComparison.Ordinal))
             {
                 // "view_state:<mode>,<columns>,<scroll>,<columnsLocked>,<scrollLocked>"
                 //
@@ -7895,7 +7871,7 @@ namespace TypoZen
                     catch { }
                 }
             }
-            else if (msg.StartsWith("sidebar_state:"))
+            else if (msg.StartsWith("sidebar_state:", StringComparison.Ordinal))
             {
                 // Remembered, not just painted: a theme change recomputes the brushes and
                 // has to repaint every stateful control. Without the field the sidebar
@@ -7911,7 +7887,7 @@ namespace TypoZen
                     SetToolbarActive(FindElement("btnToggleSidebar") as Button, _sidebarOpen)),
                     DispatcherPriority.Normal);
             }
-            else if (msg.StartsWith("progress:"))
+            else if (msg.StartsWith("progress:", StringComparison.Ordinal))
             {
                 // "progress:24" -- how far through the book, by words. Books only.
                 string pct = msg.Substring(9);
@@ -7920,7 +7896,7 @@ namespace TypoZen
                     if (_lblProgress != null) _lblProgress.Text = string.IsNullOrEmpty(pct) ? "" : ("Progress: " + pct + "%");
                 }));
             }
-            else if (msg.StartsWith("chapter:"))
+            else if (msg.StartsWith("chapter:", StringComparison.Ordinal))
             {
                 // "chapter:<blockIndex>\t<title>" — index is for click-to-jump; empty title hides.
                 string body = msg.Length > 8 ? msg.Substring(8) : "";
@@ -7975,7 +7951,7 @@ namespace TypoZen
                 bool asNew = msg == "save_as_shortcut";
                 Dispatcher.BeginInvoke(new Action(() => SaveFromShortcut(asNew)), DispatcherPriority.Normal);
             }
-            else if (msg.StartsWith("shortcut:"))
+            else if (msg.StartsWith("shortcut:", StringComparison.Ordinal))
             {
                 // Ctrl+N / Ctrl+O / Ctrl+P / F11 from the page, which is the only thing that
                 // sees them while the editor has focus. Deferred like the save shortcut: each
@@ -8018,7 +7994,7 @@ namespace TypoZen
                 }
                 OnUserTyping();
             }
-            else if (msg.StartsWith("view_profile_applied:"))
+            else if (msg.StartsWith("view_profile_applied:", StringComparison.Ordinal))
             {
                 // The page has just put a view profile's colours on screen, with the document
                 // it came with. The window chrome follows now, not when the profile was sent,
@@ -8053,7 +8029,7 @@ namespace TypoZen
                 }
                 catch { }
             }
-            else if (msg.StartsWith("load_failed:"))
+            else if (msg.StartsWith("load_failed:", StringComparison.Ordinal))
             {
                 // A book's payload is a staged file, and staged files go away.
                 //
@@ -8101,7 +8077,7 @@ namespace TypoZen
                 }
                 catch { }
             }
-            else if (msg.StartsWith("open_file_path:"))
+            else if (msg.StartsWith("open_file_path:", StringComparison.Ordinal))
             {
                 // MUST NOT run inline. We are inside the WebView's message callback, and
                 // LoadFileFromPath blocks on a script round trip (SyncActiveTabFromEditor)
@@ -8113,7 +8089,7 @@ namespace TypoZen
                 Dispatcher.BeginInvoke(new Action(() => LoadFileFromPath(path)),
                     DispatcherPriority.Normal);
             }
-            else if (msg.StartsWith("mode_changed:"))
+            else if (msg.StartsWith("mode_changed:", StringComparison.Ordinal))
             {
                 // Word Wrap is enabled or greyed out by mode, so the field has to be
                 // current before the refresh runs. RenderViewSelectors sets it too, from
@@ -8145,7 +8121,7 @@ namespace TypoZen
                 Dispatcher.BeginInvoke(new Action(RefreshEditingAvailability),
                     DispatcherPriority.Normal);
             }
-            else if (msg.StartsWith("margin_changed:"))
+            else if (msg.StartsWith("margin_changed:", StringComparison.Ordinal))
             {
                 string m = msg.Substring(15);
                 UpdateMarginChecks(m);
@@ -11101,7 +11077,7 @@ namespace TypoZen
 
             EventHandler<CoreWebView2WebMessageReceivedEventArgs> msgHandler = (s, e) => {
                 string m = e.TryGetWebMessageAsString();
-                if (m != null && m.StartsWith("host_kokoro_sample_playing:")) {
+                if (m != null && m.StartsWith("host_kokoro_sample_playing:", StringComparison.Ordinal)) {
                     var sel = listBox.SelectedItem as ListBoxItem;
                     if (sel != null && sel.Tag != null) {
                         var tag = sel.Tag as string[];
@@ -15831,7 +15807,7 @@ namespace TypoZen
                     foreach (string row in ExtensionCatalog.Voices)
                     {
                         string group = ExtensionCatalog.VoiceGroup(row);          // "British female"
-                        string c = group.StartsWith("British") ? "en-GB" : group.StartsWith("American") ? "en-US" : "";
+                        string c = group.StartsWith("British", StringComparison.Ordinal) ? "en-GB" : group.StartsWith("American", StringComparison.Ordinal) ? "en-US" : "";
                         string g = group.EndsWith("female") ? "Female" : group.EndsWith("male") ? "Male" : "";
                         double s = fit(c, g) + 1 - 0.5;                            // neural, but loads first
                         if (s > bestScore) { bestScore = s; best = ExtensionCatalog.VoiceId(row); kokoro = true; }
@@ -15923,7 +15899,7 @@ namespace TypoZen
                     string st = ExecuteScriptBlocking("String(window.__tzPdfSave || '')", 2000) ?? "";
                     if (st == "ok") return true;
                     if (st == "ok-clean") { clean = true; return true; }
-                    if (st.StartsWith("error:")) { error = st.Substring(6); return false; }
+                    if (st.StartsWith("error:", StringComparison.Ordinal)) { error = st.Substring(6); return false; }
                 }
                 error = "it took longer than " + (timeoutMs / 1000) + " seconds";
                 return false;
@@ -17826,9 +17802,9 @@ namespace TypoZen
                     }
                     catch { prep = null; }
                     prep = (prep ?? "").Trim();
-                    if (!prep.StartsWith("ok:"))
+                    if (!prep.StartsWith("ok:", StringComparison.Ordinal))
                     {
-                        bool tooLarge = prep.StartsWith("too-large:");
+                        bool tooLarge = prep.StartsWith("too-large:", StringComparison.Ordinal);
                         WinForms.MessageBox.Show(
                             (tooLarge
                                 ? "This document is too long to print from TypoZen (" +
@@ -17950,7 +17926,7 @@ namespace TypoZen
                     // carries a kind label here ("Epub", "PDF"), not a character encoding,
                     // and telling the reader it will be "saved as UTF-8" would be false.
                     bool isTextDoc = activeTab == null || activeTab.Kind == DocKind.Engine;
-                    bool converts = isTextDoc && !(enc.StartsWith("UTF-8") && enc.IndexOf("BOM") < 0);
+                    bool converts = isTextDoc && !(enc.StartsWith("UTF-8", StringComparison.Ordinal) && enc.IndexOf("BOM") < 0);
                     string encLine = converts
                         ? "Encoding: " + enc + "  →  saved as UTF-8"
                         : "Encoding: " + enc;
