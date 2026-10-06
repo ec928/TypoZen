@@ -216,7 +216,11 @@ after a paste, and typing latency).
 The package is **unsigned**. It therefore cannot be installed by double-clicking, and
 must not be offered alongside the portable zip: a user who downloads it gets a
 certificate error and no app. Its only destination is the Store, which signs it on
-submission. To test locally you need Developer Mode and `Build-Msix.ps1 -Register`.
+submission. To test locally you need Developer Mode. `tools\Test-Packaged.ps1` registers
+the built `dist-msix\TypoZen.msix` itself and launches it with a book for
+`tests/packaged-smoke-app.mjs`; `-Remove` takes it away again. (`Build-Msix.ps1 -Register`
+registers a fresh stage of `bin\` instead, which can hold later work than the package being
+submitted -- test the artefact that ships.)
 
 ### Submission gotchas, all learned the hard way
 

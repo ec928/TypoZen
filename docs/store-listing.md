@@ -52,16 +52,16 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. These notes are the 0.14.11 package, uploaded to the Store on 2026-10-05. GitHub v0.14.11, the installer, and the installed app are the same version._
+_Limit 1,500 characters. These notes are the 0.14.13 package; they cover everything since 0.14.11, the last version on the Store (0.14.12 went to GitHub only). GitHub v0.14.13, the installer, and the installed app are the same version._
 
-The Qwen narrator, once installed from Extensions:
-
-- Design a voice, then give each character in a book their own voice and a standing instruction. A row's play button speaks a short line in that voice.
-- A bracket to the right of a speaker, such as Anna [whispers softly], "Get out.", is that line's instruction and is not spoken. It replaces her standing instruction for that line.
-- A double bracket, [[shouts loudly]], anywhere in that sentence overrides every instruction, including the character's default, and is not spoken.
-- With Emotion cues on, and no bracket, the words of a speech tag are added to the standing instruction. "said", "asked" and "told" are left out, so "sadly said" adds "sadly".
-- The narrator and a character's quotation are read separately. Keep the speaker's name within eight words of the quotation.
-- Selecting text while the narrator is reading no longer raises the browser spelling menu. Accepting one of those suggestions used to delete the following paragraphs.
+- Replace All no longer damages text. After certain characters, such as the Turkish İ, it replaced each match one letter early and wrote over neighbouring words. It is also far faster on large documents.
+- Save All Images in PDF no longer misses pictures. Some pictures, such as those with a transparency mask, could be counted but never saved.
+- Saving keeps page-break (form feed) characters in old text and code files instead of turning them into the letter f.
+- The table toolbar is back: click into a table for the row, column and alignment buttons.
+- Highlight selection makes one mark instead of also bookmarking the paragraph at the top of the page.
+- Read aloud on a PDF skips page numbers and running headers and footers, and no longer starts a page with its footer.
+- Moving the cursor, scrolling and typing in long documents do less work behind the scenes.
+- Security: links hidden inside ePub books are caught, and the editor runs only TypoZen's own code.
 
 ---
 
@@ -72,9 +72,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.14.11.0); every other package removed from the submission |
+| 2 | Packages | the newest MSIX (0.14.13.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.14.11 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.14.13 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |

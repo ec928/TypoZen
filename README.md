@@ -192,7 +192,7 @@ A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing download
 - **Your place is remembered** and the PDF reopens on the page you left. Each PDF tab also keeps its own **2 Columns** and **Pages** setting, across restarts.
 - **View → PDF Pages in Theme Colours** redraws pages in the theme's colours. It is off by default because it recolours pictures too.
 - The status bar shows the PDF's word count and **Page N/M**.
-- **Read Aloud and narration** read the PDF paragraph by paragraph from the one on screen (or the one you clicked in), highlighting each on the page. PDF text has no paragraphs of its own, so they are worked out from the layout: headings, list items and captions stand alone.
+- **Read Aloud and narration** read the PDF paragraph by paragraph from the one on screen (or the one you clicked in), highlighting each on the page. PDF text has no paragraphs of its own, so they are worked out from the layout: headings, list items and captions stand alone. A page's running header and footer -- page numbers and running titles, found because they repeat from page to page -- are not read; a chapter heading is.
 - **Select text** for the same popup as in a book: Look up, Read, Find in document, Highlight.
 - **Bookmarks and highlights** are kept with the PDF and listed in the Marks pane with their page.
 - **A password-protected PDF** asks for its password.

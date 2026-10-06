@@ -70,3 +70,6 @@ docs/internal/
 dist-installer/
 # Written by the CodeDOM build (a binding redirect); not needed at run time and never shipped.
 TypoZen.exe.config
+
+# Python bytecode from the narrator sidecar
+__pycache__/
