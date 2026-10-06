@@ -135,7 +135,7 @@ console.log('--- caret line no longer re-serializes ---');
 {
     const caretSrc = extractFunction('getCaretLineNumber');
     const totalSrc = extractFunction('getTotalLineCount');
-    assert(/function getCaretLineNumber\(\s*precomputedContent\s*\)/.test(caretSrc),
+    assert(/function getCaretLineNumber\(\s*precomputedContent\s*(,\s*knownTotal\s*)?\)/.test(caretSrc),
         'getCaretLineNumber accepts a precomputed document');
     assert(/getTotalLineCount\(\s*precomputedContent\s*\)/.test(caretSrc),
         'it forwards that document to getTotalLineCount');
@@ -143,7 +143,7 @@ console.log('--- caret line no longer re-serializes ---');
         'getTotalLineCount uses it instead of serializing again');
 
     const statsNowSrc = extractFunction('updateStatsNow');
-    assert(/getCaretLineNumber\(\s*content\s*\)/.test(statsNowSrc),
+    assert(/getCaretLineNumber\(\s*content\s*(,\s*lines\s*)?\)/.test(statsNowSrc),
         'updateStatsNow passes its serialize to getCaretLineNumber');
     // Happy path is one serialize; catch path may name getMarkdownContent again.
     const mdCalls = (statsNowSrc.match(/getMarkdownContent\(/g) || []).length;
