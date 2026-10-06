@@ -7,96 +7,12 @@
 # a diagnostic to stderr while exiting 0.
 $ErrorActionPreference = "Continue"
 Set-Location $PSScriptRoot\..
-Write-Host "Running TypoZen self-tests..." -ForegroundColor Cyan
-
-# The jsdom suites boot from TypoZen_Template_Test.html. Regenerate it from the shipping
-# TypoZen_Template.html + css/typozen.css + js/modules/* first, or they test a snapshot.
-& node ".\tests\build-test-template.mjs"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Could not regenerate TypoZen_Template_Test.html - aborting." -ForegroundColor Red
-    exit 1
-}
-
-$failedSuites = @()
-$errFile = [System.IO.Path]::GetTempFileName()
-
-# *-pending.mjs assert behaviour that is genuinely not built yet, so they are opt-in via
-# RUN_PENDING_E2E=1 and announced as skipped rather than dropped silently. Everything
-# else runs, including the *-browser.mjs suites that drive headless Chrome: they are slow
-# but they are the only ones that can see layout, and excluding them is exactly how
-# 2-column mode shipped broken behind a green suite.
-$allSuites = @(Get-ChildItem ".\tests\*.mjs" | Sort-Object Name)
-# Helpers / generators, not suites.
-$helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
-             'fonts-ab.mjs', 'scripts-ab.mjs', 'cm-ab.mjs', 'narrator-sidecar.mjs')
-# make-*.mjs build fixtures (run by hand; as suites they rewrote the committed PDFs on every
-# gate) and _*.mjs are scratch files. Build_TypoZen.ps1 applies the same rule.
-$allSuites = @($allSuites | Where-Object { $helpers -notcontains $_.Name -and $_.Name -notlike 'make-*.mjs' -and $_.Name -notlike '_*' })
-
-# *-app.mjs launch TypoZen.exe and drive it over the DevTools port --debug opens. They
-# need a desktop session and take ~40s, so they are opt-in via RUN_APP_E2E=1 -- but they
-# are the only suites that can see the real shell, and they must be run before claiming
-# any column or pagination behaviour is fixed. The browser suites passed for a fortnight
-# while the application was broken.
-$appSuites = @($allSuites | Where-Object { $_.Name -like "*-app.mjs" })
-$pendingSuites = @($allSuites | Where-Object { $_.Name -like "*-pending.mjs" })
-$suites = @($allSuites | Where-Object { $_.Name -notlike "*-pending.mjs" -and $_.Name -notlike "*-app.mjs" })
-if ($env:RUN_PENDING_E2E -eq "1") { $suites += $pendingSuites }
-if ($env:RUN_APP_E2E -eq "1") { $suites += $appSuites }
-
-foreach ($suite in $suites) {
-    $retries = 3
-    $success = $false
-
-    for ($i = 0; $i -lt $retries; $i++) {
-        # Redirect inside cmd, not PowerShell: PS 5.1 turns a native command's stderr into
-        # ErrorRecords even when redirecting to a file, which litters the captured output
-        # with NativeCommandError noise for suites that exit 0.
-        $stdout = & cmd /c "node `"$($suite.FullName)`" 2>`"$errFile`""
-        
-        if ($LASTEXITCODE -eq 0) {
-            $success = $true
-            break
-        }
-
-        # If it failed, check why. Only retry on instant sandbox crashes.
-        $errText = (Get-Content $errFile -ErrorAction SilentlyContinue) -join "`n"
-        if ($errText -match "TargetCloseError" -or $errText -match "Protocol error") {
-            Write-Host ("  RETRY " + $suite.Name + " (sandbox crash, attempt " + ($i + 1) + " of " + $retries + ")") -ForegroundColor Yellow
-        } else {
-            # Genuine test failure or timeout. Fail fast, do not retry.
-            break
-        }
-    }
-
-    if (-not $success) {
-        $failedSuites += $suite.Name
-        Write-Host ("  FAIL " + $suite.Name) -ForegroundColor Red
-        $stdout | ForEach-Object { Write-Host ("      " + $_) }
-        Get-Content $errFile -ErrorAction SilentlyContinue | ForEach-Object { Write-Host ("      " + $_) -ForegroundColor Red }
-    }
-    else {
-        Write-Host ("  PASS " + $suite.Name) -ForegroundColor Green
-    }
-}
-
-Remove-Item $errFile -Force -ErrorAction SilentlyContinue
-
-if ($env:RUN_PENDING_E2E -ne "1" -and $pendingSuites.Count -gt 0) {
-    Write-Host ""
-    Write-Host ("  SKIPPED, not built yet (set RUN_PENDING_E2E=1): " + (($pendingSuites | ForEach-Object { $_.Name }) -join ", ")) -ForegroundColor Yellow
-}
-if ($env:RUN_APP_E2E -ne "1" -and $appSuites.Count -gt 0) {
-    Write-Host ""
-    Write-Host ("  SKIPPED, drives the real .exe (set RUN_APP_E2E=1): " + (($appSuites | ForEach-Object { $_.Name }) -join ", ")) -ForegroundColor Yellow
-    Write-Host "  Run these before claiming any column or pagination fix works." -ForegroundColor Yellow
-}
-
-if ($failedSuites.Count -gt 0) {
-    Write-Host ("FAILED: " + ($failedSuites -join ", ")) -ForegroundColor Red
-    exit 1
-}
-Write-Host "All self-tests passed." -ForegroundColor Green
+# tests\run-gate.mjs does the work -- discovery, the template regeneration, headless suites
+# several at a time (TZ_GATE_JOBS, default 4), *-app.mjs one at a time with RUN_APP_E2E=1,
+# *-pending.mjs with RUN_PENDING_E2E=1, the sandbox-crash retry. Build_TypoZen.ps1 uses
+# the same runner, so the two can no longer disagree about what the gate is.
+& node ".\tests\run-gate.mjs"
+if ($LASTEXITCODE -ne 0) { exit 1 }
 
 Write-Host ""
 Write-Host "Optional: tab content E2E (launches TypoZen.exe) -- set RUN_TAB_E2E=1" -ForegroundColor Gray

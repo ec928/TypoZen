@@ -9,8 +9,11 @@
  * are checked by typing a marker after them: where the marker lands is where the caret
  * went.
  *
- *   node tests/keyboard-editing-browser.mjs            all cases
- *   node tests/keyboard-editing-browser.mjs preview    one view
+ *   node tests/keyboard-editing-cases.mjs              all cases
+ *   node tests/keyboard-editing-cases.mjs preview      Preview only (also: source, large)
+ *
+ * The gate runs it as three suites -- keyboard-editing-{preview,source,large}-browser.mjs --
+ * so the three parts run in parallel; together they were 109 s, a quarter of the gate.
  */
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -278,7 +281,7 @@ try {
     const fs = await import('fs');
     const big = fs.readFileSync(path.join(appDir, 'tests', 'large-scroll-mixed.md'), 'utf8');
     for (const [name, cols] of [['large document, 1-Col', 1], ['large document, 2-Col', 2]]) {
-        if (only && only !== 'preview') break;
+        if (only && only !== 'large') break;
         console.log('\n=== ' + name + ' ===');
         await page.evaluate(() => handleCommand('view_set:mode:preview'));
         await page.evaluate((m) => loadMarkdownContent(m), big);

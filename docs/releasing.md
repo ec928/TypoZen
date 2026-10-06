@@ -28,8 +28,8 @@ One version number, one gate, one deploy target. In order:
 | Zip | `Compress-Archive -Path dist\* …` | archive it; shipped zips are never deleted |
 | Release | `gh release create vX.Y.Z <zip> <setup.exe> --notes-file …` | |
 
-**Do not skip the gate to save time.** It is 75 headless suites and takes about seven minutes; it is
-not what makes a release slow.
+**Do not skip the gate to save time.** It is 83 headless suites run four at a time by
+`tests/run-gate.mjs` and takes about two minutes; it is not what makes a release slow.
 
 **`bin/` is staging, not disposable.** It exists so a build can be proven before it
 reaches the run location. `obj/` is the disposable one.
@@ -141,8 +141,18 @@ must not be shipped; a zip containing it is shipping a stale artefact.
 
 Two tiers, and the distinction matters more than the count.
 
-**The gate** — 75 suites, headless, invisible, about seven minutes (422 s on 2026-09-30). Runs inside `Build_TypoZen.ps1`.
+**The gate** — 83 suites, headless, invisible, run by `tests/run-gate.mjs` four at a time
+(`TZ_GATE_JOBS` to change it), about two minutes; one at a time it was 453 s on 2026-10-06.
+Runs inside `Build_TypoZen.ps1` and `tests/run-tests.ps1`, which share the runner.
 Everything that can be tested this way should be.
+
+The suites grew one per bug that had already happened, so they covered nothing that had not
+broken yet: the table toolbar was dead from 0.13.15 to 0.14.12 behind a green gate.
+`controls-browser` is the broad check underneath them -- every toolbar and menu message, and
+every button the page shows in each state that shows it, pressed once; each must not throw
+and must visibly do something, and each state must put its own surface on screen. Proven
+against the toolbar bug put back: it fails. A new control needs nothing added there unless it
+lives in a state the suite does not yet enter.
 
 **The app tier** — `tests/*-app.mjs`, run with `RUN_APP_E2E=1`. These launch the real
 executable and drive a **visible window on the developer's screen** for minutes. They are

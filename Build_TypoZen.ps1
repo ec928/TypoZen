@@ -96,40 +96,15 @@ else {
     # *-app.mjs launch TypoZen.exe itself and need a desktop session, so they are not part
     # of the build gate; run them with RUN_APP_E2E=1 .\tests\run-tests.ps1. app-harness.mjs
     # is their helper, not a suite.
-    $helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
-                 'fonts-ab.mjs', 'scripts-ab.mjs', 'cm-ab.mjs', 'narrator-sidecar.mjs')
-    $suites = @(Get-ChildItem (Join-Path $appDir "tests\*.mjs") -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -notlike "*-pending.mjs" -and $_.Name -notlike "*-app.mjs" `
-                               -and $_.Name -notlike "make-*.mjs" -and $_.Name -notlike "_*" `
-                               -and ($helpers -notcontains $_.Name) } | Sort-Object Name)
-    # make-*.mjs build fixtures (run by hand; as suites they rewrote committed PDFs on every
-    # build) and _*.mjs are scratch files. tests\run-tests.ps1 applies the same rule.
-    if ($suites.Count -eq 0) {
-        Write-Host "  [WARN] no tests\*.mjs found - skip" -ForegroundColor Yellow
+    # tests\run-gate.mjs runs the suites: the headless ones several at a time (one after
+    # another took 7.5 minutes on a machine left mostly idle), the same discovery rule
+    # run-tests.ps1 uses. Its output is stdout only, so no NativeCommandError noise.
+    & node (Join-Path $appDir "tests\run-gate.mjs") --quiet
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] Self-tests failed (above)." -ForegroundColor Red
+        exit 1
     }
-    else {
-        # stderr goes to a temp file, never to the success stream. Merging it with 2>&1
-        # makes PowerShell 5.1 wrap each line in a NativeCommandError and trip
-        # $ErrorActionPreference, which reported phantom build failures for suites that
-        # merely printed a diagnostic to stderr and exited 0. Gate on exit code alone.
-        $failedSuites = @()
-        $errFile = [System.IO.Path]::GetTempFileName()
-        foreach ($suite in $suites) {
-            & cmd /c "node `"$($suite.FullName)`" 2>`"$errFile`"" | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                $failedSuites += $suite.Name
-                Write-Host ("  --- " + $suite.Name + " ---") -ForegroundColor Red
-                Get-Content $errFile -ErrorAction SilentlyContinue | ForEach-Object { Write-Host ("      " + $_) }
-            }
-        }
-        Remove-Item $errFile -Force -ErrorAction SilentlyContinue
-        if ($failedSuites.Count -gt 0) {
-            Write-Host ("[ERROR] Self-tests failed: " + ($failedSuites -join ", ")) -ForegroundColor Red
-            Write-Host "        Run .\tests\run-tests.ps1 for details." -ForegroundColor Yellow
-            exit 1
-        }
-        Write-Host ("  Self-tests passed (" + $suites.Count + " suites).") -ForegroundColor Green
-    }
+    Write-Host "  Self-tests passed." -ForegroundColor Green
 }
 
 # TypoZen.xaml is parsed at runtime by XamlReader, so markup errors are invisible to the
