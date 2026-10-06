@@ -99,6 +99,22 @@ async function main() {
         md = await page.evaluate(() => getMarkdownContent(false));
         assert(/\|/.test(md), 'Insert Table inserts a table');
 
+        console.log('\n=== table toolbar ===');
+        // Threw "anchor is not defined" on every caret move into a cell from 0.13.15 on,
+        // so the toolbar never appeared.
+        await page.evaluate(() => loadMarkdownContent('Intro.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nAfter.'));
+        await settled(page);
+        await (await page.$('#editor .block')).click();
+        await page.click('#editor td');
+        await settled(page);
+        await new Promise(r => setTimeout(r, 200));
+        assert(await page.evaluate(() => document.getElementById('tablePop').style.display) === 'block',
+            'clicking into a cell shows the table toolbar');
+        await page.click('#tblPopRowBelow');
+        await settled(page);
+        md = await page.evaluate(() => getMarkdownContent(false));
+        assert((md.match(/^\|/gm) || []).length === 4, 'its "row below" adds a row (' + JSON.stringify(md) + ')');
+
         console.log('\n=== search results ===');
         const many = Array.from({ length: 400 }, (_, i) => 'Line ' + i + ' has the needle in it.').join('\n\n');
         await page.evaluate((m) => loadMarkdownContent(m), many);

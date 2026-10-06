@@ -7756,14 +7756,17 @@ let _tablePopTimer = null;
             const pop = document.getElementById('tablePop');
             if (!pop) return;
 
-            if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' && document.activeElement.id !== 'sourceEditor')) {
-                hideSelPop(); return;
+            const ae = document.activeElement;
+            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' && ae.id !== 'sourceEditor')) {
+                hideTablePop(); return;
             }
 
-            if (anchor && anchor.target && anchor.target.closest) {
-                if (anchor.target.closest('#sidebar') || anchor.target.closest('.title-bar') || anchor.target.closest('#findBar')) {
-                    hideSelPop(); return;
-                }
+            // Not while the user is in the sidebar or the find bar. This was copied from
+            // showSelPop(anchor), where `anchor` is the triggering event -- here it was never
+            // declared, so every call threw a ReferenceError and the table toolbar had not
+            // appeared at all since 0.13.15. There is no event here; focus says the same.
+            if (ae && ae.closest && (ae.closest('#sidebar') || ae.closest('.title-bar') || ae.closest('#findBar'))) {
+                hideTablePop(); return;
             }
 
             // Mutual exclusivity with selPop
