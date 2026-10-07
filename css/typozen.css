@@ -926,26 +926,31 @@
             line-height: 0;
             font-size: 0;
         }
+        /* !important because the general image rules above are (v0.12.4 made them so, to
+           win over publishers' own stylesheets), and an important declaration beats a
+           normal one whatever the selector -- so from then on every cover was held to 66vh
+           of the window again, 498px in a 725px page. Among important declarations the
+           more specific selector wins, and .block.tz-plate is more specific than .block. */
         #editor.page-mode .block.tz-plate img,
         #editor.page-mode .block.tz-plate svg,
         #editor.page-mode .block.tz-plate svg image {
             /* A few pixels short on purpose: sub-pixel layout rounds against us, and being
                one pixel too tall costs the whole page, not one pixel. */
-            height: calc(var(--tz-page-h, 66vh) - 6px);
-            max-height: calc(var(--tz-page-h, 66vh) - 6px);
-            width: auto;
-            max-width: 100%;
-            object-fit: contain;
-            display: block;
-            margin: 0 auto;
+            height: calc(var(--tz-page-h, 66vh) - 6px) !important;
+            max-height: calc(var(--tz-page-h, 66vh) - 6px) !important;
+            width: auto !important;
+            max-width: 100% !important;
+            object-fit: contain !important;
+            display: block !important;
+            margin: 0 auto !important;
         }
         /* The wrapper an epub cover usually is: <svg viewBox><image width=100% height=100%>.
            The inner image has to be told to fill the sized wrapper rather than keep the
            absolute width the publisher wrote, or the svg grows and the picture inside
            does not. */
         #editor.page-mode .block.tz-plate svg image {
-            width: 100%;
-            height: 100%;
+            width: 100% !important;
+            height: 100% !important;
         }
         /* Pagination, both layouts, one mechanism.
            .page-mode puts the document into CSS multi-column, so the browser performs the
