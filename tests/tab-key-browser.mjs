@@ -76,9 +76,23 @@ try {
     await shiftTab();
     await sleep(300);
     assert((await md()).endsWith('\n\nlast line'), 'Shift+Tab removes it');
-    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
-    await sleep(400);
-    assert((await md()) === '123456\n\n123456\n\nlast line', 'Ctrl+Z takes the typing back');
+    // Undo groups typing by time, so how many presses it takes depends on how fast the keys
+    // came: one when quick, more when the machine is busy (the parallel gate). What must
+    // hold either way: the presses walk back through states the document really was in,
+    // and end at the original. Asserting "one press" failed under load on a correct build.
+    {
+        const ORIGINAL = '123456\n\n123456\n\nlast line';
+        const seen = new Set([ORIGINAL, '123456\n\n123' + TAB + 'X456\n\nlast line',
+            '123456\n\n123' + TAB + 'X456\n\n' + TAB + 'last line']);
+        const path = [];
+        for (let i = 0; i < 5 && (await md()) !== ORIGINAL; i++) {
+            await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
+            await sleep(300);
+            path.push(await md());
+        }
+        assert((await md()) === ORIGINAL && path.every(s => seen.has(s)),
+            'Ctrl+Z takes the typing back, through states the document was in (' + JSON.stringify(path) + ')');
+    }
 
     console.log('\n=== Preview: many tabs wrap like any whitespace ===');
     // Chromium puts typed tabs in a white-space:pre span, which cannot wrap: past the
