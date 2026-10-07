@@ -133,6 +133,14 @@ function isAppRunning() {
     } catch (e) { return false; }
 }
 
+/** Is this process still there? */
+function pidAlive(pid) {
+    try {
+        const out = execSync('tasklist /FI "PID eq ' + pid + '" /NH', { encoding: 'utf8' });
+        return new RegExp('\\b' + pid + '\\b').test(out);
+    } catch (e) { return false; }
+}
+
 /** Kill only what this harness started. */
 function killOwn(child) {
     if (child && child.pid) {
@@ -406,6 +414,12 @@ export async function launchApp(options) {
             try { child.kill(); } catch (e) { }
             // Only our own process tree, so a session opened alongside is left alone.
             killOwn(child);
+            // Return once it has actually gone. taskkill returns before the process has
+            // exited (135 ms vs 245 ms, measured 2026-10-07), and a suite that launches again
+            // straight away -- book-position-app's third session -- found it still there and
+            // refused with "TypoZen.exe is already running". At most 5 s.
+            const end = Date.now() + 5000;
+            while (Date.now() < end && child && child.pid && pidAlive(child.pid)) await sleep(100);
         },
         /** Ask the window to close and wait for the process to exit. True if it exited on
          *  its own; false if it was still running at the deadline and had to be killed. */
