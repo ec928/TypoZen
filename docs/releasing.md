@@ -154,6 +154,12 @@ and must visibly do something, and each state must put its own surface on screen
 against the toolbar bug put back: it fails. A new control needs nothing added there unless it
 lives in a state the suite does not yet enter.
 
+"Did something" is not "did the right thing" -- Highlight selection made two marks and passed
+that sweep. `basic-features-browser` uses each common writing feature the ordinary way and
+checks the result: headings, lists, quote, bold/italic/strike, Insert link through its
+dialog, undo/redo, Preview/Source round trip, word count, the focus/typewriter/reveal
+toggles, choosing a theme, Export as HTML. Not edge cases -- the basic use of what was built.
+
 **The app tier** — `tests/*-app.mjs`, run with `RUN_APP_E2E=1`. These launch the real
 executable and drive a **visible window on the developer's screen** for minutes. They are
 not part of the gate and must not be run casually.
