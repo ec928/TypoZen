@@ -71,18 +71,11 @@ boundaries. Seen with 200-block ranges; at 400, stepping across a boundary and b
 same number for the same view and steps by exactly one. Re-open only if it shows up in use.
 
 
-**Later (Ed, 2026-09-29):**
-
-- **Warm starts, looked at as a whole** (Ed, 2026-09-30: not the text-size check on its own).
-  One consideration when that happens: remember each book's text-size factor permanently,
-  keyed to the file (and dropped if the file changes), so an open applies it with the
-  stylesheet and lays out once. Estimated from 2026-09-30 traces, not measured: Xeelee ~150-
-  180 ms off page-ready (one clean pass), other books ~250-450 ms, first paint 60-195 ms
-  earlier; the very first open of a book still pays the full check. 0.11.12 tried a
-  session-only cache and withdrew it (cold opens measured slower in that build).
-  Since the chapter-pages branch the factor is per book, measured once from chapter text and
-  applied before layout (no correction pass at all), so most of that saving has already been
-  taken; persisting it would only skip one style read per book.
+**Performance priorities (Ed, 2026-10-07):** **cold starts** are the main use case and come
+first, then performance inside the app (opening, reading, typing, scrolling). **Warm starts
+are dropped** -- not worth making faster. (The idea parked for them -- persisting each
+book's text-size factor -- only ever helped a reopen, and since the chapter-pages branch would
+skip one style read per book.)
 
 ## Done (recorded so it is not re-raised)
 
