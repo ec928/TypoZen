@@ -693,7 +693,6 @@
                 // DIV with one child DIV) and oversized containers with a few children —
                 // one enormous block defeats pagination and page windowing.
                 const tagOk = WRAP.test(el.tagName);
-                const textLen = (el.textContent || '').length;
                 if (depth < 4 && tagOk && kids.length === 1 && WRAP.test(kids[0].tagName)) {
                     push(kids[0], depth + 1);
                     return;
@@ -702,7 +701,10 @@
                     for (let i = 0; i < kids.length; i++) push(kids[i], depth + 1);
                     return;
                 }
-                if (depth < 3 && tagOk && kids.length >= 2 && textLen > 8000) {
+                // The text length only decides this last case, so it is measured only here.
+                // It used to be read for every element visited -- a full walk and a string
+                // for each of an omnibus's 45,000 paragraphs, used for none of them.
+                if (depth < 3 && tagOk && kids.length >= 2 && (el.textContent || '').length > 8000) {
                     for (let i = 0; i < kids.length; i++) push(kids[i], depth + 1);
                     return;
                 }
