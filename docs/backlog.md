@@ -77,6 +77,38 @@ are dropped** -- not worth making faster. (The idea parked for them -- persistin
 book's text-size factor -- only ever helped a reopen, and since the chapter-pages branch would
 skip one style read per book.)
 
+**Cold start, measured 2026-10-07** (process-cold, disk cache warm, perf.log; median runs):
+a document is on screen ~2.1 s after launch, the Xeelee omnibus ~3.6 s (4.7 s on a book's
+first open). Before Main ~50 ms; WebView2 browser start ~840 ms + controller ~420 ms + page
+~250 ms; window/XAML and the themes menu run alongside and are not on the critical path.
+Book open (Xeelee, ~780 ms blocking): first chapter range laid out ~336 ms, the book split
+into 45,486 blocks ~253 ms, text-size/position/styles ~210 ms. Not yet measured: a true
+disk-cold start after a reboot (needs one launch with TYPOZEN_PERF set, then perf.log).
+
+Options recorded, **no action (Ed, 2026-10-07):**
+- **Keep each book's split blocks between launches.** Saves ~250 ms reopening Xeelee on a
+  cold start (less on ordinary books); nothing on a first open. Stored with the book cache
+  EpubReader already keeps (.typozen-payload.json), so the same Privacy Mode handling
+  (private session folder, deleted at exit) and the same stamp invalidation apply -- no new
+  exposure. Costs: the split (~9 MB for Xeelee) has to travel page -> host once per book,
+  after the book is on screen (a possible one-off stutter); stored *alongside* the payload it
+  doubles the book cache and the reopen's disk read, stored *instead of* the raw HTML it does
+  neither -- prototype that variant, and version the stored split so a changed splitter
+  discards old ones. Measure first open, reopen, and a disk-cold reopen.
+- **Lay out only the chapter being opened** (part of the ~336 ms). Faster to the first page,
+  but more total work: the rest of the range is laid out later, while reading (a stutter, or
+  a page turn waiting on it), and page counts ("Page 6 of 33") depend on whole chapters being
+  laid out -- estimates or a second layout meanwhile. Pagination has had the most bugs. Not
+  recommended.
+- **WebView2 start-up -- investigated, no gain.** --no-proxy-server, Edge's extra services
+  off (SmartScreen, translate, autofill, optimization hints, media router, collections), both
+  together, and a full-size real profile vs an empty one: all within run-to-run noise once
+  run order was controlled (an apparent 150 ms first came from warm-up order). The ~1.3 s is
+  Edge's own start. Nothing added.
+- **Second layout of the first chapter on book open -- tried, no gain, reverted.** Skipping
+  the ResizeObserver's echo relayout removed the call, but the first layout grew by the same
+  amount: the browser does that layout before painting either way.
+
 ## Done (recorded so it is not re-raised)
 
 - **0.14.12 (2026-10-06, released):** from the 2026-10-06 health review
