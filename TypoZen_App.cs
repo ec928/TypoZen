@@ -6586,12 +6586,81 @@ namespace TypoZen
         /// </remarks>
         private Task<CoreWebView2Environment> _envTask;
 
+        /// <summary>
+        /// The page's version: the newest change to the template, the stylesheet and the
+        /// script modules. It goes on their URLs as ?v= so an edited module is never served
+        /// stale -- using only the HTML's time left WebView serving old 02-layout / 03-shell
+        /// after search fixes -- and it decides when the compiled-script cache is retired.
+        /// </summary>
+        internal static long PageAssetStamp(string appDir)
+        {
+            long ticks = 0;
+            try
+            {
+                string htmlPath = Path.Combine(appDir, "TypoZen_Template.html");
+                if (File.Exists(htmlPath)) ticks = File.GetLastWriteTimeUtc(htmlPath).Ticks;
+                string cssPath = Path.Combine(appDir, "css", "typozen.css");
+                if (File.Exists(cssPath)) ticks = Math.Max(ticks, File.GetLastWriteTimeUtc(cssPath).Ticks);
+                string modDir = Path.Combine(appDir, "js", "modules");
+                if (Directory.Exists(modDir))
+                    foreach (string f in Directory.GetFiles(modDir, "*.js"))
+                        ticks = Math.Max(ticks, File.GetLastWriteTimeUtc(f).Ticks);
+            }
+            catch { }
+            return ticks;
+        }
+
+        /// <summary>
+        /// Retire WebView2's compiled-script cache when the page's scripts change.
+        /// </summary>
+        /// <remarks>
+        /// The scripts load as js/modules/x.js?v=stamp, and Chromium keys its code cache by
+        /// URL, so every new stamp -- each release, each development build -- added a fresh
+        /// set of entries and none was ever used again: 1,652 files, 223 MB in a profile on
+        /// 2026-10-07. Set aside by a rename, which is instant, before the browser starts and
+        /// can hold the folder; deleted on a background thread, so the first start after an
+        /// update does not wait on thousands of deletes. The cache itself still speeds every
+        /// later start; this only throws away entries for scripts that no longer exist.
+        /// </remarks>
+        private static void RetireStaleCodeCache(string userDataDir)
+        {
+            try
+            {
+                string stamp = PageAssetStamp(AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/'))
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture);
+                string record = Path.Combine(userDataDir, "code_cache_stamp.txt");
+                string last = null;
+                try { if (File.Exists(record)) last = File.ReadAllText(record).Trim(); } catch { }
+                if (last == stamp) return;
+                string ebDefault = Path.Combine(userDataDir, "EBWebView", "Default");
+                string cache = Path.Combine(ebDefault, "Code Cache");
+                if (Directory.Exists(cache))
+                {
+                    string aside = Path.Combine(ebDefault, "Code Cache.retired-" + DateTime.UtcNow.Ticks);
+                    try { Directory.Move(cache, aside); }
+                    catch { return; }   // in use (a browser still closing): try again next start
+                }
+                File.WriteAllText(record, stamp);
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        foreach (string d in Directory.GetDirectories(ebDefault, "Code Cache.retired-*"))
+                            try { Directory.Delete(d, true); } catch { }
+                    }
+                    catch { }
+                });
+            }
+            catch { }
+        }
+
         private Task<CoreWebView2Environment> StartWebView2Environment()
         {
             try
             {
                 string userDataDir = CacheDir();
                 if (!Directory.Exists(userDataDir)) Directory.CreateDirectory(userDataDir);
+                RetireStaleCodeCache(userDataDir);
                 return CoreWebView2Environment.CreateAsync(null, userDataDir, BuildWebView2Options());
             }
             catch (Exception ex)
@@ -6624,8 +6693,7 @@ namespace TypoZen
             {
                 extraArgs += " --remote-debugging-port=" + Program.RemoteDebugPort.ToString(System.Globalization.CultureInfo.InvariantCulture)
                            + " --remote-allow-origins=*";
-            }
-            // Language is the spellcheck dictionary Chromium will load for Source
+            }            // Language is the spellcheck dictionary Chromium will load for Source
             // (a <textarea>). Preview uses Windows ISpellChecker instead: component
             // update is off, so Hunspell dictionaries never arrive, and WordNet is
             // not a spell list. Null here used to disable Source squiggles entirely.
@@ -6818,23 +6886,7 @@ namespace TypoZen
                 string htmlPath = Path.Combine(_appDir, "TypoZen_Template.html");
                 if (File.Exists(htmlPath))
                 {
-                    // Cache-bust on the newest of the template, CSS, and JS modules.
-                    // Using only the HTML mtime left WebView serving stale 02-layout /
-                    // 03-shell after search fixes, so ZenSeek still opened Ctrl+F + sidebar.
-                    long ticks = File.GetLastWriteTimeUtc(htmlPath).Ticks;
-                    try
-                    {
-                        string cssPath = Path.Combine(_appDir, "css", "typozen.css");
-                        if (File.Exists(cssPath))
-                            ticks = Math.Max(ticks, File.GetLastWriteTimeUtc(cssPath).Ticks);
-                        string modDir = Path.Combine(_appDir, "js", "modules");
-                        if (Directory.Exists(modDir))
-                        {
-                            foreach (string f in Directory.GetFiles(modDir, "*.js"))
-                                ticks = Math.Max(ticks, File.GetLastWriteTimeUtc(f).Ticks);
-                        }
-                    }
-                    catch { }
+                    long ticks = PageAssetStamp(_appDir);
 
                     // Stamp ?v= onto script/link tags so module edits cannot stick in the
                     // WebView HTTP cache after a full navigation (query on the HTML alone
