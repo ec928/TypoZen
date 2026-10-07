@@ -148,6 +148,11 @@ try {
 
     console.log('\n=== pressing Highlight shows you where the highlight went ===');
     const revealed = await app.eval(async (sel) => {
+        // Before the first await. The page's Content-Security-Policy (0.14.12) refuses eval;
+        // a string evaluated while the DevTools call is still running is exempt, but after
+        // an await it runs as the page's own code and is refused (EvalError). Done further
+        // down, after the sleeps, it failed every run.
+        eval('window.__sel = ' + sel);
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         // Put the sidebar back where a reader who is reading keeps it, and on a tab that
         // is not Marks -- otherwise this proves nothing, because the pane was already
@@ -165,7 +170,7 @@ try {
         const keyOf = (m) => m.block + ':' + m.s + ':' + m.e;
         const had = _marks.map(keyOf);
 
-        eval('window.__sel = ' + sel);
+        
         // A long block, not a numbered marker row: selectWords needs a text node of at
         // least to+2 characters, and "Line 3 of 4582 - scroll marker row 3" is 36. The
         // offsets used to be 26..36 and silently selected NOTHING whenever the mounted
