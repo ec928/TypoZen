@@ -4125,9 +4125,10 @@
                 host.style.display = 'none';
                 return;
             }
-            // A book says where you are in its own terms -- "Chapter 2 of 38 • Page 2 of 15",
-            // "Copyright • Page 1 of 2" -- under the right-hand page only, with nothing under
-            // the left. Counted, not estimated (bookPagePosition).
+            // A book says where you are in its own terms: the place ("Chapter 2 of 38",
+            // "Copyright", "Exultant • Chapter 1 of 59") under the left-hand page and the page
+            // within it ("Page 2 of 15") under the right (split across the spread in 0.12.11).
+            // Counted, not estimated (bookPagePosition).
             const bookPos = bookPagePosition();
             if (bookPos) {
                 const two = editor.classList.contains('two-col-layout');

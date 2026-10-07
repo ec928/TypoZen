@@ -960,11 +960,13 @@ async function openAndCheck(app, book, deep, opts) {
                 (pg.offenders.length ? ' | ' + JSON.stringify(pg.offenders) : ''));
             assert(pg.laidOut === 0 || pg.atTop === pg.laidOut,
                 'every laid-out chapter start begins a column (' + pg.atTop + ' of ' + pg.laidOut + ')');
-            // A book labels a spread in its own terms, under the right-hand page only:
-            // "Chapter 14 of 27 • Page 6 of 30" (2026-10-01). Whole-book page numbers are gone.
-            const m = pg.nums.length === 2 ? /Page (\d+) of (\d+)$/.exec(pg.nums[1]) : null;
-            assert(pg.nums.length === 2 && pg.nums[0] === '' && !!m,
-                'a spread is labelled once, under the right-hand page, with its page in its chapter ('
+            // A book labels a spread in its own terms: where you are under the left-hand page
+            // ("Chapter 14 of 27 • Game"; in an omnibus "Exultant • Chapter 1 of 59"), the
+            // page within that chapter under the right ("Page 6 of 30"). One label until
+            // 0.12.11 split it across the spread (2026-10-03). Whole-book page numbers are gone.
+            const m = pg.nums.length === 2 ? /^Page (\d+) of (\d+)$/.exec(pg.nums[1]) : null;
+            assert(pg.nums.length === 2 && /\S/.test(pg.nums[0]) && !/Page \d/.test(pg.nums[0]) && !!m,
+                'a spread is labelled with where you are on the left and the page in its chapter on the right ('
                 + JSON.stringify(pg.nums) + ')');
             assert(!!m && +m[1] >= 1 && +m[1] <= +m[2],
                 'and that page lies within its chapter (' + (m ? m[1] + ' of ' + m[2] : 'no label') + ')');
