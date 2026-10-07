@@ -86,15 +86,17 @@ into 45,486 blocks ~253 ms, text-size/position/styles ~210 ms. Not yet measured:
 disk-cold start after a reboot (needs one launch with TYPOZEN_PERF set, then perf.log).
 
 Options recorded, **no action (Ed, 2026-10-07):**
-- **Keep each book's split blocks between launches.** Saves ~250 ms reopening Xeelee on a
-  cold start (less on ordinary books); nothing on a first open. Stored with the book cache
-  EpubReader already keeps (.typozen-payload.json), so the same Privacy Mode handling
-  (private session folder, deleted at exit) and the same stamp invalidation apply -- no new
-  exposure. Costs: the split (~9 MB for Xeelee) has to travel page -> host once per book,
-  after the book is on screen (a possible one-off stutter); stored *alongside* the payload it
-  doubles the book cache and the reopen's disk read, stored *instead of* the raw HTML it does
-  neither -- prototype that variant, and version the stored split so a changed splitter
-  discards old ones. Measure first open, reopen, and a disk-cold reopen.
+- **Keep each book's split blocks between launches -- built, measured, REJECTED and reverted
+  (Ed, 2026-10-07).** The page posted its split to the host after a book's first open; later
+  opens and tab switches were served the split instead of the chapters. Measured on Xeelee,
+  same build, A/B: reopen in a fresh app ~920 -> ~685 ms, switch back to its tab ~1,210 ->
+  ~1,065 ms. **The cost lands on the first open, which matters most:** saving the split froze
+  the page for ~180 ms (JSON.stringify of 10 MB ~86 ms + postMsg ~94 ms) ~2.5 s after the
+  book appeared -- the user can do nothing during it. Any optimisation that makes the first
+  open worse, even after the book is shown, is not acceptable. Do not rebuild this unless
+  the split can be saved with no measurable pause on the page (e.g. built by the host
+  itself) -- and measure the first open's long tasks before calling it a gain. It also
+  doubled the book cache on disk (~10 MB more for Xeelee).
 - **Lay out only the chapter being opened** (part of the ~336 ms). Faster to the first page,
   but more total work: the rest of the range is laid out later, while reading (a stutter, or
   a page turn waiting on it), and page counts ("Page 6 of 33") depend on whole chapters being
