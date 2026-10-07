@@ -52,16 +52,11 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. These notes are the 0.14.13 package; they cover everything since 0.14.11, the last version on the Store (0.14.12 went to GitHub only). GitHub v0.14.13, the installer, and the installed app are the same version._
+_Limit 1,500 characters. These notes are the 0.14.14 package; 0.14.13 is the version live on the Store. GitHub v0.14.14, the installer, and the installed app are the same version._
 
-- Replace All no longer damages text. After certain characters, such as the Turkish İ, it replaced each match one letter early and wrote over neighbouring words. It is also far faster on large documents.
-- Save All Images in PDF no longer misses pictures. Some pictures, such as those with a transparency mask, could be counted but never saved.
-- Saving keeps page-break (form feed) characters in old text and code files instead of turning them into the letter f.
-- The table toolbar is back: click into a table for the row, column and alignment buttons.
-- Highlight selection makes one mark instead of also bookmarking the paragraph at the top of the page.
-- Read aloud on a PDF skips page numbers and running headers and footers, and no longer starts a page with its footer.
-- Moving the cursor, scrolling and typing in long documents do less work behind the scenes.
-- Security: links hidden inside ePub books are caught, and the editor runs only TypoZen's own code.
+- Book covers fill the page again. Since 0.12.4 a cover was held to about two thirds of the page height.
+- TypoZen no longer keeps old copies of its own compiled scripts after an update. On one machine these had grown to over 200 MB; they are now cleared automatically when the app updates.
+- Opening a large book does a little less work.
 
 ---
 
@@ -72,9 +67,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.14.13.0); every other package removed from the submission |
+| 2 | Packages | the newest MSIX (0.14.14.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.14.13 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.14.14 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |
