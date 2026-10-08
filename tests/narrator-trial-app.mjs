@@ -1,7 +1,8 @@
 /**
  * Narrator Settings' Try it prepares text as narration does (narrationTrial, 09-speech.js):
  * numbers as words, one piece per line, the reader's instruction and cue wording sent as they
- * are, and an emotion cue only when it is ticked. The narrator and the audio are stubbed, so
+ * are, and a speech tag's words only when Emotion cues are ticked -- added to the instruction,
+ * not sent as a direction (cueInstruction; docs/narrator-cues.md, "Speech words"). The narrator and the audio are stubbed, so
  * nothing is heard; what is checked is what the narrator would be sent, and that the reading
  * plays to its end.
  *
@@ -47,14 +48,18 @@ try {
     ok(off && off.blocks.length === 3, 'one piece per line', JSON.stringify(off && off.blocks.map(b => b.text)));
     ok(off && off.instruction === 'Read it plainly.' && off.cue === 'Say it as {cue}.' && off.voice === 'v1',
         'the instruction, cue wording and voice go as given', JSON.stringify(off && { i: off.instruction, c: off.cue, v: off.voice }));
-    ok(off && off.blocks.every(b => b.direction === ''), 'cues off: no piece carries a cue');
+    ok(off && off.blocks.every(b => b.direction === '' && b.instruction === ''), 'cues off: no piece carries a cue',
+        JSON.stringify(off && off.blocks.map(b => ({ d: b.direction, i: b.instruction }))));
     ok(off && /eighty-six pounds/.test(off.blocks[2].text), 'numbers are spoken as words, as narration has them', off && off.blocks[2].text);
 
     await app.eval(() => { window.__bodies = []; });
     await run(true);
     const on = await waitFor(app, () => window.__bodies.length && window.__played >= 3 ? window.__bodies[0] : null, 5000);
-    const dirs = on && on.blocks.map(b => b.direction);
-    ok(dirs && dirs[0] === '' && dirs[1] === 'quiet and soft' && dirs[2] === 'sharp and angry', 'cues on: the tagged lines carry their cues', JSON.stringify(dirs));
+    // The tag's own words ("said" left out), after the reader's instruction; the untagged line gets nothing.
+    const told = on && on.blocks.map(b => ({ d: b.direction, i: b.instruction }));
+    const tagged = (t, words) => t.d === '' && t.i.startsWith('Read it plainly') && t.i.endsWith(', ' + words);
+    ok(told && told[0].d === '' && told[0].i === '' && tagged(told[1], 'quietly') && tagged(told[2], 'snapped'),
+        'cues on: the tagged lines add their speech tag to the instruction', JSON.stringify(told));
 
     // Narration itself sends the saved instruction and cue wording, and a cue only when ticked.
     const sent = await app.eval(async () => {
@@ -64,9 +69,10 @@ try {
         await renderNarration('http://narrator.stub', piece, 1);
         window.setNarratorSettings({ voice: 'v1', instruction: 'Saved words.', cue: 'Cue {cue}.', direct: true });
         await renderNarration('http://narrator.stub', piece, 2);
-        return window.__bodies.map(b => ({ i: b.instruction, c: b.cue, d: b.blocks[0].direction }));
+        return window.__bodies.map(b => ({ i: b.instruction, c: b.cue, d: b.blocks[0].direction, bi: b.blocks[0].instruction }));
     });
-    ok(sent && sent[0].i === 'Saved words.' && sent[0].c === 'Cue {cue}.' && sent[0].d === '' && sent[1].d === 'whispered, hushed',
+    ok(sent && sent[0].i === 'Saved words.' && sent[0].c === 'Cue {cue}.' && sent[0].d === '' && sent[0].bi === ''
+        && sent[1].d === '' && sent[1].bi.startsWith('Saved words') && sent[1].bi.endsWith(', whispered, hushed'),
         'narration sends the saved instruction, and the cue only when ticked', JSON.stringify(sent));
 } catch (e) { ok(false, 'stopped', e && e.message); }
 finally {
