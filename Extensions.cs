@@ -550,17 +550,22 @@ namespace TypoZen
             var win = new Window
             {
                 Title = "Extensions",
+                // Sized to its rows, but never taller than the screen: with four extensions it grew
+                // past a 1440-pixel monitor and Install was out of reach (2026-10-08). The rows scroll;
+                // progress, status and Close stay in view below them.
                 SizeToContent = SizeToContent.Height,
-                Width = 560,
+                Width = 720,
+                MinWidth = 520,
+                MaxHeight = SystemParameters.WorkArea.Height - 24,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                ResizeMode = ResizeMode.NoResize,
+                ResizeMode = ResizeMode.CanResizeWithGrip,
                 ShowInTaskbar = false,
                 Background = owner != null ? owner.Background : null,
                 Foreground = owner != null ? owner.Foreground : null
             };
             try { win.Owner = owner; } catch { }
 
-            var root = new StackPanel { Margin = new Thickness(18) };
+            var root = new StackPanel { Margin = new Thickness(18, 18, 18, 0) };
             root.Children.Add(new TextBlock
             {
                 Text = "Extras that are too large to ship with TypoZen. Nothing here is downloaded "
@@ -856,12 +861,17 @@ namespace TypoZen
 
             quality.SelectionChanged += (s, e) => { foreach (var r in rows) r(); };
 
-            root.Children.Add(bar);
-            root.Children.Add(status);
+            var footer = new StackPanel { Margin = new Thickness(18, 0, 18, 18) };
+            footer.Children.Add(bar);
+            footer.Children.Add(status);
 
             var close = new Button { Content = "Close", Width = 90, Height = 26, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0), IsCancel = true };
-            root.Children.Add(close);
-            win.Content = root;
+            footer.Children.Add(close);
+            var outer = new DockPanel();
+            DockPanel.SetDock(footer, Dock.Bottom);
+            outer.Children.Add(footer);
+            outer.Children.Add(new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+            win.Content = outer;
 
             foreach (var r in rows) r();
             win.Closing += (s, e) => { if (running != null) running.Cancel(); foreach (var n in narrInstalls) n.Cancel(); };
