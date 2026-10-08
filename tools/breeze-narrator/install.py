@@ -225,11 +225,49 @@ def check():
         out('NOTE', 'Triton did not load (%s): Breeze will read in its slower mode.' % e)
 
 
+# ---- 5. prepare the graphics card ----------------------------------------------------------
+
+def prepare(root):
+    """The narrator's first start compiles its fast path for this graphics card: about two
+    minutes, once. Done here, while the reader is already waiting for the install, rather than
+    the first time they press Read Aloud (Ed, 2026-10-08). It is the narrator's own load, with
+    its own settings and compile folder, so what it compiles is exactly what it will look for."""
+    out('STEP', 'Preparing the graphics card (about two minutes, once)')
+    for k, v in (('TORCHINDUCTOR_CACHE_DIR', os.path.join(root, 'compiled', 'inductor')),
+                 ('TRITON_CACHE_DIR', os.path.join(root, 'compiled', 'triton')),
+                 ('HF_HUB_OFFLINE', '1'), ('TRANSFORMERS_OFFLINE', '1')):
+        os.environ[k] = v
+    sys.path.insert(0, HERE)
+    import sidecar
+    sidecar.log = lambda m, who='install': out('NOTE', m.splitlines()[0][:160])
+    n = sidecar.Narrator(os.path.join(root, 'narration'), models=os.path.join(root, 'model'),
+                         code=os.path.join(root, 'breeze-tts'))
+    t = time.time()
+    n.load()
+    if not n.ready:
+        raise RuntimeError('The narrator could not load: ' + (n.load_error or 'no reason given'))
+    if n.mode != 'fast':
+        out('NOTE', 'The fast mode could not be prepared: Breeze will read about three times slower than speech.')
+    out('NOTE', 'Ready in %.0fs; later starts take about 40 seconds.' % (time.time() - t))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--root', required=True, help='the extension folder (extensions\\BreezeTTS)')
     ap.add_argument('--skip-packages', action='store_true', help='for tests: the packages are already there')
+    ap.add_argument('--only-prepare', action='store_true', help='for tests: only step 5')
     args = ap.parse_args()
+    # The compile folders before anything imports torch (check() does): PyTorch may read them once.
+    os.environ['TORCHINDUCTOR_CACHE_DIR'] = os.path.join(args.root, 'compiled', 'inductor')
+    os.environ['TRITON_CACHE_DIR'] = os.path.join(args.root, 'compiled', 'triton')
+    if args.only_prepare:
+        try:
+            prepare(args.root)
+        except Exception as e:
+            out('ERROR', str(e).replace('\n', ' ')[:400])
+            sys.exit(1)
+        out('DONE')
+        return
     os.makedirs(args.root, exist_ok=True)
     os.environ['HF_HOME'] = os.path.join(args.root, 'hf')
     os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
@@ -241,6 +279,7 @@ def main():
         code(args.root)
         model(args.root)
         check()
+        prepare(args.root)
     except Exception as e:
         out('ERROR', str(e).replace('\n', ' ')[:400])
         sys.exit(1)

@@ -762,6 +762,10 @@ namespace TypoZen
                         }
                         narrRunning = qi;
                         narrInstalls.Add(qi);
+                        // Breeze's install ends by loading its model to prepare the graphics card; a
+                        // narrator already on the card would leave too little room for it.
+                        QwenNarrator.Stop();
+                        BreezeNarrator.Stop();
                         button.Content = "Cancel";
                         bar.Visibility = Visibility.Visible;
                         bar.IsIndeterminate = true;
