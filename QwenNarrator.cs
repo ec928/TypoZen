@@ -378,7 +378,9 @@ namespace TypoZen
                 { "cast", cast.Voices },
                 { "castSay", cast.Instructions },
                 // Render into this session's private folder, not the lasting cache.
-                { "private", privateMode }
+                { "private", privateMode },
+                // Where the page fetches this narrator's audio from (BreezeNarrator has its own).
+                { "audioHost", HostName }, { "audioHostPrivate", PrivateHostName }
             };
             return new JavaScriptSerializer().Serialize(d);
         }

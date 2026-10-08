@@ -503,6 +503,13 @@ let _narrCastSay = {};
 let _narrDirect = false;
 // Privacy Mode: new audio goes to this session's private folder, served by localnarrationp.
 let _narrPrivate = false;
+// Where the chosen narrator's audio is served from: Qwen's or Breeze's hosts (the host says which).
+let _narrAudioHost = 'localnarration';
+let _narrAudioHostPrivate = 'localnarrationp';
+/** A rendered piece's address: the private folder's host for audio rendered in Privacy Mode. */
+function narrAudioUrl(item) {
+    return 'https://' + (item.private ? _narrAudioHostPrivate : _narrAudioHost) + '/' + item.file;
+}
 window.setNarratorSettings = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
@@ -517,6 +524,9 @@ window.setNarratorSettings = function (json) {
         _narrCast = s.cast || {};
         _narrCastSay = (s.castSay && typeof s.castSay === 'object') ? s.castSay : {};
         _narrPrivate = !!s.private;
+        if (s.audioHost) _narrAudioHost = s.audioHost;
+        NARRATION_BATCH = s.batch > 0 ? s.batch : 8;
+        if (s.audioHostPrivate) _narrAudioHostPrivate = s.audioHostPrivate;
         if (_renderedAudio) _renderedAudio.playbackRate = _narrSpeed;
         // A new voice, style or cast while narrating: start again at the paragraph being read,
         // in the new voice, rather than play out what was already rendered in the old one.
@@ -685,7 +695,7 @@ window.narrationTrial = async function (json) {
         if (items.length !== pieces.length) throw new Error('the narrator returned ' + items.length + ' of ' + pieces.length + ' pieces');
         trialTell({ kind: 'ready', pieces: pieces.map((p, i) => ({
             text: p.text, cue: o.direct ? p.direction : '', instruction: items[i].instruction || '', seconds: items[i].seconds || 0 })) });
-        _trialQueue = items.map(it => (it.private ? 'https://localnarrationp/' : 'https://localnarration/') + it.file);
+        _trialQueue = items.map(narrAudioUrl);
         const next = () => {
             if (run !== _trialRun) return;
             const url = _trialQueue.shift();
@@ -774,7 +784,7 @@ async function renderNarration(base, batch, reading) {
             text: p.text,
             seconds: items[i].seconds || 0,
             // Per item: a private reading still plays pieces already in the lasting cache.
-            audioUrl: (items[i].private ? 'https://localnarrationp/' : 'https://localnarration/') + items[i].file
+            audioUrl: narrAudioUrl(items[i])
         };
     });
 }
@@ -803,7 +813,10 @@ async function renderNarration(base, batch, reading) {
  * a re-render matched the cache exactly. Starting near the end of a group then rendered the
  * whole group, mostly unheard, and waited for the next: 117s to first sound.)
  */
-const NARRATION_BATCH = 8;          // pieces the model renders in one call
+// Pieces asked for in one request. Qwen renders a batch at once, in about the time of its longest
+// piece, so 8. Breeze renders one piece after another, so a batch of 8 made the first sound wait
+// for all of them (17.8s, 2026-10-08): the host sends batch 1 for it.
+let NARRATION_BATCH = 8;
 const NARRATION_PIECE_CAP = 400;    // characters; only longer paragraphs are split
 const NARRATION_OPENING_CAP = 90;   // characters per piece in the opening batch: ~20s to first sound
 
@@ -2258,8 +2271,11 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
 }
 
 function isKokoroVoice(id) { return /^(af|am|bf|bm)_/.test(id || ''); }
-/** The Qwen narrator, chosen in File > Read Aloud like any other voice. */
-function isQwenVoice(id) { return id === 'qwen_narrator'; }
+/**
+ * A narrator voice -- the Qwen or the Breeze narrator -- chosen in File > Read Aloud like any other
+ * voice. Both answer the same requests; the host says which one and where its audio is.
+ */
+function isQwenVoice(id) { return id === 'qwen_narrator' || id === 'breeze_narrator'; }
 
 let _kokoroVoice = localStorage.getItem('kokoro_voice') || 'af_heart';
 let _kokoroVoiceFriendly = '';
@@ -2285,7 +2301,8 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
         setupKokoro(false, "Kokoro is ready. Voice set to " + displayName + ".");
     } else if (isQwenVoice(voiceId)) {
         // The host starts the narrator on this choice and reports its progress itself.
-        showKokoroStatus("Voice set to " + (friendlyName ? friendlyName + ", a Qwen narrator voice" : "the Qwen narrator") +
+        const engine = voiceId === 'breeze_narrator' ? "Breeze" : "Qwen";
+        showKokoroStatus("Voice set to " + (friendlyName ? friendlyName + ", a " + engine + " narrator voice" : "the " + engine + " narrator") +
                          ". Read Aloud, Read and Read from here all use it.");
         setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 3000);
     } else if (!isAutoReset || _isKokoroReady) {

@@ -1738,12 +1738,14 @@ namespace TypoZen
             BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
             var qwenMenu = FindElement("mQwenVoice") as MenuItem;
             if (qwenMenu != null) qwenMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == qwenMenu) RebuildQwenVoiceMenu(); };
+            var breezeMenu = FindElement("mBreezeVoice") as MenuItem;
+            if (breezeMenu != null) breezeMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == breezeMenu) RebuildBreezeVoiceMenu(); };
             BindClick("mNarratorSettings", (s, e) =>
             {
                 try
                 {
                     NarratorDialog.Show(this, CacheDir(), _appDir, _currentFilePath, SendMsg,
-                                        () => { SendNarratorSettings(); RebuildQwenVoiceMenu(); });
+                                        () => { SendNarratorSettings(); RebuildQwenVoiceMenu(); RebuildBreezeVoiceMenu(); });
                 }
                 catch (Exception ex) { LogFault("narrator settings", ex); }
             });
@@ -1890,6 +1892,7 @@ namespace TypoZen
                 // The narrator holds several gigabytes of VRAM while it is up. It was started
                 // for this window's reading and must not outlive it.
                 try { QwenNarrator.Stop(); } catch { }
+                try { BreezeNarrator.Stop(); } catch { }
                 try
                 {
                     if (_webView != null)
@@ -2301,13 +2304,24 @@ namespace TypoZen
         {
             try
             {
-                bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus,
-                                                           CancellationToken.None);
+                var engine = ChosenNarrator() ?? QwenNarrator.Engine;
+                bool up = await engine.EnsureRunning(CacheDir(), _appDir, NarratorStatus, CancellationToken.None);
                 if (!up) { NarratorFailed(); return; }
                 SendNarratorSettings();
-                SendMsg("cmd:narrate:" + QwenNarrator.BaseUrl);
+                SendMsg("cmd:narrate:" + engine.BaseUrl);
             }
             catch (Exception ex) { LogFault("start narration", ex); }
+        }
+
+        /// <summary>
+        /// The narrator the chosen reading voice belongs to -- Qwen or Breeze -- or null for a
+        /// Kokoro or Windows voice. Both answer the same requests; this decides which is asked.
+        /// </summary>
+        private NarratorEngine ChosenNarrator()
+        {
+            if (_kokoroVoiceId == QwenNarrator.VoiceId) return QwenNarrator.Engine;
+            if (_kokoroVoiceId == BreezeNarrator.VoiceId) return BreezeNarrator.Engine;
+            return null;
         }
 
         /// <summary>
@@ -2317,8 +2331,13 @@ namespace TypoZen
         /// </summary>
         private void SendNarratorSettings()
         {
-            try { SendMsg("cmd:narrator_settings:" + QwenNarrator.PageSettingsJson(CacheDir(), _currentFilePath, _ttsSpeed,
-                                                                                   SuppressDocumentTraces())); }
+            try
+            {
+                string json = ChosenNarrator() == BreezeNarrator.Engine
+                    ? BreezeNarrator.PageSettingsJson(CacheDir(), _currentFilePath, _ttsSpeed, SuppressDocumentTraces())
+                    : QwenNarrator.PageSettingsJson(CacheDir(), _currentFilePath, _ttsSpeed, SuppressDocumentTraces());
+                SendMsg("cmd:narrator_settings:" + json);
+            }
             catch (Exception ex) { LogFault("narrator settings", ex); }
         }
 
@@ -2358,13 +2377,14 @@ namespace TypoZen
             try
             {
                 string book = _currentFilePath;
-                if (_kokoroVoiceId != QwenNarrator.VoiceId || !IsBookPath(book)) return;
-                if (!QwenNarrator.Installed(CacheDir(), _appDir)) return;
-                bool up = await QwenNarrator.EnsureRunning(CacheDir(), _appDir, WarmStatus, CancellationToken.None);
+                var engine = ChosenNarrator();
+                if (engine == null || !IsBookPath(book)) return;
+                if (!engine.Installed(CacheDir(), _appDir)) return;
+                bool up = await engine.EnsureRunning(CacheDir(), _appDir, WarmStatus, CancellationToken.None);
                 if (!up) { NarratorFailed(); return; }
-                if (_currentFilePath != book || _kokoroVoiceId != QwenNarrator.VoiceId) return;
+                if (_currentFilePath != book || ChosenNarrator() != engine) return;
                 SendNarratorSettings();
-                SendMsg("cmd:narrate_warm:" + QwenNarrator.BaseUrl);
+                SendMsg("cmd:narrate_warm:" + engine.BaseUrl);
             }
             catch (Exception ex) { LogFault("warm narrator", ex); }
         }
@@ -2459,6 +2479,52 @@ namespace TypoZen
         }
 
         /// <summary>
+        /// A Breeze narrator voice chosen from Read Aloud: as ChooseQwenVoice. Starting Breeze
+        /// takes the Qwen narrator off the graphics card (NarratorEngine).
+        /// </summary>
+        private async void ChooseBreezeVoice(string voiceId, string name)
+        {
+            try { BreezeNarrator.SetVoice(CacheDir(), voiceId); }
+            catch (Exception ex) { LogFault("breeze voice", ex); }
+            SetKokoroVoice(BreezeNarrator.VoiceId, name);
+            SendNarratorSettings();
+            RebuildBreezeVoiceMenu();
+            try
+            {
+                bool up = await BreezeNarrator.EnsureRunning(CacheDir(), _appDir, NarratorStatus, CancellationToken.None);
+                if (!up) NarratorFailed();
+                else if (IsBookPath(_currentFilePath)) WarmNarrator();
+            }
+            catch (Exception ex) { LogFault("start breeze narrator", ex); }
+        }
+
+        /// <summary>Read Aloud > Breeze Narrator: as RebuildQwenVoiceMenu, with Breeze's voices.</summary>
+        private void RebuildBreezeVoiceMenu()
+        {
+            var menu = FindElement("mBreezeVoice") as MenuItem;
+            if (menu == null) return;
+            try
+            {
+                string cache = CacheDir();
+                string current = BreezeNarrator.CurrentVoice(cache);
+                bool reading = _kokoroVoiceId == BreezeNarrator.VoiceId;
+                string currentName = BreezeNarrator.DefaultVoiceName;
+                menu.Items.Clear();
+                foreach (var v in BreezeNarrator.SavedVoices(cache))
+                {
+                    if (v.Key == current) currentName = v.Value;
+                    var mi = new MenuItem { Header = v.Value.Replace("_", "__"), IsCheckable = true, IsChecked = reading && v.Key == current };
+                    string id = v.Key, name = v.Value;
+                    mi.Click += (s, e) => ChooseBreezeVoice(id, name);
+                    menu.Items.Add(mi);
+                }
+                menu.Header = "_Breeze Narrator: " + currentName.Replace("_", "__");
+            }
+            catch (Exception ex) { LogFault("breeze voice menu", ex); }
+            UpdateVoiceStatus();
+        }
+
+        /// <summary>
         /// Builds the voice list from ExtensionCatalog.Voices and keeps the tick on the
         /// chosen one. Built rather than written out, because the same list also decides
         /// what the installer downloads -- when it was four hardcoded copies, the menu
@@ -2519,6 +2585,7 @@ namespace TypoZen
         private void TickKokoroVoice()
         {
             RebuildQwenVoiceMenu();
+            RebuildBreezeVoiceMenu();
             var menu = FindElement("mKokoroMenu") as MenuItem;
             if (menu == null) return;
             foreach (var o in menu.Items)
@@ -3763,6 +3830,9 @@ namespace TypoZen
                 bool qwen = QwenNarrator.Installed(cache, _appDir);
                 var narrate = FindElement("mQwenVoice") as MenuItem;
                 if (narrate != null) narrate.Visibility = qwen ? Visibility.Visible : Visibility.Collapsed;
+                bool breeze = BreezeNarrator.Installed(cache, _appDir);
+                var breezeNarrate = FindElement("mBreezeVoice") as MenuItem;
+                if (breezeNarrate != null) breezeNarrate.Visibility = breeze ? Visibility.Visible : Visibility.Collapsed;
                 var narratorSettings = FindElement("mNarratorSettings") as MenuItem;
                 if (narratorSettings != null) narratorSettings.Visibility = qwen ? Visibility.Visible : Visibility.Collapsed;
                 if (kokoro) RebuildKokoroVoiceMenu();
@@ -3770,10 +3840,12 @@ namespace TypoZen
 
                 // A voice that is no longer installed would leave the page trying to speak
                 // with an engine that is gone, so hand it back to the Windows voices. Only
-                // the chosen voice's own engine counts: Kokoro missing must not take the
-                // Qwen narrator away, nor the other way round.
+                // the chosen voice's own engine counts: Kokoro missing must not take a
+                // narrator away, nor the other way round.
                 bool chosenQwen = _kokoroVoiceId == QwenNarrator.VoiceId;
-                if ((!kokoro && !chosenQwen) || (!qwen && chosenQwen)) SetKokoroVoice("windows_voice", "Windows voice");
+                bool chosenBreeze = _kokoroVoiceId == BreezeNarrator.VoiceId;
+                if ((!kokoro && !chosenQwen && !chosenBreeze) || (!qwen && chosenQwen) || (!breeze && chosenBreeze))
+                    SetKokoroVoice("windows_voice", "Windows voice");
 
                 RebuildDictionaryMenu();
                 // A dictionary that has just been removed is still the saved choice.
@@ -5316,12 +5388,14 @@ namespace TypoZen
         /// </summary>
         private List<string> NarrationTraceFiles(out List<string> dirs)
         {
-            string root = QwenNarrator.RootDir(CacheDir());
-            dirs = new List<string> { QwenNarrator.CacheDir(CacheDir()), Path.Combine(root, "cast") };
+            string root = QwenNarrator.RootDir(CacheDir()), breeze = BreezeNarrator.RootDir(CacheDir());
+            dirs = new List<string> { QwenNarrator.CacheDir(CacheDir()), Path.Combine(root, "cast"), BreezeNarrator.CacheDir(CacheDir()) };
             if (!string.IsNullOrEmpty(QwenNarrator.PrivateCacheDir)) dirs.Add(QwenNarrator.PrivateCacheDir);
+            if (!string.IsNullOrEmpty(BreezeNarrator.PrivateCacheDir)) dirs.Add(BreezeNarrator.PrivateCacheDir);
             var files = new List<string>();
-            foreach (string f in new[] { "narration.log", "narration.log.1", "install.log" })
-                files.Add(Path.Combine(root, f));
+            foreach (string dir in new[] { root, breeze })
+                foreach (string f in new[] { "narration.log", "narration.log.1", "install.log" })
+                    files.Add(Path.Combine(dir, f));
             return files;
         }
 
@@ -5465,7 +5539,7 @@ namespace TypoZen
             var cbLogs     = add("Diagnostic logs", HumanSize(logBytes) + ", may name files you opened", true);
             // Only offered once the narrator has been installed; there is nothing to clear before.
             CheckBox cbNarr = null;
-            if (Directory.Exists(QwenNarrator.RootDir(cache)))
+            if (Directory.Exists(QwenNarrator.RootDir(cache)) || Directory.Exists(BreezeNarrator.RootDir(cache)))
             {
                 List<string> narrDirs;
                 long narrBytes = 0;
@@ -5681,6 +5755,7 @@ namespace TypoZen
                 // rendering ahead. It starts again on the next Read Aloud.
                 try { SendMsg("cmd:narration_stop"); } catch { }
                 try { QwenNarrator.Stop(); } catch { }
+                try { BreezeNarrator.Stop(); } catch { }
                 List<string> narrDirs;
                 foreach (string f in NarrationTraceFiles(out narrDirs)) try { File.Delete(f); } catch { }
                 // Folders are emptied but kept: two are mapped as virtual hosts for the page.
@@ -6814,6 +6889,17 @@ namespace TypoZen
                     _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
                         QwenNarrator.PrivateHostName, QwenNarrator.PrivateCacheDir,
                         CoreWebView2HostResourceAccessKind.Allow);
+                    // The Breeze narrator's audio, the same two ways. Mapped whether or not it is
+                    // installed: an extension installed later is served without a restart.
+                    string breezeAudio = BreezeNarrator.CacheDir(CacheDir());
+                    Directory.CreateDirectory(breezeAudio);
+                    _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        BreezeNarrator.HostName, breezeAudio, CoreWebView2HostResourceAccessKind.Allow);
+                    BreezeNarrator.PrivateCacheDir = Path.Combine(PrivateLoadDir(), "narration-breeze");
+                    Directory.CreateDirectory(BreezeNarrator.PrivateCacheDir);
+                    _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        BreezeNarrator.PrivateHostName, BreezeNarrator.PrivateCacheDir,
+                        CoreWebView2HostResourceAccessKind.Allow);
                 }
                 catch (Exception ex) { LogFault("map extensions host", ex); }
                 MapBookHosts();
@@ -7156,12 +7242,12 @@ namespace TypoZen
             }
             else if (msg.StartsWith("host_kokoro_voice_restored:", StringComparison.Ordinal))
             {
-                bool wasQwen = _kokoroVoiceId == QwenNarrator.VoiceId;
+                var wasNarrator = ChosenNarrator();
                 _kokoroVoiceId = msg.Substring(27);
                 TickKokoroVoice();
                 UpdateWindowsVoicesCheckmark();
-                // A Qwen voice restored at launch, or switched to: warm up if a book is open.
-                if (!wasQwen && _kokoroVoiceId == QwenNarrator.VoiceId) WarmNarrator();
+                // A narrator voice restored at launch, or switched to: warm up if a book is open.
+                if (ChosenNarrator() != null && ChosenNarrator() != wasNarrator) WarmNarrator();
                 return;
             }
             else if (msg.StartsWith("host_narrator_cast:", StringComparison.Ordinal))
@@ -11321,7 +11407,7 @@ namespace TypoZen
             // Nothing here is speaking while a Kokoro voice is chosen, so nothing here
             // is ticked -- including at startup, where the saved Windows voice is still
             // remembered and would otherwise tick itself.
-            bool kokoroSpeaking = IsKokoroVoiceId(_kokoroVoiceId) || _kokoroVoiceId == QwenNarrator.VoiceId;
+            bool kokoroSpeaking = IsKokoroVoiceId(_kokoroVoiceId) || ChosenNarrator() != null;
             foreach (var item in VoiceMenuItems(mWinVoices))
             {
                 item.IsChecked = !kokoroSpeaking && (item.Tag.ToString() == _ttsVoiceId);
@@ -11343,11 +11429,14 @@ namespace TypoZen
             try
             {
                 string text;
-                if (_kokoroVoiceId == QwenNarrator.VoiceId)
+                if (ChosenNarrator() != null)
                 {
-                    string cache = CacheDir(), current = QwenNarrator.CurrentVoice(cache), name = current;
-                    foreach (var v in QwenNarrator.SavedVoices(cache)) if (v.Key == current) name = v.Value;
-                    text = "Qwen: " + name;
+                    bool breeze = ChosenNarrator() == BreezeNarrator.Engine;
+                    string cache = CacheDir();
+                    string current = breeze ? BreezeNarrator.CurrentVoice(cache) : QwenNarrator.CurrentVoice(cache), name = current;
+                    foreach (var v in breeze ? BreezeNarrator.SavedVoices(cache) : QwenNarrator.SavedVoices(cache))
+                        if (v.Key == current) name = v.Value;
+                    text = (breeze ? "Breeze: " : "Qwen: ") + name;
                     if (_narrationPhase == "starting") text += " · starting…";
                     else if (_narrationPhase == "preparing") text += " · preparing…";
                     else if (_narrationPhase == "reading") text += " · reading";
@@ -11495,7 +11584,7 @@ namespace TypoZen
             _privacyMode = on;
             EpubReader.PrivateMode = on;
             QwenNarrator.PrivateMode = on;          // casts held in memory, not saved; no narration.log
-            System.Threading.Tasks.Task.Run(() => QwenNarrator.SetLogging(!on));
+            System.Threading.Tasks.Task.Run(() => { QwenNarrator.SetLogging(!on); BreezeNarrator.Engine.SetLogging(!on); });
             Program.DebugLogSuppressed = on;        // no debug.log lines at all
             SetMenuChecked("mPrivacyMode", on);
             // The switches it subsumes are disabled rather than merely overridden: a tick
@@ -15833,7 +15922,13 @@ namespace TypoZen
         {
             kokoro = false;
             string desc = "";
-            try { desc = QwenNarrator.VoiceDescription(CacheDir(), QwenNarrator.CurrentVoice(CacheDir())) ?? ""; } catch { }
+            try
+            {
+                desc = (ChosenNarrator() == BreezeNarrator.Engine
+                    ? BreezeNarrator.VoiceDescription(CacheDir(), BreezeNarrator.CurrentVoice(CacheDir()))
+                    : QwenNarrator.VoiceDescription(CacheDir(), QwenNarrator.CurrentVoice(CacheDir()))) ?? "";
+            }
+            catch { }
             string d = " " + desc.ToLowerInvariant() + " ";
             // Female words first: "woman" contains "man".
             string gender = Regex.IsMatch(d, @"\b(female|woman|girl|lady|she|her)\b") ? "Female"

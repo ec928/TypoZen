@@ -462,6 +462,11 @@
                                      the header. Hidden unless the narration environment is installed. -->
                                 <MenuItem x:Name="mQwenVoice" Header="_Qwen Narrator" Visibility="Collapsed"
                                           ToolTip="Audiobook narration rendered on this PC's graphics card. Text not yet rendered takes about a minute to start; anything rendered before plays at once."/>
+                                <!-- The second, optional narrator (BreezeNarrator): the same Read Aloud,
+                                     its own voices, including voices cloned from a recording. Hidden
+                                     unless the Breeze extension is installed. -->
+                                <MenuItem x:Name="mBreezeVoice" Header="_Breeze Narrator" Visibility="Collapsed"
+                                          ToolTip="Audiobook narration by Breeze, rendered on this PC's graphics card. It reads in voices made from a description or cloned from a recording, and performs sounds such as [laughing] and [sighing]."/>
                                 <!-- Filled in code from ExtensionCatalog.Voices, which is also what the
                                      installer downloads, so the menu cannot offer fewer voices than
                                      are on disk. Hidden until the extension is installed. -->

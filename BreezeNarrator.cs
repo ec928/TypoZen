@@ -174,6 +174,11 @@ namespace TypoZen
             foreach (var v in SavedVoices(cacheDir)) if (v.Key == current) name = v.Value;
             d["voice"] = QwenNarrator.LoadSettings(cacheDir).BreezeVoice;
             d["voiceName"] = name;
+            d["audioHost"] = HostName;
+            d["audioHostPrivate"] = PrivateHostName;
+            // One piece per request: Breeze renders pieces one after another, so a batch only
+            // delays the first sound until all of it is done.
+            d["batch"] = 1;
             return new JavaScriptSerializer().Serialize(d);
         }
 
