@@ -1745,7 +1745,16 @@ namespace TypoZen
                 try
                 {
                     NarratorDialog.Show(this, CacheDir(), _appDir, _currentFilePath, SendMsg,
-                                        () => { SendNarratorSettings(); RebuildQwenVoiceMenu(); RebuildBreezeVoiceMenu(); });
+                                        () => { SendNarratorSettings(); RebuildQwenVoiceMenu(); RebuildBreezeVoiceMenu(); },
+                                        _kokoroVoiceId == BreezeNarrator.VoiceId,
+                                        breeze =>
+                                        {
+                                            // The narrator chosen at the top of Narrator Settings becomes the reading voice.
+                                            string cache = CacheDir();
+                                            string id = breeze ? BreezeNarrator.CurrentVoice(cache) : QwenNarrator.CurrentVoice(cache), name = id;
+                                            foreach (var v in breeze ? BreezeNarrator.SavedVoices(cache) : QwenNarrator.SavedVoices(cache)) if (v.Key == id) name = v.Value;
+                                            SetKokoroVoice(breeze ? BreezeNarrator.VoiceId : QwenNarrator.VoiceId, name);
+                                        });
                 }
                 catch (Exception ex) { LogFault("narrator settings", ex); }
             });

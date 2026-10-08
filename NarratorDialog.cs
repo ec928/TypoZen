@@ -49,6 +49,8 @@ namespace TypoZen
             public string Name;
             public string Description;
             public string Preview;
+            /// <summary>The narrator being edited made it, so it may be deleted and exported here.</summary>
+            public bool Mine;
             public override string ToString() { return Name; }
         }
 
@@ -72,6 +74,25 @@ namespace TypoZen
             public string Describe() { return Label + ", take " + Take; }
         }
 
+        /// <summary>
+        /// The narrator the window edits: Qwen or Breeze, the choice at the top when both are
+        /// installed (docs/internal/breeze-tts-plan.md 4.4a). Instruction, cues and casts are shared;
+        /// the voice, the voice library and the calls are that narrator's.
+        /// </summary>
+        private sealed class Side
+        {
+            public bool Breeze;
+            public NarratorEngine Engine { get { return Breeze ? BreezeNarrator.Engine : QwenNarrator.Engine; } }
+            public string Name { get { return Breeze ? "Breeze" : "Qwen"; } }
+            public string AudioDir(string cacheDir) { return Breeze ? BreezeNarrator.CacheDir(cacheDir) : QwenNarrator.CacheDir(cacheDir); }
+            public string VoicesDir(string cacheDir)
+            {
+                return System.IO.Path.Combine(Breeze ? BreezeNarrator.RootDir(cacheDir) : QwenNarrator.RootDir(cacheDir), "voices");
+            }
+            public string AudioHost { get { return Breeze ? BreezeNarrator.HostName : QwenNarrator.HostName; } }
+            public string AudioHostPrivate { get { return Breeze ? BreezeNarrator.PrivateHostName : QwenNarrator.PrivateHostName; } }
+        }
+
         // Narration, a line tagged as said quietly, one tagged as snapped, and an amount: each of
         // the things the Reading settings change is in it. Kept for the session once edited.
         private static string _sample =
@@ -79,18 +100,29 @@ namespace TypoZen
             + "“You said you’d be back by Tuesday,” Tom said quietly. “It’s Friday.”\r\n"
             + "“I know,” she snapped. “The ferry cost me £86 and it still ran four hours late.”";
 
-        public static void Show(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved)
+        /// <summary>
+        /// `breezeReading`: Read Aloud uses the Breeze narrator now. `narratorChosen` is told, on Save,
+        /// when the reader picked the other narrator at the top (true for Breeze).
+        /// </summary>
+        public static void Show(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved,
+                                bool breezeReading, Action<bool> narratorChosen)
         {
-            Build(owner, cacheDir, appDir, book, sendToPage, saved, true).ShowDialog();
+            Build(owner, cacheDir, appDir, book, sendToPage, saved, true, breezeReading, narratorChosen).ShowDialog();
         }
 
         /// <summary>
         /// The window, ready to show. `start` false leaves the narrator alone, for rendering the
         /// layout without showing it (checking the design by eye before a release).
         /// </summary>
-        internal static Window Build(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved, bool start)
+        internal static Window Build(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved, bool start,
+                                     bool breezeReading = false, Action<bool> narratorChosen = null)
         {
             var settings = QwenNarrator.LoadSettings(cacheDir);
+            bool haveQwen = QwenNarrator.Installed(cacheDir, appDir), haveBreeze = BreezeNarrator.Installed(cacheDir, appDir);
+            // The narrator Read Aloud uses, when it is one of these; otherwise whichever is installed.
+            var side = new Side { Breeze = haveBreeze && (breezeReading || !haveQwen) };
+            bool openedBreeze = side.Breeze;
+            Func<string> savedVoice = () => side.Breeze ? settings.BreezeVoice : settings.Voice;
             var cast = QwenNarrator.LoadCast(cacheDir, book);
             var voices = new List<VoiceItem>();
             SoundPlayer player = null;
@@ -173,6 +205,17 @@ namespace TypoZen
 
             // ================================================================ Reading
             var left = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+
+            RadioButton pickQwen = null, pickBreeze = null;
+            if (haveQwen && haveBreeze)
+            {
+                left.Children.Add(heading("Narrator"));
+                pickQwen = new RadioButton { Content = "Qwen", GroupName = "narrator", IsChecked = !side.Breeze, Margin = new Thickness(0, 0, 16, 0) };
+                pickBreeze = new RadioButton { Content = "Breeze", GroupName = "narrator", IsChecked = side.Breeze };
+                if (win.Foreground != null) { pickQwen.Foreground = win.Foreground; pickBreeze.Foreground = win.Foreground; }
+                left.Children.Add(row(new UIElement[] { pickQwen, pickBreeze }));
+                left.Children.Add(note("The narrator Read Aloud uses once you save, and whose voices are below. The instruction, cues and casts are shared by both."));
+            }
 
             left.Children.Add(heading("Voice"));
             var voiceBox = new ComboBox { MinWidth = 220 };
@@ -339,7 +382,8 @@ namespace TypoZen
             lib.Children.Add(note("Export saves a voice as one .tzvoice file; Import brings one back. A designed voice cannot be made again, so export the ones you keep."));
 
             lib.Children.Add(heading("Design a new voice"));
-            lib.Children.Add(note("Describe who they are: age, accent, texture. Three candidates come back; name and keep the one you want. About a minute and a half."));
+            var designNote = note("");
+            lib.Children.Add(designNote);
             var descBox = new TextBox { TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             lib.Children.Add(descBox);
             var design = primary("Create 3 candidates");
@@ -348,6 +392,44 @@ namespace TypoZen
             lib.Children.Add(design);
             var candidates = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
             lib.Children.Add(candidates);
+
+            // Clone: Breeze only. Shown once Breeze is installed; with Qwen chosen it stays in view,
+            // greyed, saying why -- one rule for every control one narrator lacks.
+            var clonePanel = new StackPanel();
+            var cloneWhy = note("Clone needs the Breeze narrator: choose Breeze at the top of the Narrator window.");
+            var cloneFile = button("Choose recording...");
+            var cloneFileName = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.8, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 340 };
+            var cloneWords = new TextBox { TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            var cloneFrom = new TextBox { Width = 56, Height = 26, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0) };
+            var cloneTo = new TextBox { Width = 56, Height = 26, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+            var cloneGo = primary("Make a candidate");
+            cloneGo.HorizontalAlignment = HorizontalAlignment.Left;
+            cloneGo.Margin = new Thickness(0, 8, 0, 0);
+            string clonePath = null;
+            if (haveBreeze)
+            {
+                lib.Children.Add(heading("Clone a voice from a recording"));
+                clonePanel.Children.Add(note("3 to 20 seconds of one person speaking clearly, and exactly the words they say. "
+                    + "The easiest way: record them reading the design passage word for word -- “Use the design passage” puts its words in the box. "
+                    + "Only clone a voice you have the right to use: your own, or with the speaker's permission."));
+                clonePanel.Children.Add(row(new UIElement[] { cloneFile, cloneFileName }));
+                clonePanel.Children.Add(new TextBlock { Text = "The words said in the recording", Margin = new Thickness(0, 8, 0, 4) });
+                clonePanel.Children.Add(cloneWords);
+                var useDesign = button("Use the design passage");
+                useDesign.ToolTip = "The passage every designed voice is recorded reading. Record the speaker reading it, then choose that recording.";
+                useDesign.Margin = new Thickness(0, 8, 0, 0);
+                useDesign.HorizontalAlignment = HorizontalAlignment.Left;
+                useDesign.Click += (s, e) => cloneWords.Text = "The road ran straight across the plain, and the mountains beyond it were pale with distance. "
+                    + "She had been walking since the morning, and the light had not changed at all. There was nothing to mark the hours but the sound of her own steps.";
+                clonePanel.Children.Add(useDesign);
+                clonePanel.Children.Add(row(new UIElement[] {
+                    new TextBlock { Text = "Use from", VerticalAlignment = VerticalAlignment.Center }, cloneFrom,
+                    new TextBlock { Text = "to", VerticalAlignment = VerticalAlignment.Center }, cloneTo,
+                    new TextBlock { Text = "  seconds (optional)", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.72 } }));
+                clonePanel.Children.Add(cloneGo);
+                lib.Children.Add(cloneWhy);
+                lib.Children.Add(clonePanel);
+            }
             var libStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.9, VerticalAlignment = VerticalAlignment.Center };
             var libBusy = new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 8), Visibility = Visibility.Collapsed };
 
@@ -519,7 +601,7 @@ namespace TypoZen
                     if (id.Length == 0)
                     {
                         var narr = voiceBox.SelectedItem as VoiceItem;
-                        id = narr != null && narr.Id != null ? narr.Id : (settings.Voice ?? "");
+                        id = narr != null && narr.Id != null ? narr.Id : (savedVoice() ?? "");
                     }
                     if (id.Length == 0) { say("Choose a voice for this character first."); return; }
                     string spoken = (sayBox.Text ?? "").Trim();
@@ -548,7 +630,7 @@ namespace TypoZen
                                 }
                             }}
                         };
-                        string json = QwenNarrator.Call("POST", "/render", new JavaScriptSerializer().Serialize(body), 120000);
+                        string json = side.Engine.Call("POST", "/render", new JavaScriptSerializer().Serialize(body), 120000);
                         var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
                         Dictionary<string, object> item = null;
                         object items;
@@ -562,9 +644,9 @@ namespace TypoZen
                         string file = Convert.ToString(item["file"]);
                         object priv;
                         bool isPrivate = item.TryGetValue("private", out priv) && priv is bool && (bool)priv;
-                        string folder = isPrivate && !string.IsNullOrEmpty(QwenNarrator.PrivateCacheDir)
-                            ? QwenNarrator.PrivateCacheDir
-                            : QwenNarrator.CacheDir(cacheDir);
+                        string folder = isPrivate && !string.IsNullOrEmpty(side.Engine.PrivateCacheDir)
+                            ? side.Engine.PrivateCacheDir
+                            : side.AudioDir(cacheDir);
                         win.Dispatcher.Invoke((Action)(() => play(System.IO.Path.Combine(folder, file))));
                         say("");
                     });
@@ -579,7 +661,7 @@ namespace TypoZen
             };
 
             // A voice the library can act on: one of the reader's, not built in.
-            Func<VoiceItem, bool> removable = v => v != null && !string.IsNullOrEmpty(v.Preview);
+            Func<VoiceItem, bool> removable = v => v != null && v.Mine && !string.IsNullOrEmpty(v.Preview);
             Action refreshLibButtons = () =>
             {
                 var v = libList.SelectedItem as VoiceItem;
@@ -588,7 +670,7 @@ namespace TypoZen
 
             Action fillVoices = () =>
             {
-                string keep = voiceBox.SelectedItem is VoiceItem ? ((VoiceItem)voiceBox.SelectedItem).Id : settings.Voice;
+                string keep = voiceBox.SelectedItem is VoiceItem ? ((VoiceItem)voiceBox.SelectedItem).Id : savedVoice();
                 string keepLib = libList.SelectedItem is VoiceItem ? ((VoiceItem)libList.SelectedItem).Id : keep;
                 voiceBox.Items.Clear();
                 libList.Items.Clear();
@@ -612,19 +694,24 @@ namespace TypoZen
 
             Action loadVoices = () =>
             {
-                string json = QwenNarrator.Call("GET", "/voices", null, 10000);
+                string json = side.Engine.Call("GET", "/voices", null, 10000);
                 var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
                 var list = new List<VoiceItem>();
                 foreach (var o in (d["voices"] as System.Collections.IEnumerable) ?? new object[0])
                 {
                     var v = o as Dictionary<string, object>;
                     if (v == null) continue;
+                    object src, bi;
+                    // Breeze lists the Qwen narrator's voices too, which only Qwen may delete.
+                    bool mine = side.Breeze ? (v.TryGetValue("source", out src) && Convert.ToString(src) == "breeze")
+                                            : !(v.TryGetValue("builtin", out bi) && bi is bool && (bool)bi);
                     list.Add(new VoiceItem
                     {
                         Id = Convert.ToString(v["id"]),
                         Name = Convert.ToString(v["name"]),
                         Description = Convert.ToString(v["description"]),
-                        Preview = Convert.ToString(v["preview"])
+                        Preview = Convert.ToString(v["preview"]),
+                        Mine = mine
                     });
                 }
                 win.Dispatcher.Invoke((Action)(() => { voices.Clear(); voices.AddRange(list); fillVoices(); }));
@@ -632,7 +719,7 @@ namespace TypoZen
 
             // Anything that needs the narrator goes through here: off the UI thread, with the
             // buttons that would start another such call disabled until it is done.
-            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, design, importVoice, playA, takeA };
+            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, design, importVoice, playA, takeA, cloneGo };
             if (findCast != null) busyButtons.Add(findCast);
             // `expect` is the usual time in seconds, shown against a running clock; 0 for none.
             work = (what, expect, job) =>
@@ -710,7 +797,7 @@ namespace TypoZen
                 bool direct = directBox.IsChecked == true;
                 return new Trial
                 {
-                    Voice = v != null ? v.Id : settings.Voice,
+                    Voice = v != null ? v.Id : savedVoice(),
                     VoiceName = v != null ? v.Name : "the narrator's voice",
                     Instruction = instr,
                     Cue = cue,
@@ -846,7 +933,8 @@ namespace TypoZen
                 _sample = text;
                 string json = new JavaScriptSerializer().Serialize(new Dictionary<string, object>
                 {
-                    { "base", QwenNarrator.BaseUrl }, { "text", text }, { "voice", t.Voice },
+                    { "base", side.Engine.BaseUrl }, { "audioHost", side.AudioHost }, { "audioHostPrivate", side.AudioHostPrivate },
+                    { "text", text }, { "voice", t.Voice },
                     { "instruction", t.Instruction }, { "cue", t.Cue }, { "direct", t.Direct }, { "seed", t.Seed }
                 });
                 // Nothing will play after all: that row's Stop goes back to Play.
@@ -854,7 +942,7 @@ namespace TypoZen
                 playing = which;
                 work("Preparing " + which + ":", 15, () =>
                 {
-                    bool up = QwenNarrator.EnsureRunning(cacheDir, appDir, m => { }, CancellationToken.None).Result;
+                    bool up = side.Engine.EnsureRunning(cacheDir, appDir, m => { }, CancellationToken.None).Result;
                     if (!up) { notPlaying(); say("The narrator is not running, so nothing can be tried now."); return; }
                     var tcs = new TaskCompletionSource<string>();
                     pendingTrial = tcs;
@@ -978,7 +1066,7 @@ namespace TypoZen
                 string id = v != null ? v.Id : "";
                 work("Rendering a sample in this voice:", 15, () =>
                 {
-                    string json = QwenNarrator.Call("POST", "/preview", new JavaScriptSerializer().Serialize(
+                    string json = side.Engine.Call("POST", "/preview", new JavaScriptSerializer().Serialize(
                         new Dictionary<string, object> { { "voice", id }, { "style", "" } }), 120000);
                     var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
                     win.Dispatcher.Invoke((Action)(() => play(Convert.ToString(d["file"]))));
@@ -998,7 +1086,7 @@ namespace TypoZen
                 string id = v.Id;
                 work("Deleting...", 0, () =>
                 {
-                    QwenNarrator.Call("POST", "/voices/delete", new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "id", id } }), 10000);
+                    side.Engine.Call("POST", "/voices/delete", new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "id", id } }), 10000);
                     loadVoices();
                     say("Deleted \"" + v.Name + "\".");
                 });
@@ -1026,7 +1114,7 @@ namespace TypoZen
                 {
                     if (System.IO.File.Exists(part)) System.IO.File.Delete(part);
                     using (var z = System.IO.Compression.ZipFile.Open(part, System.IO.Compression.ZipArchiveMode.Create))
-                        foreach (string f in new[] { "print.npy", "meta.json", "preview.wav", "design.wav" })
+                        foreach (string f in new[] { "print.npy", "meta.json", "preview.wav", "design.wav", "reference.wav" })
                         {
                             string p = System.IO.Path.Combine(dir, f);
                             if (System.IO.File.Exists(p)) System.IO.Compression.ZipFileExtensions.CreateEntryFromFile(z, p, f);
@@ -1049,7 +1137,7 @@ namespace TypoZen
                 {
                     Title = "Import voices",
                     Multiselect = true,
-                    Filter = "Saved voices (*.tzvoice, or print.npy in a voice folder)|*.tzvoice;print.npy"
+                    Filter = "Saved voices (*.tzvoice, or print.npy or reference.wav in a voice folder)|*.tzvoice;print.npy;reference.wav"
                 };
                 if (dlg.ShowDialog(win) != true) return;
                 string[] files = dlg.FileNames;
@@ -1063,7 +1151,7 @@ namespace TypoZen
                         try
                         {
                             var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
-                                QwenNarrator.Call("POST", "/voices/import", new JavaScriptSerializer().Serialize(
+                                side.Engine.Call("POST", "/voices/import", new JavaScriptSerializer().Serialize(
                                     new Dictionary<string, object> { { "path", f } }), 30000));
                             string nm = Convert.ToString(d["name"]);
                             said.Add(d["already"] is bool && (bool)d["already"]
@@ -1080,18 +1168,10 @@ namespace TypoZen
                 });
             };
 
-            design.Click += (s, e) =>
+            // The candidates a design or a clone came back with, each with Play, a name and Keep.
+            // Called off the UI thread with the narrator's answer.
+            Action<string> showCandidates = json =>
             {
-                string desc = descBox.Text.Trim();
-                if (desc.Length == 0) { say("Describe the voice first."); return; }
-                candidates.Children.Clear();
-                // Candidates are made with no style: what you hear is the voice itself, exactly
-                // as narration will use it with the standard reading.
-                string style = "";
-                work("Creating three candidates from your description. The graphics card is busy meanwhile.", 90, () =>
-                {
-                    string json = QwenNarrator.Call("POST", "/design", new JavaScriptSerializer().Serialize(
-                        new Dictionary<string, object> { { "description", desc }, { "count", 3 }, { "style", style } }), 300000);
                     var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
                     var list = (d["candidates"] as System.Collections.IEnumerable) ?? new object[0];
                     win.Dispatcher.Invoke((Action)(() =>
@@ -1116,7 +1196,7 @@ namespace TypoZen
                                 name.IsEnabled = false;
                                 work("Keeping \"" + nm + "\"...", 0, () =>
                                 {
-                                    QwenNarrator.Call("POST", "/voices/keep", new JavaScriptSerializer().Serialize(
+                                    side.Engine.Call("POST", "/voices/keep", new JavaScriptSerializer().Serialize(
                                         new Dictionary<string, object> { { "candidate", cid }, { "name", nm } }), 10000);
                                     loadVoices();
                                     say("Kept \"" + nm + "\". Choose it on the Reading tab, or for a character on Cast. "
@@ -1126,7 +1206,54 @@ namespace TypoZen
                             candidates.Children.Add(row(new UIElement[] { label, p, name, k }));
                         }
                     }));
+            };
+
+            design.Click += (s, e) =>
+            {
+                string desc = descBox.Text.Trim();
+                if (desc.Length == 0) { say("Describe the voice first."); return; }
+                candidates.Children.Clear();
+                // Candidates are made with no style: what you hear is the voice itself, exactly
+                // as narration will use it with the standard reading.
+                string style = "";
+                work("Creating three candidates from your description. The graphics card is busy meanwhile.", side.Breeze ? 60 : 90, () =>
+                {
+                    showCandidates(side.Engine.Call("POST", "/design", new JavaScriptSerializer().Serialize(
+                        new Dictionary<string, object> { { "description", desc }, { "count", 3 }, { "style", style } }), 300000));
                     say("Three candidates, read by the narrator as each would sound. Play them, then name and keep the one you want.");
+                });
+            };
+
+            cloneFile.Click += (s, e) =>
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "A recording to clone the voice from",
+                    Filter = "Recordings (*.wav, *.flac, *.ogg, *.mp3)|*.wav;*.flac;*.ogg;*.mp3"
+                };
+                if (dlg.ShowDialog(win) != true) return;
+                clonePath = dlg.FileName;
+                cloneFileName.Text = System.IO.Path.GetFileName(clonePath);
+                cloneFileName.ToolTip = clonePath;
+            };
+            cloneGo.Click += (s, e) =>
+            {
+                if (clonePath == null) { say("Choose the recording first."); return; }
+                string words = cloneWords.Text.Trim();
+                if (words.Length == 0) { say("Type exactly what is said in the recording."); return; }
+                string fromText = cloneFrom.Text.Trim(), toText = cloneTo.Text.Trim();
+                double secs;
+                if ((fromText.Length > 0 && !double.TryParse(fromText, out secs)) || (toText.Length > 0 && !double.TryParse(toText, out secs)))
+                { say("From and to are seconds into the recording, such as 2.5; or leave them empty."); return; }
+                candidates.Children.Clear();
+                string path = clonePath;
+                work("Cloning the voice from the recording:", 10, () =>
+                {
+                    var body = new Dictionary<string, object> { { "path", path }, { "transcript", words } };
+                    if (fromText.Length > 0) body["start"] = fromText;
+                    if (toText.Length > 0) body["end"] = toText;
+                    showCandidates(side.Engine.Call("POST", "/voices/clone", new JavaScriptSerializer().Serialize(body), 120000));
+                    say("Play the candidate, then name and keep it. If it does not sound like the recording, check that the words match it exactly.");
                 });
             };
 
@@ -1191,7 +1318,7 @@ namespace TypoZen
                 try
                 {
                     var v = voiceBox.SelectedItem as VoiceItem;
-                    settings.Voice = v != null ? v.Id : settings.Voice;
+                    if (v != null) { if (side.Breeze) settings.BreezeVoice = v.Id; else settings.Voice = v.Id; }
                     settings.Instruction = instructionBox.Text.Trim();
                     settings.Cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue;
                     settings.Direct = directBox.IsChecked == true;
@@ -1215,6 +1342,9 @@ namespace TypoZen
                         }
                     }
                     QwenNarrator.SaveCast(cacheDir, book, cast);
+                    // The other narrator picked at the top: Read Aloud reads with it from now on.
+                    if (side.Breeze != openedBreeze && narratorChosen != null) narratorChosen(side.Breeze);
+                    openedBreeze = side.Breeze;
                     if (saved != null) saved();
                     return true;
                 }
@@ -1227,7 +1357,8 @@ namespace TypoZen
             {
                 var v = voiceBox.SelectedItem as VoiceItem;
                 string cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue;
-                if ((v != null && v.Id != settings.Voice) || instructionBox.Text.Trim() != (settings.Instruction ?? "").Trim()
+                if (side.Breeze != openedBreeze
+                    || (v != null && v.Id != savedVoice()) || instructionBox.Text.Trim() != (settings.Instruction ?? "").Trim()
                     || cue != (settings.Cue ?? "").Trim() || (directBox.IsChecked == true) != settings.Direct) return true;
                 foreach (var r in castRows)
                 {
@@ -1269,8 +1400,11 @@ namespace TypoZen
             {
                 try
                 {
-                    string dir = System.IO.Path.Combine(QwenNarrator.RootDir(cacheDir), "voices", "_candidates");
-                    if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true);
+                    foreach (bool breeze in new[] { false, true })
+                    {
+                        string dir = System.IO.Path.Combine(new Side { Breeze = breeze }.VoicesDir(cacheDir), "_candidates");
+                        if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true);
+                    }
                 }
                 catch { }
             };
@@ -1337,34 +1471,75 @@ namespace TypoZen
 
             // The saved voices are on disk: list them now, so the choice is there while the
             // narrator loads. The narrator's own list replaces this once it is up.
-            foreach (var v in QwenNarrator.SavedVoices(cacheDir))
+            // Breeze's list holds the Qwen narrator's voices as well as its own: each is read from
+            // whichever folder has it, its own first.
+            Action fillFromDisk = () =>
             {
-                string dir = System.IO.Path.Combine(QwenNarrator.RootDir(cacheDir), "voices", v.Key);
-                string prev = System.IO.Path.Combine(dir, "preview.wav");
-                object d;
-                var meta = QwenNarrator.ReadJson(System.IO.Path.Combine(dir, "meta.json"));
-                var model = Array.Find(QwenNarrator.ModelSpeakers, m => m[0] == v.Key);
-                voices.Add(new VoiceItem
+                voices.Clear();
+                string ownDir = side.VoicesDir(cacheDir), qwenDir = new Side { Breeze = false }.VoicesDir(cacheDir);
+                foreach (var v in side.Breeze ? BreezeNarrator.SavedVoices(cacheDir) : QwenNarrator.SavedVoices(cacheDir))
                 {
-                    Id = v.Key, Name = v.Value,
-                    Description = meta.TryGetValue("description", out d) ? Convert.ToString(d)
-                                : v.Key == QwenNarrator.DefaultVoiceId ? QwenNarrator.DefaultVoiceDescription
-                                : model != null ? model[2] : "",
-                    Preview = System.IO.File.Exists(prev) ? prev : ""
-                });
-            }
-            fillVoices();
-            updateA();
+                    string dir = System.IO.Path.Combine(ownDir, v.Key);
+                    bool mine = System.IO.Directory.Exists(dir);
+                    if (!mine) dir = System.IO.Path.Combine(qwenDir, v.Key);
+                    string prev = System.IO.Path.Combine(dir, "preview.wav");
+                    object d;
+                    var meta = QwenNarrator.ReadJson(System.IO.Path.Combine(dir, "meta.json"));
+                    var model = Array.Find(QwenNarrator.ModelSpeakers, m => m[0] == v.Key);
+                    voices.Add(new VoiceItem
+                    {
+                        Id = v.Key, Name = v.Value,
+                        Description = meta.TryGetValue("description", out d) ? Convert.ToString(d)
+                                    : v.Key == QwenNarrator.DefaultVoiceId ? QwenNarrator.DefaultVoiceDescription
+                                    : model != null ? model[2] : "",
+                        Preview = System.IO.File.Exists(prev) ? prev : "",
+                        Mine = mine && v.Key != QwenNarrator.DefaultVoiceId && model == null
+                    });
+                }
+            };
 
             // The narrator is needed for everything else here: start it (a no-op when it is up), then list the voices.
-            if (start)
-                work("Starting the narrator...", 0, () =>
+            Action startSide = () =>
+                work("Starting the " + side.Name + " narrator...", 0, () =>
                 {
-                    bool up = QwenNarrator.EnsureRunning(cacheDir, appDir, m => { if (!string.IsNullOrEmpty(m)) say(m); }, CancellationToken.None).Result;
+                    bool up = side.Engine.EnsureRunning(cacheDir, appDir, m => { if (!string.IsNullOrEmpty(m)) say(m); }, CancellationToken.None).Result;
                     if (!up) { say("The narrator did not start, so nothing here can be changed now."); return; }
                     loadVoices();
                     say("");
                 });
+
+            // What depends on which narrator is chosen: the voices, Design's wording, Clone.
+            Action applySide = () =>
+            {
+                designNote.Text = "Describe who they are: age, accent, texture. Three candidates come back; name and keep the one you want. "
+                                + (side.Breeze ? "About a minute." : "About a minute and a half.");
+                clonePanel.IsEnabled = side.Breeze;
+                clonePanel.Opacity = side.Breeze ? 1 : 0.5;
+                cloneWhy.Visibility = side.Breeze ? Visibility.Collapsed : Visibility.Visible;
+                candidates.Children.Clear();
+                fillFromDisk();
+                fillVoices();
+                updateA();
+            };
+            applySide();
+
+            if (pickQwen != null)
+            {
+                RoutedEventHandler switched = (s, e) =>
+                {
+                    bool breeze = pickBreeze.IsChecked == true;
+                    if (breeze == side.Breeze) return;
+                    // A trial in the other narrator's voice would go on playing from its folder.
+                    if (playing != null) stopTrial();
+                    side.Breeze = breeze;
+                    applySide();
+                    if (start) startSide();
+                };
+                pickQwen.Checked += switched;
+                pickBreeze.Checked += switched;
+            }
+
+            if (start) startSide();
 
             win.Closed += (s, e) =>
             {
