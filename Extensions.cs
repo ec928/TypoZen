@@ -280,6 +280,34 @@ namespace TypoZen
             };
         }
 
+        /// <summary>
+        /// Breeze narration: a second, optional narrator beside Qwen (BreezeNarrator), installed
+        /// the same way (BreezeInstaller). Measured on an RTX 4070 Ti, 2026-10-08.
+        /// </summary>
+        public static ExtensionInfo Breeze(string cacheDir)
+        {
+            return new ExtensionInfo
+            {
+                Id = BreezeNarrator.ExtensionId,
+                Title = "Breeze narration",
+                Blurb = "Audiobook narration by Breeze TTS 2, a 3-billion-parameter speech model, running entirely "
+                      + "on this PC; nothing is sent anywhere. Beside the Qwen narrator, not instead of it: it can "
+                      + "clone a voice from a short recording and its words, it performs sounds written in the text "
+                      + "such as [laughing], [sighing] and [clears throat], and it starts speaking within seconds. "
+                      + "It reads the Qwen narrator's voices and casts too.\n\n"
+                      + "Demanding: it needs an NVIDIA graphics card with at least 12 GB. On an RTX 4070 Ti it holds "
+                      + "about 9 GB of the card's memory while reading, so the Qwen narrator is stopped while it "
+                      + "runs. Starting takes about 40 seconds (about two and a half minutes the very first time, "
+                      + "while it prepares the card) and it gives the card back after 15 minutes unused.\n\n"
+                      + "Install downloads about 12.6 GB, its own Python included. Removing it keeps your voices.\n\n"
+                      + "Licence: " + BreezeInstaller.LicenceSummary,
+                Dir = BreezeNarrator.RootDir(cacheDir),
+                Marker = Path.Combine("venv", "Scripts", "python.exe"),
+                Notice = BreezeInstaller.LicenceSummary,
+                Check = () => BreezeNarrator.EnvironmentReady(cacheDir)
+            };
+        }
+
         /// <summary>True when the model is there, whichever precision was chosen.</summary>
         public static bool KokoroInstalled(string cacheDir)
         {
@@ -546,7 +574,7 @@ namespace TypoZen
 
             var rows = new List<Action>();          // re-read state after an install or removal
             ExtensionInstaller running = null;
-            QwenInstaller qwenRunning = null;       // Qwen narration installs its own way
+            var narrInstalls = new List<NarratorInstaller>();     // the narration installs under way, to stop on close
 
             // Kokoro's two precisions are one extension with a choice, not two extensions.
             var quality = new ComboBox { Width = 210, Margin = new Thickness(0, 6, 0, 0) };
@@ -573,7 +601,11 @@ namespace TypoZen
                 };
                 var panel = new StackPanel();
                 panel.Children.Add(new TextBlock { Text = info.Title, FontWeight = FontWeights.SemiBold });
-                if (info.Id == ExtensionCatalog.QwenId)
+                // The narration extensions (Qwen, Breeze) install their own way and keep the reader's
+                // voices on Remove; null for the others.
+                var narr = NarratorExtension.For(info.Id);
+                NarratorInstaller narrRunning = null;
+                if (narr != null)
                     panel.Children.Add(new TextBlock
                     {
                         Text = "Experimental — download and use at your own risk.",
@@ -589,7 +621,7 @@ namespace TypoZen
                     Margin = new Thickness(0, 3, 0, 0)
                 });
                 if (info.Id == ExtensionCatalog.KokoroId) panel.Children.Add(quality);
-                bool isQwen = info.Id == ExtensionCatalog.QwenId;
+                bool isQwen = narr != null;
 
                 var state = new TextBlock { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.9, TextWrapping = TextWrapping.Wrap };
                 var button = new Button { Width = 110, Height = 26, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
@@ -631,17 +663,17 @@ namespace TypoZen
                     if (info.Id == ExtensionCatalog.KokoroId) quality.IsEnabled = !on;
                     if (isQwen)
                     {
-                        long audio = SizeOf(QwenNarrator.CacheDir(cacheDir));
-                        bool partway = File.Exists(QwenInstaller.InstallFlag(cacheDir));
+                        long audio = SizeOf(narr.AudioDir(cacheDir));
+                        bool partway = File.Exists(narr.Installer().InstallFlag(cacheDir));
                         bool voices = Directory.Exists(Path.Combine(now.Dir, "voices"))
                                       && Directory.GetDirectories(Path.Combine(now.Dir, "voices")).Length > 0;
                         state.Text = on
                             ? "Installed - " + Human(onDisk) + " on disk, of which " + Human(audio) + " is narration audio"
                             : partway
                                 ? "Not finished - " + Human(onDisk) + " downloaded so far. Install continues where it stopped."
-                                : "Not installed - about " + Human(QwenInstaller.DownloadBytes) + " to download, Python included. "
+                                : "Not installed - about " + Human(narr.DownloadBytes) + " to download, Python included. "
                                   + "Needs an NVIDIA graphics card." + (voices ? " Your voices, casts and settings are kept for it." : "");
-                        if (qwenRunning == null) button.Content = on ? "Remove" : "Install";
+                        if (narrRunning == null) button.Content = on ? "Remove" : "Install";
                         clearAudio.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
                         clearAudio.IsEnabled = audio > 0;
                     }
@@ -650,7 +682,7 @@ namespace TypoZen
 
                 clearAudio.Click += (s, e) =>
                 {
-                    string audioDir = QwenNarrator.CacheDir(cacheDir);
+                    string audioDir = narr.AudioDir(cacheDir);
                     var ask = MessageBox.Show(win,
                         "Delete the narration audio? " + Human(SizeOf(audioDir)) + " will be deleted, and "
                         + "anything narrated again will render again.",
@@ -658,7 +690,7 @@ namespace TypoZen
                     if (ask != MessageBoxResult.OK) return;
                     // The narrator writes into this folder; stopped first so nothing is
                     // half-written into it while it goes. It starts again on the next Narrate.
-                    QwenNarrator.Stop();
+                    narr.Stop();
                     ExtensionInstaller.Purge(audioDir, true);
                     foreach (var r in rows) r();
                     status.Text = SizeOf(audioDir) > 0
@@ -676,7 +708,7 @@ namespace TypoZen
                         // the audio, and keeps the voices, casts and settings for when it is set up
                         // again. It used to delete the whole folder, voices included, without a word.
                         long goes = 0;
-                        if (isQwen) foreach (string part in QwenNarrator.RemovableParts) goes += SizeOf(Path.Combine(now.Dir, part));
+                        if (isQwen) foreach (string part in narr.RemovableParts) goes += SizeOf(Path.Combine(now.Dir, part));
                         var ask = MessageBox.Show(win,
                             isQwen
                                 ? "Remove " + now.Title + "? The program and its models, " + Human(goes) + ", will be deleted. "
@@ -691,8 +723,8 @@ namespace TypoZen
                         // hold its own files and most of the folder would stay behind.
                         if (isQwen)
                         {
-                            QwenNarrator.Stop();
-                            foreach (string part in QwenNarrator.RemovableParts)
+                            narr.Stop();
+                            foreach (string part in narr.RemovableParts)
                                 ExtensionInstaller.Purge(Path.Combine(now.Dir, part), true);
                         }
                         else ExtensionInstaller.Purge(now.Dir, true);
@@ -706,23 +738,25 @@ namespace TypoZen
 
                     if (isQwen)
                     {
-                        if (qwenRunning != null) { qwenRunning.Cancel(); status.Text = "Stopping..."; return; }
-                        string why = QwenInstaller.Preflight(cacheDir);
+                        if (narrRunning != null) { narrRunning.Cancel(); status.Text = "Stopping..."; return; }
+                        var qi = narr.Installer();
+                        string why = qi.Preflight(cacheDir);
                         if (why != null) { status.Text = why; return; }
                         // Asked on a fresh install, not when carrying on from a cancelled one.
-                        if (!File.Exists(QwenInstaller.InstallFlag(cacheDir)))
+                        if (!File.Exists(qi.InstallFlag(cacheDir)))
                         {
                             var risk = MessageBox.Show(win,
-                                "Qwen narration is experimental.\n\n"
-                                + "Install downloads about " + Human(QwenInstaller.DownloadBytes) + " from other parties' "
+                                qi.Name + " is experimental.\n\n"
+                                + "Install downloads about " + Human(narr.DownloadBytes) + " from other parties' "
                                 + "servers (github.com, pypi.org, download.pytorch.org and huggingface.co) and runs a "
                                 + "large speech model on your graphics card. It has been tested on one PC only.\n\n"
+                                + (narr.Licence != null ? narr.Licence + "\n\n" : "")
                                 + "Download and use it at your own risk. Install?",
-                                "Qwen narration", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                                qi.Name, MessageBoxButton.OKCancel, MessageBoxImage.Warning);
                             if (risk != MessageBoxResult.OK) return;
                         }
-                        var qi = new QwenInstaller();
-                        qwenRunning = qi;
+                        narrRunning = qi;
+                        narrInstalls.Add(qi);
                         button.Content = "Cancel";
                         bar.Visibility = Visibility.Visible;
                         bar.IsIndeterminate = true;
@@ -749,15 +783,15 @@ namespace TypoZen
                             });
                             win.Dispatcher.BeginInvoke((Action)(() =>
                             {
-                                qwenRunning = null;
+                                narrRunning = null;
                                 bar.IsIndeterminate = false;
                                 bar.Visibility = Visibility.Collapsed;
                                 foreach (var r in rows) r();
                                 if (problem == null)
                                 {
-                                    status.Text = "Qwen narration is ready. Choose a Qwen voice in File > Read Aloud.";
+                                    status.Text = narr.ReadyText;
                                     if (changed != null) changed();
-                                    if (installed != null) installed(ExtensionCatalog.QwenId);
+                                    if (installed != null) installed(info.Id);
                                 }
                                 else if (problem == "cancelled")
                                     status.Text = "Install stopped. What was downloaded is kept; Install continues from there.";
@@ -817,6 +851,8 @@ namespace TypoZen
             // Always listed: Install sets it up (QwenInstaller), Remove keeps the voices.
             var qwen = ExtensionCatalog.Qwen(cacheDir);
             addRow(qwen, () => qwen);
+            var breeze = ExtensionCatalog.Breeze(cacheDir);
+            addRow(breeze, () => breeze);
 
             quality.SelectionChanged += (s, e) => { foreach (var r in rows) r(); };
 
@@ -828,7 +864,7 @@ namespace TypoZen
             win.Content = root;
 
             foreach (var r in rows) r();
-            win.Closing += (s, e) => { if (running != null) running.Cancel(); if (qwenRunning != null) qwenRunning.Cancel(); };
+            win.Closing += (s, e) => { if (running != null) running.Cancel(); foreach (var n in narrInstalls) n.Cancel(); };
             // Not swallowed: a dialog that fails to open is invisible twice over if the
             // reason is thrown away, which cost an afternoon the first time.
             win.ShowDialog();
@@ -897,6 +933,42 @@ namespace TypoZen
             if (bytes >= 1024L * 1024L) return (bytes / 1048576.0).ToString("0.#") + " MB";
             if (bytes >= 1024L) return (bytes / 1024L) + " KB";
             return bytes + " bytes";
+        }
+    }
+
+    /// <summary>
+    /// What the Extensions dialog needs to know about a narration extension -- its install, its
+    /// audio, what Remove takes -- so the Qwen and Breeze rows are one code path.
+    /// </summary>
+    internal sealed class NarratorExtension
+    {
+        public Func<NarratorInstaller> Installer;
+        public Func<string, string> AudioDir;
+        public string[] RemovableParts;
+        public Action Stop;
+        public long DownloadBytes;
+        public string ReadyText;
+        /// <summary>Said before a fresh install, when its licence needs saying; null otherwise.</summary>
+        public string Licence;
+
+        public static NarratorExtension For(string id)
+        {
+            if (id == ExtensionCatalog.QwenId)
+                return new NarratorExtension
+                {
+                    Installer = QwenInstaller.Create, AudioDir = QwenNarrator.CacheDir, RemovableParts = QwenNarrator.RemovableParts,
+                    Stop = QwenNarrator.Stop, DownloadBytes = QwenInstaller.DownloadBytes,
+                    ReadyText = "Qwen narration is ready. Choose a Qwen voice in File > Read Aloud."
+                };
+            if (id == BreezeNarrator.ExtensionId)
+                return new NarratorExtension
+                {
+                    Installer = BreezeInstaller.Create, AudioDir = BreezeNarrator.CacheDir, RemovableParts = BreezeNarrator.RemovableParts,
+                    Stop = BreezeNarrator.Stop, DownloadBytes = BreezeInstaller.DownloadBytes,
+                    ReadyText = "Breeze narration is ready. Choose a Breeze voice in File > Read Aloud.",
+                    Licence = BreezeInstaller.LicenceSummary
+                };
+            return null;
         }
     }
 }

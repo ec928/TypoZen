@@ -6,6 +6,9 @@ using System.Text;
 namespace TypoZen
 {
     /// <summary>
+    /// The narration extensions' installs (Qwen, Breeze): the same steps for each, described by
+    /// the engine -- its folder, its install script, its download size.
+    ///
     /// Extensions > Qwen narration > Install: sets the narrator up from nothing.
     ///
     /// TypoZen's part is small: check the machine, fetch a Python of its own into the extension
@@ -19,11 +22,16 @@ namespace TypoZen
     /// there the extension does not count as installed. Stopping part-way keeps what has been
     /// downloaded, and Install again continues from there.
     /// </summary>
-    internal sealed class QwenInstaller
+    internal sealed class NarratorInstaller
     {
-        /// <summary>Downloads, measured 2026-09-24: packages 4.8 GB, models 8.4 GB.</summary>
-        public const long DownloadBytes = 13L * 1024 * 1024 * 1024;
-        private const long NeedFree = 16L * 1024 * 1024 * 1024;
+        public string Name;                         // "Qwen narration": in the messages
+        public Func<string, string> RootDir;        // cacheDir -> the extension folder
+        public string ScriptFolder;                 // tools<this>install.py beside the exe
+        public long NeedFree;                       // bytes free the whole install needs
+        /// <summary>The smallest graphics card it can run on, in MiB; 0 for no check.</summary>
+        public int MinGpuMiB;
+        /// <summary>Written as LICENSE.txt in the extension folder before anything is downloaded; null for none.</summary>
+        public string Notice;
 
         /// <summary>
         /// The Python the narrator runs on, fetched into the extension folder rather than taken
@@ -35,9 +43,9 @@ namespace TypoZen
         private const string PythonUrl = "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/cpython-3.11.16%2B20260924-x86_64-pc-windows-msvc-install_only_stripped.tar.gz";
         private const string PythonSha256 = "f86b3cbd425e1c446b56aa24e20a7be1223c1a8146e5e3a68c8e18d08b76e810";
 
-        public static string OwnPython(string cacheDir)
+        public string OwnPython(string cacheDir)
         {
-            return Path.Combine(QwenNarrator.RootDir(cacheDir), "python", "python.exe");
+            return Path.Combine(RootDir(cacheDir), "python", "python.exe");
         }
 
         private volatile bool _cancel;
@@ -50,27 +58,34 @@ namespace TypoZen
             lock (_gate) { KillTree(_proc); }
         }
 
-        public static string InstallFlag(string cacheDir)
+        public string InstallFlag(string cacheDir)
         {
-            return Path.Combine(QwenNarrator.RootDir(cacheDir), "install.part");
+            return Path.Combine(RootDir(cacheDir), "install.part");
         }
 
         /// <summary>Why this machine cannot install it now, or null.</summary>
-        public static string Preflight(string cacheDir)
+        public string Preflight(string cacheDir)
         {
             string smi = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "nvidia-smi.exe");
             if (!File.Exists(smi))
-                return "Qwen narration needs an NVIDIA graphics card, and no NVIDIA driver was found on this PC.";
+                return Name + " needs an NVIDIA graphics card, and no NVIDIA driver was found on this PC.";
+            if (MinGpuMiB > 0)
+            {
+                int mib = GpuMiB(smi);
+                if (mib > 0 && mib < MinGpuMiB)
+                    return Name + " needs a graphics card with at least " + Math.Round(MinGpuMiB / 1024.0) + " GB of memory, and this one has "
+                         + (mib / 1024.0).ToString("0.#") + " GB.";
+            }
             try
             {
-                string root = QwenNarrator.RootDir(cacheDir);
+                string root = RootDir(cacheDir);
                 var drive = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(root)));
                 long have = 0;
                 try { if (Directory.Exists(root)) foreach (var f in new DirectoryInfo(root).GetFiles("*", SearchOption.AllDirectories)) have += f.Length; }
                 catch { }
                 long need = Math.Max(1L << 30, NeedFree - have);
                 if (drive.AvailableFreeSpace < need)
-                    return "Qwen narration needs about " + (need >> 30) + " GB free on " + drive.Name
+                    return Name + " needs about " + (need >> 30) + " GB free on " + drive.Name
                          + " and there is " + (drive.AvailableFreeSpace >> 30) + " GB.";
             }
             catch { }
@@ -78,6 +93,26 @@ namespace TypoZen
             if (!File.Exists(tar))
                 return "This version of Windows has no tar.exe (Windows 10 1803 and later do), which the install needs.";
             return null;
+        }
+
+        /// <summary>The largest NVIDIA card's memory in MiB, from nvidia-smi; 0 when it cannot be read.</summary>
+        private static int GpuMiB(string smi)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo(smi, "--query-gpu=memory.total --format=csv,noheader,nounits")
+                { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+                using (var p = Process.Start(psi))
+                {
+                    string text = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(5000);
+                    int best = 0, v;
+                    foreach (string line in text.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                        if (int.TryParse(line.Trim(), out v) && v > best) best = v;
+                    return best;
+                }
+            }
+            catch { return 0; }
         }
 
         /// <summary>
@@ -153,7 +188,7 @@ namespace TypoZen
         /// </summary>
         public string Install(string cacheDir, string appDir, ExtensionInstaller.Progress report)
         {
-            string root = QwenNarrator.RootDir(cacheDir);
+            string root = RootDir(cacheDir);
             string log = Path.Combine(root, "install.log");
             string last = null;
             bool done = false;
@@ -167,6 +202,7 @@ namespace TypoZen
                     catch { }
                 };
                 note("---- install: app " + appDir);
+                if (Notice != null) File.WriteAllText(Path.Combine(root, "LICENSE.txt"), Notice + Environment.NewLine, new UTF8Encoding(false));
 
                 string venvPython = Path.Combine(root, "venv", "Scripts", "python.exe");
                 if (!File.Exists(venvPython))
@@ -180,7 +216,7 @@ namespace TypoZen
                     if (code != 0 || !File.Exists(venvPython)) return "The Python environment could not be created (see install.log).";
                 }
 
-                string script = Path.Combine(appDir, "tools", "qwen-narrator", "install.py");
+                string script = Path.Combine(appDir, "tools", ScriptFolder, "install.py");
                 if (!File.Exists(script)) return "install.py is missing from this copy of TypoZen.";
                 string stage = "Starting";
                 int exit = Run(venvPython, "-u \"" + script + "\" --root \"" + root + "\"", Path.GetDirectoryName(script), note, line =>
@@ -258,5 +294,26 @@ namespace TypoZen
             }
             catch { }
         }
+    }
+
+    /// <summary>The Qwen narration install (NarratorInstaller), as Extensions and QwenNarrator ask for it.</summary>
+    internal static class QwenInstaller
+    {
+        /// <summary>Downloads, measured 2026-09-24: packages 4.8 GB, models 8.4 GB.</summary>
+        public const long DownloadBytes = 13L * 1024 * 1024 * 1024;
+
+        public static NarratorInstaller Create()
+        {
+            return new NarratorInstaller
+            {
+                Name = "Qwen narration",
+                RootDir = QwenNarrator.RootDir,
+                ScriptFolder = "qwen-narrator",
+                NeedFree = 16L * 1024 * 1024 * 1024
+            };
+        }
+
+        public static string InstallFlag(string cacheDir) { return Create().InstallFlag(cacheDir); }
+        public static string Preflight(string cacheDir) { return Create().Preflight(cacheDir); }
     }
 }

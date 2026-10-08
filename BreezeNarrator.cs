@@ -23,6 +23,41 @@ namespace TypoZen
     /// for Qwen works here; the voices Breeze makes itself -- designed or cloned from the reader's
     /// own recording -- are in its own folder and are Breeze's alone.
     /// </summary>
+    /// <summary>The Breeze narration install (NarratorInstaller, tools\breeze-narrator\install.py).</summary>
+    internal static class BreezeInstaller
+    {
+        /// <summary>Packages about 4.9 GB (the Qwen lock plus Triton), the model 7.7 GB.</summary>
+        public const long DownloadBytes = 12600L * 1024 * 1024;
+
+        public static NarratorInstaller Create()
+        {
+            return new NarratorInstaller
+            {
+                Name = "Breeze narration",
+                RootDir = BreezeNarrator.RootDir,
+                ScriptFolder = "breeze-narrator",
+                NeedFree = 16L * 1024 * 1024 * 1024,
+                // About 9 GB while reading (measured on a 12 GB card, 2026-10-08). A card reported
+                // as "12 GB" has a little under 12 GiB, so the line is drawn at 11.
+                MinGpuMiB = 11 * 1024,
+                Notice = LicenceSummary
+            };
+        }
+
+        public static string InstallFlag(string cacheDir) { return BreezeNarrator.InstallFlag(cacheDir); }
+        public static string Preflight(string cacheDir) { return Create().Preflight(cacheDir); }
+
+        /// <summary>
+        /// What the reader agrees to before anything is downloaded: Breeze's weights are not
+        /// freely licensed as Qwen's are, and the install says so in its own words.
+        /// </summary>
+        public const string LicenceSummary =
+            "Breeze TTS 2's model is licensed by BreezeBlue (RESONIA, Inc.) for research and non-commercial use "
+            + "only -- and that includes the audio it makes on your PC. Listening to your own books is fine; "
+            + "selling or publishing the audio, or using it in paid work, needs their written permission. "
+            + "Its code is Apache 2.0. Full terms: huggingface.co/BreezeBlue/Breeze-TTS-2.";
+    }
+
     internal static class BreezeNarrator
     {
         public const int Port = 8766;

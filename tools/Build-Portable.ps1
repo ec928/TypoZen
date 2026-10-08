@@ -65,13 +65,16 @@ if (Test-Path $makeDict) {
 
 # The narration sidecar and the narrator's voice-print. Inert without the narration
 # extension's Python environment, which is set up by hand; with it, the app runs this copy.
-$narrSrc = Join-Path 'tools' 'qwen-narrator'
-if (Test-Path $narrSrc) {
-    $narrDst = Join-Path $toolsDst 'qwen-narrator'
-    New-Item -ItemType Directory -Force -Path $narrDst | Out-Null
-    Get-ChildItem $narrSrc -File | Where-Object { $_.Extension -in '.py', '.npy' } | Copy-Item -Destination $narrDst -Force
-} else {
-    Write-Warning "tools/qwen-narrator not found"
+# And the Breeze narrator's, with its narrator recording (.wav).
+foreach ($narr in 'qwen-narrator', 'breeze-narrator') {
+    $narrSrc = Join-Path 'tools' $narr
+    if (Test-Path $narrSrc) {
+        $narrDst = Join-Path $toolsDst $narr
+        New-Item -ItemType Directory -Force -Path $narrDst | Out-Null
+        Get-ChildItem $narrSrc -File | Where-Object { $_.Extension -in '.py', '.npy', '.wav' } | Copy-Item -Destination $narrDst -Force
+    } else {
+        Write-Warning "tools/$narr not found"
+    }
 }
 
 # Defined here rather than inherited: the block that used to strip the Bookerly

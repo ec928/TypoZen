@@ -307,7 +307,7 @@ foreach ($d in $assetDirs) {
 # tools\ in bin\ holds only the narration sidecar (below); anything else there is a stray.
 $binTools = Join-Path $binDir "tools"
 if (Test-Path $binTools) {
-    Get-ChildItem $binTools -Force | Where-Object { $_.Name -ne 'qwen-narrator' } | Remove-Item -Recurse -Force
+    Get-ChildItem $binTools -Force | Where-Object { $_.Name -notin 'qwen-narrator', 'breeze-narrator' } | Remove-Item -Recurse -Force
 }
 # The same argument as $assetDirs, for the files that sit at the project root. These
 # were populated in bin\ by hand once and never refreshed, so bin\ silently drifted from
@@ -328,11 +328,14 @@ foreach ($f in $assetFiles) {
 # the script and the narrator's voice-print. It was copied into bin\ by hand until
 # 2026-09-23, so nothing guaranteed staging held the current one. Only the files it runs
 # from -- never a __pycache__ that a local run left behind.
-$narrSrc = Join-Path $appDir "tools\qwen-narrator"
-$narrDst = Join-Path $binDir "tools\qwen-narrator"
-if (Test-Path $narrSrc) {
-    New-Item -ItemType Directory -Force -Path $narrDst | Out-Null
-    Get-ChildItem $narrSrc -File | Where-Object { $_.Extension -in '.py', '.npy' } | Copy-Item -Destination $narrDst -Force
+# The Breeze narrator (BreezeNarrator.cs) is staged the same way, with its narrator recording.
+foreach ($narr in 'qwen-narrator', 'breeze-narrator') {
+    $narrSrc = Join-Path $appDir "tools\$narr"
+    $narrDst = Join-Path $binDir "tools\$narr"
+    if (Test-Path $narrSrc) {
+        New-Item -ItemType Directory -Force -Path $narrDst | Out-Null
+        Get-ChildItem $narrSrc -File | Where-Object { $_.Extension -in '.py', '.npy', '.wav' } | Copy-Item -Destination $narrDst -Force
+    }
 }
 Write-Host "  Copied TypoZen.exe and the runtime assets to staging directory." -ForegroundColor Gray
 
