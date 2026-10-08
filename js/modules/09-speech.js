@@ -395,7 +395,7 @@ function playNextChunk() {
             // Same rule as the unpaginated branch below: a chunk that already has audio
             // plays it. Missing it here meant narration silently fell back to a Windows
             // voice in Pages, which is the layout most reading happens in.
-            if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl);
+            if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl, chunk);
             else sendTTSPlay(chunk.text);
         });
         return;
@@ -421,7 +421,7 @@ function playNextChunk() {
         // Pre-rendered narration arrives as a chunk like any other, with a URL on it.
         // Nothing above this line knows the difference, which is the point: the highlight,
         // the page turning and the stop button are the same code they always were.
-        if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl);
+        if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl, chunk);
         else sendTTSPlay(chunk.text);
     }
 }
@@ -431,7 +431,7 @@ let _narrActive = false;        // a Qwen reading is in progress, for the trace
 let _narrSilentSince = 0;
 
 /** Play one pre-rendered file, then carry on down the queue. */
-function playRenderedChunk(url) {
+function playRenderedChunk(url, chunk) {
     const name = String(url).split('/').pop();
     try {
         window.__lastChunkUrl = url;          // what is actually playing, for tests and debug.log
@@ -444,6 +444,7 @@ function playRenderedChunk(url) {
         const began = performance.now();
         a.onplaying = () => {
             try { (window.__narrLog = window.__narrLog || []).push(['play', performance.now()]); } catch (e) {}
+            tellMonitor(chunk);
             narrLog('play ' + name + ' (' + (isFinite(a.duration) ? a.duration.toFixed(1) + 's' : '?s') +
                     ', ' + _ttsChunks.length + ' more queued, ' + queuedSeconds().toFixed(1) + 's)');
         };
@@ -506,6 +507,20 @@ let _narrPrivate = false;
 // Where the chosen narrator's audio is served from: Qwen's or Breeze's hosts (the host says which).
 let _narrAudioHost = 'localnarration';
 let _narrAudioHostPrivate = 'localnarrationp';
+// Breeze's Emotion strength from Narrator Settings; 0 sends none (Qwen, or the narrator's default).
+let _narrStrength = 0;
+// The settings the narration monitor shows beside each piece: what shapes every line.
+let _narrShown = {};
+// The narration monitor is open (cmd:narr_monitor:on): each piece reports itself as it plays.
+let _narrMonitor = false;
+window.setNarrMonitor = function (on) { _narrMonitor = !!on; };
+function tellMonitor(chunk) {
+    if (!_narrMonitor || !chunk || !chunk.monitor) return;
+    try {
+        window.chrome.webview.postMessage('host_narr_monitor:' + JSON.stringify(
+            Object.assign({ kind: 'piece', settings: _narrShown }, chunk.monitor)));
+    } catch (e) {}
+}
 /** A rendered piece's address: the private folder's host for audio rendered in Privacy Mode. */
 function narrAudioUrl(item) {
     return 'https://' + (item.private ? _narrAudioHostPrivate : _narrAudioHost) + '/' + item.file;
@@ -526,6 +541,11 @@ window.setNarratorSettings = function (json) {
         _narrPrivate = !!s.private;
         if (s.audioHost) _narrAudioHost = s.audioHost;
         NARRATION_BATCH = s.batch > 0 ? s.batch : 8;
+        _narrStrength = parseFloat(s.strength) || 0;
+        _narrShown = {
+            engine: s.engine || 'qwen', voice: s.voiceName || s.voice || '', instruction: _narrInstruction,
+            cuesOn: _narrDirect, cue: _narrCue, strength: _narrStrength, speed: _narrSpeed, private: _narrPrivate
+        };
         if (s.audioHostPrivate) _narrAudioHostPrivate = s.audioHostPrivate;
         if (_renderedAudio) _renderedAudio.playbackRate = _narrSpeed;
         // A new voice, style or cast while narrating: start again at the paragraph being read,
@@ -680,8 +700,13 @@ window.narrationTrial = async function (json) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     voice: o.voice || '', instruction: String(o.instruction || ''), cue: o.cue || '',
-                    blocks: batch.map((p, i) => { const told = cueInstruction(p, !!o.direct, o.instruction); return {
-                        id: k + i, text: p.text, direction: told.direction, instruction: told.instruction }; }),
+                    blocks: batch.map((p, i) => {
+                        const told = cueInstruction(p, !!o.direct, o.instruction);
+                        const st = takeStrength(p.text, told.instruction);
+                        const b = { id: k + i, text: st.text, direction: told.direction, instruction: st.instruction };
+                        if (st.strength) b.strength = st.strength;
+                        return b; }),
+                    strength: parseFloat(o.strength) || undefined,
                     reading: 900000 + run, group_size: batch.length, private: _narrPrivate,
                     // Another take is another seed; take 1 is narration's own (1234).
                     seed: parseInt(o.seed, 10) || 1234
@@ -740,10 +765,34 @@ function cueInstruction(p, cuesOn, standing) {
     return { instruction: own, direction: cuesOn ? dir : '' };
 }
 
+/**
+ * A tag's own strength -- [sad:9], [[shouts loudly:9]], Anna [whispers softly:9] said -- taken out
+ * of the text and the instruction before either is sent, and sent as the piece's strength. One
+ * number per piece: the last one written wins. Qwen has no strength and ignores it; Breeze uses it
+ * in place of Narrator Settings' Emotion strength (tools/breeze-narrator/sidecar.py, translate).
+ * Out of range is the narrator's to clamp (1 to 10).
+ */
+function takeStrength(text, instruction) {
+    let strength = 0;
+    const t = String(text || '').replace(/\[([^\]\n]*?[A-Za-z][^\]\n]*?)\s*:\s*(\d+(?:\.\d+)?)\s*\]/g,
+        (m, word, n) => { strength = parseFloat(n); return '[' + word + ']'; });
+    const i = String(instruction || '').replace(/([A-Za-z])\s*:\s*(\d+(?:\.\d+)?)(?=\s*(?:[,.;]|$))/g,
+        (m, ch, n) => { strength = parseFloat(n); return ch; });
+    return { text: t, instruction: i, strength: strength };
+}
+
 /** One request to the sidecar; returns chunks ready for the reading queue. */
 async function renderNarration(base, batch, reading) {
     const sent = performance.now();
     narrLog('request reading ' + reading + ': ' + batchSummary(batch));
+    const blocks = batch.map(p => {
+        const told = cueInstruction(p, _narrDirect, _narrInstruction);
+        const st = takeStrength(p.text, told.instruction);
+        const b = { id: p.id, text: st.text, direction: told.direction,
+                    voice: p.voice || '', role: p.role || 'narration', instruction: st.instruction };
+        if (st.strength) b.strength = st.strength;
+        return b;
+    });
     let data;
     try {
         const res = await fetch(base + '/render', {
@@ -752,13 +801,12 @@ async function renderNarration(base, batch, reading) {
             body: JSON.stringify(Object.assign({
                 voice: _narrVoice,
                 style: _narrStyle,
-                blocks: batch.map(p => { const told = cueInstruction(p, _narrDirect, _narrInstruction); return {
-                    id: p.id, text: p.text, direction: told.direction,
-                    voice: p.voice || '', role: p.role || 'narration', instruction: told.instruction }; }),
+                blocks: blocks,
                 reading: reading,
                 group_size: batch.length,
                 private: _narrPrivate
-            }, _narrInstruction !== null ? { instruction: _narrInstruction, cue: _narrCue } : {}))
+            }, _narrInstruction !== null ? { instruction: _narrInstruction, cue: _narrCue } : {},
+               _narrStrength ? { strength: _narrStrength } : {}))
         });
         if (!res.ok) throw new Error('sidecar said ' + res.status);
         data = await res.json();
@@ -786,7 +834,14 @@ async function renderNarration(base, batch, reading) {
             text: p.text,
             seconds: items[i].seconds || 0,
             // Per item: a private reading still plays pieces already in the lasting cache.
-            audioUrl: narrAudioUrl(items[i])
+            audioUrl: narrAudioUrl(items[i]),
+            // What the narration monitor shows when this piece plays: what the engine was given.
+            monitor: {
+                role: p.role || 'narration', voice: items[i].voice || blocks[i].voice || _narrVoice,
+                cached: items[i].cached === undefined ? !!data.from_cache : !!items[i].cached,
+                seconds: items[i].seconds || 0, strength: blocks[i].strength || 0,
+                parts: items[i].parts || [{ text: blocks[i].text, instruction: items[i].instruction || '' }]
+            }
         };
     });
 }
@@ -846,6 +901,10 @@ function narrationDocIndex(el, i) {
  */
 function speakNumbers(text) {
     if (!text || !/\d/.test(text)) return text;
+    // A bracket is a tag, not speech: in [sad:9] the 9 is a strength (takeStrength), and turned into
+    // "nine" first it was neither read as one nor taken out -- Breeze was sent "[sad:nine]" (2026-10-09).
+    if (/\[[^\]\n]*\d[^\]\n]*\]/.test(text))
+        return String(text).split(/(\[[^\]\n]*\])/).map((part, i) => i % 2 ? part : speakNumbers(part)).join('');
     const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
         'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
     const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];

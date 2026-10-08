@@ -1150,6 +1150,10 @@
                 else if (msg === "cmd:narrator_trial_selection") {
                     try { window.narrationTrialSelection(); } catch (eT) {}
                 }
+                else if (msg.startsWith("cmd:narr_monitor:")) {
+                    // The narration monitor opened or closed: report each piece as it plays, or stop.
+                    try { window.setNarrMonitor(msg.substring(17) === "on"); } catch (eM) {}
+                }
                 else if (msg.startsWith("cmd:narrator_status:")) {
                     // Starting the narrator can take a minute the first time. Say so, rather
                     // than leave a menu click looking like it did nothing.

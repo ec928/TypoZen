@@ -409,6 +409,10 @@ Breeze narration is a second narrator, beside Qwen rather than instead of it. On
 
 **Sounds in the text.** The bracket tags above work with Breeze too, and the point events — `[laughing]`, `[giggles]`, `[gasp]`, `[sighing]`, `[cough]`, `[clears throat]`, `[snorts]` — are performed as sounds, which the Qwen narrator cannot do: it only colours the words around them. A span tag such as `[sad]` changes the delivery of the rest of that paragraph, as it does with Qwen.
 
+**How strongly it acts.** Every instruction Breeze is given — an emotion cue, a bracket beside a speaker, a `[[double bracket]]`, a mood tag — is followed with an **Emotion strength**, set in Narrator Settings under **Breeze**: 1 barely, 4 by default (Breeze's own recommendation), up to 10. A number in a tag sets it for that line alone: `[sad:9]`, `[[shouts loudly:9]]`, `Anna [whispers softly:2] said`. The number is never spoken, and the Qwen narrator, which has no strength, ignores it. A line with no instruction is not affected; a line with one takes about half as long again to prepare.
+
+**Narration Monitor.** **File → Read Aloud → Narration Monitor** opens a window beside the reading that shows, as each piece starts to play, who is speaking and in which voice, the exact text the narrator was given, its instruction and strength, whether it was rendered just now or came from saved audio — and the settings behind every piece. It works with either narrator, shows the book's text on screen only, and writes nothing.
+
 **Licence.** Breeze TTS 2's model is licensed by its makers for research and non-commercial use only, and that includes the audio it makes on your PC: listening to your own books is fine; selling or publishing the audio is not, without their permission. Install shows this before anything is downloaded.
 
 ## Files & Export

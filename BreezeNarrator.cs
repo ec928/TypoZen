@@ -214,6 +214,8 @@ namespace TypoZen
             // One piece per request: Breeze renders pieces one after another, so a batch only
             // delays the first sound until all of it is done.
             d["batch"] = 1;
+            d["engine"] = "breeze";
+            d["strength"] = QwenNarrator.LoadSettings(cacheDir).BreezeStrength;
             return new JavaScriptSerializer().Serialize(d);
         }
 

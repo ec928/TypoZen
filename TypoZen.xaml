@@ -473,6 +473,8 @@
                                 <MenuItem x:Name="mKokoroMenu" Header="_Kokoro Voices" Visibility="Collapsed"/>
                                 <MenuItem x:Name="mWindowsVoices" Header="Windows _Installed Voices"/>
                                 <Separator/>
+                                <MenuItem x:Name="mNarrMonitor" Header="Narration _Monitor" IsCheckable="True" Visibility="Collapsed"
+                                          ToolTip="A window that shows, as each piece plays, what the narrator was given: who speaks, the voice, the text, the instruction and the strength, and the settings behind them."/>
                                 <MenuItem x:Name="mNarratorSettings" Header="Narrator _Settings..." Visibility="Collapsed"
                                           ToolTip="The Qwen narrator's voice and how it reads, new voices from a description, and voices for this book's characters."/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>

@@ -61,7 +61,7 @@ fs.writeFileSync(doc,
     '# A sample\n\nThe woman looked through the binoculars again, using both hands this time.\n\n'
   + '"I can see their dust," she announced. "And another couple of scouts, I think."\n\n'
   + 'She laughed. [laughing] "Astounding," the drone said.\n\n'
-  + 'She placed the field glasses down and pulled the brim of her hat over her eyes.\n');
+  + '[sad:9] She placed the field glasses down and pulled the brim of her hat over her eyes.\n');
 
 let app = null;
 const unlinkAll = () => { for (const l of links.reverse()) { try { fs.rmdirSync(l); } catch (e) { } } };
@@ -72,6 +72,14 @@ try {
     app = await launchApp({ file: doc, settleMs: 6000 });
     const page = app.page;
     // Choose the Breeze narrator the way the menu does: the page is told, and tells the host.
+    // The narration monitor's reports, as the host would receive them. The host turns them on only
+    // while its window is open, and says so before each reading; here they are held on.
+    await page.evaluate(() => {
+        window.__mon = [];
+        const real = window.chrome.webview.postMessage.bind(window.chrome.webview);
+        window.chrome.webview.postMessage = m => { if (String(m).startsWith('host_narr_monitor:')) window.__mon.push(String(m).slice(18)); return real(m); };
+        const set = window.setNarrMonitor; window.setNarrMonitor = () => set(true); set(true);
+    });
     await page.evaluate(() => window.setKokoroVoice('breeze_narrator', 'Northern English (original)'));
     await sleep(500);
     // Read Aloud, as the toolbar button sends it.
@@ -101,6 +109,21 @@ try {
     }
     check(moved, 'the highlight follows on to the next block', first.slice(0, 40));
     check(!(await health(8765)), 'the Qwen narrator is not running alongside it');
+
+    // The monitor: each piece reported as it plays, with what Breeze was given.
+    let sad = null, mon = []; const t4 = Date.now();
+    while (Date.now() - t4 < 90000) {
+        mon = await page.evaluate(() => window.__mon.map(m => JSON.parse(m)));
+        sad = mon.find(m => (m.parts || []).some(p => /field glasses/.test(p.text)));
+        if (sad) break;
+        await sleep(500);
+    }
+    console.log('        monitor reports: ' + mon.length + (mon[0] ? ', settings ' + JSON.stringify(mon[0].settings) : ''));
+    const sp = sad && sad.parts.find(p => /field glasses/.test(p.text));
+    check(sp && sp.instruction === 'sad' && sp.strength === 9 && !/sad|\[|:9/.test(sp.text),
+        'a [sad:9] line reached Breeze without the tag, told "sad" at strength 9', JSON.stringify(sp));
+    check(sad && sad.settings && sad.settings.engine === 'breeze' && sad.settings.strength === 4,
+        'the monitor is told the engine and the global strength', JSON.stringify(sad && sad.settings));
 
     if (haveQwen) {
         await page.evaluate(() => { if (typeof stopReading === 'function') stopReading(); });

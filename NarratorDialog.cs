@@ -70,6 +70,8 @@ namespace TypoZen
             // Which rendering of these settings: take 1 is narration's own (seed 1234); each
             // further take is another seed, so one take can be told from the settings' effect.
             public int Take = 1;
+            /// <summary>Breeze's Emotion strength; 0 with Qwen, which has none.</summary>
+            public double Strength;
             public int Seed { get { return 1234 + Take - 1; } }
             public string Describe() { return Label + ", take " + Take; }
         }
@@ -284,6 +286,32 @@ namespace TypoZen
             var cueFold = fold("Cue wording", cuePanel);
             cueFold.Margin = new Thickness(22, 2, 0, 2);
             left.Children.Add(cueFold);
+
+            // ---- Breeze's own settings: shown once Breeze is installed; greyed, saying why, while
+            // Qwen is chosen at the top (the window's one rule for what only one narrator has).
+            var strengthSlider = new Slider
+            {
+                Minimum = 1, Maximum = 10, TickFrequency = 0.5, IsSnapToTickEnabled = true, Width = 220,
+                Value = settings.BreezeStrength, VerticalAlignment = VerticalAlignment.Center
+            };
+            var strengthValue = new TextBlock { Width = 40, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+            Action showStrength = () => strengthValue.Text = strengthSlider.Value.ToString("0.#");
+            showStrength();
+            var breezePanel = new StackPanel();
+            var breezeWhy = note("Breeze only: choose Breeze at the top to change it.");
+            if (haveBreeze)
+            {
+                left.Children.Add(heading("Breeze"));
+                left.Children.Add(breezeWhy);
+                breezePanel.Children.Add(row(new UIElement[] {
+                    new TextBlock { Text = "Emotion strength", Width = 120, VerticalAlignment = VerticalAlignment.Center },
+                    strengthSlider, strengthValue }));
+                breezePanel.Children.Add(note("How hard Breeze follows an instruction: an emotion cue, a bracket beside a speaker, a [[double bracket]] "
+                    + "or a mood tag such as [sad]. 1 barely; 4 is Breeze's own recommendation; higher pushes harder and may start to sound strained. "
+                    + "A tag's own number overrides it for its line: [sad:9]. Narration with no instruction is not affected. "
+                    + "Above 1, those lines take about half as long again to prepare."));
+                left.Children.Add(breezePanel);
+            }
 
             // ---- Try it: its own panel, always in view
             var tryPanel = new DockPanel();
@@ -803,11 +831,13 @@ namespace TypoZen
                     Cue = cue,
                     Direct = direct,
                     Label = (v != null ? v.Name : "Narrator's voice") + ", " + words + ", cues "
-                          + (!direct ? "off" : cue == QwenNarrator.DefaultCue ? "on" : "on in your wording"),
+                          + (!direct ? "off" : cue == QwenNarrator.DefaultCue ? "on" : "on in your wording")
+                          + (side.Breeze ? ", strength " + strengthSlider.Value.ToString("0.#") : ""),
+                    Strength = side.Breeze ? strengthSlider.Value : 0,
                     Take = currentTake
                 };
             };
-            Func<Trial, Trial, bool> sameSettings = (x, y) => x != null && y != null && x.Voice == y.Voice
+            Func<Trial, Trial, bool> sameSettings = (x, y) => x != null && y != null && x.Voice == y.Voice && x.Strength == y.Strength
                 && x.Instruction == y.Instruction && x.Direct == y.Direct && (!x.Direct || x.Cue == y.Cue);
             Action updateA = () =>
             {
@@ -844,6 +874,7 @@ namespace TypoZen
                 updateA();
             };
             directBox.Checked += (s, e) => updateA();
+            strengthSlider.ValueChanged += (s, e) => { showStrength(); updateA(); };
             directBox.Unchecked += (s, e) => updateA();
             cueBox.TextChanged += (s, e) => updateA();
             voiceBox.SelectionChanged += (s, e) =>
@@ -935,7 +966,7 @@ namespace TypoZen
                 {
                     { "base", side.Engine.BaseUrl }, { "audioHost", side.AudioHost }, { "audioHostPrivate", side.AudioHostPrivate },
                     { "text", text }, { "voice", t.Voice },
-                    { "instruction", t.Instruction }, { "cue", t.Cue }, { "direct", t.Direct }, { "seed", t.Seed }
+                    { "instruction", t.Instruction }, { "cue", t.Cue }, { "direct", t.Direct }, { "seed", t.Seed }, { "strength", t.Strength }
                 });
                 // Nothing will play after all: that row's Stop goes back to Play.
                 Action notPlaying = () => win.Dispatcher.BeginInvoke((Action)(() => { playing = null; applyPlay(); }));
@@ -1322,6 +1353,7 @@ namespace TypoZen
                     settings.Instruction = instructionBox.Text.Trim();
                     settings.Cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue;
                     settings.Direct = directBox.IsChecked == true;
+                    settings.BreezeStrength = strengthSlider.Value;
                     QwenNarrator.SaveSettings(cacheDir, settings);
                     foreach (var r in castRows)
                     {
@@ -1359,7 +1391,8 @@ namespace TypoZen
                 string cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue;
                 if (side.Breeze != openedBreeze
                     || (v != null && v.Id != savedVoice()) || instructionBox.Text.Trim() != (settings.Instruction ?? "").Trim()
-                    || cue != (settings.Cue ?? "").Trim() || (directBox.IsChecked == true) != settings.Direct) return true;
+                    || cue != (settings.Cue ?? "").Trim() || (directBox.IsChecked == true) != settings.Direct
+                    || Math.Abs(strengthSlider.Value - settings.BreezeStrength) > 0.01) return true;
                 foreach (var r in castRows)
                 {
                     string now = castRowVoice(r.Item3), was;
@@ -1514,6 +1547,9 @@ namespace TypoZen
                 designNote.Text = "Describe who they are: age, accent, texture. Three candidates come back; name and keep the one you want. "
                                 + (side.Breeze ? "About a minute." : "About a minute and a half.");
                 clonePanel.IsEnabled = side.Breeze;
+                breezePanel.IsEnabled = side.Breeze;
+                breezePanel.Opacity = side.Breeze ? 1 : 0.5;
+                breezeWhy.Visibility = side.Breeze ? Visibility.Collapsed : Visibility.Visible;
                 clonePanel.Opacity = side.Breeze ? 1 : 0.5;
                 cloneWhy.Visibility = side.Breeze ? Visibility.Collapsed : Visibility.Visible;
                 candidates.Children.Clear();

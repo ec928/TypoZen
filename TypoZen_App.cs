@@ -1740,6 +1740,7 @@ namespace TypoZen
             if (qwenMenu != null) qwenMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == qwenMenu) RebuildQwenVoiceMenu(); };
             var breezeMenu = FindElement("mBreezeVoice") as MenuItem;
             if (breezeMenu != null) breezeMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == breezeMenu) RebuildBreezeVoiceMenu(); };
+            BindClick("mNarrMonitor", (s, e) => SetNarrationMonitor(!NarrationMonitor.IsOpen));
             BindClick("mNarratorSettings", (s, e) =>
             {
                 try
@@ -2323,6 +2324,56 @@ namespace TypoZen
         }
 
         /// <summary>
+        /// Read Aloud > Narration Monitor on or off: the window, the menu tick, the page's reports,
+        /// and the saved choice, so it is open again at the next launch.
+        /// </summary>
+        private void SetNarrationMonitor(bool on)
+        {
+            try
+            {
+                if (on)
+                    NarrationMonitor.Open(this, () =>
+                    {
+                        // Closed with its own X: the same as unticking the menu.
+                        SetMenuChecked("mNarrMonitor", false);
+                        try { SendMsg("cmd:narr_monitor:off"); } catch { }
+                        SaveMonitorChoice(false);
+                    });
+                else NarrationMonitor.Close();
+                SetMenuChecked("mNarrMonitor", on);
+                SendMsg("cmd:narr_monitor:" + (on ? "on" : "off"));
+                SaveMonitorChoice(on);
+            }
+            catch (Exception ex) { LogFault("narration monitor", ex); }
+        }
+
+        private bool _monitorRestored;
+
+        private void SaveMonitorChoice(bool on)
+        {
+            try
+            {
+                var s = QwenNarrator.LoadSettings(CacheDir());
+                if (s.Monitor == on) return;
+                s.Monitor = on;
+                QwenNarrator.SaveSettings(CacheDir(), s);
+            }
+            catch { }
+        }
+
+        /// <summary>A voice id as the reader knows it, for the monitor: that narrator's own list.</summary>
+        private string NarratorVoiceName(string engine, string id)
+        {
+            try
+            {
+                foreach (var v in engine == "Breeze" ? BreezeNarrator.SavedVoices(CacheDir()) : QwenNarrator.SavedVoices(CacheDir()))
+                    if (v.Key == id) return v.Value;
+            }
+            catch { }
+            return string.IsNullOrEmpty(id) ? "the narrator's voice" : id;
+        }
+
+        /// <summary>
         /// The narrator the chosen reading voice belongs to -- Qwen or Breeze -- or null for a
         /// Kokoro or Windows voice. Both answer the same requests; this decides which is asked.
         /// </summary>
@@ -2346,6 +2397,7 @@ namespace TypoZen
                     ? BreezeNarrator.PageSettingsJson(CacheDir(), _currentFilePath, _ttsSpeed, SuppressDocumentTraces())
                     : QwenNarrator.PageSettingsJson(CacheDir(), _currentFilePath, _ttsSpeed, SuppressDocumentTraces());
                 SendMsg("cmd:narrator_settings:" + json);
+                SendMsg("cmd:narr_monitor:" + (NarrationMonitor.IsOpen ? "on" : "off"));
             }
             catch (Exception ex) { LogFault("narrator settings", ex); }
         }
@@ -3843,7 +3895,15 @@ namespace TypoZen
                 var breezeNarrate = FindElement("mBreezeVoice") as MenuItem;
                 if (breezeNarrate != null) breezeNarrate.Visibility = breeze ? Visibility.Visible : Visibility.Collapsed;
                 var narratorSettings = FindElement("mNarratorSettings") as MenuItem;
-                if (narratorSettings != null) narratorSettings.Visibility = qwen ? Visibility.Visible : Visibility.Collapsed;
+                if (narratorSettings != null) narratorSettings.Visibility = qwen || breeze ? Visibility.Visible : Visibility.Collapsed;
+                var monitorItem = FindElement("mNarrMonitor") as MenuItem;
+                if (monitorItem != null) monitorItem.Visibility = qwen || breeze ? Visibility.Visible : Visibility.Collapsed;
+                // Open again if it was open when TypoZen last closed.
+                if ((qwen || breeze) && !NarrationMonitor.IsOpen && !_monitorRestored)
+                {
+                    _monitorRestored = true;
+                    try { if (QwenNarrator.LoadSettings(cache).Monitor) SetNarrationMonitor(true); } catch { }
+                }
                 if (kokoro) RebuildKokoroVoiceMenu();
                 TickKokoroVoice();
 
@@ -7278,6 +7338,12 @@ namespace TypoZen
                 // The page's side of the narrator's state: preparing, reading, or "" when done.
                 _narrationPhase = msg.Substring(21);
                 UpdateVoiceStatus();
+                return;
+            }
+            else if (msg.StartsWith("host_narr_monitor:", StringComparison.Ordinal))
+            {
+                // A piece starting to play, for Read Aloud > Narration Monitor.
+                NarrationMonitor.Piece(msg.Substring(18), NarratorVoiceName);
                 return;
             }
             else if (msg == "host_qwen_narrate")

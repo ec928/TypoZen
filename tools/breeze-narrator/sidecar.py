@@ -87,8 +87,26 @@ POINT_EVENTS = ('laughing', 'giggles', 'gasp', 'sighing', 'cough', 'clears throa
 SPAN_TAGS = ('excited', 'sad', 'angry', 'amazed', 'serious', 'sarcastic', 'curious', 'mischievously',
              'crying', 'panicked', 'tired', 'asmr', 'singing', 'whispers', 'very slowly', 'very fast',
              'like dracula', 'deep and loud shouting')
-_POINT_RE = re.compile(r'\[\s*(' + '|'.join(re.escape(w) for w in POINT_EVENTS) + r')\s*\]', re.I)
-_SPAN_RE = re.compile(r'\[\s*(' + '|'.join(re.escape(w) for w in SPAN_TAGS) + r')\s*\]', re.I)
+# A tag may carry its own strength, [sad:9]: the page strips it from brackets beside speakers and
+# double brackets, but a tag in the text reaches here with it. A point event's number is dropped.
+_NUM = r'(?:\s*:\s*(\d+(?:\.\d+)?))?'
+_POINT_RE = re.compile(r'\[\s*(' + '|'.join(re.escape(w) for w in POINT_EVENTS) + r')' + _NUM + r'\s*\]', re.I)
+_SPAN_RE = re.compile(r'\[\s*(' + '|'.join(re.escape(w) for w in SPAN_TAGS) + r')' + _NUM + r'\s*\]', re.I)
+
+# How hard Breeze is steered by an instruction (its classifier-free guidance). 1 is no extra push;
+# Breeze recommends 4 for voice direction, and by ear 4 beat 1 on every mood tag (2026-10-08). Only
+# a piece with an instruction has one: Breeze refuses more than 1 without. Above 1 it renders the
+# step twice, about 0.66 -> 1.0 of real time, whatever the value.
+DEFAULT_STRENGTH = 4.0
+MAX_STRENGTH = 10.0
+
+
+def clamp_strength(v, default=DEFAULT_STRENGTH):
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return default
+    return max(1.0, min(MAX_STRENGTH, v))
 
 SAMPLE_RATE = 24000
 CLONE_MIN_S, CLONE_MAX_S = 3.0, 20.0
@@ -183,17 +201,22 @@ def instruction(style, direction, role='narration', whole=None, cue=None, own=No
     return base + DIRECTED_SUFFIX % direction
 
 
-def translate(text, told):
-    """A piece as Breeze is given it: [(text, instruction)], usually one.
+def translate(text, told, strength=DEFAULT_STRENGTH):
+    """A piece as Breeze is given it: [(text, instruction, strength)], usually one.
 
     Point events -- [laughing], [clears throat] -- become (laughing), (clears throat): Breeze
     adds the sound. A span tag -- [sad], [whispers] -- ends the stretch before it; the text after
     it is its own generation, told the tag's words as well as the piece's instruction, so the
     delivery changes from there on, as it does with Qwen. Any other bracket is left as written
-    (read aloud, as Qwen reads it).
+    (read aloud, as Qwen reads it). A span tag's own number, [sad:9], is the strength from there
+    on; otherwise `strength`. A part with no instruction has none (1).
     """
     text = _POINT_RE.sub(lambda m: '(' + m.group(1).lower() + ')', text)
-    out, at, span = [], 0, None
+    out, at, span, own = [], 0, None, None
+
+    def part(seg):
+        instr = told_with(span)
+        return (seg, instr, (own if own is not None else strength) if instr else 1.0)
 
     def told_with(s):
         if not s:
@@ -203,11 +226,12 @@ def translate(text, told):
     for m in _SPAN_RE.finditer(text):
         seg = text[at:m.start()].strip()
         if re.search(r'[A-Za-z0-9]', seg):
-            out.append((seg, told_with(span)))
+            out.append(part(seg))
         span, at = m.group(1).lower(), m.end()
+        own = clamp_strength(m.group(2), None) if m.group(2) else None
     seg = text[at:].strip()
     if re.search(r'[A-Za-z0-9]', seg):
-        out.append((seg, told_with(span)))
+        out.append(part(seg))
     return out
 
 
@@ -306,7 +330,7 @@ class Narrator(object):
             self.load_error = (str(e).splitlines() or [type(e).__name__])[0][:200]
             log('model load FAILED:\n' + traceback.format_exc())
 
-    def _generate(self, text, voice=None, told='', reading=None, seed=1234, reference=None, transcript=None):
+    def _generate(self, text, voice=None, told='', reading=None, seed=1234, reference=None, transcript=None, strength=1.0):
         """One generation: audio for `text`, in a voice (its reference recording) or, with no
         voice, the voice `told` describes. Stops at the next chunk once `reading` is cancelled."""
         import numpy as np
@@ -322,7 +346,8 @@ class Narrator(object):
         self.torch.cuda.manual_seed_all(seed)
         inputs = self._prepare(self.tokenizer, self.audio_tokenizer, self.model, [req],
                                self._get_template(self._template_for(req)),
-                               guidance_scale=1.0, guidance_scale_ref=None, guidance_scale_ins=None)
+                               guidance_scale=float(strength) if told else 1.0,
+                               guidance_scale_ref=None, guidance_scale_ins=None)
         from contextlib import closing
         parts = []
         # closing(): a cancel leaves the loop part-way, and the generator's own finally is what
@@ -565,11 +590,14 @@ class Narrator(object):
 
     # ---- rendering -----------------------------------------------------------------------
 
-    def key_for(self, text, voice, told, seed=1234):
+    def key_for(self, text, voice, told, seed=1234, strengths=None):
         h = hashlib.sha256()
         for part in (MODEL_ID, self.voices[voice]['hash'], told, text):
             h.update(part.encode('utf-8'))
             h.update(b'\x00')
+        # The strength each instructed part was rendered at: a change is a different reading.
+        if strengths and any(x != 1.0 for x in strengths):
+            h.update(('strength ' + ','.join('%g' % x for x in strengths)).encode('ascii'))
         if seed != 1234:
             h.update(b'seed ' + str(seed).encode('ascii'))
         return h.hexdigest()[:20]
@@ -592,9 +620,12 @@ class Narrator(object):
                 return s, True
         return self.cached(key), False
 
-    def render_group(self, blocks, voice, seed, reading=None, style='', private=False, whole=None, cue=None):
-        """Audio for each block, from the cache where it exists, the rest one at a time.
-        Returns ([{id, file, seconds, private, instruction}] in order, how many were cached)."""
+    def render_group(self, blocks, voice, seed, reading=None, style='', private=False, whole=None, cue=None,
+                     strength=DEFAULT_STRENGTH):
+        """Audio for each block, from the cache where it exists, the rest one at a time. A block's
+        own 'strength' (a tag's number) wins over `strength` (Narrator Settings).
+        Returns ([{id, file, seconds, private, instruction, voice, cached, parts}] in order, how many
+        were cached); `parts` is exactly what Breeze was given: [{text, instruction, strength}]."""
         import numpy as np
         import soundfile as sf
         private = bool(private and self.private_dir)
@@ -613,10 +644,14 @@ class Narrator(object):
             return instruction(style, b.get('direction'), role, use_whole, cue, own)
 
         tolds = [told(b) for b in blocks]
-        keys = [self.key_for(b['text'], v, i, seed) for b, v, i in zip(blocks, voices, tolds)]
+        partss = [translate(b['text'], t, clamp_strength(b.get('strength'), strength) if b.get('strength') else strength)
+                  for b, t in zip(blocks, tolds)]
+        keys = [self.key_for(b['text'], v, i, seed, [x[2] for x in ps])
+                for b, v, i, ps in zip(blocks, voices, tolds, partss)]
         found = [self.find(k, private) for k in keys]
         have, where = [f[0] for f in found], [f[1] for f in found]
         made = 0
+        fresh = set()                   # pieces rendered by this request, not found in the cache
         for i, b in enumerate(blocks):
             if have[i] is not None:
                 continue
@@ -627,22 +662,25 @@ class Narrator(object):
                 if reading is not None and is_cancelled(reading):
                     raise Cancelled()
                 t = time.time()
-                parts = translate(b['text'], tolds[i])
-                audio = [self._generate(text, voices[i], instr, reading, seed) for text, instr in parts]
+                parts = partss[i]
+                audio = [self._generate(text, voices[i], instr, reading, seed, strength=st) for text, instr, st in parts]
                 a = np.concatenate(audio) if audio else np.zeros(int(0.2 * self.sr), dtype=np.float32)
                 path = os.path.join(self.private_dir if private else self.cache_dir, keys[i] + '.wav')
                 sf.write(path + '.part', a, self.sr, format='WAV')
                 os.replace(path + '.part', path)
                 have[i], where[i] = len(a) / float(self.sr), private
                 made += 1
+                fresh.add(i)
                 log('rendered piece %s: %.1fs of audio in %.1fs (%.2fx realtime, %d part%s, %s)'
                     % (b.get('id'), have[i], time.time() - t, (time.time() - t) / max(have[i], 0.01),
                        len(parts), '' if len(parts) == 1 else 's', voices[i]))
         cached = len(blocks) - made
         if cached:
             log('%d of %d pieces from the cache' % (cached, len(blocks)))
-        return ([{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3), 'private': p, 'instruction': i}
-                 for b, k, s, p, i in zip(blocks, keys, have, where, tolds)], cached)
+        return ([{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3), 'private': p, 'instruction': i,
+                  'voice': v, 'cached': n not in fresh,
+                  'parts': [{'text': t, 'instruction': ins, 'strength': st} for t, ins, st in ps]}
+                 for n, (b, k, s, p, i, v, ps) in enumerate(zip(blocks, keys, have, where, tolds, voices, partss))], cached)
 
     def preview(self, voice, style, reading=None):
         items, _ = self.render_group([{'id': 0, 'text': PREVIEW_TEXT}], voice, 1234, reading, style)
@@ -786,7 +824,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             items, from_cache = n.render_group(blocks, voice, seed, reading, body.get('style') or '',
-                                               private, whole, body.get('cue') or '')
+                                               private, whole, body.get('cue') or '',
+                                               clamp_strength(body.get('strength')))
         except Cancelled:
             log('reading %d cancelled mid-piece; nothing kept from that piece' % reading)
             self._send(200, {'items': [], 'cancelled': True})

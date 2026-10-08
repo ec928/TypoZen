@@ -122,6 +122,10 @@ namespace TypoZen
             public string Voice = "";
             /// <summary>The Breeze narrator's own voice choice (BreezeNarrator); everything else is shared.</summary>
             public string BreezeVoice = "";
+            /// <summary>Breeze's Emotion strength: how hard an instruction steers it (1-10; Breeze recommends 4).</summary>
+            public double BreezeStrength = 4;
+            /// <summary>Read Aloud > Narration Monitor is open; reopened at launch.</summary>
+            public bool Monitor;
             // No instruction and emotion cues on, for a reader who has set nothing: by ear on
             // 2026-09-26 the cues came through best with nothing else said, and a standing
             // instruction only competed with them. A reader's saved choice always wins.
@@ -179,6 +183,10 @@ namespace TypoZen
             if (d.TryGetValue("direct", out c) && c is bool) r.Direct = (bool)c;
             object bv;
             if (d.TryGetValue("breezeVoice", out bv) && bv is string) r.BreezeVoice = (string)bv;
+            object mon;
+            if (d.TryGetValue("monitor", out mon) && mon is bool) r.Monitor = (bool)mon;
+            object bs;
+            if (d.TryGetValue("breezeStrength", out bs) && bs != null) { try { r.BreezeStrength = Math.Max(1, Math.Min(10, Convert.ToDouble(bs))); } catch { } }
             if (d.TryGetValue("instruction", out i) && i is string) r.Instruction = (string)i;
             else if (d.TryGetValue("style", out s))
             {
@@ -195,7 +203,7 @@ namespace TypoZen
         {
             var d = new Dictionary<string, object>
             {
-                { "voice", s.Voice ?? "" }, { "breezeVoice", s.BreezeVoice ?? "" }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }
+                { "voice", s.Voice ?? "" }, { "breezeVoice", s.BreezeVoice ?? "" }, { "breezeStrength", s.BreezeStrength }, { "monitor", s.Monitor }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }
             };
             File.WriteAllText(SettingsPath(cacheDir), new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
         }
@@ -380,7 +388,8 @@ namespace TypoZen
                 // Render into this session's private folder, not the lasting cache.
                 { "private", privateMode },
                 // Where the page fetches this narrator's audio from (BreezeNarrator has its own).
-                { "audioHost", HostName }, { "audioHostPrivate", PrivateHostName }
+                { "audioHost", HostName }, { "audioHostPrivate", PrivateHostName },
+                { "engine", "qwen" }
             };
             return new JavaScriptSerializer().Serialize(d);
         }
