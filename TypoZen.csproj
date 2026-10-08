@@ -103,6 +103,8 @@
     <Compile Include="Lexicon.cs" />
     <Compile Include="QwenNarrator.cs" />
     <Compile Include="QwenInstaller.cs" />
+    <Compile Include="NarratorEngine.cs" />
+    <Compile Include="BreezeNarrator.cs" />
     <Compile Include="NarratorDialog.cs" />
     <Compile Include="SpellCheck.cs" />
     <Compile Include="TypoZen_Launch.cs" />

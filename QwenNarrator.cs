@@ -39,29 +39,28 @@ namespace TypoZen
         /// exit, swept at the next launch after a crash. Set once at start-up, before the
         /// narrator is started, and handed to it as --private-cache.
         /// </summary>
-        public static string PrivateCacheDir;
-        public static string BaseUrl { get { return "http://127.0.0.1:" + Port; } }
-
-        private static Process _process;
-        private static readonly object Gate = new object();
-        private static string _logPath;
-
-        /// <summary>
-        /// The host's lines in narration.log, the file the sidecar and the page also write,
-        /// so starting, running and stopping the narrator read as one timeline. On except in
-        /// Privacy Mode, when nothing is written by anyone (SetLogging): a narration that fails
-        /// otherwise leaves nothing behind to say why.
-        /// </summary>
-        private static void Log(string msg)
+        public static string PrivateCacheDir
         {
-            try
-            {
-                if (_logPath == null || PrivateMode) return;
-                DateTime t = DateTime.Now;
-                File.AppendAllText(_logPath, t.ToString("HH:mm:ss.fff") + "  host    " + msg + Environment.NewLine);
-            }
-            catch { }
+            get { return Engine.PrivateCacheDir; }
+            set { Engine.PrivateCacheDir = value; }
         }
+        public static string BaseUrl { get { return Engine.BaseUrl; } }
+
+        /// <summary>The process itself: started, waited for, stopped (NarratorEngine, shared with Breeze).</summary>
+        public static readonly NarratorEngine Engine = new NarratorEngine
+        {
+            Name = "Qwen",
+            Port = Port,
+            RootDir = RootDir,
+            CacheDir = CacheDir,
+            PythonPath = PythonPath,
+            ScriptPath = ScriptPath,
+            EnvironmentReady = EnvironmentReady,
+            // Cold, a start has taken about a minute: the weights are several gigabytes and the
+            // first CUDA context in a fresh process is not quick. Warm, it is seconds.
+            StartingMessage = waited => "Starting the narrator: loading the voice model onto the graphics card, " + waited + "s" +
+                (waited < 30 ? " (usually about 25s)." : ". The first start after a reboot is the slow one.")
+        };
 
         public static string RootDir(string cacheDir)
         {
@@ -121,6 +120,8 @@ namespace TypoZen
         public sealed class Settings
         {
             public string Voice = "";
+            /// <summary>The Breeze narrator's own voice choice (BreezeNarrator); everything else is shared.</summary>
+            public string BreezeVoice = "";
             // No instruction and emotion cues on, for a reader who has set nothing: by ear on
             // 2026-09-26 the cues came through best with nothing else said, and a standing
             // instruction only competed with them. A reader's saved choice always wins.
@@ -176,6 +177,8 @@ namespace TypoZen
             object v, s, c, i, q;
             var r = new Settings { Voice = d.TryGetValue("voice", out v) ? (v as string ?? "") : "" };
             if (d.TryGetValue("direct", out c) && c is bool) r.Direct = (bool)c;
+            object bv;
+            if (d.TryGetValue("breezeVoice", out bv) && bv is string) r.BreezeVoice = (string)bv;
             if (d.TryGetValue("instruction", out i) && i is string) r.Instruction = (string)i;
             else if (d.TryGetValue("style", out s))
             {
@@ -192,7 +195,7 @@ namespace TypoZen
         {
             var d = new Dictionary<string, object>
             {
-                { "voice", s.Voice ?? "" }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }
+                { "voice", s.Voice ?? "" }, { "breezeVoice", s.BreezeVoice ?? "" }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }
             };
             File.WriteAllText(SettingsPath(cacheDir), new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
         }
@@ -222,18 +225,18 @@ namespace TypoZen
         /// gone when TypoZen closes. Kept past Privacy Mode being turned off, for the same reason
         /// as the private audio -- the reader may still be listening in it.
         /// </summary>
-        public static bool PrivateMode;
+        public static bool PrivateMode
+        {
+            get { return NarratorEngine.PrivateMode; }
+            set { NarratorEngine.PrivateMode = value; }
+        }
 
         /// <summary>
         /// Tells a running narrator whether to write narration.log: off in Privacy Mode. A
         /// narrator not running yet is started with --quiet instead (EnsureRunning). Quick and
         /// silent when nothing is listening.
         /// </summary>
-        public static void SetLogging(bool on)
-        {
-            try { Call("POST", "/logging", "{\"on\":" + (on ? "true" : "false") + "}", 2000); }
-            catch { }
-        }
+        public static void SetLogging(bool on) { Engine.SetLogging(on); }
         private static readonly Dictionary<string, Cast> SessionCasts =
             new Dictionary<string, Cast>(StringComparer.OrdinalIgnoreCase);
 
@@ -386,32 +389,7 @@ namespace TypoZen
         /// </summary>
         public static string Call(string method, string path, string json, int timeoutMs)
         {
-            var req = (HttpWebRequest)WebRequest.Create(BaseUrl + path);
-            req.Method = method;
-            req.Timeout = timeoutMs;
-            req.ReadWriteTimeout = timeoutMs;
-            if (json != null)
-            {
-                byte[] body = Encoding.UTF8.GetBytes(json);
-                req.ContentType = "application/json";
-                req.ContentLength = body.Length;
-                using (var s = req.GetRequestStream()) s.Write(body, 0, body.Length);
-            }
-            try
-            {
-                using (var resp = (HttpWebResponse)req.GetResponse())
-                using (var r = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
-                    return r.ReadToEnd();
-            }
-            catch (WebException ex)
-            {
-                if (ex.Response == null) throw;
-                string text;
-                using (var r = new StreamReader(ex.Response.GetResponseStream(), Encoding.UTF8)) text = r.ReadToEnd();
-                object err;
-                var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(text);
-                throw new Exception(d != null && d.TryGetValue("error", out err) ? Convert.ToString(err) : text);
-            }
+            return Engine.Call(method, path, json, timeoutMs);
         }
 
         private static string PythonPath(string cacheDir)
@@ -428,11 +406,7 @@ namespace TypoZen
         /// Installed means both halves are present: the environment in the data folder and
         /// the script that ships with the app. Either one alone narrates nothing.
         /// </summary>
-        public static bool Installed(string cacheDir, string appDir)
-        {
-            try { return EnvironmentReady(cacheDir) && File.Exists(ScriptPath(appDir)); }
-            catch { return false; }
-        }
+        public static bool Installed(string cacheDir, string appDir) { return Engine.Installed(cacheDir, appDir); }
 
         /// <summary>
         /// The environment in the data folder is there and finished: an install still under way,
@@ -444,180 +418,25 @@ namespace TypoZen
             catch { return false; }
         }
 
-        public static bool Running
-        {
-            get
-            {
-                lock (Gate)
-                {
-                    try { return _process != null && !_process.HasExited; }
-                    catch { return false; }
-                }
-            }
-        }
+        public static bool Running { get { return Engine.Running; } }
 
         /// <summary>True once the model answers, not merely once the process exists.</summary>
-        public static bool Ready()
-        {
-            object ready;
-            var h = Health();
-            return h != null && h.TryGetValue("ready", out ready) && ready is bool && (bool)ready;
-        }
+        public static bool Ready() { return Engine.Ready(); }
 
         /// <summary>The narrator's own report that its model failed to load; null when it has none.</summary>
-        public static string LoadError()
-        {
-            object error;
-            var h = Health();
-            return h != null && h.TryGetValue("error", out error) && error is string && ((string)error).Length > 0
-                ? (string)error : null;
-        }
-
-        /// <summary>/health, parsed; null when the narrator does not answer.</summary>
-        private static Dictionary<string, object> Health()
-        {
-            try
-            {
-                var req = (HttpWebRequest)WebRequest.Create(BaseUrl + "/health");
-                req.Timeout = 2000;
-                using (var resp = (HttpWebResponse)req.GetResponse())
-                using (var reader = new StreamReader(resp.GetResponseStream()))
-                    return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(reader.ReadToEnd());
-            }
-            catch { return null; }
-        }
+        public static string LoadError() { return Engine.LoadError(); }
 
         /// <summary>
         /// Start it if it is not already up, and wait for the weights. Reports progress so
         /// the reader is told what a thirty second wait is for rather than left guessing.
         /// </summary>
-        public static async Task<bool> EnsureRunning(string cacheDir, string appDir,
-                                                     Action<string> say, CancellationToken cancel)
+        public static Task<bool> EnsureRunning(string cacheDir, string appDir,
+                                               Action<string> say, CancellationToken cancel)
         {
-            _logPath = Path.Combine(RootDir(cacheDir), "narration.log");
-            Log("---- narrate requested; script " + ScriptPath(appDir));
-            if (!Installed(cacheDir, appDir))
-            {
-                Log("not installed: python " + File.Exists(PythonPath(cacheDir)) + ", script " + File.Exists(ScriptPath(appDir)));
-                say("The narration extension is not installed.");
-                return false;
-            }
-            if (Ready())
-            {
-                // A narrator left running by an earlier TypoZen -- one that crashed, so never
-                // stopped it -- writes private audio into that session's folder, which this one
-                // neither serves nor deletes. Replace it rather than use it.
-                object had;
-                var h = Health();
-                string theirs = h != null && h.TryGetValue("private", out had) ? had as string ?? "" : "";
-                if (string.Equals(theirs, PrivateCacheDir ?? "", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log("narrator already up");
-                    SetLogging(!PrivateMode);       // in case Privacy Mode changed while it ran
-                    return true;
-                }
-                Log("narrator already up but belongs to another session; replacing it");
-                say("Restarting the narrator...");
-                PostStop();
-                for (int i = 0; i < 20 && Health() != null; i++) await Task.Delay(250);
-            }
-
-            var started = DateTime.Now;
-            lock (Gate)
-            {
-                if (_process == null || _process.HasExited)
-                {
-                    Directory.CreateDirectory(CacheDir(cacheDir));
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = PythonPath(cacheDir),
-                        Arguments = "\"" + ScriptPath(appDir) + "\""
-                                  + " --cache \"" + CacheDir(cacheDir) + "\""
-                                  + (string.IsNullOrEmpty(PrivateCacheDir) ? ""
-                                     : " --private-cache \"" + PrivateCacheDir + "\"")
-                                  + (PrivateMode ? " --quiet" : "")
-                                  + " --port " + Port,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        WorkingDirectory = Path.GetDirectoryName(ScriptPath(appDir))
-                    };
-                    _process = Process.Start(psi);
-                    Log("started narrator process " + _process.Id);
-                }
-                else Log("narrator process " + _process.Id + " exists but is not ready yet");
-            }
-
-            say("Starting the narrator...");
-            // Cold, this has taken about a minute: the weights are several gigabytes and the
-            // first CUDA context in a fresh process is not quick. Warm, it is seconds.
-            for (int waited = 0; waited < 180 && !cancel.IsCancellationRequested; waited++)
-            {
-                if (Ready())
-                {
-                    Log("narrator ready after " + (DateTime.Now - started).TotalSeconds.ToString("0.0") + "s");
-                    say("");
-                    return true;
-                }
-                // A failed model load leaves the process up but never ready. Waiting out the
-                // three-minute limit showed "starting" all that time (2026-09-24). Say so now,
-                // and stop that process so the next attempt starts a fresh one.
-                string failed = LoadError();
-                if (failed != null)
-                {
-                    Log("narrator could not load its model: " + failed + "; stopping it so the next attempt starts fresh");
-                    Stop();
-                    say("The narrator could not load its model. Press Read Aloud to try again. (" + failed + ")");
-                    return false;
-                }
-                Process p;
-                lock (Gate) { p = _process; }
-                try
-                {
-                    if (p != null && p.HasExited)
-                    {
-                        Log("narrator process EXITED with code " + p.ExitCode + " before it was ready");
-                        say("The narrator stopped while starting.");
-                        return false;
-                    }
-                }
-                catch { }
-                // A clock, so a half-minute load reads as progress rather than a hang. It
-                // usually takes about 25s here; after a reboot the first one is slower.
-                if (waited > 0 && waited % 2 == 0)
-                    say("Starting the narrator: loading the voice model onto the graphics card, " + waited + "s" +
-                        (waited < 30 ? " (usually about 25s)." : ". The first start after a reboot is the slow one."));
-                await Task.Delay(1000, cancel).ConfigureAwait(false);
-            }
-            Log("narrator not ready after " + (DateTime.Now - started).TotalSeconds.ToString("0") + "s; giving up");
-            say("The narrator did not start.");
-            return false;
+            return Engine.EnsureRunning(cacheDir, appDir, say, cancel);
         }
 
         /// <summary>Asks it to stop, then makes sure. Called when TypoZen closes.</summary>
-        public static void Stop()
-        {
-            Process p;
-            lock (Gate) { p = _process; _process = null; }
-            if (p == null) return;
-            Log("stopping narrator process " + p.Id);
-            PostStop();
-            try { if (!p.WaitForExit(3000)) p.Kill(); }
-            catch { }
-        }
-
-        /// <summary>Ask whatever narrator answers on the port to shut itself down.</summary>
-        private static void PostStop()
-        {
-            try
-            {
-                var req = (HttpWebRequest)WebRequest.Create(BaseUrl + "/stop");
-                req.Method = "POST";
-                req.Timeout = 2000;
-                req.ContentLength = 2;
-                using (var s = req.GetRequestStream()) { s.WriteByte((byte)'{'); s.WriteByte((byte)'}'); }
-                using (req.GetResponse()) { }
-            }
-            catch { }
-        }
+        public static void Stop() { Engine.Stop(); }
     }
 }
