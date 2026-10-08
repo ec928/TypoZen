@@ -45,6 +45,11 @@ If you install the optional extensions in **File → Extensions**, they keep the
 | `voices\`, `narrator.json` | Voices you designed, with the descriptions you wrote, and the narrator's voice and style |
 | `narration.log`, `install.log` | Timings and steps; no book text and no file paths |
 
+Breeze narration adds, in `extensions\BreezeTTS\`, its own `narration\` audio, its
+`narration.log` and `install.log`, and `voices\` — the voices you designed or cloned with it.
+**A cloned voice holds the recording you gave it and the words you typed for it.** Its
+settings and each book's cast are the same files as Qwen's, in `extensions\QwenTTS\`.
+
 Voices you design stay in that folder. A voice cannot be made again, so Narrator Settings
 can **Export** one to a `.tzvoice` file wherever you choose, and **Import** it back. TypoZen
 makes no copy of its own. (Versions 0.5.2 and earlier copied each voice to
@@ -92,8 +97,9 @@ Three things can still cause network traffic, and you should know about all of t
   from cdn.jsdelivr.net and huggingface.co; the Wiktionary dictionary from this project's
   GitHub releases. Qwen narration fetches Python from github.com, its libraries from
   pypi.org and download.pytorch.org, and its models from huggingface.co, each at a pinned
-  version. Once installed, the narrator runs with the network off and answers only
-  programs on the same PC.
+  version. Breeze narration fetches the same from the same places, its code from
+  codeload.github.com, and its model from huggingface.co. Once installed, either narrator
+  runs with the network off and answers only programs on the same PC.
 - **Documents you open.** If a document references a remote image (`![](https://…)`), that
   image is fetched when the document is displayed. That is the document's request, made
   because you opened it — not something TypoZen initiates on its own. Links you click are

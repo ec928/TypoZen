@@ -332,9 +332,11 @@ The list is **grouped by what each voice actually is**, read from the voice's ow
 | **Kokoro voices** | 186 MB (or 348 MB at full precision) | `extensions\Kokoro\` in the data folder |
 | **Wiktionary dictionary** | 34 MB, 108 MB unpacked | `dictionaries\Wiktionary\` |
 | **Qwen narration** (experimental) | about 13 GB; needs an NVIDIA graphics card with CUDA | `extensions\QwenTTS\` |
+| **Breeze narration** (experimental) | about 12.6 GB; needs an NVIDIA graphics card with at least 12 GB | `extensions\BreezeTTS\` |
 
 - **Install shows progress and can be cancelled.** Kokoro and Wiktionary files land in a staging folder and are moved into place only when every one has arrived, so a cancelled or failed install leaves nothing behind. A cancelled Qwen install keeps what it has downloaded and carries on from there next time
 - **Qwen narration is experimental: download and use it at your own risk.** It has been tested on one PC (an RTX 4070 Ti) and asks before it downloads anything. It is a 1.7-billion-parameter speech model running on your own graphics card. Install fetches its own Python (checked against its SHA-256), its libraries and its models, each at a pinned version; afterwards it runs with the network off. On an RTX 4070 Ti it holds about 4.3 GB of the card's memory while loaded, about 6 GB while rendering, and gives the card back after 15 minutes unused. Remove keeps your voices, casts and settings. The narrator is not reliable with digits (it read "£86,000 - £117,800" as "minus", and dropped or invented digits), so TypoZen gives it numbers as words, British style: amounts, ranges ("to"), dates, times, percentages, years and plain numbers -- "£86,000 - £117,800" is spoken as "eighty-six thousand pounds to one hundred and seventeen thousand eight hundred pounds". Only what is spoken changes; the Windows and Kokoro voices do this themselves. Designing a voice, giving characters their own, and marking a line's delivery are in [The Qwen narrator](#the-qwen-narrator)
+- **Breeze narration is experimental too**, tested on the same PC. It is a 3-billion-parameter speech model; install fetches its own Python, its libraries, its code (each file checked against its SHA-256) and its model (checked against the published checksums), each at a pinned version, and afterwards it runs with the network off. It holds about 9 GB of the card's memory while reading, so the Qwen narrator is stopped while Breeze runs, and the other way round. Remove keeps your voices. See [The Breeze narrator](#the-breeze-narrator)
 - **The Wiktionary archive is checked against its SHA-256** before it is unpacked
 - **Remove deletes the folder**, and the menu that extension added disappears with it
 - **The speech engine is rewritten as it installs.** `kokoro-js` has two addresses baked in — a model host and one hardcoded URL for the voice files — that no setting covers. Both are rewritten to point at the local folder, and each must appear exactly once: if a future version of the library moves them, the install stops rather than leaving an engine that quietly calls out
@@ -396,6 +398,18 @@ With the checkbox off, only the standing instruction is sent. A single bracket s
 An exclamation mark, or a quotation that ends on a dash or an ellipsis (`"Hello!"`, `"Wait—"`), is a cue when the checkbox is on. Those use the sentence under **Cue wording**, where `{cue}` is the cue. Ordinary speech tags do not go through that sentence. **Restore default wording** puts back: "Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured." A paragraph with no quotation, and about seven tenths of it in italics, is read as a thought, quieter, and stays with the narrator.
 
 **Try it**, on the right of Narrator Settings, plays the text in its box with the settings on the left, saved or not. One paragraph per line. **Use text selected in the document** fills the box, and **Ctrl+Enter** plays. **What the narrator was told** shows the instruction each piece was given. Play, change a setting, and play again: **Current** and **Previous** switch between the two. **New take** renders the same settings again, so a real change can be heard apart from one take's luck. Reading the book always uses the first take. Try it reads the whole line in the narrator voice and does not give a character their own voice. To hear a character, use the play control on their cast row, or read the book.
+
+### The Breeze narrator
+
+Breeze narration is a second narrator, beside Qwen rather than instead of it. Once installed, **File → Read Aloud → Breeze Narrator** lists its voices and reads with it. It starts speaking within a few seconds of **Read aloud**, because it renders one piece at a time; the narrator itself takes about 40 seconds to start (about two and a half minutes the very first time, while it prepares the graphics card).
+
+**It reads your Qwen voices.** Every voice designed for the Qwen narrator is a recording, and Breeze speaks in it from that recording, so the voices and the casts you made work with either narrator. With both installed, the **Narrator** choice at the top of **Narrator Settings** says which one you are setting up and, when you save, which one Read Aloud uses. The instruction, the emotion cues and the casts are shared by both.
+
+**Clone a voice from a recording.** **Manage voices...** with Breeze chosen has **Clone a voice from a recording**: 3 to 20 seconds of one person speaking clearly, and exactly the words they say — the easiest way is to record them reading the design passage, which **Use the design passage** puts in the box. Breeze makes one candidate; play it, name it, keep it. A cloned voice is Breeze's only. Clone only a voice you have the right to use: your own, or with the speaker's permission.
+
+**Sounds in the text.** The bracket tags above work with Breeze too, and the point events — `[laughing]`, `[giggles]`, `[gasp]`, `[sighing]`, `[cough]`, `[clears throat]`, `[snorts]` — are performed as sounds, which the Qwen narrator cannot do: it only colours the words around them. A span tag such as `[sad]` changes the delivery of the rest of that paragraph, as it does with Qwen.
+
+**Licence.** Breeze TTS 2's model is licensed by its makers for research and non-commercial use only, and that includes the audio it makes on your PC: listening to your own books is fine; selling or publishing the audio is not, without their permission. Install shows this before anything is downloaded.
 
 ## Files & Export
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
@@ -547,6 +561,7 @@ of them permit commercial use and redistribution:
 | CodeMirror 6 (Source mode's editor) | MIT | `THIRD-PARTY-NOTICES.txt` |
 | Kokoro (Optional Extension) | Relies on its own license and terms | Fetched on install |
 | Qwen (Optional Extension) | Relies on its own license and terms | Fetched on install |
+| Breeze TTS 2 (Optional Extension) | Code Apache 2.0; model, and the audio it makes, research and non-commercial use only | Fetched on install; summary in `extensions\BreezeTTS\LICENSE.txt` |
 
 **Privacy:** [PRIVACY.md](PRIVACY.md) — TypoZen sends nothing anywhere; everything it
 remembers is in `%LOCALAPPDATA%\TypoZen_Cache_Portable` and can be cleared from **File → Privacy**.

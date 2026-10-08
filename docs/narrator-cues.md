@@ -176,3 +176,17 @@ Cue wording is the fold under Emotion cues. Restore default wording puts that se
 A character who has a voice is told her cast box, with the speech tag added after it when there is one. Anna's snapped line, with an empty box, is told `snapped`. A character line with no cue and an empty cast box is told: "Speak this line of dialogue as the character would say it, naturally and in character."
 
 Designed voice-prints follow a cue less readily than Ryan and Aiden, the two speakers trained to follow one.
+
+## With the Breeze narrator
+
+Everything above is the same: you write the same tags, and each piece is told the same instruction. Breeze is sent the tags translated (`tools/breeze-narrator/sidecar.py`, `translate`):
+
+| Tag | Qwen | Breeze |
+|---|---|---|
+| A point event: `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]` | Left in the text; it colours the words around it | Sent as the same word in parentheses, `(laughing)`; Breeze adds the sound itself. `(snorts)` is the weakest |
+| A span tag: `[sad]` `[whispers]` `[very slowly]` and the rest | Left in the text | The piece is split at the tag; the rest is told the tag's words after the instruction, as its own rendering, and the two are joined |
+| Any other bracket, `[check spelling]` | Read aloud | Read aloud |
+| Parentheses already in the text, `(he said)` | Read aloud | Read aloud: only the event words above are performed |
+| A single bracket beside a speaker, a double bracket, a speech tag | The piece's instruction | The same instruction |
+
+Breeze speaks in a voice from its recording and the words in it, not from a voice-print, so the note above about designed voice-prints is Qwen's.
