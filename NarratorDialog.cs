@@ -1487,11 +1487,25 @@ namespace TypoZen
                                 name.IsEnabled = false;
                                 work("Keeping \"" + nm + "\"...", 0, () =>
                                 {
-                                    side.Engine.Call("POST", "/voices/keep", new JavaScriptSerializer().Serialize(
-                                        new Dictionary<string, object> { { "candidate", cid }, { "name", nm } }), 10000);
+                                    var keptReply = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                                        side.Engine.Call("POST", "/voices/keep", new JavaScriptSerializer().Serialize(
+                                            new Dictionary<string, object> { { "candidate", cid }, { "name", nm } }), 10000));
+                                    string keptId = keptReply != null && keptReply.ContainsKey("id") ? Convert.ToString(keptReply["id"]) : "";
                                     loadVoices();
-                                    say("Kept \"" + nm + "\". Choose it on the Reading tab, or for a character on Cast. "
-                                        + "Export it to keep a copy of your own.");
+                                    // The new voice selected and in view: the list kept its old place, so a voice
+                                    // filed mid-alphabet looked as if it had not been kept (2026-10-09).
+                                    win.Dispatcher.Invoke((Action)(() =>
+                                    {
+                                        foreach (var listed in libList.Items)
+                                        {
+                                            var vi = listed as VoiceItem;
+                                            if (vi == null || vi.Id != keptId) continue;
+                                            libList.SelectedItem = vi;
+                                            libList.ScrollIntoView(vi);
+                                            break;
+                                        }
+                                    }));
+                                    say("Kept \"" + nm + "\", selected in the list. Choose it on the Reading tab, or for a character on Cast.");
                                 });
                             };
                             candidates.Children.Add(row(new UIElement[] { label, p, name, k }));
