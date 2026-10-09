@@ -236,7 +236,15 @@ namespace TypoZen
             voiceRow.Children.Add(playVoice);
             voiceRow.Children.Add(voiceBox);
             left.Children.Add(voiceRow);
-            var voiceDesc = note("");
+            // A voice's description can be selected and copied (Ed, 2026-10-09): read-only text, drawn as
+            // a note is -- no box, no border -- so it looks the same as before.
+            Func<TextBox> selectable = () => new TextBox
+            {
+                IsReadOnly = true, TextWrapping = TextWrapping.Wrap, BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent, Padding = new Thickness(0), Opacity = 0.72, Margin = new Thickness(0, 0, 0, 8),
+                Cursor = Cursors.IBeam
+            };
+            var voiceDesc = selectable();
             left.Children.Add(voiceDesc);
 
             left.Children.Add(heading("Instruction"));
@@ -411,7 +419,7 @@ namespace TypoZen
             libRow.Children.Add(libButtons);
             libRow.Children.Add(libList);
             lib.Children.Add(libRow);
-            var libDesc = note("");
+            var libDesc = selectable();
             lib.Children.Add(libDesc);
             lib.Children.Add(note("A designed voice cannot be made again: Export keeps a copy as a .tzvoice file."));
 
@@ -421,9 +429,13 @@ namespace TypoZen
             var descBox = new TextBox { TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             lib.Children.Add(descBox);
             var design = primary("Create 3 candidates");
-            design.HorizontalAlignment = HorizontalAlignment.Left;
-            design.Margin = new Thickness(0, 8, 0, 0);
-            lib.Children.Add(design);
+            var fromSelected = button("Start from the selected voice");
+            fromSelected.ToolTip = "Puts the selected voice's description in the box, to change and design from.";
+            fromSelected.Margin = new Thickness(8, 0, 0, 0);
+            design.Margin = new Thickness(0);
+            var designRow = row(new UIElement[] { design, fromSelected });
+            designRow.Margin = new Thickness(0, 8, 0, 0);
+            lib.Children.Add(designRow);
             var candidates = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
             lib.Children.Add(candidates);
 
@@ -960,6 +972,43 @@ namespace TypoZen
                 voiceDesc.Text = v != null ? v.Description : "";
                 updateA();
             };
+            Action<VoiceItem> startFrom = v =>
+            {
+                if (v == null || string.IsNullOrWhiteSpace(v.Description)) { say("This voice has no description to start from."); return; }
+                descBox.Text = v.Description;
+                descBox.Focus();
+                descBox.CaretIndex = descBox.Text.Length;
+                say("Change the description, then Create 3 candidates.");
+            };
+            fromSelected.Click += (s, e) => startFrom(libList.SelectedItem as VoiceItem);
+            var libMenu = new ContextMenu();
+            libMenu.SetResourceReference(Control.BackgroundProperty, "TzField");
+            libMenu.SetResourceReference(Control.ForegroundProperty, "TzText");
+            var copyDesc = new MenuItem { Header = "Copy description" };
+            copyDesc.Click += (s, e) =>
+            {
+                var v = libList.SelectedItem as VoiceItem;
+                if (v == null || string.IsNullOrWhiteSpace(v.Description)) { say("This voice has no description."); return; }
+                try { Clipboard.SetText(v.Description); say("Copied the description of \"" + v.Name + "\"."); }
+                catch (Exception ex) { say("Could not copy: " + ex.Message); }
+            };
+            var useDesc = new MenuItem { Header = "Use as starting point" };
+            useDesc.Click += (s, e) => startFrom(libList.SelectedItem as VoiceItem);
+            libMenu.Items.Add(copyDesc);
+            libMenu.Items.Add(useDesc);
+            // Right-click picks the voice under the pointer first, as lists everywhere else do.
+            libList.PreviewMouseRightButtonDown += (s, e) =>
+            {
+                var hit = e.OriginalSource as DependencyObject;
+                while (hit != null && !(hit is ListBoxItem)) hit = VisualTreeHelper.GetParent(hit);
+                if (hit != null) ((ListBoxItem)hit).IsSelected = true;
+            };
+            libMenu.Opened += (s, e) =>
+            {
+                var v = libList.SelectedItem as VoiceItem;
+                copyDesc.IsEnabled = useDesc.IsEnabled = v != null && !string.IsNullOrWhiteSpace(v.Description);
+            };
+            libList.ContextMenu = libMenu;
             libList.SelectionChanged += (s, e) =>
             {
                 var v = libList.SelectedItem as VoiceItem;
