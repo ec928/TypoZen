@@ -1803,7 +1803,6 @@ namespace TypoZen
 
             BindClick("mHelpSyntax", (s, e) => ShowHelpPanel("cmd:help_syntax"));
             BindClick("mHelpNarration", (s, e) => ShowNarrationHelp());
-            BindClick("mNarrHelp", (s, e) => ShowNarrationHelp());
             BindClick("mToggleDebug", (s, e) => SendMsg("cmd:toggle_debug_hud"));
             // About is an in-page themed panel (same shell as F1 help), not a system MessageBox.
             BindClick("mAbout", (s, e) => ShowHelpPanel("cmd:help_about"));
@@ -2565,7 +2564,8 @@ namespace TypoZen
                     mi.Click += (s, e) => ChooseQwenVoice(id, name);
                     menu.Items.Add(mi);
                 }
-                menu.Header = "_Qwen Narrator: " + currentName.Replace("_", "__");
+                // Only the narrator that is reading names its voice: two names read as two readers.
+                menu.Header = qwenReading ? "_Qwen Narrator: " + currentName.Replace("_", "__") : "_Qwen Narrator";
             }
             catch (Exception ex) { LogFault("qwen voice menu", ex); }
             UpdateVoiceStatus();
@@ -2611,7 +2611,7 @@ namespace TypoZen
                     mi.Click += (s, e) => ChooseBreezeVoice(id, name);
                     menu.Items.Add(mi);
                 }
-                menu.Header = "_Breeze Narrator: " + currentName.Replace("_", "__");
+                menu.Header = reading ? "_Breeze Narrator: " + currentName.Replace("_", "__") : "_Breeze Narrator";
             }
             catch (Exception ex) { LogFault("breeze voice menu", ex); }
             UpdateVoiceStatus();
@@ -3928,9 +3928,9 @@ namespace TypoZen
                 if (breezeNarrate != null) breezeNarrate.Visibility = breeze ? Visibility.Visible : Visibility.Collapsed;
                 var narratorSettings = FindElement("mNarratorSettings") as MenuItem;
                 if (narratorSettings != null) narratorSettings.Visibility = qwen || breeze ? Visibility.Visible : Visibility.Collapsed;
-                foreach (string helpName in new[] { "mHelpNarration", "mNarrHelp" })
+                foreach (string helpName in new[] { "mHelpNarration", "sepNarrTools" })
                 {
-                    var helpItem = FindElement(helpName) as MenuItem;
+                    var helpItem = FindElement(helpName) as Control;
                     if (helpItem != null) helpItem.Visibility = qwen || breeze ? Visibility.Visible : Visibility.Collapsed;
                 }
                 var monitorItem = FindElement("mNarrMonitor") as MenuItem;
