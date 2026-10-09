@@ -2594,11 +2594,25 @@
                 // Open, do not toggle. F1 can arrive from page JS and from the host
                 // key filter for the same key; toggling made a working F1 look dead.
                 closeTzOverlay('aboutModal');
+                closeTzOverlay('narrHelpModal');
                 if (!isTzOverlayOpen('helpModal'))
                     openTzOverlay('helpModal', 'helpClose', 'helpOk');
             }
+            else if (cmd.startsWith("help_narration")) {
+                // Help > Narration: only what the installed narrators do (help_narration:qwen,breeze).
+                closeTzOverlay('helpModal');
+                closeTzOverlay('aboutModal');
+                const have = (cmd.split(':')[1] || '').split(',');
+                const q = have.indexOf('qwen') >= 0, b = have.indexOf('breeze') >= 0;
+                document.querySelectorAll('#narrHelpModal [data-engine]').forEach(function (el) {
+                    const k = el.getAttribute('data-engine');
+                    el.hidden = !(k === 'qwen' ? q : k === 'breeze' ? b : k === 'both' ? (q && b) : k === 'qwen-only' ? (q && !b) : true);
+                });
+                if (!isTzOverlayOpen('narrHelpModal')) openTzOverlay('narrHelpModal', 'narrHelpClose', 'narrHelpOk');
+            }
             else if (cmd === "help_about") {
                 closeTzOverlay('helpModal');
+                closeTzOverlay('narrHelpModal');
                 if (!isTzOverlayOpen('aboutModal'))
                     openTzOverlay('aboutModal', 'aboutClose', 'aboutOk');
             }
@@ -2801,6 +2815,7 @@
             }
             wire('helpModal', 'helpClose', 'helpOk');
             wire('aboutModal', 'aboutClose', 'aboutOk');
+            wire('narrHelpModal', 'narrHelpClose', 'narrHelpOk');
 
             // About -> "Report a problem or suggest a feature".
             //
@@ -2834,6 +2849,12 @@
             })();
             document.addEventListener('keydown', function (e) {
                 if (e.key !== 'Escape') return;
+                if (isTzOverlayOpen('narrHelpModal')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeTzOverlay('narrHelpModal');
+                    return;
+                }
                 if (isTzOverlayOpen('aboutModal')) {
                     e.preventDefault();
                     e.stopPropagation();

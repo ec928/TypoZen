@@ -475,6 +475,8 @@
                                 <Separator/>
                                 <MenuItem x:Name="mNarrMonitor" Header="Narration _Monitor" IsCheckable="True" Visibility="Collapsed"
                                           ToolTip="A window that shows, as each piece plays, what the narrator was given: who speaks, the voice, the text, the instruction and the strength, and the settings behind them."/>
+                                <MenuItem x:Name="mNarrHelp" Header="Narration _Help" Visibility="Collapsed"
+                                          ToolTip="How to use the narrators: choosing one, Narrator Settings, voices, and the tags you can write in the text."/>
                                 <MenuItem x:Name="mNarratorSettings" Header="Narrator _Settings..." Visibility="Collapsed"
                                           ToolTip="The Qwen narrator's voice and how it reads, new voices from a description, and voices for this book's characters."/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
@@ -614,6 +616,7 @@
                         </MenuItem>
                         <MenuItem x:Name="menuHelp" Header="_Help">
                             <MenuItem x:Name="mHelpSyntax" Header="Syntax &amp; _Shortcuts" InputGestureText="F1"/>
+                            <MenuItem x:Name="mHelpNarration" Header="_Narration" Visibility="Collapsed"/>
                             <MenuItem x:Name="mToggleDebug" Header="_Debug HUD" InputGestureText="Ctrl+Shift+D"/>
                             <Separator/>
                             <MenuItem x:Name="mAbout" Header="_About TypoZen"/>

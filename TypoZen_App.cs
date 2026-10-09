@@ -1802,6 +1802,8 @@ namespace TypoZen
             catch { }
 
             BindClick("mHelpSyntax", (s, e) => ShowHelpPanel("cmd:help_syntax"));
+            BindClick("mHelpNarration", (s, e) => ShowNarrationHelp());
+            BindClick("mNarrHelp", (s, e) => ShowNarrationHelp());
             BindClick("mToggleDebug", (s, e) => SendMsg("cmd:toggle_debug_hud"));
             // About is an in-page themed panel (same shell as F1 help), not a system MessageBox.
             BindClick("mAbout", (s, e) => ShowHelpPanel("cmd:help_about"));
@@ -2345,6 +2347,16 @@ namespace TypoZen
                 SaveMonitorChoice(on);
             }
             catch (Exception ex) { LogFault("narration monitor", ex); }
+        }
+
+        /// <summary>Help > Narration: the page's panel, showing what the installed narrators do.</summary>
+        private void ShowNarrationHelp()
+        {
+            string cache = CacheDir();
+            var have = new List<string>();
+            if (QwenNarrator.Installed(cache, _appDir)) have.Add("qwen");
+            if (BreezeNarrator.Installed(cache, _appDir)) have.Add("breeze");
+            ShowHelpPanel("cmd:help_narration:" + string.Join(",", have.ToArray()));
         }
 
         private bool _monitorRestored;
@@ -3916,6 +3928,11 @@ namespace TypoZen
                 if (breezeNarrate != null) breezeNarrate.Visibility = breeze ? Visibility.Visible : Visibility.Collapsed;
                 var narratorSettings = FindElement("mNarratorSettings") as MenuItem;
                 if (narratorSettings != null) narratorSettings.Visibility = qwen || breeze ? Visibility.Visible : Visibility.Collapsed;
+                foreach (string helpName in new[] { "mHelpNarration", "mNarrHelp" })
+                {
+                    var helpItem = FindElement(helpName) as MenuItem;
+                    if (helpItem != null) helpItem.Visibility = qwen || breeze ? Visibility.Visible : Visibility.Collapsed;
+                }
                 var monitorItem = FindElement("mNarrMonitor") as MenuItem;
                 if (monitorItem != null) monitorItem.Visibility = qwen || breeze ? Visibility.Visible : Visibility.Collapsed;
                 // Open again if it was open when TypoZen last closed.

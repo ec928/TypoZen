@@ -552,6 +552,70 @@
             </footer>
         </div>
     </div>
+    <!-- Help > Narration: how to use the narrators that are installed. Sections marked data-engine
+         show only when that narrator is installed (cmd:help_narration:qwen,breeze). -->
+    <div id="narrHelpModal" class="tz-help-overlay" hidden role="presentation">
+        <div class="tz-help-panel tz-about-panel" role="dialog" aria-modal="true" aria-labelledby="narrHelpTitle" tabindex="-1">
+            <header class="tz-help-head tz-about-head">
+                <div class="tz-about-brand">
+                    <div class="tz-about-head-top">
+                        <div id="narrHelpTitle" class="tz-about-name">Narration</div>
+                        <button type="button" id="narrHelpClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">✕</button>
+                    </div>
+                    <p class="tz-about-tag">Audiobook reading on this PC's graphics card: what to press, and what you can write in the text to direct it.</p>
+                </div>
+            </header>
+            <div class="tz-help-body tz-about-body">
+                <section class="tz-help-sec">
+                    <h3>Reading</h3>
+                    <ul class="tz-about-list">
+                        <li data-engine="qwen"><strong>File &gt; Read Aloud &gt; Qwen Narrator</strong>, then a voice. Read Aloud, and Read and Read from here on a selection, now use it.</li>
+                        <li data-engine="breeze"><strong>File &gt; Read Aloud &gt; Breeze Narrator</strong>, then a voice. It reads your Qwen voices too, and starts speaking within seconds once it is running.</li>
+                        <li>The first Read Aloud starts the narrator, which takes a while: <span data-engine="qwen">Qwen about 25 seconds. </span><span data-engine="breeze">Breeze about 40 seconds. </span>It then stays loaded for 15 minutes unused, and starts by itself when a book opens with a narrator voice chosen. The status bar says what it is doing.</li>
+                        <li data-engine="both">Only one narrator runs at a time: choosing the other stops the first.</li>
+                        <li>Anything heard before plays at once: narration is kept. Extensions &gt; Clear audio removes it.</li>
+                    </ul>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Narrator Settings (File &gt; Read Aloud)</h3>
+                    <ul class="tz-about-list">
+                        <li data-engine="both"><strong>Narrator</strong> at the top: which one you are setting up, and which one Read Aloud uses once you save.</li>
+                        <li><strong>Voice</strong>: who reads. <strong>Manage voices...</strong> designs a voice from a description (age, accent, texture), imports and exports them<span data-engine="breeze">, and clones one from a recording: 3 to 20 seconds of one person, and exactly the words they say. Clone only a voice you have the right to use</span>.</li>
+                        <li><strong>Instruction</strong>: how every paragraph is read, in your own words. Empty means none.</li>
+                        <li><strong>Emotion cues</strong>: with the box ticked, a line's speech tag (&ldquo;Go,&rdquo; she <em>whispered</em>) is added to its instruction.</li>
+                        <li data-engine="breeze"><strong>Breeze &gt; Emotion strength</strong>: how hard Breeze follows an instruction, 1 to 10, default 4. Higher is stronger and may start to sound strained. Lines with no instruction are not affected.</li>
+                        <li><strong>Try it</strong> plays any text with the settings on screen, saved or not, and shows exactly what the narrator was told.</li>
+                        <li><strong>Cast for this book</strong>: <strong>Find characters</strong> lists who speaks; give a character a voice and their quoted lines are read in it, with an optional instruction of their own. The name must be within eight words of the quotation.</li>
+                    </ul>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Directing in the text</h3>
+                    <ul class="tz-about-list">
+                        <li><code>Anna [whispers softly] said, "Go."</code> A bracket beside a speaker is that line's instruction. It is not spoken.</li>
+                        <li><code>[[shouts loudly]]</code> anywhere in the sentence replaces every other instruction for it. Not spoken.</li>
+                        <li><code>[sad]</code> <code>[angry]</code> <code>[excited]</code> <code>[whispers]</code> <code>[crying]</code> <code>[very slowly]</code> and the rest of the mood words change the delivery from there on.</li>
+                        <li><code>[laughing]</code> <code>[giggles]</code> <code>[gasp]</code> <code>[sighing]</code> <code>[cough]</code> <code>[clears throat]</code> <code>[snorts]</code>:<span data-engine="breeze"> Breeze performs the sound itself</span><span data-engine="qwen-only"> Qwen colours the words around them</span><span data-engine="both">; Qwen only colours the words around them</span>.</li>
+                        <li data-engine="breeze"><code>[sad:9]</code> <code>[[shouts:9]]</code> <code>Anna [whispers:2] said</code>: a number after a colon is that line's strength in Breeze. It is never spoken<span data-engine="both">, and Qwen ignores it</span>.</li>
+                        <li>Any other bracketed word is read aloud as written. The full list is in the README under &ldquo;Tagging a line&rdquo;.</li>
+                    </ul>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Seeing what happens</h3>
+                    <ul class="tz-about-list">
+                        <li><strong>File &gt; Read Aloud &gt; Narration Monitor</strong> shows, as each piece plays, who speaks, the voice, the exact text and instruction the narrator was given<span data-engine="breeze"> and its strength</span>, and the settings behind them. On screen only; nothing is written.</li>
+                        <li>Privacy Mode keeps narration audio in a temporary folder and writes no narration log.</li>
+                    </ul>
+                </section>
+            </div>
+            <footer class="tz-help-foot">
+                <div></div>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <span class="tz-help-hint">Esc to close</span>
+                    <button type="button" id="narrHelpOk" class="tz-help-ok">Close</button>
+                </div>
+            </footer>
+        </div>
+    </div>
 
     <script src="js/perf-mark.js" data-mark="__tzBeforeMain"></script>
     <!-- Source mode's editor (docs/archive/codemirror-source-plan.md). Outside the engine block:
