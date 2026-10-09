@@ -106,6 +106,7 @@
     <Compile Include="NarratorEngine.cs" />
     <Compile Include="BreezeNarrator.cs" />
     <Compile Include="NarrationMonitor.cs" />
+    <Compile Include="DialogTheme.cs" />
     <Compile Include="NarratorDialog.cs" />
     <Compile Include="SpellCheck.cs" />
     <Compile Include="TypoZen_Launch.cs" />

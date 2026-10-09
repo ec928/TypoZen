@@ -564,6 +564,7 @@ namespace TypoZen
                 Foreground = owner != null ? owner.Foreground : null
             };
             try { win.Owner = owner; } catch { }
+            DialogTheme.Apply(win, owner);
 
             var root = new StackPanel { Margin = new Thickness(18, 18, 18, 0) };
             root.Children.Add(new TextBlock

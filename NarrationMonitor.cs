@@ -43,6 +43,7 @@ namespace TypoZen
                 if (owner != null) { w.Left = owner.Left + Math.Max(0, owner.ActualWidth - 620); w.Top = owner.Top + 80; }
             }
             catch { }
+            DialogTheme.Apply(w, owner);
             Func<string, TextBlock> heading = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 10, 0, 4) };
             _settings = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.85, Text = "Nothing has been read yet." };
             _now = new TextBox

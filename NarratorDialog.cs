@@ -73,7 +73,7 @@ namespace TypoZen
             /// <summary>Breeze's Emotion strength; 0 with Qwen, which has none.</summary>
             public double Strength;
             public int Seed { get { return 1234 + Take - 1; } }
-            public string Describe() { return Label + ", take " + Take; }
+            public string Describe() { return Take > 1 ? Label + ", take " + Take : Label; }
         }
 
         /// <summary>
@@ -146,6 +146,7 @@ namespace TypoZen
                 Foreground = owner != null ? owner.Foreground : null
             };
             try { win.Owner = owner; } catch { }
+            DialogTheme.Apply(win, owner);
 
             // ---- building blocks. Spacing is on one grid: 4 within a group, 8 between controls,
             // 16 between sections and at the edges.
@@ -216,7 +217,7 @@ namespace TypoZen
                 pickBreeze = new RadioButton { Content = "Breeze", GroupName = "narrator", IsChecked = side.Breeze };
                 if (win.Foreground != null) { pickQwen.Foreground = win.Foreground; pickBreeze.Foreground = win.Foreground; }
                 left.Children.Add(row(new UIElement[] { pickQwen, pickBreeze }));
-                left.Children.Add(note("The narrator Read Aloud uses once you save, and whose voices are below. The instruction, cues and casts are shared by both."));
+                left.Children.Add(note("Read Aloud uses the one you save. Voices are each narrator's own; the instruction, cues and casts are shared."));
             }
 
             left.Children.Add(heading("Voice"));
@@ -239,7 +240,7 @@ namespace TypoZen
             left.Children.Add(voiceDesc);
 
             left.Children.Add(heading("Instruction"));
-            left.Children.Add(note("Everything the narrator is told for each paragraph, exactly as written here. Leave it empty for no instruction at all."));
+            left.Children.Add(note("How every paragraph is read, in your words. Empty means none."));
             var presetBox = new ComboBox { MinWidth = 300 };
             var presetRow = new DockPanel { Margin = new Thickness(0, 3, 0, 3) };
             var presetLabel = new TextBlock { Text = "Preset", Width = 56, VerticalAlignment = VerticalAlignment.Center };
@@ -268,7 +269,7 @@ namespace TypoZen
             var directBox = check("Add a cue to lines tagged with how they are said");
             directBox.IsChecked = settings.Direct;
             left.Children.Add(directBox);
-            var cueExample = note("“Go,” she whispered  →  the standing instruction, then whispered.  Off, only the standing instruction is sent.");
+            var cueExample = note("“Go,” she whispered  →  “whispered” is added to the instruction.");
             cueExample.Margin = new Thickness(22, 0, 0, 4);
             left.Children.Add(cueExample);
             var cueBox = new TextBox { Text = settings.Cue, TextWrapping = TextWrapping.Wrap, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -285,7 +286,6 @@ namespace TypoZen
             cuePanel.Children.Add(restoreCue);
             var cueFold = fold("Cue wording", cuePanel);
             cueFold.Margin = new Thickness(22, 2, 0, 2);
-            left.Children.Add(cueFold);
 
             // ---- Breeze's own settings: shown once Breeze is installed; greyed, saying why, while
             // Qwen is chosen at the top (the window's one rule for what only one narrator has).
@@ -298,28 +298,30 @@ namespace TypoZen
             Action showStrength = () => strengthValue.Text = strengthSlider.Value.ToString("0.#");
             showStrength();
             var breezePanel = new StackPanel();
-            var breezeWhy = note("Breeze only: choose Breeze at the top to change it.");
+            var breezeWhy = note("Breeze only.");
+            breezeWhy.Margin = new Thickness(22, 0, 0, 4);
             if (haveBreeze)
             {
-                left.Children.Add(heading("Breeze"));
-                left.Children.Add(breezeWhy);
-                breezePanel.Children.Add(row(new UIElement[] {
-                    new TextBlock { Text = "Emotion strength", Width = 120, VerticalAlignment = VerticalAlignment.Center },
-                    strengthSlider, strengthValue }));
-                breezePanel.Children.Add(note("How hard Breeze follows an instruction: an emotion cue, a bracket beside a speaker, a [[double bracket]] "
+                var strengthLabel = new TextBlock { Text = "Emotion strength", Width = 120, VerticalAlignment = VerticalAlignment.Center };
+                breezePanel.Margin = new Thickness(22, 4, 0, 0);
+                breezePanel.ToolTip = "How hard Breeze follows an instruction: an emotion cue, a bracket beside a speaker, a [[double bracket]] "
                     + "or a mood tag such as [sad]. 1 barely; 4 is Breeze's own recommendation; higher pushes harder and may start to sound strained. "
-                    + "A tag's own number overrides it for its line: [sad:9]. Narration with no instruction is not affected. "
-                    + "Above 1, those lines take about half as long again to prepare."));
+                    + "A tag's own number, [sad:9], wins for its line; a cast character has their own on Cast for this book. "
+                    + "Narration with no instruction is not affected. Above 1, those lines take about half as long again to prepare.";
+                breezePanel.Children.Add(row(new UIElement[] { strengthLabel, strengthSlider, strengthValue }));
+                breezePanel.Children.Add(note("1 barely · 4 recommended · 10 strongest. [sad:9] sets one line."));
                 left.Children.Add(breezePanel);
+                left.Children.Add(breezeWhy);
             }
+            left.Children.Add(cueFold);
 
             // ---- Try it: its own panel, always in view
             var tryPanel = new DockPanel();
             var tryTop = new StackPanel();
             DockPanel.SetDock(tryTop, Dock.Top);
             tryTop.Children.Add(heading("Try it"));
-            tryTop.Children.Add(note("Plays this text with the settings on the left, saved or not, exactly as narration would. One paragraph per line; Ctrl+Enter plays."));
-            var sampleBox = new TextBox { Text = _sample, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            tryTop.Children.Add(note("The settings on the left, saved or not, on this text. Ctrl+Enter plays."));
+            var sampleBox = new TextBox { Text = _sample, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 170, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             tryTop.Children.Add(sampleBox);
             var useSelection = button("Use text selected in the document");
             useSelection.HorizontalAlignment = HorizontalAlignment.Left;
@@ -352,16 +354,19 @@ namespace TypoZen
             put(slot("Current"), 0, 0); put(aSummary, 0, 1); put(playA, 0, 2); put(takeA, 0, 3);
             put(slot("Previous"), 1, 0); put(bSummary, 1, 1); put(playB, 1, 2); put(takeB, 1, 3);
             tryTop.Children.Add(ab);
+            // While the narrator starts: its clock, here beside the Play it is holding up, not only in the footer.
+            var startLine = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.75, Margin = new Thickness(0, 2, 0, 6), Visibility = Visibility.Collapsed };
+            tryTop.Children.Add(startLine);
             // No Stop of its own: the Play of whichever row is preparing or playing becomes
             // Stop (applyPlay), where the eye and the pointer already are.
 
             var toldBox = new TextBox
             {
                 IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                FontSize = 11.5, MinHeight = 90, Text = "Play something to see the instruction each paragraph was given."
+                FontSize = 11.5, MinHeight = 90, MaxHeight = 320, Text = "Play something to see the instruction each paragraph was given."
             };
             var toldFold = fold("What the narrator was told", toldBox);
-            toldFold.IsExpanded = true;
+            toldFold.IsExpanded = false;      // opened when something has been played
             toldFold.Margin = new Thickness(0, 8, 0, 0);
             tryPanel.Children.Add(tryTop);
             tryPanel.Children.Add(toldFold);
@@ -371,7 +376,7 @@ namespace TypoZen
                 Child = tryPanel, Padding = new Thickness(16, 0, 16, 16), CornerRadius = new CornerRadius(6),
                 Background = new SolidColorBrush(Color.FromArgb(0x1C, 0x80, 0x80, 0x80)),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x80, 0x80, 0x80)), BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 16, 0, 0)
+                Margin = new Thickness(0, 16, 0, 0), VerticalAlignment = VerticalAlignment.Top
             };
 
             var reading = new Grid();
@@ -407,7 +412,7 @@ namespace TypoZen
             lib.Children.Add(libRow);
             var libDesc = note("");
             lib.Children.Add(libDesc);
-            lib.Children.Add(note("Export saves a voice as one .tzvoice file; Import brings one back. A designed voice cannot be made again, so export the ones you keep."));
+            lib.Children.Add(note("A designed voice cannot be made again: Export keeps a copy as a .tzvoice file."));
 
             lib.Children.Add(heading("Design a new voice"));
             var designNote = note("");
@@ -437,9 +442,7 @@ namespace TypoZen
             if (haveBreeze)
             {
                 lib.Children.Add(heading("Clone a voice from a recording"));
-                clonePanel.Children.Add(note("3 to 20 seconds of one person speaking clearly, and exactly the words they say. "
-                    + "The easiest way: record them reading the design passage word for word -- “Use the design passage” puts its words in the box. "
-                    + "Only clone a voice you have the right to use: your own, or with the speaker's permission."));
+                clonePanel.Children.Add(note("3 to 20 seconds of one person, and exactly the words they say. Only a voice you have the right to use."));
                 clonePanel.Children.Add(row(new UIElement[] { cloneFile, cloneFileName }));
                 clonePanel.Children.Add(new TextBlock { Text = "The words said in the recording", Margin = new Thickness(0, 8, 0, 4) });
                 clonePanel.Children.Add(cloneWords);
@@ -465,15 +468,15 @@ namespace TypoZen
             var castRows = new List<Tuple<string, string, ComboBox, TextBox>>();     // key, name, voice, instruction
             var castPlays = new List<Button>();
             var castPanel = new StackPanel();
+            var castEmpty = note("No characters yet. Find characters lists who speaks in this book.");
+            castEmpty.Margin = new Thickness(36, 8, 0, 0);
             Button findCast = null;
             StackPanel castPage = null;
             if (!string.IsNullOrEmpty(book))
             {
                 castPage = new StackPanel();
                 castPage.Children.Add(heading("Cast for this book"));
-                castPage.Children.Add(note("Give characters voices of their own: their lines are spoken in that voice, and the narrator reads the rest. Who speaks is read from the text (\"said Ferbin\"); an untagged or ambiguous line stays with the narrator."));
-                castPage.Children.Add(note("Instruction is optional. When it is filled in, that character's lines are told it, the same way the narrator's instruction is told to the narration. Leave it empty and the line is told only to speak in character."));
-                castPage.Children.Add(note("Strength is Breeze's: how hard that character's lines follow their instruction, 1 to 10, 4 unless you change it. A tag's own number, [sad:9], still wins for its line."));
+                castPage.Children.Add(note("Give a character a voice and their quoted lines are read in it; the narrator reads the rest. Who speaks comes from the text (\u201csaid Ferbin\u201d). Instruction and Strength are optional."));
                 if (QwenNarrator.PrivateMode)
                     castPage.Children.Add(note("Privacy Mode is on: this book's cast is kept until TypoZen closes and is not saved to disk."));
                 findCast = button("Find characters");
@@ -482,13 +485,15 @@ namespace TypoZen
                 castPage.Children.Add(findCast);
                 castPage.Children.Add(row(new UIElement[] {
                     new TextBlock { Width = 28, Margin = new Thickness(0, 0, 8, 0) },
-                    new TextBlock { Text = "Character", Width = 200, Opacity = 0.7 },
+                    new TextBlock { Text = "Character", Width = 160, Opacity = 0.7 },
+                    new TextBlock { Text = "Lines", Width = 44, Opacity = 0.7 },
                     new TextBlock { Text = "Voice", Width = 220, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
                     new TextBlock { Text = "Instruction", Width = 360, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
                     new TextBlock { Text = "Strength", Width = 60, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7,
                                     ToolTip = "Breeze only: how hard this character's lines follow their instruction, 1 to 10." }
                 }));
                 castPage.Children.Add(castPanel);
+                castPage.Children.Add(castEmpty);
             }
 
             // ================================================================ window
@@ -707,12 +712,44 @@ namespace TypoZen
                     });
                 };
                 castRows.Add(Tuple.Create(key, name, cb, sayBox));
+                // "Anna  (4 lines)", as Find characters names them: the name and the count in columns of their own.
+                string shownName = name ?? key, lineCount = "";
+                int paren = shownName.IndexOf("  (");
+                if (paren > 0)
+                {
+                    lineCount = shownName.Substring(paren + 3).Replace(" lines)", "").Replace(" line)", "").TrimEnd(')');
+                    shownName = shownName.Substring(0, paren);
+                }
                 var label = new TextBlock
                 {
-                    Text = name, Width = 200, VerticalAlignment = VerticalAlignment.Center,
+                    Text = shownName, Width = 160, VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = name
                 };
-                castPanel.Children.Add(row(new UIElement[] { playLine, label, cb, sayBox, strengthBox }));
+                var lines = new TextBlock { Text = lineCount, Width = 44, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
+                // An empty instruction box says what it is for, rather than looking unfinished.
+                var sayCell = new Grid { Margin = sayBox.Margin };
+                sayBox.Margin = new Thickness(0);
+                var sayHint = new TextBlock { Text = "Optional: how they speak, e.g. gruff and slow", Opacity = 0.45, IsHitTestVisible = false,
+                                              VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0) };
+                sayHint.Visibility = sayBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+                sayBox.TextChanged += (s, e) => sayHint.Visibility = sayBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+                sayCell.Children.Add(sayBox);
+                sayCell.Children.Add(sayHint);
+                // Up and Down step the strength by a half, within 1 to 10.
+                strengthBox.PreviewKeyDown += (s, e) =>
+                {
+                    if (e.Key != Key.Up && e.Key != Key.Down) return;
+                    double v = castStrengthOf(key) + (e.Key == Key.Up ? 0.5 : -0.5);
+                    strengthBox.Text = Math.Max(1, Math.Min(10, v)).ToString("0.#");
+                    strengthBox.CaretIndex = strengthBox.Text.Length;
+                    e.Handled = true;
+                };
+                var castLine = row(new UIElement[] { playLine, label, lines, cb, sayCell, strengthBox });
+                castLine.Margin = new Thickness(0);
+                var stripe = new Border { Child = castLine, Padding = new Thickness(0, 3, 4, 3), CornerRadius = new CornerRadius(3) };
+                if (castPanel.Children.Count % 2 == 1) stripe.SetResourceReference(Border.BackgroundProperty, "TzButton");
+                castPanel.Children.Add(stripe);
+                castEmpty.Visibility = Visibility.Collapsed;
             };
 
             // A voice the library can act on: one of the reader's, not built in.
@@ -743,6 +780,7 @@ namespace TypoZen
                 castStrengthBoxes.Clear();
                 castPlays.Clear();
                 castPanel.Children.Clear();
+                castEmpty.Visibility = Visibility.Visible;
                 foreach (var r in old)
                     addCastRow(r.Item1, r.Item2, castRowVoice(r.Item3), r.Item4.Text);
                 refreshLibButtons();
@@ -776,7 +814,16 @@ namespace TypoZen
             // Anything that needs the narrator goes through here: off the UI thread, with the
             // buttons that would start another such call disabled until it is done.
             var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, design, importVoice, playA, takeA, cloneGo };
-            if (findCast != null) busyButtons.Add(findCast);
+            // Find characters asks the page, not the narrator, so it is never held up by one (it was: the
+            // whole window sat greyed for the narrator's 40-second start, 2026-10-09).
+            // These need the narrator itself, and wait while it starts; the rest of the window does not.
+            var needNarrator = new List<Button> { playA, takeA, design, cloneGo, importVoice, deleteVoice };
+            bool narratorReady = !start;
+            Action gateNarrator = () =>
+            {
+                if (narratorReady) return;
+                foreach (var b in needNarrator) { b.IsEnabled = false; b.ToolTip = "Waiting for the narrator to start"; }
+            };
             // `expect` is the usual time in seconds, shown against a running clock; 0 for none.
             work = (what, expect, job) =>
             {
@@ -805,6 +852,7 @@ namespace TypoZen
                             playB.IsEnabled = takeB.IsEnabled = kept != null;
                             if (applyPlay != null) applyPlay();
                             refreshLibButtons();
+                            gateNarrator();
                         }));
                     }
                 });
@@ -927,6 +975,7 @@ namespace TypoZen
                     WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, Owner = win,
                     Background = win.Background, Foreground = win.Foreground
                 };
+                DialogTheme.Apply(w, win);
                 var box = new TextBox { Text = initial ?? "", Margin = new Thickness(0, 6, 0, 12), Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
                 var ok = new Button { Content = "OK", Width = 80, Height = 26, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
                 var no = new Button { Content = "Cancel", Width = 80, Height = 26, IsCancel = true };
@@ -1032,7 +1081,7 @@ namespace TypoZen
                         sb.Append("\r\n    ").Append(ins == last ? "(the same as above)" : ins.Length == 0 ? "(no instruction)" : ins).Append("\r\n");
                         last = ins;
                     }
-                    win.Dispatcher.Invoke((Action)(() => toldBox.Text = sb.ToString()));
+                    win.Dispatcher.Invoke((Action)(() => { toldBox.Text = sb.ToString(); toldFold.IsExpanded = true; }));
                     say("Playing " + which + " (" + secs.ToString("0") + "s).");
                 });
                 applyPlay();            // work() disabled the buttons; this row's Stop stays live
@@ -1075,8 +1124,9 @@ namespace TypoZen
                 else if (busyBar.Visibility != Visibility.Visible)
                 {
                     playA.IsEnabled = takeA.IsEnabled = true;
-                    playB.IsEnabled = takeB.IsEnabled = kept != null;
+                    playB.IsEnabled = takeB.IsEnabled = kept != null && narratorReady;
                 }
+                gateNarrator();
             };
             playA.Click += (s, e) => { if (playing == "Current") stopTrial(); else playCurrent(); };
             takeA.Click += (s, e) => { currentTake++; updateA(); playCurrent(); };
@@ -1122,6 +1172,7 @@ namespace TypoZen
             Action<VoiceItem> playSample = v =>
             {
                 if (v != null && !string.IsNullOrEmpty(v.Preview) && System.IO.File.Exists(v.Preview)) { play(v.Preview); return; }
+                if (!narratorReady) { say("This voice has no recording yet, and the narrator is still starting: try again in a moment."); return; }
                 string id = v != null ? v.Id : "";
                 work("Rendering a sample in this voice:", 15, () =>
                 {
@@ -1483,6 +1534,7 @@ namespace TypoZen
                     ShowInTaskbar = false, Background = win.Background, Foreground = win.Foreground
                 };
                 try { vw.Owner = win; } catch { }
+                DialogTheme.Apply(vw, win);
                 var close = button("Close");
                 close.Width = 92; close.IsCancel = true; close.Margin = new Thickness(0);
                 close.Click += (s2, e2) => vw.Close();
@@ -1565,20 +1617,46 @@ namespace TypoZen
             };
 
             // The narrator is needed for everything else here: start it (a no-op when it is up), then list the voices.
+            int startGen = 0;
             Action startSide = () =>
-                work("Starting the " + side.Name + " narrator...", 0, () =>
+            {
+                int gen = ++startGen;
+                narratorReady = false;
+                gateNarrator();
+                Action<string> show = m => win.Dispatcher.BeginInvoke((Action)(() =>
                 {
-                    bool up = side.Engine.EnsureRunning(cacheDir, appDir, m => { if (!string.IsNullOrEmpty(m)) say(m); }, CancellationToken.None).Result;
-                    if (!up) { say("The narrator did not start, so nothing here can be changed now."); return; }
-                    loadVoices();
-                    say("");
+                    if (gen != startGen) return;
+                    startLine.Text = m ?? "";
+                    startLine.Visibility = string.IsNullOrEmpty(m) ? Visibility.Collapsed : Visibility.Visible;
+                }));
+                show("Starting the " + side.Name + " narrator...");
+                var engine = side.Engine;
+                Task.Run(() =>
+                {
+                    bool up = false;
+                    try { up = engine.EnsureRunning(cacheDir, appDir, m => { if (!string.IsNullOrEmpty(m)) show(m); }, CancellationToken.None).Result; }
+                    catch (Exception ex) { show("The narrator did not start: " + ex.Message); }
+                    if (gen != startGen) return;
+                    if (!up) { show("The narrator did not start, so Play, Design and Clone are not available now."); return; }
+                    try { loadVoices(); } catch { }
+                    win.Dispatcher.BeginInvoke((Action)(() =>
+                    {
+                        if (gen != startGen) return;
+                        narratorReady = true;
+                        foreach (var b in needNarrator) b.ToolTip = null;
+                        if (busyWhat == null) foreach (var b in needNarrator) b.IsEnabled = true;
+                        refreshLibButtons();
+                        applyPlay();
+                        startLine.Visibility = Visibility.Collapsed;
+                    }));
                 });
+            };
 
             // What depends on which narrator is chosen: the voices, Design's wording, Clone.
             Action applySide = () =>
             {
-                designNote.Text = "Describe who they are: age, accent, texture. Three candidates come back; name and keep the one you want. "
-                                + (side.Breeze ? "About a minute." : "About a minute and a half.");
+                designNote.Text = "Age, accent, texture. Three candidates come back, "
+                                + (side.Breeze ? "in about a minute." : "in about a minute and a half.");
                 clonePanel.IsEnabled = side.Breeze;
                 breezePanel.IsEnabled = side.Breeze;
                 foreach (var box in castStrengthBoxes.Values) box.IsEnabled = side.Breeze;
