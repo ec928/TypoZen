@@ -473,6 +473,7 @@ namespace TypoZen
                 castPage.Children.Add(heading("Cast for this book"));
                 castPage.Children.Add(note("Give characters voices of their own: their lines are spoken in that voice, and the narrator reads the rest. Who speaks is read from the text (\"said Ferbin\"); an untagged or ambiguous line stays with the narrator."));
                 castPage.Children.Add(note("Instruction is optional. When it is filled in, that character's lines are told it, the same way the narrator's instruction is told to the narration. Leave it empty and the line is told only to speak in character."));
+                castPage.Children.Add(note("Strength is Breeze's: how hard that character's lines follow their instruction, 1 to 10, 4 unless you change it. A tag's own number, [sad:9], still wins for its line."));
                 if (QwenNarrator.PrivateMode)
                     castPage.Children.Add(note("Privacy Mode is on: this book's cast is kept until TypoZen closes and is not saved to disk."));
                 findCast = button("Find characters");
@@ -483,7 +484,9 @@ namespace TypoZen
                     new TextBlock { Width = 28, Margin = new Thickness(0, 0, 8, 0) },
                     new TextBlock { Text = "Character", Width = 200, Opacity = 0.7 },
                     new TextBlock { Text = "Voice", Width = 220, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
-                    new TextBlock { Text = "Instruction", Width = 420, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 }
+                    new TextBlock { Text = "Instruction", Width = 360, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
+                    new TextBlock { Text = "Strength", Width = 60, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7,
+                                    ToolTip = "Breeze only: how hard this character's lines follow their instruction, 1 to 10." }
                 }));
                 castPage.Children.Add(castPanel);
             }
@@ -604,13 +607,36 @@ namespace TypoZen
 
             // Assigned below, once the busy-button list exists. The row's play button calls it.
             Action<string, double, Action> work = null;
+            // Each character's Breeze strength as typed, kept across the rows being rebuilt; the
+            // boxes themselves, so the narrator choice can grey them under Qwen.
+            var castStrengthText = new Dictionary<string, string>();
+            var castStrengthBoxes = new Dictionary<string, TextBox>();
+            Func<string, double> castStrengthOf = key =>
+            {
+                string t; double v;
+                if (castStrengthText.TryGetValue(key, out t) && double.TryParse(t, out v)) return Math.Max(1, Math.Min(10, v));
+                return QwenNarrator.CastStrengthDefault;
+            };
             Action<string, string, string, string> addCastRow = (key, name, chosen, line) =>
             {
                 foreach (var r in castRows) if (r.Item1 == key) return;
                 var cb = voicePicker(chosen);
+                if (!castStrengthText.ContainsKey(key))
+                {
+                    double had;
+                    castStrengthText[key] = (cast.Strengths.TryGetValue(key, out had) ? had : QwenNarrator.CastStrengthDefault).ToString("0.#");
+                }
+                var strengthBox = new TextBox
+                {
+                    Text = castStrengthText[key], Width = 44, Height = 28, Margin = new Thickness(8, 0, 0, 0),
+                    VerticalContentAlignment = VerticalAlignment.Center, MaxLength = 4, IsEnabled = side.Breeze,
+                    ToolTip = "Breeze only: how hard this character's lines follow their instruction, 1 to 10 (default 4). A tag's own number, [sad:9], still wins."
+                };
+                strengthBox.TextChanged += (s, e) => castStrengthText[key] = strengthBox.Text;
+                castStrengthBoxes[key] = strengthBox;
                 var sayBox = new TextBox
                 {
-                    Text = line ?? "", Width = 420, Height = 28, Margin = new Thickness(8, 0, 0, 0),
+                    Text = line ?? "", Width = 360, Height = 28, Margin = new Thickness(8, 0, 0, 0),
                     VerticalContentAlignment = VerticalAlignment.Center, MaxLength = 1500,
                     ToolTip = "Sent with this character's lines. Leave empty to keep the usual in-character line."
                 };
@@ -654,7 +680,8 @@ namespace TypoZen
                                     { "text", "You should have waited for me." },
                                     { "role", "dialogue" },
                                     { "voice", id },
-                                    { "instruction", spoken }
+                                    { "instruction", spoken },
+                                    { "strength", castStrengthOf(key) }
                                 }
                             }}
                         };
@@ -685,7 +712,7 @@ namespace TypoZen
                     Text = name, Width = 200, VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = name
                 };
-                castPanel.Children.Add(row(new UIElement[] { playLine, label, cb, sayBox }));
+                castPanel.Children.Add(row(new UIElement[] { playLine, label, cb, sayBox, strengthBox }));
             };
 
             // A voice the library can act on: one of the reader's, not built in.
@@ -713,6 +740,7 @@ namespace TypoZen
                 // The cast pickers are rebuilt with the new list, keeping each choice.
                 var old = new List<Tuple<string, string, ComboBox, TextBox>>(castRows);
                 castRows.Clear();
+                castStrengthBoxes.Clear();
                 castPlays.Clear();
                 castPanel.Children.Clear();
                 foreach (var r in old)
@@ -1365,12 +1393,14 @@ namespace TypoZen
                             cast.Names[r.Item1] = r.Item2;
                             if (line.Length > 0) cast.Instructions[r.Item1] = line;
                             else cast.Instructions.Remove(r.Item1);
+                            cast.Strengths[r.Item1] = castStrengthOf(r.Item1);
                         }
                         else
                         {
                             cast.Voices.Remove(r.Item1);
                             cast.Names.Remove(r.Item1);
                             cast.Instructions.Remove(r.Item1);
+                            cast.Strengths.Remove(r.Item1);
                         }
                     }
                     QwenNarrator.SaveCast(cacheDir, book, cast);
@@ -1401,6 +1431,9 @@ namespace TypoZen
                     string sayNow = (r.Item4.Text ?? "").Trim(), sayWas;
                     if (!cast.Instructions.TryGetValue(r.Item1, out sayWas)) sayWas = "";
                     if (sayNow != sayWas.Trim()) return true;
+                    double strengthWas;
+                    if (!cast.Strengths.TryGetValue(r.Item1, out strengthWas)) strengthWas = QwenNarrator.CastStrengthDefault;
+                    if (now.Length > 0 && Math.Abs(castStrengthOf(r.Item1) - strengthWas) > 0.01) return true;
                 }
                 return false;
             };
@@ -1548,6 +1581,7 @@ namespace TypoZen
                                 + (side.Breeze ? "About a minute." : "About a minute and a half.");
                 clonePanel.IsEnabled = side.Breeze;
                 breezePanel.IsEnabled = side.Breeze;
+                foreach (var box in castStrengthBoxes.Values) box.IsEnabled = side.Breeze;
                 breezePanel.Opacity = side.Breeze ? 1 : 0.5;
                 breezeWhy.Visibility = side.Breeze ? Visibility.Collapsed : Visibility.Visible;
                 clonePanel.Opacity = side.Breeze ? 1 : 0.5;

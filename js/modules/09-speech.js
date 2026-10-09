@@ -509,6 +509,8 @@ let _narrAudioHost = 'localnarration';
 let _narrAudioHostPrivate = 'localnarrationp';
 // Breeze's Emotion strength from Narrator Settings; 0 sends none (Qwen, or the narrator's default).
 let _narrStrength = 0;
+// Breeze strength per cast character (Cast for this book); a character without one is at 4.
+let _narrCastStrength = {};
 // The settings the narration monitor shows beside each piece: what shapes every line.
 let _narrShown = {};
 // The narration monitor is open (cmd:narr_monitor:on): each piece reports itself as it plays.
@@ -542,6 +544,7 @@ window.setNarratorSettings = function (json) {
         if (s.audioHost) _narrAudioHost = s.audioHost;
         NARRATION_BATCH = s.batch > 0 ? s.batch : 8;
         _narrStrength = parseFloat(s.strength) || 0;
+        _narrCastStrength = (s.castStrength && typeof s.castStrength === 'object') ? s.castStrength : {};
         _narrShown = {
             engine: s.engine || 'qwen', voice: s.voiceName || s.voice || '', instruction: _narrInstruction,
             cuesOn: _narrDirect, cue: _narrCue, strength: _narrStrength, speed: _narrSpeed, private: _narrPrivate
@@ -790,7 +793,9 @@ async function renderNarration(base, batch, reading) {
         const st = takeStrength(p.text, told.instruction);
         const b = { id: p.id, text: st.text, direction: told.direction,
                     voice: p.voice || '', role: p.role || 'narration', instruction: st.instruction };
+        // A line's own number wins; else a cast character's strength (4 unless set in the cast).
         if (st.strength) b.strength = st.strength;
+        else if (p.role === 'dialogue' && p.speaker && _narrCast[p.speaker]) b.strength = parseFloat(_narrCastStrength[p.speaker]) || 4;
         return b;
     });
     let data;
