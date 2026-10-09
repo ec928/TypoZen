@@ -212,6 +212,37 @@ namespace TypoZen
     </Setter>
   </Style>
 
+  <!-- Right-click menus: Windows' own keeps a pale strip for icons down the left, a white
+       blob in a dark theme (2026-10-09). -->
+  <Style TargetType='ContextMenu'>
+    <Setter Property='Foreground' Value='{DynamicResource TzText}'/>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='ContextMenu'>
+          <Border Background='{DynamicResource TzField}' BorderBrush='{DynamicResource TzBorder}' BorderThickness='1' CornerRadius='3' Padding='2'>
+            <StackPanel IsItemsHost='True' KeyboardNavigation.DirectionalNavigation='Cycle'/>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <Style TargetType='MenuItem'>
+    <Setter Property='Foreground' Value='{DynamicResource TzText}'/>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='MenuItem'>
+          <Border x:Name='b' Background='Transparent' Padding='12,5,24,5' CornerRadius='2'>
+            <ContentPresenter ContentSource='Header' RecognizesAccessKey='True'/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property='IsHighlighted' Value='True'><Setter TargetName='b' Property='Background' Value='{DynamicResource TzHover}'/></Trigger>
+            <Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.45'/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <Style TargetType='CheckBox'><Setter Property='Foreground' Value='{DynamicResource TzText}'/></Style>
   <Style TargetType='RadioButton'><Setter Property='Foreground' Value='{DynamicResource TzText}'/></Style>
 </ResourceDictionary>";

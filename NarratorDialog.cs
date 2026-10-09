@@ -405,6 +405,7 @@ namespace TypoZen
             var libList = new ListBox { Height = 180, MinWidth = 320 };
             var libPlay = button("▶ Play sample");
             var exportVoice = button("Export...");
+            exportVoice.ToolTip = "Saves this voice as a .tzvoice file, to keep or use on another PC. Designing from the same description makes a different person each time, so a voice you like is worth keeping.";
             var deleteVoice = button("Delete...");
             var importVoice = button("Import...");
             foreach (var b in new[] { libPlay, exportVoice, deleteVoice, importVoice }) { b.Margin = new Thickness(0, 0, 0, 8); b.HorizontalContentAlignment = HorizontalAlignment.Left; }
@@ -421,7 +422,6 @@ namespace TypoZen
             lib.Children.Add(libRow);
             var libDesc = selectable();
             lib.Children.Add(libDesc);
-            lib.Children.Add(note("A designed voice cannot be made again: Export keeps a copy as a .tzvoice file."));
 
             lib.Children.Add(heading("Design a new voice"));
             var designNote = note("");
@@ -770,7 +770,10 @@ namespace TypoZen
             Action refreshLibButtons = () =>
             {
                 var v = libList.SelectedItem as VoiceItem;
-                deleteVoice.IsEnabled = exportVoice.IsEnabled = removable(v);
+                deleteVoice.IsEnabled = removable(v);
+                // Any voice with its recordings on disk can be saved, including the other narrator's;
+                // only deleting is limited to the narrator that owns it.
+                exportVoice.IsEnabled = v != null && !string.IsNullOrEmpty(v.Preview) && System.IO.File.Exists(v.Preview);
             };
 
             Action fillVoices = () =>
@@ -1009,6 +1012,15 @@ namespace TypoZen
                 copyDesc.IsEnabled = useDesc.IsEnabled = v != null && !string.IsNullOrWhiteSpace(v.Description);
             };
             libList.ContextMenu = libMenu;
+            // A right-click menu opens in a window of its own and need not find this one's styles, so
+            // it is handed the theme's just before it opens (DialogTheme; the white strip, 2026-10-09).
+            libList.ContextMenuOpening += (s, e) =>
+            {
+                var menuStyle = libList.TryFindResource(typeof(ContextMenu)) as Style;
+                var itemStyle = libList.TryFindResource(typeof(MenuItem)) as Style;
+                if (menuStyle != null && libMenu.Style != menuStyle) libMenu.Style = menuStyle;
+                if (itemStyle != null) libMenu.ItemContainerStyle = itemStyle;
+            };
             libList.SelectionChanged += (s, e) =>
             {
                 var v = libList.SelectedItem as VoiceItem;
@@ -1272,7 +1284,7 @@ namespace TypoZen
             exportVoice.Click += (s, e) =>
             {
                 var v = libList.SelectedItem as VoiceItem;
-                if (!removable(v)) return;
+                if (v == null || string.IsNullOrEmpty(v.Preview) || !System.IO.File.Exists(v.Preview)) return;
                 string dir = System.IO.Path.GetDirectoryName(v.Preview);
                 string file = v.Name;
                 foreach (char c in System.IO.Path.GetInvalidFileNameChars()) file = file.Replace(c, '-');
