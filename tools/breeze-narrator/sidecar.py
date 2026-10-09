@@ -54,8 +54,9 @@ NARRATION_BASE = (
     "performed."
 )
 LIGHT_DIALOGUE = " Give the spoken lines a light, distinct colour without acting them out."
-DIRECTED_SUFFIX = (" Voice the lines in quotation marks as %s, clearly but with restraint, "
-                   "and keep the narration around them measured.")
+# Plain since 2026-10-09: "clearly but with restraint, and keep the narration around them measured"
+# told the narrator to hold back on exactly the lines a cue marks as emphatic or breaking off.
+DIRECTED_SUFFIX = " Voice the lines in quotation marks as %s."
 THOUGHT_SUFFIX = " This passage is a character's private thought: read it quieter and more inward."
 DIALOGUE = "Speak this line of dialogue as the character would say it, naturally and in character."
 DIALOGUE_DIRECTED = "Speak this line of dialogue as the character would say it: %s."

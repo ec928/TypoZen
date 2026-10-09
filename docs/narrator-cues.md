@@ -167,11 +167,11 @@ A paragraph with no quotation marks, and at least about seven tenths of it in it
 
 ## The wording of the instruction
 
-For narration, your instruction is used as written. A speech tag's own words are added after it, and are not wrapped. A punctuation cue still uses the cue wording, added after your instruction. `{cue}` is emphatic or breaking off. The default wording is:
+For narration, your instruction is used as written. A speech tag's own words are added after it, and are not wrapped. A punctuation cue still uses the cue wording, added after your instruction. `{cue}` is emphatic or breaking off. The wording is:
 
-> Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured.
+> Voice the lines in quotation marks as {cue}.
 
-Cue wording is the fold under Emotion cues. Restore default wording puts that sentence back.
+Until 2026-10-09 it added "clearly but with restraint, and keep the narration around them measured", and could be edited under Emotion cues; that told the narrator to hold back on exactly these lines, so it is gone, and a setting saved with it reads as the plain wording.
 
 A character who has a voice is told her cast box, with the speech tag added after it when there is one. Anna's snapped line, with an empty box, is told `snapped`. A character line with no cue and an empty cast box is told: "Speak this line of dialogue as the character would say it, naturally and in character."
 

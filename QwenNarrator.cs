@@ -95,12 +95,14 @@ namespace TypoZen
         /// <summary>
         /// How a punctuation cue is worded when it is added; {cue} is emphatic or breaking off.
         /// A speech tag's own words are added by the page, not passed through this sentence.
-        /// The plain "Voice the lines in quotation marks as {cue}." was the default in 0.6.19, on
-        /// the reasoning that "restraint" fights the cue; by ear it came out less angry than this
-        /// wording on "I know," she snapped, against the same cues-off clip (2026-09-26, one take
-        /// each). Kept until more listening says otherwise.
+        /// Plain, since 2026-10-09 (Ed): the previous default -- LegacyCue -- told the narrator to hold
+        /// back ("with restraint", "measured") on exactly the lines meant to be emphatic or breaking
+        /// off. It had won one Qwen take on a speech tag in 2026-09-26, before speech tags stopped going
+        /// through this sentence. The wording is no longer in Narrator Settings.
         /// </summary>
-        public const string DefaultCue = "Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured.";
+        public const string DefaultCue = "Voice the lines in quotation marks as {cue}.";
+        /// <summary>The default until 2026-10-09; a setting saved with it now reads as DefaultCue.</summary>
+        private const string LegacyCue = "Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured.";
 
         /// <summary>
         /// The starting points offered in Narrator Settings, in order. Not editable in place; save a
@@ -213,6 +215,7 @@ namespace TypoZen
                 r.Instruction = (style.Length > 0 ? StylePrefix + style : LegacyBase) + LegacyDialogue;
             }
             if (d.TryGetValue("cue", out q) && q is string && ((string)q).Trim().Length > 0) r.Cue = (string)q;
+            if (r.Cue.Trim() == LegacyCue) r.Cue = DefaultCue;
             return r;
         }
 

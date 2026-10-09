@@ -313,7 +313,8 @@ namespace TypoZen
                 left.Children.Add(breezePanel);
                 left.Children.Add(breezeWhy);
             }
-            left.Children.Add(cueFold);
+            // Cue wording is no longer shown (2026-10-09): it only words punctuation cues, and its
+            // default told the narrator to hold back. cueBox still carries the saved wording through Save.
 
             // ---- Try it: its own panel, always in view
             var tryPanel = new DockPanel();
