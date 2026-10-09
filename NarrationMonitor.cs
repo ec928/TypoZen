@@ -50,7 +50,9 @@ namespace TypoZen
                 IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 MinHeight = 150, FontSize = 12.5, BorderThickness = new Thickness(1), Text = "Press Read Aloud with a narrator voice chosen."
             };
-            _before = new ListBox { FontSize = 11.5 };
+            // Entries wrap to the window's width rather than run off to the right.
+            _before = new ListBox { FontSize = 11.5, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            ScrollViewer.SetHorizontalScrollBarVisibility(_before, ScrollBarVisibility.Disabled);
             var top = new StackPanel { Margin = new Thickness(14, 4, 14, 0) };
             top.Children.Add(heading("Settings for every piece"));
             top.Children.Add(_settings);
@@ -99,8 +101,8 @@ namespace TypoZen
                 bool cues = st.TryGetValue("cuesOn", out o) && o is bool && (bool)o;
                 sb.Append("  Emotion cues: ").Append(cues ? "on" : "off");
                 string cue = Str(st, "cue");
-                if (cues && cue.Length > 0) sb.Append(", worded “").Append(cue).Append('”');
-                sb.Append('.');
+                if (cues && cue.Length > 0) sb.Append(", worded “").Append(cue.TrimEnd().TrimEnd('.')).Append("”.");
+                else sb.Append('.');
                 if (breeze) sb.Append("  Emotion strength: ").Append(Num(st, "strength", 4).ToString("0.#")).Append('.');
                 if (st.TryGetValue("private", out o) && o is bool && (bool)o) sb.Append("  Privacy Mode: on.");
                 _settings.Text = sb.ToString();
@@ -117,14 +119,12 @@ namespace TypoZen
                 now.Append("\r\n");
                 int n = 0;
                 var parts = d.TryGetValue("parts", out o) ? o as System.Collections.IEnumerable : null;
-                string firstText = "";
                 foreach (var po in parts ?? new object[0])
                 {
                     var p = po as Dictionary<string, object>;
                     if (p == null) continue;
                     n++;
                     string text = Str(p, "text"), ins = Str(p, "instruction");
-                    if (firstText.Length == 0) firstText = text;
                     now.Append("\r\n");
                     if (n > 1 || CountParts(parts) > 1) now.Append("Part ").Append(n).Append("\r\n");
                     now.Append("Text sent:   ").Append(text).Append("\r\n");
@@ -133,8 +133,15 @@ namespace TypoZen
                         now.Append("Strength:    ").Append(ins.Length == 0 ? "none (no instruction)" : Num(p, "strength", 1).ToString("0.#")).Append("\r\n");
                 }
                 _now.Text = now.ToString();
-                _before.Items.Insert(0, DateTime.Now.ToString("HH:mm:ss") + "  " + (role == "dialogue" ? voice : "Narrator") + ": "
-                                         + (firstText.Length > 90 ? firstText.Substring(0, 90) + "..." : firstText));
+                // History keeps the whole of it -- text, instruction, strength, part by part -- not the
+                // first words alone (Ed, 2026-10-09: "log history is incomplete"). Selectable, to copy.
+                var entry = new TextBox
+                {
+                    Text = DateTime.Now.ToString("HH:mm:ss") + "  " + now.ToString().TrimEnd(),
+                    IsReadOnly = true, TextWrapping = TextWrapping.Wrap, BorderThickness = new Thickness(0),
+                    Background = Brushes.Transparent, Foreground = _now.Foreground, Padding = new Thickness(0, 4, 0, 8)
+                };
+                _before.Items.Insert(0, entry);
                 while (_before.Items.Count > Kept) _before.Items.RemoveAt(_before.Items.Count - 1);
             }
             catch (Exception ex) { if (_now != null) _now.Text = "Could not show this piece: " + ex.Message; }
