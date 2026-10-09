@@ -112,25 +112,25 @@ namespace TypoZen
                 double secs = Num(d, "seconds", 0);
                 bool cached = d.TryGetValue("cached", out o) && o is bool && (bool)o;
                 double ownStrength = Num(d, "strength", 0);
+                // Compact: a header, then two lines per part -- the text, and the instruction with its
+                // strength -- and no blank lines (Ed, 2026-10-09: "hard to read").
                 var now = new StringBuilder();
-                now.Append(role == "dialogue" ? "A character" : "The narrator").Append(", in ").Append(voice)
-                   .Append(" — ").Append(secs.ToString("0.0")).Append("s, ").Append(cached ? "from saved audio" : "rendered just now");
-                if (ownStrength > 0) now.Append(", the line's own strength ").Append(ownStrength.ToString("0.#"));
-                now.Append("\r\n");
-                int n = 0;
+                now.Append(role == "dialogue" ? "Character" : "Narrator").Append(" · ").Append(voice)
+                   .Append(" · ").Append(secs.ToString("0.0")).Append("s · ").Append(cached ? "saved" : "rendered");
+                if (ownStrength > 0) now.Append(" · line strength ").Append(ownStrength.ToString("0.#"));
                 var parts = d.TryGetValue("parts", out o) ? o as System.Collections.IEnumerable : null;
+                int count = CountParts(parts), n = 0;
                 foreach (var po in parts ?? new object[0])
                 {
                     var p = po as Dictionary<string, object>;
                     if (p == null) continue;
                     n++;
                     string text = Str(p, "text"), ins = Str(p, "instruction");
-                    now.Append("\r\n");
-                    if (n > 1 || CountParts(parts) > 1) now.Append("Part ").Append(n).Append("\r\n");
-                    now.Append("Text sent:   ").Append(text).Append("\r\n");
-                    now.Append("Instruction: ").Append(ins.Length == 0 ? "none" : ins).Append("\r\n");
-                    if (breeze)
-                        now.Append("Strength:    ").Append(ins.Length == 0 ? "none (no instruction)" : Num(p, "strength", 1).ToString("0.#")).Append("\r\n");
+                    string mark = count > 1 ? n + ". " : "";
+                    string pad = new string(' ', mark.Length);
+                    now.Append("\r\n").Append(mark).Append("Text: ").Append(text);
+                    now.Append("\r\n").Append(pad).Append("Instruction: ").Append(ins.Length == 0 ? "none" : ins);
+                    if (breeze && ins.Length > 0) now.Append("  (strength ").Append(Num(p, "strength", 1).ToString("0.#")).Append(')');
                 }
                 _now.Text = now.ToString();
                 // History keeps the whole of it -- text, instruction, strength, part by part -- not the
@@ -139,7 +139,7 @@ namespace TypoZen
                 {
                     Text = DateTime.Now.ToString("HH:mm:ss") + "  " + now.ToString().TrimEnd(),
                     IsReadOnly = true, TextWrapping = TextWrapping.Wrap, BorderThickness = new Thickness(0),
-                    Background = Brushes.Transparent, Foreground = _now.Foreground, Padding = new Thickness(0, 4, 0, 8)
+                    Background = Brushes.Transparent, Foreground = _now.Foreground, Padding = new Thickness(0, 2, 0, 4)
                 };
                 _before.Items.Insert(0, entry);
                 while (_before.Items.Count > Kept) _before.Items.RemoveAt(_before.Items.Count - 1);
