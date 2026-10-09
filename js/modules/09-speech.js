@@ -837,7 +837,7 @@ async function renderNarration(base, batch, reading) {
             audioUrl: narrAudioUrl(items[i]),
             // What the narration monitor shows when this piece plays: what the engine was given.
             monitor: {
-                role: p.role || 'narration', voice: items[i].voice || blocks[i].voice || _narrVoice,
+                role: p.role || 'narration', speaker: p.speaker || '', voice: items[i].voice || blocks[i].voice || _narrVoice,
                 cached: items[i].cached === undefined ? !!data.from_cache : !!items[i].cached,
                 seconds: items[i].seconds || 0, strength: blocks[i].strength || 0,
                 parts: items[i].parts || [{ text: blocks[i].text, instruction: items[i].instruction || '' }]

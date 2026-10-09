@@ -82,7 +82,7 @@ namespace TypoZen
         /// One piece from the page, as it starts to play. `voiceName` turns a voice id into the name
         /// the reader knows it by, for the engine named in the settings.
         /// </summary>
-        public static void Piece(string json, Func<string, string, string> voiceName)
+        public static void Piece(string json, Func<string, string, string> voiceName, Func<string, string> speakerName)
         {
             if (_win == null) return;
             try
@@ -115,7 +115,9 @@ namespace TypoZen
                 // Compact: a header, then two lines per part -- the text, and the instruction with its
                 // strength -- and no blank lines (Ed, 2026-10-09: "hard to read").
                 var now = new StringBuilder();
-                now.Append(role == "dialogue" ? "Character" : "Narrator").Append(" · ").Append(voice)
+                // Who speaks, then in which voice: a character by the name the cast found for them.
+                string who = role == "dialogue" ? speakerName(Str(d, "speaker")) : "Narrator";
+                now.Append(who).Append(" · voice ").Append(voice)
                    .Append(" · ").Append(secs.ToString("0.0")).Append("s · ").Append(cached ? "saved" : "rendered");
                 if (ownStrength > 0) now.Append(" · line strength ").Append(ownStrength.ToString("0.#"));
                 var parts = d.TryGetValue("parts", out o) ? o as System.Collections.IEnumerable : null;

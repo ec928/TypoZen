@@ -2361,6 +2361,26 @@ namespace TypoZen
             catch { }
         }
 
+        /// <summary>
+        /// A character as the open book's cast names them, for the monitor: the name Find characters
+        /// found ("the Baron"), without its line count; else the key, capitalised.
+        /// </summary>
+        private string CastSpeakerName(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return "A character";
+            try
+            {
+                string name;
+                if (QwenNarrator.LoadCast(CacheDir(), _currentFilePath).Names.TryGetValue(key, out name) && !string.IsNullOrWhiteSpace(name))
+                {
+                    int cut = name.IndexOf("  (");
+                    return (cut > 0 ? name.Substring(0, cut) : name).Trim();
+                }
+            }
+            catch { }
+            return System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(key);
+        }
+
         /// <summary>A voice id as the reader knows it, for the monitor: that narrator's own list.</summary>
         private string NarratorVoiceName(string engine, string id)
         {
@@ -7343,7 +7363,7 @@ namespace TypoZen
             else if (msg.StartsWith("host_narr_monitor:", StringComparison.Ordinal))
             {
                 // A piece starting to play, for Read Aloud > Narration Monitor.
-                NarrationMonitor.Piece(msg.Substring(18), NarratorVoiceName);
+                NarrationMonitor.Piece(msg.Substring(18), NarratorVoiceName, CastSpeakerName);
                 return;
             }
             else if (msg == "host_qwen_narrate")
