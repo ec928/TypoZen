@@ -150,7 +150,7 @@ namespace TypoZen
 
             // ---- building blocks. Spacing is on one grid: 4 within a group, 8 between controls,
             // 16 between sections and at the edges.
-            Func<string, TextBlock> heading = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, FontSize = 13.5, Margin = new Thickness(0, 16, 0, 4) };
+            Func<string, TextBlock> heading = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, FontSize = 13.5, Margin = new Thickness(0, 10, 0, 3) };
             Func<string, TextBlock> note = t => new TextBlock { Text = t, TextWrapping = TextWrapping.Wrap, Opacity = 0.72, Margin = new Thickness(0, 0, 0, 8) };
             Func<string, Button> button = t => new Button { Content = t, Padding = new Thickness(12, 2, 12, 2), Height = 28, Margin = new Thickness(0, 0, 8, 0) };
             // The action a section exists for -- Save, Play -- in the accent colour, so the eye
@@ -248,14 +248,14 @@ namespace TypoZen
             presetRow.Children.Add(presetLabel);
             presetRow.Children.Add(presetBox);
             left.Children.Add(presetRow);
-            var instructionBox = new TextBox { Text = settings.Instruction, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 96, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            var instructionBox = new TextBox { Text = settings.Instruction, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 64, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             // Empty is a real choice, so it says what it means rather than looking unfinished.
             var instructionHint = new TextBlock
             {
                 Text = "No instruction: the narrator reads with nothing but the text.", Margin = new Thickness(6, 4, 6, 0),
                 Foreground = Brushes.Gray, IsHitTestVisible = false, TextWrapping = TextWrapping.Wrap
             };
-            var instructionCell = new Grid { Margin = new Thickness(0, 8, 0, 8) };
+            var instructionCell = new Grid { Margin = new Thickness(0, 4, 0, 4) };
             instructionCell.Children.Add(instructionBox);
             instructionCell.Children.Add(instructionHint);
             left.Children.Add(instructionCell);
