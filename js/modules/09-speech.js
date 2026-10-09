@@ -722,7 +722,8 @@ window.narrationTrial = async function (json) {
         }
         if (items.length !== pieces.length) throw new Error('the narrator returned ' + items.length + ' of ' + pieces.length + ' pieces');
         trialTell({ kind: 'ready', pieces: pieces.map((p, i) => ({
-            text: p.text, cue: o.direct ? p.direction : '', instruction: items[i].instruction || '', seconds: items[i].seconds || 0 })) });
+            text: p.text, cue: o.direct ? p.direction : '', instruction: items[i].instruction || '', seconds: items[i].seconds || 0,
+            parts: items[i].parts || null })) });
         // The narrator Narrator Settings is trying: its own audio hosts, which need not be the reading one's.
         const host = o.audioHost || _narrAudioHost, hostPrivate = o.audioHostPrivate || _narrAudioHostPrivate;
         _trialQueue = items.map(it => 'https://' + (it.private ? hostPrivate : host) + '/' + it.file);

@@ -1068,7 +1068,7 @@ namespace TypoZen
                     if (kind == "error") { notPlaying(); say("That did not work: " + Convert.ToString(d["message"])); return; }
                     if (kind != "ready") { notPlaying(); say(""); return; }
                     var sb = new System.Text.StringBuilder();
-                    sb.Append(which).Append(": ").Append(t.Describe()).Append("\r\n\r\n");
+                    sb.Append(which).Append(": ").Append(t.Describe()).Append("\r\n");
                     string last = null;
                     double secs = 0;
                     int n = 0;
@@ -1077,9 +1077,24 @@ namespace TypoZen
                         var piece = (Dictionary<string, object>)o;
                         string ptext = Convert.ToString(piece["text"]), cue = Convert.ToString(piece["cue"]), ins = Convert.ToString(piece["instruction"]);
                         secs += Convert.ToDouble(piece["seconds"]);
-                        sb.Append(++n).Append(". ").Append(ptext.Length > 60 ? ptext.Substring(0, 60) + "..." : ptext);
-                        if (cue.Length > 0) sb.Append("   [cue: ").Append(cue).Append("]");
-                        sb.Append("\r\n    ").Append(ins == last ? "(the same as above)" : ins.Length == 0 ? "(no instruction)" : ins).Append("\r\n");
+                        // The Narration Monitor's layout: the text, then the instruction with its strength and
+                        // where its cue came from, one line each (Ed, 2026-10-09: "what's this?").
+                        string mark = (++n) + ". ", pad = new string(' ', mark.Length);
+                        string strength = "";
+                        object partsO;
+                        if (ins.Length > 0 && piece.TryGetValue("parts", out partsO) && partsO is System.Collections.IEnumerable)
+                            foreach (var po in (System.Collections.IEnumerable)partsO)
+                            {
+                                var p = po as Dictionary<string, object>;
+                                if (p != null && Convert.ToString(p["instruction"]).Length > 0) strength = Convert.ToDouble(p["strength"]).ToString("0.#");
+                            }
+                        var why = new List<string>();
+                        if (strength.Length > 0) why.Add("strength " + strength);
+                        if (cue.Length > 0) why.Add("from “" + cue + "”");
+                        sb.Append(mark).Append("Text: ").Append(ptext.Length > 100 ? ptext.Substring(0, 100) + "..." : ptext).Append("\r\n");
+                        sb.Append(pad).Append("Instruction: ").Append(ins.Length == 0 ? "none" : ins);
+                        if (why.Count > 0) sb.Append("  (").Append(string.Join(", ", why.ToArray())).Append(")");
+                        sb.Append("\r\n");
                         last = ins;
                     }
                     win.Dispatcher.Invoke((Action)(() => { toldBox.Text = sb.ToString(); toldFold.IsExpanded = true; }));
