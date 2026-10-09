@@ -429,26 +429,33 @@ class Narrator(object):
             vid, n = '%s-%d' % (slug, n), n + 1
         return vid
 
-    def _candidate(self, cid, reference_audio, transcript, meta, style=''):
-        """A voice not yet kept: its recording, its words, and PREVIEW_TEXT read in it."""
+    def _candidate(self, cid, reference_audio, transcript, meta, style='', preview_render=True):
+        """A voice not yet kept: its recording, its words, and what Play plays. A designed voice plays its
+        own recording -- the same model made it, so reading PREVIEW_TEXT in it again only doubled the
+        wait (Ed, 2026-10-10). A clone plays PREVIEW_TEXT in the copied voice: that is how a clone is
+        judged."""
+        import shutil
         import soundfile as sf
         d = os.path.join(self.voices_dir, '_candidates', cid)
         os.makedirs(d, exist_ok=True)
         ref = os.path.join(d, 'reference.wav')
         sf.write(ref, reference_audio, SAMPLE_RATE, subtype='PCM_16')
-        preview = self._generate(PREVIEW_TEXT, told=instruction(style, '', 'narration'),
-                                 reference=ref, transcript=transcript)
-        sf.write(os.path.join(d, 'preview.wav'), preview, self.sr, subtype='PCM_16')
+        if preview_render:
+            preview = self._generate(PREVIEW_TEXT, told=instruction(style, '', 'narration'),
+                                     reference=ref, transcript=transcript)
+            sf.write(os.path.join(d, 'preview.wav'), preview, self.sr, subtype='PCM_16')
+        else:
+            shutil.copyfile(ref, os.path.join(d, 'preview.wav'))
         with open(os.path.join(d, 'meta.json'), 'w', encoding='utf-8') as f:
             json.dump(dict(meta, transcript=transcript), f)
         return {'candidate': cid, 'preview': os.path.join(d, 'preview.wav'), 'design': ref}
 
-    def design(self, description, count=3, style=''):
+    def design(self, description, count=2, style=''):
         """Candidates for a voice described in words: Breeze reads DESIGN_TEXT as that voice,
         a new speaker each time, and the recording becomes the voice's reference."""
         import shutil
         description = description.strip()[:400]
-        count = max(1, min(int(count or 3), 4))
+        count = max(1, min(int(count or 2), 4))
         root = os.path.join(self.voices_dir, '_candidates')
         with self.lock:
             t = time.time()
@@ -457,7 +464,7 @@ class Narrator(object):
             for k in range(count):
                 audio = self._generate(DESIGN_TEXT, told=description, seed=int(time.time() * 1000 + k) % 100000)
                 out.append(self._candidate('c%d' % (k + 1), audio, DESIGN_TEXT,
-                                           {'description': description, 'made': 'design'}, style))
+                                           {'description': description, 'made': 'design'}, style, preview_render=False))
         log('designed %d candidates in %.1fs' % (count, time.time() - t))
         return out
 

@@ -1521,11 +1521,14 @@ namespace TypoZen
                 // Candidates are made with no style: what you hear is the voice itself, exactly
                 // as narration will use it with the standard reading.
                 string style = "";
-                work("Creating three candidates from your description. The graphics card is busy meanwhile.", side.Breeze ? 60 : 90, () =>
+                // Breeze: two candidates, each its one recording (about 27s). Qwen makes its three in one batch,
+                // so fewer would not be quicker.
+                int count = side.Breeze ? 2 : 3;
+                work("Creating " + (count == 2 ? "two" : "three") + " candidates from your description. The graphics card is busy meanwhile.", side.Breeze ? 30 : 90, () =>
                 {
                     showCandidates(side.Engine.Call("POST", "/design", new JavaScriptSerializer().Serialize(
-                        new Dictionary<string, object> { { "description", desc }, { "count", 3 }, { "style", style } }), 300000));
-                    say("Three candidates, read by the narrator as each would sound. Play them, then name and keep the one you want.");
+                        new Dictionary<string, object> { { "description", desc }, { "count", count }, { "style", style } }), 300000));
+                    say((count == 2 ? "Two" : "Three") + " candidates. Play them, then name and keep the one you want.");
                 });
             };
 
@@ -1851,8 +1854,9 @@ namespace TypoZen
             // What depends on which narrator is chosen: the voices, Design's wording, Clone.
             Action applySide = () =>
             {
-                designNote.Text = "Age, accent, texture. Three candidates come back, "
-                                + (side.Breeze ? "in about a minute." : "in about a minute and a half.");
+                designNote.Text = side.Breeze ? "Age, accent, texture. Two candidates come back, in about half a minute."
+                                              : "Age, accent, texture. Three candidates come back, in about a minute and a half.";
+                design.Content = side.Breeze ? "Create 2 candidates" : "Create 3 candidates";
                 clonePanel.IsEnabled = side.Breeze;
                 breezePanel.IsEnabled = side.Breeze;
                 foreach (var box in castStrengthBoxes.Values) box.IsEnabled = side.Breeze;
