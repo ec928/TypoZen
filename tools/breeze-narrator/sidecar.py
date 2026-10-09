@@ -580,12 +580,18 @@ class Narrator(object):
         log('imported voice %s' % vid)
         return vid, name, False
 
-    def delete_voice(self, vid):
-        """Only this extension's own voices: Qwen's library is read here, never changed."""
+    def delete_voice(self, vid, both=False):
+        """This extension's own voices; a Qwen-made voice only when the reader has agreed it goes from
+        both narrators (`both`): it lives in the Qwen narrator's folder, which both read."""
         v = self.voices.get(vid)
-        if not v or v['source'] != 'breeze' or vid.startswith('_') or '/' in vid or '\\' in vid:
+        if not v or vid.startswith('_') or '/' in vid or '\\' in vid:
             raise ValueError('cannot delete %s here' % vid)
-        recycle(os.path.join(self.voices_dir, vid))
+        if v['source'] == 'breeze':
+            recycle(os.path.join(self.voices_dir, vid))
+        elif v['source'] == 'qwen' and both and self.qwen_voices:
+            recycle(os.path.join(self.qwen_voices, vid))
+        else:
+            raise ValueError('cannot delete %s here' % vid)
         self.reload_voices()
         log('deleted voice %s (to the Recycle Bin)' % vid)
 
@@ -749,7 +755,7 @@ class Handler(BaseHTTPRequestHandler):
                 vid, name, already = n.import_voice(body.get('path') or '')
                 self._send(200, {'id': vid, 'name': name, 'already': already})
             elif self.path.startswith('/voices/delete'):
-                n.delete_voice(body.get('id') or '')
+                n.delete_voice(body.get('id') or '', bool(body.get('both')))
                 self._send(200, {'ok': True})
             elif self.path.startswith('/preview'):
                 path, secs = n.preview(n.known_voice(body.get('voice') or DEFAULT_VOICE), body.get('style') or '')

@@ -51,6 +51,8 @@ namespace TypoZen
             public string Preview;
             /// <summary>The narrator being edited made it, so it may be deleted and exported here.</summary>
             public bool Mine;
+            /// <summary>"qwen" for a voice in the Qwen narrator's folder, which both narrators read.</summary>
+            public string Source = "";
             public override string ToString() { return Name; }
         }
 
@@ -81,6 +83,10 @@ namespace TypoZen
         /// installed (docs/internal/breeze-tts-plan.md 4.4a). Instruction, cues and casts are shared;
         /// the voice, the voice library and the calls are that narrator's.
         /// </summary>
+        /// <summary>Play sample's line when the reader has not set one: the line every voice's recording says.</summary>
+        private const string DefaultSample = "\u201cYou should have waited for me,\u201d she said quietly, and for a while neither of them spoke.";
+        private const string SampleTip = "Plays this voice saying the sample line. Right-click to change the line, how it is said, or go back to the default.";
+
         private sealed class Side
         {
             public bool Breeze;
@@ -223,7 +229,7 @@ namespace TypoZen
             left.Children.Add(heading("Voice"));
             var voiceBox = new ComboBox { MinWidth = 220 };
             var playVoice = button("▶ Sample");
-            playVoice.ToolTip = "The recording made when this voice was designed";
+            playVoice.ToolTip = SampleTip;
             // The library acts at once, so it has a window of its own with Close, not Save/Cancel.
             var manageVoices = button("Manage voices...");
             manageVoices.ToolTip = "Design, import, export or delete voices";
@@ -404,6 +410,7 @@ namespace TypoZen
             lib.Children.Add(heading("Your voices"));
             var libList = new ListBox { Height = 180, MinWidth = 320 };
             var libPlay = button("▶ Play sample");
+            libPlay.ToolTip = SampleTip;
             var exportVoice = button("Export...");
             exportVoice.ToolTip = "Saves this voice as a .tzvoice file, to keep or use on another PC. Designing from the same description makes a different person each time, so a voice you like is worth keeping.";
             var deleteVoice = button("Delete...");
@@ -766,7 +773,10 @@ namespace TypoZen
             };
 
             // A voice the library can act on: one of the reader's, not built in.
-            Func<VoiceItem, bool> removable = v => v != null && v.Mine && !string.IsNullOrEmpty(v.Preview);
+            // Any of the reader's voices, whichever narrator is chosen (Ed, 2026-10-09: Delete looked broken
+            // on a Qwen-made voice with Breeze chosen). Never the built-in narrator or a model's own speaker.
+            Func<VoiceItem, bool> removable = v => v != null && !string.IsNullOrEmpty(v.Preview) && v.Source != "builtin"
+                                                  && (v.Mine || (side.Breeze && v.Source == "qwen"));
             Action refreshLibButtons = () =>
             {
                 var v = libList.SelectedItem as VoiceItem;
@@ -821,7 +831,8 @@ namespace TypoZen
                         Name = Convert.ToString(v["name"]),
                         Description = Convert.ToString(v["description"]),
                         Preview = Convert.ToString(v["preview"]),
-                        Mine = mine
+                        Mine = mine,
+                        Source = side.Breeze ? (v.TryGetValue("source", out src) ? Convert.ToString(src) : "") : (mine ? "qwen" : "builtin")
                     });
                 }
                 win.Dispatcher.Invoke((Action)(() => { voices.Clear(); voices.AddRange(list); fillVoices(); }));
@@ -1246,8 +1257,36 @@ namespace TypoZen
             // A kept voice plays the recording that was picked -- the same take heard as its
             // candidate. Rendering a fresh one here, with whatever style was in the box, is
             // what made "the voice I picked" sound like someone else (2026-09-23).
-            Action<VoiceItem> playSample = v =>
+            // Play sample says the reader's own line, in their instruction, when they have set one
+            // (right-click a Sample button); otherwise the recording kept with the voice.
+            Action<VoiceItem> playSample = null;
+            Action<VoiceItem> playOwnSample = v =>
             {
+                if (!narratorReady) { say("The narrator is still starting: try again in a moment."); return; }
+                string id = v != null ? v.Id : "";
+                string text = string.IsNullOrWhiteSpace(settings.SampleText) ? DefaultSample : settings.SampleText.Trim();
+                string told = (settings.SampleInstruction ?? "").Trim();
+                double strength = side.Breeze ? strengthSlider.Value : 0;
+                work("Reading the sample line in this voice:", 10, () =>
+                {
+                    var block = new Dictionary<string, object> { { "id", 0 }, { "text", text }, { "role", "narration" }, { "instruction", told } };
+                    var body = new Dictionary<string, object> { { "voice", id }, { "instruction", "" }, { "blocks", new object[] { block } }, { "reading", 0 } };
+                    if (strength > 0) body["strength"] = strength;
+                    var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                        side.Engine.Call("POST", "/render", new JavaScriptSerializer().Serialize(body), 120000));
+                    Dictionary<string, object> item = null;
+                    foreach (var o in (d["items"] as System.Collections.IEnumerable) ?? new object[0]) { item = o as Dictionary<string, object>; break; }
+                    if (item == null) { say("Nothing came back to play."); return; }
+                    object priv;
+                    bool isPrivate = item.TryGetValue("private", out priv) && priv is bool && (bool)priv;
+                    string folder = isPrivate && !string.IsNullOrEmpty(side.Engine.PrivateCacheDir) ? side.Engine.PrivateCacheDir : side.AudioDir(cacheDir);
+                    win.Dispatcher.Invoke((Action)(() => play(System.IO.Path.Combine(folder, Convert.ToString(item["file"])))));
+                    say("");
+                });
+            };
+            playSample = v =>
+            {
+                if (!string.IsNullOrWhiteSpace(settings.SampleText) || !string.IsNullOrWhiteSpace(settings.SampleInstruction)) { playOwnSample(v); return; }
                 if (v != null && !string.IsNullOrEmpty(v.Preview) && System.IO.File.Exists(v.Preview)) { play(v.Preview); return; }
                 if (!narratorReady) { say("This voice has no recording yet, and the narrator is still starting: try again in a moment."); return; }
                 string id = v != null ? v.Id : "";
@@ -1263,17 +1302,78 @@ namespace TypoZen
             playVoice.Click += (s, e) => playSample(voiceBox.SelectedItem as VoiceItem);
             libPlay.Click += (s, e) => playSample(libList.SelectedItem as VoiceItem);
 
+            // Right-click a Sample button: the line it says and how, saved at once with the narrator
+            // settings, and the way back to the voice's own recording.
+            Action<string, string> saveSample = (text, told) =>
+            {
+                settings.SampleText = text ?? "";
+                settings.SampleInstruction = told ?? "";
+                try
+                {
+                    var onDisk = QwenNarrator.LoadSettings(cacheDir);
+                    onDisk.SampleText = settings.SampleText;
+                    onDisk.SampleInstruction = settings.SampleInstruction;
+                    QwenNarrator.SaveSettings(cacheDir, onDisk);
+                }
+                catch (Exception ex) { say("Could not save the sample: " + ex.Message); }
+            };
+            Func<FrameworkElement, ContextMenu> sampleMenu = owner2 =>
+            {
+                var m = new ContextMenu();
+                var text = new MenuItem { Header = "Change sample text..." };
+                var told = new MenuItem { Header = "Change sample instruction..." };
+                var reset = new MenuItem { Header = "Use the default sample" };
+                text.Click += (s, e) =>
+                {
+                    string t = ask("Sample text", "What Play sample says in each voice.", string.IsNullOrWhiteSpace(settings.SampleText) ? DefaultSample : settings.SampleText);
+                    if (t == null) return;
+                    saveSample(t.Trim() == DefaultSample ? "" : t.Trim(), settings.SampleInstruction);
+                    say("Play sample now says your line.");
+                };
+                told.Click += (s, e) =>
+                {
+                    string t = ask("Sample instruction", "How the sample is said, e.g. angry and fast. Empty for none.", settings.SampleInstruction ?? "");
+                    if (t == null) return;
+                    saveSample(settings.SampleText, t.Trim());
+                    say(t.Trim().Length == 0 ? "The sample is said with no instruction." : "The sample is said: " + t.Trim() + ".");
+                };
+                reset.Click += (s, e) => { saveSample("", ""); say("Play sample plays each voice's own recording again."); };
+                m.Items.Add(text);
+                m.Items.Add(told);
+                m.Items.Add(reset);
+                // Opened in a window of its own: handed the theme just before (see the voice list's menu).
+                owner2.ContextMenuOpening += (s, e) =>
+                {
+                    var ms = owner2.TryFindResource(typeof(ContextMenu)) as Style;
+                    var its = owner2.TryFindResource(typeof(MenuItem)) as Style;
+                    if (ms != null && m.Style != ms) m.Style = ms;
+                    if (its != null) m.ItemContainerStyle = its;
+                    reset.IsEnabled = !string.IsNullOrWhiteSpace(settings.SampleText) || !string.IsNullOrWhiteSpace(settings.SampleInstruction);
+                };
+                return m;
+            };
+            playVoice.ContextMenu = sampleMenu(playVoice);
+            libPlay.ContextMenu = sampleMenu(libPlay);
+            // A disabled button gets no right-click; it is only disabled while something else runs.
+            ContextMenuService.SetShowOnDisabled(playVoice, true);
+            ContextMenuService.SetShowOnDisabled(libPlay, true);
+
             deleteVoice.Click += (s, e) =>
             {
                 var v = libList.SelectedItem as VoiceItem;
                 if (!removable(v)) return;
-                if (MessageBox.Show(win, "Delete the voice \"" + v.Name + "\"? It goes to the Recycle Bin, "
-                                    + "so it can be restored from there; copies you exported are not touched. Characters using it go back to the narrator's voice.",
+                // A voice in the Qwen narrator's folder is read by Breeze too: say it goes from both.
+                bool shared = v.Source == "qwen" && haveBreeze && haveQwen;
+                if (MessageBox.Show(win, "Delete the voice \"" + v.Name + "\"? "
+                                    + (shared ? "It was made with the Qwen narrator and both narrators use it, so it goes from both. " : "")
+                                    + "It goes to the Recycle Bin, so it can be restored from there; copies you exported are not touched. "
+                                    + "Characters using it go back to the narrator's voice.",
                                     "Narrator", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
                 string id = v.Id;
+                bool both = side.Breeze && v.Source == "qwen";
                 work("Deleting...", 0, () =>
                 {
-                    side.Engine.Call("POST", "/voices/delete", new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "id", id } }), 10000);
+                    side.Engine.Call("POST", "/voices/delete", new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "id", id }, { "both", both } }), 10000);
                     loadVoices();
                     say("Deleted \"" + v.Name + "\".");
                 });
@@ -1688,7 +1788,8 @@ namespace TypoZen
                                     : v.Key == QwenNarrator.DefaultVoiceId ? QwenNarrator.DefaultVoiceDescription
                                     : model != null ? model[2] : "",
                         Preview = System.IO.File.Exists(prev) ? prev : "",
-                        Mine = mine && v.Key != QwenNarrator.DefaultVoiceId && model == null
+                        Mine = mine && v.Key != QwenNarrator.DefaultVoiceId && model == null,
+                        Source = v.Key == QwenNarrator.DefaultVoiceId || model != null ? "builtin" : mine && side.Breeze ? "breeze" : "qwen"
                     });
                 }
             };

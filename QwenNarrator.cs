@@ -128,6 +128,9 @@ namespace TypoZen
             public double BreezeStrength = 4;
             /// <summary>Read Aloud > Narration Monitor is open; reopened at launch.</summary>
             public bool Monitor;
+            /// <summary>Play sample's own line and instruction (right-click a Sample button); empty is the default.</summary>
+            public string SampleText = "";
+            public string SampleInstruction = "";
             // No instruction and emotion cues on, for a reader who has set nothing: by ear on
             // 2026-09-26 the cues came through best with nothing else said, and a standing
             // instruction only competed with them. A reader's saved choice always wins.
@@ -202,6 +205,9 @@ namespace TypoZen
             if (d.TryGetValue("direct", out c) && c is bool) r.Direct = (bool)c;
             object bv;
             if (d.TryGetValue("breezeVoice", out bv) && bv is string) r.BreezeVoice = (string)bv;
+            object st, si;
+            if (d.TryGetValue("sampleText", out st) && st is string) r.SampleText = (string)st;
+            if (d.TryGetValue("sampleInstruction", out si) && si is string) r.SampleInstruction = (string)si;
             object mon;
             if (d.TryGetValue("monitor", out mon) && mon is bool) r.Monitor = (bool)mon;
             object bs;
@@ -223,7 +229,7 @@ namespace TypoZen
         {
             var d = new Dictionary<string, object>
             {
-                { "voice", s.Voice ?? "" }, { "breezeVoice", s.BreezeVoice ?? "" }, { "breezeStrength", s.BreezeStrength }, { "monitor", s.Monitor }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }
+                { "voice", s.Voice ?? "" }, { "breezeVoice", s.BreezeVoice ?? "" }, { "breezeStrength", s.BreezeStrength }, { "monitor", s.Monitor }, { "sampleText", s.SampleText ?? "" }, { "sampleInstruction", s.SampleInstruction ?? "" }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }
             };
             File.WriteAllText(SettingsPath(cacheDir), new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
         }
