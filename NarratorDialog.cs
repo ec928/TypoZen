@@ -1044,23 +1044,27 @@ namespace TypoZen
             {
                 var w = new Window
                 {
-                    Title = title, Width = 380, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
+                    Title = title, Width = 520, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, Owner = win,
                     Background = win.Background, Foreground = win.Foreground
                 };
                 DialogTheme.Apply(w, win);
-                var box = new TextBox { Text = initial ?? "", Margin = new Thickness(0, 6, 0, 12), Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
-                var ok = new Button { Content = "OK", Width = 80, Height = 26, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-                var no = new Button { Content = "Cancel", Width = 80, Height = 26, IsCancel = true };
+                // Wraps and grows with what is in it, up to a few lines: one line 26 high scrolled a sentence
+                // off to the left and clipped its descenders (2026-10-09). Enter still means OK.
+                var box = new TextBox { Text = initial ?? "", Margin = new Thickness(0, 8, 0, 14), MinHeight = 30, MaxHeight = 110,
+                                        TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                                        Padding = new Thickness(6, 5, 6, 5) };
+                var ok = new Button { Content = "OK", Width = 88, Height = 30, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+                var no = new Button { Content = "Cancel", Width = 88, Height = 30, IsCancel = true };
                 ok.Click += (s, e) => w.DialogResult = true;
-                var panel = new StackPanel { Margin = new Thickness(16) };
+                var panel = new StackPanel { Margin = new Thickness(20, 16, 20, 18) };
                 panel.Children.Add(new TextBlock { Text = prompt, TextWrapping = TextWrapping.Wrap });
                 panel.Children.Add(box);
                 var br = row(new UIElement[] { ok, no });
                 br.HorizontalAlignment = HorizontalAlignment.Right;
                 panel.Children.Add(br);
                 w.Content = panel;
-                w.Loaded += (s, e) => { box.Focus(); box.SelectAll(); };
+                w.Loaded += (s, e) => { box.Focus(); box.CaretIndex = box.Text.Length; };
                 return w.ShowDialog() == true ? box.Text.Trim() : null;
             };
 
