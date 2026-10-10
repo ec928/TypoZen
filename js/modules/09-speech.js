@@ -693,7 +693,7 @@ window.narrationTrial = async function (json) {
         if (isPlaying) stopReading();
         const pieces = [];
         String(o.text || '').split(/\r?\n/).map(l => l.trim()).filter(l => /[A-Za-z0-9]/.test(l)).forEach(line => {
-            paragraphPieces(oneNotation(speakNumbers(line)), null).forEach(p => pieces.push(p));
+            readingPieces(oneNotation(speakNumbers(line)), null, null, 0, true).forEach(p => pieces.push(p));
         });
         if (!pieces.length) throw new Error('there is no text to read');
         const items = [];
@@ -1960,33 +1960,132 @@ function narrationTailStart(full, part) {
  * `cut` is where Read from here starts inside it. Reading through and reading a selection both
  * use it, so the two cannot follow different rules.
  */
-function readingPieces(text, el, quotes, cut) {
-    // No cast on this book, or this paragraph was outside the attributed window.
-    // A bracket beside a quotation is still the narrator's instruction for it.
-    if (!quotes) {
-        const found = narrationQuotes(text);
-        if (found.some(q => (q.instruct || '').trim())) quotes = found;
+function readingPieces(text, el, quotes, cut, noCast) {
+    return directedPieces(text, quotes || narrationQuotes(text), cut > 0 ? cut : 0, el, !!noCast);
+}
+
+/**
+ * Where each instruction in text[lo, hi) starts directing: [{ at, tag }] in order. Brackets side by
+ * side are one instruction (two singles both added, a double winning). One in the middle of a
+ * sentence counts from that sentence's start, so no sentence is cut in two. Text oneNotation has
+ * made: every instruction is [[...]]. In an ePub there are none.
+ */
+function instructionStarts(text, lo, hi) {
+    const out = [];
+    if (!_narrTags) return out;
+    const seg = text.slice(lo, hi);
+    const re = /(?:\[\[[^\]\n]+\]\][ \t]*)+/g;
+    let m;
+    while ((m = re.exec(seg))) {
+        const tag = doubleTag(m[0]);
+        if (!tag) continue;
+        const head = blankBrackets(seg.slice(0, m.index));
+        let start = 0;
+        const ends = /[.!?…]["'”’)\]]*\s+/g;
+        let e;
+        while ((e = ends.exec(head))) start = e.index + e[0].length;
+        out.push({ at: Math.max(lo + start, out.length ? out[out.length - 1].at : lo), tag: tag });
     }
-    // A [[tag]] in narration is that narration's, never a quotation's in another sentence:
-    // the quotations are cut out of it, as they are when voiced, whether voiced or not.
-    let split = false;
-    if (doubleTag(text) || leadTag(text)) { if (!quotes) quotes = narrationQuotes(text); split = quotes.length > 0; }
-    if (quotes && (split || quotes.some(q => (q.key && _narrCast[q.key]) || (q.instruct || '').trim()))) {
-        return castPieces(text, quotes, cut > 0 ? cut : 0, split);
+    return out;
+}
+
+/**
+ * A paragraph's pieces by the two rules (README, "Characters, voices and directing a line"):
+ *  1. A bracket inside a quote directs that quote, from where it is until the quote's next
+ *     bracket or the end of the quote.
+ *  2. A bracket outside quotes directs the narrator, from where it is until the next narrator
+ *     bracket or the end of the paragraph -- across quotes, and into a quote the narrator reads
+ *     (no voice) unless that quote has its own.
+ * Each change of instruction is a new piece. A quote with a voice is that voice's; the rest is
+ * the narrator's, kept in one piece wherever the instruction stays the same. `from` is where Read
+ * from here starts; `noCast` reads every quote in the narrator's voice (Try it out).
+ */
+function directedPieces(text, quotes, from, el, noCast) {
+    const qs = (quotes || []).slice().sort((a, b) => a.start - b.start);
+    // The narrator's instructions: brackets outside every quote. Quote text stays, so its full
+    // stops still end sentences; a start that falls inside a quote moves to the quote's end.
+    let outside = text;
+    qs.forEach(q => {
+        const inner = text.slice(q.start, q.end).replace(/\[\[[^\]\n]*\]\]/g, m => ' '.repeat(m.length));
+        outside = outside.slice(0, q.start) + inner + outside.slice(q.end);
+    });
+    const narr = instructionStarts(outside, 0, text.length).map(s => {
+        const inQ = qs.find(q => s.at > q.start && s.at < q.end);
+        return inQ ? { at: inQ.end, tag: s.tag } : s;
+    });
+    const narratorAt = pos => { let t = ''; for (const s of narr) { if (s.at <= pos) t = s.tag; else break; } return t; };
+    // Every stretch of the paragraph, in order: [lo, hi), who reads it, and what it is told.
+    const items = [];
+    const narration = (lo, hi) => {
+        const cuts = [lo].concat(narr.map(s => s.at).filter(at => at > lo && at < hi), [hi]);
+        for (let i = 0; i + 1 < cuts.length; i++) items.push({ lo: cuts[i], hi: cuts[i + 1], voice: '', tag: narratorAt(cuts[i]) });
+    };
+    let cursor = 0;
+    for (const q of qs) {
+        if (q.start > cursor) narration(cursor, q.start);
+        const voice = !noCast && q.key && _narrCast[q.key];
+        // One at the quote's start takes its opening mark with it.
+        const own = instructionStarts(text, q.start + 1, q.end - 1).map(c => c.at === q.start + 1 ? { at: q.start, tag: c.tag } : c);
+        const cuts = [{ at: q.start, tag: '' }].concat(own);
+        cuts.forEach((c, i) => {
+            const hi = i + 1 < cuts.length ? cuts[i + 1].at : q.end;
+            if (hi <= c.at) return;
+            // No instruction of its own (yet): a voiced quote has its cast box, an unvoiced one
+            // is read by the narrator as directed there.
+            const tag = c.tag || (voice ? '' : narratorAt(q.start));
+            items.push({ lo: c.at, hi: hi, voice: voice || '', q: q, tag: tag, ownTag: !!c.tag });
+        });
+        cursor = q.end;
     }
-    if (cut > 0) {
-        // A cut inside a quotation keeps its opening mark, which is not spoken: '"You're late,"
-        // Tom said quietly.' read from "You're" lost it, was no longer a quotation, and lost its cue.
-        const before = text.slice(0, cut);
-        const count = re => (before.match(re) || []).length;
-        const open = count(/“/g) > count(/”/g) ? '“' : count(/"/g) % 2 === 1 ? '"'
-            : count(/‘/g) > count(/’(?![A-Za-z])/g) ? '‘' : '';
-        text = open + text.slice(cut).trim();
+    if (cursor < text.length) narration(cursor, text.length);
+    // The narrator's stretches that are told the same thing are read as one piece.
+    const merged = [];
+    for (const it of items) {
+        const last = merged[merged.length - 1];
+        if (last && !it.voice && !last.voice && last.tag === it.tag) { last.hi = it.hi; last.q = last.q === it.q ? last.q : null; }
+        else merged.push(Object.assign({}, it));
     }
-    return paragraphPieces(text, el).map(p => ({
-        role: 'narration', text: p.text, direction: p.direction,
-        instruction: p.instruction || '', bracket: !!p.bracket, hard: !!p.hard, soft: !!p.soft
-    }));
+    const out = [];
+    // A built-in mood ([sad]) changes the delivery from where it stands to the end of its piece, so
+    // one left at the end of the narrator's piece, before a quote, goes on to the narrator's next.
+    let carry = '';
+    const moods = /(?:\s*\[([^\[\]\n]+)\])+\s*$/;
+    merged.forEach((it, i) => {
+        let lo = Math.max(it.lo, from), hi = it.hi;
+        if (it.voice) { lo = Math.max(lo, it.q.start + 1); hi = Math.min(hi, it.q.end - 1); }
+        if (hi <= lo) return;
+        let raw = text.slice(lo, hi);
+        // Read from here inside a quotation keeps its opening mark: it is still a quotation, with its cue.
+        const inQ = !it.voice && lo === from && from > 0 && qs.find(q => from > q.start && from < q.end);
+        if (inQ) raw = text[inQ.start] + raw;
+        // A stretch never starts with the punctuation left after the quote before it ('"Go". Then').
+        let spoken = padBracketTags(stripDoubles(raw)).trim().replace(/^[.,;:]+\s*/, '').replace(/^(["“‘])\s+/, '$1');
+        if (!it.voice) {
+            if (carry) { spoken = carry + ' ' + spoken; carry = ''; }
+            const end = moods.exec(spoken);
+            if (end && (end[0].match(/\[[^\[\]\n]+\]/g) || []).every(b => SPAN_TAG.test(b.slice(1, -1).replace(/\s*:\s*\d+(?:\.\d+)?\s*$/, '').trim()))
+                && merged.slice(i + 1).some(n => !n.voice)) {
+                carry = end[0].trim();
+                spoken = spoken.slice(0, end.index).trim();
+            }
+        }
+        // A lead-in cut off by a voiced quote ends there: 'Anna whispered,' left the model talking on.
+        if (!it.voice && merged[i + 1] && merged[i + 1].voice) spoken = spoken.replace(/,\s*$/, '.');
+        // Words to say, or a sound to make ([laughing] before a quote is the narrator's laugh). A
+        // bracket that is neither is the book's text in an ePub, and read.
+        const words = spoken.replace(/\[([^\[\]\n]+)\]/g, (m, inner) => isModelTag(inner) ? ' ' : m);
+        if (!/[A-Za-z0-9]/.test(words) && !/\[[^\[\]\n]+\]/.test(spoken.replace(/\[([^\[\]\n]+)\]/g, (m, inner) => POINT_TAG.test(inner.trim()) ? m : ''))) return;
+        const tag = splitSoft(it.tag), t = tag.text;
+        const fromQuote = it.q && it.lo >= it.q.start && it.hi <= it.q.end;
+        carrySpan(blockPieces(spoken)).forEach(p => out.push(it.voice ? {
+            role: 'dialogue', text: p, voice: it.voice, direction: quoteDirection(it.q), speaker: it.q.key,
+            instruction: t || castSay(it.q.key), bracket: !!t, hard: !!t && !tag.soft, soft: !!t && tag.soft, box: castSay(it.q.key)
+        } : {
+            role: 'narration', text: p, direction: fromQuote ? quoteDirection(it.q) : narrationDirection(p, el || null),
+            instruction: t, bracket: !!t, hard: !!t && !tag.soft, soft: !!t && tag.soft
+        }));
+    });
+    return out;
 }
 
 function narrationBatches(all, from, maxBatches, graduated, firstText) {

@@ -583,13 +583,13 @@
                             <tr><td>Make sure a line goes to them</td><td>Name and <em>said</em> in the quote's sentence: <code>"Go," Tom said.</code></td></tr>
                             <tr><td>Set how a character always sounds</td><td>Their <strong>Instruction</strong> box in the cast.</td></tr>
                             <tr><td>Set how the narrator always sounds</td><td>The <strong>Instruction</strong> box on Reading. Never applies to voiced characters.</td></tr>
-                            <tr><td>Direct one line</td><td><code>[how to say it]</code> just before or inside the quote: <code>[shouts loudly] "Get out!" Anna said.</code></td></tr>
-                            <tr><td>Direct narration</td><td><code>[how to read it]</code> in the narration: <code>[measured and quiet] The door opened.</code></td></tr>
-                            <tr><td>Add a sound or a mood</td><td>A built-in tag (below) where it should happen: <code>[laughing] "Stop it," Anna said.</code></td></tr>
+                            <tr><td>Direct one line</td><td><code>[how to say it]</code> inside the quote: <code>"[shouts loudly] Get out!" Anna said.</code></td></tr>
+                            <tr><td>Direct narration</td><td><code>[how to read it]</code> outside the quotes: <code>[measured and quiet] The door opened.</code></td></tr>
+                            <tr><td>Add a sound or a mood</td><td>A built-in tag (below) where it should happen: <code>"[laughing] Stop it," Anna said.</code></td></tr>
                             <tr data-engine="breeze"><td>Make a tag stronger or weaker</td><td><code>:1</code> to <code>:10</code> inside the brackets: <code>[shouts:9]</code><span data-engine="both"> (Breeze only)</span></td></tr>
                         </tbody>
                     </table>
-                    <p class="tz-help-aside"><strong>A bracket belongs to whoever reads the words next to it.</strong> Just before or inside a quote, it is the speaker's. Anywhere else on the same line, it is the narrator's. Your own words are never spoken. <code>[angrily]</code> is <strong>added</strong> to the usual instruction; <code>[[angrily]]</code> <strong>overrides</strong> it. With <strong>Emotion cues</strong> ticked, <code>"Go," she whispered.</code> whispers that quote only.</p>
+                    <p class="tz-help-aside"><strong>Inside a quote, a bracket directs that quote</strong>, until the quote's next bracket or its end. <strong>Outside quotes, it directs the narrator</strong>, until the narrator's next bracket or the end of the paragraph. One in the middle of a sentence counts from the start of that sentence. Your own words are never spoken. <code>[angrily]</code> is <strong>added</strong> to the usual instruction; <code>[[angrily]]</code> <strong>overrides</strong> it. With <strong>Emotion cues</strong> ticked, <code>"Go," she whispered.</code> whispers that quote only.</p>
                 </section>
                 <section class="tz-help-sec">
                     <h3>Who reads a line of dialogue</h3>
@@ -612,7 +612,7 @@
                             <tr><td><code>[sad]</code> <code>[angry]</code> <code>[excited]</code> <code>[whispers]</code> <code>[crying]</code> <code>[very slowly]</code> and other moods</td><td>The mood until the end of that quote or paragraph.<span data-engine="qwen"> Qwen follows them only slightly.</span></td></tr>
                         </tbody>
                     </table>
-                    <p class="tz-help-aside">Put them where they should happen: just before or inside a quote for that character, in narration for the narrator. In an ePub, square brackets are always read as part of the book.</p>
+                    <p class="tz-help-aside">Put them where they should happen: inside a quote for that character, outside quotes for the narrator. In an ePub they are still performed; any other square brackets are read as part of the book.</p>
                 </section>
                 <section class="tz-help-sec">
                     <h3>Narrator Manager (File &gt; Read Aloud)</h3>

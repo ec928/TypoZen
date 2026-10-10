@@ -388,7 +388,8 @@ This applies to both narrators. The narrator reads the whole book, except the di
 
 - Give a character a voice in **Narrator Manager > Cast for this book**; their quoted lines are then read in it.
 - A line goes to a character when their name and a speaking word are in the quote's sentence: `"Go," Tom said.`
-- Your own words in square brackets tell the narrator how to read. They are never spoken.
+- Your own words in square brackets say how to read. They are never spoken.
+- Inside a quote, a bracket directs that quote. Outside quotes, it directs the narrator.
 - `[single brackets]` are **added** to the usual instruction. `[[double brackets]]` **override** it.
 - Built-in sound and mood tags, such as `[laughing]` and `[sad]`, are performed where they stand.
 - In an ePub, which cannot be edited, the app does all of this from the text by itself.
@@ -427,46 +428,50 @@ An empty box means no instruction.
 
 #### Local instructions — in a Markdown or text file
 
-A line with a quote is read in pieces: the speaker reads the quote, the narrator reads the rest, and each is told its own instruction.
+A line with a quote is read in pieces: the speaker reads the quote, the narrator reads the rest, and each is told its own instruction. Two rules decide which instruction:
 
-- **A bracket belongs to whoever reads the words next to it.** Just before or inside a quote, it is the speaker's — a comma or colon in between is fine: `Anna [whispers], "Go."`. Anywhere else on the same line, it is the narrator's.
-- **What is in the bracket decides what happens.** A built-in sound or mood (`[laughing]`, `[sad]`) is performed right there. Any other words say how to read: `[sadly]` is added to that voice's usual instruction, and `[[sadly]]` replaces it.
+1. **A bracket inside a quote directs that quote**, from where it stands until the quote's next bracket or the end of the quote.
+2. **A bracket outside quotes directs the narrator**, from where it stands until the narrator's next bracket or the end of the paragraph.
 
-| You write | Where | Effect |
+`[how to read]` is **added** to that voice's usual instruction — the character's cast box, or the narrator's box — and Emotion cue words are still added. `[[how to read]]` **replaces** both. A bracket in the middle of a sentence counts from the start of that sentence, so a sentence is never cut in two.
+
+`[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway." [excited, loud] Surprising even herself.` is read as:
+
+| Text | Read by | Directed by |
 |---|---|---|
-| `[how to say it]` | just before or inside a quote | **added** to the speaker's instruction for the quote — their cast box, or the narrator's box if they have no voice; Emotion cue words are still added |
-| `[[how to say it]]` | just before or inside a quote | **overrides** the speaker's instruction and the cue words for the quote: only your words are used |
-| `[how to read it]` | anywhere else | **added** to the narrator's instruction for everything the narrator reads in that paragraph, including words like *Tom said* |
-| `[[how to read it]]` | anywhere else | **overrides** the narrator's instruction for everything the narrator reads in that paragraph |
-| `:1` to `:10` at the end, inside the brackets | any of the above | Breeze's strength for that line: `[shouts:9]` |
+| Anna said | narrator | *steady, whisper* |
+| I am mad at you. | Anna | *Angry* |
+| But I forgive you anyway. | Anna | *Softly* — it takes over from *Angry* |
+| Surprising even herself. | narrator | *excited, loud* — it takes over from *steady, whisper* |
 
 With Tom's **Instruction** box set to `gruff and slow`, and the narrator's to `measured`:
 
-| Text | Tom reads `Go,` and is told | The narrator reads the rest and is told |
+| Text | Tom reads the quote and is told | The narrator reads the rest and is told |
 |---|---|---|
 | `"Go," Tom said.` | `gruff and slow` | `measured` |
 | `"Go," Tom said quietly.` | `gruff and slow, quietly` | `measured` |
-| `[angrily] "Go," Tom said quietly.` | `gruff and slow, angrily, quietly` | `measured` |
-| `[[angrily]] "Go," Tom said quietly.` | `angrily` | `measured` |
-| `"Go," Tom said [wearily].` | `gruff and slow` | `measured, wearily` |
-| `[sadly] "Go," Tom said [wearily].` | `gruff and slow, sadly` | `measured, wearily` |
-| `[slowly] The door opened. "Go," Tom said quietly.` | `gruff and slow, quietly` | `measured, slowly` |
-| `[[slowly]] The door opened. "Go," Tom said quietly.` | `gruff and slow, quietly` | `slowly` |
+| `"[angrily] Go," Tom said quietly.` | `gruff and slow, angrily, quietly` | `measured` |
+| `"[[angrily]] Go," Tom said quietly.` | `angrily` | `measured` |
+| `"[angrily] Get out. [softly] Please," Tom said.` | `gruff and slow, angrily` for *Get out.*, then `gruff and slow, softly` for *Please,* | `measured` |
+| `[angrily] "Go," Tom said.` | `gruff and slow` | `measured, angrily` — the bracket is outside the quote |
+| `"Go," Tom [wearily] said.` | `gruff and slow` | `measured, wearily` |
+| `[slowly] The door opened. "Go," Tom said.` | `gruff and slow` | `measured, slowly`, for *The door opened.* and *Tom said.* |
+| `[[slowly]] The door opened. "Go," Tom said.` | `gruff and slow` | `slowly`, for both |
 
-If Tom has no voice, the narrator reads his quote as well, told `measured` in place of `gruff and slow`: `[angrily] "Go," Tom said.` tells the narrator `measured, angrily` for `Go,` and `measured` for `Tom said.`
-
-- Two single brackets for the same voice are both added, in order. A double bracket overrides everything for that voice, single brackets included.
+- A character with no voice is read by the narrator, told the quote's own bracket if it has one, and otherwise whatever the narrator is being told there: `[slowly] The door opened. "Go," Mara said.` is all `measured, slowly`.
+- Brackets side by side are one instruction: two singles are both added, in order; a double overrides them.
+- `:1` to `:10` at the end, inside the brackets, is Breeze's strength for that stretch: `"[shouts:9] Get out!"`.
 - An instruction can be a full sentence: `[Read it plainly. Speak softly]`.
-- Square brackets in your own text are always taken as tags, so use them only for that.
+- Square brackets in your own text are always taken as tags, so use them only for that. Breeze's own sounds in round brackets, `(giggles)`, are not tags: they are sent to the narrator as written.
 
 #### Built-in tags
 
-These words are performed where they stand, single or double; any other words in brackets are an instruction. Put them where the sound or mood should happen: just before or inside a quote for that character, in narration for the narrator. Breeze performs them; Qwen only colours the words around them.
+These words are performed where they stand, single or double; any other words in brackets are an instruction. Put them where the sound or mood should happen: inside a quote for that character, outside quotes for the narrator. Breeze performs them; Qwen only colours the words around them.
 
 | Kind | Tags |
 |---|---|
 | Sounds — at that point | `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]` |
-| Moods — to the end of that quote or paragraph | `[sad]` `[angry]` `[excited]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]` |
+| Moods — to the end of that quote, or of that stretch of narration | `[sad]` `[angry]` `[excited]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]` |
 
 #### ePubs — what the app does by itself
 

@@ -315,8 +315,8 @@ console.log('--- one notation: [tag] and [[tag]] work in the same places (with n
     check('and it is not spoken', lead.every(r => r[1].indexOf('[') < 0), JSON.stringify(lead));
     eq('a built-in tag opening a paragraph is still performed',
         told('[sighing] It was over.', {}).map(r => [r[1], r[2]]), [['[sighing] It was over.', '']]);
-    eq('a bracket against a quote at the start of a paragraph is the quote\'s',
-        told('[angrily] "Go," Tom said.', { tom: 'v-tom' }).map(r => r[2]), ['angrily', '']);
+    eq('a bracket before a quote is outside it: the narrator\'s, from there on',
+        told('[angrily] "Go," Tom said.', { tom: 'v-tom' }).map(r => r[2]), ['', 'angrily']);
     api.setCast({ anna: 'qwen-ryan' });
 }
 
@@ -378,9 +378,9 @@ api.setModel({
     eq('in an ePub a bracket against a quote is read, not taken as an instruction',
         spoken('[later editions continued] "Go," Tom said.').indexOf('[later editions continued]') >= 0, true);
     api.setModel({ kind: 'markdown', blocks: [] });
-    eq('in a text or Markdown file the same bracket is the line\'s instruction',
+    eq('in a text or Markdown file the same bracket is an instruction: the narrator\'s, outside the quote',
         api.narrationBatches([el('[later editions continued] "Go," Tom said.')], 0, 1)[0].map(p => p.instruction || ''),
-        ['later editions continued', '']);
+        ['', 'later editions continued']);
     api.setCast({ anna: 'qwen-ryan' });
 }
 api.tagsFor(null);   // the suites below call the splitter directly, as from a text file
@@ -455,12 +455,12 @@ function read(text) {
 }
 {
     const pieces = read('She shut the door. [whispers softly with slow speech] "Get out." Then she waited.');
-    eq('the quotation is its own piece', pieces.map(p => p.text),
-        ['She shut the door.', '"Get out."', 'Then she waited.']);
-    eq('only the quotation takes the bracket', pieces.map(p => p.instruction || ''),
-        ['', 'whispers softly with slow speech', '']);
+    eq('a bracket outside quotes directs the narrator from there: the quote it reads and what follows', pieces.map(p => p.text),
+        ['She shut the door.', '"Get out." Then she waited.']);
+    eq('and not what came before', pieces.map(p => p.instruction || ''),
+        ['', 'whispers softly with slow speech']);
     eq('the quotation stays with the narrator', pieces.map(p => p.role),
-        ['narration', 'narration', 'narration']);
+        ['narration', 'narration']);
 }
 {
     const pieces = read('[whispers softly with slow speech] "Get out."');
@@ -470,8 +470,8 @@ function read(text) {
 }
 {
     const pieces = read('"Get out." [whispers softly]');
-    eq('a bracket after a bare quote is the narrator\'s, and the narrator reads the quote', pieces.map(p => p.instruction || ''),
-        ['whispers softly']);
+    eq('a bracket with nothing after it directs nothing', pieces.map(p => p.instruction || ''),
+        ['']);
     eq('a trailing bracket on a bare quote is not spoken', pieces.map(p => p.text), ['"Get out."']);
 }
 {
@@ -491,8 +491,8 @@ function read(text) {
 {
     const pieces = read('Anna [whispers softly with slow speech], "Get out."');
     const talk = pieces.filter(p => p.role === 'dialogue');
-    eq('a cast line still uses the bracket when the book is read', talk.map(p => p.instruction),
-        ['whispers softly with slow speech']);
+    eq('a bracket beside the name is outside the quote: the cast line keeps its box', talk.map(p => p.instruction),
+        ['Sad, low pitched, slow speech']);
     eq('a cast line still does not speak the bracket', talk.map(p => p.text), ['Get out.']);
 }
 
