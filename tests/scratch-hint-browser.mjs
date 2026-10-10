@@ -1,7 +1,7 @@
 /**
  * The empty-tab hint belongs to an empty tab, and to nothing else.
  *
- * "Start typing... (F1 or Help menu for markdown syntax)" is an ::after on
+ * The empty-tab hint ("Start typing. F1 shows formatting shortcuts ...") is an ::after on
  * #editor-wrapper.scratch-empty. syncScratchEmpty() sets that class, and it already
  * declines to set it on a book -- but nothing on the book path called it again. Open an
  * epub into a new (empty) tab and the class added while the tab was blank stayed exactly
