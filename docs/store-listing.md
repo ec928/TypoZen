@@ -57,7 +57,7 @@ _Limit 1,500 characters. These notes are the 0.15.2 package; 0.14.13 is the vers
 - New: the Breeze narrator, an optional second narrator from File > Extensions. It designs voices from a description, clones one from a short recording, and performs sounds such as laughter.
 - Narrator Manager (was Narrator Settings) is redesigned, and Narration Monitor shows exactly what each line was given, run by run, with Copy all and Clear.
 - Character voices pick the right speaker far more often: actions beside a line, Mr and Mrs Bennet as two people, and British single quotes. When unsure, the narrator reads the line.
-- Directing a line is one simple rule: write [how to say it] anywhere in the quote's sentence. "She whispered" now colours only her line, not the narration around it. In an ePub, brackets are read as part of the book.
+- Directing a line is simple: write [how to say it] anywhere in the quote's sentence to add to the character's usual instruction, or [[how to say it]] to override it. "She whispered" now colours only her line. In an ePub, brackets are read as part of the book.
 - Help > User Guide opens the full guide in a tab, always the current one, and Help > Narration has been rewritten.
 - Read Aloud with a narrator carries on to the end of the document. Clear Stored Data remembers your choices.
 
