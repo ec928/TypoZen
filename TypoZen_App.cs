@@ -2327,7 +2327,10 @@ namespace TypoZen
                         SetMenuChecked("mNarrMonitor", false);
                         try { SendMsg("cmd:narr_monitor:off"); } catch { }
                         SaveMonitorChoice(false);
-                    });
+                    },
+                    // Each engine's narration.log, where NarratorEngine writes it.
+                    engine => Path.Combine(engine == "breeze" ? BreezeNarrator.RootDir(CacheDir()) : QwenNarrator.RootDir(CacheDir()),
+                                           "narration.log"));
                 else NarrationMonitor.Close();
                 SetMenuChecked("mNarrMonitor", on);
                 SendMsg("cmd:narr_monitor:" + (on ? "on" : "off"));
