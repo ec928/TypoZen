@@ -1115,7 +1115,10 @@ function isModelTag(inner) {
  * words are a speech tag.
  */
 function blankBrackets(text) {
-    return String(text || '').replace(/\[\[[^\]\n]*\]\]|\[[^\]\n]*\]/g, m => ' '.repeat(m.length));
+    // A title's full stop does not end a sentence: '"Well," said Mrs. Gardiner, "but..."' -- the
+    // second half was given to "Gardiner", not Mrs Gardiner. Same length, so positions still match.
+    return String(text || '').replace(/\[\[[^\]\n]*\]\]|\[[^\]\n]*\]/g, m => ' '.repeat(m.length))
+        .replace(/\b(Mr|Mrs|Ms|Dr|St|Mt|Prof|Rev|Capt|Col|Gen|Lt|Sgt|Mme|Mlle|Messrs)\./g, '$1\u00B7');
 }
 
 /**
@@ -1270,7 +1273,18 @@ function paragraphPieces(text, el) {
  * character saying "whispered" is not a whisper.
  */
 function cuePhrase(clause, who) {
-    let s = String(clause || '').replace(/\[\[[^\]\n]*\]\]/g, ' ').replace(/\[[^\]\n]*\]/g, ' ');
+    let s = String(clause || '').replace(/\u00B7/g, '.').replace(/\[\[[^\]\n]*\]\]/g, ' ').replace(/\[[^\]\n]*\]/g, ' ');
+    // Another clause is someone else's: '"Go," Anna said, and Tom nodded.' is told nothing of Tom.
+    s = s.split(/,\s*(?:and|but|then|while|as)\b/i)[0];
+    // Whom a word is aimed at goes with its preposition: "said to Anna" is nothing, "turning to Anna" is "turning".
+    s = s.replace(/\b(?:to|at|toward|towards|with|on|onto|into|for|from|past|behind|beside|over|under|about|by)\s+(?:(?:his|her|their|my|your|our)\s+[a-z][\w’'-]*|[A-Z][\w’'-]*(?:\s+[A-Z][\w’'-]*)*|him|her|them|me|us)\b/g, ' ');
+    // Before the speech verb stands the speaker -- "the banker said" -- not how it was said; an
+    // adverb there is kept: "Anna sadly said" is "sadly".
+    const verb = /\b(said|says|asked|asks|replied|answered|cried|called|whispered|murmured|muttered|shouted|yelled|snapped|hissed|growled|barked|roared|screamed|sneered|rumbled|pleaded|begged|demanded|insisted|stammered|added|continued|began|told)\b/i.exec(s);
+    if (verb && verb.index > 0) {
+        const lead = s.slice(0, verb.index);
+        if (lead.trim().split(/\s+/).length <= 4) s = (lead.match(/\b\w+ly\b/g) || []).join(' ') + ' ' + s.slice(verb.index);
+    }
     const words = s.split(/\s+/).map(function (w) {
         return w.replace(/^[^A-Za-z0-9'’]+|[^A-Za-z0-9'’]+$/g, '');
     }).filter(Boolean);
@@ -1450,6 +1464,9 @@ function speakerBeside(words, nearEnd) {
             if (looksLikeName(words[i])) return { who: nameSpan(words, i), dist: distOf(verbAt), verb: true };
         }
         for (let i = verbAt + 1; i < n && inWindow(i); i++) {
+            // "the banker said, directing his words at Jessica": a name after a preposition is
+            // whom it was aimed at, not who spoke.
+            if (i > 0 && OBJECT_MARK.test(words[i - 1])) continue;
             if (isPronoun(words[i])) return { who: words[i], dist: distOf(verbAt), verb: true };
             if (looksLikeName(words[i])) return { who: nameSpan(words, i), dist: distOf(verbAt), verb: true };
         }
@@ -1597,19 +1614,23 @@ function narrationQuotes(text) {
     while ((m = re.exec(plain))) {
         // Before the quote, only its own sentence: '"Late," Tom said. "I know," Anna replied.' is
         // Anna's -- the previous sentence's "Tom said" used to win, being nearer than "Anna replied".
-        const before = quoteWords(text.slice(zoneBefore(text, m.index).at, m.index));
-        const after = quoteWords(text.slice(m.index + m[0].length));
+        // Only the narration counts: a name inside a quotation is someone spoken to or about.
+        // '"Really, Mr. Collins," cried Elizabeth, "you puzzle me."' gave its second half to Collins.
+        const bare = plain.replace(quoteRegex(plain), all => ' '.repeat(all.length));
+        const lead = zoneBefore(bare, m.index);
+        const before = quoteWords(bare.slice(lead.at, m.index));
+        const after = quoteWords(bare.slice(m.index + m[0].length));
         let left = speakerBeside(before, true);
         let right = speakerBeside(after, false);
         // No speech verb: the action beat beside the quotation speaks, and its subject is the
         // speaker -- 'Tom turned to Anna. "We have to go."' is Tom, not the nearer Anna. A beat
         // whose names are all objects names nobody, and the narrator keeps the line.
-        const beatBefore = lastSentence(text.slice(0, m.index));
-        const beatAfter = firstSentence(text.slice(m.index + m[0].length));
+        const beatBefore = lastSentence(bare.slice(0, m.index));
+        const beatAfter = firstSentence(bare.slice(m.index + m[0].length));
         if (left && !left.verb) {
             const s = sentenceSubject(beatBefore);
             left = s ? { who: s, dist: left.dist, verb: false } : null;
-        } else if (!left && !/[A-Za-z]/.test(blankBrackets(text.slice(zoneBefore(text, m.index).at, m.index)))) {
+        } else if (!left && !/[A-Za-z]/.test(bare.slice(lead.at, m.index))) {
             // A quote that opens its sentence: the sentence before is its action beat.
             const s = sentenceSubject(beatBefore);
             if (s) left = { who: s, dist: 1, verb: false };
