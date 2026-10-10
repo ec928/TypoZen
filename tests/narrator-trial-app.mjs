@@ -1,5 +1,5 @@
 /**
- * Narrator Settings' Try it prepares text as narration does (narrationTrial, 09-speech.js):
+ * Narrator Manager' Try it prepares text as narration does (narrationTrial, 09-speech.js):
  * numbers as words, one piece per line, the reader's instruction and cue wording sent as they
  * are, and a speech tag's words only when Emotion cues are ticked -- added to the instruction,
  * not sent as a direction (cueInstruction; docs/narrator-cues.md, "Speech words"). The narrator and the audio are stubbed, so

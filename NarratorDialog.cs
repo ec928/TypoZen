@@ -13,7 +13,7 @@ using System.Windows.Media;
 namespace TypoZen
 {
     /// <summary>
-    /// File > Read Aloud > Narrator settings.
+    /// File > Read Aloud > Narrator Manager.
     ///
     /// Three tabs, by how often each is used. Reading holds what shapes every narration -- the
     /// voice, the whole instruction, emotion cues -- on the left, and Try it on the right, always
@@ -140,7 +140,7 @@ namespace TypoZen
 
             var win = new Window
             {
-                Title = "Narrator",
+                Title = "Narrator Manager",
                 Width = 1000,
                 Height = 740,
                 MinWidth = 820,

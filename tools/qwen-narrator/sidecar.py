@@ -77,7 +77,7 @@ DIALOGUE_DIRECTED = "Speak this line of dialogue as the character would say it: 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The voice the narrator shipped with. Others are designed from a description in TypoZen
-# (Narrator settings) and kept in voices/ beside the cache, one folder each.
+# (Narrator Manager) and kept in voices/ beside the cache, one folder each.
 BUILTIN_VOICES = {
     'northern-english': {
         'name': 'Northern English (original)',
@@ -213,7 +213,7 @@ def config_facts(folder):
 # Voices are kept in voices/ and nowhere else. Until 2026-09-25 every kept voice was also
 # copied, silently, into the reader's OneDrive folder -- and so to their cloud account --
 # and brought back from it at every start. Keeping a copy is now the reader's choice:
-# Narrator settings exports a voice to a .tzvoice file wherever they like, and imports it
+# Narrator Manager exports a voice to a .tzvoice file wherever they like, and imports it
 # back (import_voice). Copies the old behaviour left in OneDrive are not touched.
 
 
@@ -426,7 +426,7 @@ class Narrator(object):
     def instruction(style, direction, role='narration', whole=None, cue=None, own=None):
         """The full instruction for one piece.
 
-        `whole` is the reader's own instruction, exactly as Narrator Settings shows it: it is
+        `whole` is the reader's own instruction, exactly as Narrator Manager shows it: it is
         used as it stands, with nothing added but the paragraph's direction -- worded by `cue`,
         where {cue} is the direction -- and only when the page sent one. Without `whole`, the
         older form: the reader's style inside a standing sentence, plus LIGHT_DIALOGUE or the
@@ -465,7 +465,7 @@ class Narrator(object):
 
     def key_for(self, text, voice, instruction, seed=1234):
         """One piece's cache key: the model, the voice-print, the instruction and the text --
-        and the seed when it is not narration's own, so another take (Narrator Settings, Try
+        and the seed when it is not narration's own, so another take (Narrator Manager, Try
         it) is its own file while every key made before takes existed stays as it was."""
         h = hashlib.sha256()
         h.update(MODEL_REPO.encode('utf-8'))
@@ -495,7 +495,7 @@ class Narrator(object):
         tokenized = {}
         for i in set(instructions):
             # An empty instruction is none at all, as qwen-tts's own generate_custom_voice has
-            # it: the reader can clear Narrator Settings' box and hear the model unguided.
+            # it: the reader can clear Narrator Manager' box and hear the model unguided.
             tokenized[i] = m._tokenize_texts([m._build_instruct_text(i)])[0] if i else None
         codes, _ = m.model.generate(input_ids=input_ids, instruct_ids=[tokenized[i] for i in instructions],
                                     voice_clone_prompt=prompt, languages=['English'] * n,
@@ -611,7 +611,7 @@ class Narrator(object):
         cached = len(blocks) - len(todo)
         if cached:
             log('%d of %d pieces from the cache' % (cached, len(blocks)))
-        # The instruction goes back with each piece, so Narrator Settings can show exactly what
+        # The instruction goes back with each piece, so Narrator Manager can show exactly what
         # the narrator was told.
         items = [{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3), 'private': p, 'instruction': i}
                  for b, k, s, p, i in zip(blocks, keys, have, where, instructions)]
@@ -917,7 +917,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {'error': 'no such path'})
 
     def _voice_library(self, body):
-        """Design, keep, delete and preview: the voice library behind Narrator settings."""
+        """Design, keep, delete and preview: the voice library behind Narrator Manager."""
         n = Handler.narrator
         try:
             if self.path.startswith('/design'):
@@ -1001,7 +1001,7 @@ class Handler(BaseHTTPRequestHandler):
         # rather than failing the reading.
         voice = Handler.narrator.known_voice(body.get('voice') or DEFAULT_VOICE)
         style = body.get('style') or ''
-        # The reader's whole instruction, when the page sends one (Narrator Settings); an
+        # The reader's whole instruction, when the page sends one (Narrator Manager); an
         # empty string is a real choice, so only its absence falls back to the style form.
         whole = body.get('instruction')
         whole = whole if isinstance(whole, str) else None

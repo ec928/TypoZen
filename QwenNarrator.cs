@@ -73,7 +73,7 @@ namespace TypoZen
             return Path.Combine(RootDir(cacheDir), "narration");
         }
 
-        // ---- Narrator settings and each book's cast ---------------------------------------
+        // ---- Narrator Manager and each book's cast ---------------------------------------
         //
         // narrator.json in the extension folder holds the narrator's voice, the instruction it
         // reads by and the emotion-cue setting; presets.json the reader's own saved instructions;
@@ -98,14 +98,14 @@ namespace TypoZen
         /// Plain, since 2026-10-09 (Ed): the previous default -- LegacyCue -- told the narrator to hold
         /// back ("with restraint", "measured") on exactly the lines meant to be emphatic or breaking
         /// off. It had won one Qwen take on a speech tag in 2026-09-26, before speech tags stopped going
-        /// through this sentence. The wording is no longer in Narrator Settings.
+        /// through this sentence. The wording is no longer in Narrator Manager.
         /// </summary>
         public const string DefaultCue = "Voice the lines in quotation marks as {cue}.";
         /// <summary>The default until 2026-10-09; a setting saved with it now reads as DefaultCue.</summary>
         private const string LegacyCue = "Voice the lines in quotation marks as {cue}, clearly but with restraint, and keep the narration around them measured.";
 
         /// <summary>
-        /// The starting points offered in Narrator Settings, in order. Not editable in place; save a
+        /// The starting points offered in Narrator Manager, in order. Not editable in place; save a
         /// copy as your own. None of them tells the narrator to hold back on dialogue: "understated
         /// rather than performed" and "without acting them out" fought the emotion cues -- with
         /// them, "she snapped" was read flatter than with no instruction at all (2026-09-26).

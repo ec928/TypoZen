@@ -193,4 +193,4 @@ Breeze speaks in a voice from its recording and the words in it, not from a voic
 
 ### Strength (Breeze)
 
-Breeze follows each instruction with a strength: Narrator Settings > Breeze > Emotion strength, 1 to 10, default 4. A number after a colon in a tag sets it for that piece: `[sad:9]`, `[[shouts loudly:9]]`, `Anna [whispers softly:2] said`. The page takes the number out before anything is sent (`takeStrength`, 09-speech.js), so Qwen gets the plain tag and the number is never spoken; the numbers-as-words step leaves bracketed text alone for the same reason. A piece with no instruction has no strength.
+Breeze follows each instruction with a strength: Narrator Manager > Breeze > Emotion strength, 1 to 10, default 4. A number after a colon in a tag sets it for that piece: `[sad:9]`, `[[shouts loudly:9]]`, `Anna [whispers softly:2] said`. The page takes the number out before anything is sent (`takeStrength`, 09-speech.js), so Qwen gets the plain tag and the number is never spoken; the numbers-as-words step leaves bracketed text alone for the same reason. A piece with no instruction has no strength.

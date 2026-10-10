@@ -50,7 +50,7 @@ Breeze narration adds, in `extensions\BreezeTTS\`, its own `narration\` audio, i
 **A cloned voice holds the recording you gave it and the words you typed for it.** Its
 settings and each book's cast are the same files as Qwen's, in `extensions\QwenTTS\`.
 
-Voices you design stay in that folder. A voice cannot be made again, so Narrator Settings
+Voices you design stay in that folder. A voice cannot be made again, so Narrator Manager
 can **Export** one to a `.tzvoice` file wherever you choose, and **Import** it back. TypoZen
 makes no copy of its own. (Versions 0.5.2 and earlier copied each voice to
 `OneDrive\TypoZen\Narrator voices` when OneDrive was set up; those copies are left where
@@ -79,7 +79,7 @@ Under **File → Privacy**:
 - **Clear Recent Searches** — erases the stored search terms.
 - **Clear Stored Data…** — deletes the stored data described above, including the
   diagnostic logs and, if you choose, narration audio, logs and casts. Voices are kept;
-  delete them one at a time in Narrator Settings. Extensions are removed in
+  delete them one at a time in Narrator Manager. Extensions are removed in
   **File → Extensions**.
 
 You can also simply delete that folder.

@@ -1750,7 +1750,7 @@ namespace TypoZen
                                         _kokoroVoiceId == BreezeNarrator.VoiceId,
                                         breeze =>
                                         {
-                                            // The narrator chosen at the top of Narrator Settings becomes the reading voice.
+                                            // The narrator chosen at the top of Narrator Manager becomes the reading voice.
                                             string cache = CacheDir();
                                             string id = breeze ? BreezeNarrator.CurrentVoice(cache) : QwenNarrator.CurrentVoice(cache), name = id;
                                             foreach (var v in breeze ? BreezeNarrator.SavedVoices(cache) : QwenNarrator.SavedVoices(cache)) if (v.Key == id) name = v.Value;
@@ -2530,7 +2530,7 @@ namespace TypoZen
         /// <summary>
         /// Read Aloud > Qwen Narrator: every saved narrator voice, with the one reading ticked
         /// and named in the header. Built from disk each time it opens, so a voice kept in
-        /// Narrator settings is there at once, and the label can never show a voice that is not
+        /// Narrator Manager is there at once, and the label can never show a voice that is not
         /// the one in use.
         /// </summary>
         private void RebuildQwenVoiceMenu()
@@ -5478,7 +5478,7 @@ namespace TypoZen
         /// The Qwen narrator's traces of what was read: rendered audio (the lasting cache and
         /// this session's private one), its logs, and each book's cast, which is keyed by the
         /// book's path. Voices are not in it -- they are things the reader made, and are
-        /// deleted one by one in Narrator settings.
+        /// deleted one by one in Narrator Manager.
         /// </summary>
         private List<string> NarrationTraceFiles(out List<string> dirs)
         {
@@ -7423,14 +7423,14 @@ namespace TypoZen
             }
             else if (msg.StartsWith("host_narrator_cast:", StringComparison.Ordinal))
             {
-                // The page's answer to Narrator settings' "Find characters".
+                // The page's answer to Narrator Manager' "Find characters".
                 var cb = NarratorDialog.CastScanArrived;
                 if (cb != null) cb(msg.Substring(19));
                 return;
             }
             else if (msg.StartsWith("host_narrator_trial:", StringComparison.Ordinal))
             {
-                // Narrator settings' Try it: the pieces and what the narrator was told, or the end.
+                // Narrator Manager' Try it: the pieces and what the narrator was told, or the end.
                 var cb = NarratorDialog.TrialArrived;
                 if (cb != null) cb(msg.Substring(20));
                 return;

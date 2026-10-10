@@ -1124,7 +1124,7 @@
                     } catch (eN) {}
                 }
                 else if (msg.startsWith("cmd:narrator_settings:")) {
-                    // Voice, style, speed and this book's cast, from Narrator settings.
+                    // Voice, style, speed and this book's cast, from Narrator Manager.
                     try { if (typeof window.setNarratorSettings === 'function') window.setNarratorSettings(msg.substring(22)); } catch (eS) {}
                 }
                 else if (msg.startsWith("cmd:narrate_warm:")) {
@@ -1136,12 +1136,12 @@
                     try { if (typeof window.stopNarration === 'function') window.stopNarration(); } catch (eX) {}
                 }
                 else if (msg === "cmd:narrator_cast_scan") {
-                    // Narrator settings asks who speaks in this book; the answer goes back as
+                    // Narrator Manager asks who speaks in this book; the answer goes back as
                     // host_narrator_cast.
                     try { if (typeof window.narrationCastScan === 'function') window.narrationCastScan(); } catch (eC) {}
                 }
                 else if (msg.startsWith("cmd:narrator_trial:")) {
-                    // Narrator settings' Try it; answers come back as host_narrator_trial.
+                    // Narrator Manager' Try it; answers come back as host_narrator_trial.
                     try { window.narrationTrial(msg.substring(19)); } catch (eT) {}
                 }
                 else if (msg === "cmd:narrator_trial_stop") {

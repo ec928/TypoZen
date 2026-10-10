@@ -484,7 +484,7 @@ let _narrationBase = '';
 let _qwenPending = null;        // a selection to narrate once the host says the narrator is up
 
 /**
- * The narrator's settings, from the host (File > Read Aloud > Narrator settings): the
+ * The narrator's settings, from the host (File > Read Aloud > Narrator Manager): the
  * narrator's voice, the instruction it reads by -- the whole of it, as the reader sees and edits
  * it -- the wording of an emotion cue, the reading speed, and this book's cast (character key
  * to voice id). Sent before every narration and whenever they change.
@@ -500,14 +500,14 @@ let _narrCast = {};
 // character's lines. Empty means the stock in-character line.
 let _narrCastSay = {};
 // Emotion cues from speech tags, sent as each piece's direction. The host's settings decide
-// (Narrator settings, Emotion cues; on unless the reader turns them off).
+// (Narrator Manager, Emotion cues; on unless the reader turns them off).
 let _narrDirect = false;
 // Privacy Mode: new audio goes to this session's private folder, served by localnarrationp.
 let _narrPrivate = false;
 // Where the chosen narrator's audio is served from: Qwen's or Breeze's hosts (the host says which).
 let _narrAudioHost = 'localnarration';
 let _narrAudioHostPrivate = 'localnarrationp';
-// Breeze's Emotion strength from Narrator Settings; 0 sends none (Qwen, or the narrator's default).
+// Breeze's Emotion strength from Narrator Manager; 0 sends none (Qwen, or the narrator's default).
 let _narrStrength = 0;
 // Breeze strength per cast character (Cast for this book); a character without one is at 4.
 let _narrCastStrength = {};
@@ -666,7 +666,7 @@ function cancelNarration() {
 }
 
 /**
- * Narrator Settings' "Try it": the reader's own text, read with the settings on screen (saved
+ * Narrator Manager' "Try it": the reader's own text, read with the settings on screen (saved
  * or not), cut, respelt and cued exactly as narration does it -- speakNumbers, blockPieces,
  * narrationDirection -- so what is heard is what narrating that text would sound like. The
  * dialog's own shortcut used to skip all three, so the emotion cues could never be heard there.
@@ -724,7 +724,7 @@ window.narrationTrial = async function (json) {
         trialTell({ kind: 'ready', pieces: pieces.map((p, i) => ({
             text: p.text, cue: o.direct ? p.direction : '', instruction: items[i].instruction || '', seconds: items[i].seconds || 0,
             parts: items[i].parts || null })) });
-        // The narrator Narrator Settings is trying: its own audio hosts, which need not be the reading one's.
+        // The narrator Narrator Manager is trying: its own audio hosts, which need not be the reading one's.
         const host = o.audioHost || _narrAudioHost, hostPrivate = o.audioHostPrivate || _narrAudioHostPrivate;
         _trialQueue = items.map(it => 'https://' + (it.private ? hostPrivate : host) + '/' + it.file);
         const next = () => {
@@ -773,7 +773,7 @@ function cueInstruction(p, cuesOn, standing) {
  * A tag's own strength -- [sad:9], [[shouts loudly:9]], Anna [whispers softly:9] said -- taken out
  * of the text and the instruction before either is sent, and sent as the piece's strength. One
  * number per piece: the last one written wins. Qwen has no strength and ignores it; Breeze uses it
- * in place of Narrator Settings' Emotion strength (tools/breeze-narrator/sidecar.py, translate).
+ * in place of Narrator Manager' Emotion strength (tools/breeze-narrator/sidecar.py, translate).
  * Out of range is the narrator's to clamp (1 to 10).
  */
 function takeStrength(text, instruction) {
@@ -1487,7 +1487,7 @@ function castScanTexts() {
 }
 
 /**
- * The characters with how many lines each speaks, for the cast list in Narrator settings.
+ * The characters with how many lines each speaks, for the cast list in Narrator Manager.
  * Sent to the host as host_narrator_cast. `whole` says whether this was the full book.
  */
 window.narrationCastScan = function () {

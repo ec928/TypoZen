@@ -637,7 +637,7 @@ class Narrator(object):
     def render_group(self, blocks, voice, seed, reading=None, style='', private=False, whole=None, cue=None,
                      strength=DEFAULT_STRENGTH):
         """Audio for each block, from the cache where it exists, the rest one at a time. A block's
-        own 'strength' (a tag's number) wins over `strength` (Narrator Settings).
+        own 'strength' (a tag's number) wins over `strength` (Narrator Manager).
         Returns ([{id, file, seconds, private, instruction, voice, cached, parts}] in order, how many
         were cached); `parts` is exactly what Breeze was given: [{text, instruction, strength}]."""
         import numpy as np

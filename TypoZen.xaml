@@ -472,7 +472,7 @@
                                           ToolTip="Audiobook narration by Breeze, rendered on this PC's graphics card. It reads in voices made from a description or cloned from a recording, and performs sounds such as [laughing] and [sighing]."/>
                                 <!-- The narrators' own tools, then the sampler, which is for the Windows and Kokoro
                                      voices and the speed. Help is in Help > Narration, once. -->
-                                <MenuItem x:Name="mNarratorSettings" Header="Narrator _Settings..." Visibility="Collapsed"
+                                <MenuItem x:Name="mNarratorSettings" Header="_Narrator Manager..." Visibility="Collapsed"
                                           ToolTip="The narrator's voice and how it reads, new voices, and voices for this book's characters."/>
                                 <MenuItem x:Name="mNarrMonitor" Header="Narration _Monitor" IsCheckable="True" Visibility="Collapsed"
                                           ToolTip="A window that shows, as each piece plays, what the narrator was given: who speaks, the voice, the text, the instruction and the strength, and the settings behind them."/>

@@ -264,7 +264,7 @@ namespace TypoZen
                 Blurb = "Audiobook narration by Qwen3-TTS, a 1.7-billion-parameter speech model built like a "
                       + "large language model, running entirely on this PC; nothing is sent anywhere. It reads "
                       + "with expression taken from the text, in voices you describe in words, and can give "
-                      + "characters voices of their own (File > Read Aloud > Narrator Settings).\n\n"
+                      + "characters voices of their own (File > Read Aloud > Narrator Manager).\n\n"
                       + "Demanding: it needs an NVIDIA graphics card with CUDA. On an RTX 4070 Ti (12 GB) it "
                       + "holds about 4.3 GB of the card's memory while loaded and about 6 GB while rendering, "
                       + "and the whole extension is about 13 GB on disk. It takes about 20 seconds to load — in the background when a book is "

@@ -8,7 +8,7 @@ namespace TypoZen
     /// <summary>
     /// The reader's theme for a code-built window: text boxes, dropdowns, buttons, lists and tabs in
     /// the theme's colours rather than Windows' own white controls, which glared out of a dark theme
-    /// in Narrator Settings (Ed, 2026-10-09). The window's background and text colour come from the
+    /// in Narrator Manager (Ed, 2026-10-09). The window's background and text colour come from the
     /// main window; everything else is derived from those two, so any theme works.
     ///
     ///   DialogTheme.Apply(win, owner);

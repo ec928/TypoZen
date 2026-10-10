@@ -13,7 +13,7 @@ namespace TypoZen
     /// the same requests as Qwen's, so the page narrates with either; this class says where
     /// Breeze lives and which voices it has.
     ///
-    /// What the reader sets in Narrator Settings -- instruction, emotion cues, cue wording, each
+    /// What the reader sets in Narrator Manager -- instruction, emotion cues, cue wording, each
     /// book's cast -- is shared with the Qwen narrator and kept where it always was
     /// (QwenNarrator.LoadSettings, extensions\QwenTTS\narrator.json). Only the voice the narrator
     /// reads in is Breeze's own choice, "breezeVoice" there.
