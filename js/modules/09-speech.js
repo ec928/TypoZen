@@ -1659,7 +1659,8 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
             .map(el => narrationText(el));
         speakers = attributeParagraphs(texts, known);
     }
-    for (let i = from; i < all.length && pieces.length < limit; i++) {
+    let i = from;
+    for (; i < all.length && pieces.length < limit; i++) {
         const at = narrationDocIndex(all[i], i);
         // The text as written, not applyTTSOverrides': those respellings ("livz", "Benny
         // Jesserit") help the Windows and Kokoro voices, but Qwen reads words from their
@@ -1687,7 +1688,24 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
             instruction: p.instruction || '', bracket: !!p.bracket
         }));
     }
-    if (graduated) return graduatedBatches(pieces, maxBatches);
+    if (graduated) {
+        const out = graduatedBatches(pieces, maxBatches);
+        // Where the next window starts (startQwenNarration carries on from there). A paragraph
+        // the window only half covered is taken out of it and read whole by the next one --
+        // unless it is all this window holds.
+        out.nextFrom = i;
+        const left = out.left;
+        if (left && left.length) {
+            const el = left[0].el;
+            const trimmed = out.map(b => b.filter(p => p.el !== el)).filter(b => b.length);
+            if (trimmed.length) {
+                out.length = 0;
+                trimmed.forEach(b => out.push(b));
+                out.nextFrom = all.indexOf(el);
+            } else out.nextFrom = all.indexOf(el) + 1;
+        }
+        return out;
+    }
     const batches = [];
     for (let k = 0; k < pieces.length && batches.length < maxBatches; k += NARRATION_BATCH) {
         batches.push(pieces.slice(k, k + NARRATION_BATCH));
@@ -1750,6 +1768,7 @@ function graduatedBatches(pieces, maxBatches) {
         slack += batch.reduce((s, p) => s + p.text.length / 15, 0);
         batches.push(batch);
     }
+    batches.left = queue;     // what did not fit, for narrationBatches' nextFrom
     return batches;
 }
 
@@ -1843,7 +1862,9 @@ async function startQwenNarration(base) {
     if (at < 0) { at = 0; why = 'nothing on screen, top'; }
 
     const startAt = narrationDocIndex(all[at], at);
-    const batches = narrationBatches(all, at, 15, true, fromCaret);
+    // 120 pieces, however many batches that takes: counted in batches, Breeze's one-piece
+    // batches cut a reading off after 15 pieces, about eight lines (2026-10-10).
+    const batches = narrationBatches(all, at, Math.ceil(120 / NARRATION_BATCH), true, fromCaret);
     const first = batches.findIndex(b => b.some(p => p.at >= startAt));
     narrLog('---- narrate: start block ' + startAt + ' (' + why + ', DOM position ' + at + ' of ' + all.length +
             '; DOM holds blocks ' + narrationDocIndex(all[0], 0) + '..' + narrationDocIndex(all[all.length - 1], all.length - 1) +
@@ -1905,8 +1926,18 @@ async function startQwenNarration(base) {
 
     (async () => {
         try {
-            let n = next;
-            for (; n < queue.length; n++) {
+            let n = next, more = batches.nextFrom;
+            for (;; n++) {
+                // The end of this window: plan the next one from where it stopped, so a reading
+                // goes on to the end of the document, not 120 pieces (2026-10-10).
+                if (n >= queue.length) {
+                    if (!(more < all.length) || !isPlaying || reading !== _narrationReading) break;
+                    const add = narrationBatches(all, more, Math.ceil(120 / NARRATION_BATCH), true);
+                    if (!add.length) break;
+                    narrLog('next passage: ' + add.length + ' batches from block ' + narrationDocIndex(all[more], more));
+                    more = add.nextFrom;
+                    add.forEach(b => queue.push(b));
+                }
                 // About ninety seconds ahead is plenty; beyond that is work nobody may hear.
                 // Except before a batch that will take longer than that to render -- one long
                 // paragraph is enough -- which is asked for early enough to arrive in time.
