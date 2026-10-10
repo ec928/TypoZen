@@ -1702,6 +1702,18 @@
             color: var(--tx-muted, #A1A1AA);
             font-variant-numeric: tabular-nums;
         }
+        /* Help > Narration: the second column explains, so it wraps and reads left to right. */
+        .tz-help-rules td:first-child { width: 46%; }
+        .tz-help-rules td:last-child:not([colspan]) {
+            text-align: left;
+            white-space: normal;
+        }
+        .tz-help-aside {
+            margin: 6px 0 0;
+            font-size: 12.5px;
+            line-height: 1.45;
+            color: var(--tx-muted, #A1A1AA);
+        }
         .tz-help-table code {
             font-family: var(--mono-font, ui-monospace, 'Cascadia Mono', Consolas, monospace);
             font-size: 12px;

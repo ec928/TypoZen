@@ -322,7 +322,7 @@ The list is **grouped by what each voice actually is**, read from the voice's ow
 - **Long passages start at once.** SAPI 5 voices speak straight to the audio device from the first audio they produce; they used to be rendered whole before a word was heard, which for a slow voice meant a 17-second wait on a long selection. Windows.Media voices are rendered first — they are fast — into a temporary file in `%TEMP%` that is replaced by the next one
 - **Nothing is left hanging.** A voice that fails, or audio the player cannot open, ends the play and puts the controls back to Read aloud, rather than leaving them on Stop with nothing playing. Each play's steps — voice, length of text, time to first audio, end or failure — go to `debug.log` in the data folder, except in Privacy Mode; the text itself is never logged
 
-**Neural voices, if you install them.** **File → Extensions** offers Kokoro, a voice model that runs on your graphics card and reads far more naturally than the Windows voices. It is a 186 MB download — the model, the runtime and fourteen voices — and once it is there, everything happens on your computer: the engine is loaded from the data folder, not a CDN, and the model is read from disk. Measured on a WebGPU card it generates about eleven seconds of speech per second of work, so it keeps well ahead of itself; without WebGPU it is slower than speech and TypoZen says so and stays with the Windows voices. The **Kokoro Voices** menu exists only while the extension is installed. The two narrators are separate: [the Qwen narrator](#the-qwen-narrator) (voices, a cast, and the tagging notation) and [the Breeze narrator](#the-breeze-narrator).
+**Neural voices, if you install them.** **File → Extensions** offers Kokoro, a voice model that runs on your graphics card and reads far more naturally than the Windows voices. It is a 186 MB download — the model, the runtime and fourteen voices — and once it is there, everything happens on your computer: the engine is loaded from the data folder, not a CDN, and the model is read from disk. Measured on a WebGPU card it generates about eleven seconds of speech per second of work, so it keeps well ahead of itself; without WebGPU it is slower than speech and TypoZen says so and stays with the Windows voices. The **Kokoro Voices** menu exists only while the extension is installed. The two narrators are separate: [the Qwen narrator](#the-qwen-narrator) and [the Breeze narrator](#the-breeze-narrator); [Characters, voices and directing a line](#characters-voices-and-directing-a-line) covers both.
 
 ### Extensions
 **File → Extensions** is the one place TypoZen uses the network, and only while an install is running. Nothing is downloaded unless you ask for it, nothing is contacted at launch, and an extension you have not installed leaves no menu behind.
@@ -335,7 +335,7 @@ The list is **grouped by what each voice actually is**, read from the voice's ow
 | **Breeze narration** (experimental) | about 12.6 GB; needs an NVIDIA graphics card with at least 12 GB | `extensions\BreezeTTS\` |
 
 - **Install shows progress and can be cancelled.** Kokoro and Wiktionary files land in a staging folder and are moved into place only when every one has arrived, so a cancelled or failed install leaves nothing behind. A cancelled Qwen install keeps what it has downloaded and carries on from there next time
-- **Qwen narration is experimental: download and use it at your own risk.** It has been tested on one PC (an RTX 4070 Ti) and asks before it downloads anything. It is a 1.7-billion-parameter speech model running on your own graphics card. Install fetches its own Python (checked against its SHA-256), its libraries and its models, each at a pinned version; afterwards it runs with the network off. On an RTX 4070 Ti it holds about 4.3 GB of the card's memory while loaded, about 6 GB while rendering, and gives the card back after 15 minutes unused. Remove keeps your voices, casts and settings. The narrator is not reliable with digits (it read "£86,000 - £117,800" as "minus", and dropped or invented digits), so TypoZen gives it numbers as words, British style: amounts, ranges ("to"), dates, times, percentages, years and plain numbers -- "£86,000 - £117,800" is spoken as "eighty-six thousand pounds to one hundred and seventeen thousand eight hundred pounds". Only what is spoken changes; the Windows and Kokoro voices do this themselves. Designing a voice, giving characters their own, and marking a line's delivery are in [The Qwen narrator](#the-qwen-narrator)
+- **Qwen narration is experimental: download and use it at your own risk.** It has been tested on one PC (an RTX 4070 Ti) and asks before it downloads anything. It is a 1.7-billion-parameter speech model running on your own graphics card. Install fetches its own Python (checked against its SHA-256), its libraries and its models, each at a pinned version; afterwards it runs with the network off. On an RTX 4070 Ti it holds about 4.3 GB of the card's memory while loaded, about 6 GB while rendering, and gives the card back after 15 minutes unused. Remove keeps your voices, casts and settings. The narrator is not reliable with digits (it read "£86,000 - £117,800" as "minus", and dropped or invented digits), so TypoZen gives it numbers as words, British style: amounts, ranges ("to"), dates, times, percentages, years and plain numbers -- "£86,000 - £117,800" is spoken as "eighty-six thousand pounds to one hundred and seventeen thousand eight hundred pounds". Only what is spoken changes; the Windows and Kokoro voices do this themselves. Designing a voice is in [The Qwen narrator](#the-qwen-narrator); giving characters their own and directing a line are in [Characters, voices and directing a line](#characters-voices-and-directing-a-line)
 - **Breeze narration is experimental too**, tested on the same PC. It is a 3-billion-parameter speech model; install fetches its own Python, its libraries, its code (each file checked against its SHA-256) and its model (checked against the published checksums), each at a pinned version, and afterwards it runs with the network off. It holds about 9 GB of the card's memory while reading, so the Qwen narrator is stopped while Breeze runs, and the other way round. Remove keeps your voices. See [The Breeze narrator](#the-breeze-narrator)
 - **The Wiktionary archive is checked against its SHA-256** before it is unpacked
 - **Remove deletes the folder**, and the menu that extension added disappears with it
@@ -354,50 +354,9 @@ Once Qwen narration is installed, **File → Read Aloud → Qwen Narrator** list
 
 **The narrator's instruction** is told, and not spoken, for the narration. It is used exactly as written. Leave it empty and the narration is read with no instruction. The presets are starting points: **None (the model unguided)**, **Standard**, **Warm**, **Brisk** and **Dramatic**. **Save as preset...** keeps one of your own.
 
-**Cast for this book** is there when a document is open. **Find characters** reads the quotations. In an ePub it reads the chapter you have open; in a text or Markdown file it reads the file. A name is listed once it has at least two quotations, the most frequent first, up to thirty. Give a character a voice and their quotations are spoken in it. Leave the voice empty and those lines stay with the narrator, and an instruction on that row is not kept. The instruction on a row that has a voice is that character's standing delivery, told and not spoken, on every line of theirs. Leave it empty and the line is told only to speak in character. The play control on the row speaks "You should have waited for me." in that row's voice and instruction, saved or not, so the voice can be heard before Save. Read aloud uses the cast that was saved.
+**Cast for this book** is there when a document is open. **Find characters** reads the quotations. In an ePub it reads the chapter you have open; in a text or Markdown file it reads the file. A name is listed once it has at least two quotations, the most frequent first, up to thirty. Give a character a voice and their quotations are spoken in it. Leave the voice empty and those lines stay with the narrator, and an instruction on that row is not kept. The instruction on a row that has a voice is that character's standing delivery, told and not spoken, on every line of theirs. Leave it empty and their lines get no instruction. The play control on the row speaks "You should have waited for me." in that row's voice and instruction, saved or not, so the voice can be heard before Save. Read aloud uses the cast that was saved.
 
-Who speaks is read from the text: a capitalised name within eight words of the quotation, outside it. `Jill told Paul "..."` is Jill. A line with no name that close stays with the narrator. A long lead-in can push the name past eight words, and then the narrator reads the whole sentence, quotation included. Keep the name near the quotation.
-
-The narrator's sentence and the character's quotation are separate readings. In `Anna whispered, "Get out."` the narrator says `Anna whispered.` and Anna says only `Get out.` The word in the narrator's sentence does not change Anna's line. To change her line, use a bracket, a double bracket, or Emotion cues.
-
-**Tagging a line.** Both notations below are instructions. They are not spoken.
-
-A single bracket to the right of the speaker replaces that character's standing instruction for that line only:
-
-`Anna [whispers, speaks very quietly, softly, low pitched and very slowly], "Get out."`
-
-With no speaker, the same bracket beside the quotation replaces the narrator's instruction for that quotation only: `[whispers softly] "Get out."` The sentences around it keep the standing instruction. A single bracket inside the quotation, to the left of the name, or after the sentence's period, is read aloud. It is not an instruction.
-
-A double bracket overrides every other instruction for that line, wherever it sits in the quotation's sentence: to the right of the name, to the left of it, or inside the quotation.
-
-`Anna [[shouts loudly]] sadly said "Goodbye"`
-
-If Anna's standing instruction is the long whisper above, she is told only `shouts loudly`. The words "sadly said" are still spoken, by the narrator, under the narrator's own instruction. A double bracket in an earlier sentence does not change her line. It is the instruction for the narration it sits in, and it is not spoken. In narration with no quotation, `[[measured and quiet]] The door opened.` replaces the narrator's standing instruction for that paragraph.
-
-| In the text | What that line is told |
-|---|---|
-| `Anna [whispers softly], "Get out."` | Anna is told `whispers softly`, instead of her standing instruction. The bracket is not spoken. |
-| `[[shouts loudly]]` in that sentence, including inside the quotation or to the left of the name | Only `shouts loudly`. It replaces the standing instruction, a speech tag, and a single bracket. Not spoken. |
-| `Anna sadly said "Goodbye"`, Emotion cues on, no bracket | Her standing instruction, then `sadly`. "said" is not added. |
-| Emotion cues off, no bracket | The standing instruction only. |
-| `[whispers]` inside the quotation, or to the left of the name | Read aloud. It is not an instruction. |
-
-What moves a designed voice is several similar delivery words in the instruction. Two that do:
-
-- `whispers, speaks very quietly, softly, low pitched and very slowly`
-- `shouts, speaks very loudly, forcefully, high pitched and very fast`
-
-A shorter phrase, such as "whispering", is weaker. There is no list of pitch or speed percentages. A single bracket left in the spoken text — `[whispers]`, `[angry]`, `[crying]` and similar — may be performed, said as a word, or swallowed, and the change is slight. Use the notations above when the delivery has to be the one you wrote.
-
-**Emotion cues** is the checkbox **Add a cue to lines tagged with how they are said**. With it on, and no bracket on the line, the speech tag beside the quotation is added to the standing instruction. The name is left out, and so are "said", "asked" and "told". The author's words are used as written.
-
-`Anna shouts, speaks loudly, forcefully, fast: "Get out."` with an empty character box tells that line `shouts, speaks loudly, forcefully, fast`.
-
-`Anna sadly said "Goodbye"`, with the whisper instruction in her box, tells her `whispers, speaks very quietly, softly, low pitched and very slowly, sadly`.
-
-With the checkbox off, only the standing instruction is sent. A single bracket still replaces the box, and a double bracket still replaces everything, whether the checkbox is on or off. The name still has to be within eight words, or the quotation is not hers and the cue never reaches her.
-
-An exclamation mark, or a quotation that ends on a dash or an ellipsis (`"Hello!"`, `"Wait—"`), is a cue when the checkbox is on. Those are worded "Voice the lines in quotation marks as {cue}.", where `{cue}` is emphatic or breaking off. Ordinary speech tags do not go through that sentence. A paragraph with no quotation, and about seven tenths of it in italics, is read as a thought, quieter, and stays with the narrator.
+Who reads each quotation, and how each line is directed — the boxes, Emotion cues and the tags you can write in the text — are in [Characters, voices and directing a line](#characters-voices-and-directing-a-line), which applies to both narrators.
 
 **Try it**, on the right of Narrator Manager, plays the text in its box with the settings on the left, saved or not. One paragraph per line. **Use text selected in the document** fills the box, and **Ctrl+Enter** plays. **What the narrator was told** shows the instruction each piece was given. Play, change a setting, and play again: **Current** and **Previous** switch between the two. **New take** renders the same settings again, so a real change can be heard apart from one take's luck. Reading the book always uses the first take. Try it reads the whole line in the narrator voice and does not give a character their own voice. To hear a character, use the play control on their cast row, or read the book.
 
@@ -413,13 +372,81 @@ Breeze narration is a second narrator, beside Qwen rather than instead of it. On
 
 **Clone a voice from a recording.** **Manage voices...** with Breeze chosen has **Clone a voice from a recording**: 3 to 20 seconds of one person speaking clearly, and exactly the words they say — the easiest way is to record them reading the design passage, which **Use the design passage** puts in the box. Breeze makes one candidate; play it, name it, keep it. A cloned voice is Breeze's only. Clone only a voice you have the right to use: your own, or with the speaker's permission.
 
-**Sounds in the text.** The bracket tags above work with Breeze too, and the point events — `[laughing]`, `[giggles]`, `[gasp]`, `[sighing]`, `[cough]`, `[clears throat]`, `[snorts]` — are performed as sounds, which the Qwen narrator cannot do: it only colours the words around them. A span tag such as `[sad]` changes the delivery of the rest of that paragraph, as it does with Qwen.
+**Sounds in the text.** The tags in [Characters, voices and directing a line](#characters-voices-and-directing-a-line) work with Breeze too, and the point events — `[laughing]`, `[giggles]`, `[gasp]`, `[sighing]`, `[cough]`, `[clears throat]`, `[snorts]` — are performed as sounds, which the Qwen narrator cannot do: it only colours the words around them. A span tag such as `[sad]` changes the delivery of the rest of that paragraph, as it does with Qwen.
 
 **How strongly it acts.** Every instruction Breeze is given — an emotion cue, a bracket beside a speaker, a `[[double bracket]]`, a mood tag — is followed with an **Emotion strength**, set in Narrator Manager under **Breeze**: 1 barely, 4 by default (Breeze's own recommendation), up to 10. A number in a tag sets it for that line alone: `[sad:9]`, `[[shouts loudly:9]]`, `Anna [whispers softly:2] said`. A character in **Cast for this book** has a strength of their own for all their lines, 4 unless you change it on their row; the Emotion strength setting then applies to the narration. The number is never spoken, and the Qwen narrator, which has no strength, ignores it. A line with no instruction is not affected; a line with one takes about half as long again to prepare.
 
-**Narration Monitor.** **File → Read Aloud → Narration Monitor** opens a window beside the reading that shows, as each piece starts to play, who is speaking and in which voice, the exact text the narrator was given, its instruction and strength, whether it was rendered just now or came from saved audio — and the settings behind every piece. It works with either narrator, shows the book's text on screen only, and writes nothing.
+**Narration Monitor.** **File → Read Aloud → Narration Monitor** opens a window beside the reading that shows, as each piece starts to play, who is speaking and in which voice, the exact text the narrator was given, its instruction and strength, whether it was rendered just now or came from saved audio — and the settings behind every piece. Each Read Aloud is a run under its own header — the time, the narrator, the voice, the instruction and whether Emotion cues were on — with its pieces newest first, so one run never blurs into the next. **Copy all** copies the lot, **Clear** empties it, and the label at the foot shows `narration.log` in File Explorer (that file records when pieces were asked for and played, never their text). It works with either narrator and shows the book's text on screen only; the monitor itself writes nothing.
 
 **Licence.** Breeze TTS 2's model is licensed by its makers for research and non-commercial use only, and that includes the audio it makes on your PC: listening to your own books is fine; selling or publishing the audio is not, without their permission. Install shows this before anything is downloaded.
+
+### Characters, voices and directing a line
+
+This applies to both narrators. The narrator reads everything, unless a character in **Cast for this book** has a voice: then that character's quoted lines are read in their voice, and the narrator reads the rest, including "she said". How each piece sounds comes from the instruction boxes in Narrator Manager, from **Emotion cues**, and — in a text or Markdown file you can edit — from tags you write in brackets. An ePub cannot be edited, so there everything comes from the rules in the first two tables; they are made to handle ordinary fiction on their own.
+
+**Quotations.** Double quotes, curly or straight, mark dialogue. A paragraph with no double quotes uses single curly quotes, as British editions do (`‘We have to go,’ Tom said.`); an apostrophe (`It’s`) is not the end of a quotation. A speech that runs on over several paragraphs, each opened but not closed, is read by the narrator.
+
+**Who reads a quotation.** The first row that fits decides.
+
+| In the text | Read by |
+|---|---|
+| A name and a speech verb in the same sentence as the quotation: `"Go," Tom said.` · `Tom asked, "Where?"` · `"Go," said Tom.` | Tom |
+| The verb's subject, not its object: `"Go," Jill told Paul.` | Jill |
+| An action beat, no speech verb: `Tom turned to Anna. "We have to go."` · `"We have to go." Tom turned to Anna.` | Tom, who does the action — not Anna |
+| A pronoun: `Anna stood up. "Go," she said.` | Anna — the paragraph names just one character |
+| A pronoun beside someone else's name: `"Go," she told Tom.` · `She glared at Tom. "Get out."` | the narrator — Tom is the one spoken to |
+| A pronoun in a paragraph that names two or more characters, or none | the narrator |
+| An untagged line in a run of dialogue: `"Hello," Tom said.` / `"Hi," Anna said.` / `"How are you?"` | Tom — whoever spoke two lines before. A line of narration in between breaks the run |
+| Anyone not in the cast, or with no voice | the narrator |
+
+Names are matched whole: **Mr Bennet** and **Mrs Bennet** are two characters. A surname on its own (`said Bennet`) matches only when one character has it. A name on the line before the quotation does not count. When the speaker is not clear, the narrator reads the line — never the wrong character.
+
+**Where a line's instruction comes from.** Highest first; the first that applies wins.
+
+| Source | Where you set it | What it does |
+|---|---|---|
+| `[[instruction]]` in the quotation's sentence | in the text | That quotation is read this way, exactly as written. Overrides everything below, the speech tag included. |
+| `[instruction]` beside the quotation or the speaker's name | in the text | That quotation is read this way, instead of the box; the speech tag is still added (`Read it angry, quietly`). |
+| The character's **Instruction** box | Narrator Manager > Cast for this book | How that character always speaks, on every line of theirs. Empty: no instruction. |
+| The narrator's **Instruction** box | Narrator Manager > Reading | How the narrator always reads — every paragraph, with or without a quotation. Never reaches a character who has a voice. Empty: no instruction. |
+| **Emotion cues** (ticked) | Narrator Manager > Reading | The speech tag's own words are added — `"Go," she whispered.` adds `whispered`. For a character, after their box: `Speak softly, whispered`. For the narrator, as *Voice the lines in quotation marks as whispered.*, so only the quotation is whispered, not the narration around it. "said", "asked", "told", who was spoken to (`told him`), and filler such as "again" are left out. |
+| Punctuation (Emotion cues ticked) | — | A quotation with `!` is emphatic; one ending in a dash or `...` is breaking off. Worded *Voice the lines in quotation marks as emphatic.* |
+| Italics (Emotion cues ticked) | — | A paragraph with no quotation, mostly in italics, is read as a private thought: quieter and more inward. |
+
+**Tags you can write** (text and Markdown files).
+
+| You write | Where | Effect | Spoken? |
+|---|---|---|---|
+| `[[shouts loudly]]` | anywhere in the quotation's sentence | that quotation, and nothing else, is read that way | no |
+| `[[measured and quiet]]` | in narration | that paragraph's narration is read that way; quotations keep their own | no |
+| `[whispers softly]` | right against the quotation, or right after the speaker's name | that quotation is read that way, speech tag added | no |
+| `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]` | anywhere | a sound at that spot (Breeze performs it; Qwen colours the words around it) | performed |
+| `[sad]` `[angry]` `[excited]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]` | anywhere | the delivery changes from that point on (Breeze; Qwen follows them only slightly) | performed |
+| `:9` after an instruction: `[sad:9]` `[[shouts:9]]` `Anna [whispers:2] said` | inside the brackets | Breeze's strength for that line, 1 barely to 10; Qwen ignores it | no |
+| any other bracket, such as `[check spelling]` or `[the king]` inside a quotation | anywhere else | nothing | read aloud |
+
+An instruction can be a full sentence — `[[Read it plainly. Speak softly]]` — and may contain quote marks.
+
+**Does my bracket work here?** With Tom as the speaker, voiced or not:
+
+| Where | Example | `[angrily]` | `[[angrily]]` |
+|---|---|---|---|
+| Right after the name | `Tom [angrily] said, "Go."` · `"Go," Tom [angrily] said.` | ✅ | ✅ |
+| End of the sentence | `"Go," Tom said [angrily].` | ✅ | ✅ |
+| Right against the quotation | `[angrily] "Go," Tom said.` · `"Go," [angrily] Tom said.` | ✅ | ✅ |
+| Before the name, away from the quotation | `[angrily] Tom said, "Go."` | ❌ read aloud | ✅ |
+| Inside the quotation | `"[angrily] Go," Tom said.` | ❌ read aloud | ✅ |
+| In the next sentence, or an earlier one | `"Go," Tom said. [angrily]` | ❌ read aloud | the narration only |
+
+**Writing for the narrator** (text and Markdown):
+
+- Put the speaker's name and a speech verb in the same sentence as the quotation: `"Go," Tom said.` It is the one form that never fails.
+- To direct one line, use `[[...]]` in its sentence. It always works, is never spoken and overrides everything else.
+- Put a character's usual manner in their cast box, and the narrator's in the narrator box; leave a box empty for none. Several similar words move a voice more than one: `whispers, speaks very quietly, softly, low pitched and very slowly`.
+- Keep speech tags simple — `she said quietly` — and leave Emotion cues ticked.
+- Use the built-in tags for sounds and moods; any other single bracket is read aloud unless it sits against the quotation or the name.
+
+**Checking.** **Try it** in Narrator Manager plays any text with the settings on screen and shows what the narrator was told; it has no cast, so every line is the narrator's. The **Narration Monitor** shows, as a book is read, who spoke each piece, in which voice, and the exact text and instruction.
 
 ## Files & Export
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
