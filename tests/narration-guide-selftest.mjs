@@ -94,8 +94,8 @@ const examples = [
             && told(r, 'narrator').join() === 'measured'],
     ['`[angrily] "Go," Tom said.` | `gruff and slow` | `measured, angrily` — the bracket is outside the quote', 'readme', ['[angrily] "Go," Tom said.'], MEASURED,
         r => told(r, 'TOM').join() === 'gruff and slow' && told(r, 'narrator').join() === 'measured, angrily'],
-    ['`"Go," Tom [wearily] said.` | `gruff and slow` | `measured, wearily`', 'readme', ['"Go," Tom [wearily] said.'], MEASURED,
-        r => told(r, 'TOM').join() === 'gruff and slow' && told(r, 'narrator').join() === 'measured, wearily'],
+    ['`"Go," Tom [wearily] said.` | `gruff and slow` | `measured` for *Tom*, then `measured, wearily` for *said.*', 'readme', ['"Go," Tom [wearily] said.'], MEASURED,
+        r => told(r, 'TOM').join() === 'gruff and slow' && JSON.stringify(r.filter(p => p[0] === 'narrator').map(p => [p[1], p[2]])) === JSON.stringify([['Tom', 'measured'], ['said.', 'measured, wearily']])],
     ['`[slowly] The door opened. "Go," Tom said.` | `gruff and slow` | `measured, slowly`, for *The door opened.* and *Tom said.*', 'readme',
         ['[slowly] The door opened. "Go," Tom said.'], MEASURED,
         r => told(r, 'TOM').join() === 'gruff and slow' && told(r, 'narrator').join('|') === 'measured, slowly|measured, slowly'],
@@ -103,8 +103,8 @@ const examples = [
         ['[[slowly]] The door opened. "Go," Tom said.'], MEASURED,
         r => told(r, 'TOM').join() === 'gruff and slow' && told(r, 'narrator').join('|') === 'slowly|slowly'],
     // Ed's example: each instruction runs to the next one, or to the end of its quote or paragraph
-    ['`[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway." [excited, loud] Surprising even herself.`', 'readme',
-        ['[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway." [excited, loud] Surprising even herself.'], { box: 'measured' },
+    ['`[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway (laughs)". [excited, loud] Surprising even herself.`', 'readme',
+        ['[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway (laughs)". [excited, loud] Surprising even herself.'], { box: 'measured' },
         r => JSON.stringify(r.map(p => [p[0], p[2]])) === JSON.stringify([['narrator', 'measured, steady, whisper'], ['ANNA', ''], ['ANNA', 'Softly'], ['narrator', 'measured, excited, loud']])
             && r[1][1].indexOf('[Angry]') === 0],
     // A character with no voice: the quote's own bracket, else the narrator's
