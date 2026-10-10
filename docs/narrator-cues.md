@@ -60,7 +60,7 @@ Paul: "I'm going home now [clears throat]"
 
 ### A bracket in the line
 
-`[giggles]` stays in Julie's line. Nothing is added to the instruction:
+`[giggles]` stays in Julie's line. With Emotion cues on, the words after the quote are her cue:
 
 ```
 Julie said "hello world! [giggles]" in a cheery voice
@@ -69,10 +69,10 @@ Julie said "hello world! [giggles]" in a cheery voice
 | Who | Says | Told |
 |---|---|---|
 | Narrator | Julie said | |
-| Julie | hello world! [giggles] | |
+| Julie | hello world! [giggles] | in a cheery voice |
 | Narrator | in a cheery voice | |
 
-With nobody given a voice, the narrator is sent one piece, `Julie said "hello world! [giggles]" in a cheery voice`, told nothing. The quotation marks stay in that piece. A character's piece does not include them.
+With nobody given a voice, the narrator is sent one piece, `Julie said "hello world! [giggles]" in a cheery voice`, told `Voice the lines in quotation marks as in a cheery voice.` The quotation marks stay in that piece. A character's piece does not include them.
 
 A bracket against the quote, with only space between, is spoken by that character:
 
@@ -116,7 +116,7 @@ He was [sad] for a while. "Hello," Anna said.
 
 | Who | Says | Told |
 |---|---|---|
-| Anna | Hello! | emphatic |
+| Anna | Hello! | Voice the lines in quotation marks as emphatic. |
 | Narrator | Anna said. | |
 
 ```
@@ -125,7 +125,7 @@ He was [sad] for a while. "Hello," Anna said.
 
 | Who | Says | Told |
 |---|---|---|
-| Anna | Wait— | breaking off |
+| Anna | Wait— | Voice the lines in quotation marks as breaking off. |
 | Narrator | Anna said. | |
 
 `She said "hello".` has no mood word and no exclamation. The narrator is sent the whole line, `She said "hello".`, and told nothing. "Said", "asked" and "told" add nothing. A single bracket inside the quotation is not a cue, so it does not replace "snapped" or an exclamation. Those are sent only when Emotion cues is on.
