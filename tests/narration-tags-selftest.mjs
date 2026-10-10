@@ -284,7 +284,7 @@ console.log('--- the subject of an action beat speaks; a listener is never the p
     api.setCast({ anna: 'qwen-ryan' });
 }
 
-console.log('--- one notation: [tag] and [[tag]] do the same in every place the guide gives');
+console.log('--- one notation: [tag] and [[tag]] work in the same places (with no box or cue to add to, they agree)');
 {
     const told = (text, cast) => {
         api.setCast(cast);
@@ -292,15 +292,15 @@ console.log('--- one notation: [tag] and [[tag]] do the same in every place the 
         return api.narrationBatches([el], 0, 1)[0].map(p => [p.voice || 'narrator', p.text, cueOf(p, true, '').instruction]);
     };
     const places = [
-        'B "Go," Tom said quietly.',
-        '"Go," Tom B said quietly.',
-        '"Go," Tom said quietly B.',
+        'B "Go," Tom said.',
+        '"Go," Tom B said.',
+        '"Go," Tom said B.',
         'Tom B said, "Go."',
         'B The door opened.',
         'B The door opened. "Go," Tom said.',
         'B Tom said, "Go."',
         'Tom said B, "Go."',
-        '"Go," B Tom said quietly.',
+        '"Go," B Tom said.',
     ];
     for (const cast of [{ tom: 'v-tom' }, {}]) {
         for (const line of places) {
@@ -310,8 +310,8 @@ console.log('--- one notation: [tag] and [[tag]] do the same in every place the 
         }
     }
     const lead = told('[measured and quiet] The door opened. "Go," Tom said.', { tom: 'v-tom' });
-    eq('a single bracket opening a paragraph is that narration\'s, not the quote\'s',
-        lead.map(r => r[2]), ['measured and quiet', '', '']);
+    eq('a bracket in narration is for all the narration of that paragraph, not the quote',
+        lead.map(r => r[2]), ['measured and quiet', '', 'measured and quiet']);
     check('and it is not spoken', lead.every(r => r[1].indexOf('[') < 0), JSON.stringify(lead));
     eq('a built-in tag opening a paragraph is still performed',
         told('[sighing] It was over.', {}).map(r => [r[1], r[2]]), [['[sighing] It was over.', '']]);
@@ -760,8 +760,8 @@ console.log('--- a speech tag is added to the standing instruction');
             [['dialogue', 'Read it plainly. Speak softly'], ['narration', '']]);
         const two = told('"Wait—" Anna said [[hushed]]. "Go," Tom said.');
         eq('nor the narration before the next quotation', two.filter(r => r[0] === 'narration').map(r => r[1]), ['', '']);
-        eq('a double bracket in a sentence of its own stays the narration\'s',
-            told('The door opened [[measured]]. "Go," Tom said.').filter(r => r[0] === 'narration').map(r => r[1]), ['measured', '']);
+        eq('a double bracket in a sentence of its own is for all the narration of that paragraph',
+            told('The door opened [[measured]]. "Go," Tom said.').filter(r => r[0] === 'narration').map(r => r[1]), ['measured', 'measured']);
     }
 
     // Read from here inside a quotation, nobody voiced: the cue survives.

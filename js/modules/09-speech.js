@@ -784,9 +784,15 @@ function cueInstruction(p, cuesOn, standing) {
         return base + ', ' + words;
     };
     const phrase = cuesOn && dir && !stock ? tagWords(dir) : '';
-    // A bracket instruction, [tag] or [[tag]], is read exactly as written: it replaces the box and
-    // no cue words are added (Ed, 2026-10-10: one notation, not two to learn).
-    if (p.bracket && own) return { instruction: own, direction: '' };
+    // One notation (README, "Local instructions"): [words] are added to the speaker's instruction --
+    // their cast box, or the narrator's -- and the cue words still follow; [[words]] override both.
+    if (p.bracket && own) {
+        if (p.soft !== true) return { instruction: own, direction: '' };
+        const box = p.role === 'dialogue' ? String(p.box || '').trim() : String(standing || '').trim();
+        const base = addClause(box, own);
+        if (phrase) return p.role === 'dialogue' ? { instruction: addClause(base, phrase), direction: '' } : { instruction: base, direction: phrase };
+        return { instruction: base, direction: cuesOn && stock ? dir : '' };
+    }
     if (phrase) {
         // A voiced line is the quotation alone: the tag's words are its instruction. A piece the
         // narrator reads has narration around the quotation, so the words go as a cue, which the
@@ -1144,13 +1150,27 @@ function narrTagsFor(doc) {
  * stay single, and are performed. In an ePub nothing changes: its brackets are the book's text.
  */
 function oneNotation(text) {
-    if (!_narrTags) return String(text || '');
-    return String(text || '').replace(/(?<!\[)\[([^\[\]\n]+)\](?!\])/g, (all, inner) =>
-        isModelTag(inner) || !inner.trim() ? all : '[[' + inner + ']]');
+    // A built-in tag is the same tag in double brackets: [[laughing]] laughs, as [laughing] does.
+    const s = String(text || '').replace(/\[\[([^\[\]\n]+)\]\]/g, (all, inner) => isModelTag(inner) ? '[' + inner + ']' : all);
+    // In an ePub a double bracket is the book's text, read exactly as a single one is.
+    if (!_narrTags) return s.replace(/\[\[([^\[\]\n]+)\]\]/g, '[$1]');
+    return s.replace(/(?<!\[)\[([^\[\]\n]+)\](?!\])/g, (all, inner) =>
+        isModelTag(inner) || !inner.trim() ? all : '[[' + SOFT + inner + ']]');
+}
+/** Marks a [[tag]] that was written [tag]: added to the speaker's instruction, not overriding it. */
+const SOFT = '\u0001';
+function splitSoft(tag) {
+    const s = String(tag || '');
+    return s.charAt(0) === SOFT ? { text: s.slice(1).trim(), soft: true } : { text: s, soft: false };
 }
 
 function doubleTag(text) {
     if (!_narrTags) return '';
+    const all = (String(text || '').match(/\[\[[^\]\n]+\]\]/g) || []).map(m => m.slice(2, -2).trim()).filter(Boolean);
+    const hard = all.filter(x => x.charAt(0) !== SOFT);
+    if (hard.length) return hard[0];
+    const soft = all.map(x => x.slice(1).trim()).filter(Boolean);
+    if (soft.length) return SOFT + soft.join(', ');
     const m = /\[\[([^\]\n]+)\]\]/.exec(String(text || ''));
     return m && m[1].trim() ? m[1].trim() : '';
 }
@@ -1171,6 +1191,8 @@ function stripLeadTag(text) {
     return leadTag(text) ? String(text).replace(/^\s*\[[^\[\]\n]+\]/, ' ') : String(text || '');
 }
 function stripDoubles(text) {
+    // In an ePub a double bracket is the book's text, read as a single one is.
+    if (!_narrTags) return String(text || '');
     return String(text || '').replace(/\[\[[^\]\n]*\]\]/g, ' ')
         .replace(/[ \t]{2,}/g, ' ')
         .replace(/[ \t]+([,:.!?])/g, '$1');
@@ -1213,12 +1235,12 @@ function carrySpan(pieces) {
  * cue, from "she snapped" and the like, stays with the piece it was found in.
  */
 function paragraphPieces(text, el) {
-    const hard = doubleTag(text) || leadTag(text);
+    const tag = splitSoft(doubleTag(text) || leadTag(text)), hard = tag.text;
     const spoken = padBracketTags(stripDoubles(stripLeadTag(text))).trim();
     if (!/[A-Za-z0-9]/.test(spoken)) return [];
     return carrySpan(blockPieces(spoken)).map(function (t) {
         return { text: t, direction: narrationDirection(t, el || null),
-                 instruction: hard, bracket: !!hard, hard: !!hard };
+                 instruction: hard, bracket: !!hard, hard: !!hard && !tag.soft, soft: tag.soft };
     });
 }
 
@@ -1605,7 +1627,7 @@ function narrationQuotes(text) {
         const beforeZone = zoneBefore(text, q.start);
         const afterZone = zoneAfter(text, q.end);
         const hard = doubleTag(text.slice(beforeZone.at, afterZone.at + afterZone.text.length));
-        if (hard) { q.instruct = hard; q.hard = true; }
+        if (hard) { const s = splitSoft(hard); q.instruct = s.text; q.hard = !s.soft; q.soft = s.soft; }
         out.push(q);
     }
     return out;
@@ -1770,15 +1792,15 @@ function castPieces(text, quotes, from, splitAll) {
     // a quotation it lands in is voiced from there.
     from = from > 0 ? from : 0;
     let cursor = from, narr = '';
-    const talk = (spoken, voice, dir, key, instruction, bracket, hard) => {
+    const talk = (spoken, voice, dir, key, instruction, bracket, hard, soft) => {
         carrySpan(blockPieces(spoken)).forEach(p => out.push({
             role: 'dialogue', text: p, voice: voice, direction: dir, speaker: key,
-            instruction: instruction || '', bracket: !!bracket, hard: !!hard
+            instruction: instruction || '', bracket: !!bracket, hard: !!hard, soft: !!soft, box: castSay(key)
         }));
     };
-    const tellNarrator = (spoken, dir, instruction, hard) => {
+    const tellNarrator = (spoken, dir, instruction, hard, soft) => {
         carrySpan(blockPieces(spoken)).forEach(p => out.push({
-            role: 'narration', text: p, direction: dir, instruction: instruction || '', bracket: !!instruction, hard: !!hard
+            role: 'narration', text: p, direction: dir, instruction: instruction || '', bracket: !!instruction, hard: !!hard, soft: !!soft
         }));
     };
     // quoteTook: the [[tag]] already given to the quotation this lead-in belongs to;
@@ -1786,20 +1808,24 @@ function castPieces(text, quotes, from, splitAll) {
     // That clip is told the tag. The narration around it keeps the narrator's own
     // instruction, and the tag is still not spoken. A tag in a sentence of its own stays here.
     let prevTook = '';
-    let first = true;     // the first stretch is where a paragraph-opening [tag] can be
+    // The paragraph's narration tag: the tags outside every quotation's sentence (README: "the
+    // narration in that paragraph, apart from its quotes").
+    let outside = text;
+    for (const q of quotes) {
+        const a = zoneBefore(text, q.start).at, z = zoneAfter(text, q.end);
+        outside = outside.slice(0, a) + ' '.repeat(z.at + z.text.length - a) + outside.slice(z.at + z.text.length);
+    }
+    const paraTag = splitSoft(doubleTag(outside) || leadTag(text));
     const flush = (quoteTook) => {
         let raw = narr;
         narr = '';
-        const lead = first && from === 0 ? leadTag(raw) : '';
-        first = false;
-        if (lead) raw = stripLeadTag(raw);
-        const found = doubleTag(raw) || lead;
-        const hard = found && (found === quoteTook || found === prevTook) ? '' : found;
+        if (leadTag(raw)) raw = stripLeadTag(raw);
+        const hard = paraTag.text;
         const spoken = padBracketTags(stripDoubles(raw)).trim();
         if (!/[A-Za-z0-9]/.test(spoken)) return;
         carrySpan(blockPieces(spoken)).forEach(p => out.push({
             role: 'narration', text: p, direction: narrationDirection(p, null),
-            instruction: hard, bracket: !!hard, hard: !!hard
+            instruction: hard, bracket: !!hard, hard: !!hard && !paraTag.soft, soft: paraTag.soft
         }));
     };
     for (const q of quotes) {
@@ -1813,8 +1839,8 @@ function castPieces(text, quotes, from, splitAll) {
             const rest = text.slice(from, q.end).replace(/["'“”‘’]+\s*$/, '').trim();
             const spoken = padBracketTags(stripDoubles(rest)).trim();
             if (/[A-Za-z0-9]/.test(spoken)) {
-                if (voice) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override, q.hard);
-                else tellNarrator(spoken, quoteDirection(q), override, q.hard);
+                if (voice) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override, q.hard, q.soft);
+                else tellNarrator(spoken, quoteDirection(q), override, q.hard, q.soft);
             }
             prevTook = doubleTag(text.slice(q.start, q.end + zoneAfter(text, q.end).text.length));
             cursor = q.end;
@@ -1837,10 +1863,10 @@ function castPieces(text, quotes, from, splitAll) {
         prevTook = took;
         if (voice) {
             const spoken = padBracketTags(stripDoubles((peel ? lead.raw + ' ' : '') + q.inner.trim())).trim();
-            if (/[A-Za-z0-9]/.test(spoken)) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override, q.hard);
+            if (/[A-Za-z0-9]/.test(spoken)) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override, q.hard, q.soft);
         } else {
             const spoken = stripDoubles(text.slice(q.start, q.end)).trim();
-            if (/[A-Za-z0-9]/.test(spoken)) tellNarrator(spoken, quoteDirection(q), override, q.hard);
+            if (/[A-Za-z0-9]/.test(spoken)) tellNarrator(spoken, quoteDirection(q), override, q.hard, q.soft);
         }
         cursor = q.end;
     }
@@ -1926,7 +1952,7 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
         paragraphPieces(text, all[i]).forEach((p, k) => pieces.push({
             el: all[i], at: at, id: at * 100 + k, role: 'narration',
             text: p.text, direction: p.direction,
-            instruction: p.instruction || '', bracket: !!p.bracket, hard: !!p.hard
+            instruction: p.instruction || '', bracket: !!p.bracket, hard: !!p.hard, soft: !!p.soft
         }));
     }
     if (graduated) {

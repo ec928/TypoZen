@@ -4,8 +4,8 @@
  * Every example the README section "Characters, voices and directing a line" and Help > Narration
  * show a user is checked twice: that it is printed there exactly, and that reading it through the
  * page's own entry point (narrationBatches, the path Read Aloud takes) does what the guide says.
- * Plus the promise the guide makes as a whole: one bracket notation -- the guide never teaches
- * [[...]], and [...] and [[...]] give the same result wherever they are written.
+ * The rules are the README's: one notation; [words] are added to the speaker's instruction and the
+ * cue words follow, [[words]] override both; built-in tags are performed; ePub brackets are text.
  *
  * When the rules change, this fails until the guide says the new thing.
  *
@@ -32,7 +32,7 @@ const box = { model: null };
 const api = new Function('document', 'window', 'box', [
     'let DocumentModel = box.model; let _narrCast = {}; let _narrCastSay = {}; const NARRATION_BATCH = 8; function narrLog() {}',
     src.slice(start, end + 1),
-    'return { narrationBatches, setCast: c => { _narrCast = c; }, setModel: m => { DocumentModel = m; } };'
+    'return { narrationBatches, setCast: c => { _narrCast = c; }, setSay: c => { _narrCastSay = c; }, setModel: m => { DocumentModel = m; } };'
 ].join('\n'))({ querySelectorAll() { return []; } }, { chrome: { webview: { postMessage() {} } } }, box);
 const ci = src.indexOf('function cueInstruction');
 let j = src.indexOf('{', ci), d2 = 0, e2 = -1;
@@ -47,12 +47,13 @@ const check = (name, ok, detail) => {
 
 const CAST = { tom: 'TOM', anna: 'ANNA', jill: 'JILL', paul: 'PAUL' };
 // Read paragraphs as Read Aloud does; each piece as [voice, text spoken, what it is told].
-function read(paras, { cast = CAST, epub = false } = {}) {
+function read(paras, { cast = CAST, epub = false, say = {}, box = '' } = {}) {
     api.setCast(cast);
+    api.setSay(say);
     api.setModel({ kind: epub ? 'epub' : 'markdown', blocks: [] });
     const els = paras.map(t => ({ innerText: t, getAttribute: () => null }));
     return api.narrationBatches(els, 0, 4).flat().map(p => {
-        const c = cueInstruction(p, true, '');
+        const c = cueInstruction(p, true, box);
         return [p.voice || 'narrator', p.text, c.instruction || (c.direction ? 'cue: ' + c.direction : '')];
     });
 }
@@ -61,6 +62,7 @@ const told = (r, voice) => r.filter(p => p[0] === voice).map(p => p[2]);
 const html = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // [example as printed, where it is printed, the paragraphs read, how, what the guide promises]
+const GRUFF = { say: { tom: 'gruff and slow' } };
 const examples = [
     // Who reads a line of dialogue
     ['"Go," Tom said.', 'both', null, {}, r => voices(r).join() === 'TOM'],
@@ -71,49 +73,50 @@ const examples = [
     ['Anna stood up. "Go," she said.', 'both', null, {}, r => voices(r).join() === 'ANNA'],
     ['"Go," she told Tom.', 'both', null, {}, r => voices(r).length === 0],
     ['"How are you?"', 'readme', ['"Hello," Tom said.', '"Hi," Anna said.', '"How are you?"'], {}, r => voices(r).join() === 'TOM,ANNA,TOM'],
-    ['‘We have to go,’ Tom said.', 'readme', null, {}, r => voices(r).join() === 'TOM'],
     ['**Mr Bennet** and **Mrs Bennet** are two characters', 'readme', ['"Yes," said Mr Bennet.', '"No," said Mrs Bennet.'],
         { cast: { 'mr bennet': 'MR', 'mrs bennet': 'MRS' } }, r => voices(r).join() === 'MR,MRS'],
-    // Directing a line: one rule, wherever it is in the quote's sentence
-    ['[shouts loudly] "Get out!" Anna said.', 'both', null, {},
-        r => told(r, 'ANNA').join() === 'shouts loudly' && r.every(p => p[1].indexOf('shouts') < 0)],
-    ['"Get out!" Anna [shouts loudly] said.', 'readme', null, {},
-        r => told(r, 'ANNA').join() === 'shouts loudly' && r.every(p => p[1].indexOf('shouts') < 0)],
-    ['"[shouts loudly] Get out!" Anna said.', 'readme', null, {},
-        r => told(r, 'ANNA').join() === 'shouts loudly' && r.every(p => p[1].indexOf('shouts') < 0)],
+    // The worked example: Tom's box is "gruff and slow"
+    ['`"Go," Tom said.` | `gruff and slow`', 'readme', ['"Go," Tom said.'], GRUFF, r => told(r, 'TOM').join() === 'gruff and slow'],
+    ['`"Go," Tom said quietly.` | `gruff and slow, quietly`', 'readme', ['"Go," Tom said quietly.'], GRUFF,
+        r => told(r, 'TOM').join() === 'gruff and slow, quietly'],
+    ['`[angrily] "Go," Tom said quietly.` | `gruff and slow, angrily, quietly`', 'readme', ['[angrily] "Go," Tom said quietly.'], GRUFF,
+        r => told(r, 'TOM').join() === 'gruff and slow, angrily, quietly'],
+    ['`[[angrily]] "Go," Tom said quietly.` | `angrily`', 'readme', ['[[angrily]] "Go," Tom said quietly.'], GRUFF,
+        r => told(r, 'TOM').join() === 'angrily'],
+    // Anywhere in the quote's sentence is the same
+    ['`[angrily] "Go," Tom said.`, `"Go," Tom [angrily] said.` and `"[angrily] Go," Tom said.` are the same', 'readme',
+        ['[angrily] "Go," Tom said.'], GRUFF, r => told(r, 'TOM').join() === 'gruff and slow, angrily'],
+    ['"Go," Tom [angrily] said.', 'readme', null, GRUFF, r => told(r, 'TOM').join() === 'gruff and slow, angrily'],
+    ['"[angrily] Go," Tom said.', 'readme', null, GRUFF, r => told(r, 'TOM').join() === 'gruff and slow, angrily'],
+    ['Two single brackets in one line are both added, in order. A double bracket overrides everything', 'readme',
+        ['[angrily] [softly] "Go," Tom said.', '[angrily] [[shouts]] "Go," Tom said.'], GRUFF,
+        r => told(r, 'TOM').join('|') === 'gruff and slow, angrily, softly|shouts'],
     ['[Read it plainly. Speak softly]', 'readme', ['[Read it plainly. Speak softly] "Go," Tom said.'], {},
         r => told(r, 'TOM').join() === 'Read it plainly. Speak softly'],
-    ['[measured and quiet] The door opened.', 'both', null, {},
-        r => r.length === 1 && r[0][1] === 'The door opened.' && r[0][2] === 'measured and quiet'],
-    ['[shouts:9] "Get out!" Anna said.', 'readme', null, {}, r => told(r, 'ANNA').join() === 'shouts:9'],
-    // Built-in tags are performed, not followed
-    ['[laughing] "Stop it," Anna said.', 'both', null, {},
-        r => r.some(p => p[0] === 'ANNA' && p[1].indexOf('[laughing]') >= 0 && p[2] === '')],
+    ['[shouts:9]', 'both', ['[shouts:9] "Get out!" Anna said.'], {}, r => told(r, 'ANNA').join() === 'shouts:9'],
+    // The speaker with no voice: the narrator's box
+    ['or the narrator\'s box if they have no voice', 'readme', ['[angrily] "Go," Tom said.', '[[angrily]] "Go," Tom said.'],
+        { cast: {}, box: 'Read it plainly.' }, r => r.filter(p => p[1].indexOf('Go') >= 0).map(p => p[2]).join('|') === 'Read it plainly, angrily|angrily'],
+    // Narration: the narration in that paragraph, apart from its quotes
+    ['the narration in that paragraph, apart from its quotes', 'readme', ['[slowly] The door opened. "Go," Tom said. He left.'],
+        { box: 'Read it plainly.' }, r => r.filter(p => p[0] === 'narrator').every(p => p[2] === 'Read it plainly, slowly') && told(r, 'TOM').join() === ''],
+    ['[measured and quiet] The door opened.', 'help', null, {}, r => r.length === 1 && r[0][2] === 'measured and quiet'],
+    // Built-in tags are performed, single or double
+    ['[laughing] "Stop it," Anna said.', 'help', ['[laughing] "Stop it," Anna said.', '[[laughing]] "Stop it," Anna said.'], {},
+        r => r.filter(p => p[0] === 'ANNA').every(p => p[1].indexOf('[laughing]') >= 0 && p[2] === '')],
     // Emotion cues colour the quote only
     ['"Go," she whispered.', 'both', null, { cast: {} }, r => r.length === 1 && r[0][2] === 'cue: whispered'],
     // In an ePub, brackets are the book's text
-    ['In an ePub,', 'readme', ['[shouts loudly] "Get out!" Anna said.'], { epub: true },
-        r => r.some(p => p[1].indexOf('[shouts loudly]') >= 0) && r.every(p => p[2].indexOf('shouts') < 0)],
+    ['read aloud as part of the text', 'readme', ['[angrily] "Go," Tom said.'], { epub: true },
+        r => r.some(p => p[1].indexOf('[angrily]') >= 0) && r.every(p => p[2].indexOf('angrily') < 0)],
 ];
 
 console.log('--- each example is printed in the guide, and does what the guide says');
 for (const [example, where, paras, how, promise] of examples) {
     if (where === 'readme' || where === 'both') check('README shows ' + example, guide.indexOf(example) >= 0);
-    if (where === 'both') check('Help shows ' + example, help.indexOf(example) >= 0 || help.indexOf(html(example)) >= 0);
+    if (where === 'help' || where === 'both') check('Help shows ' + example, help.indexOf(example) >= 0 || help.indexOf(html(example)) >= 0);
     const result = read(paras || [example], how);
     check('it does what the guide says: ' + example, promise(result), JSON.stringify(result));
-}
-
-console.log('--- one notation');
-check('the README guide never teaches [[...]]', guide.indexOf('[[') < 0, (guide.match(/.{0,40}\[\[.{0,40}/g) || []).join(' | '));
-check('Help > Narration never teaches [[...]]', help.indexOf('[[') < 0, (help.match(/.{0,40}\[\[.{0,40}/g) || []).join(' | '));
-for (const line of ['[shouts loudly] "Get out!" Anna said.', '"Get out!" Anna [shouts loudly] said.', '"[shouts loudly] Get out!" Anna said.',
-                    '[measured and quiet] The door opened.', '[shouts:9] "Get out!" Anna said.']) {
-    for (const how of [{}, { cast: {} }]) {
-        const single = read([line], how), double = read([line.replace(/\[([^\]]+)\]/, '[[$1]]')], how);
-        check((how.cast ? 'no cast' : 'voiced') + ': [x] and [[x]] give the same result -- ' + line,
-            JSON.stringify(single) === JSON.stringify(double), JSON.stringify(single) + ' vs ' + JSON.stringify(double));
-    }
 }
 
 console.log(failed ? 'NARRATION-GUIDE FAILED (' + failed + ' of ' + (passed + failed) + ')'
