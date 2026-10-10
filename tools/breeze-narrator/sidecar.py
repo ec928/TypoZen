@@ -185,7 +185,11 @@ def instruction(style, direction, role='narration', whole=None, cue=None, own=No
                 return (spoken + THOUGHT_SUFFIX).strip()
             cue = (cue or '').strip()[:400] or DIRECTED_SUFFIX.strip().replace('%s', '{cue}')
             return (spoken + ' ' + cue.replace('{cue}', direction)).strip()
-        return DIALOGUE_DIRECTED % direction if direction and direction != 'thought' else DIALOGUE
+        if whole is None:
+            return DIALOGUE_DIRECTED % direction if direction and direction != 'thought' else DIALOGUE
+        # Narrator Manager in use: an empty cast box is no instruction, as an empty
+        # narrator box is, and a cue is the reader's cue wording on its own.
+        whole = ''
     if whole is not None:
         whole = whole.strip()[:1500]
         if not direction:

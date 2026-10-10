@@ -173,7 +173,7 @@ For narration, your instruction is used as written. A speech tag's own words are
 
 Until 2026-10-09 it added "clearly but with restraint, and keep the narration around them measured", and could be edited under Emotion cues; that told the narrator to hold back on exactly these lines, so it is gone, and a setting saved with it reads as the plain wording.
 
-A character who has a voice is told her cast box, with the speech tag added after it when there is one. Anna's snapped line, with an empty box, is told `snapped`. A character line with no cue and an empty cast box is told: "Speak this line of dialogue as the character would say it, naturally and in character."
+A character who has a voice is told her cast box, with the speech tag added after it when there is one. Anna's snapped line, with an empty box, is told `snapped`. A character line with no cue and an empty cast box is told nothing, as the narrator is with an empty box. With a punctuation cue and an empty cast box, it is told the cue wording on its own. The same holds for Qwen and Breeze.
 
 Designed voice-prints follow a cue less readily than Ryan and Aiden, the two speakers trained to follow one.
 
