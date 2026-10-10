@@ -75,12 +75,18 @@ Under **File → Privacy**:
   prevents new writes but does not delete what is already stored.
 - **Remember unsaved documents between sessions** — turn off to stop unsaved content being
   kept between runs.
-- **Keep recent files list** — turn off to stop recording opened documents.
-- **Clear Recent Searches** — erases the stored search terms.
 - **Clear Stored Data…** — deletes the stored data described above, including the
-  diagnostic logs and, if you choose, narration audio, logs and casts. Voices are kept;
+  diagnostic logs, the browsing history of TypoZen's own web view, and, if you choose,
+  narration audio, logs and casts. It remembers which boxes you ticked last time. Voices are kept;
   delete them one at a time in Narrator Manager. Extensions are removed in
   **File → Extensions**.
+
+Elsewhere:
+
+- **Keep recent files list**, at the foot of **File → Open Recent** — turn off to stop
+  recording opened documents.
+- **Clear recent searches**, at the foot of the Search box's history list — erases the
+  stored search terms.
 
 You can also simply delete that folder.
 

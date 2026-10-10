@@ -571,7 +571,7 @@
                     <ul class="tz-about-list">
                         <li data-engine="qwen"><strong>File &gt; Read Aloud &gt; Qwen Narrator</strong>, then a voice. Read Aloud, and Read and Read from here on a selection, now use it.</li>
                         <li data-engine="breeze"><strong>File &gt; Read Aloud &gt; Breeze Narrator</strong>, then a voice. It reads your Qwen voices too, and starts speaking within seconds once it is running.</li>
-                        <li>The first Read Aloud starts the narrator, which takes a while: <span data-engine="qwen">Qwen about 25 seconds. </span><span data-engine="breeze">Breeze about 40 seconds. </span>It then stays loaded for 15 minutes unused, and starts by itself when a book opens with a narrator voice chosen. The status bar says what it is doing.</li>
+                        <li>The first Read Aloud starts the narrator, which takes a while: <span data-engine="qwen">Qwen about 25 seconds. </span><span data-engine="breeze">Breeze about 40 seconds. </span>It then stays loaded for 15 minutes unused, holding several GB of the graphics card, and starts by itself when a book opens with a narrator voice chosen. The status bar says what it is doing.</li>
                         <li data-engine="both">Only one narrator runs at a time: choosing the other stops the first.</li>
                         <li>Anything heard before plays at once: narration is kept. Extensions &gt; Clear audio removes it.</li>
                     </ul>
@@ -580,7 +580,7 @@
                     <h3>Narrator Manager (File &gt; Read Aloud)</h3>
                     <ul class="tz-about-list">
                         <li data-engine="both"><strong>Narrator</strong> at the top: which one you are setting up, and which one Read Aloud uses once you save.</li>
-                        <li><strong>Voice</strong>: who reads. <strong>Manage voices...</strong> designs a voice from a description (age, accent, texture), imports and exports them<span data-engine="breeze">, and clones one from a recording: 3 to 20 seconds of one person, and exactly the words they say. Clone only a voice you have the right to use</span>.</li>
+                        <li><strong>Voice</strong>: who reads. <strong>Manage voices...</strong> designs a voice from a description (age, accent, texture), imports and exports them<span data-engine="breeze">, and clones one from a recording: 3 to 20 seconds of one person, and exactly the words they say. Clone only a voice you have the right to use</span>. Designing brings back <span data-engine="qwen">three candidates with Qwen, in about a minute and a half</span><span data-engine="both">, and </span><span data-engine="breeze">two with Breeze, in about half a minute</span>. Right-click <strong>Play sample</strong> to change what it says.</li>
                         <li><strong>Instruction</strong>: how every paragraph is read, in your own words. Empty means none.</li>
                         <li><strong>Emotion cues</strong>: with the box ticked, a line's speech tag (&ldquo;Go,&rdquo; she <em>whispered</em>) is added to its instruction.</li>
                         <li data-engine="breeze"><strong>Breeze &gt; Emotion strength</strong>: how hard Breeze follows an instruction, 1 to 10, default 4. Higher is stronger and may start to sound strained. Lines with no instruction are not affected.</li>
