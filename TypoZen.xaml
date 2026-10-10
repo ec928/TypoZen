@@ -500,7 +500,6 @@
                                 <MenuItem x:Name="mSessionRestoreContent" Header="Remember _unsaved documents between sessions" IsCheckable="True" IsChecked="False"/>
                                 <MenuItem x:Name="mRecentEnabled" Header="Keep _recent files list" IsCheckable="True" IsChecked="True"/>
                                 <Separator/>
-                                <MenuItem x:Name="mClearSearchHistory" Header="Clear Recent _Searches"/>
                                 <MenuItem x:Name="mClearData" Header="_Clear Stored Data..."/>
                             </MenuItem>
                             <Separator/>

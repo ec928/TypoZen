@@ -767,7 +767,7 @@
 
         // Global recent Search-tab queries (not per tab). Most-recent first, max 8.
         // Survives restarts via settings.json + localStorage; cleared with Clear Stored Data
-        // or Privacy → Clear Recent Searches (history only).
+        // or the Clear recent searches row at the foot of the history menu.
         const SEARCH_HISTORY_MAX = 8;
         let _searchHistory = [];
         let _searchHistOpen = false;

@@ -2443,9 +2443,6 @@
             else if (cmd === "return_jump") {
                 try { if (typeof returnFromJump === 'function') returnFromJump(); } catch (eRj) {}
             }
-            else if (cmd === "clear_search_history") {
-                try { if (typeof clearSearchHistoryOnly === 'function') clearSearchHistoryOnly(); } catch (eCs) {}
-            }
             else if (cmd === "toggle_search_sidebar") {
                 // Alt+S, the ZenSeek gesture. Closed, or open on another tab, means the
                 // user wants search: reveal it. Only a sidebar already showing Search

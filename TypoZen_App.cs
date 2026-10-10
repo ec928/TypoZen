@@ -1771,18 +1771,6 @@ namespace TypoZen
             BindClick("mPdfOcr", (s, e) => SetPdfOcr(!_pdfOcr));
             BindClick("mSessionRestoreContent", (s, e) => SetSessionRestoreContent(!_sessionRestoreContent));
             BindClick("mRecentEnabled", (s, e) => SetRecentFilesEnabled(!_recentFilesEnabled));
-            BindClick("mClearSearchHistory", (s, e) =>
-            {
-                try
-                {
-                    var prefs = LoadHostPrefs();
-                    prefs.SearchHistory = new List<string>();
-                    prefs.LastSearchQuery = "";
-                    WriteHostPrefs(prefs);
-                }
-                catch { }
-                SendMsg("cmd:clear_search_history");
-            });
             BindClick("mClearData", (s, e) => ClearStoredData());
 
             // Status-bar chapter → jump to chapter start in the page.
