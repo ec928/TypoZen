@@ -783,7 +783,8 @@ function cueInstruction(p, cuesOn, standing) {
         return base + ', ' + words;
     };
     const phrase = cuesOn && dir && !stock ? tagWords(dir) : '';
-    if (p.bracket && own) return { instruction: own, direction: '' };
+    // A single bracket replaces the box and keeps the speech tag; [[tag]] (hard) replaces both.
+    if (p.bracket && own) return { instruction: phrase && !p.hard ? addClause(own, phrase) : own, direction: '' };
     if (phrase) {
         const base = p.role === 'dialogue' ? own : (own || String(standing || '').trim());
         return { instruction: addClause(base, phrase), direction: '' };
@@ -1156,7 +1157,7 @@ function paragraphPieces(text, el) {
     if (!/[A-Za-z0-9]/.test(spoken)) return [];
     return carrySpan(blockPieces(spoken)).map(function (t) {
         return { text: t, direction: narrationDirection(t, el || null),
-                 instruction: hard, bracket: !!hard };
+                 instruction: hard, bracket: !!hard, hard: !!hard };
     });
 }
 
@@ -1406,7 +1407,7 @@ function lineInstruction(text, start, end, who) {
         const key = speakerKey(who);
         if (byName || (key && _narrCast[key])) return byName;
     }
-    const keep = inner => !!who && isModelTag(inner);
+    const keep = inner => isModelTag(inner);
     const left = zoneBefore(text, start);
     const lead = left.text.match(/\[[^\]\n]+\]\s*[,:]?\s*$/);
     if (lead) {
@@ -1468,7 +1469,7 @@ function narrationQuotes(text) {
         const beforeZone = zoneBefore(text, q.start);
         const afterZone = zoneAfter(text, q.end);
         const hard = doubleTag(text.slice(beforeZone.at, afterZone.at + afterZone.text.length));
-        if (hard) q.instruct = hard;
+        if (hard) { q.instruct = hard; q.hard = true; }
         out.push(q);
     }
     return out;
@@ -1607,15 +1608,15 @@ function castPieces(text, quotes, from) {
     // a quotation it lands in is voiced from there.
     from = from > 0 ? from : 0;
     let cursor = from, narr = '';
-    const talk = (spoken, voice, dir, key, instruction, bracket) => {
+    const talk = (spoken, voice, dir, key, instruction, bracket, hard) => {
         carrySpan(blockPieces(spoken)).forEach(p => out.push({
             role: 'dialogue', text: p, voice: voice, direction: dir, speaker: key,
-            instruction: instruction || '', bracket: !!bracket
+            instruction: instruction || '', bracket: !!bracket, hard: !!hard
         }));
     };
-    const tellNarrator = (spoken, dir, instruction) => {
+    const tellNarrator = (spoken, dir, instruction, hard) => {
         carrySpan(blockPieces(spoken)).forEach(p => out.push({
-            role: 'narration', text: p, direction: dir, instruction: instruction || '', bracket: !!instruction
+            role: 'narration', text: p, direction: dir, instruction: instruction || '', bracket: !!instruction, hard: !!hard
         }));
     };
     // quoteTook: the [[tag]] already given to the quotation this lead-in belongs to;
@@ -1632,7 +1633,7 @@ function castPieces(text, quotes, from) {
         if (!/[A-Za-z0-9]/.test(spoken)) return;
         carrySpan(blockPieces(spoken)).forEach(p => out.push({
             role: 'narration', text: p, direction: narrationDirection(p, null),
-            instruction: hard, bracket: !!hard
+            instruction: hard, bracket: !!hard, hard: !!hard
         }));
     };
     for (const q of quotes) {
@@ -1645,8 +1646,8 @@ function castPieces(text, quotes, from) {
             const rest = text.slice(from, q.end).replace(/["'“”‘’]+\s*$/, '').trim();
             const spoken = padBracketTags(stripDoubles(rest)).trim();
             if (/[A-Za-z0-9]/.test(spoken)) {
-                if (voice) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override);
-                else tellNarrator(spoken, quoteDirection(q), override);
+                if (voice) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override, q.hard);
+                else tellNarrator(spoken, quoteDirection(q), override, q.hard);
             }
             prevTook = doubleTag(text.slice(q.start, q.end + zoneAfter(text, q.end).text.length));
             cursor = q.end;
@@ -1669,10 +1670,10 @@ function castPieces(text, quotes, from) {
         prevTook = took;
         if (voice) {
             const spoken = padBracketTags(stripDoubles((peel ? lead.raw + ' ' : '') + q.inner.trim())).trim();
-            if (/[A-Za-z0-9]/.test(spoken)) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override);
+            if (/[A-Za-z0-9]/.test(spoken)) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override, q.hard);
         } else {
             const spoken = stripDoubles(text.slice(q.start, q.end)).trim();
-            if (/[A-Za-z0-9]/.test(spoken)) tellNarrator(spoken, quoteDirection(q), override);
+            if (/[A-Za-z0-9]/.test(spoken)) tellNarrator(spoken, quoteDirection(q), override, q.hard);
         }
         cursor = q.end;
     }
@@ -1752,7 +1753,7 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
         paragraphPieces(text, all[i]).forEach((p, k) => pieces.push({
             el: all[i], at: at, id: at * 100 + k, role: 'narration',
             text: p.text, direction: p.direction,
-            instruction: p.instruction || '', bracket: !!p.bracket
+            instruction: p.instruction || '', bracket: !!p.bracket, hard: !!p.hard
         }));
     }
     if (graduated) {

@@ -277,6 +277,16 @@ api.setModel({
 }
 
 console.log('--- a bracket to the right of a character replaces that character\'s instruction');
+// cueInstruction (09-speech.js), for cases outside the speech-tag section.
+const cueOf = (() => {
+    const at = src.indexOf('function cueInstruction');
+    let i = src.indexOf('{', at), depth = 0, end = -1;
+    for (; i < src.length; i++) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}' && --depth === 0) { end = i; break; }
+    }
+    return new Function(src.slice(at, end + 1) + '\nreturn cueInstruction;')();
+})();
 function lineOf(text) {
     return api.castPieces(text, api.narrationQuotes(text), 0);
 }
@@ -503,6 +513,18 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
             [['narration', '"You are late,"', 'Read it angry'], ['narration', 'Tom said quietly.', '']]);
         eq('unvoiced speaker: and after it',
             told('"You are late," [Read it angry] Tom said quietly.')[0], ['narration', '"You are late,"', 'Read it angry']);
+        eq('unvoiced speaker: the bracket keeps the speech tag, as a single bracket does',
+            api.castPieces('[Read it angry] "You are late," Tom said quietly.', api.narrationQuotes('[Read it angry] "You are late," Tom said quietly.'), 0)
+                .filter(p => p.text.indexOf('late') >= 0).map(p => cueOf(p, true, '').instruction), ['Read it angry, quietly']);
+        {
+            const el = { innerText: '[[measured]] The door opened. "You are late," Tom said quietly.', getAttribute: function () { return null; } };
+            api.setCast({});
+            eq('a double bracket on the no-cast reading path drops the speech tag',
+                api.narrationBatches([el], 0, 1)[0].filter(p => p.text.indexOf('late') >= 0).map(p => cueOf(p, true, '').instruction), ['measured']);
+            api.setCast({ anna: 'qwen-ryan' });
+        }
+        eq('no speaker: a model tag against the quotation stays spoken too',
+            api.narrationQuotes('[laughing] "Stop it."').map(q => q.instruct || ''), ['']);
         eq('unvoiced speaker: a model tag against the quotation stays spoken',
             api.narrationQuotes('[laughing] "Stop it," Tom said.').map(q => q.instruct || ''), ['']);
         eq('unvoiced speaker: so does a span tag with a strength',
@@ -555,8 +577,11 @@ console.log('--- a speech tag is added to the standing instruction');
     eq('cues off keeps the default',
         cueInstruction({ role: 'dialogue', instruction: whisper, direction: 'sadly said' }, false).instruction,
         whisper);
-    eq('a bracket still replaces the default',
+    eq('a single bracket replaces the default and keeps the speech tag',
         cueInstruction({ role: 'dialogue', instruction: 'shouts loudly', direction: 'sadly said', bracket: true }, true).instruction,
+        'shouts loudly, sadly');
+    eq('a double bracket replaces the default and the speech tag',
+        cueInstruction({ role: 'dialogue', instruction: 'shouts loudly', direction: 'sadly said', bracket: true, hard: true }, true).instruction,
         'shouts loudly');
     api.setCast({ anna: 'qwen-ryan' });
     api.setCastSay({ anna: whisper });
