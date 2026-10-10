@@ -384,15 +384,27 @@ Breeze narration is a second narrator, beside Qwen rather than instead of it. On
 
 This applies to both narrators. The narrator reads the whole book, except the dialogue of characters you give a voice: their quoted lines are read in that voice, and the narrator reads everything else, "she said" included. How each line sounds comes from **global** instructions, which you set once in Narrator Manager, and — in a Markdown or text file — **local** instructions you write in the text.
 
-#### The basic rules
+#### Using Tags
 
-- Give a character a voice in **Narrator Manager > Cast for this book**; their quoted lines are then read in it.
-- A line goes to a character when their name and a speaking word are in the quote's sentence: `"Go," Tom said.`
-- Your own words in square brackets say how to read. They are never spoken.
-- Inside a quote, a bracket directs that quote. Outside quotes, it directs the narrator.
-- `[single brackets]` are **added** to the usual instruction. `[[double brackets]]` **override** it.
-- Built-in sound and mood tags, such as `[laughing]` and `[sad]`, are performed where they stand.
-- In an ePub, which cannot be edited, the app does all of this from the text by itself.
+To determine how tags affect delivery, TypoZen uses a **strict positional logic**. You can write your own instructions in square brackets, or use built-in emotion tags.
+
+1. **In-Quote Instructions `[ ]`**: Apply exclusively to the quoted text. They take effect from their exact position until the end of the quote or until a new instruction inside the quote is hit.
+2. **Narrator Instructions `[ ]`**: Apply exclusively outside of quotes. They take effect from their exact position until the end of the paragraph block or until a new outside-quote instruction is hit.
+3. **Double Brackets `[[ ]]`**: Act as a hard override, superseding any global instructions or prior local tags for that domain. Single brackets simply append to the existing global instruction.
+4. **Performative Audio Queues `( )`**: Native Breeze sound events in parentheses like `(laughs)` or `(sighs)` are bypassed by TypoZen and sent directly to Breeze to perform inline as non-speech audio.
+
+Because tags apply exactly from where they are placed, placing a tag in the middle of a sentence will cleanly cut the audio piece there and shift the delivery going forward. 
+
+**Example:** `[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway (laughs)". [excited, loud] Surprising even herself.`
+
+| Text Segment | Read by | Directed by | Notes |
+|---|---|---|---|
+| `Anna said` | narrator | *steady, whisper* | Applied immediately outside the quote. |
+| `I am mad at you.` | Anna | *Angry* | Applied immediately inside the quote. |
+| `But I forgive you anyway (laughs)` | Anna | *Softly* | Takes over from *Angry*. `(laughs)` is performed natively by Breeze. |
+| `Surprising even herself.` | narrator | *excited, loud* | Takes over from *steady, whisper*. |
+
+- In an ePub, which cannot be edited, the app does all of this from the text by itself, parsing built-in emotion tags.
 
 #### Who reads a line of dialogue
 
@@ -426,23 +438,7 @@ The same in every kind of document. The first row that fits wins.
 
 An empty box means no instruction.
 
-#### Local instructions — in a Markdown or text file
-
-A line with a quote is read in pieces: the speaker reads the quote, the narrator reads the rest, and each is told its own instruction. Two rules decide which instruction:
-
-1. **A bracket inside a quote directs that quote**, from where it stands until the quote's next bracket or the end of the quote.
-2. **A bracket outside quotes directs the narrator**, from where it stands until the narrator's next bracket or the end of the paragraph.
-
-`[how to read]` is **added** to that voice's usual instruction — the character's cast box, or the narrator's box — and Emotion cue words are still added. `[[how to read]]` **replaces** both. A bracket in the middle of a sentence counts from the start of that sentence, so a sentence is never cut in two.
-
-`[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway." [excited, loud] Surprising even herself.` is read as:
-
-| Text | Read by | Directed by |
-|---|---|---|
-| Anna said | narrator | *steady, whisper* |
-| I am mad at you. | Anna | *Angry* |
-| But I forgive you anyway. | Anna | *Softly* — it takes over from *Angry* |
-| Surprising even herself. | narrator | *excited, loud* — it takes over from *steady, whisper* |
+#### Detailed local examples
 
 With Tom's **Instruction** box set to `gruff and slow`, and the narrator's to `measured`:
 

@@ -1979,12 +1979,7 @@ function instructionStarts(text, lo, hi) {
     while ((m = re.exec(seg))) {
         const tag = doubleTag(m[0]);
         if (!tag) continue;
-        const head = blankBrackets(seg.slice(0, m.index));
-        let start = 0;
-        const ends = /[.!?…]["'”’)\]]*\s+/g;
-        let e;
-        while ((e = ends.exec(head))) start = e.index + e[0].length;
-        out.push({ at: Math.max(lo + start, out.length ? out[out.length - 1].at : lo), tag: tag });
+        out.push({ at: lo + m.index, tag: tag });
     }
     return out;
 }

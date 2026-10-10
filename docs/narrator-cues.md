@@ -1,12 +1,45 @@
 # Narrator tags and cues
 
-What you can write so the narrators change delivery. One rule for brackets: your own words in square brackets are an instruction, never spoken -- anywhere in a quotation's sentence for that quotation, anywhere else for the narration around them. The narrators' own tags, such as `[laughing]` and `[sad]`, are performed instead. With **Emotion cues** on, and no bracket, the speech tag beside the quotation colours it, in the words written there. In an ePub, which cannot be edited, brackets are always read as the book's text.
+What you can write so the narrators change delivery.
 
-The lines in this document were run through the speech splitter with Julie, Paul and Anna each given a voice. **Says** is the text that voice is sent. **Told** is the instruction added when Emotion cues are on. **Try it** shows that instruction under "What the narrator was told".
+## Using Tags
+
+To determine how tags affect delivery, TypoZen uses a **strict positional logic**. You can write your own instructions in square brackets, or use built-in emotion tags.
+
+1. **In-Quote Instructions `[ ]`**: Apply exclusively to the quoted text. They take effect from their exact position until the end of the quote or until a new instruction inside the quote is hit.
+2. **Narrator Instructions `[ ]`**: Apply exclusively outside of quotes. They take effect from their exact position until the end of the paragraph block or until a new outside-quote instruction is hit.
+3. **Double Brackets `[[ ]]`**: Act as a hard override, superseding any global instructions or prior local tags for that domain. Single brackets simply append to the existing global instruction.
+4. **Performative Audio Queues `( )`**: Native Breeze sound events in parentheses like `(laughs)` or `(sighs)` are bypassed by TypoZen and sent directly to Breeze to perform inline as non-speech audio.
+
+Because tags apply exactly from where they are placed, placing a tag in the middle of a sentence will cleanly cut the audio piece there and shift the delivery going forward. 
+
+**Example:** `[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway (laughs)". [excited, loud] Surprising even herself.`
+
+| Text Segment | Read by | Directed by | Notes |
+|---|---|---|---|
+| `Anna said` | narrator | *steady, whisper* | Applied immediately outside the quote. |
+| `I am mad at you.` | Anna | *Angry* | Applied immediately inside the quote. |
+| `But I forgive you anyway (laughs)` | Anna | *Softly* | Takes over from *Angry*. `(laughs)` is performed natively by Breeze. |
+| `Surprising even herself.` | narrator | *excited, loud* | Takes over from *steady, whisper*. |
+
+The instruction is used exactly as written. A full stop or quote marks inside the brackets are part of it: `[Read it plainly. Speak softly]` is one instruction. Double brackets, `[[shouts loudly]]`, act as a hard override rather than an additive tag.
+
+In an ePub nothing in brackets is an instruction: nobody can write one into a book, and every bracket there is its own text.
 
 A tag sets delivery. It does not choose the voice. Voices are the cast, on the same window's **Cast for this book** tab. A character with no voice leaves the whole paragraph with the narrator.
 
-## Worked lines
+## Built-in Native Tags
+
+Certain tags are recognized natively by the models. The model takes these tokens and not their cousins: `[crying]`, not `[weeping]`; `[whispers]`, not `[whisper]`; `[laughing]`, not `[laugh]`.
+
+- **Point events** are a sound at that spot: `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]`.
+- **Spans** change the delivery from there on: `[excited]` `[sad]` `[angry]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]`.
+
+These built-in tags follow the same positional logic. When parsed by TypoZen's positional engine, they take effect strictly from where they stand.
+
+## Detailed Worked Lines
+
+The lines in this section show how the speech splitter assigns text when Julie, Paul, and Anna are each given a voice in the Cast. **Says** is the text that voice is sent. **Told** is the instruction added when Emotion cues are on.
 
 ### A bracket the list does not know
 
@@ -14,7 +47,7 @@ A tag sets delivery. It does not choose the voice. Voices are the cast, on the s
 
 At the start of the quote, Paul gets it:
 
-```
+```text
 Paul: "[clears throat] I'm going home now"
 ```
 
@@ -25,7 +58,7 @@ Paul: "[clears throat] I'm going home now"
 
 After the closing quote, the narrator gets it. Paul does not:
 
-```
+```text
 Paul said "good bye" [clears throat]
 ```
 
@@ -35,48 +68,11 @@ Paul said "good bye" [clears throat]
 | Paul | good bye | |
 | Narrator | [clears throat] | |
 
-```
-Julie told Paul "Good morning" [clears throat]
-```
-
-| Who | Says | Told |
-|---|---|---|
-| Narrator | Julie told Paul | |
-| Julie | Good morning | |
-| Narrator | [clears throat] | |
-
-Paul is not given that line. Julie spoke it.
-
-At the end of the quote, still inside it, Paul is sent the bracket. The model leaves that placement out:
-
-```
-Paul: "I'm going home now [clears throat]"
-```
-
-| Who | Says | Told |
-|---|---|---|
-| Narrator | Paul: | |
-| Paul | I'm going home now [clears throat] | |
-
 ### A bracket in the line
-
-`[giggles]` stays in Julie's line. With Emotion cues on, the words after the quote are her cue:
-
-```
-Julie said "hello world! [giggles]" in a cheery voice
-```
-
-| Who | Says | Told |
-|---|---|---|
-| Narrator | Julie said | |
-| Julie | hello world! [giggles] | in a cheery voice |
-| Narrator | in a cheery voice | |
-
-With nobody given a voice, the narrator is sent one piece, `Julie said "hello world! [giggles]" in a cheery voice`, told `Voice the lines in quotation marks as in a cheery voice.` The quotation marks stay in that piece. A character's piece does not include them.
 
 A bracket against the quote, with only space between, is spoken by that character:
 
-```
+```text
 [crying] "Please let me go," Anna said.
 ```
 
@@ -89,7 +85,7 @@ The same happens when the tag is inside the quote. `"Please [crying] let me go,"
 
 Words between the tag and the quote leave the bracket on the narration. The quote is not given it:
 
-```
+```text
 He was [sad] for a while. "Hello," Anna said.
 ```
 
@@ -101,7 +97,7 @@ He was [sad] for a while. "Hello," Anna said.
 
 ### A speech tag
 
-```
+```text
 "Get out," Anna snapped.
 ```
 
@@ -110,7 +106,7 @@ He was [sad] for a while. "Hello," Anna said.
 | Anna | Get out, | snapped |
 | Narrator | Anna snapped. | |
 
-```
+```text
 "Hello!" Anna said.
 ```
 
@@ -119,7 +115,7 @@ He was [sad] for a while. "Hello," Anna said.
 | Anna | Hello! | Voice the lines in quotation marks as emphatic. |
 | Narrator | Anna said. | |
 
-```
+```text
 "Wait—" Anna said.
 ```
 
@@ -132,7 +128,7 @@ He was [sad] for a while. "Hello," Anna said.
 
 A pronoun is not a cast voice. `"Go," she whispered.` stays one narrator piece, `"Go," she whispered.`, told "whispered".
 
-```
+```text
 "Hmm." Anna was quietly snoring.
 ```
 
@@ -143,23 +139,11 @@ A pronoun is not a cast voice. `"Go," she whispered.` stays one narrator piece, 
 
 "Quietly" is the next sentence, so it does not colour Anna's line. With nobody given a voice, the narrator is sent the whole line and told nothing. `"Get out," Anna snapped. She was quietly snoring.` still tells Anna "snapped": that is the tag on that quote, and the snoring is the sentence after it.
 
-## Bracket words
-
-These are left in the spoken text, exactly as written. Capitalisation does not matter. A bracket glued to a word gets one space on that side. The model takes these tokens and not their cousins: `[crying]`, not `[weeping]`; `[whispers]`, not `[whisper]`; `[laughing]`, not `[laugh]`.
-
-A point event is a sound at that spot: `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]`.
-
-A span changes the delivery from there on: `[excited]` `[sad]` `[angry]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]`.
-
-Any other words in square brackets are an instruction, and are not spoken (Ed, 2026-10-10: one notation, one rule). In a sentence with a quotation they are that quotation's instruction, wherever they are in the sentence: `[shouts loudly] "Get out!" Anna said.`, `"Get out!" Anna [shouts loudly] said.` and `"[shouts loudly] Get out!" Anna said.` all tell Anna `shouts loudly`. Anywhere else they are the instruction for the narration around them: `[measured and quiet] The door opened.` The instruction is used exactly as written. It replaces the cast box of whoever reads the line -- the character's, or the narrator's when the speaker has no voice -- and Emotion cues add nothing to it. A full stop or quote marks inside the brackets are part of it: `[Read it plainly. Speak softly]` is one instruction. Written after the speech tag, `"Wait—" Anna said [hushed].`, it is Anna's alone; the narrator reading "Anna said." keeps its own instruction, and an instruction in narration never reaches a quotation in another sentence. Double brackets, `[[shouts loudly]]`, mean exactly the same: the page turns single into double before reading (`oneNotation`, 09-speech.js), so the two cannot differ. In an ePub nothing in brackets is an instruction: nobody can write one into a book, and every bracket there is its own text. In ordinary prose, "she shouted" and "she whispered" are still cues, through the speech tags below, and only when Emotion cues is on.
-
 ## Speech words
 
 With no bracket, and Emotion cues on, the speech tag that touches the quotation is added to the standing instruction. The name is left out, and so are "said", "asked" and "told". Nothing is substituted.
 
 Who was spoken to is left out too, and so is a word that is no instruction on its own: `"Go," she told him angrily.` is told `angrily`; `"Sit down," Anna said to her brother.` and `Tom asked her again: "Where were you?"` are told nothing from the tag; `"Fine," said Tom, turning away.` is told `turning away`; `said softly; then` is `softly`; `said (coldly)` is `coldly`.
-
-`Anna shouts, speaks loudly, forcefully, fast: "Get out..."` tells that quote `shouts, speaks loudly, forcefully, fast` when the box is empty. If Anna's box is `whispers, speaks very quietly`, and the line is `Anna sadly said "Goodbye"`, she is told `whispers, speaks very quietly, sadly`. A single bracket on the same line is used instead of the box. A double bracket is used instead of the box and the speech tag.
 
 If the tag has no such words, the quote's punctuation is still a cue. An exclamation mark: emphatic, as in `"Hello!" Anna said.` The quote ending in an em dash, an en dash, or an ellipsis: breaking off, as in `"Wait—" Anna said.`
 
