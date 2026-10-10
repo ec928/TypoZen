@@ -75,6 +75,18 @@ THOUGHT_SUFFIX = " This passage is a character's private thought: read it quiete
 DIALOGUE = "Speak this line of dialogue as the character would say it, naturally and in character."
 DIALOGUE_DIRECTED = "Speak this line of dialogue as the character would say it: %s."
 
+def sentence_join(a, b):
+    """Two instructions as two sentences: "Speak softly" and "Voice the lines ..." are joined
+    with a full stop, where a plain space ran them together. One that already ends a
+    sentence ("Speak up!") is left as it is."""
+    a, b = (a or '').strip(), (b or '').strip()
+    if not a or not b:
+        return a or b
+    if not a.rstrip('"\'\u201d\u2019)]').endswith(('.', '!', '?', '\u2026')):
+        a = a.rstrip(',;:') + '.'
+    return a + ' ' + b
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The voice the narrator shipped with. Others are designed from a description in TypoZen
 # (Narrator Manager) and kept in voices/ beside the cache, one folder each.
@@ -443,9 +455,9 @@ class Narrator(object):
                 if not direction:
                     return spoken
                 if direction == 'thought':
-                    return (spoken + THOUGHT_SUFFIX).strip()
+                    return sentence_join(spoken, THOUGHT_SUFFIX)
                 cue = (cue or '').strip()[:400] or DIRECTED_SUFFIX.strip().replace('%s', '{cue}')
-                return (spoken + ' ' + cue.replace('{cue}', direction)).strip()
+                return sentence_join(spoken, cue.replace('{cue}', direction))
             if whole is None:
                 return DIALOGUE_DIRECTED % direction if direction and direction != 'thought' else DIALOGUE
             # Narrator Manager in use: an empty cast box is no instruction, as an empty
@@ -456,10 +468,10 @@ class Narrator(object):
             if not direction:
                 return whole
             if direction == 'thought':
-                return (whole + THOUGHT_SUFFIX).strip()
+                return sentence_join(whole, THOUGHT_SUFFIX)
             # The reader's wording, else TypoZen's default (QwenNarrator.DefaultCue).
             cue = (cue or '').strip()[:400] or DIRECTED_SUFFIX.strip().replace('%s', '{cue}')
-            return (whole + ' ' + cue.replace('{cue}', direction)).strip()
+            return sentence_join(whole, cue.replace('{cue}', direction))
         base = ('Narrate as an audiobook reader of literary fiction. ' + style) if style else NARRATION_BASE
         if not direction:
             return base + LIGHT_DIALOGUE
