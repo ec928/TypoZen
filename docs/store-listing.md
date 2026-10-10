@@ -52,13 +52,13 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. These notes are the 0.15.1 package; 0.14.13 is the version live on the Store (0.14.14 was prepared but not submitted). GitHub v0.15.1, the installer, and the installed app are the same version._
+_Limit 1,500 characters. These notes are the 0.15.2 package; 0.14.13 is the version live on the Store (0.14.14 was prepared but not submitted). The installed app is 0.15.2; GitHub has v0.15.1, the same apart from the fix below._
 
 - New: the Breeze narrator, an optional second narrator from File > Extensions. It designs voices from a description, clones one from a short recording, and performs sounds such as laughter.
 - Narrator Manager (was Narrator Settings) is redesigned, and Narration Monitor shows exactly what each line was given, run by run, with Copy all and Clear.
 - Character voices pick the right speaker far more often: actions beside a line, Mr and Mrs Bennet as two people, and British single quotes. When unsure, the narrator reads the line.
-- Directing a line is simpler and more predictable: put [[how to say it]] just before the quote. "She whispered" now colours only her line, not the narration around it.
-- Help > User Guide opens the full guide in a tab, and Help > Narration has been rewritten.
+- Directing a line is one simple rule: write [how to say it] anywhere in the quote's sentence. "She whispered" now colours only her line, not the narration around it. In an ePub, brackets are read as part of the book.
+- Help > User Guide opens the full guide in a tab, always the current one, and Help > Narration has been rewritten.
 - Read Aloud with a narrator carries on to the end of the document. Clear Stored Data remembers your choices.
 
 ---
@@ -70,9 +70,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.15.1.0); every other package removed from the submission |
+| 2 | Packages | the newest MSIX (0.15.2.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.15.1 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.15.2 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |
