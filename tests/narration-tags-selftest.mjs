@@ -533,6 +533,12 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
             api.narrationQuotes('[Read it angry] "Stop it," Anna said.').map(q => q.instruct || ''), ['']);
     }
     {
+        // A capitalised word that opens a sentence is not a name: "The" used to be the speaker.
+        eq('"The" is not a speaker', api.narrationQuotes('"Go." The door shut.').map(q => q.who), [null]);
+        eq('the nearest real name is', api.narrationQuotes('"You are late." The woman by the window was Anna.').map(q => q.key), ['anna']);
+        eq('"the King" is still the king', api.narrationQuotes('"Go," the King said.').map(q => q.key), ['king']);
+    }
+    {
         const pieces = lineOf('Anna [whispers. slowly], "Get out."');
         eq('a single bracket with a full stop inside is still the line instruction',
             pieces.filter(p => p.role === 'dialogue').map(p => p.instruction), ['whispers. slowly']);

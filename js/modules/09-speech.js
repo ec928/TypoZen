@@ -1272,7 +1272,7 @@ function narrationDirection(text, el) {
  */
 // Sentence words that are capitalised and are not people. Without this, "After" would be
 // a character whenever it was the only capital word near a quotation.
-const NOT_A_NAME = /^(After|Then|But|And|When|While|Before|Once|Suddenly|However|Meanwhile|Later|Soon|Still|There|Here|Yes|No|Oh|Well|Now|So|Yet|Thus|Therefore|Perhaps|Maybe|He|She|It|They|We|You|I)$/;
+const NOT_A_NAME = /^(After|Then|But|And|When|While|Before|Once|Suddenly|However|Meanwhile|Later|Soon|Still|There|Here|Yes|No|Oh|Well|Now|So|Yet|Thus|Therefore|Perhaps|Maybe|He|She|It|They|We|You|I|The|A|An|This|That|These|Those|His|Her|Its|Their|My|Your|Our|Me|Him|Them|Us|In|On|At|From|With|Without|For|Of|To|By|As|Into|Across|Behind|Beside|Outside|Inside|If|Though|Although|Because|Since|Until|Even|Only|Just|Not|All|Some|Every|Each|Both|What|Why|How|Where|Who|Which|Someone|Something|Nothing|Nobody|Everyone|Everything|Somewhere)$/;
 // Dialogue tags only. "talked" is not one: "Bob talked, then Jill said" is Jill.
 const SPEECH_VERB = /^(say|says|said|ask|asks|asked|reply|replies|replied|protested|continued|began|added|tell|tells|told|cried|call|calls|called|answered|admitted|agreed|whispered|murmured|muttered|shouted|yelled|snapped|hissed|laughed|sighed|gasped|wept|sobbed|pleaded|begged|demanded|insisted|stammered|growled|barked|roared|screamed|announced|explained|observed|remarked|suggested|warned|retorted|exclaimed|responded|conceded|repeated|interrupted|breathed)$/i;
 
