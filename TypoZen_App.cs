@@ -2376,6 +2376,10 @@ namespace TypoZen
                 {
                     Directory.CreateDirectory(dir);
                     File.Copy(src, guide, true);
+                    // A fresh copy opens at the top, not where the last one was left: reading
+                    // positions are kept per path, and the guide's path never changes.
+                    LoadBookPositions();
+                    if (_bookPositions.Remove(Path.GetFullPath(guide))) SaveBookPositions(null);
                 }
                 string lastDir = _lastOpenDirectory;
                 LoadFileFromPath(guide);
