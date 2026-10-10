@@ -625,7 +625,7 @@
                             <tr><td>Any other bracket, or one inside the quotation</td><td>Read aloud as written.</td></tr>
                         </tbody>
                     </table>
-                    <p class="tz-help-aside">To direct one line, <code>[[...]]</code> in its sentence always works; it can be a full sentence. In an ePub nothing can be tagged, so the rules above do the work. The README has the full tables.</p>
+                    <p class="tz-help-aside">To direct one line, <code>[[...]]</code> in its sentence always works; it can be a full sentence. In an ePub nothing can be tagged, so the rules above do the work. The User Guide has the full tables.</p>
                 </section>
                 <section class="tz-help-sec">
                     <h3>Seeing what happens</h3>
@@ -636,7 +636,11 @@
                 </section>
             </div>
             <footer class="tz-help-foot">
-                <div></div>
+                <div>
+                    <!-- A fixed command; the host opens the guide (OpenUserGuide). -->
+                    <button type="button" id="narrHelpGuide" class="tz-help-link"
+                            title="Opens the full guide (README) in a tab">Open the User Guide</button>
+                </div>
                 <div style="display: flex; gap: 12px; align-items: center;">
                     <span class="tz-help-hint">Esc to close</span>
                     <button type="button" id="narrHelpOk" class="tz-help-ok">Close</button>

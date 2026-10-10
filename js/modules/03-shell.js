@@ -2813,6 +2813,17 @@
             wire('helpModal', 'helpClose', 'helpOk');
             wire('aboutModal', 'aboutClose', 'aboutOk');
             wire('narrHelpModal', 'narrHelpClose', 'narrHelpOk');
+            // Help > Narration -> the User Guide (README) in a tab. The panel closes, as the guide
+            // opens behind it in the editor.
+            (function () {
+                const g = document.getElementById('narrHelpGuide');
+                if (!g || g.__tzBound) return;
+                g.__tzBound = true;
+                g.addEventListener('click', function () {
+                    closeTzOverlay('narrHelpModal');
+                    try { postMsg('open_user_guide'); } catch (e) {}
+                });
+            })();
 
             // About -> "Report a problem or suggest a feature".
             //

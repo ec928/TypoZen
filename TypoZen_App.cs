@@ -1791,6 +1791,7 @@ namespace TypoZen
 
             BindClick("mHelpSyntax", (s, e) => ShowHelpPanel("cmd:help_syntax"));
             BindClick("mHelpNarration", (s, e) => ShowNarrationHelp());
+            BindClick("mHelpGuide", (s, e) => OpenUserGuide());
             BindClick("mToggleDebug", (s, e) => SendMsg("cmd:toggle_debug_hud"));
             // About is an in-page themed panel (same shell as F1 help), not a system MessageBox.
             BindClick("mAbout", (s, e) => ShowHelpPanel("cmd:help_about"));
@@ -2347,6 +2348,46 @@ namespace TypoZen
             if (QwenNarrator.Installed(cache, _appDir)) have.Add("qwen");
             if (BreezeNarrator.Installed(cache, _appDir)) have.Add("breeze");
             ShowHelpPanel("cmd:help_narration:" + string.Join(",", have.ToArray()));
+        }
+
+        /// <summary>
+        /// Help > User Guide: the README that ships beside the exe, opened in a tab. A copy in the data
+        /// folder is what opens, refreshed each time, so an edit or a save can never touch the installed
+        /// file (read-only anyway in the Store package). A copy already open is shown as it is. File >
+        /// Open keeps starting where it did before.
+        /// </summary>
+        private void OpenUserGuide()
+        {
+            try
+            {
+                string src = Path.Combine(_appDir, "README.md");
+                if (!File.Exists(src))
+                {
+                    WinForms.MessageBox.Show("The user guide is not part of this installation.", "TypoZen",
+                        WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                    return;
+                }
+                string dir = Path.Combine(CacheDir(), "help");
+                string guide = Path.Combine(dir, "README.md");
+                bool open = false;
+                foreach (var t in _tabs)
+                    if (t.FilePath != null && string.Equals(t.FilePath, guide, StringComparison.OrdinalIgnoreCase)) open = true;
+                if (!open)
+                {
+                    Directory.CreateDirectory(dir);
+                    File.Copy(src, guide, true);
+                }
+                string lastDir = _lastOpenDirectory;
+                LoadFileFromPath(guide);
+                _lastOpenDirectory = lastDir;
+                try
+                {
+                    var prefs = LoadHostPrefs();
+                    if (prefs != null && lastDir != null) { prefs.LastOpenDirectory = lastDir; WriteHostPrefs(prefs); }
+                }
+                catch { }
+            }
+            catch (Exception ex) { LogFault("user guide", ex); }
         }
 
         private bool _monitorRestored;
@@ -7660,6 +7701,13 @@ namespace TypoZen
                 {
                     System.Diagnostics.Debug.WriteLine("support link: " + ex.Message);
                 }
+                return;
+            }
+
+            if (msg == "open_user_guide")
+            {
+                // Help > Narration's "Open the User Guide": the same as Help > User Guide.
+                Dispatcher.BeginInvoke(new Action(OpenUserGuide));
                 return;
             }
 
