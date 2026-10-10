@@ -1064,6 +1064,16 @@ function blockPieces(text) {
  */
 const SPAN_TAG = /^(?:excited|sad|angry|amazed|serious|sarcastic|curious|mischievously|crying|panicked|tired|asmr|singing|whispers|very slowly|very fast|like dracula|deep and loud shouting)$/i;
 
+/**
+ * The text with every bracket, [tag] or [[tag]], blanked to spaces of the same length, for
+ * finding sentence ends and speech tags. A full stop inside a bracket does not end the
+ * sentence: "[[Read it plainly. Speak softly]]" is one instruction, and none of a bracket's
+ * words are a speech tag.
+ */
+function blankBrackets(text) {
+    return String(text || '').replace(/\[\[[^\]\n]*\]\]|\[[^\]\n]*\]/g, m => ' '.repeat(m.length));
+}
+
 /** [[tag]] is an instruction, never spoken. The first one in a stretch of text wins. */
 function doubleTag(text) {
     const m = /\[\[([^\]\n]+)\]\]/.exec(String(text || ''));
@@ -1163,6 +1173,7 @@ const SPEECH_TAG = /^\s*(\S+\s+){0,3}?(said|asked|replied|protested|continued|be
  * "she whispered", or "Anna snapped". "Anna was quietly snoring" is the next sentence.
  */
 function quoteCueTag(text, index, length) {
+    text = blankBrackets(text);
     const before = text.slice(Math.max(0, index - 80), index).split(/[.!?…”"]\s/).pop() || '';
     const after = text.slice(index + length, index + length + 80).split(/[.!?…“"]/)[0] || '';
     const parts = [before];
@@ -1191,11 +1202,12 @@ function narrationDirection(text, el) {
     // and was quietly snoring' is not a soft line.
     const tags = [];
     const re = /[“"][^”"]+[”"]/g;
+    const plain = blankBrackets(text);
     let m;
-    while ((m = re.exec(text))) {
-        const before = text.slice(Math.max(0, m.index - 60), m.index).split(/[.!?…”"]\s/).pop();
+    while ((m = re.exec(plain))) {
+        const before = plain.slice(Math.max(0, m.index - 60), m.index).split(/[.!?…”"]\s/).pop();
         if (/[,:]\s*$/.test(before)) tags.push(before);
-        const after = text.slice(m.index + m[0].length, m.index + m[0].length + 60).split(/[.!?…“"]/)[0];
+        const after = plain.slice(m.index + m[0].length, m.index + m[0].length + 60).split(/[.!?…“"]/)[0];
         if (/^\s*[a-z]/.test(after) || SPEECH_TAG.test(after)) tags.push(after);
     }
     const phrases = [];
@@ -1307,15 +1319,15 @@ function nameAt(zone, who) {
 
 function zoneBefore(text, index) {
     const before = text.slice(0, index);
-    const parts = before.split(/[.!?…]["'”’)\]]*\s/);
+    const parts = blankBrackets(before).split(/[.!?…]["'”’)\]]*\s/);
     const last = parts[parts.length - 1] || '';
-    return { at: before.length - last.length, text: last };
+    return { at: before.length - last.length, text: before.slice(before.length - last.length) };
 }
 
 function zoneAfter(text, index) {
     const after = text.slice(index);
-    const m = /^([\s\S]*?)(?=[.!?…]|$)/.exec(after);
-    return { at: index, text: m ? m[1] : after };
+    const m = /^([\s\S]*?)(?=[.!?…]|$)/.exec(blankBrackets(after));
+    return { at: index, text: m ? after.slice(0, m[1].length) : after };
 }
 
 /** The first single bracket at or after `from` in the zone. [[tag]] is not one of these. */

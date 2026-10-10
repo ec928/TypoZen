@@ -456,6 +456,35 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
         eq('a reading with no cast sends the double bracket', pieces.map(p => p.instruction || ''), ['measured and quiet']);
         eq('a reading with no cast does not speak it', pieces.map(p => p.text), ['The door opened.']);
     }
+    // A full stop inside a bracket does not end the quotation's sentence. It used to: the
+    // bracket was lost and its tail, "]]" and all, was sent as the speech tag.
+    api.setCast({ anna: 'qwen-ryan', tom: 'qwen-aiden' });
+    api.setCastSay({});
+    {
+        const said = 'Read it plainly. Voice the lines in quotation marks as breaking off.';
+        const pieces = lineOf('[[' + said + ']] "Wait—" Anna said.');
+        const talk = pieces.filter(p => p.role === 'dialogue');
+        eq('a double bracket with a full stop inside reaches the voiced line whole', talk.map(p => p.instruction), [said]);
+        check('none of that bracket is taken for a speech tag',
+            pieces.every(p => (p.direction || '').indexOf(']') < 0 && (p.direction || '').indexOf('lines') < 0),
+            JSON.stringify(pieces.map(p => p.direction)));
+        eq('after the speech tag, it still reaches the voiced line whole',
+            lineOf('"Wait—" Anna said [[Read it plainly. Speak softly]].').filter(p => p.role === 'dialogue').map(p => p.instruction),
+            ['Read it plainly. Speak softly']);
+    }
+    {
+        const pieces = lineOf('"Wait—" Anna said. [[Read it plainly. Speak softly]] "Go," Tom said quietly.');
+        eq('between two quotations, it goes to the quotation of its own sentence',
+            pieces.filter(p => p.role === 'dialogue').map(p => p.instruction), ['', 'Read it plainly. Speak softly']);
+        check('and not to the narration before it', pieces.filter(p => p.role === 'narration').every(p => !p.instruction),
+            JSON.stringify(pieces.map(p => [p.role, p.text, p.instruction])));
+    }
+    {
+        const pieces = lineOf('Anna [whispers. slowly], "Get out."');
+        eq('a single bracket with a full stop inside is still the line instruction',
+            pieces.filter(p => p.role === 'dialogue').map(p => p.instruction), ['whispers. slowly']);
+        check('and is not spoken', pieces.every(p => p.text.indexOf('[') < 0), JSON.stringify(pieces.map(p => p.text)));
+    }
     api.setCast({ anna: 'qwen-ryan' });
     api.setCastSay({ anna: 'Sad, low pitched, slow speech' });
 }
