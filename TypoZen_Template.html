@@ -582,50 +582,50 @@
                         <li data-engine="both"><strong>Narrator</strong> at the top: which one you are setting up, and which one Read Aloud uses once you save.</li>
                         <li><strong>Voice</strong>: who reads. <strong>Manage voices...</strong> designs a voice from a description (age, accent, texture), imports and exports them<span data-engine="breeze">, and clones one from a recording: 3 to 20 seconds of one person, and exactly the words they say. Clone only a voice you have the right to use</span>. Designing brings back <span data-engine="qwen">three candidates with Qwen, in about a minute and a half</span><span data-engine="both">, and </span><span data-engine="breeze">two with Breeze, in about half a minute</span>. Right-click <strong>Play sample</strong> to change what it says.</li>
                         <li><strong>Instruction</strong>: how the narrator reads every paragraph, in your own words. It never reaches a character who has a voice. Empty means none.</li>
-                        <li><strong>Emotion cues</strong>: with the box ticked, a quotation's speech tag (&ldquo;Go,&rdquo; she <em>whispered</em>) colours that quotation, not the narration around it. Leave it ticked.</li>
+                        <li><strong>Emotion cues</strong>: with the box ticked, the words that say how a line is spoken (&ldquo;Go,&rdquo; she <em>whispered</em>) colour that quote, not the narration around it. Leave it ticked.</li>
                         <li data-engine="breeze"><strong>Breeze &gt; Emotion strength</strong>: how hard Breeze follows an instruction, 1 to 10, default 4. Higher is stronger and may start to sound strained. Lines with no instruction are not affected.</li>
                         <li><strong>Try it</strong> plays any text with the settings on screen, saved or not, and shows exactly what the narrator was told.</li>
                         <li><strong>Cast for this book</strong>: <strong>Find characters</strong> lists who speaks; give a character a voice and their quoted lines are read in it, with an optional instruction of their own (empty means none)<span data-engine="breeze"> and a Breeze strength (4 unless you change it)</span>. Save, then read.</li>
                     </ul>
                 </section>
                 <section class="tz-help-sec">
-                    <h3>Who reads a quotation</h3>
+                    <h3>Quick guide</h3>
                     <table class="tz-help-table tz-help-rules">
                         <tbody>
-                            <tr><td><code>"Go," Tom said.</code> &middot; <code>Tom asked, "Where?"</code></td><td>Tom: a name and a speech verb in the same sentence. The surest form.</td></tr>
-                            <tr><td><code>Tom turned to Anna. "We have to go."</code></td><td>Tom, who does the action, not Anna.</td></tr>
-                            <tr><td><code>Anna stood up. "Go," she said.</code></td><td>Anna: the paragraph names just one character.</td></tr>
-                            <tr><td><code>"Go," she told Tom.</code></td><td>The narrator: Tom is the one spoken to.</td></tr>
-                            <tr><td>An untagged line in a run of dialogue</td><td>Whoever spoke two lines before.</td></tr>
+                            <tr><td>Give a character their own voice</td><td><strong>Cast for this book &gt; Find characters</strong>, pick a voice on their row, Save.</td></tr>
+                            <tr><td>Make sure a line goes to them</td><td>Name and <em>said</em> in the quote's sentence: <code>"Go," Tom said.</code></td></tr>
+                            <tr><td>Set how a character always sounds</td><td>Their <strong>Instruction</strong> box in the cast.</td></tr>
+                            <tr><td>Set how the narrator always sounds</td><td>The <strong>Instruction</strong> box on Reading. Never applies to voiced characters.</td></tr>
+                            <tr><td>Direct one line</td><td>Just before the opening quote mark: <code>[[shouts loudly]] "Get out!"</code></td></tr>
+                            <tr><td>Direct a paragraph of narration</td><td>At its start: <code>[[measured and quiet]] The door opened.</code></td></tr>
+                            <tr><td>Add a sound or a mood</td><td>A built-in tag (below) just before the quote: <code>[laughing] "Stop it."</code></td></tr>
+                            <tr data-engine="breeze"><td>Make a tag stronger or weaker</td><td><code>:1</code> to <code>:10</code> inside the brackets: <code>[[shouts:9]]</code><span data-engine="both"> (Breeze only)</span></td></tr>
+                        </tbody>
+                    </table>
+                    <p class="tz-help-aside">Tags are never spoken. With <strong>Emotion cues</strong> ticked, <code>"Go," she whispered.</code> whispers that quote only. <code>[[...]]</code> overrides everything for its line; <code>[...]</code> in the same place keeps the <em>whispered</em> too.</p>
+                </section>
+                <section class="tz-help-sec">
+                    <h3>Who reads a line of dialogue</h3>
+                    <table class="tz-help-table tz-help-rules">
+                        <tbody>
+                            <tr><td><code>"Go," Tom said.</code> &middot; <code>Tom asked, "Where?"</code></td><td>Tom.</td></tr>
+                            <tr><td><code>Tom turned to Anna. "We have to go."</code></td><td>Tom, who acts, not Anna.</td></tr>
+                            <tr><td><code>Anna stood up. "Go," she said.</code></td><td>Anna, the only character named.</td></tr>
+                            <tr><td><code>"Go," she told Tom.</code></td><td>The narrator: Tom is being spoken to.</td></tr>
+                            <tr><td>A line with no name in a back-and-forth</td><td>Whoever spoke two lines before.</td></tr>
                             <tr><td>Anything unclear, or a character with no voice</td><td>The narrator, never the wrong character.</td></tr>
                         </tbody>
                     </table>
-                    <p class="tz-help-aside">Double quotes, or single curly quotes in books that use them. <strong>Mr Bennet</strong> and <strong>Mrs Bennet</strong> are two characters. A name on the line before does not count.</p>
                 </section>
                 <section class="tz-help-sec">
-                    <h3>How a line is read</h3>
+                    <h3>Built-in tags</h3>
                     <table class="tz-help-table tz-help-rules">
                         <tbody>
-                            <tr><td><code>[[shouts loudly]]</code> in the quotation's sentence</td><td>That quotation is read exactly so. Overrides everything. Not spoken.</td></tr>
-                            <tr><td><code>[[measured]]</code> in narration</td><td>That paragraph's narration only. Not spoken.</td></tr>
-                            <tr><td><code>[whispers]</code> against the quotation, or right after the name: <code>Tom [whispers] said</code></td><td>That quotation, instead of the box; the speech tag is still added. Not spoken.</td></tr>
-                            <tr><td>Character's box (Cast)</td><td>How that character always speaks.</td></tr>
-                            <tr><td>Narrator's box (Reading)</td><td>How the narrator always reads. Not characters.</td></tr>
-                            <tr><td>Emotion cues: <code>"Go," she whispered.</code></td><td>Adds <em>whispered</em> to that quotation. <code>!</code> or an ending <code>&mdash;</code> adds emphatic or breaking off.</td></tr>
+                            <tr><td><code>[laughing]</code> <code>[giggles]</code> <code>[gasp]</code> <code>[sighing]</code> <code>[cough]</code> <code>[clears throat]</code> <code>[snorts]</code></td><td>A sound at that point.<span data-engine="qwen"> Qwen only colours the words around it.</span></td></tr>
+                            <tr><td><code>[sad]</code> <code>[angry]</code> <code>[excited]</code> <code>[whispers]</code> <code>[crying]</code> <code>[very slowly]</code> and other moods</td><td>The mood until the end of that quote or paragraph.<span data-engine="qwen"> Qwen follows them only slightly.</span></td></tr>
                         </tbody>
                     </table>
-                </section>
-                <section class="tz-help-sec">
-                    <h3>Tags you can write (text and Markdown)</h3>
-                    <table class="tz-help-table tz-help-rules">
-                        <tbody>
-                            <tr><td><code>[laughing]</code> <code>[giggles]</code> <code>[gasp]</code> <code>[sighing]</code> <code>[cough]</code> <code>[clears throat]</code> <code>[snorts]</code></td><td>Put it where the sound should happen: inside the quotation for the character, in the narration (away from a speaker's name) for the narrator. <span data-engine="breeze">Breeze performs the sound. </span><span data-engine="qwen">Qwen colours the words around it.</span></td></tr>
-                            <tr><td><code>[sad]</code> <code>[angry]</code> <code>[excited]</code> <code>[whispers]</code> <code>[crying]</code> <code>[very slowly]</code> and other moods</td><td>Put it where the change should start, the same way. The delivery changes from there to the end of that quotation or paragraph<span data-engine="qwen">; Qwen follows them only slightly</span>.</td></tr>
-                            <tr data-engine="breeze"><td><code>[sad:9]</code> <code>[[shouts:9]]</code> <code>Tom [whispers:2] said</code></td><td>Breeze strength for that line, 1 to 10. Never spoken<span data-engine="both">; Qwen ignores it</span>.</td></tr>
-                            <tr><td>Any other bracket, or one inside the quotation</td><td>Read aloud as written.</td></tr>
-                        </tbody>
-                    </table>
-                    <p class="tz-help-aside">To direct one line, <code>[[...]]</code> in its sentence always works; it can be a full sentence. In an ePub nothing can be tagged, so the rules above do the work. The User Guide has the full tables.</p>
+                    <p class="tz-help-aside">Put them just before a quote for that character, inside it for something mid-line, or at the start of a paragraph for the narrator. Other words in single brackets work only just before the quote or right after the speaker's name; elsewhere they are read aloud. An ePub cannot be tagged: the rules above do the work.</p>
                 </section>
                 <section class="tz-help-sec">
                     <h3>Seeing what happens</h3>
