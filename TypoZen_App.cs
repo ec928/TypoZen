@@ -2352,9 +2352,12 @@ namespace TypoZen
 
         /// <summary>
         /// Help > User Guide: the README that ships beside the exe, opened in a tab. A copy in the data
-        /// folder is what opens, refreshed each time, so an edit or a save can never touch the installed
-        /// file (read-only anyway in the Store package). A copy already open is shown as it is. File >
-        /// Open keeps starting where it did before.
+        /// folder is what opens, so an edit or a save can never touch the installed file (read-only
+        /// anyway in the Store package). The copy is brought up to date whenever it differs from the
+        /// shipped one -- also while its tab is open: a guide tab restored with the session kept the
+        /// copy made before an update, and showed the old guide (Ed, 2026-10-10). An open tab with no
+        /// edits then reloads silently, one with edits asks, as any file changed on disk does. A fresh
+        /// open starts at the top. File > Open keeps starting where it did before.
         /// </summary>
         private void OpenUserGuide()
         {
@@ -2369,14 +2372,19 @@ namespace TypoZen
                 }
                 string dir = Path.Combine(CacheDir(), "help");
                 string guide = Path.Combine(dir, "README.md");
-                bool open = false;
+                DocTab openTab = null;
                 foreach (var t in _tabs)
-                    if (t.FilePath != null && string.Equals(t.FilePath, guide, StringComparison.OrdinalIgnoreCase)) open = true;
-                if (!open)
+                    if (t.FilePath != null && string.Equals(t.FilePath, guide, StringComparison.OrdinalIgnoreCase)) openTab = t;
+                bool current = File.Exists(guide) && File.ReadAllText(guide) == File.ReadAllText(src);
+                if (!current)
                 {
                     Directory.CreateDirectory(dir);
                     File.Copy(src, guide, true);
-                    // A fresh copy opens at the top, not where the last one was left: reading
+                    if (openTab != null) CheckEngineTabDisk(openTab, true);
+                }
+                if (openTab == null)
+                {
+                    // A fresh open starts at the top, not where the last one was left: reading
                     // positions are kept per path, and the guide's path never changes.
                     LoadBookPositions();
                     if (_bookPositions.Remove(Path.GetFullPath(guide))) SaveBookPositions(null);
