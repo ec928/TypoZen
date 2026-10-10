@@ -374,7 +374,7 @@ Breeze narration is a second narrator, beside Qwen rather than instead of it. On
 
 **Sounds in the text.** The tags in [Characters, voices and directing a line](#characters-voices-and-directing-a-line) work with Breeze too, and the point events — `[laughing]`, `[giggles]`, `[gasp]`, `[sighing]`, `[cough]`, `[clears throat]`, `[snorts]` — are performed as sounds, which the Qwen narrator cannot do: it only colours the words around them. A span tag such as `[sad]` changes the delivery of the rest of that paragraph, as it does with Qwen.
 
-**How strongly it acts.** Every instruction Breeze is given — an emotion cue, a bracket beside a speaker, a `[[double bracket]]`, a mood tag — is followed with an **Emotion strength**, set in Narrator Manager under **Breeze**: 1 barely, 4 by default (Breeze's own recommendation), up to 10. A number in a tag sets it for that line alone: `[sad:9]`, `[[shouts loudly:9]]`, `Anna [whispers softly:2] said`. A character in **Cast for this book** has a strength of their own for all their lines, 4 unless you change it on their row; the Emotion strength setting then applies to the narration. The number is never spoken, and the Qwen narrator, which has no strength, ignores it. A line with no instruction is not affected; a line with one takes about half as long again to prepare.
+**How strongly it acts.** Every instruction Breeze is given — an emotion cue, a bracket of your own words, a mood tag — is followed with an **Emotion strength**, set in Narrator Manager under **Emotion cues**: 1 barely, 4 by default (Breeze's own recommendation), up to 10. A number in a tag sets it for that line alone: `[sad:9]`, `[shouts loudly:9]`, `Anna [whispers softly:2] said`. A character in **Cast for this book** has a strength of their own for all their lines, 4 unless you change it on their row; the Emotion strength setting then applies to the narration. The number is never spoken, and the Qwen narrator, which has no strength, ignores it. A line with no instruction is not affected; a line with one takes about half as long again to prepare.
 
 **Narration Monitor.** **File → Read Aloud → Narration Monitor** opens a window beside the reading that shows, as each piece starts to play, who is speaking and in which voice, the exact text the narrator was given, its instruction and strength, whether it was rendered just now or came from saved audio — and the settings behind every piece. Each Read Aloud is a run under its own header — the time, the narrator, the voice, the instruction and whether Emotion cues were on — with its pieces newest first, so one run never blurs into the next. **Copy all** copies the lot, **Clear** empties it, and the label at the foot shows `narration.log` in File Explorer (that file records when pieces were asked for and played, never their text). It works with either narrator and shows the book's text on screen only; the monitor itself writes nothing.
 
@@ -382,28 +382,29 @@ Breeze narration is a second narrator, beside Qwen rather than instead of it. On
 
 ### Characters, voices and directing a line
 
-This applies to both narrators. The narrator reads the whole book, except the dialogue of any character you give a voice: their quoted lines are read in that voice, and the narrator reads everything else, "she said" included. You can also set how each voice sounds, and — in a text or Markdown file — direct single lines with tags in square brackets. An ePub cannot be edited, so it relies on the automatic rules below; they are designed to handle ordinary fiction on their own.
+This applies to both narrators. The narrator reads the whole book, except the dialogue of any character you give a voice: their quoted lines are read in that voice, and the narrator reads everything else, "she said" included. You can set how each voice sounds, and in a text or Markdown file you can direct any line by writing how to say it in square brackets.
 
 **Quick guide**
 
 | To | Do this | Example |
 |---|---|---|
 | Give a character their own voice | **Narrator Manager > Cast for this book > Find characters**, choose a voice on their row, **Save** | — |
-| Make sure a line goes to the right character | Put their name and *said*, *asked* or another speaking word in the same sentence as the quote | `"Go," Tom said.` |
+| Make sure a line goes to the right character | Put their name and *said*, *asked* or another speaking word in the quote's sentence | `"Go," Tom said.` |
 | Set how a character always sounds | Their **Instruction** box in **Cast for this book** | `gruff and slow` |
 | Set how the narrator always sounds | The **Instruction** box on **Reading** | `measured and unhurried` |
-| Direct one line | `[[how to say it]]` just before the opening quote mark | `[[shouts loudly]] "Get out!" Anna said.` |
-| Direct a paragraph of narration | `[[how to read it]]` at the start of the paragraph | `[[measured and quiet]] The door opened.` |
-| Add a sound | a sound tag just before the quote, or inside it for a sound mid-line | `[laughing] "Stop it," Anna said.` |
-| Change the mood from a point on | a mood tag just before the quote, or where the change should start | `[sad] "It's over," Anna said.` |
-| Make a tag stronger or weaker (Breeze) | `:1` (barely) to `:10` at the end, inside the brackets | `[[shouts:9]] "Get out!"` |
+| Direct one line | `[how to say it]` in the quote's sentence | `[shouts loudly] "Get out!" Anna said.` |
+| Direct narration | `[how to read it]` in the narration | `[measured and quiet] The door opened.` |
+| Add a sound or a mood | a built-in tag where it should happen | `[laughing] "Stop it," Anna said.` |
+| Make it stronger or weaker (Breeze) | `:1` (barely) to `:10` at the end, inside the brackets | `[shouts:9] "Get out!" Anna said.` |
 | See what the narrator was told | **File > Read Aloud > Narration Monitor** while it reads, or **Try it** in Narrator Manager | — |
 
-Tags are never spoken. An instruction can be a full sentence (`[[Read it plainly. Speak softly]]`).
+**The one rule for brackets:** your own words in square brackets tell the narrator how to read. In a sentence with a quote, they direct that quote, wherever you put them: `[shouts loudly] "Get out!" Anna said.`, `"Get out!" Anna [shouts loudly] said.` and `"[shouts loudly] Get out!" Anna said.` all do the same. Anywhere else, they direct the narration around them. They are never spoken, can be a full sentence (`[Read it plainly. Speak softly]`), and are used exactly as written. The built-in tags below are the exception: they are performed where they stand. Double brackets mean the same as single ones, so older documents keep working.
+
+**In an ePub,** which cannot be edited, square brackets are always read as part of the book; everything else comes from the automatic rules below.
 
 **Who reads a line of dialogue**
 
-The words around a quote that say who spoke — *Tom said*, *she asked* — decide whose voice reads it. The first row that fits wins.
+The words around a quote that say who spoke decide whose voice reads it. The first row that fits wins.
 
 | In the text | Read by |
 |---|---|
@@ -416,7 +417,7 @@ The words around a quote that say who spoke — *Tom said*, *she asked* — deci
 | A line with no name in a back-and-forth: `"Hello," Tom said.` / `"Hi," Anna said.` / `"How are you?"` | Tom, who spoke two lines before. Narration between the lines stops this |
 | A character with no voice in the cast | the narrator |
 
-Whenever the speaker is unclear, the narrator reads the line: never the wrong character. Names count as written in full, so **Mr Bennet** and **Mrs Bennet** are two characters; a name on the line before the quote does not count. Dialogue can use double quotes (`"…"` or `“…”`) or, as British books do, single curly quotes (`‘…’`). A speech that runs over several paragraphs is read by the narrator.
+Whenever the speaker is unclear, the narrator reads the line: never the wrong character. Names count as written in full, so **Mr Bennet** and **Mrs Bennet** are two characters; a name on the line before the quote does not count. Dialogue can use double quotes (`"…"` or `“…”`) or, as British books do, single curly quotes (`‘We have to go,’ Tom said.`). A speech that runs over several paragraphs is read by the narrator.
 
 **How a line's delivery is set**
 
@@ -424,38 +425,24 @@ Whenever the speaker is unclear, the narrator reads the line: never the wrong ch
 |---|---|---|
 | A character's **Instruction** box | every line of that character | Empty means none. |
 | The narrator's **Instruction** box | everything the narrator reads | Never applies to a character who has a voice. Empty means none. |
-| **Emotion cues** (ticked, the default) | the line it describes | Adds the describing words: `"Go," she whispered.` makes that quote whispered — only the quote, not the narration around it. *said*, *asked*, *told* and the person spoken to are left out. A quote with `!` sounds emphatic; one ending in `—` or `...` sounds broken off. A mostly italic paragraph is read as a private thought. |
-| `[[…]]` before a quote | that quote | Replaces everything above for that line. **The one to use.** |
-| `[…]` before a quote | that quote | Replaces the box but keeps the describing words, so `[angrily] "Go," Tom said quietly.` is *angrily, quietly*. |
-| `[[…]]` at the start of a paragraph | that paragraph's narration | Quotes in it keep their own delivery. |
+| **Emotion cues** (ticked, the default) | the line it describes | `"Go," she whispered.` makes that quote whispered — only the quote, not the narration around it. *said*, *asked*, *told* and the person spoken to are left out. A quote with `!` sounds emphatic; one ending in `—` or `...` sounds broken off. A mostly italic paragraph is read as a private thought. |
+| `[your words]` | that quote, or the narration around them | Replaces the box for it, exactly as written; Emotion cues add nothing. |
 
 **Built-in tags**
 
-These are the narrators' own sound and mood words. Put them just before a quote for that character, inside it for something mid-line, or at the start of a paragraph for the narrator. Breeze performs them; Qwen only colours the words around them.
+The narrators' own sound and mood words, performed rather than followed as an instruction. Put them where they should happen: just before or inside a quote for that character, in narration for the narrator. Breeze performs them; Qwen only colours the words around them.
 
 | Kind | Tags |
 |---|---|
 | Sounds | `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]` — happen at that point |
 | Moods | `[sad]` `[angry]` `[excited]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]` — last to the end of that quote or paragraph |
 
-**If a tag of your own is read aloud**
-
-Your own words in brackets are an instruction only in certain places; anywhere else they are read out as text, which also keeps real brackets in books — `"He [the king] said"` — working. Built-in tags are not affected.
-
-| Where it is | `[your words]` | `[[your words]]` |
-|---|---|---|
-| Just before the quote: `[angrily] "Go," Tom said.` | ✅ instruction | ✅ instruction |
-| Right after the speaker's name: `"Go," Tom [angrily] said.` | ✅ instruction | ✅ instruction |
-| Before the name, away from the quote: `[angrily] Tom said, "Go."` | ❌ read aloud | ✅ instruction |
-| Inside the quote: `"[angrily] Go," Tom said.` | ❌ read aloud | ✅ instruction |
-| In another sentence: `"Go," Tom said. [angrily]` | ❌ read aloud | applies to that narration, not the quote |
-
 **Tips**
 
 - `"Go," Tom said.` — a name and a speaking word in the quote's sentence — is the form that never fails.
-- Use `[[…]]` before the opening quote mark to direct a line. It always works.
 - Several similar words move a voice more than one: `whispers, speaks very quietly, softly, low pitched and very slowly`.
 - Keep the describing words simple — *she said quietly* — and leave Emotion cues ticked.
+- In your own text, use square brackets only for directions; any you write are taken as one.
 - **Try it** has no cast, so every line in it is the narrator's; to hear a character, read the book or press the play button on their cast row.
 
 ## Files & Export

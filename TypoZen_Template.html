@@ -583,13 +583,13 @@
                             <tr><td>Make sure a line goes to them</td><td>Name and <em>said</em> in the quote's sentence: <code>"Go," Tom said.</code></td></tr>
                             <tr><td>Set how a character always sounds</td><td>Their <strong>Instruction</strong> box in the cast.</td></tr>
                             <tr><td>Set how the narrator always sounds</td><td>The <strong>Instruction</strong> box on Reading. Never applies to voiced characters.</td></tr>
-                            <tr><td>Direct one line</td><td>Just before the opening quote mark: <code>[[shouts loudly]] "Get out!"</code></td></tr>
-                            <tr><td>Direct a paragraph of narration</td><td>At its start: <code>[[measured and quiet]] The door opened.</code></td></tr>
-                            <tr><td>Add a sound or a mood</td><td>A built-in tag (below) just before the quote: <code>[laughing] "Stop it."</code></td></tr>
-                            <tr data-engine="breeze"><td>Make a tag stronger or weaker</td><td><code>:1</code> to <code>:10</code> inside the brackets: <code>[[shouts:9]]</code><span data-engine="both"> (Breeze only)</span></td></tr>
+                            <tr><td>Direct one line</td><td><code>[how to say it]</code> in the quote's sentence: <code>[shouts loudly] "Get out!" Anna said.</code></td></tr>
+                            <tr><td>Direct narration</td><td><code>[how to read it]</code> in the narration: <code>[measured and quiet] The door opened.</code></td></tr>
+                            <tr><td>Add a sound or a mood</td><td>A built-in tag (below) where it should happen: <code>[laughing] "Stop it," Anna said.</code></td></tr>
+                            <tr data-engine="breeze"><td>Make a tag stronger or weaker</td><td><code>:1</code> to <code>:10</code> inside the brackets: <code>[shouts:9]</code><span data-engine="both"> (Breeze only)</span></td></tr>
                         </tbody>
                     </table>
-                    <p class="tz-help-aside">Tags are never spoken. With <strong>Emotion cues</strong> ticked, <code>"Go," she whispered.</code> whispers that quote only. <code>[[...]]</code> overrides everything for its line; <code>[...]</code> in the same place keeps the <em>whispered</em> too.</p>
+                    <p class="tz-help-aside"><strong>One rule:</strong> your own words in square brackets tell the narrator how to read: anywhere in a quote's sentence for that quote, anywhere else for the narration around them. Never spoken; used exactly as written. With <strong>Emotion cues</strong> ticked, <code>"Go," she whispered.</code> whispers that quote only.</p>
                 </section>
                 <section class="tz-help-sec">
                     <h3>Who reads a line of dialogue</h3>
@@ -612,7 +612,7 @@
                             <tr><td><code>[sad]</code> <code>[angry]</code> <code>[excited]</code> <code>[whispers]</code> <code>[crying]</code> <code>[very slowly]</code> and other moods</td><td>The mood until the end of that quote or paragraph.<span data-engine="qwen"> Qwen follows them only slightly.</span></td></tr>
                         </tbody>
                     </table>
-                    <p class="tz-help-aside">Put them just before a quote for that character, inside it for something mid-line, or at the start of a paragraph for the narrator. Other words in single brackets work only just before the quote or right after the speaker's name; elsewhere they are read aloud. An ePub cannot be tagged: the rules above do the work.</p>
+                    <p class="tz-help-aside">Put them where they should happen: just before or inside a quote for that character, in narration for the narrator. In an ePub, square brackets are always read as part of the book.</p>
                 </section>
                 <section class="tz-help-sec">
                     <h3>Narrator Manager (File &gt; Read Aloud)</h3>
