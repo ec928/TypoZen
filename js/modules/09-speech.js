@@ -754,8 +754,8 @@ window.narrationTrialSelection = function () {
  *  A bracket, including [[tag]], still replaces that instruction. "said", "asked"
  *  and "told" are not added, nor who was spoken to ("told him angrily" is "angrily",
  *  "said to her brother" is nothing), nor a word that is no instruction on its own
- *  ("again", "then"). A stock punctuation cue stays a direction, so the cue wording
- *  still wraps it. The instruction is joined as a clause: "Read it plainly." and
+ *  ("again", "then"). A stock punctuation cue stays a direction for the narrator, so the
+ *  cue wording still wraps it; a voiced line has it added to its instruction instead. The instruction is joined as a clause: "Read it plainly." and
  *  "quietly" make "Read it plainly, quietly", never "plainly., quietly". */
 function cueInstruction(p, cuesOn, standing) {
     const own = (p.instruction || '').trim();
@@ -784,6 +784,10 @@ function cueInstruction(p, cuesOn, standing) {
         return base + ', ' + words;
     };
     const phrase = cuesOn && dir && !stock ? tagWords(dir) : '';
+    // A voiced line's punctuation cue ("Wait—" is "breaking off") is added to its instruction, as
+    // tag words are. Sent as a direction it was wrapped in "Voice the lines in quotation marks as
+    // breaking off." -- and a voiced line has no quotation marks; by ear it did nothing (2026-10-10).
+    const voicedStock = cuesOn && p.role === 'dialogue' && (dir === 'emphatic' || dir === 'breaking off');
     // One notation (README, "Local instructions"): [words] are added to the speaker's instruction --
     // their cast box, or the narrator's -- and the cue words still follow; [[words]] override both.
     if (p.bracket && own) {
@@ -791,6 +795,7 @@ function cueInstruction(p, cuesOn, standing) {
         const box = p.role === 'dialogue' ? String(p.box || '').trim() : String(standing || '').trim();
         const base = addClause(box, own);
         if (phrase) return p.role === 'dialogue' ? { instruction: addClause(base, phrase), direction: '' } : { instruction: base, direction: phrase };
+        if (voicedStock) return { instruction: addClause(base, dir), direction: '' };
         return { instruction: base, direction: cuesOn && stock ? dir : '' };
     }
     if (phrase) {
@@ -803,6 +808,7 @@ function cueInstruction(p, cuesOn, standing) {
         return { instruction: own, direction: phrase };
     }
     // A tag with nothing left to say ("asked her again") is no cue; only a stock one is sent.
+    if (voicedStock) return { instruction: addClause(own, dir), direction: '' };
     return { instruction: own, direction: cuesOn && stock ? dir : '' };
 }
 

@@ -96,7 +96,7 @@ const examples = [
         r => told(r, 'TOM').join('|') === 'gruff and slow, angrily, softly|shouts'],
     ['[Read it plainly. Speak softly]', 'readme', ['[Read it plainly. Speak softly] "Go," Tom said.'], {},
         r => told(r, 'TOM').join() === 'Read it plainly. Speak softly'],
-    ['[shouts:9]', 'both', ['[shouts:9] "Get out!" Anna said.'], {}, r => told(r, 'ANNA').join() === 'shouts:9'],
+    ['[shouts:9]', 'both', ['[shouts:9] "Get out!" Anna said.'], {}, r => told(r, 'ANNA').join() === 'shouts:9, emphatic'],
     // The speaker with no voice: the narrator's box
     ['or the narrator\'s box if they have no voice', 'readme', ['[angrily] "Go," Tom said.', '[[angrily]] "Go," Tom said.'],
         { cast: {}, box: 'Read it plainly.' }, r => r.filter(p => p[1].indexOf('Go') >= 0).map(p => p[2]).join('|') === 'Read it plainly, angrily|angrily'],

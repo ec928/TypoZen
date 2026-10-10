@@ -749,14 +749,15 @@ console.log('--- a speech tag is added to the standing instruction');
         plain('"Fine," said Tom, turning away.', ''), ['turning away']);
     eq('a tag with nothing left is not sent as a cue either',
         cueInstruction({ role: 'dialogue', direction: 'asked her again' }, true).direction, '');
-    eq('a stock cue is still sent', cueInstruction({ role: 'dialogue', direction: 'emphatic' }, true).direction, 'emphatic');
+    eq('a stock cue is still sent: in a voiced line\'s instruction', cueInstruction({ role: 'dialogue', direction: 'emphatic' }, true), { instruction: 'emphatic', direction: '' });
+    eq('and as the narrator\'s cue', cueInstruction({ role: 'narration', direction: 'emphatic' }, true).direction, 'emphatic');
     eq('his voice breaking stays', plain('"No," he said, his voice breaking.', ''), ['his voice breaking']);
 
     // [[tag]] after the speech tag is that quotation's, not the narration's too.
     {
         const pieces = told('"Wait—" Anna said [[Read it plainly. Speak softly]].');
         eq('a double bracket after the speech tag is the narrator\'s', pieces,
-            [['dialogue', ''], ['narration', 'Read it plainly. Speak softly']]);
+            [['dialogue', 'breaking off'], ['narration', 'Read it plainly. Speak softly']]);
         const two = told('"Wait—" Anna said [[hushed]]. "Go," Tom said.');
         eq('and is for all the narration of that paragraph', two.filter(r => r[0] === 'narration').map(r => r[1]), ['hushed', 'hushed']);
         eq('a double bracket in a sentence of its own is for all the narration of that paragraph',
