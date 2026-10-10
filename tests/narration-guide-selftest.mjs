@@ -84,7 +84,7 @@ const examples = [
     ['`[[angrily]] "Go," Tom said quietly.` | `angrily`', 'readme', ['[[angrily]] "Go," Tom said quietly.'], GRUFF,
         r => told(r, 'TOM').join() === 'angrily'],
     // Anywhere in the quote's sentence is the same
-    ['Just before or inside a quote, it is the speaker\'s. Anywhere else on the same line, it is the narrator\'s.', 'readme',
+    ['a comma or colon in between is fine: `Anna [whispers], "Go."`. Anywhere else on the same line, it is the narrator\'s.', 'readme',
         ['"[angrily] Go," Tom said.', '"Go," Tom said [wearily].'], { say: { tom: 'gruff and slow' }, box: 'measured' },
         r => told(r, 'TOM').join('|') === 'gruff and slow, angrily|gruff and slow' && told(r, 'narrator').join('|') === '|measured, wearily'],
     ['`"Go," Tom said [wearily].` | `gruff and slow` | `measured, wearily`', 'readme', ['"Go," Tom said [wearily].'],

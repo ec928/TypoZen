@@ -763,7 +763,7 @@ function cueInstruction(p, cuesOn, standing) {
     const stock = dir === 'thought' || dir === 'emphatic' || dir === 'breaking off';
     const filler = /^(?:then|and|but|again|too|also|now|so|finally)$/i;
     const tagWords = s => {
-        s = s.replace(/[()]/g, ' ').replace(new RegExp('\\b(?:say|says|said|ask|asks|asked|tell|tells|told)\\b' +
+        s = s.replace(/[()]/g, ' ').replace(new RegExp('\\b(?:say|says|said|ask|asks|asked|tell|tells|told|reply|replies|replied|answer|answers|answered|add|adds|added|continue|continues|continued|begin|begins|began|respond|responds|responded|repeat|repeats|repeated|remark|remarks|remarked|explain|explains|explained|state|states|stated)\\b' +
             '(?:\\s+(?:him|her|them|me|us|you)\\b)?' +
             '(?:\\s+to\\s+(?:(?:the|a|an|his|her|their|my|your|our|its)\\s+)?[A-Za-z\'’-]+)?', 'ig'), ' ');
         let words = s.replace(/\s+/g, ' ').replace(/^[\s,:;.]+|[\s,:;.]+$/g, '').trim();
@@ -1287,7 +1287,7 @@ function cuePhrase(clause, who) {
     });
     s = s.replace(/\s+/g, ' ').replace(/^[\s,:;.]+|[\s,:;.]+$/g, '').trim();
     const left = s.split(/[^A-Za-z'’]+/).filter(function (w) {
-        return w && !/^(say|says|said|ask|asks|asked|tell|tells|told)$/i.test(w);
+        return w && !/^(say|says|said|ask|asks|asked|tell|tells|told|reply|replies|replied|answer|answers|answered|add|adds|added|continue|continues|continued|begin|begins|began|respond|responds|responded|repeat|repeats|repeated|remark|remarks|remarked|explain|explains|explained|state|states|stated)$/i.test(w);
     });
     return left.length ? s : '';
 }
@@ -1595,7 +1595,9 @@ function narrationQuotes(text) {
     const plain = blankBrackets(text);
     let m;
     while ((m = re.exec(plain))) {
-        const before = quoteWords(text.slice(0, m.index));
+        // Before the quote, only its own sentence: '"Late," Tom said. "I know," Anna replied.' is
+        // Anna's -- the previous sentence's "Tom said" used to win, being nearer than "Anna replied".
+        const before = quoteWords(text.slice(zoneBefore(text, m.index).at, m.index));
         const after = quoteWords(text.slice(m.index + m[0].length));
         let left = speakerBeside(before, true);
         let right = speakerBeside(after, false);
@@ -1607,6 +1609,10 @@ function narrationQuotes(text) {
         if (left && !left.verb) {
             const s = sentenceSubject(beatBefore);
             left = s ? { who: s, dist: left.dist, verb: false } : null;
+        } else if (!left && !/[A-Za-z]/.test(blankBrackets(text.slice(zoneBefore(text, m.index).at, m.index)))) {
+            // A quote that opens its sentence: the sentence before is its action beat.
+            const s = sentenceSubject(beatBefore);
+            if (s) left = { who: s, dist: 1, verb: false };
         }
         if (right && !right.verb) {
             const s = sentenceSubject(beatAfter);
