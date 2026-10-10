@@ -84,11 +84,14 @@ const examples = [
     ['`[[angrily]] "Go," Tom said quietly.` | `angrily`', 'readme', ['[[angrily]] "Go," Tom said quietly.'], GRUFF,
         r => told(r, 'TOM').join() === 'angrily'],
     // Anywhere in the quote's sentence is the same
-    ['`[angrily] "Go," Tom said.`, `"Go," Tom [angrily] said.` and `"[angrily] Go," Tom said.` are the same', 'readme',
-        ['[angrily] "Go," Tom said.'], GRUFF, r => told(r, 'TOM').join() === 'gruff and slow, angrily'],
-    ['"Go," Tom [angrily] said.', 'readme', null, GRUFF, r => told(r, 'TOM').join() === 'gruff and slow, angrily'],
-    ['"[angrily] Go," Tom said.', 'readme', null, GRUFF, r => told(r, 'TOM').join() === 'gruff and slow, angrily'],
-    ['Two single brackets in one line are both added, in order. A double bracket overrides everything', 'readme',
+    ['Just before or inside a quote, it is the speaker\'s. Anywhere else on the same line, it is the narrator\'s.', 'readme',
+        ['"[angrily] Go," Tom said.', '"Go," Tom said [wearily].'], { say: { tom: 'gruff and slow' }, box: 'measured' },
+        r => told(r, 'TOM').join('|') === 'gruff and slow, angrily|gruff and slow' && told(r, 'narrator').join('|') === '|measured, wearily'],
+    ['`"Go," Tom said [wearily].` | `gruff and slow` | `measured, wearily`', 'readme', ['"Go," Tom said [wearily].'],
+        { say: { tom: 'gruff and slow' }, box: 'measured' }, r => told(r, 'TOM').join() === 'gruff and slow' && told(r, 'narrator').join() === 'measured, wearily'],
+    ['`[sadly] "Go," Tom said [wearily].` | `gruff and slow, sadly` | `measured, wearily`', 'readme', ['[sadly] "Go," Tom said [wearily].'],
+        { say: { tom: 'gruff and slow' }, box: 'measured' }, r => told(r, 'TOM').join() === 'gruff and slow, sadly' && told(r, 'narrator').join() === 'measured, wearily'],
+    ['Two single brackets for the same voice are both added, in order. A double bracket overrides everything for that voice', 'readme',
         ['[angrily] [softly] "Go," Tom said.', '[angrily] [[shouts]] "Go," Tom said.'], GRUFF,
         r => told(r, 'TOM').join('|') === 'gruff and slow, angrily, softly|shouts'],
     ['[Read it plainly. Speak softly]', 'readme', ['[Read it plainly. Speak softly] "Go," Tom said.'], {},
@@ -98,7 +101,7 @@ const examples = [
     ['or the narrator\'s box if they have no voice', 'readme', ['[angrily] "Go," Tom said.', '[[angrily]] "Go," Tom said.'],
         { cast: {}, box: 'Read it plainly.' }, r => r.filter(p => p[1].indexOf('Go') >= 0).map(p => p[2]).join('|') === 'Read it plainly, angrily|angrily'],
     // Narration: the narration in that paragraph, apart from its quotes
-    ['the narration in that paragraph, apart from its quotes', 'readme', ['[slowly] The door opened. "Go," Tom said. He left.'],
+    ['for everything the narrator reads in that paragraph', 'readme', ['[slowly] The door opened. "Go," Tom said. He left.'],
         { box: 'Read it plainly.' }, r => r.filter(p => p[0] === 'narrator').every(p => p[2] === 'Read it plainly, slowly') && told(r, 'TOM').join() === ''],
     ['[measured and quiet] The door opened.', 'help', null, {}, r => r.length === 1 && r[0][2] === 'measured and quiet'],
     // Built-in tags are performed, single or double

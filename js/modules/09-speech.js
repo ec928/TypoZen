@@ -1149,6 +1149,17 @@ function narrTagsFor(doc) {
  * the text, and the two cannot behave differently. The models' own tags ([laughing], [sad:9])
  * stay single, and are performed. In an ePub nothing changes: its brackets are the book's text.
  */
+/**
+ * The speaker's span of a quotation (README, "Local instructions"): a bracket just before the
+ * opening mark, or inside the quote, is the speaker's; anywhere else on the line is the narrator's.
+ * Runs on text oneNotation has made, where every instruction is [[...]].
+ */
+function speakerSpan(text, q) {
+    // Only space, or the comma or colon that leads into a quote, may stand between: 'Anna [whispers], "Go."'
+    const before = /(?:\[\[[^\]\n]+\]\][ \t]*)+[,:]?[ \t]*$/.exec(String(text || '').slice(0, q.start));
+    return { start: before ? q.start - before[0].length : q.start, end: q.end };
+}
+
 function oneNotation(text) {
     // A built-in tag is the same tag in double brackets: [[laughing]] laughs, as [laughing] does.
     const s = String(text || '').replace(/\[\[([^\[\]\n]+)\]\]/g, (all, inner) => isModelTag(inner) ? '[' + inner + ']' : all);
@@ -1626,7 +1637,8 @@ function narrationQuotes(text) {
         // narrator box, a speech tag, and a single bracket. It is removed from the speech.
         const beforeZone = zoneBefore(text, q.start);
         const afterZone = zoneAfter(text, q.end);
-        const hard = doubleTag(text.slice(beforeZone.at, afterZone.at + afterZone.text.length));
+        const span = speakerSpan(text, q);
+        const hard = doubleTag(text.slice(span.start, span.end));
         if (hard) { const s = splitSoft(hard); q.instruct = s.text; q.hard = !s.soft; q.soft = s.soft; }
         out.push(q);
     }
@@ -1812,10 +1824,20 @@ function castPieces(text, quotes, from, splitAll) {
     // narration in that paragraph, apart from its quotes").
     let outside = text;
     for (const q of quotes) {
-        const a = zoneBefore(text, q.start).at, z = zoneAfter(text, q.end);
-        outside = outside.slice(0, a) + ' '.repeat(z.at + z.text.length - a) + outside.slice(z.at + z.text.length);
+        const span = speakerSpan(text, q);
+        outside = outside.slice(0, span.start) + ' '.repeat(span.end - span.start) + outside.slice(span.end);
     }
     const paraTag = splitSoft(doubleTag(outside) || leadTag(text));
+    // A quote the narrator reads (no voice) is the narrator's too: the paragraph's narration tag
+    // reaches it, with the quote's own bracket -- both added if single, a double winning.
+    const forNarrator = q => {
+        const own = { text: (q.instruct || '').trim(), soft: !!q.soft };
+        if (!paraTag.text) return own;
+        if (!own.text) return paraTag;
+        if (!own.soft) return own;
+        if (!paraTag.soft) return paraTag;
+        return { text: paraTag.text + ', ' + own.text, soft: true };
+    };
     const flush = (quoteTook) => {
         let raw = narr;
         narr = '';
@@ -1840,7 +1862,7 @@ function castPieces(text, quotes, from, splitAll) {
             const spoken = padBracketTags(stripDoubles(rest)).trim();
             if (/[A-Za-z0-9]/.test(spoken)) {
                 if (voice) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override, q.hard, q.soft);
-                else tellNarrator(spoken, quoteDirection(q), override, q.hard, q.soft);
+                else tellNarrator(spoken, quoteDirection(q), forNarrator(q).text, !forNarrator(q).soft, forNarrator(q).soft);
             }
             prevTook = doubleTag(text.slice(q.start, q.end + zoneAfter(text, q.end).text.length));
             cursor = q.end;
@@ -1858,7 +1880,7 @@ function castPieces(text, quotes, from, splitAll) {
         narr = narr.replace(/,\s*$/, '.');
         const beforeZone = zoneBefore(text, q.start);
         const afterZone = zoneAfter(text, q.end);
-        const took = doubleTag(text.slice(beforeZone.at, afterZone.at + afterZone.text.length));
+        const took = doubleTag(text.slice(speakerSpan(text, q).start, q.end));
         flush(took);
         prevTook = took;
         if (voice) {
@@ -1866,7 +1888,7 @@ function castPieces(text, quotes, from, splitAll) {
             if (/[A-Za-z0-9]/.test(spoken)) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override, q.hard, q.soft);
         } else {
             const spoken = stripDoubles(text.slice(q.start, q.end)).trim();
-            if (/[A-Za-z0-9]/.test(spoken)) tellNarrator(spoken, quoteDirection(q), override, q.hard, q.soft);
+            if (/[A-Za-z0-9]/.test(spoken)) tellNarrator(spoken, quoteDirection(q), forNarrator(q).text, !forNarrator(q).soft, forNarrator(q).soft);
         }
         cursor = q.end;
     }

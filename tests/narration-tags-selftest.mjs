@@ -470,7 +470,7 @@ function read(text) {
 }
 {
     const pieces = read('"Get out." [whispers softly]');
-    eq('a trailing bracket on a bare quote is the instruction', pieces.map(p => p.instruction || ''),
+    eq('a bracket after a bare quote is the narrator\'s, and the narrator reads the quote', pieces.map(p => p.instruction || ''),
         ['whispers softly']);
     eq('a trailing bracket on a bare quote is not spoken', pieces.map(p => p.text), ['"Get out."']);
 }
@@ -506,12 +506,11 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
         const pieces = lineOf(text);
         const talk = pieces.filter(p => p.role === 'dialogue');
         eq('a double bracket is not spoken', talk.map(p => p.text), ['Goodbye everyone']);
-        eq('a double bracket replaces the cast box', talk.map(p => p.instruction), ['shouts loudly']);
-        eq('a double bracket is marked as the line instruction', talk.map(p => p.bracket), [true]);
+        eq('by the name, away from the quote, a double bracket is the narrator\'s, not Anna\'s', talk.map(p => p.bracket), [false]);
         check('the lead-in does not speak the double bracket',
             pieces.filter(p => p.role === 'narration').every(p => p.text.indexOf('[[') < 0 && p.text.indexOf('shouts') < 0));
-        check('the lead-in keeps the narrator instruction',
-            pieces.filter(p => p.role === 'narration').every(p => !p.instruction));
+        check('the narrator is given it',
+            pieces.filter(p => p.role === 'narration').every(p => p.instruction === 'shouts loudly'));
     }
     {
         const text = '[[shouts loudly]] "Goodbye," Anna said.';
@@ -577,8 +576,8 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
         check('none of that bracket is taken for a speech tag',
             pieces.every(p => (p.direction || '').indexOf(']') < 0 && (p.direction || '').indexOf('lines') < 0),
             JSON.stringify(pieces.map(p => p.direction)));
-        eq('after the speech tag, it still reaches the voiced line whole',
-            lineOf('"Wait—" Anna said [[Read it plainly. Speak softly]].').filter(p => p.role === 'dialogue').map(p => p.instruction),
+        eq('after the speech tag, it is the narrator\'s, whole',
+            lineOf('"Wait—" Anna said [[Read it plainly. Speak softly]].').filter(p => p.role === 'narration').map(p => p.instruction),
             ['Read it plainly. Speak softly']);
     }
     {
@@ -621,8 +620,8 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
             const ps = api.narrationBatches([el], 0, 1)[0];
             eq('no voices: a double bracket in narration is that narration\'s',
                 ps.filter(p => p.text.indexOf('door') >= 0).map(p => cueOf(p, true, '').instruction), ['measured']);
-            eq('no voices: and does not reach the quotation in the next sentence',
-                ps.filter(p => p.text.indexOf('late') >= 0).map(p => cueOf(p, true, '').direction), ['quietly']);
+            eq('no voices: the narrator reads the quote too, so it reaches it, overriding the cue',
+                ps.filter(p => p.text.indexOf('late') >= 0).map(p => { const c = cueOf(p, true, ''); return c.instruction + '|' + c.direction; }), ['measured|']);
             api.setCast({ anna: 'qwen-ryan' });
         }
         eq('no speaker: a model tag against the quotation stays spoken too',
@@ -710,10 +709,10 @@ console.log('--- a speech tag is added to the standing instruction');
             'Anna [[shouts loudly]] sadly said "Goodbye everyone"',
             api.narrationQuotes('Anna [[shouts loudly]] sadly said "Goodbye everyone"'), 0)
             .filter(p => p.role === 'dialogue')[0];
-        eq('the sent instruction is only the double bracket',
-            cueInstruction(talk, true, whisper).instruction, 'shouts loudly');
-        eq('cues off still sends only the double bracket',
-            cueInstruction(talk, false, whisper).instruction, 'shouts loudly');
+        eq('by the name, the bracket does not reach Anna: she keeps her box and the cue',
+            cueInstruction(talk, true, whisper).instruction, whisper + ', sadly');
+        eq('cues off, she keeps her box',
+            cueInstruction(talk, false, whisper).instruction, whisper);
     }
     // The narrator reads narration around the quotation: the tag goes as a cue, which the narrator
     // wraps in the cue wording after its standing instruction, so the narration is not coloured too.
@@ -756,10 +755,10 @@ console.log('--- a speech tag is added to the standing instruction');
     // [[tag]] after the speech tag is that quotation's, not the narration's too.
     {
         const pieces = told('"Wait—" Anna said [[Read it plainly. Speak softly]].');
-        eq('a double bracket after the speech tag is the line\'s only', pieces,
-            [['dialogue', 'Read it plainly. Speak softly'], ['narration', '']]);
+        eq('a double bracket after the speech tag is the narrator\'s', pieces,
+            [['dialogue', ''], ['narration', 'Read it plainly. Speak softly']]);
         const two = told('"Wait—" Anna said [[hushed]]. "Go," Tom said.');
-        eq('nor the narration before the next quotation', two.filter(r => r[0] === 'narration').map(r => r[1]), ['', '']);
+        eq('and is for all the narration of that paragraph', two.filter(r => r[0] === 'narration').map(r => r[1]), ['hushed', 'hushed']);
         eq('a double bracket in a sentence of its own is for all the narration of that paragraph',
             told('The door opened [[measured]]. "Go," Tom said.').filter(r => r[0] === 'narration').map(r => r[1]), ['measured', 'measured']);
     }
