@@ -169,7 +169,7 @@ A paragraph with no quotation marks, and at least about seven tenths of it in it
 
 ## The wording of the instruction
 
-For narration, your instruction is used as written. A speech tag's own words are added after it as a clause, and are not wrapped: `Read it plainly.` and `quietly` make `Read it plainly, quietly`, and `Speak up!` and `snapped` make `Speak up! Snapped`. A punctuation cue still uses the cue wording, added after your instruction as a sentence of its own: `Read it plainly` and the cue make `Read it plainly. Voice the lines...`. A cast box is joined the same way, by Qwen and by Breeze. `{cue}` is emphatic or breaking off. The wording is:
+For narration, your instruction is used as written. When the narrator reads a quotation with its narration, a speech tag's own words go into the cue wording, after your instruction as a sentence of its own: `"Help," she whispered.` is told `Voice the lines in quotation marks as whispered.`, so only the quotation is whispered. Sent bare, `whispered` coloured the whole paragraph: Breeze read the narration at 65% of its loudness, against 114% with the cue wording (2026-10-10). A punctuation cue uses the same wording. `{cue}` is the tag's words, emphatic or breaking off. A voiced character's line is the quotation alone, so there the tag's words are added to the cast box as a clause: `Speak softly.` and `quietly` make `Speak softly, quietly`. The wording is:
 
 > Voice the lines in quotation marks as {cue}.
 

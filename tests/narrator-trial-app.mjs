@@ -55,11 +55,11 @@ try {
     await app.eval(() => { window.__bodies = []; });
     await run(true);
     const on = await waitFor(app, () => window.__bodies.length && window.__played >= 3 ? window.__bodies[0] : null, 5000);
-    // The tag's own words ("said" left out), after the reader's instruction; the untagged line gets nothing.
+    // The narrator reads each line whole, so the tag's own words ("said" left out) go as a cue, which
+    // the narrator wraps in the cue wording; the untagged line gets nothing.
     const told = on && on.blocks.map(b => ({ d: b.direction, i: b.instruction }));
-    const tagged = (t, words) => t.d === '' && t.i.startsWith('Read it plainly') && t.i.endsWith(', ' + words);
-    ok(told && told[0].d === '' && told[0].i === '' && tagged(told[1], 'quietly') && tagged(told[2], 'snapped'),
-        'cues on: the tagged lines add their speech tag to the instruction', JSON.stringify(told));
+    ok(told && told.every(t => t.i === '') && told[0].d === '' && told[1].d === 'quietly' && told[2].d === 'snapped',
+        'cues on: the tagged lines send their speech tag as a cue', JSON.stringify(told));
 
     // Narration itself sends the saved instruction and cue wording, and a cue only when ticked.
     const sent = await app.eval(async () => {
@@ -72,7 +72,7 @@ try {
         return window.__bodies.map(b => ({ i: b.instruction, c: b.cue, d: b.blocks[0].direction, bi: b.blocks[0].instruction }));
     });
     ok(sent && sent[0].i === 'Saved words.' && sent[0].c === 'Cue {cue}.' && sent[0].d === '' && sent[0].bi === ''
-        && sent[1].d === '' && sent[1].bi.startsWith('Saved words') && sent[1].bi.endsWith(', whispered, hushed'),
+        && sent[1].d === 'whispered, hushed' && sent[1].bi === '',
         'narration sends the saved instruction, and the cue only when ticked', JSON.stringify(sent));
 } catch (e) { ok(false, 'stopped', e && e.message); }
 finally {

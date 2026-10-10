@@ -186,7 +186,7 @@ def recycle(path):
 def instruction(style, direction, role='narration', whole=None, cue=None, own=None):
     """The full instruction for one piece -- the Qwen narrator's rules exactly (its
     Narrator.instruction), so the same settings and cues mean the same to both engines."""
-    direction = (direction or '').strip()[:80]
+    direction = (direction or '').strip()[:300]
     style = (style or '').strip()[:300]
     if role == 'dialogue':
         spoken = (own or '').strip()[:1500]

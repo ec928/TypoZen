@@ -786,8 +786,13 @@ function cueInstruction(p, cuesOn, standing) {
     // A single bracket replaces the box and keeps the speech tag; [[tag]] (hard) replaces both.
     if (p.bracket && own) return { instruction: phrase && !p.hard ? addClause(own, phrase) : own, direction: '' };
     if (phrase) {
-        const base = p.role === 'dialogue' ? own : (own || String(standing || '').trim());
-        return { instruction: addClause(base, phrase), direction: '' };
+        // A voiced line is the quotation alone: the tag's words are its instruction. A piece the
+        // narrator reads has narration around the quotation, so the words go as a cue, which the
+        // narrator wraps in the cue wording ("Voice the lines in quotation marks as whispered.")
+        // after the standing instruction. Sent bare, "whispered" whispered the whole paragraph:
+        // 65% of the narration's loudness against 114% wrapped (Breeze, 2026-10-10).
+        if (p.role === 'dialogue') return { instruction: addClause(own, phrase), direction: '' };
+        return { instruction: own, direction: phrase };
     }
     // A tag with nothing left to say ("asked her again") is no cue; only a stock one is sent.
     return { instruction: own, direction: cuesOn && stock ? dir : '' };

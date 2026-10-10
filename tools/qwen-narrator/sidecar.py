@@ -447,7 +447,7 @@ class Narrator(object):
         the character's voice. `own` is that character's instruction from the cast; when it is
         set it is used the same way `whole` is. With none, the line takes only its own direction.
         """
-        direction = (direction or '').strip()[:80]
+        direction = (direction or '').strip()[:300]
         style = (style or '').strip()[:300]
         if role == 'dialogue':
             spoken = (own or '').strip()[:1500]
