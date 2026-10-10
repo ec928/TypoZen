@@ -427,25 +427,35 @@ An empty box means no instruction.
 
 #### Local instructions — in a Markdown or text file
 
+A line with a quote is read in pieces: the speaker reads the quote, the narrator reads the rest, and each is told its own instruction.
+
+- **A bracket belongs to whoever reads the words next to it.** Just before or inside a quote, it is the speaker's. Anywhere else on the same line, it is the narrator's.
+- **What is in the bracket decides what happens.** A built-in sound or mood (`[laughing]`, `[sad]`) is performed right there. Any other words say how to read: `[sadly]` is added to that voice's usual instruction, and `[[sadly]]` replaces it.
+
 | You write | Where | Effect |
 |---|---|---|
-| `[how to say it]` | anywhere in a quote's sentence | **added** to the speaker's instruction for that line — their cast box, or the narrator's box if they have no voice; Emotion cue words are still added |
-| `[[how to say it]]` | anywhere in a quote's sentence | **overrides** the speaker's instruction and the cue words for that line: only your words are used |
-| `[how to read it]` | anywhere in narration | **added** to the narrator's instruction for the narration in that paragraph, apart from its quotes |
-| `[[how to read it]]` | anywhere in narration | **overrides** the narrator's instruction for the narration in that paragraph, apart from its quotes |
+| `[how to say it]` | just before or inside a quote | **added** to the speaker's instruction for the quote — their cast box, or the narrator's box if they have no voice; Emotion cue words are still added |
+| `[[how to say it]]` | just before or inside a quote | **overrides** the speaker's instruction and the cue words for the quote: only your words are used |
+| `[how to read it]` | anywhere else | **added** to the narrator's instruction for everything the narrator reads in that paragraph, including words like *Tom said* |
+| `[[how to read it]]` | anywhere else | **overrides** the narrator's instruction for everything the narrator reads in that paragraph |
 | `:1` to `:10` at the end, inside the brackets | any of the above | Breeze's strength for that line: `[shouts:9]` |
 
-With Tom's **Instruction** box set to `gruff and slow`:
+With Tom's **Instruction** box set to `gruff and slow`, and the narrator's to `measured`:
 
-| Text | Tom is told |
-|---|---|
-| `"Go," Tom said.` | `gruff and slow` |
-| `"Go," Tom said quietly.` | `gruff and slow, quietly` |
-| `[angrily] "Go," Tom said quietly.` | `gruff and slow, angrily, quietly` |
-| `[[angrily]] "Go," Tom said quietly.` | `angrily` |
+| Text | Tom reads `Go,` and is told | The narrator reads the rest and is told |
+|---|---|---|
+| `"Go," Tom said.` | `gruff and slow` | `measured` |
+| `"Go," Tom said quietly.` | `gruff and slow, quietly` | `measured` |
+| `[angrily] "Go," Tom said quietly.` | `gruff and slow, angrily, quietly` | `measured` |
+| `[[angrily]] "Go," Tom said quietly.` | `angrily` | `measured` |
+| `"Go," Tom said [wearily].` | `gruff and slow` | `measured, wearily` |
+| `[sadly] "Go," Tom said [wearily].` | `gruff and slow, sadly` | `measured, wearily` |
+| `[slowly] The door opened. "Go," Tom said quietly.` | `gruff and slow, quietly` | `measured, slowly` |
+| `[[slowly]] The door opened. "Go," Tom said quietly.` | `gruff and slow, quietly` | `slowly` |
 
-- Brackets work anywhere in the quote's sentence: `[angrily] "Go," Tom said.`, `"Go," Tom [angrily] said.` and `"[angrily] Go," Tom said.` are the same.
-- Two single brackets in one line are both added, in order. A double bracket overrides everything, single brackets included.
+If Tom has no voice, the narrator reads his quote as well, told `measured` in place of `gruff and slow`: `[angrily] "Go," Tom said.` tells the narrator `measured, angrily` for `Go,` and `measured` for `Tom said.`
+
+- Two single brackets for the same voice are both added, in order. A double bracket overrides everything for that voice, single brackets included.
 - An instruction can be a full sentence: `[Read it plainly. Speak softly]`.
 - Square brackets in your own text are always taken as tags, so use them only for that.
 
@@ -467,7 +477,7 @@ An ePub cannot be edited, so nothing in it is a tag:
 | Who reads each line | the rules in **Who reads a line of dialogue** above |
 | Global instructions | the character's and narrator's boxes, as everywhere |
 | Each line's own colour | **Emotion cues**: the book's describing words (`she whispered`), `!`, a trailing `—` or `...`, and italic thoughts |
-| Square brackets in the book | read aloud as part of the text |
+| Square brackets in the book | built-in sound and mood words (`[laughing]`, `[sad]`) are performed; any other brackets are read aloud as part of the text |
 
 #### Checking
 
