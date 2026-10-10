@@ -430,6 +430,39 @@ let _renderedAudio = null;
 let _narrActive = false;        // a Qwen reading is in progress, for the trace
 let _narrSilentSince = 0;
 
+/**
+ * The first word of a reading was lost: the audio output takes a moment to wake, and a short
+ * opening piece ("Wait—", all its sound in the first quarter second) played into nothing; the
+ * same file played again was heard (2026-10-10). A silent Web Audio stream wakes the output
+ * before the first piece and keeps it awake for the rest of the reading, gaps included.
+ * Returns how long to wait before playing: AUDIO_WAKE_MS when the output was asleep, else 0.
+ */
+const AUDIO_WAKE_MS = 300;
+let _audioWake = null, _audioWoken = false;   // _audioWoken: waited once this reading, never again
+function wakeAudio() {
+    try {
+        if (_audioWoken) return 0;
+        _audioWoken = true;
+        if (_audioWake && _audioWake.state === 'running') return 0;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return 0;
+        if (!_audioWake) {
+            _audioWake = new Ctx();
+            const tone = _audioWake.createOscillator(), mute = _audioWake.createGain();
+            mute.gain.value = 0;
+            tone.connect(mute).connect(_audioWake.destination);
+            tone.start();
+        }
+        _audioWake.resume().catch(() => {});
+        return AUDIO_WAKE_MS;
+    } catch (e) { return 0; }
+}
+/** The output may sleep again once nothing is being read. */
+function sleepAudio() {
+    _audioWoken = false;
+    try { if (_audioWake && _audioWake.state === 'running') _audioWake.suspend().catch(() => {}); } catch (e) {}
+}
+
 /** Play one pre-rendered file, then carry on down the queue. */
 function playRenderedChunk(url, chunk) {
     const name = String(url).split('/').pop();
@@ -461,10 +494,16 @@ function playRenderedChunk(url, chunk) {
             setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 4000);
             if (isPlaying) playNextChunk();
         };
-        a.play().catch(err => {
-            narrLog('play() REFUSED for ' + name + ': ' + (err && (err.name + ' ' + err.message) || err));
-            if (isPlaying) playNextChunk();
-        });
+        const play = () => {
+            if (_renderedAudio !== a) return;          // stopped or replaced while the output woke
+            a.play().catch(err => {
+                narrLog('play() REFUSED for ' + name + ': ' + (err && (err.name + ' ' + err.message) || err));
+                if (isPlaying) playNextChunk();
+            });
+        };
+        const wake = wakeAudio();
+        if (wake) { narrLog('waking the audio output: ' + wake + 'ms before ' + name); setTimeout(play, wake); }
+        else play();
     } catch (e) {
         narrLog('playRenderedChunk threw on ' + name + ': ' + (e && e.message || e));
         if (isPlaying) playNextChunk();
@@ -683,6 +722,7 @@ window.narrationTrialStop = function () {
     _trialRun++;
     _trialQueue = [];
     if (_trialAudio) { try { _trialAudio.pause(); } catch (e) {} _trialAudio = null; }
+    sleepAudio();
 };
 window.narrationTrial = async function (json) {
     _narrTags = true;   // the reader's own text: tags work, whatever document is open
@@ -731,12 +771,15 @@ window.narrationTrial = async function (json) {
         const next = () => {
             if (run !== _trialRun) return;
             const url = _trialQueue.shift();
-            if (!url) { _trialAudio = null; trialTell({ kind: 'ended' }); return; }
-            _trialAudio = new Audio(url);
-            _trialAudio.playbackRate = _narrSpeed;
-            _trialAudio.onended = next;
-            _trialAudio.onerror = () => { if (run === _trialRun) trialTell({ kind: 'error', message: 'could not play ' + url }); };
-            _trialAudio.play().catch(err => { if (run === _trialRun) trialTell({ kind: 'error', message: String(err && err.message || err) }); });
+            if (!url) { _trialAudio = null; sleepAudio(); trialTell({ kind: 'ended' }); return; }
+            const a = _trialAudio = new Audio(url);
+            a.playbackRate = _narrSpeed;
+            a.onended = next;
+            a.onerror = () => { if (run === _trialRun) trialTell({ kind: 'error', message: 'could not play ' + url }); };
+            const play = () => { if (run === _trialRun && _trialAudio === a)
+                a.play().catch(err => { if (run === _trialRun) trialTell({ kind: 'error', message: String(err && err.message || err) }); }); };
+            const wake = wakeAudio();
+            if (wake) setTimeout(play, wake); else play();
         };
         next();
     } catch (err) {
@@ -2525,6 +2568,7 @@ function stopReading() {
     // Stop means stop: the queue stops waiting, and the narrator drops the rest.
     _narrationPending = false;
     cancelNarration();
+    sleepAudio();
     clearTTSFocus();
     const editor = document.getElementById('editor');
     if (editor) editor.classList.remove('tts-reading-mode');
