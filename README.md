@@ -391,17 +391,17 @@ To determine how tags affect delivery, TypoZen uses a **strict positional logic*
 1. **In-Quote Instructions `[ ]`**: Apply exclusively to the quoted text. They take effect from their exact position until the end of the quote or until a new instruction inside the quote is hit.
 2. **Narrator Instructions `[ ]`**: Apply exclusively outside of quotes. They take effect from their exact position until the end of the paragraph block or until a new outside-quote instruction is hit.
 3. **Double Brackets `[[ ]]`**: Act as a hard override, superseding any global instructions or prior local tags for that domain. Single brackets simply append to the existing global instruction.
-4. **Performative Audio Cues `( )`**: Native Breeze sound events in parentheses like `(laughs)` or `(sighs)` are bypassed by TypoZen and sent directly to Breeze to perform inline as non-speech audio.
+4. **Performative Audio Cues `( )`**: Native Breeze sound events in parentheses, such as `(giggles)` or `(cough)`, are bypassed by TypoZen and sent directly to Breeze to perform inline as non-speech audio. The words that work are the built-in sounds below: `(laughing)` works, `(laughs)` does not.
 
 Because tags apply exactly from where they are placed, placing a tag in the middle of a sentence will cleanly cut the audio piece there and shift the delivery going forward. 
 
-**Example:** `[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway (laughs)". [excited, loud] Surprising even herself.`
+**Example:** `[steady, whisper] Anna said "[Angry] I am mad at you. [Softly] But I forgive you anyway (giggles)". [excited, loud] Surprising even herself.`
 
 | Text Segment | Read by | Directed by | Notes |
 |---|---|---|---|
 | `Anna said` | narrator | *steady, whisper* | Applied immediately outside the quote. |
 | `I am mad at you.` | Anna | *Angry* | Applied immediately inside the quote. |
-| `But I forgive you anyway (laughs)` | Anna | *Softly* | Takes over from *Angry*. `(laughs)` is performed natively by Breeze. |
+| `But I forgive you anyway (giggles)` | Anna | *Softly* | Takes over from *Angry*. `(giggles)` is performed natively by Breeze. |
 | `Surprising even herself.` | narrator | *excited, loud* | Takes over from *steady, whisper*. |
 
 - In an ePub, which cannot be edited, the app does all of this from the text by itself, parsing built-in emotion tags.
