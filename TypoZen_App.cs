@@ -5605,12 +5605,17 @@ namespace TypoZen
                 Margin = new Thickness(0, 0, 0, 12)
             });
 
+            // Each box as it was ticked the last time Clear was pressed (Ed, 2026-10-10); the
+            // defaults below only until then.
+            Dictionary<string, bool> last = LoadClearChoices();
             var boxes = new List<CheckBox>();
-            Func<string, string, bool, CheckBox> add = (label, detail, on) =>
+            var keyOf = new Dictionary<CheckBox, string>();
+            Func<string, string, string, bool, CheckBox> add = (key, label, detail, on) =>
             {
+                bool was;
                 var cb = new CheckBox
                 {
-                    IsChecked = on,
+                    IsChecked = last.TryGetValue(key, out was) ? was : on,
                     Margin = new Thickness(0, 5, 0, 0),
                     Foreground = win.Foreground,
                     Content = new TextBlock
@@ -5621,28 +5626,29 @@ namespace TypoZen
                 };
                 root.Children.Add(cb);
                 boxes.Add(cb);
+                keyOf[cb] = key;
                 return cb;
             };
 
-            var cbSession  = add("Unsaved text kept for session restore", HumanSize(SizeOfDir(TabSessionBodiesDir())), true);
-            var cbTabs     = add("The list of open tabs", null, true);
-            var cbRecent   = add("Recent files list", CountLines(RecentFilesPath()) > 0 ? "" : "empty", true);
-            var cbSearch   = add("Recent search queries", null, true);
-            var cbImages   = add("Pasted images held in the cache", HumanSize(SizeOfDir(Path.Combine(cache, "assets"))), true);
+            var cbSession  = add("session", "Unsaved text kept for session restore", HumanSize(SizeOfDir(TabSessionBodiesDir())), true);
+            var cbTabs     = add("tabs", "The list of open tabs", null, true);
+            var cbRecent   = add("recent", "Recent files list", CountLines(RecentFilesPath()) > 0 ? "" : "empty", true);
+            var cbSearch   = add("search", "Recent search queries", null, true);
+            var cbImages   = add("images", "Pasted images held in the cache", HumanSize(SizeOfDir(Path.Combine(cache, "assets"))), true);
             // The words read from scanned PDF pages: document text, so it is offered here.
-            var cbOcr      = add("Text read from scanned PDF pages", HumanSize(SizeOfDir(Path.Combine(cache, "ocr"))), true);
-            var cbWeb      = add("Saved web storage", "cleared on next launch", true);
-            var cbPos      = add("Reading positions", CountLines(BookPositionsPath()) + " remembered", true);
-            var cbBooks    = add("Extracted book data",
+            var cbOcr      = add("ocr", "Text read from scanned PDF pages", HumanSize(SizeOfDir(Path.Combine(cache, "ocr"))), true);
+            var cbWeb      = add("web", "Saved web storage", "cleared on next launch", true);
+            var cbPos      = add("positions", "Reading positions", CountLines(BookPositionsPath()) + " remembered", true);
+            var cbBooks    = add("books", "Extracted book data",
                                  bookCount > 0 ? bookCount + (bookCount == 1 ? " book, " : " books, ") + HumanSize(bookBytes)
                                                : "none unpacked", false);
-            var cbMarks    = add("Bookmarks", CountLines(BookmarksPath()) + " document(s) with marks", false);
-            var cbWords    = add("Words you added to the dictionary", UserWordCountLabel(), false);
-            var cbThemes   = add("Custom themes", HumanSize(SizeOfFile(Path.Combine(cache, "TypoZen_Themes.json"))), false);
-            var cbView     = add("View settings", "font size, line spacing, margins, layout", true);
+            var cbMarks    = add("bookmarks", "Bookmarks", CountLines(BookmarksPath()) + " document(s) with marks", false);
+            var cbWords    = add("words", "Words you added to the dictionary", UserWordCountLabel(), false);
+            var cbThemes   = add("themes", "Custom themes", HumanSize(SizeOfFile(Path.Combine(cache, "TypoZen_Themes.json"))), false);
+            var cbView     = add("view", "View settings", "font size, line spacing, margins, layout", true);
             long logBytes = 0;
             foreach (string f in DiagnosticLogFiles()) logBytes += SizeOfFile(f);
-            var cbLogs     = add("Diagnostic logs", HumanSize(logBytes) + ", may name files you opened", true);
+            var cbLogs     = add("logs", "Diagnostic logs", HumanSize(logBytes) + ", may name files you opened", true);
             // Only offered once the narrator has been installed; there is nothing to clear before.
             CheckBox cbNarr = null;
             if (Directory.Exists(QwenNarrator.RootDir(cache)) || Directory.Exists(BreezeNarrator.RootDir(cache)))
@@ -5651,7 +5657,7 @@ namespace TypoZen
                 long narrBytes = 0;
                 foreach (string f in NarrationTraceFiles(out narrDirs)) narrBytes += SizeOfFile(f);
                 foreach (string d in narrDirs) narrBytes += SizeOfDir(d);
-                cbNarr = add("Narration: audio, logs and book casts",
+                cbNarr = add("narration", "Narration: audio, logs and book casts",
                              HumanSize(narrBytes) + "; voices are kept", false);
             }
 
@@ -5659,7 +5665,8 @@ namespace TypoZen
             {
                 Text = "Bookmarks, added words and custom themes are things you made, so they "
                      + "start unticked; so does narration, which takes minutes to render again and "
-                     + "holds the casts you chose. A book that is open stays unpacked. "
+                     + "holds the casts you chose. After that, each box is as you left it the last time you cleared. "
+                     + "A book that is open stays unpacked. "
                      + "Extensions you installed -- the Kokoro voices, the Wiktionary dictionary -- are removed in File > Extensions, "
                      + "which shows what each one is using.",
                 TextWrapping = TextWrapping.Wrap,
@@ -5667,22 +5674,32 @@ namespace TypoZen
                 Margin = new Thickness(0, 14, 0, 0)
             });
 
-            var row = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(0, 18, 0, 0)
-            };
+            // "Select none", not "Clear all": beside a Clear button that deletes, "Clear all"
+            // reads as "delete everything".
+            var bottom = new DockPanel { Margin = new Thickness(0, 18, 0, 0), LastChildFill = false };
+            var all = new Button { Content = "Select all", Width = 90, Height = 26 };
+            var none = new Button { Content = "Select none", Width = 90, Height = 26, Margin = new Thickness(8, 0, 0, 0) };
+            all.Click += (s2, e2) => { foreach (var b in boxes) b.IsChecked = true; };
+            none.Click += (s2, e2) => { foreach (var b in boxes) b.IsChecked = false; };
+            DockPanel.SetDock(all, Dock.Left); DockPanel.SetDock(none, Dock.Left);
+            bottom.Children.Add(all); bottom.Children.Add(none);
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            DockPanel.SetDock(row, Dock.Right);
             var ok = new Button { Content = "Clear", Width = 90, Height = 26, IsDefault = true };
             var cancel = new Button { Content = "Cancel", Width = 90, Height = 26, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
             row.Children.Add(ok); row.Children.Add(cancel);
-            root.Children.Add(row);
+            bottom.Children.Add(row);
+            root.Children.Add(bottom);
             win.Content = root;
 
             bool accepted = false;
             ok.Click += (s2, e2) => { accepted = true; win.DialogResult = true; };
             try { win.ShowDialog(); } catch { return null; }
             if (!accepted) return null;
+            // Kept only when Clear is pressed. A box not offered this time (narration before it
+            // is installed) keeps what it had.
+            foreach (var b in boxes) last[keyOf[b]] = b.IsChecked == true;
+            SaveClearChoices(last);
 
             return new ClearChoices
             {
@@ -5702,6 +5719,36 @@ namespace TypoZen
                 DiagnosticLogs   = cbLogs.IsChecked == true,
                 Narration        = cbNarr != null && cbNarr.IsChecked == true
             };
+        }
+
+        /// <summary>Which Clear Stored Data boxes were ticked last time: "key=1" lines.</summary>
+        private string ClearChoicesPath() { return Path.Combine(CacheDir(), "clear-choices.txt"); }
+
+        private Dictionary<string, bool> LoadClearChoices()
+        {
+            var d = new Dictionary<string, bool>();
+            try
+            {
+                if (File.Exists(ClearChoicesPath()))
+                    foreach (string line in File.ReadAllLines(ClearChoicesPath()))
+                    {
+                        int eq = line.IndexOf('=');
+                        if (eq > 0) d[line.Substring(0, eq).Trim()] = line.Substring(eq + 1).Trim() == "1";
+                    }
+            }
+            catch { }
+            return d;
+        }
+
+        private void SaveClearChoices(Dictionary<string, bool> d)
+        {
+            try
+            {
+                var lines = new List<string>();
+                foreach (var kv in d) lines.Add(kv.Key + "=" + (kv.Value ? "1" : "0"));
+                File.WriteAllLines(ClearChoicesPath(), lines.ToArray());
+            }
+            catch { }
         }
 
         private void ClearStoredData()
