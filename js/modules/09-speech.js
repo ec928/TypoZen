@@ -1264,8 +1264,9 @@ function narrationDirection(text, el) {
  * "... said Jill" still counts because nobody is named before the verb. With no verb, the
  * nearer name wins. Commas and colons are not required.
  *
- * A character is keyed by the last word of their name, lower case: "tyl Loesp" and "Loesp"
- * are one person, "the King" is "king". A pronoun only resolves when the paragraph names
+ * A character is keyed by their whole name, lower case: "Mr Bennet" and "Mrs Bennet" are two
+ * people, "the King" is "king". A name is matched to the cast whole, else by its last word when
+ * only one character has it: "Loesp" is "tyl Loesp" (castKey). A pronoun only resolves when the paragraph names
  * exactly one known speaker; otherwise the line stays with the narrator, which never sounds
  * wrong, where a line in the wrong character's voice would. An untagged line in an unbroken
  * run of dialogue goes to whoever spoke two paragraphs before.
@@ -1339,7 +1340,24 @@ function speakerBeside(words, nearEnd) {
 
 function speakerKey(who) {
     if (!who || /^(he|she|it|they|i)$/i.test(who)) return '';
-    return who.replace(/^the\s+/i, '').trim().split(/\s+/).pop().replace(/[’']s$/, '').toLowerCase();
+    return who.replace(/^the\s+/i, '').trim().replace(/[’']s$/, '').replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * The key a name has in `keys` (the cast, or the speakers found so far): the whole name; else
+ * its last word, as casts saved before whole names were keyed by it; else the one key that ends
+ * in that word ("loesp" is "tyl loesp"). Two characters with that word, as Mr and Mrs Bennet,
+ * and a bare "Bennet" matches neither. With no match, the name's own key.
+ */
+function castKey(key, keys) {
+    if (!key || !keys) return key;
+    const has = k => (keys instanceof Set ? keys.has(k) : Object.prototype.hasOwnProperty.call(keys, k));
+    if (has(key)) return key;
+    const last = key.split(' ').pop();
+    if (last !== key && has(last)) return last;
+    const all = keys instanceof Set ? [...keys] : Object.keys(keys);
+    const ends = all.filter(k => k === last || k.endsWith(' ' + last));
+    return ends.length === 1 ? ends[0] : key;
 }
 
 /** Where `who` last stands in `zone`, so a bracket can be read from there to the right. */
@@ -1400,12 +1418,10 @@ function lineInstruction(text, start, end, who) {
         const atRight = nameAt(right.text, who);
         const byName = atLeft >= 0 ? firstBracket(left.text, left.at, atLeft + who.length)
             : atRight >= 0 ? firstBracket(right.text, right.at, atRight + who.length) : null;
-        // A speaker with no voice is read by the narrator, so a bracket against the quotation is
-        // the narrator's instruction for it, as with no speaker: '[Read it angry] "You're late,"
-        // Tom said' (Ed, 2026-10-10). A voiced character's bracket still sits by the name. The
-        // models' own tags, [laughing] or [sad], stay in the text there, performed as before.
-        const key = speakerKey(who);
-        if (byName || (key && _narrCast[key])) return byName;
+        // Else, as with no speaker, a bracket against the quotation is the instruction for whoever
+        // reads it, voiced or not: '[Read it angry] "You're late," Tom said' (Ed, 2026-10-10).
+        // The models' own tags, [laughing] or [sad], stay in the text there, performed as before.
+        if (byName) return byName;
     }
     const keep = inner => isModelTag(inner);
     const left = zoneBefore(text, start);
@@ -1454,7 +1470,7 @@ function narrationQuotes(text) {
         const q = {
             start: m.index, end: m.index + m[0].length, inner: text.slice(m.index + 1, m.index + m[0].length - 1), who: who,
             tag: quoteCueTag(text, m.index, m[0].length),
-            key: speakerKey(who)
+            key: castKey(speakerKey(who), _narrCast)
         };
         const line = lineInstruction(text, q.start, q.end, who);
         if (line) {
@@ -1487,7 +1503,7 @@ function attributeParagraphs(texts, known) {
         const qs = narrationQuotes(text);
         if (!qs.length) { result.push(qs); recent.length = 0; continue; }
         const outside = blankBrackets(text).replace(/[“"][^”"]+[”"]/g, ' ');
-        const named = new Set((outside.match(/[A-Z][\w’'-]+/g) || []).map(w => speakerKey(w)).filter(k => known.has(k)));
+        const named = new Set((outside.match(/[A-Z][\w’'-]+/g) || []).map(w => castKey(speakerKey(w), known)).filter(k => known.has(k)));
         const explicit = new Set(qs.filter(q => q.key).map(q => q.key));
         for (const q of qs) {
             if (q.key) continue;
@@ -1558,6 +1574,17 @@ window.narrationCastScan = function () {
             n[q.who] = (n[q.who] || 0) + 1;
         }
     }));
+    // A bare surname found alone ("Loesp") is the one character whose whole name ends in it
+    // ("tyl Loesp"); with two such characters (Mr and Mrs Bennet) it stays apart.
+    Object.keys(counts).filter(k => k.indexOf(' ') < 0).forEach(k => {
+        const whole = Object.keys(counts).filter(w => w.endsWith(' ' + k));
+        if (whole.length !== 1) return;
+        counts[whole[0]] += counts[k];
+        const into = names[whole[0]] = names[whole[0]] || {};
+        Object.keys(names[k] || {}).forEach(n => { into[n] = (into[n] || 0) + names[k][n]; });
+        delete counts[k];
+        delete names[k];
+    });
     const list = Object.keys(counts).filter(k => counts[k] >= 2).map(k => {
         const forms = names[k] || {};
         const name = Object.keys(forms).sort((a, b) => forms[b] - forms[a])[0] || k;
@@ -1602,7 +1629,7 @@ function excise(slice, at, quotes) {
     return s.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+([,:.!?])/g, '$1');
 }
 
-function castPieces(text, quotes, from) {
+function castPieces(text, quotes, from, splitAll) {
     const out = [];
     // from: Read from here started inside this paragraph; nothing before it is voiced, and
     // a quotation it lands in is voiced from there.
@@ -1639,8 +1666,9 @@ function castPieces(text, quotes, from) {
     for (const q of quotes) {
         const voice = q.key && _narrCast[q.key];
         const override = (q.instruct || '').trim();
-        // No voice and no line instruction: the quotation stays in the narration.
-        if (!voice && !override) continue;
+        // No voice and no line instruction: the quotation stays in the narration, unless the
+        // narration has a [[tag]] of its own (splitAll), which must not reach it.
+        if (!voice && !override && !splitAll) continue;
         if (q.end <= from) continue;
         if (q.start < from) {
             const rest = text.slice(from, q.end).replace(/["'“”‘’]+\s*$/, '').trim();
@@ -1738,8 +1766,12 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
             const found = narrationQuotes(text);
             if (found.some(q => (q.instruct || '').trim())) quotes = found;
         }
-        if (quotes && quotes.some(q => (q.key && _narrCast[q.key]) || (q.instruct || '').trim())) {
-            castPieces(text, quotes, cut > 0 ? cut : 0).forEach((p, k) => pieces.push(Object.assign({ el: all[i], at: at, id: at * 100 + k }, p)));
+        // A [[tag]] in narration is that narration's, never a quotation's in another sentence:
+        // the quotations are cut out of it, as they are when voiced, whether voiced or not.
+        let split = false;
+        if (doubleTag(text)) { if (!quotes) quotes = narrationQuotes(text); split = quotes.length > 0; }
+        if (quotes && (split || quotes.some(q => (q.key && _narrCast[q.key]) || (q.instruct || '').trim()))) {
+            castPieces(text, quotes, cut > 0 ? cut : 0, split).forEach((p, k) => pieces.push(Object.assign({ el: all[i], at: at, id: at * 100 + k }, p)));
             continue;
         }
         if (cut > 0) {

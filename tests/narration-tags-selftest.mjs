@@ -240,6 +240,23 @@ eq('she told Paul is not Paul', speakerKeys('She told Paul "Hello there."'), [''
     eq('Jill has both lines', list.map(c => c.lines), [2]);
 }
 
+console.log('--- Find characters keeps whole names apart, and folds in a bare surname');
+api.setModel({
+    kind: 'markdown',
+    blocks: [
+        { raw: '"My dear," said Mr. Bennet.' }, { raw: '"Yes," said Mr. Bennet.' },
+        { raw: '"Oh!" said Mrs. Bennet.' }, { raw: '"No," said Mrs. Bennet.' },
+        { raw: '"Hi," said Anna Smith.' }, { raw: '"Bye," Smith said.' }
+    ]
+});
+{
+    api.setCast({});
+    const list = api.narrationCastScan();
+    eq('Mr and Mrs Bennet are two characters, Smith is Anna Smith',
+        list.map(c => c.key + ':' + c.lines).sort(), ['anna smith:2', 'mr bennet:2', 'mrs bennet:2']);
+    api.setCast({ anna: 'qwen-ryan' });
+}
+
 console.log('--- Find characters reads the whole markdown or text file');
 document.blocks = [
     { innerText: '"Nope," Zara said.' },
@@ -519,8 +536,11 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
         {
             const el = { innerText: '[[measured]] The door opened. "You are late," Tom said quietly.', getAttribute: function () { return null; } };
             api.setCast({});
-            eq('a double bracket on the no-cast reading path drops the speech tag',
-                api.narrationBatches([el], 0, 1)[0].filter(p => p.text.indexOf('late') >= 0).map(p => cueOf(p, true, '').instruction), ['measured']);
+            const ps = api.narrationBatches([el], 0, 1)[0];
+            eq('no voices: a double bracket in narration is that narration\'s',
+                ps.filter(p => p.text.indexOf('door') >= 0).map(p => cueOf(p, true, '').instruction), ['measured']);
+            eq('no voices: and does not reach the quotation in the next sentence',
+                ps.filter(p => p.text.indexOf('late') >= 0).map(p => cueOf(p, true, '').instruction), ['quietly']);
             api.setCast({ anna: 'qwen-ryan' });
         }
         eq('no speaker: a model tag against the quotation stays spoken too',
@@ -529,14 +549,26 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
             api.narrationQuotes('[laughing] "Stop it," Tom said.').map(q => q.instruct || ''), ['']);
         eq('unvoiced speaker: so does a span tag with a strength',
             api.narrationQuotes('[sad:9] "Stop it," Tom said.').map(q => q.instruct || ''), ['']);
-        eq('a voiced speaker\'s bracket before the quotation is still spoken',
-            api.narrationQuotes('[Read it angry] "Stop it," Anna said.').map(q => q.instruct || ''), ['']);
+        eq('a voiced speaker\'s bracket against the quotation is the instruction too',
+            api.narrationQuotes('[Read it angry] "Stop it," Anna said.').map(q => q.instruct || ''), ['Read it angry']);
+        eq('a voiced speaker\'s bracket inside the quotation is still spoken',
+            api.narrationQuotes('"[the king] Stop it," Anna said.').map(q => q.instruct || ''), ['']);
     }
     {
         // A capitalised word that opens a sentence is not a name: "The" used to be the speaker.
         eq('"The" is not a speaker', api.narrationQuotes('"Go." The door shut.').map(q => q.who), [null]);
         eq('the nearest real name is', api.narrationQuotes('"You are late." The woman by the window was Anna.').map(q => q.key), ['anna']);
         eq('"the King" is still the king', api.narrationQuotes('"Go," the King said.').map(q => q.key), ['king']);
+        eq('Mr and Mrs Bennet are two characters',
+            [...api.narrationQuotes('"My dear," said Mr. Bennet.'), ...api.narrationQuotes('"Oh!" said Mrs. Bennet.')].map(q => q.key),
+            ['mr bennet', 'mrs bennet']);
+        api.setCast({ 'tyl loesp': 'v1' });
+        eq('a bare surname finds the one cast character with it', api.narrationQuotes('"Go," said Loesp.').map(q => q.key), ['tyl loesp']);
+        api.setCast({ bennet: 'v1' });
+        eq('a cast saved under a surname still matches the whole name', api.narrationQuotes('"Go," said Mr. Bennet.').map(q => q.key), ['bennet']);
+        api.setCast({ 'mr bennet': 'v1', 'mrs bennet': 'v2' });
+        eq('a bare surname shared by two cast characters matches neither', api.narrationQuotes('"Go," said Bennet.').map(q => q.key), ['bennet']);
+        api.setCast({ anna: 'qwen-ryan' });
     }
     {
         const pieces = lineOf('Anna [whispers. slowly], "Get out."');
