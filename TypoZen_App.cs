@@ -5625,7 +5625,7 @@ namespace TypoZen
             var cbImages   = add("images", "Pasted images held in the cache", HumanSize(SizeOfDir(Path.Combine(cache, "assets"))), true);
             // The words read from scanned PDF pages: document text, so it is offered here.
             var cbOcr      = add("ocr", "Text read from scanned PDF pages", HumanSize(SizeOfDir(Path.Combine(cache, "ocr"))), true);
-            var cbWeb      = add("web", "Saved web storage", "cleared on next launch", true);
+            var cbWeb      = add("web", "Saved web storage and browsing history", "cleared on next launch", true);
             var cbPos      = add("positions", "Reading positions", CountLines(BookPositionsPath()) + " remembered", true);
             var cbBooks    = add("books", "Extracted book data",
                                  bookCount > 0 ? bookCount + (bookCount == 1 ? " book, " : " books, ") + HumanSize(bookBytes)
@@ -5775,6 +5775,18 @@ namespace TypoZen
                 try { File.Delete(RecentFilesPath()); } catch { }
                 _recentFiles.Clear();
                 RebuildRecentFilesMenu();
+                // The last file and the Open dialog's folder name files too. They were cleared
+                // only with recent searches, so Recent files alone left them (2026-10-10).
+                try
+                {
+                    var prefs = LoadHostPrefs();
+                    prefs.LastFilePath = "";
+                    prefs.LastContent = "";
+                    prefs.LastOpenDirectory = "";
+                    WriteHostPrefs(prefs);
+                }
+                catch { }
+                _lastOpenDirectory = null;
                 done.Add("recent files");
             }
 
@@ -5860,9 +5872,6 @@ namespace TypoZen
                 try
                 {
                     var prefs = LoadHostPrefs();
-                    prefs.LastFilePath = "";
-                    prefs.LastContent = "";
-                    prefs.LastOpenDirectory = "";
                     prefs.SearchHistory = new List<string>();
                     prefs.LastSearchQuery = "";
                     prefs.FindMatchCase = false;
@@ -5880,7 +5889,7 @@ namespace TypoZen
                 // while the browser runs. Flag it and delete the store at next launch.
                 try { File.WriteAllText(Path.Combine(cache, "purge_webstorage.flag"), "1"); } catch { }
                 try { SendMsg("cmd:clear_local_storage"); } catch { }
-                done.Add("web storage (next launch)");
+                done.Add("web storage and browsing history (next launch)");
             }
 
             if (want.DiagnosticLogs)
@@ -5937,11 +5946,23 @@ namespace TypoZen
                 string cache = CacheDir();
                 string flag = Path.Combine(cache, "purge_webstorage.flag");
                 if (!File.Exists(flag)) return;
-                string store = Path.Combine(cache, "EBWebView", "Default", "Local Storage");
+                // Local Storage, and what the browser keeps of where the page went: its
+                // history, download cache and sessions (2026-10-10). Not Code Cache, which is
+                // compiled script that makes the first open quick and names nothing, nor the
+                // Kokoro model in Service Worker, an extension removed in File > Extensions.
+                string profile = Path.Combine(cache, "EBWebView", "Default");
                 bool removed = true;
-                if (Directory.Exists(store))
+                foreach (string name in new[] { "Local Storage", "Session Storage", "Sessions", "Cache",
+                                                "History", "History-journal", "Visited Links",
+                                                "Top Sites", "Top Sites-journal", "Favicons", "Favicons-journal",
+                                                "Network Action Predictor", "Network Action Predictor-journal" })
                 {
-                    try { Directory.Delete(store, true); }
+                    string p = Path.Combine(profile, name);
+                    try
+                    {
+                        if (Directory.Exists(p)) Directory.Delete(p, true);
+                        else if (File.Exists(p)) File.Delete(p);
+                    }
                     catch { removed = false; }
                 }
                 // Only once the store is actually gone. Clear Stored Data tells the reader
