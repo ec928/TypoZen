@@ -480,6 +480,19 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
             JSON.stringify(pieces.map(p => [p.role, p.text, p.instruction])));
     }
     {
+        // Quote marks inside a bracket are the instruction's, not a quotation. They used to
+        // split the bracket into three spoken pieces in two voices.
+        const pieces = lineOf('[[say "hush" softly]] "Wait—" Anna said.');
+        eq('quote marks inside a double bracket do not make a quotation',
+            pieces.map(p => [p.role, p.text]), [['dialogue', 'Wait—'], ['narration', 'Anna said.']]);
+        eq('and the bracket is the instruction, quote marks and all',
+            pieces.filter(p => p.role === 'dialogue').map(p => p.instruction), ['say "hush" softly']);
+        eq('a quotation with a bracket inside it keeps the bracket in its words',
+            api.narrationQuotes('"Please [crying] let me go," Anna said.').map(q => q.inner), ['Please [crying] let me go,']);
+        check('the narrator path does not take bracket quote marks for a quotation either',
+            api.paragraphPieces('[as if shouting "no!"] The door shut.', null).every(p => !p.direction));
+    }
+    {
         const pieces = lineOf('Anna [whispers. slowly], "Get out."');
         eq('a single bracket with a full stop inside is still the line instruction',
             pieces.filter(p => p.role === 'dialogue').map(p => p.instruction), ['whispers. slowly']);

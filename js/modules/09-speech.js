@@ -1209,7 +1209,9 @@ function quoteCueTag(text, index, length) {
 }
 
 function narrationDirection(text, el) {
-    const quotes = text.match(/[“"][^”"]+[”"]/g) || [];
+    // Quote marks inside a bracket ([[say "hush" softly]]) do not make a quotation.
+    const plain = blankBrackets(text);
+    const quotes = plain.match(/[“"][^”"]+[”"]/g) || [];
     if (!quotes.length) {
         // Mostly italic and no dialogue: a character's thought, in most novels.
         try {
@@ -1229,7 +1231,6 @@ function narrationDirection(text, el) {
     // and was quietly snoring' is not a soft line.
     const tags = [];
     const re = /[“"][^”"]+[”"]/g;
-    const plain = blankBrackets(text);
     let m;
     while ((m = re.exec(plain))) {
         const before = plain.slice(Math.max(0, m.index - 60), m.index).split(/[.!?…”"]\s/).pop();
@@ -1421,8 +1422,11 @@ function lineInstruction(text, start, end, who) {
 function narrationQuotes(text) {
     const out = [];
     const re = /[“"]([^”"]+)[”"]/g;
+    // Found with brackets blanked: quote marks inside one ([[say "hush" softly]]) are part of
+    // the instruction, not a quotation. The words come from the text, brackets and all.
+    const plain = blankBrackets(text);
     let m;
-    while ((m = re.exec(text))) {
+    while ((m = re.exec(plain))) {
         const before = quoteWords(text.slice(0, m.index));
         const after = quoteWords(text.slice(m.index + m[0].length));
         const left = speakerBeside(before, true);
@@ -1435,7 +1439,7 @@ function narrationQuotes(text) {
         } else pick = left || right;
         const who = pick ? pick.who : null;
         const q = {
-            start: m.index, end: m.index + m[0].length, inner: m[1], who: who,
+            start: m.index, end: m.index + m[0].length, inner: text.slice(m.index + 1, m.index + m[0].length - 1), who: who,
             tag: quoteCueTag(text, m.index, m[0].length),
             key: speakerKey(who)
         };
@@ -1469,7 +1473,7 @@ function attributeParagraphs(texts, known) {
     for (const text of texts) {
         const qs = narrationQuotes(text);
         if (!qs.length) { result.push(qs); recent.length = 0; continue; }
-        const outside = text.replace(/[“"][^”"]+[”"]/g, ' ');
+        const outside = blankBrackets(text).replace(/[“"][^”"]+[”"]/g, ' ');
         const named = new Set((outside.match(/[A-Z][\w’'-]+/g) || []).map(w => speakerKey(w)).filter(k => known.has(k)));
         const explicit = new Set(qs.filter(q => q.key).map(q => q.key));
         for (const q of qs) {
