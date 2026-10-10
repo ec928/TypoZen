@@ -32,7 +32,11 @@ namespace TypoZen
         private static bool _stale;
         private static Func<string, string> _logFor;
         private static string _engine;
-        private const int Kept = 30;
+        // Each Read Aloud is a run: a header, then its pieces newest first, so one run never runs into
+        // the next (Ed, 2026-10-10). _reading is the page's reading number for the run on top.
+        private static double _reading = double.NaN;
+        private static int _runs;
+        private const int Kept = 200;
 
         public static bool IsOpen { get { return _win != null; } }
 
@@ -79,10 +83,21 @@ namespace TypoZen
             top.Children.Add(heading("Playing now"));
             top.Children.Add(_now);
             top.Children.Add(heading("Before"));
-            var copy = new Button { Content = "Copy all", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 12, 0) };
+            var copy = new Button { Content = "Copy all", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 8, 0),
+                                    ToolTip = "Copy Playing now and every run below" };
             copy.Click += (s, e) =>
             {
                 try { Clipboard.SetText(_now.Text + "\r\n\r\n" + string.Join("\r\n\r\n", _entries)); } catch { }
+            };
+            var clear = new Button { Content = "Clear", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 12, 0),
+                                     ToolTip = "Empty the history; the next Read Aloud starts it again" };
+            clear.Click += (s, e) =>
+            {
+                _entries.Clear();
+                _reading = double.NaN;
+                _runs = 0;
+                _stale = false;
+                _before.Text = "";
             };
             _logFor = logFor;
             _logLabel = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Cursor = System.Windows.Input.Cursors.Hand, Opacity = 0.85 };
@@ -90,7 +105,9 @@ namespace TypoZen
             ShowLog(_engine ?? NewestEngine());
             var bottom = new DockPanel { Margin = new Thickness(14, 0, 14, 12) };
             DockPanel.SetDock(copy, Dock.Left);
+            DockPanel.SetDock(clear, Dock.Left);
             bottom.Children.Add(copy);
+            bottom.Children.Add(clear);
             bottom.Children.Add(_logLabel);
             var outer = new DockPanel();
             DockPanel.SetDock(top, Dock.Top);
@@ -172,7 +189,19 @@ namespace TypoZen
                 _now.Text = now.ToString();
                 // History keeps the whole of it -- text, instruction, strength, part by part -- not the
                 // first words alone (Ed, 2026-10-09: "log history is incomplete").
-                _entries.Insert(0, DateTime.Now.ToString("HH:mm:ss") + "  " + now.ToString().TrimEnd());
+                // A new reading starts a run: its header first, with the settings it was read with, so
+                // two runs with different settings can be told apart. Its pieces go under the header.
+                double reading = Num(d, "reading", -1);
+                if (reading != _reading)
+                {
+                    _reading = reading;
+                    _runs++;
+                    string ins = instr.Length == 0 ? "no instruction" : "instruction “" + (instr.Length > 60 ? instr.Substring(0, 57) + "..." : instr) + "”";
+                    _entries.Insert(0, "════════  Run " + _runs + "  ·  " + DateTime.Now.ToString("HH:mm:ss") + "  ·  " + engine + ", "
+                        + Str(st, "voice") + "  ·  " + ins + "  ·  cues " + (cues ? "on" : "off")
+                        + (breeze ? ", strength " + Num(st, "strength", 4).ToString("0.#") : "") + "  ════════");
+                }
+                _entries.Insert(1, DateTime.Now.ToString("HH:mm:ss") + "  " + now.ToString().TrimEnd());
                 while (_entries.Count > Kept) _entries.RemoveAt(_entries.Count - 1);
                 ShowEntries();
                 ShowLog(breeze ? "breeze" : "qwen", st.TryGetValue("private", out o) && o is bool && (bool)o);

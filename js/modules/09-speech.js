@@ -872,6 +872,7 @@ async function renderNarration(base, batch, reading) {
             audioUrl: narrAudioUrl(items[i]),
             // What the narration monitor shows when this piece plays: what the engine was given.
             monitor: {
+                reading: reading,   // one Read Aloud: the monitor starts a new run when it changes
                 role: p.role || 'narration', speaker: p.speaker || '', voice: items[i].voice || blocks[i].voice || _narrVoice,
                 cached: items[i].cached === undefined ? !!data.from_cache : !!items[i].cached,
                 seconds: items[i].seconds || 0, strength: blocks[i].strength || 0,
