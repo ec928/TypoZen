@@ -1948,6 +1948,41 @@ function narrationTailStart(full, part) {
  * (readingCaret / tzPdfTextFromCaret). Without it the narrator read the whole paragraph,
  * as if the cursor had been at its start.
  */
+/**
+ * One paragraph's pieces, by the README's rules: who reads each quotation and what each piece is
+ * told. `text` has been through oneNotation; `quotes` is its attribution, when there is a cast;
+ * `cut` is where Read from here starts inside it. Reading through and reading a selection both
+ * use it, so the two cannot follow different rules.
+ */
+function readingPieces(text, el, quotes, cut) {
+    // No cast on this book, or this paragraph was outside the attributed window.
+    // A bracket beside a quotation is still the narrator's instruction for it.
+    if (!quotes) {
+        const found = narrationQuotes(text);
+        if (found.some(q => (q.instruct || '').trim())) quotes = found;
+    }
+    // A [[tag]] in narration is that narration's, never a quotation's in another sentence:
+    // the quotations are cut out of it, as they are when voiced, whether voiced or not.
+    let split = false;
+    if (doubleTag(text) || leadTag(text)) { if (!quotes) quotes = narrationQuotes(text); split = quotes.length > 0; }
+    if (quotes && (split || quotes.some(q => (q.key && _narrCast[q.key]) || (q.instruct || '').trim()))) {
+        return castPieces(text, quotes, cut > 0 ? cut : 0, split);
+    }
+    if (cut > 0) {
+        // A cut inside a quotation keeps its opening mark, which is not spoken: '"You're late,"
+        // Tom said quietly.' read from "You're" lost it, was no longer a quotation, and lost its cue.
+        const before = text.slice(0, cut);
+        const count = re => (before.match(re) || []).length;
+        const open = count(/“/g) > count(/”/g) ? '“' : count(/"/g) % 2 === 1 ? '"'
+            : count(/‘/g) > count(/’(?![A-Za-z])/g) ? '‘' : '';
+        text = open + text.slice(cut).trim();
+    }
+    return paragraphPieces(text, el).map(p => ({
+        role: 'narration', text: p.text, direction: p.direction,
+        instruction: p.instruction || '', bracket: !!p.bracket, hard: !!p.hard, soft: !!p.soft
+    }));
+}
+
 function narrationBatches(all, from, maxBatches, graduated, firstText) {
     narrTagsFor(typeof DocumentModel !== 'undefined' ? DocumentModel : null);
     const pieces = [];
@@ -1974,35 +2009,8 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
         if (!text) continue;
         // Read from here: the starting paragraph from the cursor's word, not its top.
         const cut = (i === from && firstText) ? narrationTailStart(text, oneNotation(speakNumbers(String(firstText).trim()))) : -1;
-        let quotes = speakers && speakers[i - first];
-        // No cast on this book, or this paragraph was outside the attributed window.
-        // A bracket beside a quotation is still the narrator's instruction for it.
-        if (!quotes) {
-            const found = narrationQuotes(text);
-            if (found.some(q => (q.instruct || '').trim())) quotes = found;
-        }
-        // A [[tag]] in narration is that narration's, never a quotation's in another sentence:
-        // the quotations are cut out of it, as they are when voiced, whether voiced or not.
-        let split = false;
-        if (doubleTag(text) || leadTag(text)) { if (!quotes) quotes = narrationQuotes(text); split = quotes.length > 0; }
-        if (quotes && (split || quotes.some(q => (q.key && _narrCast[q.key]) || (q.instruct || '').trim()))) {
-            castPieces(text, quotes, cut > 0 ? cut : 0, split).forEach((p, k) => pieces.push(Object.assign({ el: all[i], at: at, id: at * 100 + k }, p)));
-            continue;
-        }
-        if (cut > 0) {
-            // A cut inside a quotation keeps its opening mark, which is not spoken: '"You're late,"
-            // Tom said quietly.' read from "You're" lost it, was no longer a quotation, and lost its cue.
-            const before = text.slice(0, cut);
-            const count = re => (before.match(re) || []).length;
-            const open = count(/“/g) > count(/”/g) ? '“' : count(/"/g) % 2 === 1 ? '"'
-                : count(/‘/g) > count(/’(?![A-Za-z])/g) ? '‘' : '';
-            text = open + text.slice(cut).trim();
-        }
-        paragraphPieces(text, all[i]).forEach((p, k) => pieces.push({
-            el: all[i], at: at, id: at * 100 + k, role: 'narration',
-            text: p.text, direction: p.direction,
-            instruction: p.instruction || '', bracket: !!p.bracket, hard: !!p.hard, soft: !!p.soft
-        }));
+        readingPieces(text, all[i], speakers && speakers[i - first], cut)
+            .forEach((p, k) => pieces.push(Object.assign({ el: all[i], at: at, id: at * 100 + k }, p)));
     }
     if (graduated) {
         const out = graduatedBatches(pieces, maxBatches);
@@ -2293,8 +2301,21 @@ async function narrateSelection(base, sel) {
     const i = sel.el ? all.indexOf(sel.el) : -1;
     // A word from Look up has no paragraph of its own (startReading).
     const at = sel.el ? narrationDocIndex(sel.el, i < 0 ? 0 : i) : 0;
-    const pieces = blockPieces(speakNumbers(sel.text))    // as written but for numbers: see narrationBatches
-        .map((t, k) => ({ el: sel.el, at: at, id: at * 100 + 50 + k, text: t, direction: narrationDirection(t, null) }));
+    // Each line of the selection is a paragraph, read by the same rules as reading through: tags,
+    // cast voices, and in an ePub brackets as the book's text. It used to be sent as written, so
+    // its brackets were read aloud and every quotation went to the narrator (2026-10-10).
+    narrTagsFor(typeof DocumentModel !== 'undefined' ? DocumentModel : null);
+    const lines = String(sel.text || '').split(/\r?\n/).map(l => oneNotation(speakNumbers(l.trim())))
+        .filter(l => /[A-Za-z0-9]/.test(l));
+    let speakers = null;
+    if (Object.keys(_narrCast).length) {
+        const known = knownSpeakers(all);
+        Object.keys(_narrCast).forEach(k => known.add(k));
+        speakers = attributeParagraphs(lines, known);
+    }
+    const pieces = [];
+    lines.forEach((text, j) => readingPieces(text, null, speakers && speakers[j], 0)
+        .forEach(p => pieces.push(Object.assign({ el: sel.el, at: at, id: at * 100 + 50 + pieces.length }, p))));
     const reading = ++_narrationReading;
     _narrationBase = base;
     _narrActive = true;
