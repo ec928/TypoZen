@@ -685,6 +685,7 @@ window.narrationTrialStop = function () {
     if (_trialAudio) { try { _trialAudio.pause(); } catch (e) {} _trialAudio = null; }
 };
 window.narrationTrial = async function (json) {
+    _narrTags = true;   // the reader's own text: tags work, whatever document is open
     window.narrationTrialStop();
     const run = _trialRun;
     try {
@@ -692,7 +693,7 @@ window.narrationTrial = async function (json) {
         if (isPlaying) stopReading();
         const pieces = [];
         String(o.text || '').split(/\r?\n/).map(l => l.trim()).filter(l => /[A-Za-z0-9]/.test(l)).forEach(line => {
-            paragraphPieces(speakNumbers(line), null).forEach(p => pieces.push(p));
+            paragraphPieces(oneNotation(speakNumbers(line)), null).forEach(p => pieces.push(p));
         });
         if (!pieces.length) throw new Error('there is no text to read');
         const items = [];
@@ -783,8 +784,9 @@ function cueInstruction(p, cuesOn, standing) {
         return base + ', ' + words;
     };
     const phrase = cuesOn && dir && !stock ? tagWords(dir) : '';
-    // A single bracket replaces the box and keeps the speech tag; [[tag]] (hard) replaces both.
-    if (p.bracket && own) return { instruction: phrase && !p.hard ? addClause(own, phrase) : own, direction: '' };
+    // A bracket instruction, [tag] or [[tag]], is read exactly as written: it replaces the box and
+    // no cue words are added (Ed, 2026-10-10: one notation, not two to learn).
+    if (p.bracket && own) return { instruction: own, direction: '' };
     if (phrase) {
         // A voiced line is the quotation alone: the tag's words are its instruction. A piece the
         // narrator reads has narration around the quotation, so the words go as a cue, which the
@@ -1058,7 +1060,7 @@ function narrationText(el) {
     // A PDF page's header and footer are not read (narrationBatches skips a paragraph
     // with no text).
     if (!readAloud(el)) return '';
-    return speakNumbers((el && el.innerText || '').trim());
+    return oneNotation(speakNumbers((el && el.innerText || '').trim()));
 }
 
 /**
@@ -1124,9 +1126,49 @@ function quoteRegex(text) {
 }
 
 /** [[tag]] is an instruction, never spoken. The first one in a stretch of text wins. */
+/**
+ * Whether brackets in the text can be instructions. Not in an ePub: nobody can write a tag into
+ * one, so every bracket there is the book's own words -- Alice's "[later editions continued as
+ * follows ...]" was taken as an instruction and never read. Reading and Find characters set it
+ * from the document; Try it, whose text is the reader's own, always honours tags.
+ */
+let _narrTags = true;
+function narrTagsFor(doc) {
+    _narrTags = !(doc && doc.kind === 'epub');
+}
+
+/**
+ * One notation (Ed, 2026-10-10): in text the reader writes, a bracket of their own words means
+ * exactly what [[...]] means, wherever it is -- so it is turned into one before anything reads
+ * the text, and the two cannot behave differently. The models' own tags ([laughing], [sad:9])
+ * stay single, and are performed. In an ePub nothing changes: its brackets are the book's text.
+ */
+function oneNotation(text) {
+    if (!_narrTags) return String(text || '');
+    return String(text || '').replace(/(?<!\[)\[([^\[\]\n]+)\](?!\])/g, (all, inner) =>
+        isModelTag(inner) || !inner.trim() ? all : '[[' + inner + ']]');
+}
+
 function doubleTag(text) {
+    if (!_narrTags) return '';
     const m = /\[\[([^\]\n]+)\]\]/.exec(String(text || ''));
     return m && m[1].trim() ? m[1].trim() : '';
+}
+/**
+ * A single bracket that opens a paragraph whose first sentence has no quotation: that narration's
+ * instruction, as [[tag]] there is -- "[measured and quiet] The door opened." The models' own
+ * tags stay in the text.
+ */
+function leadTag(text) {
+    if (!_narrTags) return '';
+    const m = /^\s*\[([^\[\]\n]+)\](?!\])/.exec(String(text || ''));
+    if (!m || isModelTag(m[1])) return '';
+    // A quotation in that first sentence makes it the quotation's ('[angrily] Tom said, "Go."').
+    if (/[“"‘]/.test(firstSentence(String(text).slice(m[0].length)))) return '';
+    return m[1].trim();
+}
+function stripLeadTag(text) {
+    return leadTag(text) ? String(text).replace(/^\s*\[[^\[\]\n]+\]/, ' ') : String(text || '');
 }
 function stripDoubles(text) {
     return String(text || '').replace(/\[\[[^\]\n]*\]\]/g, ' ')
@@ -1171,8 +1213,8 @@ function carrySpan(pieces) {
  * cue, from "she snapped" and the like, stays with the piece it was found in.
  */
 function paragraphPieces(text, el) {
-    const hard = doubleTag(text);
-    const spoken = padBracketTags(stripDoubles(text)).trim();
+    const hard = doubleTag(text) || leadTag(text);
+    const spoken = padBracketTags(stripDoubles(stripLeadTag(text))).trim();
     if (!/[A-Za-z0-9]/.test(spoken)) return [];
     return carrySpan(blockPieces(spoken)).map(function (t) {
         return { text: t, direction: narrationDirection(t, el || null),
@@ -1460,13 +1502,14 @@ function firstBracket(zoneText, zoneAt, from) {
  * is not this: it stays in the spoken text.
  */
 function lineInstruction(text, start, end, who) {
+    if (!_narrTags) return null;
     if (who) {
         const left = zoneBefore(text, start);
         const atLeft = nameAt(left.text, who);
         const right = zoneAfter(text, end);
         const atRight = nameAt(right.text, who);
-        const byName = atLeft >= 0 ? firstBracket(left.text, left.at, atLeft + who.length)
-            : atRight >= 0 ? firstBracket(right.text, right.at, atRight + who.length) : null;
+        const byName = atLeft >= 0 ? firstFreeBracket(left.text.slice(atLeft + who.length), left.at + atLeft + who.length)
+            : atRight >= 0 ? firstFreeBracket(right.text.slice(atRight + who.length), right.at + atRight + who.length) : null;
         // Else, as with no speaker, a bracket against the quotation is the instruction for whoever
         // reads it, voiced or not: '[Read it angry] "You're late," Tom said' (Ed, 2026-10-10).
         // The models' own tags, [laughing] or [sad], stay in the text there, performed as before.
@@ -1493,7 +1536,21 @@ function lineInstruction(text, start, end, who) {
             return { instruct: inner, hideStart: at, hideEnd: at + raw.length };
         }
     }
-    return null;
+    // Anywhere else in the quote's sentence, outside the quote marks, as [[tag]] is: one rule for
+    // both brackets (Ed, 2026-10-10). Inside the quote marks a bracket stays text ("He [the king]
+    // said"), and the models' own tags are still performed.
+    return firstFreeBracket(left.text, left.at) || firstFreeBracket(right.text, right.at);
+}
+
+/** The first single bracket in a zone that is neither part of a [[tag]] nor one of the models' own tags. */
+function firstFreeBracket(zoneText, zoneAt) {
+    let pos = 0;
+    for (;;) {
+        const b = firstBracket(zoneText, zoneAt, pos);
+        if (!b) return null;
+        if (!isModelTag(b.instruct)) return b;
+        pos = b.hideEnd - zoneAt;
+    }
 }
 
 /** The quotations in a paragraph, each with the name within eight words of it, if any. */
@@ -1627,12 +1684,12 @@ function castScanTexts() {
         && Array.isArray(DocumentModel.blocks) && DocumentModel.blocks.length) {
         return {
             whole: true,
-            texts: DocumentModel.blocks.map(b => String(b && b.raw || '').trim())
+            texts: DocumentModel.blocks.map(b => oneNotation(String(b && b.raw || '').trim()))
         };
     }
     const all = (typeof document !== 'undefined' && document.querySelectorAll)
         ? Array.from(document.querySelectorAll('#editor .block')) : [];
-    return { whole: false, texts: all.map(el => (el.innerText || '').trim()) };
+    return { whole: false, texts: all.map(el => oneNotation((el.innerText || '').trim())) };
 }
 
 /**
@@ -1640,6 +1697,7 @@ function castScanTexts() {
  * Sent to the host as host_narrator_cast. `whole` says whether this was the full book.
  */
 window.narrationCastScan = function () {
+    narrTagsFor(typeof DocumentModel !== 'undefined' ? DocumentModel : null);
     const src = castScanTexts();
     const known = knownSpeakers(src.texts);
     const counts = {}, names = {};
@@ -1728,10 +1786,14 @@ function castPieces(text, quotes, from, splitAll) {
     // That clip is told the tag. The narration around it keeps the narrator's own
     // instruction, and the tag is still not spoken. A tag in a sentence of its own stays here.
     let prevTook = '';
+    let first = true;     // the first stretch is where a paragraph-opening [tag] can be
     const flush = (quoteTook) => {
-        const raw = narr;
+        let raw = narr;
         narr = '';
-        const found = doubleTag(raw);
+        const lead = first && from === 0 ? leadTag(raw) : '';
+        first = false;
+        if (lead) raw = stripLeadTag(raw);
+        const found = doubleTag(raw) || lead;
         const hard = found && (found === quoteTook || found === prevTook) ? '' : found;
         const spoken = padBracketTags(stripDoubles(raw)).trim();
         if (!/[A-Za-z0-9]/.test(spoken)) return;
@@ -1812,6 +1874,7 @@ function narrationTailStart(full, part) {
  * as if the cursor had been at its start.
  */
 function narrationBatches(all, from, maxBatches, graduated, firstText) {
+    narrTagsFor(typeof DocumentModel !== 'undefined' ? DocumentModel : null);
     const pieces = [];
     const limit = maxBatches * NARRATION_BATCH;
     // Speakers, only when this book has a cast. Attributed from a few paragraphs before the
@@ -1835,7 +1898,7 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
         let text = narrationText(all[i]);
         if (!text) continue;
         // Read from here: the starting paragraph from the cursor's word, not its top.
-        const cut = (i === from && firstText) ? narrationTailStart(text, speakNumbers(String(firstText).trim())) : -1;
+        const cut = (i === from && firstText) ? narrationTailStart(text, oneNotation(speakNumbers(String(firstText).trim()))) : -1;
         let quotes = speakers && speakers[i - first];
         // No cast on this book, or this paragraph was outside the attributed window.
         // A bracket beside a quotation is still the narrator's instruction for it.
@@ -1846,7 +1909,7 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
         // A [[tag]] in narration is that narration's, never a quotation's in another sentence:
         // the quotations are cut out of it, as they are when voiced, whether voiced or not.
         let split = false;
-        if (doubleTag(text)) { if (!quotes) quotes = narrationQuotes(text); split = quotes.length > 0; }
+        if (doubleTag(text) || leadTag(text)) { if (!quotes) quotes = narrationQuotes(text); split = quotes.length > 0; }
         if (quotes && (split || quotes.some(q => (q.key && _narrCast[q.key]) || (q.instruct || '').trim()))) {
             castPieces(text, quotes, cut > 0 ? cut : 0, split).forEach((p, k) => pieces.push(Object.assign({ el: all[i], at: at, id: at * 100 + k }, p)));
             continue;

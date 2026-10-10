@@ -54,9 +54,20 @@ const api = new Function('document', 'window', 'box', [
     '  narrationCastScan: window.narrationCastScan,',
     '  setCast: function (c) { _narrCast = c; },',
     '  setCastSay: function (c) { _narrCastSay = c || {}; },',
-    '  setModel: function (m) { DocumentModel = m; }',
+    '  setModel: function (m) { DocumentModel = m; },',
+    '  tagsFor: function (m) { narrTagsFor(m); }',
     '};'
 ].join('\n'))(document, window, box);
+// cueInstruction (09-speech.js), for cases outside the speech-tag section.
+const cueOf = (() => {
+    const at = src.indexOf('function cueInstruction');
+    let i = src.indexOf('{', at), depth = 0, end = -1;
+    for (; i < src.length; i++) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}' && --depth === 0) { end = i; break; }
+    }
+    return new Function(src.slice(at, end + 1) + '\nreturn cueInstruction;')();
+})();
 
 let passed = 0, failed = 0;
 function check(name, ok, detail) {
@@ -273,6 +284,42 @@ console.log('--- the subject of an action beat speaks; a listener is never the p
     api.setCast({ anna: 'qwen-ryan' });
 }
 
+console.log('--- one notation: [tag] and [[tag]] do the same in every place the guide gives');
+{
+    const told = (text, cast) => {
+        api.setCast(cast);
+        const el = { innerText: text, getAttribute: () => null };
+        return api.narrationBatches([el], 0, 1)[0].map(p => [p.voice || 'narrator', p.text, cueOf(p, true, '').instruction]);
+    };
+    const places = [
+        'B "Go," Tom said quietly.',
+        '"Go," Tom B said quietly.',
+        '"Go," Tom said quietly B.',
+        'Tom B said, "Go."',
+        'B The door opened.',
+        'B The door opened. "Go," Tom said.',
+        'B Tom said, "Go."',
+        'Tom said B, "Go."',
+        '"Go," B Tom said quietly.',
+    ];
+    for (const cast of [{ tom: 'v-tom' }, {}]) {
+        for (const line of places) {
+            const one = told(line.replace('B', '[angrily]'), cast);
+            const two = told(line.replace('B', '[[angrily]]'), cast);
+            eq((cast.tom ? 'voiced: ' : 'no cast: ') + line.replace('B', '[x]') + ' -- [x] and [[x]] agree', one, two);
+        }
+    }
+    const lead = told('[measured and quiet] The door opened. "Go," Tom said.', { tom: 'v-tom' });
+    eq('a single bracket opening a paragraph is that narration\'s, not the quote\'s',
+        lead.map(r => r[2]), ['measured and quiet', '', '']);
+    check('and it is not spoken', lead.every(r => r[1].indexOf('[') < 0), JSON.stringify(lead));
+    eq('a built-in tag opening a paragraph is still performed',
+        told('[sighing] It was over.', {}).map(r => [r[1], r[2]]), [['[sighing] It was over.', '']]);
+    eq('a bracket against a quote at the start of a paragraph is the quote\'s',
+        told('[angrily] "Go," Tom said.', { tom: 'v-tom' }).map(r => r[2]), ['angrily', '']);
+    api.setCast({ anna: 'qwen-ryan' });
+}
+
 console.log('--- British single quotes are dialogue too');
 {
     api.setCast({ tom: 'v-tom', anna: 'v-anna' });
@@ -323,18 +370,22 @@ api.setModel({
     const msg = JSON.parse(posted[0].slice('host_narrator_cast:'.length));
     eq('epub scan is not the whole book', msg.whole, false);
 }
+// Brackets in an ePub are the book's own words: nobody can write a tag into one.
+{
+    const el = t => ({ innerText: t, getAttribute: () => null });
+    api.setCast({ tom: 'v-tom' });
+    const spoken = t => api.narrationBatches([el(t)], 0, 1)[0].map(p => p.text).join(' | ');
+    eq('in an ePub a bracket against a quote is read, not taken as an instruction',
+        spoken('[later editions continued] "Go," Tom said.').indexOf('[later editions continued]') >= 0, true);
+    api.setModel({ kind: 'markdown', blocks: [] });
+    eq('in a text or Markdown file the same bracket is the line\'s instruction',
+        api.narrationBatches([el('[later editions continued] "Go," Tom said.')], 0, 1)[0].map(p => p.instruction || ''),
+        ['later editions continued', '']);
+    api.setCast({ anna: 'qwen-ryan' });
+}
+api.tagsFor(null);   // the suites below call the splitter directly, as from a text file
 
 console.log('--- a bracket to the right of a character replaces that character\'s instruction');
-// cueInstruction (09-speech.js), for cases outside the speech-tag section.
-const cueOf = (() => {
-    const at = src.indexOf('function cueInstruction');
-    let i = src.indexOf('{', at), depth = 0, end = -1;
-    for (; i < src.length; i++) {
-        if (src[i] === '{') depth++;
-        else if (src[i] === '}' && --depth === 0) { end = i; break; }
-    }
-    return new Function(src.slice(at, end + 1) + '\nreturn cueInstruction;')();
-})();
 function lineOf(text) {
     return api.castPieces(text, api.narrationQuotes(text), 0);
 }
@@ -561,9 +612,9 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
             [['narration', '"You are late,"', 'Read it angry'], ['narration', 'Tom said quietly.', '']]);
         eq('unvoiced speaker: and after it',
             told('"You are late," [Read it angry] Tom said quietly.')[0], ['narration', '"You are late,"', 'Read it angry']);
-        eq('unvoiced speaker: the bracket keeps the speech tag, as a single bracket does',
+        eq('unvoiced speaker: the bracket is read exactly as written',
             api.castPieces('[Read it angry] "You are late," Tom said quietly.', api.narrationQuotes('[Read it angry] "You are late," Tom said quietly.'), 0)
-                .filter(p => p.text.indexOf('late') >= 0).map(p => cueOf(p, true, '').instruction), ['Read it angry, quietly']);
+                .filter(p => p.text.indexOf('late') >= 0).map(p => cueOf(p, true, '').instruction), ['Read it angry']);
         {
             const el = { innerText: '[[measured]] The door opened. "You are late," Tom said quietly.', getAttribute: function () { return null; } };
             api.setCast({});
@@ -646,9 +697,9 @@ console.log('--- a speech tag is added to the standing instruction');
     eq('cues off keeps the default',
         cueInstruction({ role: 'dialogue', instruction: whisper, direction: 'sadly said' }, false).instruction,
         whisper);
-    eq('a single bracket replaces the default and keeps the speech tag',
+    eq('a single bracket is read exactly as written, as a double one is',
         cueInstruction({ role: 'dialogue', instruction: 'shouts loudly', direction: 'sadly said', bracket: true }, true).instruction,
-        'shouts loudly, sadly');
+        'shouts loudly');
     eq('a double bracket replaces the default and the speech tag',
         cueInstruction({ role: 'dialogue', instruction: 'shouts loudly', direction: 'sadly said', bracket: true, hard: true }, true).instruction,
         'shouts loudly');

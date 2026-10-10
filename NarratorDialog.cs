@@ -318,7 +318,7 @@ namespace TypoZen
             {
                 var strengthLabel = new TextBlock { Text = "Emotion strength", Width = 120, VerticalAlignment = VerticalAlignment.Center };
                 breezePanel.Margin = new Thickness(22, 4, 0, 0);
-                breezePanel.ToolTip = "How hard Breeze follows an instruction: an emotion cue, a bracket beside a speaker, a [[double bracket]] "
+                breezePanel.ToolTip = "How hard Breeze follows an instruction: an emotion cue, your own words in square brackets "
                     + "or a mood tag such as [sad]. 1 barely; 4 is Breeze's own recommendation; higher pushes harder and may start to sound strained. "
                     + "A tag's own number, [sad:9], wins for its line; a cast character has their own on Cast for this book. "
                     + "Narration with no instruction is not affected. Above 1, those lines take about half as long again to prepare.";
