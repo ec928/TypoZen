@@ -751,22 +751,45 @@ window.narrationTrialSelection = function () {
 
 /** The speech tag's words are added to the standing instruction when cues are on.
  *  A bracket, including [[tag]], still replaces that instruction. "said", "asked"
- *  and "told" are not added. A stock punctuation cue stays a direction, so the
- *  cue wording still wraps it. */
+ *  and "told" are not added, nor who was spoken to ("told him angrily" is "angrily",
+ *  "said to her brother" is nothing), nor a word that is no instruction on its own
+ *  ("again", "then"). A stock punctuation cue stays a direction, so the cue wording
+ *  still wraps it. The instruction is joined as a clause: "Read it plainly." and
+ *  "quietly" make "Read it plainly, quietly", never "plainly., quietly". */
 function cueInstruction(p, cuesOn, standing) {
     const own = (p.instruction || '').trim();
     const dir = (p.direction || '').trim();
     const stock = dir === 'thought' || dir === 'emphatic' || dir === 'breaking off';
-    const phrase = cuesOn && dir && !stock
-        ? dir.replace(/\b(say|says|said|ask|asks|asked|tell|tells|told)\b/ig, ' ')
-            .replace(/\s+/g, ' ').replace(/^[\s,:;.]+|[\s,:;.]+$/g, '').trim()
-        : '';
+    const filler = /^(?:then|and|but|again|too|also|now|so|finally)$/i;
+    const tagWords = s => {
+        s = s.replace(/[()]/g, ' ').replace(new RegExp('\\b(?:say|says|said|ask|asks|asked|tell|tells|told)\\b' +
+            '(?:\\s+(?:him|her|them|me|us|you)\\b)?' +
+            '(?:\\s+to\\s+(?:(?:the|a|an|his|her|their|my|your|our|its)\\s+)?[A-Za-z\'’-]+)?', 'ig'), ' ');
+        let words = s.replace(/\s+/g, ' ').replace(/^[\s,:;.]+|[\s,:;.]+$/g, '').trim();
+        for (let was = ''; was !== words;) {
+            was = words;
+            const parts = words.split(/([\s,;:]+)/);
+            if (parts.length && filler.test(parts[0])) parts.splice(0, 2);
+            if (parts.length && filler.test(parts[parts.length - 1])) parts.splice(-2, 2);
+            words = parts.join('').replace(/^[\s,:;.]+|[\s,:;.]+$/g, '').trim();
+        }
+        return words;
+    };
+    const addClause = (base, words) => {
+        base = String(base || '').trim().replace(/[\s,;:]+$/, '');
+        if (!base) return words;
+        if (/(^|[^.])\.$/.test(base)) base = base.slice(0, -1);           // one full stop, not an ellipsis
+        if (/[.!?…]["'”’)\]]*$/.test(base)) return base + ' ' + words.charAt(0).toUpperCase() + words.slice(1);
+        return base + ', ' + words;
+    };
+    const phrase = cuesOn && dir && !stock ? tagWords(dir) : '';
     if (p.bracket && own) return { instruction: own, direction: '' };
     if (phrase) {
         const base = p.role === 'dialogue' ? own : (own || String(standing || '').trim());
-        return { instruction: base ? base.replace(/[\s,;]+$/, '') + ', ' + phrase : phrase, direction: '' };
+        return { instruction: addClause(base, phrase), direction: '' };
     }
-    return { instruction: own, direction: cuesOn ? dir : '' };
+    // A tag with nothing left to say ("asked her again") is no cue; only a stock one is sent.
+    return { instruction: own, direction: cuesOn && stock ? dir : '' };
 }
 
 /**
@@ -1154,6 +1177,10 @@ function cuePhrase(clause, who) {
     if (who) String(who).split(/\s+/).forEach(function (w) { if (w) drop.push(w); });
     if (words.length && (looksLikeName(words[0]) || isPronoun(words[0]))) drop.push(words[0]);
     if (words.length > 1 && (looksLikeName(words[words.length - 1]) || isPronoun(words[words.length - 1]))) drop.push(words[words.length - 1]);
+    // Right after the verb: who speaks ('said Tom, turning away') or who is spoken to.
+    for (let i = 1; i < words.length; i++) {
+        if (SPEECH_VERB.test(words[i - 1]) && (looksLikeName(words[i]) || isPronoun(words[i]))) drop.push(words[i]);
+    }
     drop.forEach(function (w) {
         s = s.replace(new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'ig'), ' ');
     });
@@ -1575,14 +1602,16 @@ function castPieces(text, quotes, from) {
             role: 'narration', text: p, direction: dir, instruction: instruction || '', bracket: !!instruction
         }));
     };
-    // quoteTook: the [[tag]] already given to the quotation this lead-in belongs to.
-    // That clip is told the tag. The lead-in keeps the narrator's own instruction,
-    // and the tag is still not spoken. A tag in an earlier sentence stays here.
+    // quoteTook: the [[tag]] already given to the quotation this lead-in belongs to;
+    // prevTook: the one the quotation before it took ('"Wait," Anna said [[tag]].').
+    // That clip is told the tag. The narration around it keeps the narrator's own
+    // instruction, and the tag is still not spoken. A tag in a sentence of its own stays here.
+    let prevTook = '';
     const flush = (quoteTook) => {
         const raw = narr;
         narr = '';
         const found = doubleTag(raw);
-        const hard = quoteTook && found === quoteTook ? '' : found;
+        const hard = found && (found === quoteTook || found === prevTook) ? '' : found;
         const spoken = padBracketTags(stripDoubles(raw)).trim();
         if (!/[A-Za-z0-9]/.test(spoken)) return;
         carrySpan(blockPieces(spoken)).forEach(p => out.push({
@@ -1603,6 +1632,7 @@ function castPieces(text, quotes, from) {
                 if (voice) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override);
                 else tellNarrator(spoken, quoteDirection(q), override);
             }
+            prevTook = doubleTag(text.slice(q.start, q.end + zoneAfter(text, q.end).text.length));
             cursor = q.end;
             continue;
         }
@@ -1618,7 +1648,9 @@ function castPieces(text, quotes, from) {
         narr = narr.replace(/,\s*$/, '.');
         const beforeZone = zoneBefore(text, q.start);
         const afterZone = zoneAfter(text, q.end);
-        flush(doubleTag(text.slice(beforeZone.at, afterZone.at + afterZone.text.length)));
+        const took = doubleTag(text.slice(beforeZone.at, afterZone.at + afterZone.text.length));
+        flush(took);
+        prevTook = took;
         if (voice) {
             const spoken = padBracketTags(stripDoubles((peel ? lead.raw + ' ' : '') + q.inner.trim())).trim();
             if (/[A-Za-z0-9]/.test(spoken)) talk(spoken, voice, quoteDirection(q), q.key, override || castSay(q.key), !!override);
@@ -1693,7 +1725,14 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
             castPieces(text, quotes, cut > 0 ? cut : 0).forEach((p, k) => pieces.push(Object.assign({ el: all[i], at: at, id: at * 100 + k }, p)));
             continue;
         }
-        if (cut > 0) text = text.slice(cut).trim();
+        if (cut > 0) {
+            // A cut inside a quotation keeps its opening mark, which is not spoken: '"You're late,"
+            // Tom said quietly.' read from "You're" lost it, was no longer a quotation, and lost its cue.
+            const before = text.slice(0, cut);
+            const count = re => (before.match(re) || []).length;
+            const open = count(/“/g) > count(/”/g) ? '“' : count(/"/g) % 2 === 1 ? '"' : '';
+            text = open + text.slice(cut).trim();
+        }
         paragraphPieces(text, all[i]).forEach((p, k) => pieces.push({
             el: all[i], at: at, id: at * 100 + k, role: 'narration',
             text: p.text, direction: p.direction,

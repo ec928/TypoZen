@@ -542,9 +542,63 @@ console.log('--- a speech tag is added to the standing instruction');
     eq('the narrator default keeps the speech tag too',
         cueInstruction({ role: 'narration', direction: 'sadly said' }, true, 'measured and unhurried').instruction,
         'measured and unhurried, sadly');
+
+    // What a voiced line, and the narration beside it, are told.
+    api.setCast({ anna: 'qwen-ryan', tom: 'qwen-aiden' });
+    const told = (text, box) => lineOf(text).map(p => [p.role, cueInstruction(p, true, box || '').instruction]);
+    const plain = (text, box) => api.paragraphPieces(text, null).map(p => cueInstruction(Object.assign({ role: 'narration' }, p), true, box).instruction);
+    api.setCastSay({ tom: 'Speak softly.', anna: 'Speak up!' });
+    eq('a box ending in a full stop takes the tag as a clause',
+        told('"You are late," Tom said quietly.')[0], ['dialogue', 'Speak softly, quietly']);
+    eq('a box ending in ! keeps it, and the tag starts a new sentence',
+        told('"Go," Anna snapped.')[0], ['dialogue', 'Speak up! Snapped']);
+    eq('the narrator box is joined the same way',
+        plain('"You are late," Tom said quietly.', 'Read it plainly.'), ['Read it plainly, quietly']);
+    check('an ellipsis is not taken for a full stop',
+        plain('"You are late," Tom said quietly.', 'Slowly...')[0] === 'Slowly... Quietly', plain('"You are late," Tom said quietly.', 'Slowly...')[0]);
+    api.setCastSay({});
+    eq('who was spoken to is not an instruction: told him angrily',
+        plain('"Go," she told him angrily.', ''), ['angrily']);
+    eq('said to her brother leaves nothing',
+        told('"Sit down," Anna said to her brother.').map(r => r[1]), ['', '']);
+    eq('asked her again leaves nothing',
+        told('Tom asked her again: "Where were you?"').filter(r => r[0] === 'dialogue').map(r => r[1]), ['']);
+    eq('a trailing then is not an instruction',
+        told('"Come here," Tom said softly; then, "Now."')[0], ['dialogue', 'softly']);
+    eq('parentheses are not sent', told('"Leave," Anna said (coldly).')[0], ['dialogue', 'coldly']);
+    eq('the name after the verb is not sent',
+        plain('"Fine," said Tom, turning away.', ''), ['turning away']);
+    eq('a tag with nothing left is not sent as a cue either',
+        cueInstruction({ role: 'dialogue', direction: 'asked her again' }, true).direction, '');
+    eq('a stock cue is still sent', cueInstruction({ role: 'dialogue', direction: 'emphatic' }, true).direction, 'emphatic');
+    eq('his voice breaking stays', plain('"No," he said, his voice breaking.', ''), ['his voice breaking']);
+
+    // [[tag]] after the speech tag is that quotation's, not the narration's too.
+    {
+        const pieces = told('"Wait—" Anna said [[Read it plainly. Speak softly]].');
+        eq('a double bracket after the speech tag is the line\'s only', pieces,
+            [['dialogue', 'Read it plainly. Speak softly'], ['narration', '']]);
+        const two = told('"Wait—" Anna said [[hushed]]. "Go," Tom said.');
+        eq('nor the narration before the next quotation', two.filter(r => r[0] === 'narration').map(r => r[1]), ['', '']);
+        eq('a double bracket in a sentence of its own stays the narration\'s',
+            told('The door opened [[measured]]. "Go," Tom said.').filter(r => r[0] === 'narration').map(r => r[1]), ['measured', '']);
+    }
+
+    // Read from here inside a quotation, nobody voiced: the cue survives.
+    {
+        api.setCast({});
+        const el = { innerText: '"You are late," Tom said quietly.', getAttribute: function () { return null; } };
+        const fromWord = api.narrationBatches([el], 0, 1, false, 'You are late," Tom said quietly.')[0];
+        eq('read from the first word inside a quotation keeps the cue',
+            fromWord.map(p => cueInstruction(p, true, '').instruction), ['quietly']);
+        eq('and starts at that word, with its opening mark', fromWord.map(p => p.text), ['"You are late," Tom said quietly.']);
+        const fromTom = api.narrationBatches([el], 0, 1, false, 'Tom said quietly.')[0];
+        eq('read from after the quotation starts there', fromTom.map(p => p.text), ['Tom said quietly.']);
+    }
+    api.setCast({ anna: 'qwen-ryan' });
 }
 check('cues off sends no direction',
-    /direction: cuesOn \? dir : ''/.test(src));
+    /direction: cuesOn && stock \? dir : ''/.test(src));
 check('reading and Try it both pass the standing instruction',
     /cueInstruction\(p, _narrDirect, _narrInstruction\)/.test(src)
     && /cueInstruction\(p, !!o\.direct, o\.instruction\)/.test(src));
