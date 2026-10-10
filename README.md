@@ -391,7 +391,7 @@ To determine how tags affect delivery, TypoZen uses a **strict positional logic*
 1. **In-Quote Instructions `[ ]`**: Apply exclusively to the quoted text. They take effect from their exact position until the end of the quote or until a new instruction inside the quote is hit.
 2. **Narrator Instructions `[ ]`**: Apply exclusively outside of quotes. They take effect from their exact position until the end of the paragraph block or until a new outside-quote instruction is hit.
 3. **Double Brackets `[[ ]]`**: Act as a hard override, superseding any global instructions or prior local tags for that domain. Single brackets simply append to the existing global instruction.
-4. **Performative Audio Cues `( )`**: Native Breeze sound events in parentheses, such as `(giggles)` or `(cough)`, are bypassed by TypoZen and sent directly to Breeze to perform inline as non-speech audio. The words that work are the built-in sounds below: `(laughing)` works, `(laughs)` does not.
+4. **Performative Audio Cues `( )`**: Native Breeze sound events in parentheses, such as `(giggles)` or `(cough)`, are bypassed by TypoZen and sent directly to Breeze to perform inline as non-speech audio. The built-in sounds below work this way, and so does `(sigh)`; not every word does: `(laughs)` does not.
 
 Because tags apply exactly from where they are placed, placing a tag in the middle of a sentence will cleanly cut the audio piece there and shift the delivery going forward. 
 
