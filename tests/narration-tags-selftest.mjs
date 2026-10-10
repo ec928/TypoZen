@@ -273,6 +273,21 @@ console.log('--- the subject of an action beat speaks; a listener is never the p
     api.setCast({ anna: 'qwen-ryan' });
 }
 
+console.log('--- British single quotes are dialogue too');
+{
+    api.setCast({ tom: 'v-tom', anna: 'v-anna' });
+    const lines = text => api.castPieces(text, api.narrationQuotes(text), 0).map(p => [p.voice || 'narrator', p.text]);
+    eq('a single-quoted line goes to its speaker', lines('‘We have to go,’ Tom said quietly.'),
+        [['v-tom', 'We have to go,'], ['narrator', 'Tom said quietly.']]);
+    eq('an apostrophe does not end the quotation', api.narrationQuotes('‘I know,’ Anna snapped. ‘It’s Friday.’').map(q => q.inner),
+        ['I know,', 'It’s Friday.']);
+    eq('the narrator gets the cue from a single-quoted tag',
+        api.paragraphPieces('The storm raged. ‘Help,’ she whispered.', null).map(p => p.direction), ['whispered']);
+    eq('singles inside double-quoted dialogue stay part of it',
+        api.narrationQuotes('"He said ‘no’ to me," Anna said.').map(q => q.inner), ['He said ‘no’ to me,']);
+    api.setCast({ anna: 'qwen-ryan' });
+}
+
 console.log('--- Find characters reads the whole markdown or text file');
 document.blocks = [
     { innerText: '"Nope," Zara said.' },

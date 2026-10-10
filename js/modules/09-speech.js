@@ -1109,6 +1109,19 @@ function blankBrackets(text) {
     return String(text || '').replace(/\[\[[^\]\n]*\]\]|\[[^\]\n]*\]/g, m => ' '.repeat(m.length));
 }
 
+/**
+ * The quotations of a paragraph, as a fresh global regex. Double quotes, straight or curly; a
+ * paragraph with none uses single curly quotes, as British editions do ('‘We have to go,’ Tom
+ * said.' -- Stephen Baxter's Xeelee books have 28,000 of them and no double ones). A ’ followed
+ * by a letter is an apostrophe ("It’s"), not the quotation's end. Singles inside a paragraph
+ * with double quotes are quotations within dialogue, and stay part of it.
+ */
+const DOUBLE_QUOTE = /[“"][^”"]+[”"]/;
+function quoteRegex(text) {
+    return DOUBLE_QUOTE.test(blankBrackets(text)) ? /[“"]([^”"]+)[”"]/g
+        : /‘((?:[^‘’\n]|’(?=[A-Za-z]))+)’(?![A-Za-z])/g;
+}
+
 /** [[tag]] is an instruction, never spoken. The first one in a stretch of text wins. */
 function doubleTag(text) {
     const m = /\[\[([^\]\n]+)\]\]/.exec(String(text || ''));
@@ -1213,8 +1226,8 @@ const SPEECH_TAG = /^\s*(\S+\s+){0,3}?(said|asked|replied|protested|continued|be
  */
 function quoteCueTag(text, index, length) {
     text = blankBrackets(text);
-    const before = text.slice(Math.max(0, index - 80), index).split(/[.!?…”"]\s/).pop() || '';
-    const after = text.slice(index + length, index + length + 80).split(/[.!?…“"]/)[0] || '';
+    const before = text.slice(Math.max(0, index - 80), index).split(/[.!?…”"’]\s/).pop() || '';
+    const after = text.slice(index + length, index + length + 80).split(/[.!?…“"‘]/)[0] || '';
     const parts = [before];
     if (/^\s*[a-z]/.test(after) || SPEECH_TAG.test(after)) parts.push(after);
     return parts.join(' ');
@@ -1223,7 +1236,7 @@ function quoteCueTag(text, index, length) {
 function narrationDirection(text, el) {
     // Quote marks inside a bracket ([[say "hush" softly]]) do not make a quotation.
     const plain = blankBrackets(text);
-    const quotes = plain.match(/[“"][^”"]+[”"]/g) || [];
+    const quotes = plain.match(quoteRegex(plain)) || [];
     if (!quotes.length) {
         // Mostly italic and no dialogue: a character's thought, in most novels.
         try {
@@ -1242,12 +1255,12 @@ function narrationDirection(text, el) {
     // leads in with a comma or colon. The next sentence is not a tag -- '"Hmm." She relaxed
     // and was quietly snoring' is not a soft line.
     const tags = [];
-    const re = /[“"][^”"]+[”"]/g;
+    const re = quoteRegex(plain);
     let m;
     while ((m = re.exec(plain))) {
-        const before = plain.slice(Math.max(0, m.index - 60), m.index).split(/[.!?…”"]\s/).pop();
+        const before = plain.slice(Math.max(0, m.index - 60), m.index).split(/[.!?…”"’]\s/).pop();
         if (/[,:]\s*$/.test(before)) tags.push(before);
-        const after = plain.slice(m.index + m[0].length, m.index + m[0].length + 60).split(/[.!?…“"]/)[0];
+        const after = plain.slice(m.index + m[0].length, m.index + m[0].length + 60).split(/[.!?…“"‘]/)[0];
         if (/^\s*[a-z]/.test(after) || SPEECH_TAG.test(after)) tags.push(after);
     }
     const phrases = [];
@@ -1258,7 +1271,7 @@ function narrationDirection(text, el) {
     if (phrases.length) return phrases.join(', ');
     const spoken = quotes.join(' ');
     if (/!/.test(spoken)) return 'emphatic';
-    if (/(—|–|\.\.\.|…)\s*[”"]/.test(spoken)) return 'breaking off';
+    if (/(—|–|\.\.\.|…)\s*[”"’]/.test(spoken)) return 'breaking off';
     return '';
 }
 
@@ -1485,7 +1498,7 @@ function lineInstruction(text, start, end, who) {
 /** The quotations in a paragraph, each with the name within eight words of it, if any. */
 function narrationQuotes(text) {
     const out = [];
-    const re = /[“"]([^”"]+)[”"]/g;
+    const re = quoteRegex(text);
     // Found with brackets blanked: quote marks inside one ([[say "hush" softly]]) are part of
     // the instruction, not a quotation. The words come from the text, brackets and all.
     const plain = blankBrackets(text);
@@ -1565,7 +1578,7 @@ function attributeParagraphs(texts, known) {
     for (const text of texts) {
         const qs = narrationQuotes(text);
         if (!qs.length) { result.push(qs); recent.length = 0; continue; }
-        const outside = blankBrackets(text).replace(/[“"][^”"]+[”"]/g, ' ');
+        const outside = blankBrackets(text).replace(quoteRegex(text), ' ');
         const named = new Set((outside.match(/[A-Z][\w’'-]+/g) || []).map(w => castKey(speakerKey(w), known)).filter(k => known.has(k)));
         const explicit = new Set(qs.filter(q => q.key).map(q => q.key));
         for (const q of qs) {
@@ -1596,7 +1609,7 @@ function knownSpeakers(all) {
     const known = new Set();
     for (const el of all) {
         const t = blockPlain(el);
-        if (!/[“"]/.test(t)) continue;
+        if (!/[“"‘]/.test(t)) continue;
         for (const q of narrationQuotes(t)) if (q.key) known.add(q.key);
     }
     return known;
@@ -1842,7 +1855,8 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
             // Tom said quietly.' read from "You're" lost it, was no longer a quotation, and lost its cue.
             const before = text.slice(0, cut);
             const count = re => (before.match(re) || []).length;
-            const open = count(/“/g) > count(/”/g) ? '“' : count(/"/g) % 2 === 1 ? '"' : '';
+            const open = count(/“/g) > count(/”/g) ? '“' : count(/"/g) % 2 === 1 ? '"'
+                : count(/‘/g) > count(/’(?![A-Za-z])/g) ? '‘' : '';
             text = open + text.slice(cut).trim();
         }
         paragraphPieces(text, all[i]).forEach((p, k) => pieces.push({
