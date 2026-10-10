@@ -6004,13 +6004,21 @@ namespace TypoZen
             RebuildRecentFilesMenu();
         }
 
+        private MenuItem _mRecentEnabled;
+
         private void RebuildRecentFilesMenu()
         {
             if (_mRecentMenu == null) return;
+            // Keep recent files list lives at the foot of this menu, beside the list it governs
+            // (Ed, 2026-10-10; it was in Privacy). It is the XAML item, kept across rebuilds so
+            // its name, binding and Privacy Mode's disabling still find it, and shown when the
+            // list is empty too: that is when it is needed to turn the list back on.
+            if (_mRecentEnabled == null) _mRecentEnabled = FindElement("mRecentEnabled") as MenuItem;
             _mRecentMenu.Items.Clear();
             if (_recentFiles.Count == 0)
             {
                 _mRecentMenu.Items.Add(new MenuItem { Header = "(none)", IsEnabled = false });
+                if (_mRecentEnabled != null) { _mRecentMenu.Items.Add(new Separator()); _mRecentMenu.Items.Add(_mRecentEnabled); }
                 return;
             }
             for (int i = 0; i < _recentFiles.Count; i++)
@@ -6071,6 +6079,7 @@ namespace TypoZen
                 RebuildRecentFilesMenu();
             };
             _mRecentMenu.Items.Add(clearItem);
+            if (_mRecentEnabled != null) _mRecentMenu.Items.Add(_mRecentEnabled);
         }
 
         private void SaveWindowState()

@@ -426,6 +426,9 @@
                                       ToolTip="Open this file in whatever Windows uses for it -- for a PDF, your usual PDF reader"/>
                             <MenuItem x:Name="mRecentMenu" Header="Open _Recent">
                                 <MenuItem Header="(none)" IsEnabled="False"/>
+                                <Separator/>
+                                <MenuItem x:Name="mRecentEnabled" Header="_Keep recent files list" IsCheckable="True" IsChecked="True"
+                                          ToolTip="Off: TypoZen stops listing the files you open, and forgets the list. Privacy Mode turns it off too."/>
                             </MenuItem>
                             <Separator/>
                             <MenuItem x:Name="mSave" Header="_Save" InputGestureText="Ctrl+S"/>
@@ -498,7 +501,6 @@
                                           ToolTip="Write nothing that names a document: no session, no reading positions, no bookmarks, no recent files, no autosave"/>
                                 <Separator/>
                                 <MenuItem x:Name="mSessionRestoreContent" Header="Remember _unsaved documents between sessions" IsCheckable="True" IsChecked="False"/>
-                                <MenuItem x:Name="mRecentEnabled" Header="Keep _recent files list" IsCheckable="True" IsChecked="True"/>
                                 <Separator/>
                                 <MenuItem x:Name="mClearData" Header="_Clear Stored Data..."/>
                             </MenuItem>
