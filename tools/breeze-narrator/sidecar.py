@@ -326,6 +326,7 @@ class Narrator(object):
             self.ready = True
             log('model ready in %.1fs (%s, %s, GPU %.2f GiB reserved)'
                 % (time.time() - t, MODEL_ID, self.mode, torch.cuda.memory_reserved() / 2 ** 30))
+            self._repair_samples()
         except Exception as e:
             import traceback
             self.load_error = (str(e).splitlines() or [type(e).__name__])[0][:200]
@@ -369,6 +370,23 @@ class Narrator(object):
             h.update(f.read())
         h.update(b'\x00' + transcript.encode('utf-8'))
         return h.hexdigest()
+
+    def _repair_samples(self):
+        """Voices kept while Keep left the design recording as the sample (2026-10-10): given the
+        sample line once, a few seconds each. Never stops the narrator starting."""
+        try:
+            for vid in sorted(os.listdir(self.voices_dir)):
+                d = os.path.join(self.voices_dir, vid)
+                if vid.startswith('_') or not os.path.isfile(os.path.join(d, 'reference.wav')):
+                    continue
+                try:
+                    with self.lock:
+                        if self._sample_line(d):
+                            log('gave voice %s the sample line' % vid)
+                except Exception as e:
+                    log('could not give voice %s the sample line: %s' % (vid, e))
+        except Exception:
+            pass
 
     def reload_voices(self):
         """Built-in, then Qwen's saved voices (read-only), then this extension's own."""
@@ -430,10 +448,10 @@ class Narrator(object):
         return vid
 
     def _candidate(self, cid, reference_audio, transcript, meta, style='', preview_render=True):
-        """A voice not yet kept: its recording, its words, and what Play plays. A designed voice plays its
-        own recording -- the same model made it, so reading PREVIEW_TEXT in it again only doubled the
-        wait (Ed, 2026-10-10). A clone plays PREVIEW_TEXT in the copied voice: that is how a clone is
-        judged."""
+        """A voice not yet kept: its recording, its words, and what Play plays. A designed candidate
+        plays its own recording -- reading PREVIEW_TEXT in each one too doubled the wait (Ed,
+        2026-10-10); the voice kept gets PREVIEW_TEXT then (_sample_line). A clone plays PREVIEW_TEXT in
+        the copied voice: that is how a clone is judged."""
         import shutil
         import soundfile as sf
         d = os.path.join(self.voices_dir, '_candidates', cid)
@@ -509,6 +527,21 @@ class Narrator(object):
         log('cloned a candidate from %.1fs of audio in %.1fs' % (secs, time.time() - t))
         return out
 
+    def _sample_line(self, d):
+        """PREVIEW_TEXT in the voice in folder d, as its preview.wav, when that is still a copy of
+        its recording -- a designed candidate's. Play sample says the same line in every kept voice;
+        one kept with the design passage instead was the odd one out (Ed, 2026-10-10)."""
+        import filecmp
+        import soundfile as sf
+        ref, prev = os.path.join(d, 'reference.wav'), os.path.join(d, 'preview.wav')
+        if os.path.isfile(prev) and not filecmp.cmp(ref, prev, shallow=False):
+            return False
+        with open(os.path.join(d, 'meta.json'), encoding='utf-8') as f:
+            transcript = json.load(f).get('transcript') or DESIGN_TEXT
+        audio = self._generate(PREVIEW_TEXT, told=instruction('', '', 'narration'), reference=ref, transcript=transcript)
+        sf.write(prev, audio, self.sr, subtype='PCM_16')
+        return True
+
     def keep(self, candidate, name):
         import shutil
         src = os.path.join(self.voices_dir, '_candidates', os.path.basename(candidate))
@@ -523,6 +556,8 @@ class Narrator(object):
         meta['name'] = name
         with open(os.path.join(dst, 'meta.json'), 'w', encoding='utf-8') as f:
             json.dump(meta, f)
+        with self.lock:
+            self._sample_line(dst)
         self.reload_voices()
         log('kept candidate %s as voice %s' % (candidate, vid))
         return vid
