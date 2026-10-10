@@ -1300,6 +1300,36 @@ function nameSpan(words, idx) {
     return words.slice(a, b + 1).join(' ');
 }
 
+// A name straight after one of these is who something was done to, not who did it.
+const OBJECT_MARK = /^(?:to|at|toward|towards|with|on|onto|into|for|from|past|behind|beside|over|under|after|about|by|of)$/i;
+
+/**
+ * Who a sentence is about: its first name or pronoun that does not follow OBJECT_MARK.
+ * "Tom turned to Anna." is Tom; "Looking at Tom, Anna smiled." is Anna; "She glared at Tom."
+ * is "She". Null when every name in it is an object ("The old man turned to Anna.").
+ */
+function sentenceSubject(sentence) {
+    const words = quoteWords(sentence);
+    for (let i = 0; i < words.length; i++) {
+        if (i > 0 && OBJECT_MARK.test(words[i - 1])) continue;
+        // "Looking at Tom," "Smiling," "Suddenly": an opening participle or adverb, not a name.
+        if (i === 0 && /^[A-Z][a-z]{3,}(?:ing|ed|ly)$/.test(words[0]) && /^[a-z]/.test(words[1] || '')) continue;
+        if (isPronoun(words[i])) return words[i];
+        if (looksLikeName(words[i])) return nameSpan(words, i);
+    }
+    return null;
+}
+/** The sentence that ends where `head` ends, brackets blanked. */
+function lastSentence(head) {
+    const parts = blankBrackets(head).replace(/\s+$/, '').split(/[.!?…]["'”’)\]]*\s+/);
+    return parts[parts.length - 1] || '';
+}
+/** The sentence that starts where `tail` starts, brackets blanked. */
+function firstSentence(tail) {
+    const m = /^[\s\S]*?(?:[.!?…]|$)/.exec(blankBrackets(tail));
+    return m ? m[0] : '';
+}
+
 /**
  * Speaker on one side of a quotation. words are in reading order; nearEnd means the
  * quotation follows them. Only the eight words beside the quotation count.
@@ -1458,8 +1488,21 @@ function narrationQuotes(text) {
     while ((m = re.exec(plain))) {
         const before = quoteWords(text.slice(0, m.index));
         const after = quoteWords(text.slice(m.index + m[0].length));
-        const left = speakerBeside(before, true);
-        const right = speakerBeside(after, false);
+        let left = speakerBeside(before, true);
+        let right = speakerBeside(after, false);
+        // No speech verb: the action beat beside the quotation speaks, and its subject is the
+        // speaker -- 'Tom turned to Anna. "We have to go."' is Tom, not the nearer Anna. A beat
+        // whose names are all objects names nobody, and the narrator keeps the line.
+        const beatBefore = lastSentence(text.slice(0, m.index));
+        const beatAfter = firstSentence(text.slice(m.index + m[0].length));
+        if (left && !left.verb) {
+            const s = sentenceSubject(beatBefore);
+            left = s ? { who: s, dist: left.dist, verb: false } : null;
+        }
+        if (right && !right.verb) {
+            const s = sentenceSubject(beatAfter);
+            right = s ? { who: s, dist: right.dist, verb: false } : null;
+        }
         // A speech verb beats a bare name. Two verbs: the closer one. Otherwise the nearer name.
         let pick = null;
         if (left && right) {
@@ -1470,7 +1513,8 @@ function narrationQuotes(text) {
         const q = {
             start: m.index, end: m.index + m[0].length, inner: text.slice(m.index + 1, m.index + m[0].length - 1), who: who,
             tag: quoteCueTag(text, m.index, m[0].length),
-            key: castKey(speakerKey(who), _narrCast)
+            key: castKey(speakerKey(who), _narrCast),
+            context: [beatBefore, beatAfter]
         };
         const line = lineInstruction(text, q.start, q.end, who);
         if (line) {
@@ -1496,6 +1540,20 @@ function narrationQuotes(text) {
  * resolved as far as the rules allow. `known` is the set of speaker keys named explicitly
  * anywhere in the book as loaded, which is what a pronoun may resolve to.
  */
+/**
+ * True when `key` stands beside the quotation as someone other than its sentence's subject:
+ * '"Go," she told Tom.' or 'She glared at Tom. "Get out."' -- Tom is spoken to, so "she" is
+ * not Tom. 'Anna stood up. "Go," she said.' leaves Anna the subject, and "she" is Anna.
+ */
+function doneTo(q, key, known) {
+    return (q.context || []).some(s => {
+        const named = quoteWords(s).filter(looksLikeName).map(w => castKey(speakerKey(w), known));
+        if (named.indexOf(key) < 0) return false;
+        const subject = sentenceSubject(s);
+        return !subject || castKey(speakerKey(subject), known) !== key;
+    });
+}
+
 function attributeParagraphs(texts, known) {
     const result = [];
     const recent = [];                          // speakers of the dialogue paragraphs just before
@@ -1507,7 +1565,7 @@ function attributeParagraphs(texts, known) {
         const explicit = new Set(qs.filter(q => q.key).map(q => q.key));
         for (const q of qs) {
             if (q.key) continue;
-            if (q.who && named.size === 1) q.key = [...named][0];              // "he said", one candidate
+            if (q.who && named.size === 1 && !doneTo(q, [...named][0], known)) q.key = [...named][0];   // "he said", one candidate
             else if (explicit.size === 1) q.key = [...explicit][0];           // one speaker per paragraph
         }
         if (!qs.some(q => q.key) && !qs.some(q => q.who) && recent.length >= 2 &&

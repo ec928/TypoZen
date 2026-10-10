@@ -257,6 +257,22 @@ api.setModel({
     api.setCast({ anna: 'qwen-ryan' });
 }
 
+console.log('--- the subject of an action beat speaks; a listener is never the pronoun');
+{
+    api.setCast({ tom: 'v-tom', anna: 'v-anna' });
+    const who = text => api.castPieces(text, api.narrationQuotes(text), 0).filter(p => p.role === 'dialogue').map(p => p.voice);
+    const whoAcross = paras => api.narrationBatches(paras.map(t => ({ innerText: t, getAttribute: () => null })), 0, 4)
+        .flat().filter(p => p.role === 'dialogue').map(p => p.voice);
+    eq('a beat before the quote: its subject, not the nearer name', who('Tom turned to Anna. "We have to go."'), ['v-tom']);
+    eq('the same the other way round', who('Anna glared at Tom. "Get out."'), ['v-anna']);
+    eq('a beat after the quote: its subject', who('"We have to go." Tom turned to Anna.'), ['v-tom']);
+    eq('a name after a preposition is not the subject', who('Looking at Tom, Anna smiled. "Hello."'), ['v-anna']);
+    eq('"she told Tom" is not Tom', whoAcross(['"Go," she told Tom.']), []);
+    eq('"She glared at Tom" is not Tom', whoAcross(['She glared at Tom. "Get out."']), []);
+    eq('"she said" after "Anna stood up" is still Anna', whoAcross(['Anna stood up. "Go," she said.']), ['v-anna']);
+    api.setCast({ anna: 'qwen-ryan' });
+}
+
 console.log('--- Find characters reads the whole markdown or text file');
 document.blocks = [
     { innerText: '"Nope," Zara said.' },
