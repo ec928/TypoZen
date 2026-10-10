@@ -420,7 +420,7 @@ The same in every kind of document. The first row that fits wins.
 |---|---|---|
 | The character's **Instruction** box | Narrator Manager > Cast for this book | every line of that character: `gruff and slow` |
 | The narrator's **Instruction** box | Narrator Manager > Reading | everything the narrator reads; never a character who has a voice |
-| **Emotion cues** (ticked, the default) | Narrator Manager > Reading | each quote's own describing words are added for that quote only: `"Go," she whispered.` is whispered, the narration around it is not. *said*, *asked*, *told* and the person spoken to are left out. A quote with `!` sounds emphatic; one ending in `—` or `...` sounds broken off. A mostly italic paragraph is read as a private thought |
+| **Emotion cues** (ticked, the default) | Narrator Manager > Reading | each quote's own describing words are added for that quote only: `"Go," she whispered.` is whispered, the narration around it is not. Words that only say someone spoke — *said*, *asked*, *told*, *replied*, *answered*, *added* and the like — and the person spoken to are left out. A quote with `!` sounds emphatic; one ending in `—` or `...` sounds broken off. A mostly italic paragraph is read as a private thought |
 | **Emotion strength** (Breeze) | Narrator Manager > Emotion cues | how strongly Breeze follows any instruction, 1 to 10; 4 by default |
 
 An empty box means no instruction.
@@ -429,7 +429,7 @@ An empty box means no instruction.
 
 A line with a quote is read in pieces: the speaker reads the quote, the narrator reads the rest, and each is told its own instruction.
 
-- **A bracket belongs to whoever reads the words next to it.** Just before or inside a quote, it is the speaker's. Anywhere else on the same line, it is the narrator's.
+- **A bracket belongs to whoever reads the words next to it.** Just before or inside a quote, it is the speaker's — a comma or colon in between is fine: `Anna [whispers], "Go."`. Anywhere else on the same line, it is the narrator's.
 - **What is in the bracket decides what happens.** A built-in sound or mood (`[laughing]`, `[sad]`) is performed right there. Any other words say how to read: `[sadly]` is added to that voice's usual instruction, and `[[sadly]]` replaces it.
 
 | You write | Where | Effect |
