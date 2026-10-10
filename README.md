@@ -420,10 +420,10 @@ Names are matched whole: **Mr Bennet** and **Mrs Bennet** are two characters. A 
 | `[[shouts loudly]]` | anywhere in the quotation's sentence | that quotation, and nothing else, is read that way | no |
 | `[[measured and quiet]]` | in narration | that paragraph's narration is read that way; quotations keep their own | no |
 | `[whispers softly]` | right against the quotation, or right after the speaker's name | that quotation is read that way, speech tag added | no |
-| `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]` | anywhere | a sound at that spot (Breeze performs it; Qwen colours the words around it) | performed |
-| `[sad]` `[angry]` `[excited]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]` | anywhere | the delivery changes from that point on (Breeze; Qwen follows them only slightly) | performed |
+| `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]` | where the sound should happen. For the character: inside their quotation, or just before it — `"[laughing] Stop it," Anna said.` For the narrator: in the narration, away from any speaker's name — `[sighing] It was over.` | a sound at that point (Breeze performs it; Qwen colours the words around it) | performed |
+| `[sad]` `[angry]` `[excited]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]` | where the change should start. For the character: inside their quotation, or just before it — `"[sad] It's over," Anna said.` For the narrator: in the narration, away from any speaker's name — `[sad] The house was empty.` | the delivery changes from that point to the end of that quotation or paragraph (Breeze; Qwen follows them only slightly) | performed |
 | `:9` after an instruction: `[sad:9]` `[[shouts:9]]` `Anna [whispers:2] said` | inside the brackets | Breeze's strength for that line, 1 barely to 10; Qwen ignores it | no |
-| any other bracket, such as `[check spelling]` or `[the king]` inside a quotation | anywhere else | nothing | read aloud |
+| any other bracket, such as `[check spelling]`, or `[the king]` inside a quotation | in a place not listed above | nothing | read aloud |
 
 An instruction can be a full sentence — `[[Read it plainly. Speak softly]]` — and may contain quote marks.
 
