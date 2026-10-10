@@ -493,6 +493,24 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
             api.paragraphPieces('[as if shouting "no!"] The door shut.', null).every(p => !p.direction));
     }
     {
+        // A named speaker with no voice is read by the narrator: a bracket against the quotation
+        // is the narrator's instruction for it, as with no speaker (Ed, 2026-10-10). It used to be
+        // read aloud. The models' own tags stay in the text, performed, as they were.
+        api.setCast({ anna: 'qwen-ryan' });
+        const told = text => api.castPieces(text, api.narrationQuotes(text), 0).map(p => [p.role, p.text, p.instruction]);
+        eq('unvoiced speaker: a bracket before the quotation is the narrator\'s instruction',
+            told('[Read it angry] "You are late," Tom said quietly.'),
+            [['narration', '"You are late,"', 'Read it angry'], ['narration', 'Tom said quietly.', '']]);
+        eq('unvoiced speaker: and after it',
+            told('"You are late," [Read it angry] Tom said quietly.')[0], ['narration', '"You are late,"', 'Read it angry']);
+        eq('unvoiced speaker: a model tag against the quotation stays spoken',
+            api.narrationQuotes('[laughing] "Stop it," Tom said.').map(q => q.instruct || ''), ['']);
+        eq('unvoiced speaker: so does a span tag with a strength',
+            api.narrationQuotes('[sad:9] "Stop it," Tom said.').map(q => q.instruct || ''), ['']);
+        eq('a voiced speaker\'s bracket before the quotation is still spoken',
+            api.narrationQuotes('[Read it angry] "Stop it," Anna said.').map(q => q.instruct || ''), ['']);
+    }
+    {
         const pieces = lineOf('Anna [whispers. slowly], "Get out."');
         eq('a single bracket with a full stop inside is still the line instruction',
             pieces.filter(p => p.role === 'dialogue').map(p => p.instruction), ['whispers. slowly']);

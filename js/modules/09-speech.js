@@ -1086,6 +1086,12 @@ function blockPieces(text) {
  * was written.
  */
 const SPAN_TAG = /^(?:excited|sad|angry|amazed|serious|sarcastic|curious|mischievously|crying|panicked|tired|asmr|singing|whispers|very slowly|very fast|like dracula|deep and loud shouting)$/i;
+const POINT_TAG = /^(?:laughing|giggles|gasp|sighing|cough|clears throat|snorts)$/i;
+/** One of the models' own tags, [sad] or [laughing] (a strength, [sad:9], allowed): performed in the text. */
+function isModelTag(inner) {
+    const word = String(inner || '').replace(/\s*:\s*\d+(?:\.\d+)?\s*$/, '').trim();
+    return SPAN_TAG.test(word) || POINT_TAG.test(word);
+}
 
 /**
  * The text with every bracket, [tag] or [[tag]], blanked to spaces of the same length, for
@@ -1389,19 +1395,25 @@ function lineInstruction(text, start, end, who) {
     if (who) {
         const left = zoneBefore(text, start);
         const atLeft = nameAt(left.text, who);
-        if (atLeft >= 0) return firstBracket(left.text, left.at, atLeft + who.length);
         const right = zoneAfter(text, end);
         const atRight = nameAt(right.text, who);
-        if (atRight >= 0) return firstBracket(right.text, right.at, atRight + who.length);
-        return null;
+        const byName = atLeft >= 0 ? firstBracket(left.text, left.at, atLeft + who.length)
+            : atRight >= 0 ? firstBracket(right.text, right.at, atRight + who.length) : null;
+        // A speaker with no voice is read by the narrator, so a bracket against the quotation is
+        // the narrator's instruction for it, as with no speaker: '[Read it angry] "You're late,"
+        // Tom said' (Ed, 2026-10-10). A voiced character's bracket still sits by the name. The
+        // models' own tags, [laughing] or [sad], stay in the text there, performed as before.
+        const key = speakerKey(who);
+        if (byName || (key && _narrCast[key])) return byName;
     }
+    const keep = inner => !!who && isModelTag(inner);
     const left = zoneBefore(text, start);
     const lead = left.text.match(/\[[^\]\n]+\]\s*[,:]?\s*$/);
     if (lead) {
         const raw = lead[0].match(/\[[^\]\n]+\]/)[0];
         const at = left.at + lead.index + lead[0].indexOf(raw);
         const inner = raw.slice(1, -1).trim();
-        if (inner && !partOfDouble(text, at, raw)) {
+        if (inner && !keep(inner) && !partOfDouble(text, at, raw)) {
             return { instruct: inner, hideStart: at, hideEnd: at + raw.length };
         }
     }
@@ -1411,7 +1423,7 @@ function lineInstruction(text, start, end, who) {
         const raw = tail[0].match(/\[[^\]\n]+\]/)[0];
         const at = right.at + tail.index + tail[0].indexOf(raw);
         const inner = raw.slice(1, -1).trim();
-        if (inner && !partOfDouble(text, at, raw)) {
+        if (inner && !keep(inner) && !partOfDouble(text, at, raw)) {
             return { instruct: inner, hideStart: at, hideEnd: at + raw.length };
         }
     }
