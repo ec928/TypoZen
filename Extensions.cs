@@ -181,8 +181,11 @@ namespace TypoZen
             {
                 Id = KokoroId,
                 Title = "Kokoro voices",
-                Blurb = "Neural voices that read far more naturally than the Windows ones. "
-                      + "Needs a graphics card with WebGPU; everything runs on this computer.",
+                Blurb = "Neural text-to-speech that reads far more naturally than standard Windows voices. "
+                      + "Runs locally in real time via WebGPU on your graphics card.\n\n"
+                      + "• Hardware: Any modern GPU with WebGPU support\n"
+                      + "• Voices: 19 graded American and British voices\n"
+                      + "• Engine: Kokoro-82M ONNX Runtime Web",
                 Dir = dir,
                 Marker = "engine.js",
                 Notice =
@@ -227,9 +230,10 @@ namespace TypoZen
             {
                 Id = WiktionaryId,
                 Title = "Wiktionary dictionary",
-                Blurb = "1,355,154 words against the built-in dictionary's 152,459, with pronunciations "
-                      + "for 98,787 of them. The built-in one still orders senses better, so both stay "
-                      + "and File > Dictionary switches between them.",
+                Blurb = "Expanded offline English dictionary for reading definitions and pronunciation lookups.\n\n"
+                      + "• Vocabulary: 1,355,154 words (built-in has 152,459)\n"
+                      + "• Audio: 98,787 phonetic pronunciations\n"
+                      + "• Usage: Switch active dictionary anytime via File > Dictionary",
                 Dir = Path.Combine(DictionariesDir(cacheDir), WiktionaryId),
                 Marker = "dictionary.tsv"
             };
@@ -258,22 +262,12 @@ namespace TypoZen
             {
                 Id = QwenId,
                 Title = "Qwen narration",
-                // What it is and what it costs, in measured numbers (RTX 4070 Ti, 2026-09-24):
-                // a reader deciding whether to keep a 13 GB extension that takes over the graphics
-                // card deserves more than "rendered on this PC's graphics card".
-                Blurb = "Audiobook narration by Qwen3-TTS, a 1.7-billion-parameter speech model built like a "
-                      + "large language model, running entirely on this PC; nothing is sent anywhere. It reads "
-                      + "with expression taken from the text, in voices you describe in words, and can give "
-                      + "characters voices of their own (File > Read Aloud > Narrator Manager).\n\n"
-                      + "Demanding: it needs an NVIDIA graphics card with CUDA. On an RTX 4070 Ti (12 GB) it "
-                      + "holds about 4.3 GB of the card's memory while loaded and about 6 GB while rendering, "
-                      + "and the whole extension is about 13 GB on disk. It takes about 20 seconds to load — in the background when a book is "
-                      + "opened with a Qwen voice chosen \u2014 and gives the card back after 15 minutes unused. "
-                      + "Designing a new voice swaps in a second model of the same size for about 20 seconds.\n\n"
-                      + "Install downloads and sets up everything it needs, its own Python included: about "
-                      + "13 GB, a few minutes on a fast connection. Narration audio is "
-                      + "kept so anything heard before plays at once; clearing it only means rendering again. "
-                      + "Removing the extension keeps your voices, casts and narrator settings.",
+                Blurb = "Audiobook narration by Qwen3-TTS (1.7B parameters), running entirely on this PC. "
+                      + "Voices dialogue by character, reads with expression taken from the text, and allows "
+                      + "designing custom voices from natural-language descriptions.\n\n"
+                      + "• Hardware: NVIDIA GPU with CUDA (~6 GB VRAM during render, 13 GB disk)\n"
+                      + "• Features: Custom voice design, character casting, audio caching\n"
+                      + "• Settings: Your voices, casts and narrator settings are retained if removed.",
                 Dir = QwenNarrator.RootDir(cacheDir),
                 Marker = Path.Combine("venv", "Scripts", "python.exe"),
                 Check = () => QwenNarrator.EnvironmentReady(cacheDir)
@@ -290,17 +284,12 @@ namespace TypoZen
             {
                 Id = BreezeNarrator.ExtensionId,
                 Title = "Breeze narration",
-                Blurb = "Audiobook narration by Breeze TTS 2, a 3-billion-parameter speech model, running entirely "
-                      + "on this PC; nothing is sent anywhere. Beside the Qwen narrator, not instead of it: it can "
-                      + "clone a voice from a short recording and its words, it performs sounds written in the text "
-                      + "such as [laughing], [sighing] and [clears throat], and it starts speaking within seconds. "
-                      + "It reads the Qwen narrator's voices and casts too.\n\n"
-                      + "Demanding: it needs an NVIDIA graphics card with at least 12 GB. On an RTX 4070 Ti it holds "
-                      + "about 9 GB of the card's memory while reading, so the Qwen narrator is stopped while it "
-                      + "runs. Starting takes about 40 seconds (about two and a half minutes the very first time, "
-                      + "while it prepares the card) and it gives the card back after 15 minutes unused.\n\n"
-                      + "Install downloads about 12.6 GB, its own Python included. Removing it keeps your voices.\n\n"
-                      + "Licence: " + BreezeInstaller.LicenceSummary,
+                Blurb = "Expressive audiobook narration by Breeze TTS 2 (3B parameters), running entirely on this PC. "
+                      + "Clones voices from reference recordings, performs native audio cues like (giggles) and (sigh), "
+                      + "and starts speaking within seconds. Reads Qwen voices and casts too.\n\n"
+                      + "• Hardware: NVIDIA GPU with 12 GB+ VRAM (~9 GB VRAM during reading)\n"
+                      + "• Features: Zero-shot voice cloning, character casts, inline vocal events\n"
+                      + "• Licence: Research & non-commercial use (BreezeBlue / RESONIA, Inc.)",
                 Dir = BreezeNarrator.RootDir(cacheDir),
                 Marker = Path.Combine("venv", "Scripts", "python.exe"),
                 Notice = BreezeInstaller.LicenceSummary,
@@ -550,13 +539,10 @@ namespace TypoZen
             var win = new Window
             {
                 Title = "Extensions",
-                // Sized to its rows, but never taller than the screen: with four extensions it grew
-                // past a 1440-pixel monitor and Install was out of reach (2026-10-08). The rows scroll;
-                // progress, status and Close stay in view below them.
-                SizeToContent = SizeToContent.Height,
-                Width = 720,
-                MinWidth = 520,
-                MaxHeight = SystemParameters.WorkArea.Height - 24,
+                Width = 980,
+                Height = 670,
+                MinWidth = 820,
+                MinHeight = 520,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ResizeMode = ResizeMode.CanResizeWithGrip,
                 ShowInTaskbar = false,
@@ -566,85 +552,196 @@ namespace TypoZen
             try { win.Owner = owner; } catch { }
             DialogTheme.Apply(win, owner);
 
-            var root = new StackPanel { Margin = new Thickness(18, 18, 18, 0) };
-            root.Children.Add(new TextBlock
+            var header = new StackPanel { Margin = new Thickness(22, 18, 22, 14) };
+            header.Children.Add(new TextBlock
             {
-                Text = "Extras that are too large to ship with TypoZen. Nothing here is downloaded "
-                     + "unless you ask for it, and removing one takes its menu away again.",
+                Text = "Extensions",
+                FontSize = 18,
+                FontWeight = FontWeights.SemiBold
+            });
+            header.Children.Add(new TextBlock
+            {
+                Text = "Optional extras that are too large to bundle with TypoZen. Nothing here is downloaded "
+                     + "unless you choose to install it, and removing an extension restores the default menus.",
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 14)
+                Opacity = 0.75,
+                Margin = new Thickness(0, 4, 0, 0)
             });
 
-            var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 0), Opacity = 0.85 };
-            var bar = new ProgressBar { Height = 6, Margin = new Thickness(0, 8, 0, 0), Visibility = Visibility.Collapsed, Minimum = 0, Maximum = 1000 };
+            var status = new TextBlock
+            {
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Opacity = 0.85,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var bar = new ProgressBar
+            {
+                Height = 5,
+                Margin = new Thickness(0, 0, 0, 4),
+                Visibility = Visibility.Collapsed,
+                Minimum = 0,
+                Maximum = 1000
+            };
 
             var rows = new List<Action>();          // re-read state after an install or removal
             ExtensionInstaller running = null;
             var narrInstalls = new List<NarratorInstaller>();     // the narration installs under way, to stop on close
 
+            var contentGrid = new Grid();
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18, GridUnitType.Pixel) });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var leftCol = new StackPanel();
+            Grid.SetColumn(leftCol, 0);
+            contentGrid.Children.Add(leftCol);
+
+            var rightCol = new StackPanel();
+            Grid.SetColumn(rightCol, 2);
+            contentGrid.Children.Add(rightCol);
+
+            leftCol.Children.Add(new TextBlock
+            {
+                Text = "Reading & Reference",
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12.5,
+                Opacity = 0.65,
+                Margin = new Thickness(2, 0, 0, 8)
+            });
+
+            rightCol.Children.Add(new TextBlock
+            {
+                Text = "Neural Narrators",
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12.5,
+                Opacity = 0.65,
+                Margin = new Thickness(2, 0, 0, 8)
+            });
+
             // Kokoro's two precisions are one extension with a choice, not two extensions.
-            var quality = new ComboBox { Width = 210, Margin = new Thickness(0, 6, 0, 0) };
+            var quality = new ComboBox
+            {
+                Width = 230,
+                Height = 26,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 4, 0, 0)
+            };
             quality.Items.Add("Standard - 186 MB download");
             quality.Items.Add("Full precision - 348 MB download");
-            // Show the precision that is actually installed, not the default. Left on
-            // "Standard" while full precision was on disk, the row compared the folder
-            // against the wrong file list and reported the fp16 model as "missing" --
-            // offering to fetch a second model and discard the better one.
             string installedModel = ExtensionCatalog.KokoroModelName(cacheDir);
             quality.SelectedIndex = installedModel == "fp32" ? 1 : 0;
 
             Func<ExtensionInfo> kokoroChosen = () => ExtensionCatalog.Kokoro(cacheDir, quality.SelectedIndex == 1);
 
-            Action<ExtensionInfo, Func<ExtensionInfo>> addRow = null;
-            addRow = (info, live) =>
+            Action<ExtensionInfo, Func<ExtensionInfo>, Panel> addRow = null;
+            addRow = (info, live, targetCol) =>
             {
+                var narr = NarratorExtension.For(info.Id);
+                bool isNarr = narr != null;
+                NarratorInstaller narrRunning = null;
+
                 var box = new Border
                 {
-                    BorderBrush = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128)),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(40, 128, 128, 128)),
                     BorderThickness = new Thickness(1),
-                    Padding = new Thickness(12),
-                    Margin = new Thickness(0, 0, 0, 10)
+                    CornerRadius = new CornerRadius(6),
+                    Background = new SolidColorBrush(Color.FromArgb(12, 128, 128, 128)),
+                    Padding = new Thickness(14, 12, 14, 12),
+                    Margin = new Thickness(0, 0, 0, 12)
                 };
+
                 var panel = new StackPanel();
-                panel.Children.Add(new TextBlock { Text = info.Title, FontWeight = FontWeights.SemiBold });
-                // The narration extensions (Qwen, Breeze) install their own way and keep the reader's
-                // voices on Remove; null for the others.
-                var narr = NarratorExtension.For(info.Id);
-                NarratorInstaller narrRunning = null;
-                if (narr != null)
+
+                // Header row: Title + Badge
+                var headerRow = new DockPanel { LastChildFill = false };
+                var titleText = new TextBlock
+                {
+                    Text = info.Title,
+                    FontWeight = FontWeights.SemiBold,
+                    FontSize = 13.5,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                DockPanel.SetDock(titleText, Dock.Left);
+                headerRow.Children.Add(titleText);
+
+                string badgeText = "";
+                if (info.Id == ExtensionCatalog.KokoroId) badgeText = "WebGPU Neural";
+                else if (info.Id == ExtensionCatalog.WiktionaryId) badgeText = "Offline TSV";
+                else if (info.Id == BreezeNarrator.ExtensionId) badgeText = "3B Model · CUDA";
+                else if (info.Id == ExtensionCatalog.QwenId) badgeText = "1.7B Model · CUDA";
+
+                if (!string.IsNullOrEmpty(badgeText))
+                {
+                    var badge = new Border
+                    {
+                        CornerRadius = new CornerRadius(4),
+                        BorderThickness = new Thickness(1),
+                        BorderBrush = new SolidColorBrush(Color.FromArgb(35, 128, 128, 128)),
+                        Background = new SolidColorBrush(Color.FromArgb(20, 128, 128, 128)),
+                        Padding = new Thickness(6, 2, 6, 2),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    DockPanel.SetDock(badge, Dock.Right);
+                    badge.Child = new TextBlock
+                    {
+                        Text = badgeText,
+                        FontSize = 10.5,
+                        FontWeight = FontWeights.Medium,
+                        Opacity = 0.8
+                    };
+                    headerRow.Children.Add(badge);
+                }
+                panel.Children.Add(headerRow);
+
+                if (isNarr)
+                {
                     panel.Children.Add(new TextBlock
                     {
-                        Text = "Experimental — download and use at your own risk.",
-                        FontWeight = FontWeights.SemiBold,
-                        TextWrapping = TextWrapping.Wrap,
-                        Margin = new Thickness(0, 3, 0, 0)
+                        Text = "Experimental · Runs local model on NVIDIA GPU",
+                        FontSize = 11,
+                        FontWeight = FontWeights.Medium,
+                        Opacity = 0.7,
+                        Margin = new Thickness(0, 2, 0, 0)
                     });
+                }
+
                 panel.Children.Add(new TextBlock
                 {
                     Text = info.Blurb,
                     TextWrapping = TextWrapping.Wrap,
-                    Opacity = 0.8,
-                    Margin = new Thickness(0, 3, 0, 0)
+                    Opacity = 0.85,
+                    FontSize = 11.5,
+                    Margin = new Thickness(0, 6, 0, 0)
                 });
-                if (info.Id == ExtensionCatalog.KokoroId) panel.Children.Add(quality);
-                bool isQwen = narr != null;
 
-                var state = new TextBlock { Margin = new Thickness(0, 8, 0, 0), Opacity = 0.9, TextWrapping = TextWrapping.Wrap };
-                var button = new Button { Width = 110, Height = 26, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
-                // Qwen narration keeps the audio it renders. Clearing that is the everyday
-                // housekeeping; removing the whole extension is not.
-                var clearAudio = new Button { Content = "Clear audio", Width = 110, Height = 26, Margin = new Thickness(8, 8, 0, 0) };
-                panel.Children.Add(state);
-                if (isQwen)
+                if (info.Id == ExtensionCatalog.KokoroId)
                 {
-                    var buttons = new StackPanel { Orientation = Orientation.Horizontal };
-                    buttons.Children.Add(button);
-                    buttons.Children.Add(clearAudio);
-                    panel.Children.Add(buttons);
+                    var qualPanel = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+                    qualPanel.Children.Add(new TextBlock { Text = "Model precision:", FontSize = 11, Opacity = 0.7 });
+                    qualPanel.Children.Add(quality);
+                    panel.Children.Add(qualPanel);
                 }
-                else panel.Children.Add(button);
+
+                var state = new TextBlock
+                {
+                    Margin = new Thickness(0, 10, 0, 6),
+                    Opacity = 0.85,
+                    FontSize = 11.5,
+                    TextWrapping = TextWrapping.Wrap
+                };
+                panel.Children.Add(state);
+
+                var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+                var button = new Button { Width = 95, Height = 26 };
+                buttons.Children.Add(button);
+
+                var clearAudio = new Button { Content = "Clear audio", Width = 95, Height = 26, Margin = new Thickness(8, 0, 0, 0) };
+                if (isNarr) buttons.Children.Add(clearAudio);
+                panel.Children.Add(buttons);
+
                 box.Child = panel;
-                root.Children.Add(box);
+                targetCol.Children.Add(box);
 
                 Action refresh = () =>
                 {
@@ -655,30 +752,29 @@ namespace TypoZen
                     if (on && short_ > 0)
                     {
                         int n = now.Missing().Count;
-                        state.Text = "Installed - " + Human(onDisk) + " on disk. "
-                                   + n + (n == 1 ? " file this version adds" : " files this version adds")
-                                   + " have not been downloaded yet (" + Human(short_) + ")";
+                        state.Text = "Installed · " + Human(onDisk) + " on disk ("
+                                   + n + (n == 1 ? " new file" : " new files")
+                                   + " to download, " + Human(short_) + ")";
                     }
                     else
                     {
                         state.Text = on
-                            ? "Installed - " + Human(onDisk) + " on disk"
-                            : "Not installed - " + Human(now.DownloadBytes) + " to download";
+                            ? "Installed · " + Human(onDisk) + " on disk"
+                            : "Not installed · " + Human(now.DownloadBytes) + " to download";
                     }
                     button.Content = on ? (short_ > 0 ? "Update" : "Remove") : "Install";
                     if (info.Id == ExtensionCatalog.KokoroId) quality.IsEnabled = !on;
-                    if (isQwen)
+                    if (isNarr)
                     {
                         long audio = SizeOf(narr.AudioDir(cacheDir));
                         bool partway = File.Exists(narr.Installer().InstallFlag(cacheDir));
                         bool voices = Directory.Exists(Path.Combine(now.Dir, "voices"))
                                       && Directory.GetDirectories(Path.Combine(now.Dir, "voices")).Length > 0;
                         state.Text = on
-                            ? "Installed - " + Human(onDisk) + " on disk, of which " + Human(audio) + " is narration audio"
+                            ? "Installed · " + Human(onDisk) + " on disk" + (audio > 0 ? " (" + Human(audio) + " audio cache)" : "")
                             : partway
-                                ? "Not finished - " + Human(onDisk) + " downloaded so far. Install continues where it stopped."
-                                : "Not installed - about " + Human(narr.DownloadBytes) + " to download, Python included. "
-                                  + "Needs an NVIDIA graphics card." + (voices ? " Your voices, casts and settings are kept for it." : "");
+                                ? "Incomplete · " + Human(onDisk) + " downloaded so far (resumes on Install)"
+                                : "Not installed · ~" + Human(narr.DownloadBytes) + " to download" + (voices ? " · Saved voices kept" : "");
                         if (narrRunning == null) button.Content = on ? "Remove" : "Install";
                         clearAudio.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
                         clearAudio.IsEnabled = audio > 0;
@@ -709,14 +805,14 @@ namespace TypoZen
                     var now = live();
                     if (now.Installed && now.MissingBytes() == 0)
                     {
-                        // Qwen narration's voices cannot be downloaded again -- the same description
+                        // Narration's voices cannot be downloaded again -- the same description
                         // makes a different person -- so Remove takes the program, its models and
                         // the audio, and keeps the voices, casts and settings for when it is set up
                         // again. It used to delete the whole folder, voices included, without a word.
                         long goes = 0;
-                        if (isQwen) foreach (string part in narr.RemovableParts) goes += SizeOf(Path.Combine(now.Dir, part));
+                        if (isNarr) foreach (string part in narr.RemovableParts) goes += SizeOf(Path.Combine(now.Dir, part));
                         var ask = MessageBox.Show(win,
-                            isQwen
+                            isNarr
                                 ? "Remove " + now.Title + "? The program and its models, " + Human(goes) + ", will be deleted. "
                                   + "Your voices, casts and narrator settings are kept, and are there again if it is set up again."
                                 : "Remove " + now.Title + "? " + Human(SizeOf(now.Dir)) + " will be deleted.",
@@ -727,7 +823,7 @@ namespace TypoZen
                         if (changed != null) changed();
                         // The narrator runs out of this folder; a running python.exe would
                         // hold its own files and most of the folder would stay behind.
-                        if (isQwen)
+                        if (isNarr)
                         {
                             narr.Stop();
                             foreach (string part in narr.RemovableParts)
@@ -742,7 +838,7 @@ namespace TypoZen
                         return;
                     }
 
-                    if (isQwen)
+                    if (isNarr)
                     {
                         if (narrRunning != null) { narrRunning.Cancel(); status.Text = "Stopping..."; return; }
                         var qi = narr.Installer();
@@ -855,27 +951,65 @@ namespace TypoZen
                 };
             };
 
-            addRow(ExtensionCatalog.Kokoro(cacheDir, false), kokoroChosen);
+            addRow(ExtensionCatalog.Kokoro(cacheDir, false), kokoroChosen, leftCol);
             var wikt = ExtensionCatalog.Wiktionary(cacheDir);
-            addRow(wikt, () => wikt);
-            // Always listed: Install sets it up (QwenInstaller), Remove keeps the voices.
-            var qwen = ExtensionCatalog.Qwen(cacheDir);
-            addRow(qwen, () => qwen);
+            addRow(wikt, () => wikt, leftCol);
+
+            // Breeze first (preferred narrator), then Qwen
             var breeze = ExtensionCatalog.Breeze(cacheDir);
-            addRow(breeze, () => breeze);
+            addRow(breeze, () => breeze, rightCol);
+            var qwen = ExtensionCatalog.Qwen(cacheDir);
+            addRow(qwen, () => qwen, rightCol);
 
             quality.SelectionChanged += (s, e) => { foreach (var r in rows) r(); };
 
-            var footer = new StackPanel { Margin = new Thickness(18, 0, 18, 18) };
-            footer.Children.Add(bar);
-            footer.Children.Add(status);
+            var footerStatusPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            footerStatusPanel.Children.Add(bar);
+            footerStatusPanel.Children.Add(status);
 
-            var close = new Button { Content = "Close", Width = 90, Height = 26, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0), IsCancel = true };
-            footer.Children.Add(close);
+            var close = new Button
+            {
+                Content = "Close",
+                Width = 90,
+                Height = 28,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsCancel = true
+            };
+            close.Click += (s, e) => win.Close();
+
+            var footerGrid = new Grid();
+            footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(footerStatusPanel, 0);
+            footerStatusPanel.Margin = new Thickness(0, 0, 16, 0);
+            Grid.SetColumn(close, 1);
+            footerGrid.Children.Add(footerStatusPanel);
+            footerGrid.Children.Add(close);
+
+            var footerBorder = new Border
+            {
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(40, 128, 128, 128)),
+                Background = new SolidColorBrush(Color.FromArgb(12, 128, 128, 128)),
+                Padding = new Thickness(22, 12, 22, 12)
+            };
+            footerBorder.Child = footerGrid;
+
             var outer = new DockPanel();
-            DockPanel.SetDock(footer, Dock.Bottom);
-            outer.Children.Add(footer);
-            outer.Children.Add(new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+            DockPanel.SetDock(header, Dock.Top);
+            outer.Children.Add(header);
+            DockPanel.SetDock(footerBorder, Dock.Bottom);
+            outer.Children.Add(footerBorder);
+
+            var scrollViewer = new ScrollViewer
+            {
+                Content = contentGrid,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Padding = new Thickness(22, 0, 22, 12)
+            };
+            outer.Children.Add(scrollViewer);
             win.Content = outer;
 
             foreach (var r in rows) r();

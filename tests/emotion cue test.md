@@ -1,58 +1,85 @@
+# TypoZen Emotion & Narrator Tagging Test Suite
 
-Tom turned to Anna. "We have to go."
-Anna glared at Tom. "Get out."
-"Go," she told Tom.
-She glared at Tom. "Get out."
-Anna stood up. "Go," she said.
-End test
+This file tests the updated strict positional rules for voice instructions and performative audio cues in TypoZen and Breeze TTS.
 
-[steady, whisper] Anna said "[Angry] I am mad at you.  [Softly] But forgive you anyway  (laughs) (giggles)".   [excited, loud] Surprising even herself.
+---
 
+### 1. In-Quote Instructions `[ ]`
+Instructions inside quotes apply exclusively to dialogue, starting from their exact placement.
 
+"[Angry] Get out of this house and do not come back!" Anna said.
 
+"I am furious with you. [Softly] But I forgive you anyway," Anna said.
 
-[[say "hush" softly]] "Wait—" Anna said.
+"[whispers softly, speaks slowly:9] Please... just let me go," Anna said.
+
+"First part plain. [hushed] Now quiet. [loud, shouting] Now loud!" Tom said.
+
+---
+
+### 2. Narrator Instructions `[ ]`
+Instructions outside quotes apply exclusively to narration from where they are placed until the next narrator tag or end of paragraph.
+
+[measured and quiet] The heavy iron door slowly creaked open. "Who is there?" Tom whispered.
+
+"Go," Tom [wearily] said. "We cannot stay here."
+
+[slowly] He turned towards the window. [excited, fast] Suddenly, a lightning bolt struck the courtyard!
+
+Anna [whispers softly] said, "Get out."
+
+---
+
+### 3. Double Brackets `[[ ]]` (Hard Override)
+Double brackets replace any standing cast instruction, global narrator instruction, or emotion cues.
+
+[[angrily]] "You're late," Tom said quietly.
 
 "Wait—" Anna said [[Read it plainly. Speak softly]].
-End test 1
 
+[[Speak naturally as the character]] "You're late," Tom said.
 
+[[whispered]] The ancient trees swayed silently in the cold night air.
 
-"You're late," Tom said quietly.
-"Fine," said Tom, turning away.
-[Read it plainly] "You're late," Tom said quietly.
-End test
+---
 
-[[Speak this line of dialogue as the character would say it, naturally and in character.]] "You're late," Tom said.
-End test 2
+### 4. Performative Audio Cues `( )`
+Sound cues in round brackets are passed directly to Breeze to perform inline as non-speech audio events.
+
+"Stop it (giggles)," Anna said.
+
+"It is good to hear your voice again after all this time (sigh)."
+
+"Wait (gasp)—did you hear that (clears throat)?"
+
+Anna said, "I thought you were gone (sigh). Don't scare me like that (laughing)!"
+
+"I have a cold today (cough)," Tom grumbled.
+
+---
+
+### 5. Combined Scenarios (The Grand Test)
+Demonstrating exact positional switching, audio cues, and narration transitions in a single flow.
+
+[steady, whisper] Anna said "[Angry] I am mad at you. (sigh) [Softly] But I forgive you anyway (giggles)." [excited, loud] Surprising even herself.
+
+[slowly] Tom turned to Anna. "We have to go (gasp)."
+Anna glared at Tom. "[furious] Never!"
+"Go," she told Tom.
+She glared at Tom. "[crying] Just leave me alone."
+Anna stood up. [[resolute]] "I will do it myself," she said.
+
+---
+
+### 6. Natural Dialogue & Automatic Emotion Cues
+Testing speech verbs, punctuation cues, and speaker attribution with Emotion cues enabled.
+
+"Get out," Anna snapped.
+
+"Hello!" Anna said.
 
 "Wait—" Anna said.
-"Hello—" Anna said.
-[[Read it plainly. Voice the lines in quotation marks as breaking off.]] "Wait—" Anna said.
-End test 3
 
-Anna [happily, high pitched, joyous, rapidly:9] said, "Hahahaha!   Get out of this house and do not come back until I say so."
+"You're late," Tom said quietly.
 
-"Please...       just let me go" said Anna [whispers softly, speaks slowly].
-"Please...                  just let me go" said Anna [speaks very happily, high pitched and very rapidly].
-
-"Get out of this house and do not come back until I say so." Anna [Angry, loud, speaks fast] said.
-"Get out of this house and do not come back until I say so." Anna [whispers, speaks very quietly, softly, low pitched and very slowly] said.
-"Get out of this house and do not come back until I say so." Anna [crying, speaking slowly] said.
-"Get out of this house and do not come back until I say so." Anna [very happy, loud, high pitched, speaks fast] said.
-"Get out of this house and do not come back until I say so." Anna [shouts very happily, high pitched and very rapidly] said.
-
-Anna [shouts, very angry, loud, speaking rapidly] said, "Get out of this house and do not come back until I say so."
-"Get out of this house and do not come back until I say so." Anna whispered.
-Anna whispered, "Get out of this house and do not come back until I say so."
-Anna [whispers, speaks very quietly, softly, low pitched and very slowly] whispered, "Get out of this house and do not come back until I say so."
-Anna [shouts, speaks very loudly, forcefully, high pitched and very fast] whispered, "Get out of this house and do not come back until I say so."
-Anna [shouts, speaks very loudly, forcefully, low pitched and slowly] whispered, "Get out of this house and do not come back until I say so."
-Anna [[angry]] said, "Get out of this house and do not come back until I say so."
-
-Anna shouts, speaks loudly, forcefully, fast: "Get out of this house and do not come back until I say so."
-Anna [shouts, speaks loudly, forcefully, fast]: "Get out of this house and do not come back until I say so."
-
-"Get out of this house and do not come back until I say so." Anna whispered.
-"[whispered] Get out of this house and do not come back until I say so." Anna whispered.
-Anna whispered: "Get out of this house and do not come back until I say so."
+"Fine," said Tom, turning away.
