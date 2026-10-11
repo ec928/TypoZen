@@ -134,6 +134,7 @@ namespace TypoZen
             var cast = QwenNarrator.LoadCast(cacheDir, book);
             var voices = new List<VoiceItem>();
             SoundPlayer player = null;
+            System.Windows.Media.MediaPlayer clipPlayer = null;
             Trial kept = null;              // Try it: Previous, the last different settings played
             string playing = null;          // Try it: "Current" or "Previous" while one is preparing or playing
             Action applyPlay = null;        // shows that row's Play as Stop; set once the buttons exist
@@ -230,15 +231,22 @@ namespace TypoZen
             var voiceBox = new ComboBox { MinWidth = 220 };
             var playVoice = button("▶ Sample");
             playVoice.ToolTip = SampleTip;
+            var sampleOpt = button("▾");
+            sampleOpt.Width = 22;
+            sampleOpt.Padding = new Thickness(0);
+            sampleOpt.ToolTip = "Sample options: change sample text or instruction";
             // The library acts at once, so it has a window of its own with Close, not Save/Cancel.
             var manageVoices = button("Manage voices...");
             manageVoices.ToolTip = "Design, import, export or delete voices";
             var voiceRow = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
             DockPanel.SetDock(manageVoices, Dock.Right);
+            DockPanel.SetDock(sampleOpt, Dock.Right);
             DockPanel.SetDock(playVoice, Dock.Right);
+            sampleOpt.Margin = new Thickness(2, 0, 0, 0);
             playVoice.Margin = new Thickness(8, 0, 0, 0);
             manageVoices.Margin = new Thickness(8, 0, 0, 0);
             voiceRow.Children.Add(manageVoices);
+            voiceRow.Children.Add(sampleOpt);
             voiceRow.Children.Add(playVoice);
             voiceRow.Children.Add(voiceBox);
             left.Children.Add(voiceRow);
@@ -308,7 +316,18 @@ namespace TypoZen
                 Minimum = 1, Maximum = 10, TickFrequency = 0.5, IsSnapToTickEnabled = true, Width = 220,
                 Value = settings.BreezeStrength, VerticalAlignment = VerticalAlignment.Center
             };
-            var strengthValue = new TextBlock { Width = 40, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+            var strengthValue = new TextBlock
+            {
+                Width = 36, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center,
+                FontWeight = FontWeights.SemiBold
+            };
+            var strengthBadge = new Border
+            {
+                Child = strengthValue, CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(8, 0, 0, 0),
+                Background = new SolidColorBrush(Color.FromArgb(0x24, 0x80, 0x80, 0x80)),
+                VerticalAlignment = VerticalAlignment.Center
+            };
             Action showStrength = () => strengthValue.Text = strengthSlider.Value.ToString("0.#");
             showStrength();
             var breezePanel = new StackPanel();
@@ -322,7 +341,7 @@ namespace TypoZen
                     + "or a mood tag such as [sad]. 1 barely; 4 is Breeze's own recommendation; higher pushes harder and may start to sound strained. "
                     + "A tag's own number, [sad:9], wins for its line; a cast character has their own on Cast for this book. "
                     + "Narration with no instruction is not affected. Above 1, those lines take about half as long again to prepare.";
-                breezePanel.Children.Add(row(new UIElement[] { strengthLabel, strengthSlider, strengthValue }));
+                breezePanel.Children.Add(row(new UIElement[] { strengthLabel, strengthSlider, strengthBadge }));
                 breezePanel.Children.Add(note("1 barely · 4 recommended · 10 strongest. [sad:9] sets one line."));
                 left.Children.Add(breezePanel);
                 left.Children.Add(breezeWhy);
@@ -388,16 +407,17 @@ namespace TypoZen
 
             var tryCard = new Border
             {
-                Child = tryPanel, Padding = new Thickness(16, 0, 16, 16), CornerRadius = new CornerRadius(6),
+                Child = tryPanel, Padding = new Thickness(16, 12, 16, 16), CornerRadius = new CornerRadius(6),
                 Background = new SolidColorBrush(Color.FromArgb(0x1C, 0x80, 0x80, 0x80)),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x80, 0x80, 0x80)), BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 16, 0, 0), VerticalAlignment = VerticalAlignment.Top
+                Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top
             };
 
             var reading = new Grid();
             reading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 360 });
             reading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 360 });
             var leftScroll = scrolling(left);
+            leftScroll.Margin = new Thickness(0, 0, 12, 0);
             Grid.SetColumn(leftScroll, 0);
             Grid.SetColumn(tryCard, 1);
             reading.Children.Add(leftScroll);
@@ -406,52 +426,91 @@ namespace TypoZen
             // ================================================================ Voices (own window)
             // Everything here acts at once -- a deleted voice goes to the Recycle Bin there and
             // then -- so it lives in a window with Close, not beside Save and Cancel.
-            var lib = new StackPanel();
-            lib.Children.Add(heading("Your voices"));
-            var libList = new ListBox { Height = 180, MinWidth = 320 };
+            var lib = new Grid();
+            lib.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.15, GridUnitType.Star), MinWidth = 360 });
+            lib.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.25, GridUnitType.Star), MinWidth = 380 });
+
+            var libPanel = new StackPanel();
+            libPanel.Children.Add(heading("Voice library"));
+            var libList = new ListBox { Height = 220, MinWidth = 260 };
             var libPlay = button("▶ Play sample");
             libPlay.ToolTip = SampleTip;
+            var libPlayOpt = button("▾");
+            libPlayOpt.Width = 22;
+            libPlayOpt.Padding = new Thickness(0);
+            libPlayOpt.ToolTip = "Sample options: change sample text or instruction";
+            var libPlayRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+            DockPanel.SetDock(libPlayOpt, Dock.Right);
+            libPlayOpt.Margin = new Thickness(2, 0, 0, 0);
+            libPlayRow.Children.Add(libPlayOpt);
+            libPlayRow.Children.Add(libPlay);
+
+            var renameVoice = button("Rename...");
+            renameVoice.ToolTip = "Change this voice's display name.";
             var exportVoice = button("Export...");
             exportVoice.ToolTip = "Saves this voice as a .tzvoice file, to keep or use on another PC. Designing from the same description makes a different person each time, so a voice you like is worth keeping.";
             var deleteVoice = button("Delete...");
             var importVoice = button("Import...");
-            foreach (var b in new[] { libPlay, exportVoice, deleteVoice, importVoice }) { b.Margin = new Thickness(0, 0, 0, 8); b.HorizontalContentAlignment = HorizontalAlignment.Left; }
+            foreach (var b in new[] { libPlay, renameVoice, exportVoice, deleteVoice, importVoice })
+            {
+                b.HorizontalContentAlignment = HorizontalAlignment.Left;
+            }
+            renameVoice.Margin = new Thickness(0, 0, 0, 8);
+            exportVoice.Margin = new Thickness(0, 0, 0, 8);
+            deleteVoice.Margin = new Thickness(0, 0, 0, 8);
+            importVoice.Margin = new Thickness(0, 0, 0, 8);
+
             var libButtons = new StackPanel { Margin = new Thickness(8, 0, 0, 0), Width = 132 };
-            libButtons.Children.Add(libPlay);
+            libButtons.Children.Add(libPlayRow);
+            libButtons.Children.Add(renameVoice);
             libButtons.Children.Add(exportVoice);
             libButtons.Children.Add(deleteVoice);
             libButtons.Children.Add(new Separator { Margin = new Thickness(0, 0, 0, 8), Opacity = 0.4 });
             libButtons.Children.Add(importVoice);
+
             var libRow = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
             DockPanel.SetDock(libButtons, Dock.Right);
             libRow.Children.Add(libButtons);
             libRow.Children.Add(libList);
-            lib.Children.Add(libRow);
-            var libDesc = selectable();
-            lib.Children.Add(libDesc);
+            libPanel.Children.Add(libRow);
 
-            lib.Children.Add(heading("Design a new voice"));
+            var libDesc = selectable();
+            libDesc.Margin = new Thickness(0, 6, 0, 0);
+            libPanel.Children.Add(libDesc);
+
+            var libCard = new Border
+            {
+                Child = libPanel,
+                Padding = new Thickness(14),
+                CornerRadius = new CornerRadius(6),
+                Background = new SolidColorBrush(Color.FromArgb(0x14, 0x80, 0x80, 0x80)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x30, 0x80, 0x80, 0x80)),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+
+            var designPanel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
             var designNote = note("");
-            lib.Children.Add(designNote);
-            var descBox = new TextBox { TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            lib.Children.Add(descBox);
+            designPanel.Children.Add(designNote);
+            var descBox = new TextBox { TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 54, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            designPanel.Children.Add(descBox);
             var design = primary("Create 3 candidates");
-            var fromSelected = button("Start from the selected voice");
+            var fromSelected = button("Start from selected");
             fromSelected.ToolTip = "Puts the selected voice's description in the box, to change and design from.";
             fromSelected.Margin = new Thickness(8, 0, 0, 0);
             design.Margin = new Thickness(0);
             var designRow = row(new UIElement[] { design, fromSelected });
             designRow.Margin = new Thickness(0, 8, 0, 0);
-            lib.Children.Add(designRow);
-            var candidates = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
-            lib.Children.Add(candidates);
+            designPanel.Children.Add(designRow);
 
-            // Clone: Breeze only. Shown once Breeze is installed; with Qwen chosen it stays in view,
-            // greyed, saying why -- one rule for every control one narrator lacks.
-            var clonePanel = new StackPanel();
+            var clonePanel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
             var cloneWhy = note("Clone needs the Breeze narrator: choose Breeze at the top of the Narrator window.");
             var cloneFile = button("Choose recording...");
-            var cloneFileName = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.8, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 340 };
+            var previewClip = button("▶ Play");
+            previewClip.ToolTip = "Listen to the selected recording before cloning.";
+            previewClip.IsEnabled = false;
+            previewClip.Margin = new Thickness(6, 0, 6, 0);
+            var cloneFileName = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.8, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 220 };
             var cloneWords = new TextBox { TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             var cloneFrom = new TextBox { Width = 56, Height = 26, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0) };
             var cloneTo = new TextBox { Width = 56, Height = 26, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
@@ -459,28 +518,56 @@ namespace TypoZen
             cloneGo.HorizontalAlignment = HorizontalAlignment.Left;
             cloneGo.Margin = new Thickness(0, 8, 0, 0);
             string clonePath = null;
+
+            clonePanel.Children.Add(note("3 to 20 seconds of one person, and exactly the words they say. Only a voice you have the right to use."));
+            clonePanel.Children.Add(row(new UIElement[] { cloneFile, previewClip, cloneFileName }));
+            clonePanel.Children.Add(new TextBlock { Text = "The words said in the recording", Margin = new Thickness(0, 8, 0, 4) });
+            clonePanel.Children.Add(cloneWords);
+            var useDesign = button("Use the design passage");
+            useDesign.ToolTip = "The passage every designed voice is recorded reading. Record the speaker reading it, then choose that recording.";
+            useDesign.Margin = new Thickness(0, 8, 0, 0);
+            useDesign.HorizontalAlignment = HorizontalAlignment.Left;
+            useDesign.Click += (s, e) => cloneWords.Text = "The road ran straight across the plain, and the mountains beyond it were pale with distance. "
+                + "She had been walking since the morning, and the light had not changed at all. There was nothing to mark the hours but the sound of her own steps.";
+            clonePanel.Children.Add(useDesign);
+            clonePanel.Children.Add(row(new UIElement[] {
+                new TextBlock { Text = "Use from", VerticalAlignment = VerticalAlignment.Center }, cloneFrom,
+                new TextBlock { Text = "to", VerticalAlignment = VerticalAlignment.Center }, cloneTo,
+                new TextBlock { Text = "  seconds (optional)", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.72 } }));
+            clonePanel.Children.Add(cloneGo);
+
+            var studioTabs = new TabControl { Background = Brushes.Transparent, BorderThickness = new Thickness(0), Margin = new Thickness(0) };
+            studioTabs.Items.Add(new TabItem { Header = new TextBlock { Text = "Design voice", FontSize = 12 }, Content = designPanel, Padding = new Thickness(12, 4, 12, 4) });
             if (haveBreeze)
             {
-                lib.Children.Add(heading("Clone a voice from a recording"));
-                clonePanel.Children.Add(note("3 to 20 seconds of one person, and exactly the words they say. Only a voice you have the right to use."));
-                clonePanel.Children.Add(row(new UIElement[] { cloneFile, cloneFileName }));
-                clonePanel.Children.Add(new TextBlock { Text = "The words said in the recording", Margin = new Thickness(0, 8, 0, 4) });
-                clonePanel.Children.Add(cloneWords);
-                var useDesign = button("Use the design passage");
-                useDesign.ToolTip = "The passage every designed voice is recorded reading. Record the speaker reading it, then choose that recording.";
-                useDesign.Margin = new Thickness(0, 8, 0, 0);
-                useDesign.HorizontalAlignment = HorizontalAlignment.Left;
-                useDesign.Click += (s, e) => cloneWords.Text = "The road ran straight across the plain, and the mountains beyond it were pale with distance. "
-                    + "She had been walking since the morning, and the light had not changed at all. There was nothing to mark the hours but the sound of her own steps.";
-                clonePanel.Children.Add(useDesign);
-                clonePanel.Children.Add(row(new UIElement[] {
-                    new TextBlock { Text = "Use from", VerticalAlignment = VerticalAlignment.Center }, cloneFrom,
-                    new TextBlock { Text = "to", VerticalAlignment = VerticalAlignment.Center }, cloneTo,
-                    new TextBlock { Text = "  seconds (optional)", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.72 } }));
-                clonePanel.Children.Add(cloneGo);
-                lib.Children.Add(cloneWhy);
-                lib.Children.Add(clonePanel);
+                var cloneTabContent = new StackPanel();
+                cloneTabContent.Children.Add(cloneWhy);
+                cloneTabContent.Children.Add(clonePanel);
+                studioTabs.Items.Add(new TabItem { Header = new TextBlock { Text = "Clone voice", FontSize = 12 }, Content = cloneTabContent, Padding = new Thickness(12, 4, 12, 4) });
             }
+
+            var candidates = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+            var studioPanel = new StackPanel();
+            studioPanel.Children.Add(heading("Voice studio"));
+            studioPanel.Children.Add(studioTabs);
+            studioPanel.Children.Add(candidates);
+
+            var studioCard = new Border
+            {
+                Child = studioPanel,
+                Padding = new Thickness(14),
+                CornerRadius = new CornerRadius(6),
+                Background = new SolidColorBrush(Color.FromArgb(0x14, 0x80, 0x80, 0x80)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x30, 0x80, 0x80, 0x80)),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+
+            Grid.SetColumn(libCard, 0);
+            Grid.SetColumn(studioCard, 1);
+            lib.Children.Add(libCard);
+            lib.Children.Add(studioCard);
+
             var libStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.9, VerticalAlignment = VerticalAlignment.Center };
             var libBusy = new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 8), Visibility = Visibility.Collapsed };
 
@@ -491,6 +578,7 @@ namespace TypoZen
             var castEmpty = note("No characters yet. Find characters lists who speaks in this book.");
             castEmpty.Margin = new Thickness(36, 8, 0, 0);
             Button findCast = null;
+            TextBox filterBox = null;
             StackPanel castPage = null;
             if (!string.IsNullOrEmpty(book))
             {
@@ -501,8 +589,36 @@ namespace TypoZen
                     castPage.Children.Add(note("Privacy Mode is on: this book's cast is kept until TypoZen closes and is not saved to disk."));
                 findCast = button("Find characters");
                 findCast.HorizontalAlignment = HorizontalAlignment.Left;
-                findCast.Margin = new Thickness(0, 0, 0, 8);
-                castPage.Children.Add(findCast);
+
+                filterBox = new TextBox { Width = 200, VerticalContentAlignment = VerticalAlignment.Center };
+                var filterHint = new TextBlock
+                {
+                    Text = "Filter characters...", Opacity = 0.45, IsHitTestVisible = false,
+                    VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0)
+                };
+                filterBox.TextChanged += (s, e) =>
+                {
+                    filterHint.Visibility = filterBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+                    string q = filterBox.Text.Trim().ToLowerInvariant();
+                    foreach (UIElement child in castPanel.Children)
+                    {
+                        var border = child as Border;
+                        if (border == null) continue;
+                        string tag = border.Tag as string;
+                        border.Visibility = (string.IsNullOrEmpty(q) || (tag != null && tag.ToLowerInvariant().Contains(q)))
+                            ? Visibility.Visible : Visibility.Collapsed;
+                    }
+                };
+                var filterCell = new Grid { Margin = new Thickness(12, 0, 0, 0) };
+                filterCell.Children.Add(filterBox);
+                filterCell.Children.Add(filterHint);
+
+                var castActionRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+                DockPanel.SetDock(filterCell, Dock.Right);
+                castActionRow.Children.Add(filterCell);
+                castActionRow.Children.Add(findCast);
+                castPage.Children.Add(castActionRow);
+
                 castPage.Children.Add(row(new UIElement[] {
                     new TextBlock { Width = 28, Margin = new Thickness(0, 0, 8, 0) },
                     new TextBlock { Text = "Character", Width = 160, Opacity = 0.7 },
@@ -572,11 +688,21 @@ namespace TypoZen
             {
                 try
                 {
-                    if (player != null) player.Stop();
-                    player = new SoundPlayer(path);
-                    player.Play();
+                    if (player != null) { player.Stop(); player = null; }
+                    if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); clipPlayer = null; }
+                    if (path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                    {
+                        player = new SoundPlayer(path);
+                        player.Play();
+                    }
+                    else
+                    {
+                        clipPlayer = new System.Windows.Media.MediaPlayer();
+                        clipPlayer.Open(new Uri(path));
+                        clipPlayer.Play();
+                    }
                 }
-                catch (Exception ex) { say("Could not play the sample: " + ex.Message); }
+                catch (Exception ex) { say("Could not play audio: " + ex.Message); }
             };
 
             // The voice a cast row is set to. Rows are built before the voice list exists, so
@@ -766,7 +892,12 @@ namespace TypoZen
                 };
                 var castLine = row(new UIElement[] { playLine, label, lines, cb, sayCell, strengthBox });
                 castLine.Margin = new Thickness(0);
-                var stripe = new Border { Child = castLine, Padding = new Thickness(0, 3, 4, 3), CornerRadius = new CornerRadius(3) };
+                var stripe = new Border { Child = castLine, Padding = new Thickness(0, 3, 4, 3), CornerRadius = new CornerRadius(3), Tag = shownName };
+                if (filterBox != null && !string.IsNullOrWhiteSpace(filterBox.Text))
+                {
+                    string q = filterBox.Text.Trim().ToLowerInvariant();
+                    if (!shownName.ToLowerInvariant().Contains(q)) stripe.Visibility = Visibility.Collapsed;
+                }
                 if (castPanel.Children.Count % 2 == 1) stripe.SetResourceReference(Border.BackgroundProperty, "TzButton");
                 castPanel.Children.Add(stripe);
                 castEmpty.Visibility = Visibility.Collapsed;
@@ -781,6 +912,7 @@ namespace TypoZen
             {
                 var v = libList.SelectedItem as VoiceItem;
                 deleteVoice.IsEnabled = removable(v);
+                renameVoice.IsEnabled = removable(v);
                 // Any voice with its recordings on disk can be saved, including the other narrator's;
                 // only deleting is limited to the narrator that owns it.
                 exportVoice.IsEnabled = v != null && !string.IsNullOrEmpty(v.Preview) && System.IO.File.Exists(v.Preview);
@@ -840,7 +972,7 @@ namespace TypoZen
 
             // Anything that needs the narrator goes through here: off the UI thread, with the
             // buttons that would start another such call disabled until it is done.
-            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, design, importVoice, playA, takeA, cloneGo };
+            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, renameVoice, design, importVoice, playA, takeA, cloneGo, previewClip };
             // Find characters asks the page, not the narrator, so it is never held up by one (it was: the
             // whole window sat greyed for the narrator's 40-second start, 2026-10-09).
             // These need the narrator itself, and wait while it starts; the rest of the window does not.
@@ -1358,9 +1490,59 @@ namespace TypoZen
             };
             playVoice.ContextMenu = sampleMenu(playVoice);
             libPlay.ContextMenu = sampleMenu(libPlay);
+            sampleOpt.Click += (s, e) =>
+            {
+                playVoice.ContextMenu.PlacementTarget = sampleOpt;
+                playVoice.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+                playVoice.ContextMenu.IsOpen = true;
+            };
+            libPlayOpt.Click += (s, e) =>
+            {
+                libPlay.ContextMenu.PlacementTarget = libPlayOpt;
+                libPlay.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+                libPlay.ContextMenu.IsOpen = true;
+            };
             // A disabled button gets no right-click; it is only disabled while something else runs.
             ContextMenuService.SetShowOnDisabled(playVoice, true);
             ContextMenuService.SetShowOnDisabled(libPlay, true);
+            ContextMenuService.SetShowOnDisabled(sampleOpt, true);
+            ContextMenuService.SetShowOnDisabled(libPlayOpt, true);
+
+            renameVoice.Click += (s, e) =>
+            {
+                var v = libList.SelectedItem as VoiceItem;
+                if (!removable(v) || string.IsNullOrEmpty(v.Preview)) return;
+                string curName = v.Name;
+                string newName = ask("Rename voice", "Enter a new name for this voice:", curName);
+                if (string.IsNullOrWhiteSpace(newName) || newName.Trim() == curName) return;
+                newName = newName.Trim();
+                try
+                {
+                    string dir = System.IO.Path.GetDirectoryName(v.Preview);
+                    string metaPath = System.IO.Path.Combine(dir, "meta.json");
+                    var meta = QwenNarrator.ReadJson(metaPath);
+                    meta["name"] = newName;
+                    System.IO.File.WriteAllText(metaPath, new JavaScriptSerializer().Serialize(meta), System.Text.Encoding.UTF8);
+                    string keptId = v.Id;
+                    loadVoices();
+                    win.Dispatcher.Invoke((Action)(() =>
+                    {
+                        foreach (var listed in libList.Items)
+                        {
+                            var vi = listed as VoiceItem;
+                            if (vi == null || vi.Id != keptId) continue;
+                            libList.SelectedItem = vi;
+                            libList.ScrollIntoView(vi);
+                            break;
+                        }
+                    }));
+                    say("Renamed voice to \"" + newName + "\".");
+                }
+                catch (Exception ex)
+                {
+                    say("Could not rename voice: " + ex.Message);
+                }
+            };
 
             deleteVoice.Click += (s, e) =>
             {
@@ -1543,6 +1725,12 @@ namespace TypoZen
                 clonePath = dlg.FileName;
                 cloneFileName.Text = System.IO.Path.GetFileName(clonePath);
                 cloneFileName.ToolTip = clonePath;
+                previewClip.IsEnabled = true;
+            };
+            previewClip.Click += (s, e) =>
+            {
+                if (!string.IsNullOrEmpty(clonePath) && System.IO.File.Exists(clonePath))
+                    play(clonePath);
             };
             cloneGo.Click += (s, e) =>
             {
@@ -1727,7 +1915,7 @@ namespace TypoZen
             {
                 var vw = new Window
                 {
-                    Title = "Voices", Width = 640, Height = 640, MinWidth = 520, MinHeight = 460,
+                    Title = "Voices", Width = 920, Height = 620, MinWidth = 720, MinHeight = 480,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.CanResizeWithGrip,
                     ShowInTaskbar = false, Background = win.Background, Foreground = win.Foreground
                 };
@@ -1766,6 +1954,7 @@ namespace TypoZen
                     statusNow = status; busyNow = busyBar;
                     candidates.Children.Clear();
                     clearCandidates();
+                    try { if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); } } catch { }
                     // Detach the library and its status line, so the next opening can show them.
                     libScroll.Content = null;
                     vFooterRow.Children.Remove(libStatus);
@@ -1899,7 +2088,7 @@ namespace TypoZen
                 try { sendToPage("cmd:narrator_trial_stop"); } catch { }
                 var p = pendingTrial;
                 if (p != null) p.TrySetResult("{\"kind\":\"stopped\"}");
-                try { if (player != null) player.Stop(); } catch { }
+                try { if (player != null) player.Stop(); if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); } } catch { }
             };
             return win;
         }
