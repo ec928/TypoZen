@@ -372,7 +372,7 @@ Breeze narration is a second narrator, beside Qwen rather than instead of it. On
 
 **Clone a voice from a recording.** **Manage voices...** with Breeze chosen has **Clone a voice from a recording**: 3 to 20 seconds of one person speaking clearly, and exactly the words they say — the easiest way is to record them reading the design passage, which **Use the design passage** puts in the box. Breeze makes one candidate; play it, name it, keep it. A cloned voice is Breeze's only. Clone only a voice you have the right to use: your own, or with the speaker's permission.
 
-**Sounds in the text.** The tags in [Characters, voices and directing a line](#characters-voices-and-directing-a-line) work with Breeze too, and the point events — `[laughing]`, `[giggles]`, `[gasp]`, `[sighing]`, `[cough]`, `[clears throat]`, `[snorts]` — are performed as sounds, which the Qwen narrator cannot do: it only colours the words around them. A span tag such as `[sad]` changes the delivery of the rest of that paragraph, as it does with Qwen.
+**Sounds in the text.** Breeze performs **Performative Audio Cues**: a sound written in round brackets, such as `(giggles)` or `(cough)`, where it should happen. They are for Breeze; with Qwen they are simply part of the text it is given. The instructions and moods in [Characters, voices and directing a line](#characters-voices-and-directing-a-line) work with Breeze too.
 
 **How strongly it acts.** Every instruction Breeze is given — an emotion cue, a bracket of your own words, a mood tag — is followed with an **Emotion strength**, set in Narrator Manager under **Emotion cues**: 1 barely, 4 by default (Breeze's own recommendation), up to 10. A number in a tag sets it for that line alone: `[sad:9]`, `[shouts loudly:9]`, `Anna [whispers softly:2] said`. A character in **Cast for this book** has a strength of their own for all their lines, 4 unless you change it on their row; the Emotion strength setting then applies to the narration. The number is never spoken, and the Qwen narrator, which has no strength, ignores it. A line with no instruction is not affected; a line with one takes about half as long again to prepare.
 
@@ -391,7 +391,9 @@ To determine how tags affect delivery, TypoZen uses a **strict positional logic*
 1. **In-Quote Instructions `[ ]`**: Apply exclusively to the quoted text. They take effect from their exact position until the end of the quote or until a new instruction inside the quote is hit.
 2. **Narrator Instructions `[ ]`**: Apply exclusively outside of quotes. They take effect from their exact position until the end of the paragraph block or until a new outside-quote instruction is hit.
 3. **Double Brackets `[[ ]]`**: Act as a hard override, superseding any global instructions or prior local tags for that domain. Single brackets simply append to the existing global instruction.
-4. **Performative Audio Cues `( )`**: Native Breeze sound events in parentheses, such as `(giggles)` or `(cough)`, are bypassed by TypoZen and sent directly to Breeze to perform inline as non-speech audio. The built-in sounds below work this way, and so does `(sigh)`; not every word does: `(laughs)` does not.
+4. **Performative Audio Cues `( )`**: a sound in round brackets, such as `(giggles)` or `(cough)`. They are not instructions: TypoZen leaves them in the text as written, and Breeze performs them where they stand — inside a quote in that character's voice, outside quotes in the narrator's. Breeze only. See **Performative Audio Cues** below for which words work.
+
+Square brackets are always instructions; a sound is never written in them. `[laughing]` is an instruction, like `[sadly]`.
 
 Because tags apply exactly from where they are placed, placing a tag in the middle of a sentence will cleanly cut the audio piece there and shift the delivery going forward. 
 
@@ -458,15 +460,23 @@ With Tom's **Instruction** box set to `gruff and slow`, and the narrator's to `m
 - Brackets side by side are one instruction: two singles are both added, in order; a double overrides them.
 - `:1` to `:10` at the end, inside the brackets, is Breeze's strength for that stretch: `"[shouts:9] Get out!"`.
 - An instruction can be a full sentence: `[Read it plainly. Speak softly]`.
-- Square brackets in your own text are always taken as tags, so use them only for that. Breeze's own sounds in round brackets, `(giggles)`, are not tags: they are sent to the narrator as written.
+- Square brackets in your own text are always taken as instructions, so use them only for that.
 
-#### Built-in tags
+#### Performative Audio Cues
 
-These words are performed where they stand, single or double; any other words in brackets are an instruction. Put them where the sound or mood should happen: inside a quote for that character, outside quotes for the narrator. Breeze performs them; Qwen only colours the words around them.
+A sound in round brackets, where it should happen: `"Stop it (giggles)," Anna said.` TypoZen does not read or change it; Breeze decides whether it knows the word. Breeze only.
+
+- Tried in TypoZen and performed: `(laughing)` `(giggles)` `(gasp)` `(sigh)` `(sighing)` `(cough)` `(clears throat)` `(snorts)`; `(snorts)` is the weakest.
+- Tried in TypoZen and **not** performed: `(laughs)`.
+- Named in Breeze's own documentation: `(laugh)` `(sigh)` `(cough)` `(clears throat)`.
+- Reported to work elsewhere, not yet tried in TypoZen: `(chuckles)` `(gasps)` `(sighs)` `(coughs)` `(inhales)` `(exhales)` `(breathing heavily)` `(yawns)` `(smacks lips)` `(sobs)`.
+
+#### Built-in moods
+
+These words in square brackets change the delivery from where they stand, single or double. Put them inside a quote for that character, outside quotes for the narrator. Qwen follows them only slightly.
 
 | Kind | Tags |
 |---|---|
-| Sounds — at that point | `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]` |
 | Moods — to the end of that quote, or of that stretch of narration | `[sad]` `[angry]` `[excited]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]` |
 
 #### ePubs — what the app does by itself

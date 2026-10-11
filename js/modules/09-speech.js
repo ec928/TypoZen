@@ -1108,10 +1108,16 @@ function blockPieces(text) {
  */
 const SPAN_TAG = /^(?:excited|sad|angry|amazed|serious|sarcastic|curious|mischievously|crying|panicked|tired|asmr|singing|whispers|very slowly|very fast|like dracula|deep and loud shouting)$/i;
 const POINT_TAG = /^(?:laughing|giggles|gasp|sighing|cough|clears throat|snorts)$/i;
-/** One of the models' own tags, [sad] or [laughing] (a strength, [sad:9], allowed): performed in the text. */
+/**
+ * One of the built-in moods, [sad] (a strength, [sad:9], allowed): kept in the text, where the
+ * narrator turns it into the delivery from there on. Square brackets are the instruction channel;
+ * sounds are not written in them (Ed, 2026-10-11): a Performative Audio Cue is written in round
+ * brackets, (giggles), which nothing here touches and Breeze performs. [laughing] is an instruction
+ * like any other words. POINT_TAG stays for an ePub, whose text the narrator still scans.
+ */
 function isModelTag(inner) {
     const word = String(inner || '').replace(/\s*:\s*\d+(?:\.\d+)?\s*$/, '').trim();
-    return SPAN_TAG.test(word) || POINT_TAG.test(word);
+    return SPAN_TAG.test(word);
 }
 
 /**
@@ -2066,10 +2072,9 @@ function directedPieces(text, quotes, from, el, noCast) {
         }
         // A lead-in cut off by a voiced quote ends there: 'Anna whispered,' left the model talking on.
         if (!it.voice && merged[i + 1] && merged[i + 1].voice) spoken = spoken.replace(/,\s*$/, '.');
-        // Words to say, or a sound to make ([laughing] before a quote is the narrator's laugh). A
-        // bracket that is neither is the book's text in an ePub, and read.
+        // Words to say. A bracket that is not a mood is the book's text in an ePub, and read.
         const words = spoken.replace(/\[([^\[\]\n]+)\]/g, (m, inner) => isModelTag(inner) ? ' ' : m);
-        if (!/[A-Za-z0-9]/.test(words) && !/\[[^\[\]\n]+\]/.test(spoken.replace(/\[([^\[\]\n]+)\]/g, (m, inner) => POINT_TAG.test(inner.trim()) ? m : ''))) return;
+        if (!/[A-Za-z0-9]/.test(words)) return;
         const tag = splitSoft(it.tag), t = tag.text;
         const fromQuote = it.q && it.lo >= it.q.start && it.hi <= it.q.end;
         carrySpan(blockPieces(spoken)).forEach(p => out.push(it.voice ? {

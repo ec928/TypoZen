@@ -117,13 +117,17 @@ const examples = [
         r => told(r, 'TOM').join() === 'Read it plainly. Speak softly'],
     ['"[shouts:9] Get out!"', 'readme', ['"[shouts:9] Get out!" Anna said.'], {}, r => told(r, 'ANNA').join() === 'shouts:9, emphatic'],
     ['[shouts:9]', 'help', ['"[shouts:9] Get out!" Anna said.'], {}, r => told(r, 'ANNA').join() === 'shouts:9, emphatic'],
-    ['`(giggles)`, are not tags: they are sent to the narrator as written', 'readme', ['"[softly] I forgive you (giggles)," Anna said.'], {},
-        r => r.some(p => p[0] === 'ANNA' && p[1].indexOf('(giggles)') >= 0)],
+    // Performative Audio Cues: left in the text, in the voice of whoever reads it; never an instruction
+    ['`"Stop it (giggles)," Anna said.` TypoZen does not read or change it', 'readme', ['"Stop it (giggles)," Anna said.', 'She paused (sigh) and went on.'], {},
+        r => r.some(p => p[0] === 'ANNA' && p[1] === 'Stop it (giggles),' && p[2] === '') && r.some(p => p[0] === 'narrator' && p[1] === 'She paused (sigh) and went on.')],
+    ['`[laughing]` is an instruction, like `[sadly]`.', 'readme', ['"[laughing] Stop it," Anna said.'], {},
+        r => told(r, 'ANNA').join() === 'laughing' && r.every(p => p[1].indexOf('laughing') < 0)],
     ['"[shouts loudly] Get out!" Anna said.', 'help', null, {}, r => told(r, 'ANNA').join() === 'shouts loudly, emphatic'],
     ['[measured and quiet] The door opened.', 'help', null, {}, r => r.length === 1 && r[0][2] === 'measured and quiet'],
     // Built-in tags are performed, single or double
-    ['"[laughing] Stop it," Anna said.', 'help', ['"[laughing] Stop it," Anna said.', '"[[laughing]] Stop it," Anna said.'], {},
-        r => r.filter(p => p[0] === 'ANNA').length === 2 && r.filter(p => p[0] === 'ANNA').every(p => p[1].indexOf('[laughing]') >= 0 && p[2] === '')],
+    ['"Stop it (giggles)," Anna said.', 'help', null, {}, r => r.some(p => p[0] === 'ANNA' && p[1] === 'Stop it (giggles),' && p[2] === '')],
+    ['"[sad] Stop it," Anna said.', 'help', ['"[sad] Stop it," Anna said.', '"[[sad]] Stop it," Anna said.'], {},
+        r => r.filter(p => p[0] === 'ANNA').length === 2 && r.filter(p => p[0] === 'ANNA').every(p => p[1].indexOf('[sad]') === 0 && p[2] === '')],
     // Emotion cues colour the quote only
     ['"Go," she whispered.', 'both', null, { cast: {} }, r => r.length === 1 && r[0][2] === 'cue: whispered'],
     // In an ePub, brackets are the book's text

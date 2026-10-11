@@ -103,7 +103,8 @@ console.log('--- brackets stay in the spoken text');
     check('a span tag opens every piece of the split', pieces.every(p => p.text.indexOf('[panicked]') === 0));
     check('the span is not turned into an instruction', pieces.every(p => p.direction === ''));
 }
-eq('a line that is only a tag is spoken', api.paragraphPieces('[laughing]', null).map(p => p.text), ['[laughing]']);
+eq('a line that is only a mood is spoken', api.paragraphPieces('[sad]', null).map(p => p.text), ['[sad]']);
+eq('a Performative Audio Cue is left in the text as written', api.paragraphPieces('She paused (sigh) and went on.', null).map(p => p.text), ['She paused (sigh) and went on.']);
 
 console.log('--- a tag against a quotation goes with the speaker');
 api.setCast({ anna: 'qwen-ryan' });
@@ -313,8 +314,10 @@ console.log('--- one notation: [tag] and [[tag]] work in the same places (with n
     eq('a bracket in narration is for all the narration of that paragraph, not the quote',
         lead.map(r => r[2]), ['measured and quiet', '', 'measured and quiet']);
     check('and it is not spoken', lead.every(r => r[1].indexOf('[') < 0), JSON.stringify(lead));
-    eq('a built-in tag opening a paragraph is still performed',
-        told('[sighing] It was over.', {}).map(r => [r[1], r[2]]), [['[sighing] It was over.', '']]);
+    eq('a built-in mood opening a paragraph stays in the text',
+        told('[sad] It was over.', {}).map(r => [r[1], r[2]]), [['[sad] It was over.', '']]);
+    eq('a sound word in square brackets is an instruction like any other words (Ed, 2026-10-11)',
+        told('[sighing] It was over.', {}).map(r => [r[1], r[2]]), [['It was over.', 'sighing']]);
     eq('a bracket before a quote is outside it: the narrator\'s, from there on',
         told('[angrily] "Go," Tom said.', { tom: 'v-tom' }).map(r => r[2]), ['', 'angrily']);
     api.setCast({ anna: 'qwen-ryan' });
@@ -624,10 +627,10 @@ console.log('--- [[tag]] overrides every other instruction and is not spoken');
                 ps.filter(p => p.text.indexOf('late') >= 0).map(p => { const c = cueOf(p, true, ''); return c.instruction + '|' + c.direction; }), ['measured|']);
             api.setCast({ anna: 'qwen-ryan' });
         }
-        eq('no speaker: a model tag against the quotation stays spoken too',
-            api.narrationQuotes('[laughing] "Stop it."').map(q => q.instruct || ''), ['']);
-        eq('unvoiced speaker: a model tag against the quotation stays spoken',
-            api.narrationQuotes('[laughing] "Stop it," Tom said.').map(q => q.instruct || ''), ['']);
+        eq('no speaker: a mood against the quotation stays spoken too',
+            api.narrationQuotes('[sad] "Stop it."').map(q => q.instruct || ''), ['']);
+        eq('unvoiced speaker: a mood against the quotation stays spoken',
+            api.narrationQuotes('[sad] "Stop it," Tom said.').map(q => q.instruct || ''), ['']);
         eq('unvoiced speaker: so does a span tag with a strength',
             api.narrationQuotes('[sad:9] "Stop it," Tom said.').map(q => q.instruct || ''), ['']);
         eq('a voiced speaker\'s bracket against the quotation is the instruction too',
