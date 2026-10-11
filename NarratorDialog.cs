@@ -364,6 +364,122 @@ namespace TypoZen
             catch { }
         }
 
+        private struct WavLayout
+        {
+            public int SampleRate;
+            public int BlockAlign;
+            public int DataOffset;
+            public int DataBytes;
+            public short Channels;
+            public short Bits;
+            public bool Pcm;
+            public double Seconds
+            {
+                get { return BlockAlign > 0 && SampleRate > 0 ? (double)(DataBytes / BlockAlign) / SampleRate : 0; }
+            }
+        }
+
+        /// <summary>PCM layout of a wav, including one whose data chunk is not at byte 44.</summary>
+        private static bool TryWavLayout(string path, out WavLayout layout)
+        {
+            layout = new WavLayout();
+            try
+            {
+                using (var fs = File.OpenRead(path))
+                using (var br = new BinaryReader(fs))
+                {
+                    if (fs.Length < 44) return false;
+                    if (br.ReadUInt32() != 0x46464952) return false; // RIFF
+                    br.ReadUInt32();
+                    if (br.ReadUInt32() != 0x45564157) return false; // WAVE
+                    bool haveFmt = false, haveData = false;
+                    int rate = 0, align = 0, dataOffset = 0, dataBytes = 0, tag = 0;
+                    short channels = 0, bits = 0;
+                    while (fs.Position + 8 <= fs.Length)
+                    {
+                        uint id = br.ReadUInt32();
+                        int size = br.ReadInt32();
+                        if (size < 0 || fs.Position + size > fs.Length) break;
+                        long next = fs.Position + size + (size & 1);
+                        if (id == 0x20746d66 && size >= 16) // "fmt "
+                        {
+                            tag = br.ReadInt16();
+                            channels = br.ReadInt16();
+                            rate = br.ReadInt32();
+                            br.ReadInt32();
+                            align = br.ReadInt16();
+                            bits = br.ReadInt16();
+                            haveFmt = true;
+                        }
+                        else if (id == 0x61746164) // "data"
+                        {
+                            dataOffset = (int)fs.Position;
+                            dataBytes = size;
+                            haveData = true;
+                        }
+                        if (haveFmt && haveData) break;
+                        fs.Position = next;
+                    }
+                    if (!haveFmt || !haveData || rate <= 0 || channels <= 0 || align <= 0) return false;
+                    layout.SampleRate = rate;
+                    layout.BlockAlign = align;
+                    layout.DataOffset = dataOffset;
+                    layout.DataBytes = dataBytes;
+                    layout.Channels = channels;
+                    layout.Bits = bits;
+                    layout.Pcm = tag == 1;
+                    return layout.Seconds > 0;
+                }
+            }
+            catch { return false; }
+        }
+
+        /// <summary>A temporary 16-bit-or-other PCM wav of start..end seconds. Null when the file is not PCM.</summary>
+        private static string SliceWav(string path, double startSec, double? endSec)
+        {
+            WavLayout w;
+            if (!TryWavLayout(path, out w) || !w.Pcm) return null;
+            int frames = w.DataBytes / w.BlockAlign;
+            int a = (int)Math.Round(Math.Max(0, startSec) * w.SampleRate);
+            int b = endSec.HasValue ? (int)Math.Round(endSec.Value * w.SampleRate) : frames;
+            if (a > frames) a = frames;
+            if (b > frames) b = frames;
+            if (b <= a) return null;
+            int count = (b - a) * w.BlockAlign;
+            byte[] samples = new byte[count];
+            using (var fs = File.OpenRead(path))
+            {
+                fs.Position = w.DataOffset + (long)a * w.BlockAlign;
+                int got = 0;
+                while (got < count)
+                {
+                    int n = fs.Read(samples, got, count - got);
+                    if (n <= 0) return null;
+                    got += n;
+                }
+            }
+            string tmp = Path.Combine(Path.GetTempPath(), "tzspan-" + Guid.NewGuid().ToString("N") + ".wav");
+            using (var fs = File.Create(tmp))
+            using (var bw = new BinaryWriter(fs))
+            {
+                bw.Write(0x46464952);
+                bw.Write(36 + count);
+                bw.Write(0x45564157);
+                bw.Write(0x20746d66);
+                bw.Write(16);
+                bw.Write((short)1);
+                bw.Write(w.Channels);
+                bw.Write(w.SampleRate);
+                bw.Write(w.SampleRate * w.BlockAlign);
+                bw.Write((short)w.BlockAlign);
+                bw.Write(w.Bits);
+                bw.Write(0x61746164);
+                bw.Write(count);
+                bw.Write(samples);
+            }
+            return tmp;
+        }
+
         private static string TranscribeWav(string path)
         {
             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
@@ -498,6 +614,7 @@ namespace TypoZen
             var voices = new List<VoiceItem>();
             SoundPlayer player = null;
             System.Windows.Media.MediaPlayer clipPlayer = null;
+            System.Windows.Threading.DispatcherTimer clipLimit = null;
             Trial kept = null;              // Try it: Previous, the last different settings played
             string playing = null;          // Try it: "Current" or "Previous" while one is preparing or playing
             Action applyPlay = null;        // shows that row's Play as Stop; set once the buttons exist
@@ -877,7 +994,7 @@ namespace TypoZen
             recordPcBtn.ToolTip = "Record audio playing from your PC speakers (YouTube, video, media player).";
             recordPcBtn.Margin = new Thickness(0, 0, 6, 4);
             var previewClip = button("▶ Play");
-            previewClip.ToolTip = "Listen to the selected recording before cloning.";
+            previewClip.ToolTip = "Play the stretch named below. The whole recording, until Use from or to is set.";
             previewClip.IsEnabled = false;
             previewClip.Margin = new Thickness(0, 0, 6, 4);
             var cloneFileName = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.8, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 140, Margin = new Thickness(0, 2, 0, 4) };
@@ -889,7 +1006,7 @@ namespace TypoZen
             cloneGo.Margin = new Thickness(0, 8, 0, 0);
             string clonePath = null;
             var transcribeBtn = button("✨ Transcribe");
-            transcribeBtn.ToolTip = "Automatically transcribe the spoken words using Windows Speech Recognition.";
+            transcribeBtn.ToolTip = "Transcribe the same stretch Play uses.";
             transcribeBtn.IsEnabled = false;
             transcribeBtn.Margin = new Thickness(8, 0, 0, 0);
 
@@ -913,8 +1030,99 @@ namespace TypoZen
             clonePanel.Children.Add(row(new UIElement[] {
                 new TextBlock { Text = "Use from", VerticalAlignment = VerticalAlignment.Center }, cloneFrom,
                 new TextBlock { Text = "to", VerticalAlignment = VerticalAlignment.Center }, cloneTo,
-                new TextBlock { Text = "  seconds (optional)", VerticalAlignment = VerticalAlignment.Center, Opacity = 0.72 } }));
+                new TextBlock { Text = "seconds", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) } }));
+            // Same bounds as CLONE_MIN_S and CLONE_MAX_S in tools/breeze-narrator/sidecar.py.
+            const double CloneMinSeconds = 3, CloneMaxSeconds = 20;
+            double? clipSeconds = null;
+            var cloneSpanNote = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap, Opacity = 0.72, Margin = new Thickness(0, 0, 0, 4),
+                Text = "Optional. Empty uses the whole recording."
+            };
+            clonePanel.Children.Add(cloneSpanNote);
             clonePanel.Children.Add(cloneGo);
+            System.Windows.Media.MediaPlayer durationProbe = null;
+
+            // The stretch Play, Transcribe and Make a candidate share. Empty boxes are the whole file.
+            bool TryCloneSpan(out double fromSec, out double? end, out string error)
+            {
+                fromSec = 0;
+                end = null;
+                error = null;
+                string fromText = cloneFrom.Text.Trim(), toText = cloneTo.Text.Trim();
+                double n;
+                if (fromText.Length > 0)
+                {
+                    if (!double.TryParse(fromText, out n) || double.IsNaN(n) || double.IsInfinity(n) || n < 0)
+                    { error = "From and to are seconds into the recording, such as 2.5."; return false; }
+                    fromSec = n;
+                }
+                if (toText.Length > 0)
+                {
+                    if (!double.TryParse(toText, out n) || double.IsNaN(n) || double.IsInfinity(n) || n < 0)
+                    { error = "From and to are seconds into the recording, such as 2.5."; return false; }
+                    end = n;
+                }
+                if (end.HasValue && end.Value <= fromSec)
+                { error = "The end is not after the start."; return false; }
+                if (clipSeconds.HasValue && fromSec >= clipSeconds.Value - 0.001)
+                { error = "That start is past the end of the recording."; return false; }
+                if (end.HasValue && clipSeconds.HasValue && end.Value > clipSeconds.Value) end = clipSeconds.Value;
+                return true;
+            }
+            string SpanLimit(double len)
+            {
+                if (len + 0.05 < CloneMinSeconds) return " A voice needs at least 3 seconds.";
+                if (len > CloneMaxSeconds + 0.05) return " A voice needs 20 seconds or less.";
+                return "";
+            }
+            Action refreshCloneSpan = () =>
+            {
+                if (string.IsNullOrEmpty(clonePath))
+                { cloneSpanNote.Text = "Optional. Empty uses the whole recording."; return; }
+                if (!clipSeconds.HasValue)
+                { cloneSpanNote.Text = "Optional. Empty uses the whole recording."; return; }
+                double fromSec; double? end; string error;
+                if (!TryCloneSpan(out fromSec, out end, out error)) { cloneSpanNote.Text = error; return; }
+                double dur = clipSeconds.Value;
+                double b = end ?? dur;
+                double len = Math.Max(0, b - fromSec);
+                string usingIt = (cloneFrom.Text.Trim().Length == 0 && cloneTo.Text.Trim().Length == 0)
+                    ? "Using all of it."
+                    : string.Format("Using {0:0.0} to {1:0.0} ({2:0.0} seconds).", fromSec, b, len);
+                cloneSpanNote.Text = string.Format("{0:0.0} seconds in the recording. {1}{2}", dur, usingIt, SpanLimit(len));
+            };
+            cloneFrom.TextChanged += (s, e) => refreshCloneSpan();
+            cloneTo.TextChanged += (s, e) => refreshCloneSpan();
+            Action<string> readClipLength = path =>
+            {
+                clipSeconds = null;
+                WavLayout layout;
+                if (TryWavLayout(path, out layout))
+                {
+                    clipSeconds = layout.Seconds;
+                    refreshCloneSpan();
+                    return;
+                }
+                try { if (durationProbe != null) { durationProbe.Close(); durationProbe = null; } } catch { }
+                var mp = new System.Windows.Media.MediaPlayer();
+                durationProbe = mp;
+                string watch = path;
+                mp.MediaOpened += (s, e) =>
+                {
+                    double secs = mp.NaturalDuration.HasTimeSpan ? mp.NaturalDuration.TimeSpan.TotalSeconds : 0;
+                    win.Dispatcher.BeginInvoke((Action)(() =>
+                    {
+                        if (clonePath != watch) return;
+                        if (secs > 0) clipSeconds = secs;
+                        refreshCloneSpan();
+                        try { if (durationProbe == mp) { mp.Close(); durationProbe = null; } } catch { }
+                    }));
+                };
+                mp.MediaFailed += (s, e) => win.Dispatcher.BeginInvoke((Action)(() => { if (clonePath == watch) refreshCloneSpan(); }));
+                try { mp.Open(new Uri(System.IO.Path.GetFullPath(path))); }
+                catch { refreshCloneSpan(); }
+            };
 
             var studioTabs = new TabControl { Background = Brushes.Transparent, BorderThickness = new Thickness(0), Margin = new Thickness(0) };
             studioTabs.Items.Add(new TabItem { Header = new TextBlock { Text = "Design voice", FontSize = 12 }, Content = designPanel, Padding = new Thickness(12, 4, 12, 4) });
@@ -1063,28 +1271,78 @@ namespace TypoZen
             // narrator's start-up reports its own seconds.
             Action<string> say = m => win.Dispatcher.BeginInvoke((Action)(() => { busyWhat = null; statusNow.Text = m ?? ""; }));
 
-            Action<string> play = path =>
+            // end == null plays through to the end of the file. A set end stops there:
+            // the clone preview uses the same stretch the candidate is cut from.
+            Action<string, double, double?> playFrom = null;
+            Action<string> play = path => playFrom(path, 0, null);
+            playFrom = (path, fromSec, end) =>
             {
+                if (clipLimit != null) { clipLimit.Stop(); clipLimit = null; }
                 try
                 {
                     if (player != null) { player.Stop(); player = null; }
                     if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); clipPlayer = null; }
-                    clipPlayer = new System.Windows.Media.MediaPlayer();
-                    clipPlayer.Open(new Uri(System.IO.Path.GetFullPath(path)));
-                    clipPlayer.Volume = 1.0;
-                    clipPlayer.Play();
-                }
-                catch
-                {
-                    try
+                    var mp = new System.Windows.Media.MediaPlayer();
+                    clipPlayer = mp;
+                    mp.Volume = 1.0;
+                    mp.MediaFailed += (s, e) =>
                     {
-                        if (path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                        if (clipPlayer != mp) return;
+                        if (fromSec <= 0 && !end.HasValue && path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
                         {
-                            player = new SoundPlayer(path);
-                            player.Play();
+                            try { player = new SoundPlayer(path); player.Play(); return; } catch { }
                         }
+                        say(fromSec > 0 || end.HasValue ? "Could not play that stretch." : "Could not play audio.");
+                    };
+                    mp.MediaOpened += (s, e) =>
+                    {
+                        if (clipPlayer != mp) return;
+                        double dur = mp.NaturalDuration.HasTimeSpan ? mp.NaturalDuration.TimeSpan.TotalSeconds : 0;
+                        if (fromSec > 0)
+                        {
+                            if (dur > 0 && fromSec >= dur)
+                            {
+                                say("That start is past the end of the recording.");
+                                mp.Stop();
+                                return;
+                            }
+                            mp.Position = TimeSpan.FromSeconds(fromSec);
+                        }
+                        double stopAt = end ?? (dur > 0 ? dur : double.MaxValue);
+                        if (dur > 0 && stopAt > dur) stopAt = dur;
+                        mp.Play();
+                        if (end.HasValue)
+                        {
+                            double limit = stopAt;
+                            var limitTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+                            clipLimit = limitTimer;
+                            limitTimer.Tick += (s2, e2) =>
+                            {
+                                if (clipPlayer != mp || clipLimit != limitTimer)
+                                {
+                                    limitTimer.Stop();
+                                    if (clipLimit == limitTimer) clipLimit = null;
+                                    return;
+                                }
+                                if (mp.Position.TotalSeconds >= limit - 0.03)
+                                {
+                                    mp.Pause();
+                                    limitTimer.Stop();
+                                    if (clipLimit == limitTimer) clipLimit = null;
+                                }
+                            };
+                            limitTimer.Start();
+                        }
+                    };
+                    mp.Open(new Uri(System.IO.Path.GetFullPath(path)));
+                }
+                catch (Exception ex)
+                {
+                    if (fromSec <= 0 && !end.HasValue && path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try { player = new SoundPlayer(path); player.Play(); return; } catch { }
                     }
-                    catch (Exception ex) { say("Could not play audio: " + ex.Message); }
+                    say("Could not play audio: " + ex.Message);
                 }
             };
 
@@ -2097,6 +2355,20 @@ namespace TypoZen
                 });
             };
 
+            Action<string, string> useRecording = (path, label) =>
+            {
+                clonePath = path;
+                clipSeconds = null;
+                cloneFrom.Text = "";
+                cloneTo.Text = "";
+                cloneFileName.Text = label;
+                cloneFileName.ToolTip = path;
+                previewClip.IsEnabled = true;
+                transcribeBtn.IsEnabled = path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase);
+                readClipLength(path);
+            };
+            Action transcribeClone = null;
+
             cloneFile.Click += (s, e) =>
             {
                 var dlg = new Microsoft.Win32.OpenFileDialog
@@ -2105,11 +2377,7 @@ namespace TypoZen
                     Filter = "Recordings (*.wav, *.flac, *.ogg, *.mp3)|*.wav;*.flac;*.ogg;*.mp3"
                 };
                 if (dlg.ShowDialog(win) != true) return;
-                clonePath = dlg.FileName;
-                cloneFileName.Text = System.IO.Path.GetFileName(clonePath);
-                cloneFileName.ToolTip = clonePath;
-                previewClip.IsEnabled = true;
-                transcribeBtn.IsEnabled = clonePath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase);
+                useRecording(dlg.FileName, System.IO.Path.GetFileName(dlg.FileName));
             };
 
             bool isRecording = false;
@@ -2156,28 +2424,8 @@ namespace TypoZen
 
                 if (System.IO.File.Exists(recordedPath) && new System.IO.FileInfo(recordedPath).Length > 2000)
                 {
-                    clonePath = recordedPath;
-                    cloneFileName.Text = System.IO.Path.GetFileName(clonePath) + string.Format(" ({0}s)", recordSeconds);
-                    cloneFileName.ToolTip = clonePath;
-                    previewClip.IsEnabled = true;
-                    transcribeBtn.IsEnabled = true;
-                    say(string.Format("Recorded {0}s. Transcribing speech...", recordSeconds));
-                    Task.Run(() =>
-                    {
-                        string words = TranscribeWav(recordedPath);
-                        win.Dispatcher.BeginInvoke((Action)(() =>
-                        {
-                            if (!string.IsNullOrWhiteSpace(words))
-                            {
-                                cloneWords.Text = words;
-                                say("Transcribed speech! Review and fine-tune any words if needed.");
-                            }
-                            else
-                            {
-                                say("Recorded! Type the words said in the recording, or use the design passage.");
-                            }
-                        }));
-                    });
+                    useRecording(recordedPath, System.IO.Path.GetFileName(recordedPath) + string.Format(" ({0}s)", recordSeconds));
+                    transcribeClone();
                 }
                 else
                 {
@@ -2189,6 +2437,7 @@ namespace TypoZen
             {
                 if (isRecording) return;
                 try { if (player != null) player.Stop(); } catch { }
+                try { if (clipLimit != null) { clipLimit.Stop(); clipLimit = null; } } catch { }
                 try { if (clipPlayer != null) { clipPlayer.Stop(); } } catch { }
 
                 string recFolder;
@@ -2283,7 +2532,7 @@ namespace TypoZen
                 }
             };
 
-            transcribeBtn.Click += (s, e) =>
+            transcribeClone = () =>
             {
                 if (string.IsNullOrEmpty(clonePath) || !System.IO.File.Exists(clonePath))
                 {
@@ -2295,50 +2544,83 @@ namespace TypoZen
                     say("Speech-to-text requires a WAV file (such as a microphone or PC audio recording).");
                     return;
                 }
-                say("Transcribing audio...");
+                double fromSec; double? end; string error;
+                if (!TryCloneSpan(out fromSec, out end, out error)) { say(error); return; }
+                string sourceFile = clonePath;
+                bool partial = cloneFrom.Text.Trim().Length > 0 || cloneTo.Text.Trim().Length > 0;
+                string slice = null;
+                if (partial)
+                {
+                    slice = SliceWav(sourceFile, fromSec, end);
+                    if (slice == null) { say("Could not take that stretch from the recording."); return; }
+                }
+                say(partial ? "Transcribing that stretch..." : "Transcribing audio...");
                 transcribeBtn.IsEnabled = false;
-                string path = clonePath;
+                string heard = slice ?? sourceFile;
                 Task.Run(() =>
                 {
-                    string words = TranscribeWav(path);
-                    win.Dispatcher.BeginInvoke((Action)(() =>
+                    try
                     {
-                        transcribeBtn.IsEnabled = true;
-                        if (!string.IsNullOrWhiteSpace(words))
+                        string words = TranscribeWav(heard);
+                        win.Dispatcher.BeginInvoke((Action)(() =>
                         {
-                            cloneWords.Text = words;
-                            say("Transcribed speech! Review and fine-tune any words if needed.");
-                        }
-                        else
-                        {
-                            say("Could not transcribe speech. Please type the words spoken.");
-                        }
-                    }));
+                            if (clonePath != sourceFile) return;
+                            transcribeBtn.IsEnabled = true;
+                            if (!string.IsNullOrWhiteSpace(words))
+                            {
+                                cloneWords.Text = words;
+                                say(partial
+                                    ? "Transcribed that stretch. Check the words match what you hear."
+                                    : "Transcribed speech! Review and fine-tune any words if needed.");
+                            }
+                            else
+                            {
+                                say(partial
+                                    ? "Recorded. Type the words said in that stretch, or use the design passage."
+                                    : "Could not transcribe speech. Please type the words spoken.");
+                            }
+                        }));
+                    }
+                    finally
+                    {
+                        if (slice != null) { try { System.IO.File.Delete(slice); } catch { } }
+                    }
                 });
             };
+            transcribeBtn.Click += (s, e) => transcribeClone();
 
             previewClip.Click += (s, e) =>
             {
                 if (isRecording) stopRecording();
-                if (!string.IsNullOrEmpty(clonePath) && System.IO.File.Exists(clonePath))
-                    play(clonePath);
+                if (string.IsNullOrEmpty(clonePath) || !System.IO.File.Exists(clonePath)) return;
+                double fromSec; double? end; string error;
+                if (!TryCloneSpan(out fromSec, out end, out error)) { say(error); return; }
+                playFrom(clonePath, fromSec, end);
             };
             cloneGo.Click += (s, e) =>
             {
                 if (clonePath == null) { say("Choose the recording first."); return; }
                 string words = cloneWords.Text.Trim();
                 if (words.Length == 0) { say("Type exactly what is said in the recording."); return; }
-                string fromText = cloneFrom.Text.Trim(), toText = cloneTo.Text.Trim();
-                double secs;
-                if ((fromText.Length > 0 && !double.TryParse(fromText, out secs)) || (toText.Length > 0 && !double.TryParse(toText, out secs)))
-                { say("From and to are seconds into the recording, such as 2.5; or leave them empty."); return; }
+                double fromSec; double? end; string error;
+                if (!TryCloneSpan(out fromSec, out end, out error)) { say(error); return; }
+                if (clipSeconds.HasValue)
+                {
+                    double len = Math.Max(0, (end ?? clipSeconds.Value) - fromSec);
+                    string limit = SpanLimit(len);
+                    if (limit.Length > 0) { say(limit.Trim()); return; }
+                }
                 candidates.Children.Clear();
                 string path = clonePath;
+                bool sendStart = cloneFrom.Text.Trim().Length > 0;
+                bool sendEnd = cloneTo.Text.Trim().Length > 0;
+                string startText = fromSec.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                string endText = (end ?? fromSec).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 work("Cloning the voice from the recording:", 10, () =>
                 {
                     var body = new Dictionary<string, object> { { "path", path }, { "transcript", words } };
-                    if (fromText.Length > 0) body["start"] = fromText;
-                    if (toText.Length > 0) body["end"] = toText;
+                    if (sendStart) body["start"] = startText;
+                    if (sendEnd) body["end"] = endText;
                     showCandidates(side.Engine.Call("POST", "/voices/clone", new JavaScriptSerializer().Serialize(body), 120000));
                     say("Play the candidate, then name and keep it. If it does not sound like the recording, check that the words match it exactly.");
                 });
@@ -2649,6 +2931,8 @@ namespace TypoZen
                 if (p != null) p.TrySetResult("{\"kind\":\"stopped\"}");
                 try { if (isRecording) stopRecording(); } catch { }
                 try { WasapiLoopbackRecorder.Stop(); } catch { }
+                try { if (clipLimit != null) clipLimit.Stop(); } catch { }
+                try { if (durationProbe != null) { durationProbe.Close(); durationProbe = null; } } catch { }
                 try { if (player != null) player.Stop(); if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); } } catch { }
             };
             return win;

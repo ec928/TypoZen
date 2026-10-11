@@ -5,7 +5,7 @@ Work agreed but not built, newest decisions first. Defects and product limits li
 
 ## Voice capture and the host-pin list (2026-10-11)
 
-Audit of the tree at 0.16.10. The internal install of this work is 0.16.11. The reader and the editor were left as they are: book
+Audit of the tree at 0.16.10. The internal install of this work is 0.16.12. The reader and the editor were left as they are: book
 export to Markdown stays hidden, the cold-start caches stay declined, `TypoZen_App.cs`
 stays one file, and the Qwen narrator stays the narrator. Nothing here is a GitHub release.
 
