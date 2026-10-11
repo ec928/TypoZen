@@ -584,9 +584,9 @@ namespace TypoZen
             sampleOpt.Width = 22;
             sampleOpt.Padding = new Thickness(0);
             sampleOpt.ToolTip = "Sample options: change sample text or instruction";
-            // The library acts at once, so it has a window of its own with Close, not Save/Cancel.
-            var manageVoices = button("Manage voices...");
-            manageVoices.ToolTip = "Design, import, export or delete voices";
+            // The library acts at once, so it has a tab of its own.
+            var manageVoices = button("Manage voices");
+            manageVoices.ToolTip = "Go to the Manage voices tab to design, clone, import, export or delete voices";
             var voiceRow = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
             DockPanel.SetDock(manageVoices, Dock.Right);
             DockPanel.SetDock(sampleOpt, Dock.Right);
@@ -772,15 +772,15 @@ namespace TypoZen
             reading.Children.Add(leftScroll);
             reading.Children.Add(tryCard);
 
-            // ================================================================ Voices (own window)
-            // Everything here acts at once -- a deleted voice goes to the Recycle Bin there and
-            // then -- so it lives in a window with Close, not beside Save and Cancel.
+            // ================================================================ Manage voices tab
+            // Everything here acts at once -- a deleted voice goes to the Recycle Bin there and then.
             var lib = new Grid();
             lib.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.15, GridUnitType.Star), MinWidth = 360 });
             lib.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.25, GridUnitType.Star), MinWidth = 380 });
 
             var libPanel = new StackPanel();
             libPanel.Children.Add(heading("Voice library"));
+            libPanel.Children.Add(note("Changes to voices take effect immediately."));
             var libList = new ListBox { Height = 220, MinWidth = 260 };
             var libPlay = button("▶ Play sample");
             libPlay.ToolTip = SampleTip;
@@ -934,9 +934,6 @@ namespace TypoZen
             lib.Children.Add(libCard);
             lib.Children.Add(studioCard);
 
-            var libStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.9, VerticalAlignment = VerticalAlignment.Center };
-            var libBusy = new ProgressBar { IsIndeterminate = true, Height = 4, Margin = new Thickness(0, 0, 0, 8), Visibility = Visibility.Collapsed };
-
             // ================================================================ Cast
             var castRows = new List<Tuple<string, string, ComboBox, TextBox>>();     // key, name, voice, instruction
             var castPlays = new List<Button>();
@@ -1001,7 +998,10 @@ namespace TypoZen
             // ================================================================ window
             var tabs = new TabControl { Margin = new Thickness(16, 16, 16, 0), Background = win.Background, BorderThickness = new Thickness(0) };
             Func<string, UIElement, TabItem> tab = (title, content) => new TabItem { Header = new TextBlock { Text = title, FontSize = 13 }, Content = page(content), Padding = new Thickness(16, 4, 16, 4) };
-            tabs.Items.Add(tab("Reading", reading));
+            var readingTab = tab("Reading", reading);
+            var voicesTab = tab("Manage voices", scrolling(lib));
+            tabs.Items.Add(readingTab);
+            tabs.Items.Add(voicesTab);
             if (castPage != null) tabs.Items.Add(tab("Cast for this book", scrolling(castPage)));
 
             var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.9, VerticalAlignment = VerticalAlignment.Center };
@@ -1031,8 +1031,7 @@ namespace TypoZen
             string busyWhat = null;
             DateTime busySince = DateTime.Now;
             double busyExpect = 0;
-            // Where progress and messages show: this window's footer, or the Voices window's
-            // while that is open.
+            // Where progress and messages show: this window's footer.
             TextBlock statusNow = status;
             ProgressBar busyNow = busyBar;
             var clock = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -2449,6 +2448,18 @@ namespace TypoZen
             // Closing with the window's X while changes are unsaved asks; Cancel means discard.
             win.Closing += (s, e) =>
             {
+                if (busyWhat != null && busyBar.Visibility == Visibility.Visible)
+                {
+                    e.Cancel = true;
+                    say("Wait for this to finish: " + busyWhat);
+                    return;
+                }
+                if (isRecording)
+                {
+                    e.Cancel = true;
+                    say("Stop recording before closing.");
+                    return;
+                }
                 if (win.DialogResult != null || !dirty()) return;
                 var answer = MessageBox.Show(win, "Save the changes to the narrator settings?", "Narrator",
                                              MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
@@ -2465,9 +2476,8 @@ namespace TypoZen
                 }
             };
 
-            // ---- the Voices window: the library, which acts at once, with Close and nothing else
             // Unkept candidates from "Create 3 candidates" are files on disk until the next
-            // design; they go when the library closes, so nothing half-chosen is left behind.
+            // design; they go when the window closes, so nothing half-chosen is left behind.
             Action clearCandidates = () =>
             {
                 try
@@ -2480,61 +2490,16 @@ namespace TypoZen
                 }
                 catch { }
             };
-            Func<Window> makeVoicesWindow = () =>
+            VoicesWindowForTest = () => win;
+            manageVoices.Click += (s, e) => tabs.SelectedItem = voicesTab;
+            tabs.SelectionChanged += (s, e) =>
             {
-                var vw = new Window
+                if (e.Source != tabs) return;
+                if (tabs.SelectedItem != voicesTab)
                 {
-                    Title = "Voices", Width = 920, Height = 620, MinWidth = 720, MinHeight = 480,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.CanResizeWithGrip,
-                    ShowInTaskbar = false, Background = win.Background, Foreground = win.Foreground
-                };
-                try { vw.Owner = win; } catch { }
-                DialogTheme.Apply(vw, win);
-                var close = button("Close");
-                close.Width = 92; close.IsCancel = true; close.Margin = new Thickness(0);
-                close.Click += (s2, e2) => vw.Close();
-                var vFooterRow = new DockPanel();
-                DockPanel.SetDock(close, Dock.Right);
-                vFooterRow.Children.Add(close);
-                vFooterRow.Children.Add(libStatus);
-                var vFooter = new StackPanel { Margin = new Thickness(16, 8, 16, 16) };
-                vFooter.Children.Add(libBusy);
-                vFooter.Children.Add(vFooterRow);
-                if (win.Foreground != null) vFooter.SetValue(TextElement.ForegroundProperty, win.Foreground);
-                var vOuter = new DockPanel { Background = win.Background };
-                DockPanel.SetDock(vFooter, Dock.Bottom);
-                vOuter.Children.Add(vFooter);
-                var libScroll = scrolling(lib);
-                vOuter.Children.Add(page(libScroll));
-                vw.Content = vOuter;
-                statusNow = libStatus; busyNow = libBusy;
-                libStatus.Text = "Changes here take effect at once.";
-                // A design still running would write its candidates after they were cleared.
-                vw.Closing += (s2, e2) =>
-                {
-                    if (busyWhat != null && libBusy.Visibility == Visibility.Visible)
-                    {
-                        e2.Cancel = true;
-                        libStatus.Text = "Wait for this to finish: " + busyWhat;
-                    }
-                };
-                vw.Closed += (s2, e2) =>
-                {
-                    statusNow = status; busyNow = busyBar;
-                    candidates.Children.Clear();
-                    clearCandidates();
-                    try { if (isRecording) stopRecording(); } catch { }
-                    try { WasapiLoopbackRecorder.Stop(); } catch { }
-                    try { if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); } } catch { }
-                    // Detach the library and its status line, so the next opening can show them.
-                    libScroll.Content = null;
-                    vFooterRow.Children.Remove(libStatus);
-                    vFooter.Children.Remove(libBusy);
-                };
-                return vw;
+                    try { if (clipPlayer != null) clipPlayer.Stop(); } catch { }
+                }
             };
-            VoicesWindowForTest = makeVoicesWindow;
-            manageVoices.Click += (s, e) => makeVoicesWindow().ShowDialog();
 
             // Saved cast rows show at once, before any scan.
             foreach (var kv in cast.Voices)
@@ -2659,6 +2624,7 @@ namespace TypoZen
                 try { sendToPage("cmd:narrator_trial_stop"); } catch { }
                 var p = pendingTrial;
                 if (p != null) p.TrySetResult("{\"kind\":\"stopped\"}");
+                try { if (isRecording) stopRecording(); } catch { }
                 try { WasapiLoopbackRecorder.Stop(); } catch { }
                 try { if (player != null) player.Stop(); if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); } } catch { }
             };
