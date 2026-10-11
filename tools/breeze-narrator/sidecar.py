@@ -40,6 +40,11 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
 # Beside TypoZen.exe nothing may be written (an MSIX install folder is read-only).
 sys.dont_write_bytecode = True
 
@@ -471,6 +476,7 @@ class Narrator(object):
         2026-10-10); the voice kept gets PREVIEW_TEXT then (_sample_line). A clone plays PREVIEW_TEXT in
         the copied voice: that is how a clone is judged."""
         import shutil
+        import numpy as np
         import soundfile as sf
         d = os.path.join(self.voices_dir, '_candidates', cid)
         os.makedirs(d, exist_ok=True)
@@ -558,6 +564,7 @@ class Narrator(object):
         its recording -- a designed candidate's. Play sample says the same line in every kept voice;
         one kept with the design passage instead was the odd one out (Ed, 2026-10-10)."""
         import filecmp
+        import numpy as np
         import soundfile as sf
         ref, prev = os.path.join(d, 'reference.wav'), os.path.join(d, 'preview.wav')
         if os.path.isfile(prev) and not filecmp.cmp(ref, prev, shallow=False):
@@ -565,6 +572,9 @@ class Narrator(object):
         with open(os.path.join(d, 'meta.json'), encoding='utf-8') as f:
             transcript = json.load(f).get('transcript') or DESIGN_TEXT
         audio = self._generate(PREVIEW_TEXT, told=instruction('', '', 'narration'), reference=ref, transcript=transcript)
+        prev_peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
+        if prev_peak > 0:
+            audio = audio * (0.95 / prev_peak)
         sf.write(prev, audio, self.sr, subtype='PCM_16')
         return True
 
