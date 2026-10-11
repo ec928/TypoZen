@@ -5,7 +5,7 @@ TypoZen is a beautifully simple, distraction-free app for Windows that combines 
 
 Whether you're drafting a new note or settling in with a good book, TypoZen gives you a calm, clean space to do it. It opens your `.md`, `.txt`, `.epub` and PDF files—as well as code, markup, images, and media—and remembers exactly where you left off in your documents and books.
 
-**Privacy-first and completely free.** TypoZen asks nothing of the internet. There are no accounts, no sign-ins, and absolutely no tracking or telemetry. It just opens straight into your document. The one exception is an **extension** you choose to install from **File > Extensions**, which downloads while you watch and never afterwards — and if you install none, TypoZen makes no network request at all.
+**Privacy-first and completely free.** TypoZen asks nothing of the internet. There are no accounts, no sign-ins, and absolutely no tracking or telemetry. It just opens straight into your document. The only exceptions are optional features you explicitly turn on in **File > Extensions** (such as streaming Microsoft Natural Voices or installing offline neural models) — and if you enable none, TypoZen makes no network request at all.
 
 *(For the technically curious: Under the hood, TypoZen is a lightweight, native Windows app built with WPF and WebView2, offering both a live block-based preview and a Source mode built on CodeMirror 6 for Markdown and code.)*
 
@@ -60,7 +60,7 @@ All user data for both the installer and portable builds lives in a single folde
 
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
-- **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows — or in a **Kokoro neural voice** or the **Qwen narrator**, if you install them. Choose the voice and speed in **File → Read Aloud**.
+- **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows — or in **Microsoft Online Natural Voices** (opt-in under Extensions), a **Kokoro neural voice**, or the **Qwen narrator**. Choose the voice and speed in **File → Read Aloud**.
 - **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said in the voice you have chosen for reading aloud -- or, with the Qwen narrator chosen, in the quick voice on your computer closest to it (same country and gender), since the narrator takes too long to start for one word.
 - **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
 - **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
@@ -71,8 +71,8 @@ All user data for both the installer and portable builds lives in a single folde
 - **Bundled premium typography:** Included fonts (Inter, Literata, Merriweather, Source Sans 3, JetBrains Mono) ensure perfect rendering without any network requests.
 - **25 curated built-in themes:** Choose from dark, light, and mono themes, or use **Customise Theme…** to build and save your own palettes. Every state takes its colour from the theme, one colour per meaning: the accent for what is current (selection, the search match you are on, the paragraph being read aloud), a highlighter colour of the theme's own for marks, and faint washes of the text colour for hover and the cursor's paragraph.
 - **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions. Drag tabs into any order; the order is kept.
-- **Offline & Portable:** Zero telemetry, and nothing on the network unless you install an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
-- **Extensions, if you want them:** **File > Extensions** offers **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, **Whisper** to transcribe a voice recording, and **Qwen narration** — an AI narrator that reads a book in character voices (experimental; needs an NVIDIA graphics card). All are optional downloads and run entirely on your computer once installed. Removing one takes what it added away again. Whisper adds no menu of its own.
+- **Offline & Portable:** Zero telemetry, and nothing on the network unless you enable an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
+- **Extensions, if you want them:** **File > Extensions** offers **Microsoft Natural Voices** (opt-in streaming natural voices directly from Microsoft Edge speech services), **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, **Whisper** to transcribe a voice recording, and **Qwen narration** — an AI narrator that reads a book in character voices (experimental; needs an NVIDIA graphics card). All are optional and strictly user-controlled. Removing or disabling an extension instantly takes away what it added. Whisper adds no menu of its own.
 ---
 ## Architecture & Tech Stack
 TypoZen is a hybrid native-web application designed for speed, local-first privacy, and an ultra-lightweight footprint.

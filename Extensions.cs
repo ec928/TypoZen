@@ -647,7 +647,7 @@ namespace TypoZen
     {
         /// <param name="installed">Given the id of an extension that has just been
         /// installed, for whatever should follow from having it.</param>
-        public static void Show(Window owner, string cacheDir, Action changed, Action<string> installed = null)
+        public static void Show(Window owner, string cacheDir, Action changed, Action<string> installed = null, Func<bool> getOnlineVoices = null, Action<bool> setOnlineVoices = null)
         {
             var win = new Window
             {
@@ -1102,6 +1102,97 @@ namespace TypoZen
                     worker.Start();
                 };
             };
+
+            if (getOnlineVoices != null && setOnlineVoices != null)
+            {
+                var box = new Border
+                {
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(40, 128, 128, 128)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Background = new SolidColorBrush(Color.FromArgb(12, 128, 128, 128)),
+                    Padding = new Thickness(14, 10, 14, 10),
+                    Margin = new Thickness(0, 0, 0, 10)
+                };
+
+                var panel = new StackPanel();
+
+                var headerRow = new DockPanel { LastChildFill = false };
+                var titleText = new TextBlock
+                {
+                    Text = "Microsoft Natural voices",
+                    FontWeight = FontWeights.SemiBold,
+                    FontSize = 13.5,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                DockPanel.SetDock(titleText, Dock.Left);
+                headerRow.Children.Add(titleText);
+
+                var badge = new Border
+                {
+                    CornerRadius = new CornerRadius(4),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(35, 128, 128, 128)),
+                    Background = new SolidColorBrush(Color.FromArgb(20, 128, 128, 128)),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                DockPanel.SetDock(badge, Dock.Right);
+                badge.Child = new TextBlock
+                {
+                    Text = "Cloud · Edge Speech",
+                    FontSize = 10.5,
+                    FontWeight = FontWeights.Medium,
+                    Opacity = 0.8
+                };
+                headerRow.Children.Add(badge);
+                panel.Children.Add(headerRow);
+
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "Stream studio-quality natural voices (Jenny, Sonia, Guy, Ryan, Libby, and 30+ international voices) via Microsoft's cloud speech service. Zero local disk footprint.\n\n"
+                         + "• Privacy notice: Reading aloud sends the text to Microsoft\n"
+                         + "• Privacy Mode: Blocked automatically when Privacy Mode is on",
+                    TextWrapping = TextWrapping.Wrap,
+                    Opacity = 0.85,
+                    FontSize = 11.5,
+                    Margin = new Thickness(0, 6, 0, 0)
+                });
+
+                var state = new TextBlock
+                {
+                    Margin = new Thickness(0, 7, 0, 5),
+                    Opacity = 0.85,
+                    FontSize = 11.5,
+                    TextWrapping = TextWrapping.Wrap
+                };
+                panel.Children.Add(state);
+
+                var button = new Button { Width = 95, Height = 26, HorizontalAlignment = HorizontalAlignment.Left };
+                panel.Children.Add(button);
+
+                Action refreshEdge = () =>
+                {
+                    bool on = getOnlineVoices();
+                    state.Text = on
+                        ? "Enabled · Online voices available in voice menus"
+                        : "Disabled (default) · Zero network traffic";
+                    button.Content = on ? "Disable" : "Enable";
+                };
+                rows.Add(refreshEdge);
+                refreshEdge();
+
+                button.Click += (s, e) =>
+                {
+                    bool next = !getOnlineVoices();
+                    setOnlineVoices(next);
+                    refreshEdge();
+                    if (changed != null) changed();
+                };
+
+                box.Child = panel;
+                leftCol.Children.Add(box);
+            }
 
             addRow(ExtensionCatalog.Kokoro(cacheDir, false), kokoroChosen, leftCol);
             var wikt = ExtensionCatalog.Wiktionary(cacheDir);

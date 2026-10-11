@@ -483,6 +483,8 @@
                                      are on disk. Hidden until the extension is installed. -->
                                 <MenuItem x:Name="mKokoroMenu" Header="_Kokoro Voices" Visibility="Collapsed"/>
                                 <MenuItem x:Name="mWindowsVoices" Header="Windows _Installed Voices"/>
+                                <MenuItem x:Name="mOnlineVoices" Header="Microsoft _Online Voices" Visibility="Collapsed"
+                                          ToolTip="High-quality neural natural voices streamed from Microsoft's speech service. Requires an internet connection."/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
                             </MenuItem>
                             <!-- Access key t, not x: Exit already has x in this menu, and a

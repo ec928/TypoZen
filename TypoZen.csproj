@@ -114,6 +114,7 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="TypoZen_TTS.cs" />
+    <Compile Include="EdgeSpeechClient.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="TypoZen_Themes.json">

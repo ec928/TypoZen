@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.16.20";
+        internal const string AppVersion = "0.16.21";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1743,7 +1743,11 @@ namespace TypoZen
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
             var mSpeed = FindElement("mConfigureSpeed") as MenuItem; if (mSpeed != null) mSpeed.Header = "Voice Sampler and Speed..."; BindClick("mConfigureSpeed", (s, e) => ShowConfigureVoiceDialog());
+            var initialPrefs = LoadHostPrefs();
+            _enableOnlineVoices = initialPrefs.EnableOnlineVoices;
+            TypoZen_TTS.EnableOnlineVoices = _enableOnlineVoices && !_privacyMode;
             PopulateWindowsVoicesMenu();
+            PopulateOnlineVoicesMenu();
             BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
             var qwenMenu = FindElement("mQwenVoice") as MenuItem;
             if (qwenMenu != null) qwenMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == qwenMenu) RebuildQwenVoiceMenu(); };
@@ -3956,7 +3960,9 @@ namespace TypoZen
                 ExtensionsDialog.Show(this, CacheDir(), RefreshExtensionState, id =>
                 {
                     if (id == ExtensionCatalog.KokoroId) SetKokoroVoice(ExtensionCatalog.DefaultVoice, "Heart");
-                });
+                },
+                () => _enableOnlineVoices && !_privacyMode,
+                on => SetOnlineVoicesEnabled(on));
             }
             catch (Exception ex) { LogFault("extensions dialog", ex); }
         }
@@ -4010,6 +4016,8 @@ namespace TypoZen
                     SetKokoroVoice("windows_voice", "Windows voice");
 
                 RebuildDictionaryMenu();
+                PopulateWindowsVoicesMenu();
+                PopulateOnlineVoicesMenu();
                 // A dictionary that has just been removed is still the saved choice.
                 if (!string.IsNullOrEmpty(_dictionaryChoice)
                     && !Directory.Exists(Path.Combine(DictionariesDir(), _dictionaryChoice)))
@@ -7816,6 +7824,8 @@ namespace TypoZen
                         var prefs = LoadHostPrefs();
                         if (prefs != null)
                         {
+                            _enableOnlineVoices = prefs.EnableOnlineVoices;
+                            TypoZen_TTS.EnableOnlineVoices = _enableOnlineVoices && !_privacyMode;
                             var tp = GetCurrentTypePrefs(prefs);
                             if (tp.ThemeIndex >= 0) SendMsg("set_theme:" + tp.ThemeIndex);
                             if (!string.IsNullOrEmpty(prefs.TtsVoiceId)) 
@@ -8660,6 +8670,7 @@ namespace TypoZen
             public string SidebarTab = "outline";
             public string TtsVoiceId = "";
             public double TtsSpeed = 1.0;
+            public bool EnableOnlineVoices;
         }
 
         private static string JsonEscape(string s)
@@ -8838,6 +8849,7 @@ namespace TypoZen
                 b = ExtractJsonBool(json, "findWholeWord"); if (b.HasValue) p.FindWholeWord = b.Value;
                 s = ExtractJsonString(json, "ttsVoiceId"); if (s != null) { p.TtsVoiceId = s; }
                 s = ExtractJsonString(json, "ttsSpeed"); if (s != null && double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double speed)) { p.TtsSpeed = speed; }
+                b = ExtractJsonBool(json, "enableOnlineVoices"); if (b.HasValue) p.EnableOnlineVoices = b.Value;
             }
             catch { }
             return p;
@@ -8878,6 +8890,7 @@ namespace TypoZen
                 + "\"sidebarTab\":\"" + tab + "\","
                 + "\"ttsVoiceId\":\"" + JsonEscape(p.TtsVoiceId ?? "") + "\","
                 + "\"ttsSpeed\":\"" + p.TtsSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\","
+                + "\"enableOnlineVoices\":" + (p.EnableOnlineVoices ? "true" : "false") + ","
                 + "\"lastContent\":\"\""
                 + "}";
             string prefsPath = PrefsPath();
@@ -11188,6 +11201,33 @@ namespace TypoZen
 
         private string _ttsVoiceId = "";
         private double _ttsSpeed = 1.0;
+        private bool _enableOnlineVoices;
+
+        private void SetOnlineVoicesEnabled(bool on)
+        {
+            _enableOnlineVoices = on;
+            TypoZen_TTS.EnableOnlineVoices = on && !_privacyMode;
+            var prefs = LoadHostPrefs();
+            prefs.EnableOnlineVoices = on;
+            WriteHostPrefs(prefs);
+
+            // If turned off while an online voice was selected, revert to default local voice
+            if (!on && _ttsVoiceId != null && _ttsVoiceId.StartsWith("edge:"))
+            {
+                var localList = TypoZen_TTS.GetVoices(false);
+                var fallback = localList.Count > 0 ? localList[0] : null;
+                if (fallback != null)
+                {
+                    _ttsVoiceId = fallback.Id;
+                    prefs.TtsVoiceId = fallback.Id;
+                    WriteHostPrefs(prefs);
+                    SetKokoroVoice("windows_voice", fallback.Name);
+                }
+            }
+
+            PopulateWindowsVoicesMenu();
+            PopulateOnlineVoicesMenu();
+        }
 
                                 private void ShowConfigureVoiceDialog()
         {
@@ -11378,7 +11418,7 @@ namespace TypoZen
             
             if (local.Count > 0) { addHeader("Windows Natural Voices"); foreach(var v in local) addVoice(v.Id, v.Name, "Local offline processing", false); }
             if (classic.Count > 0) { addHeader("Windows Classic Voices"); foreach(var v in classic) addVoice(v.Id, v.Name, "Older local synthesis", false); }
-            if (cloud.Count > 0) { addHeader("Windows Online Voices"); foreach(var v in cloud) addVoice(v.Id, v.Name, "Requires internet connection", false); }
+            if (cloud.Count > 0) { addHeader("Microsoft Online Voices"); foreach(var v in cloud) addVoice(v.Id, v.Name, "Requires internet connection", false); }
 
             listBorder.Child = listBox;
             Grid.SetColumn(listBorder, 0);
@@ -11573,47 +11613,23 @@ namespace TypoZen
         {
             var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
             if (mWinVoices == null) return;
+            mWinVoices.Items.Clear();
             
-            var voices = TypoZen_TTS.GetVoices();
-            // Grouped, because the flat list mixes three quite different things and gives
-            // the reader no way to tell them apart: a neural voice running here, one that
-            // sends what it reads to a web service, and the classic voices Windows has
-            // always had. Each voice says which it is; see VoiceInfo.Kind.
-            // Natural first, then the classic ones, and the online voices last and folded
-            // into a submenu of their own: that list is Microsoft's and keeps growing --
-            // more than twenty here already -- and inline it pushes everything else off
-            // the bottom of the screen.
-            var order = new[] { "local", "", "cloud" };
+            // Only offline installed voices on this computer (Local Natural and Classic)
+            var voices = TypoZen_TTS.GetVoices(false);
+            var order = new[] { "local", "" };
             var heading = new Dictionary<string, string> {
                 { "local", "Natural - on this computer" },
-                { "",      "Classic - older voices on this computer" },
-                { "cloud", "Online voices - these send the text to Microsoft" }
+                { "",      "Classic - older voices on this computer" }
             };
             bool grouped = voices.Exists(x => !string.IsNullOrEmpty(x.Kind));
             foreach (string kind in order)
             {
-            var inGroup = voices.FindAll(x => (x.Kind ?? "") == kind);
-            if (inGroup.Count == 0) continue;
-            // Where this group's items go: the menu itself, or a submenu holding them all.
-            ItemsControl into = mWinVoices;
-            if (grouped)
-            {
-                if (mWinVoices.Items.Count > 0) mWinVoices.Items.Add(new Separator());
-                if (kind == "cloud")
+                var inGroup = voices.FindAll(x => (x.Kind ?? "") == kind);
+                if (inGroup.Count == 0) continue;
+                if (grouped)
                 {
-                    // The chosen voice would otherwise be hidden inside a closed submenu.
-                    bool holdsChoice = inGroup.Exists(x => x.Id == _ttsVoiceId);
-                    var sub = new MenuItem
-                    {
-                        Header = heading[kind] + (holdsChoice ? "  (in use)" : ""),
-                        ToolTip = "Unlike every other voice here, these are spoken by a web "
-                                + "service: what TypoZen reads aloud is sent to Microsoft."
-                    };
-                    mWinVoices.Items.Add(sub);
-                    into = sub;
-                }
-                else
-                {
+                    if (mWinVoices.Items.Count > 0) mWinVoices.Items.Add(new Separator());
                     mWinVoices.Items.Add(new MenuItem
                     {
                         Header = heading[kind],
@@ -11621,35 +11637,119 @@ namespace TypoZen
                         FontWeight = FontWeights.SemiBold
                     });
                 }
-            }
-            foreach (var v in inGroup)
-            {
-                var mi = new MenuItem { Header = v.Name, IsCheckable = true, Tag = v.Id };
-                mi.Click += (s, e) => {
-                    foreach (var item in VoiceMenuItems(mWinVoices)) item.IsChecked = false;
-                    mi.IsChecked = true;
-                    
-                    _ttsVoiceId = v.Id;
-                    var prefs = LoadHostPrefs();
-                    prefs.TtsVoiceId = _ttsVoiceId;
-                    WriteHostPrefs(prefs);
-                    
-                    // A Windows voice chosen on purpose, which is not the same as never having
-                    // chosen: it survives a restart instead of reverting to Kokoro.
-                    SetKokoroVoice("windows_voice", v.Name);
-                    
-                    // Play a sample so the user can hear their choice (restores regression from dialog removal)
-                    var _ = TypoZen_TTS.PlayAsync("Hi, I am " + v.Name, _ttsVoiceId, _ttsSpeed);
-                };
-                into.Items.Add(mi);
-            }
+                foreach (var v in inGroup)
+                {
+                    var mi = new MenuItem { Header = v.Name, IsCheckable = true, Tag = v.Id };
+                    mi.Click += (s, e) => {
+                        UncheckAllVoiceMenuItems();
+                        mi.IsChecked = true;
+                        
+                        _ttsVoiceId = v.Id;
+                        var prefs = LoadHostPrefs();
+                        prefs.TtsVoiceId = _ttsVoiceId;
+                        WriteHostPrefs(prefs);
+                        
+                        // A Windows voice chosen on purpose, which is not the same as never having
+                        // chosen: it survives a restart instead of reverting to Kokoro.
+                        SetKokoroVoice("windows_voice", v.Name);
+                        
+                        // Play a sample so the user can hear their choice (restores regression from dialog removal)
+                        var _ = TypoZen_TTS.PlayAsync("Hi, I am " + v.Name, _ttsVoiceId, _ttsSpeed);
+                    };
+                    mWinVoices.Items.Add(mi);
+                }
             }
             UpdateWindowsVoicesCheckmark();
         }
 
+        private void PopulateOnlineVoicesMenu()
+        {
+            var mOnlineVoices = FindElement("mOnlineVoices") as MenuItem;
+            if (mOnlineVoices == null) return;
+            mOnlineVoices.Items.Clear();
+
+            bool visible = _enableOnlineVoices && !_privacyMode;
+            mOnlineVoices.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            if (!visible) return;
+
+            var onlineVoices = EdgeSpeechClient.GetVoices();
+            var groups = new Dictionary<string, List<VoiceInfo>>
+            {
+                { "United Kingdom", new List<VoiceInfo>() },
+                { "United States", new List<VoiceInfo>() },
+                { "Australia & New Zealand", new List<VoiceInfo>() },
+                { "Canada & Ireland", new List<VoiceInfo>() },
+                { "India & South Africa", new List<VoiceInfo>() },
+                { "International", new List<VoiceInfo>() }
+            };
+
+            foreach (var v in onlineVoices)
+            {
+                string c = v.Culture ?? "";
+                if (c.Equals("en-GB", StringComparison.OrdinalIgnoreCase))
+                    groups["United Kingdom"].Add(v);
+                else if (c.Equals("en-US", StringComparison.OrdinalIgnoreCase))
+                    groups["United States"].Add(v);
+                else if (c.Equals("en-AU", StringComparison.OrdinalIgnoreCase) || c.Equals("en-NZ", StringComparison.OrdinalIgnoreCase))
+                    groups["Australia & New Zealand"].Add(v);
+                else if (c.Equals("en-CA", StringComparison.OrdinalIgnoreCase) || c.Equals("en-IE", StringComparison.OrdinalIgnoreCase))
+                    groups["Canada & Ireland"].Add(v);
+                else if (c.Equals("en-IN", StringComparison.OrdinalIgnoreCase) || c.Equals("en-ZA", StringComparison.OrdinalIgnoreCase))
+                    groups["India & South Africa"].Add(v);
+                else
+                    groups["International"].Add(v);
+            }
+
+            foreach (var kvp in groups)
+            {
+                if (kvp.Value.Count == 0) continue;
+                bool holdsChoice = kvp.Value.Exists(x => x.Id == _ttsVoiceId);
+                var sub = new MenuItem
+                {
+                    Header = kvp.Key + (holdsChoice ? "  (in use)" : "")
+                };
+
+                foreach (var v in kvp.Value)
+                {
+                    var mi = new MenuItem { Header = v.Name, IsCheckable = true, Tag = v.Id };
+                    mi.Click += (s, e) => {
+                        UncheckAllVoiceMenuItems();
+                        mi.IsChecked = true;
+
+                        _ttsVoiceId = v.Id;
+                        var prefs = LoadHostPrefs();
+                        prefs.TtsVoiceId = _ttsVoiceId;
+                        WriteHostPrefs(prefs);
+
+                        SetKokoroVoice("windows_voice", v.Name);
+
+                        var _ = TypoZen_TTS.PlayAsync("Hi, I am " + v.Name, _ttsVoiceId, _ttsSpeed);
+                    };
+                    sub.Items.Add(mi);
+                }
+                mOnlineVoices.Items.Add(sub);
+            }
+
+            UpdateWindowsVoicesCheckmark();
+        }
+
+        private void UncheckAllVoiceMenuItems()
+        {
+            var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
+            if (mWinVoices != null)
+            {
+                foreach (var item in VoiceMenuItems(mWinVoices)) item.IsChecked = false;
+            }
+            var mOnlineVoices = FindElement("mOnlineVoices") as MenuItem;
+            if (mOnlineVoices != null)
+            {
+                foreach (var item in VoiceMenuItems(mOnlineVoices)) item.IsChecked = false;
+            }
+        }
+
         /// <summary>
         /// Every voice item under the menu -- skipping headings and separators, and
-        /// stepping into the online submenu, which is the one group that is nested.
+        /// stepping into submenus if any.
         /// </summary>
         private static IEnumerable<MenuItem> VoiceMenuItems(MenuItem root)
         {
@@ -11668,16 +11768,40 @@ namespace TypoZen
 
         private void UpdateWindowsVoicesCheckmark()
         {
-            var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
-            if (mWinVoices == null) return;
-            // Nothing here is speaking while a Kokoro voice is chosen, so nothing here
-            // is ticked -- including at startup, where the saved Windows voice is still
-            // remembered and would otherwise tick itself.
             bool kokoroSpeaking = IsKokoroVoiceId(_kokoroVoiceId) || ChosenNarrator() != null;
-            foreach (var item in VoiceMenuItems(mWinVoices))
+            var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
+            if (mWinVoices != null)
             {
-                item.IsChecked = !kokoroSpeaking && (item.Tag.ToString() == _ttsVoiceId);
+                foreach (var item in VoiceMenuItems(mWinVoices))
+                {
+                    item.IsChecked = !kokoroSpeaking && (item.Tag != null && item.Tag.ToString() == _ttsVoiceId);
+                }
             }
+
+            var mOnlineVoices = FindElement("mOnlineVoices") as MenuItem;
+            if (mOnlineVoices != null)
+            {
+                foreach (var item in VoiceMenuItems(mOnlineVoices))
+                {
+                    item.IsChecked = !kokoroSpeaking && (item.Tag != null && item.Tag.ToString() == _ttsVoiceId);
+                }
+                foreach (var obj in mOnlineVoices.Items)
+                {
+                    var sub = obj as MenuItem;
+                    if (sub == null) continue;
+                    string rawHeader = sub.Header?.ToString() ?? "";
+                    int inUseIdx = rawHeader.IndexOf("  (in use)");
+                    string baseHeader = inUseIdx >= 0 ? rawHeader.Substring(0, inUseIdx) : rawHeader;
+                    bool hasCheckedChild = false;
+                    foreach (var child in sub.Items)
+                    {
+                        var c = child as MenuItem;
+                        if (c != null && c.IsChecked) { hasCheckedChild = true; break; }
+                    }
+                    sub.Header = baseHeader + (hasCheckedChild ? "  (in use)" : "");
+                }
+            }
+
             UpdateVoiceStatus();
         }
 
@@ -11715,6 +11839,22 @@ namespace TypoZen
                         if (ExtensionCatalog.VoiceId(row) == _kokoroVoiceId) name = ExtensionCatalog.VoiceName(row);
                     text = "Kokoro: " + name;
                 }
+                else if (_ttsVoiceId != null && _ttsVoiceId.StartsWith("edge:"))
+                {
+                    string name = "Microsoft Online voice";
+                    var mOnlineVoices = FindElement("mOnlineVoices") as MenuItem;
+                    if (mOnlineVoices != null)
+                    {
+                        foreach (var item in VoiceMenuItems(mOnlineVoices))
+                            if (item.Tag != null && item.Tag.ToString() == _ttsVoiceId) name = Convert.ToString(item.Header);
+                    }
+                    if (name == "Microsoft Online voice")
+                    {
+                        var ev = EdgeSpeechClient.CuratedVoices.Find(v => "edge:" + v.ShortName == _ttsVoiceId);
+                        if (ev != null) name = ev.DisplayName;
+                    }
+                    text = "Online: " + name;
+                }
                 else
                 {
                     // No voice chosen yet reads in Windows' default voice: name it.
@@ -11723,7 +11863,7 @@ namespace TypoZen
                     var mWinVoices = FindElement("mWindowsVoices") as MenuItem;
                     if (mWinVoices != null)
                         foreach (var item in VoiceMenuItems(mWinVoices))
-                            if (item.Tag.ToString() == _ttsVoiceId) name = Convert.ToString(item.Header);
+                            if (item.Tag != null && item.Tag.ToString() == _ttsVoiceId) name = Convert.ToString(item.Header);
                     text = "Windows: " + name;
                 }
                 lbl.Text = text;
@@ -11853,6 +11993,24 @@ namespace TypoZen
             System.Threading.Tasks.Task.Run(() => { QwenNarrator.SetLogging(!on); BreezeNarrator.Engine.SetLogging(!on); });
             Program.DebugLogSuppressed = on;        // no debug.log lines at all
             SetMenuChecked("mPrivacyMode", on);
+
+            // Privacy mode unconditionally suppresses online voices
+            TypoZen_TTS.EnableOnlineVoices = _enableOnlineVoices && !on;
+            if (on && _ttsVoiceId != null && _ttsVoiceId.StartsWith("edge:"))
+            {
+                var localList = TypoZen_TTS.GetVoices(false);
+                var fallback = localList.Count > 0 ? localList[0] : null;
+                if (fallback != null)
+                {
+                    _ttsVoiceId = fallback.Id;
+                    var p = LoadHostPrefs();
+                    p.TtsVoiceId = fallback.Id;
+                    WriteHostPrefs(p);
+                    SetKokoroVoice("windows_voice", fallback.Name);
+                }
+            }
+            PopulateWindowsVoicesMenu();
+            PopulateOnlineVoicesMenu();
             // The switches it subsumes are disabled rather than merely overridden: a tick
             // that does nothing is a lie about what the app will do.
             foreach (string name in new[] { "mAutosave", "mSessionRestoreContent", "mRecentEnabled" })

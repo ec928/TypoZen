@@ -41,6 +41,9 @@ namespace TypoZen
         public static Action OnPlaybackFinished;
         /// <summary>One line per step, for debug.log. Never passed the text being read.</summary>
         public static Action<string> Log;
+        /// <summary>Strictly opt-in: online natural voices (Edge Speech) enabled via File -> Extensions.</summary>
+        public static bool EnableOnlineVoices { get; set; } = false;
+        private static System.Threading.CancellationTokenSource _edgeCts;
 
         // Every play used to share one typozen_tts_temp.wav, rewritten while the player
         // might still hold the previous one; and any failure -- synthesis, a file the
@@ -175,24 +178,30 @@ namespace TypoZen
             try { OnPlaybackFinished?.Invoke(); } catch { }
         }
 
-        /// <summary>This play's own wav; earlier ones are deleted once nothing holds them.</summary>
-        private static string NewWavPath(int gen)
+        /// <summary>This play's own audio file; earlier ones are deleted once nothing holds them.</summary>
+        private static string NewAudioPath(int gen, string ext = ".wav")
         {
             string dir = Path.GetTempPath();
             try
             {
-                foreach (string old in Directory.GetFiles(dir, "typozen_tts_*.wav"))
+                foreach (string old in Directory.GetFiles(dir, "typozen_tts_*.*"))
                 {
                     if (string.Equals(old, _currentWav, StringComparison.OrdinalIgnoreCase)) continue;
                     try { File.Delete(old); } catch { }
                 }
             }
             catch { }
-            return Path.Combine(dir, "typozen_tts_" + System.Diagnostics.Process.GetCurrentProcess().Id + "_" + gen + ".wav");
+            return Path.Combine(dir, "typozen_tts_" + System.Diagnostics.Process.GetCurrentProcess().Id + "_" + gen + ext);
         }
 
-        public static List<VoiceInfo> GetVoices()
+        private static string NewWavPath(int gen)
         {
+            return NewAudioPath(gen, ".wav");
+        }
+
+        public static List<VoiceInfo> GetVoices(bool? enableOnline = null)
+        {
+            bool allowCloud = enableOnline ?? EnableOnlineVoices;
             var voices = new List<VoiceInfo>();
             
             // 1. WinRT (OneCore) Voices
@@ -203,7 +212,7 @@ namespace TypoZen
             // 2. SAPI5 (Desktop / IVONA / 3rd Party) Voices
             try 
             {
-                voices.AddRange(_sapiSynth.GetInstalledVoices()
+                var sapiInstalled = _sapiSynth.GetInstalledVoices()
                     .Where(v => v.Enabled)
                     .Select(v => new VoiceInfo
                     {
@@ -214,12 +223,23 @@ namespace TypoZen
                         Culture = v.VoiceInfo.Culture != null ? v.VoiceInfo.Culture.Name : "",
                         Gender = v.VoiceInfo.Gender == System.Speech.Synthesis.VoiceGender.Female ? "Female"
                                : v.VoiceInfo.Gender == System.Speech.Synthesis.VoiceGender.Male ? "Male" : ""
-                    }));
+                    });
+
+                foreach (var sv in sapiInstalled)
+                {
+                    // Filter out legacy SAPI adapter cloud voices (which cause Defender/ArgumentException issues)
+                    if (sv.Kind == "cloud" || sv.Name.EndsWith(" Online", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    voices.Add(sv);
+                }
             } catch {}
 
-            // 3. Remove redundant online voices if a local version exists
-            var localNames = voices.Where(v => v.Kind == "local").Select(v => v.Name).ToList();
-            voices.RemoveAll(v => v.Kind == "cloud" && localNames.Contains(v.Name.Replace(" Online", "")));
+            // 3. Microsoft Natural Voices (Edge Speech, Strictly Opt-In)
+            // Separate IDs (edge:...) ensure zero conflict with local SAPI voices (sapi:...).
+            if (allowCloud)
+            {
+                voices.AddRange(EdgeSpeechClient.GetVoices());
+            }
 
             return voices;
         }
@@ -246,13 +266,46 @@ namespace TypoZen
         {
             Stop();
             int gen = ++_generation;
-            string wav = NewWavPath(gen);
             var sw = System.Diagnostics.Stopwatch.StartNew();
             Note("play #" + gen + ": " + (text ?? "").Length + " chars, voice " + (voiceId ?? "(default)"));
 
             try
             {
-                if (voiceId != null && voiceId.StartsWith("sapi:"))
+                if (voiceId != null && voiceId.StartsWith("edge:"))
+                {
+                    if (!EnableOnlineVoices)
+                    {
+                        Note("play #" + gen + " online voice requested while online voices disabled");
+                        Finish();
+                        return;
+                    }
+
+                    string shortName = voiceId.Substring("edge:".Length);
+                    string mp3 = NewAudioPath(gen, ".mp3");
+                    _edgeCts = new System.Threading.CancellationTokenSource();
+                    var ct = _edgeCts.Token;
+
+                    bool ok = await EdgeSpeechClient.SynthesizeToFileAsync(text, shortName, speed, mp3, Note, ct);
+
+                    if (gen != _generation)
+                    {
+                        Note("play #" + gen + " superseded");
+                        return;
+                    }
+
+                    if (!ok || !File.Exists(mp3))
+                    {
+                        Note("play #" + gen + " edge synthesis failed or returned no audio");
+                        Finish();
+                        return;
+                    }
+
+                    _currentWav = mp3;
+                    _player.Open(new Uri(mp3));
+                    _player.Play();
+                    return;
+                }
+                else if (voiceId != null && voiceId.StartsWith("sapi:"))
                 {
                     string realName = voiceId.Substring("sapi:".Length);
                     // Speed in SAPI5 is -10 to 10. Default is 0.
@@ -293,6 +346,7 @@ namespace TypoZen
                 }
                 else
                 {
+                    string wav = NewAudioPath(gen, ".wav");
                     string realId = voiceId?.StartsWith("winrt:") == true ? voiceId.Substring("winrt:".Length) : voiceId;
                     if (!string.IsNullOrEmpty(realId))
                     {
@@ -310,34 +364,34 @@ namespace TypoZen
                     reader.ReadBytes(buffer);
 
                     if (gen == _generation) System.IO.File.WriteAllBytes(wav, buffer);
-                }
 
-                if (gen != _generation)
-                {
-                    // A newer play (or Stop) took over while this one was synthesising.
-                    Note("play #" + gen + " superseded");
-                    return;
+                    if (gen != _generation)
+                    {
+                        // A newer play (or Stop) took over while this one was synthesising.
+                        Note("play #" + gen + " superseded");
+                        return;
+                    }
+                    long bytes = File.Exists(wav) ? new FileInfo(wav).Length : 0;
+                    Note("play #" + gen + " synthesised in " + sw.ElapsedMilliseconds + " ms, " + bytes + " bytes");
+                    if (bytes <= 44)
+                    {
+                        // A wav header and no sound: nothing to play, so say so and end.
+                        Note("play #" + gen + " produced no audio");
+                        Finish();
+                        return;
+                    }
+                    if (DateTime.UtcNow - _lastSound >= QuietAfter)
+                    {
+                        bool padded = false;
+                        try { padded = PadLeadingSilence(wav, WakeSilenceMs); } catch { }
+                        Note("play #" + gen + (padded
+                            ? ": " + WakeSilenceMs + " ms of silence first, for the output to wake"
+                            : ": not plain PCM, played without the wake-up silence"));
+                    }
+                    _currentWav = wav;
+                    _player.Open(new Uri(wav));
+                    _player.Play();
                 }
-                long bytes = File.Exists(wav) ? new FileInfo(wav).Length : 0;
-                Note("play #" + gen + " synthesised in " + sw.ElapsedMilliseconds + " ms, " + bytes + " bytes");
-                if (bytes <= 44)
-                {
-                    // A wav header and no sound: nothing to play, so say so and end.
-                    Note("play #" + gen + " produced no audio");
-                    Finish();
-                    return;
-                }
-                if (DateTime.UtcNow - _lastSound >= QuietAfter)
-                {
-                    bool padded = false;
-                    try { padded = PadLeadingSilence(wav, WakeSilenceMs); } catch { }
-                    Note("play #" + gen + (padded
-                        ? ": " + WakeSilenceMs + " ms of silence first, for the output to wake"
-                        : ": not plain PCM, played without the wake-up silence"));
-                }
-                _currentWav = wav;
-                _player.Open(new Uri(wav));
-                _player.Play();
             }
             catch (Exception ex)
             {
@@ -363,6 +417,7 @@ namespace TypoZen
             // Also retires a play still synthesising, so it cannot start after Stop.
             _generation++;
             SoundStopped();
+            try { _edgeCts?.Cancel(); _edgeCts?.Dispose(); _edgeCts = null; } catch { }
             if (_sapiPrompt != null)
             {
                 // Its SpeakCompleted arrives later as cancelled, and is not reported as an end.
