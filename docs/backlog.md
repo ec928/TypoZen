@@ -3,6 +3,25 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
+## AI Script Director / Gemini Smart Cast for complex literary dialogue (2026-10-11)
+
+In complex literary fiction (such as *Dune*, *A Song of Ice and Fire*, classic Russian literature), character dialogue attribution using pure regex/heuristic rules hits an unavoidable ceiling. Characters are continually referred to by shifting aliases, epithets, and relational descriptions (*"Paul's mother"*, *"the Duke's concubine"*, *"the Bene Gesserit lady"*, *"the boy"*, *"the old woman"*), and multi-turn banter often carries no speech tags. While TypoZen's conservative narrator fallback prevents jarring misattribution, users who take time to assign custom cast voices miss having those voices utilized across the novel.
+
+**Proposed Solution:**
+An optional **"AI Script Director"** pre-pass integrated into Narrator Manager, powered by Google Gemini (Gemini 1.5 Pro / 2.0 Flash) via a user-supplied API key.
+
+- **Pipeline & Security:**
+  - The C# host (`TypoZen_App.cs`) communicates directly via native `.NET` `HttpClient` (HTTPS TLS 1.3) with Google's REST API endpoint (`https://generativelanguage.googleapis.com/v1beta/models/...`). No middleman server.
+  - The API key is stored securely in the user's Windows profile via the Windows Data Protection API (`ProtectedData.Protect`).
+- **Context Window Advantage:**
+  - Gemini's 1M–2M token context window allows an entire full-length novel (~150k–250k tokens) or individual chapters to be analyzed in a single request.
+- **Output & Integration:**
+  - Gemini returns schema-enforced structured JSON mapping:
+    1. **Character Entity & Alias Map:** Discovers all characters and resolves aliases (*Jessica* ➔ *Lady Jessica*, *Paul's mother*, *the Duke's concubine*).
+    2. **Vocal Profiles:** Extracts gender, age, and timbre to auto-suggest best-fit voices from installed engines.
+    3. **Dialogue Script Index (`book.script.json`):** Annotates every dialogue quote with the resolved speaker ID and delivery cue.
+  - The script is cached locally next to the book; subsequent playback is **100% offline** with zero regex guesswork and zero extra VRAM required during TTS audio generation.
+
 ## Voice capture and the host-pin list (2026-10-11)
 
 Audit of the tree at 0.16.10. The internal install is 0.16.14, which includes that work, Whisper transcription, and the 20-second clone take. The reader and the editor were left as they are: book
