@@ -16,9 +16,9 @@ What differs from Qwen:
   step) is what makes it faster than realtime; without it, about 3.2x realtime -- fine for a
   preview, never for reading. If it cannot be set up, the narrator says so on /health
   ("mode": "eager") and still answers.
-- TypoZen's in-text bracket tags are translated (translate()): point events become Breeze's own
-  parenthesised events, which add the sound; span tags become the instruction for the rest of
-  the piece.
+- Mood tags in the text become the instruction for the rest of the piece (translate()). Sounds
+  are written by the reader in round brackets, (giggles), and reach Breeze untouched; in an ePub
+  the seven sound words in square brackets are turned into that form.
 
   GET  /health                     is the model up, and in which mode
   GET  /voices                     the voice library
@@ -92,16 +92,18 @@ BUILTIN_VOICES = {
 }
 DEFAULT_VOICE = 'northern-english'
 
-# TypoZen's bracket words (docs/narrator-cues.md). Point events are sounds; Breeze performs the
-# same words in parentheses and adds the sound to the speech (Ed's ear, 2026-10-08: all of them,
-# "(snorts)" weakest). Span tags change the delivery from there on; Breeze has no in-text form,
-# so they become the instruction for the rest of the piece.
+# Bracket words. Point events are sounds; Breeze performs the same words in parentheses and adds
+# the sound to the speech (Ed's ear, 2026-10-08: all of them, "(snorts)" weakest). Since 0.16.5 the
+# page sends them in square brackets only from an ePub, where brackets are the book's text; in the
+# reader's own text a sound is written in round brackets and [laughing] is an instruction. Span
+# tags change the delivery from there on; Breeze has no in-text form, so they become the
+# instruction for the rest of the piece.
 POINT_EVENTS = ('laughing', 'giggles', 'gasp', 'sighing', 'cough', 'clears throat', 'snorts')
 SPAN_TAGS = ('excited', 'sad', 'angry', 'amazed', 'serious', 'sarcastic', 'curious', 'mischievously',
              'crying', 'panicked', 'tired', 'asmr', 'singing', 'whispers', 'very slowly', 'very fast',
              'like dracula', 'deep and loud shouting')
-# A tag may carry its own strength, [sad:9]: the page strips it from brackets beside speakers and
-# double brackets, but a tag in the text reaches here with it. A point event's number is dropped.
+# A tag may carry its own strength, [sad:9]: the page strips it from the reader's instructions,
+# but a mood in the text reaches here with it. A point event's number is dropped.
 _NUM = r'(?:\s*:\s*(\d+(?:\.\d+)?))?'
 _POINT_RE = re.compile(r'\[\s*(' + '|'.join(re.escape(w) for w in POINT_EVENTS) + r')' + _NUM + r'\s*\]', re.I)
 _SPAN_RE = re.compile(r'\[\s*(' + '|'.join(re.escape(w) for w in SPAN_TAGS) + r')' + _NUM + r'\s*\]', re.I)
@@ -221,8 +223,8 @@ def instruction(style, direction, role='narration', whole=None, cue=None, own=No
 def translate(text, told, strength=DEFAULT_STRENGTH):
     """A piece as Breeze is given it: [(text, instruction, strength)], usually one.
 
-    Point events -- [laughing], [clears throat] -- become (laughing), (clears throat): Breeze
-    adds the sound. A span tag -- [sad], [whispers] -- ends the stretch before it; the text after
+    Point events -- [laughing], [clears throat], which only an ePub's text still carries --
+    become (laughing), (clears throat): Breeze adds the sound. A span tag -- [sad], [whispers] -- ends the stretch before it; the text after
     it is its own generation, told the tag's words as well as the piece's instruction, so the
     delivery changes from there on, as it does with Qwen. Any other bracket is left as written
     (read aloud, as Qwen reads it). A span tag's own number, [sad:9], is the strength from there
