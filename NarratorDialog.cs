@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Media;
 using System.Runtime.InteropServices;
 using System.Speech.Recognition;
@@ -36,6 +37,264 @@ namespace TypoZen
     /// </summary>
     internal static class NarratorDialog
     {
+        [ComImport]
+        [Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+        private class MMDeviceEnumeratorComObject { }
+
+        [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IMMDeviceEnumerator
+        {
+            int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr devices);
+            int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice endpoint);
+        }
+
+        [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IMMDevice
+        {
+            int Activate(ref Guid id, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object interfacePointer);
+        }
+
+        [Guid("1CB9AD4C-DBFA-4c32-B178-C2F568A703B2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IAudioClient
+        {
+            int Initialize(int shareMode, int streamFlags, long hnsBufferDuration, long hnsPeriodicity, IntPtr pFormat, ref Guid audioSessionGuid);
+            int GetBufferSize(out uint bufferSize);
+            int GetStreamLatency(out long hnsLatency);
+            int GetCurrentPadding(out uint currentPadding);
+            int IsFormatSupported(int shareMode, IntPtr pFormat, out IntPtr closestMatch);
+            int GetMixFormat(out IntPtr deviceFormatPointer);
+            int GetDevicePeriod(out long defaultDevicePeriod, out long minimumDevicePeriod);
+            int Start();
+            int Stop();
+            int Reset();
+            int SetEventHandle(IntPtr eventHandle);
+            int GetService(ref Guid interfaceId, [MarshalAs(UnmanagedType.IUnknown)] out object interfacePointer);
+        }
+
+        [Guid("C8ADBD64-E71E-48a0-A4DE-185C395CD317"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IAudioCaptureClient
+        {
+            int GetBuffer(out IntPtr dataPointer, out uint numFramesToRead, out int bufferFlags, out ulong devicePosition, out ulong qpcPosition);
+            int ReleaseBuffer(uint numFramesRead);
+            int GetNextPacketSize(out uint numFramesInNextPacket);
+        }
+
+        internal static class WasapiLoopbackRecorder
+        {
+            private static volatile bool _running;
+            private static Thread _worker;
+            private static MemoryStream _stream;
+            private static int _sampleRate = 48000;
+            private static float _maxPeak = 0f;
+            private static readonly object _lock = new object();
+
+            public static bool Start()
+            {
+                Stop();
+                lock (_lock)
+                {
+                    _maxPeak = 0f;
+                    _stream = new MemoryStream();
+                    _stream.Write(new byte[44], 0, 44);
+                    _running = true;
+
+                    var initEvent = new ManualResetEventSlim(false);
+                    bool initSuccess = false;
+
+                    _worker = new Thread(() =>
+                    {
+                        IAudioClient client = null;
+                        try
+                        {
+                            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
+                            IMMDevice device;
+                            int hr = enumerator.GetDefaultAudioEndpoint(0, 1, out device);
+                            if (hr != 0 || device == null)
+                            {
+                                initEvent.Set();
+                                return;
+                            }
+
+                            Guid IID_IAudioClient = new Guid("1CB9AD4C-DBFA-4c32-B178-C2F568A703B2");
+                            object clientObj;
+                            device.Activate(ref IID_IAudioClient, 1, IntPtr.Zero, out clientObj);
+                            client = (IAudioClient)clientObj;
+
+                            IntPtr pFormat;
+                            client.GetMixFormat(out pFormat);
+                            short channels = Marshal.ReadInt16(pFormat, 2);
+                            _sampleRate = Marshal.ReadInt32(pFormat, 4);
+                            short bitsPerSample = Marshal.ReadInt16(pFormat, 14);
+
+                            Guid emptyGuid = Guid.Empty;
+                            // AUDCLNT_STREAMFLAGS_LOOPBACK = 0x00020000
+                            hr = client.Initialize(0, 0x00020000, 10000000, 0, pFormat, ref emptyGuid);
+                            if (hr != 0)
+                            {
+                                initEvent.Set();
+                                return;
+                            }
+
+                            Guid IID_IAudioCaptureClient = new Guid("C8ADBD64-E71E-48a0-A4DE-185C395CD317");
+                            object captureObj;
+                            client.GetService(ref IID_IAudioCaptureClient, out captureObj);
+                            var capture = (IAudioCaptureClient)captureObj;
+
+                            client.Start();
+                            initSuccess = true;
+                            initEvent.Set();
+
+                            while (_running)
+                            {
+                                uint packetSize;
+                                capture.GetNextPacketSize(out packetSize);
+                                while (packetSize > 0 && _running)
+                                {
+                                    IntPtr pData;
+                                    uint numFrames;
+                                    int flags;
+                                    ulong devPos, qpcPos;
+                                    capture.GetBuffer(out pData, out numFrames, out flags, out devPos, out qpcPos);
+                                    if (numFrames > 0)
+                                    {
+                                        lock (_lock)
+                                        {
+                                            if (_stream != null)
+                                            {
+                                                if ((flags & 1) != 0)
+                                                {
+                                                    byte[] silent = new byte[numFrames * 2];
+                                                    _stream.Write(silent, 0, silent.Length);
+                                                }
+                                                else
+                                                {
+                                                    for (int i = 0; i < numFrames; i++)
+                                                    {
+                                                        float sum = 0f;
+                                                        if (bitsPerSample == 32)
+                                                        {
+                                                            for (int c = 0; c < channels; c++)
+                                                            {
+                                                                float val = (float)Marshal.PtrToStructure(new IntPtr(pData.ToInt64() + (i * channels + c) * 4), typeof(float));
+                                                                if (c == 0 || c == 1 || c == 2) sum += val;
+                                                            }
+                                                        }
+                                                        else if (bitsPerSample == 16)
+                                                        {
+                                                            for (int c = 0; c < channels; c++)
+                                                            {
+                                                                short val = Marshal.ReadInt16(new IntPtr(pData.ToInt64() + (i * channels + c) * 2));
+                                                                if (c == 0 || c == 1 || c == 2) sum += (float)val / 32768f;
+                                                            }
+                                                        }
+                                                        float mono = Math.Max(-1.0f, Math.Min(1.0f, sum / (channels >= 3 ? 3f : 2f)));
+                                                        float abs = Math.Abs(mono);
+                                                        if (abs > _maxPeak) _maxPeak = abs;
+                                                        short pcm = (short)(mono * 32767f);
+                                                        _stream.WriteByte((byte)(pcm & 0xFF));
+                                                        _stream.WriteByte((byte)((pcm >> 8) & 0xFF));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        capture.ReleaseBuffer(numFrames);
+                                    }
+                                    capture.GetNextPacketSize(out packetSize);
+                                }
+                                Thread.Sleep(5);
+                            }
+                        }
+                        catch
+                        {
+                            initEvent.Set();
+                        }
+                        finally
+                        {
+                            if (client != null) { try { client.Stop(); } catch { } }
+                        }
+                    }) { IsBackground = true };
+
+                    _worker.Start();
+                    initEvent.Wait(2000);
+                    if (!initSuccess)
+                    {
+                        Stop();
+                        return false;
+                    }
+                    return true;
+                }
+            }
+
+            public static bool StopAndSave(string outWavPath, out bool hasAudio)
+            {
+                hasAudio = false;
+                _running = false;
+                if (_worker != null)
+                {
+                    _worker.Join(600);
+                    _worker = null;
+                }
+
+                lock (_lock)
+                {
+                    if (_stream == null) return false;
+                    try
+                    {
+                        byte[] bytes = _stream.ToArray();
+                        _stream.Dispose();
+                        _stream = null;
+
+                        if (bytes.Length <= 44) return false;
+
+                        hasAudio = _maxPeak >= 0.001f;
+
+                        int dataLen = bytes.Length - 44;
+                        using (var bw = new BinaryWriter(new MemoryStream(bytes)))
+                        {
+                            bw.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+                            bw.Write(dataLen + 36);
+                            bw.Write(System.Text.Encoding.ASCII.GetBytes("WAVE"));
+                            bw.Write(System.Text.Encoding.ASCII.GetBytes("fmt "));
+                            bw.Write(16);
+                            bw.Write((short)1); // PCM
+                            bw.Write((short)1); // mono
+                            bw.Write(_sampleRate);
+                            bw.Write(_sampleRate * 2);
+                            bw.Write((short)2);
+                            bw.Write((short)16);
+                            bw.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+                            bw.Write(dataLen);
+                        }
+
+                        File.WriteAllBytes(outWavPath, bytes);
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            public static void Stop()
+            {
+                _running = false;
+                if (_worker != null)
+                {
+                    _worker.Join(300);
+                    _worker = null;
+                }
+                lock (_lock)
+                {
+                    if (_stream != null)
+                    {
+                        try { _stream.Dispose(); } catch { }
+                        _stream = null;
+                    }
+                }
+            }
+        }
+
         [DllImport("winmm.dll", EntryPoint = "mciSendStringA", ExactSpelling = true, CharSet = CharSet.Ansi)]
         private static extern int mciSendString(string command, System.Text.StringBuilder buffer, int bufferSize, IntPtr hwndCallback);
 
@@ -544,14 +803,18 @@ namespace TypoZen
             var clonePanel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
             var cloneWhy = note("Clone needs the Breeze narrator: choose Breeze at the top of the Narrator window.");
             var cloneFile = button("Choose recording...");
-            var recordBtn = button("● Record");
-            recordBtn.ToolTip = "Record speech from your microphone (3 to 20 seconds).";
-            recordBtn.Margin = new Thickness(6, 0, 0, 0);
+            cloneFile.Margin = new Thickness(0, 0, 6, 4);
+            var recordMicBtn = button("● Mic");
+            recordMicBtn.ToolTip = "Record speech from your microphone (3 to 20 seconds).";
+            recordMicBtn.Margin = new Thickness(0, 0, 6, 4);
+            var recordPcBtn = button("● PC Audio");
+            recordPcBtn.ToolTip = "Record audio playing from your PC speakers (YouTube, video, media player).";
+            recordPcBtn.Margin = new Thickness(0, 0, 6, 4);
             var previewClip = button("▶ Play");
             previewClip.ToolTip = "Listen to the selected recording before cloning.";
             previewClip.IsEnabled = false;
-            previewClip.Margin = new Thickness(6, 0, 6, 0);
-            var cloneFileName = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.8, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 150 };
+            previewClip.Margin = new Thickness(0, 0, 6, 4);
+            var cloneFileName = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.8, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 140, Margin = new Thickness(0, 2, 0, 4) };
             var cloneWords = new TextBox { TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             var cloneFrom = new TextBox { Width = 56, Height = 26, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0) };
             var cloneTo = new TextBox { Width = 56, Height = 26, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
@@ -565,7 +828,13 @@ namespace TypoZen
             transcribeBtn.Margin = new Thickness(8, 0, 0, 0);
 
             clonePanel.Children.Add(note("3 to 20 seconds of one person, and exactly the words they say. Only a voice you have the right to use."));
-            clonePanel.Children.Add(row(new UIElement[] { cloneFile, recordBtn, previewClip, cloneFileName }));
+            var cloneActionRow = new WrapPanel { Margin = new Thickness(0, 4, 0, 4) };
+            cloneActionRow.Children.Add(cloneFile);
+            cloneActionRow.Children.Add(recordMicBtn);
+            cloneActionRow.Children.Add(recordPcBtn);
+            cloneActionRow.Children.Add(previewClip);
+            cloneActionRow.Children.Add(cloneFileName);
+            clonePanel.Children.Add(cloneActionRow);
             clonePanel.Children.Add(new TextBlock { Text = "The words said in the recording", Margin = new Thickness(0, 8, 0, 4) });
             clonePanel.Children.Add(cloneWords);
             var useDesign = button("Use the design passage");
@@ -1017,7 +1286,7 @@ namespace TypoZen
 
             // Anything that needs the narrator goes through here: off the UI thread, with the
             // buttons that would start another such call disabled until it is done.
-            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, renameVoice, design, importVoice, playA, takeA, cloneGo, previewClip, recordBtn, transcribeBtn };
+            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, renameVoice, design, importVoice, playA, takeA, cloneGo, previewClip, recordMicBtn, recordPcBtn, transcribeBtn };
             // Find characters asks the page, not the narrator, so it is never held up by one (it was: the
             // whole window sat greyed for the narrator's 40-second start, 2026-10-09).
             // These need the narrator itself, and wait while it starts; the rest of the window does not.
@@ -1775,6 +2044,7 @@ namespace TypoZen
             };
 
             bool isRecording = false;
+            string recordingMode = null;
             int recordSeconds = 0;
             var recordTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             string recordedPath = null;
@@ -1784,9 +2054,35 @@ namespace TypoZen
                 if (!isRecording) return;
                 isRecording = false;
                 recordTimer.Stop();
-                recordBtn.Content = "● Record";
-                mciSendString("save recsound \"" + recordedPath + "\"", null, 0, IntPtr.Zero);
-                mciSendString("close recsound", null, 0, IntPtr.Zero);
+                string mode = recordingMode;
+                recordingMode = null;
+                recordMicBtn.Content = "● Mic";
+                recordPcBtn.Content = "● PC Audio";
+                recordMicBtn.IsEnabled = true;
+                recordPcBtn.IsEnabled = true;
+                cloneFile.IsEnabled = true;
+
+                bool hasAudio = true;
+                if (mode == "mic")
+                {
+                    mciSendString("save recsound \"" + recordedPath + "\"", null, 0, IntPtr.Zero);
+                    mciSendString("close recsound", null, 0, IntPtr.Zero);
+                }
+                else if (mode == "pc")
+                {
+                    bool pcSaved = WasapiLoopbackRecorder.StopAndSave(recordedPath, out hasAudio);
+                    if (!pcSaved)
+                    {
+                        say("Could not save PC audio recording.");
+                        return;
+                    }
+                }
+
+                if (!hasAudio)
+                {
+                    say("No audio detected from PC speakers. Play audio on your PC and try again.");
+                    return;
+                }
 
                 if (System.IO.File.Exists(recordedPath) && new System.IO.FileInfo(recordedPath).Length > 2000)
                 {
@@ -1819,44 +2115,93 @@ namespace TypoZen
                 }
             };
 
-            Action startRecording = () =>
+            Action<string> startRecording = mode =>
             {
                 if (isRecording) return;
-                try { mciSendString("close recsound", null, 0, IntPtr.Zero); } catch { }
+                try { if (player != null) player.Stop(); } catch { }
+                try { if (clipPlayer != null) { clipPlayer.Stop(); } } catch { }
 
                 string recFolder = System.IO.Path.Combine(cacheDir, "recordings");
                 try { System.IO.Directory.CreateDirectory(recFolder); } catch { }
-                recordedPath = System.IO.Path.Combine(recFolder, "recording_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".wav");
 
-                int rOpen = mciSendString("open new Type waveaudio alias recsound", null, 0, IntPtr.Zero);
-                mciSendString("set recsound time format ms", null, 0, IntPtr.Zero);
-                mciSendString("set recsound channels 1", null, 0, IntPtr.Zero);
-                int rRec = mciSendString("record recsound", null, 0, IntPtr.Zero);
-
-                if (rOpen != 0 || rRec != 0)
+                if (mode == "mic")
                 {
-                    say("Could not access microphone. Check Windows microphone permissions.");
-                    return;
-                }
+                    try { mciSendString("close recsound", null, 0, IntPtr.Zero); } catch { }
+                    recordedPath = System.IO.Path.Combine(recFolder, "recording_mic_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".wav");
 
-                isRecording = true;
-                recordSeconds = 0;
-                recordBtn.Content = "■ Stop (0s)";
-                recordTimer.Start();
-                say("Recording from microphone... Click Stop when done (up to 20s).");
+                    int rOpen = mciSendString("open new Type waveaudio alias recsound", null, 0, IntPtr.Zero);
+                    mciSendString("set recsound time format ms", null, 0, IntPtr.Zero);
+                    mciSendString("set recsound channels 1", null, 0, IntPtr.Zero);
+                    int rRec = mciSendString("record recsound", null, 0, IntPtr.Zero);
+
+                    if (rOpen != 0 || rRec != 0)
+                    {
+                        say("Could not access microphone. Check Windows microphone permissions.");
+                        return;
+                    }
+
+                    isRecording = true;
+                    recordingMode = "mic";
+                    recordSeconds = 0;
+                    recordMicBtn.Content = "■ Stop (0s)";
+                    recordPcBtn.IsEnabled = false;
+                    cloneFile.IsEnabled = false;
+                    previewClip.IsEnabled = false;
+                    recordTimer.Start();
+                    say("Recording from microphone... Click Stop when done (up to 20s).");
+                }
+                else if (mode == "pc")
+                {
+                    recordedPath = System.IO.Path.Combine(recFolder, "recording_pc_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".wav");
+                    bool ok = WasapiLoopbackRecorder.Start();
+                    if (!ok)
+                    {
+                        say("Could not access PC audio. Make sure audio output is enabled.");
+                        return;
+                    }
+
+                    isRecording = true;
+                    recordingMode = "pc";
+                    recordSeconds = 0;
+                    recordPcBtn.Content = "■ Stop (0s)";
+                    recordMicBtn.IsEnabled = false;
+                    cloneFile.IsEnabled = false;
+                    previewClip.IsEnabled = false;
+                    recordTimer.Start();
+                    say("Recording PC audio... Play audio on your PC and click Stop when done (up to 20s).");
+                }
             };
 
             recordTimer.Tick += (s, e) =>
             {
                 recordSeconds++;
-                recordBtn.Content = string.Format("■ Stop ({0}s)", recordSeconds);
+                if (recordingMode == "mic") recordMicBtn.Content = string.Format("■ Stop ({0}s)", recordSeconds);
+                else if (recordingMode == "pc") recordPcBtn.Content = string.Format("■ Stop ({0}s)", recordSeconds);
                 if (recordSeconds >= 20) stopRecording();
             };
 
-            recordBtn.Click += (s, e) =>
+            recordMicBtn.Click += (s, e) =>
             {
-                if (isRecording) stopRecording();
-                else startRecording();
+                if (isRecording)
+                {
+                    if (recordingMode == "mic") stopRecording();
+                }
+                else
+                {
+                    startRecording("mic");
+                }
+            };
+
+            recordPcBtn.Click += (s, e) =>
+            {
+                if (isRecording)
+                {
+                    if (recordingMode == "pc") stopRecording();
+                }
+                else
+                {
+                    startRecording("pc");
+                }
             };
 
             transcribeBtn.Click += (s, e) =>
@@ -1868,7 +2213,7 @@ namespace TypoZen
                 }
                 if (!clonePath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
                 {
-                    say("Speech-to-text requires a WAV file (such as a microphone recording).");
+                    say("Speech-to-text requires a WAV file (such as a microphone or PC audio recording).");
                     return;
                 }
                 say("Transcribing audio...");
@@ -2122,6 +2467,7 @@ namespace TypoZen
                     candidates.Children.Clear();
                     clearCandidates();
                     try { if (isRecording) stopRecording(); } catch { }
+                    try { WasapiLoopbackRecorder.Stop(); } catch { }
                     try { if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); } } catch { }
                     // Detach the library and its status line, so the next opening can show them.
                     libScroll.Content = null;
@@ -2256,6 +2602,7 @@ namespace TypoZen
                 try { sendToPage("cmd:narrator_trial_stop"); } catch { }
                 var p = pendingTrial;
                 if (p != null) p.TrySetResult("{\"kind\":\"stopped\"}");
+                try { WasapiLoopbackRecorder.Stop(); } catch { }
                 try { if (player != null) player.Stop(); if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); } } catch { }
             };
             return win;
