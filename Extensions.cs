@@ -8,6 +8,7 @@ using System.Text;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -645,6 +646,29 @@ namespace TypoZen
     /// <summary>The Extensions window: what is available, what is installed, and its size.</summary>
     internal static class ExtensionsDialog
     {
+        private static readonly ConcurrentDictionary<string, long> _sizeCache =
+            new ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+        public static void InvalidateSizeCache(string dir = null)
+        {
+            if (string.IsNullOrEmpty(dir)) _sizeCache.Clear();
+            else _sizeCache.TryRemove(dir, out _);
+        }
+
+        private static bool TryGetCachedSize(string dir, out long size)
+        {
+            size = 0;
+            if (string.IsNullOrEmpty(dir)) return false;
+            return _sizeCache.TryGetValue(dir, out size);
+        }
+
+        private static long GetCachedSize(string dir)
+        {
+            if (string.IsNullOrEmpty(dir)) return 0;
+            long size;
+            return _sizeCache.TryGetValue(dir, out size) ? size : 0;
+        }
+
         /// <param name="installed">Given the id of an extension that has just been
         /// installed, for whatever should follow from having it.</param>
         public static void Show(Window owner, string cacheDir, Action changed, Action<string> installed = null, Func<bool> getOnlineVoices = null, Action<bool> setOnlineVoices = null)
@@ -896,38 +920,103 @@ namespace TypoZen
                 {
                     var now = live();
                     bool on = now.Installed;
-                    long onDisk = SizeOf(now.Dir);
-                    long short_ = on ? now.MissingBytes() : 0;
-                    if (on && short_ > 0)
+
+                    button.Content = on ? "Remove" : "Install";
+                    if (info.Id == ExtensionCatalog.KokoroId) quality.IsEnabled = !on;
+                    if (info.Id == ExtensionCatalog.WhisperId) whisperSize.IsEnabled = !on;
+
+                    if (isNarr)
                     {
-                        int n = now.Missing().Count;
-                        state.Text = "Installed · " + Human(onDisk) + " on disk ("
-                                   + n + (n == 1 ? " new file" : " new files")
-                                   + " to download, " + Human(short_) + ")";
+                        bool partway = !on && File.Exists(narr.Installer().InstallFlag(cacheDir));
+                        bool voices = Directory.Exists(Path.Combine(now.Dir, "voices"))
+                                      && Directory.GetDirectories(Path.Combine(now.Dir, "voices")).Length > 0;
+                        if (narrRunning == null) button.Content = on ? "Remove" : "Install";
+                        clearAudio.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+
+                        if (!on)
+                        {
+                            state.Text = partway
+                                ? "Incomplete download (resumes on Install)"
+                                : "Not installed · ~" + Human(narr.DownloadBytes) + " to download" + (voices ? " · Saved voices kept" : "");
+                            clearAudio.IsEnabled = false;
+                        }
+                        else
+                        {
+                            if (TryGetCachedSize(now.Dir, out long cachedOnDisk))
+                            {
+                                long cachedAudio = GetCachedSize(narr.AudioDir(cacheDir));
+                                state.Text = "Installed · " + Human(cachedOnDisk) + " on disk" + (cachedAudio > 0 ? " (" + Human(cachedAudio) + " audio cache)" : "");
+                                clearAudio.IsEnabled = cachedAudio > 0;
+                            }
+                            else
+                            {
+                                state.Text = "Installed";
+                                clearAudio.IsEnabled = false;
+                            }
+                        }
                     }
                     else
                     {
-                        state.Text = on
-                            ? "Installed · " + Human(onDisk) + " on disk"
-                            : "Not installed · " + Human(now.DownloadBytes) + " to download";
+                        if (!on)
+                        {
+                            state.Text = "Not installed · " + Human(now.DownloadBytes) + " to download";
+                        }
+                        else
+                        {
+                            if (TryGetCachedSize(now.Dir, out long cachedOnDisk))
+                            {
+                                state.Text = "Installed · " + Human(cachedOnDisk) + " on disk";
+                            }
+                            else
+                            {
+                                state.Text = "Installed";
+                            }
+                        }
                     }
-                    button.Content = on ? (short_ > 0 ? "Update" : "Remove") : "Install";
-                    if (info.Id == ExtensionCatalog.KokoroId) quality.IsEnabled = !on;
-                    if (info.Id == ExtensionCatalog.WhisperId) whisperSize.IsEnabled = !on;
-                    if (isNarr)
+
+                    if (on)
                     {
-                        long audio = SizeOf(narr.AudioDir(cacheDir));
-                        bool partway = File.Exists(narr.Installer().InstallFlag(cacheDir));
-                        bool voices = Directory.Exists(Path.Combine(now.Dir, "voices"))
-                                      && Directory.GetDirectories(Path.Combine(now.Dir, "voices")).Length > 0;
-                        state.Text = on
-                            ? "Installed · " + Human(onDisk) + " on disk" + (audio > 0 ? " (" + Human(audio) + " audio cache)" : "")
-                            : partway
-                                ? "Incomplete · " + Human(onDisk) + " downloaded so far (resumes on Install)"
-                                : "Not installed · ~" + Human(narr.DownloadBytes) + " to download" + (voices ? " · Saved voices kept" : "");
-                        if (narrRunning == null) button.Content = on ? "Remove" : "Install";
-                        clearAudio.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-                        clearAudio.IsEnabled = audio > 0;
+                        ThreadPool.QueueUserWorkItem(_ =>
+                        {
+                            try
+                            {
+                                long onDisk = SizeOf(now.Dir);
+                                _sizeCache[now.Dir] = onDisk;
+                                long short_ = now.MissingBytes();
+                                int nMissing = short_ > 0 ? now.Missing().Count : 0;
+                                long audio = 0;
+                                if (isNarr)
+                                {
+                                    audio = SizeOf(narr.AudioDir(cacheDir));
+                                    _sizeCache[narr.AudioDir(cacheDir)] = audio;
+                                }
+
+                                win.Dispatcher.BeginInvoke((Action)(() =>
+                                {
+                                    if (isNarr)
+                                    {
+                                        state.Text = "Installed · " + Human(onDisk) + " on disk" + (audio > 0 ? " (" + Human(audio) + " audio cache)" : "");
+                                        clearAudio.IsEnabled = audio > 0;
+                                    }
+                                    else
+                                    {
+                                        if (short_ > 0)
+                                        {
+                                            state.Text = "Installed · " + Human(onDisk) + " on disk ("
+                                                       + nMissing + (nMissing == 1 ? " new file" : " new files")
+                                                       + " to download, " + Human(short_) + ")";
+                                            button.Content = "Update";
+                                        }
+                                        else
+                                        {
+                                            state.Text = "Installed · " + Human(onDisk) + " on disk";
+                                            button.Content = "Remove";
+                                        }
+                                    }
+                                }));
+                            }
+                            catch { }
+                        });
                     }
                 };
                 rows.Add(refresh);
@@ -935,8 +1024,10 @@ namespace TypoZen
                 clearAudio.Click += (s, e) =>
                 {
                     string audioDir = narr.AudioDir(cacheDir);
+                    long currentAudioSize = GetCachedSize(audioDir);
+                    if (currentAudioSize == 0) currentAudioSize = SizeOf(audioDir);
                     var ask = MessageBox.Show(win,
-                        "Delete the narration audio? " + Human(SizeOf(audioDir)) + " will be deleted, and "
+                        "Delete the narration audio? " + Human(currentAudioSize) + " will be deleted, and "
                         + "anything narrated again will render again.",
                         "Extensions", MessageBoxButton.OKCancel, MessageBoxImage.Question);
                     if (ask != MessageBoxResult.OK) return;
@@ -944,6 +1035,7 @@ namespace TypoZen
                     // half-written into it while it goes. It starts again on the next Narrate.
                     narr.Stop();
                     ExtensionInstaller.Purge(audioDir, true);
+                    InvalidateSizeCache(audioDir);
                     foreach (var r in rows) r();
                     status.Text = SizeOf(audioDir) > 0
                         ? "Some narration audio could not be deleted."
@@ -978,8 +1070,14 @@ namespace TypoZen
                             narr.Stop();
                             foreach (string part in narr.RemovableParts)
                                 ExtensionInstaller.Purge(Path.Combine(now.Dir, part), true);
+                            InvalidateSizeCache(now.Dir);
+                            InvalidateSizeCache(narr.AudioDir(cacheDir));
                         }
-                        else ExtensionInstaller.Purge(now.Dir, true);
+                        else
+                        {
+                            ExtensionInstaller.Purge(now.Dir, true);
+                            InvalidateSizeCache(now.Dir);
+                        }
                         foreach (var r in rows) r();
                         if (changed != null) changed();
                         status.Text = now.Installed
@@ -1042,6 +1140,7 @@ namespace TypoZen
                                 narrRunning = null;
                                 bar.IsIndeterminate = false;
                                 bar.Visibility = Visibility.Collapsed;
+                                InvalidateSizeCache(info.Dir);
                                 foreach (var r in rows) r();
                                 if (problem == null)
                                 {
@@ -1087,6 +1186,7 @@ namespace TypoZen
                             if (nowModel.Length > 0) quality.SelectedIndex = nowModel == "fp32" ? 1 : 0;
                             int nowWhisper = ExtensionCatalog.WhisperInstalledIndex(cacheDir);
                             if (nowWhisper >= 0) whisperSize.SelectedIndex = nowWhisper;
+                            InvalidateSizeCache(now.Dir);
                             foreach (var r in rows) r();
                             if (problem == null)
                             {
@@ -1276,7 +1376,7 @@ namespace TypoZen
                 if (!Directory.Exists(dir)) return 0;
                 long n = 0;
                 var seen = new HashSet<string>();
-                foreach (var f in new DirectoryInfo(dir).GetFiles("*", SearchOption.AllDirectories))
+                foreach (var f in new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories))
                 {
                     try
                     {
