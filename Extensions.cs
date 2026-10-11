@@ -5,7 +5,9 @@ using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -96,6 +98,7 @@ namespace TypoZen
     {
         public const string KokoroId = "Kokoro";
         public const string WiktionaryId = "Wiktionary";
+        public const string WhisperId = "Whisper";
 
         /// <summary>Virtual host the page loads extension files through.</summary>
         public const string HostName = "localextensions";
@@ -244,6 +247,116 @@ namespace TypoZen
                 Bytes = 35640790,
                 Sha256 = "AECC24C83A22232B268C24EF5971265777C9E46ECFFD42312073893118526D1A",
                 Unzip = true
+            });
+            return x;
+        }
+
+        /// <summary>
+        /// One English ggml model the reader can install. Sizes and checksums are the
+        /// files on huggingface.co/ggerganov/whisper.cpp (the f16 .en bins). Tiny is
+        /// absent: it still mangles. Small is the one the dialog offers first.
+        /// </summary>
+        internal sealed class WhisperModel
+        {
+            public string Label;
+            public string FileName;
+            public long Bytes;
+            public string Sha256;
+            public bool Recommended;
+        }
+
+        /// <summary>
+        /// whisper.cpp 1.9.5, the Windows CPU build tagged b5454. OpenBLAS, not CUDA,
+        /// so a narrator can stay on the graphics card. The zip unpacks to Release\,
+        /// and whisper-cli.exe is the only program TypoZen runs.
+        /// </summary>
+        public const long WhisperRuntimeBytes = 21715607L;
+        private const string WhisperZipUrl = "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-blas-bin-x64.zip";
+        private const string WhisperZipSha = "b1158bd10edf92c9799149a6fc5d3e58da3f495241d6fb3423088130e88ffbf3";
+        private const string WhisperHf = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
+
+        public static readonly WhisperModel[] WhisperModels = {
+            new WhisperModel { Label = "Base English", FileName = "ggml-base.en.bin", Bytes = 147964211L,
+                Sha256 = "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002" },
+            new WhisperModel { Label = "Small English", FileName = "ggml-small.en.bin", Bytes = 487614201L,
+                Sha256 = "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d", Recommended = true },
+            new WhisperModel { Label = "Medium English", FileName = "ggml-medium.en.bin", Bytes = 1533774781L,
+                Sha256 = "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356" }
+        };
+
+        public static int WhisperRecommendedIndex
+        {
+            get
+            {
+                for (int i = 0; i < WhisperModels.Length; i++)
+                    if (WhisperModels[i].Recommended) return i;
+                return 0;
+            }
+        }
+
+        public static string WhisperDir(string cacheDir) { return Path.Combine(ExtensionsDir(cacheDir), WhisperId); }
+
+        /// <summary>The model on disk, or -1 when the program or the model is missing.</summary>
+        public static int WhisperInstalledIndex(string cacheDir)
+        {
+            try
+            {
+                string dir = WhisperDir(cacheDir);
+                if (!File.Exists(Path.Combine(dir, "Release", "whisper-cli.exe"))) return -1;
+                for (int i = 0; i < WhisperModels.Length; i++)
+                    if (File.Exists(Path.Combine(dir, WhisperModels[i].FileName))) return i;
+            }
+            catch { }
+            return -1;
+        }
+
+        public static ExtensionInfo Whisper(string cacheDir, int modelIndex)
+        {
+            if (modelIndex < 0 || modelIndex >= WhisperModels.Length) modelIndex = WhisperRecommendedIndex;
+            WhisperModel model = WhisperModels[modelIndex];
+            var x = new ExtensionInfo
+            {
+                Id = WhisperId,
+                Title = "Whisper transcription",
+                Blurb = "Writes down the words said in a recording, for Clone voice. "
+                      + "Once installed, Transcribe uses this instead of Windows speech recognition. "
+                      + "It runs on the processor, not the graphics card, so a narrator can stay loaded.\n\n"
+                      + "• English\n"
+                      + "• Small is the size to start with\n"
+                      + "• whisper.cpp 1.9.5, the published Windows build, checked on download",
+                Dir = WhisperDir(cacheDir),
+                Marker = Path.Combine("Release", "whisper-cli.exe"),
+                Check = () => WhisperInstalledIndex(cacheDir) == modelIndex,
+                Notice =
+                    "Whisper transcription for TypoZen\r\n"
+                  + "=================================\r\n\r\n"
+                  + "Downloaded by TypoZen at the reader's request. None of it is part of\r\n"
+                  + "TypoZen, and each piece keeps its own licence.\r\n\r\n"
+                  + "  whisper.cpp (Release\\whisper-cli.exe and the libraries beside it)\r\n"
+                  + "      MIT -- https://github.com/ggml-org/whisper.cpp\r\n"
+                  + "      Pinned build b5454, which is whisper.cpp 1.9.5.\r\n"
+                  + "      TypoZen runs whisper-cli.exe. The archive's other programs are not.\r\n\r\n"
+                  + "  OpenBLAS (libopenblas.dll, inside that build)\r\n"
+                  + "      BSD-3-Clause -- https://github.com/OpenMathLib/OpenBLAS\r\n\r\n"
+                  + "  OpenAI Whisper weights (the ggml English model)\r\n"
+                  + "      MIT -- https://github.com/openai/whisper\r\n"
+                  + "      ggml file: https://huggingface.co/ggerganov/whisper.cpp\r\n\r\n"
+                  + "Removing this folder, or File > Extensions, removes all of it.\r\n"
+            };
+            x.Files.Add(new ExtensionFile
+            {
+                Url = WhisperZipUrl,
+                Path = "whisper-blas-bin-x64.zip",
+                Bytes = WhisperRuntimeBytes,
+                Sha256 = WhisperZipSha,
+                Unzip = true
+            });
+            x.Files.Add(new ExtensionFile
+            {
+                Url = WhisperHf + model.FileName,
+                Path = model.FileName,
+                Bytes = model.Bytes,
+                Sha256 = model.Sha256
             });
             return x;
         }
@@ -635,6 +748,25 @@ namespace TypoZen
 
             Func<ExtensionInfo> kokoroChosen = () => ExtensionCatalog.Kokoro(cacheDir, quality.SelectedIndex == 1);
 
+            // Whisper's sizes are one extension with a choice, the same way Kokoro's precisions are.
+            var whisperSize = new ComboBox
+            {
+                Width = 320,
+                Height = 26,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+            for (int i = 0; i < ExtensionCatalog.WhisperModels.Length; i++)
+            {
+                var wm = ExtensionCatalog.WhisperModels[i];
+                string tail = wm.Recommended ? " (recommended)" : "";
+                whisperSize.Items.Add(wm.Label + " - " + Human(wm.Bytes + ExtensionCatalog.WhisperRuntimeBytes) + tail);
+            }
+            int haveWhisper = ExtensionCatalog.WhisperInstalledIndex(cacheDir);
+            whisperSize.SelectedIndex = haveWhisper >= 0 ? haveWhisper : ExtensionCatalog.WhisperRecommendedIndex;
+            Func<ExtensionInfo> whisperChosen = () => ExtensionCatalog.Whisper(cacheDir,
+                whisperSize.SelectedIndex < 0 ? ExtensionCatalog.WhisperRecommendedIndex : whisperSize.SelectedIndex);
+
             Action<ExtensionInfo, Func<ExtensionInfo>, Panel> addRow = null;
             addRow = (info, live, targetCol) =>
             {
@@ -669,6 +801,7 @@ namespace TypoZen
                 string badgeText = "";
                 if (info.Id == ExtensionCatalog.KokoroId) badgeText = "WebGPU Neural";
                 else if (info.Id == ExtensionCatalog.WiktionaryId) badgeText = "Offline TSV";
+                else if (info.Id == ExtensionCatalog.WhisperId) badgeText = "Speech to text · CPU";
                 else if (info.Id == BreezeNarrator.ExtensionId) badgeText = "3B Model · CUDA";
                 else if (info.Id == ExtensionCatalog.QwenId) badgeText = "1.7B Model · CUDA";
 
@@ -723,6 +856,21 @@ namespace TypoZen
                     qualPanel.Children.Add(quality);
                     panel.Children.Add(qualPanel);
                 }
+                if (info.Id == ExtensionCatalog.WhisperId)
+                {
+                    var qualPanel = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+                    qualPanel.Children.Add(new TextBlock { Text = "Model:", FontSize = 11, Opacity = 0.7 });
+                    qualPanel.Children.Add(whisperSize);
+                    qualPanel.Children.Add(new TextBlock
+                    {
+                        Text = "The choice is fixed once it is installed. Remove it to pick another size.",
+                        FontSize = 11,
+                        Opacity = 0.7,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 4, 0, 0)
+                    });
+                    panel.Children.Add(qualPanel);
+                }
 
                 var state = new TextBlock
                 {
@@ -765,6 +913,7 @@ namespace TypoZen
                     }
                     button.Content = on ? (short_ > 0 ? "Update" : "Remove") : "Install";
                     if (info.Id == ExtensionCatalog.KokoroId) quality.IsEnabled = !on;
+                    if (info.Id == ExtensionCatalog.WhisperId) whisperSize.IsEnabled = !on;
                     if (isNarr)
                     {
                         long audio = SizeOf(narr.AudioDir(cacheDir));
@@ -936,6 +1085,8 @@ namespace TypoZen
                             bar.Visibility = Visibility.Collapsed;
                             string nowModel = ExtensionCatalog.KokoroModelName(cacheDir);
                             if (nowModel.Length > 0) quality.SelectedIndex = nowModel == "fp32" ? 1 : 0;
+                            int nowWhisper = ExtensionCatalog.WhisperInstalledIndex(cacheDir);
+                            if (nowWhisper >= 0) whisperSize.SelectedIndex = nowWhisper;
                             foreach (var r in rows) r();
                             if (problem == null)
                             {
@@ -955,6 +1106,7 @@ namespace TypoZen
             addRow(ExtensionCatalog.Kokoro(cacheDir, false), kokoroChosen, leftCol);
             var wikt = ExtensionCatalog.Wiktionary(cacheDir);
             addRow(wikt, () => wikt, leftCol);
+            addRow(ExtensionCatalog.Whisper(cacheDir, whisperSize.SelectedIndex), whisperChosen, leftCol);
 
             // Breeze first (preferred narrator), then Qwen
             var breeze = ExtensionCatalog.Breeze(cacheDir);
@@ -963,6 +1115,7 @@ namespace TypoZen
             addRow(qwen, () => qwen, rightCol);
 
             quality.SelectionChanged += (s, e) => { foreach (var r in rows) r(); };
+            whisperSize.SelectionChanged += (s, e) => { foreach (var r in rows) r(); };
 
             var footerStatusPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             footerStatusPanel.Children.Add(bar);
@@ -1083,6 +1236,101 @@ namespace TypoZen
             if (bytes >= 1024L * 1024L) return (bytes / 1048576.0).ToString("0.#") + " MB";
             if (bytes >= 1024L) return (bytes / 1024L) + " KB";
             return bytes + " bytes";
+        }
+    }
+
+    /// <summary>
+    /// Runs the installed whisper.cpp on one wav. Returns the words, or null.
+    /// error is null when Whisper is not installed, which is the caller's cue to use
+    /// Windows speech recognition. Any other null is a failure, and Windows is not tried.
+    /// </summary>
+    internal static class WhisperTranscriber
+    {
+        /// <summary>A clip that has not finished by then is stopped. Not a measured runtime.</summary>
+        private const int TimeoutMs = 6 * 60 * 1000;
+
+        public static string Transcribe(string cacheDir, string wavPath, out string error)
+        {
+            error = null;
+            int which = ExtensionCatalog.WhisperInstalledIndex(cacheDir);
+            if (which < 0) return null;
+            string exe = Path.Combine(ExtensionCatalog.WhisperDir(cacheDir), "Release", "whisper-cli.exe");
+            string model = Path.Combine(ExtensionCatalog.WhisperDir(cacheDir), ExtensionCatalog.WhisperModels[which].FileName);
+            string scratch = Path.Combine(Path.GetTempPath(), "tzwhisp-" + Guid.NewGuid().ToString("N"));
+            string txt = scratch + ".txt";
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = exe,
+                    WorkingDirectory = Path.GetDirectoryName(exe),
+                    Arguments = "-m \"" + model + "\" -f \"" + wavPath + "\" -l en -nt -np -otxt -of \"" + scratch + "\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+                using (var p = Process.Start(psi))
+                {
+                    // Both pipes have to be drained. A full one stalls whisper-cli, and WaitForExit never returns.
+                    Task<string> outTask = Task.Run(() => p.StandardOutput.ReadToEnd());
+                    Task<string> errTask = Task.Run(() => p.StandardError.ReadToEnd());
+                    if (!p.WaitForExit(TimeoutMs))
+                    {
+                        try { p.Kill(); } catch { }
+                        try { p.WaitForExit(2000); } catch { }
+                        try { outTask.Wait(2000); } catch { }
+                        try { errTask.Wait(2000); } catch { }
+                        error = "Whisper did not finish. Try a shorter stretch.";
+                        return null;
+                    }
+                    string stdout = "";
+                    string stderr = "";
+                    try { stdout = outTask.Result; } catch { }
+                    try { stderr = errTask.Result; } catch { }
+                    string words = ReadTranscript(txt, stdout);
+                    if (!string.IsNullOrWhiteSpace(words)) return words;
+                    error = p.ExitCode != 0
+                        ? "Whisper failed" + ShortErr(stderr)
+                        : "Whisper did not hear any words in that stretch.";
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                error = "Whisper failed. " + ex.Message;
+                return null;
+            }
+            finally
+            {
+                try { if (File.Exists(txt)) File.Delete(txt); } catch { }
+            }
+        }
+
+        /// <summary>The text file whisper-cli writes, then stdout. Blank lines are dropped.</summary>
+        private static string ReadTranscript(string txtPath, string stdout)
+        {
+            string raw = "";
+            try
+            {
+                if (File.Exists(txtPath)) raw = File.ReadAllText(txtPath, Encoding.UTF8);
+            }
+            catch { }
+            if (string.IsNullOrWhiteSpace(raw)) raw = stdout ?? "";
+            var parts = raw.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            return string.Join(" ", parts);
+        }
+
+        private static string ShortErr(string stderr)
+        {
+            if (string.IsNullOrWhiteSpace(stderr)) return ".";
+            string last = "";
+            foreach (string line in stderr.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                last = line.Trim();
+            if (last.Length > 180) last = last.Substring(0, 180);
+            return last.Length == 0 ? "." : ": " + last;
         }
     }
 

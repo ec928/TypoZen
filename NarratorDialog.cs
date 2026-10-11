@@ -2554,24 +2554,36 @@ namespace TypoZen
                     slice = SliceWav(sourceFile, fromSec, end);
                     if (slice == null) { say("Could not take that stretch from the recording."); return; }
                 }
-                say(partial ? "Transcribing that stretch..." : "Transcribing audio...");
+                bool whisperOn = ExtensionCatalog.WhisperInstalledIndex(cacheDir) >= 0;
+                say(whisperOn
+                    ? (partial ? "Transcribing that stretch with Whisper..." : "Transcribing with Whisper...")
+                    : (partial ? "Transcribing that stretch..." : "Transcribing audio..."));
                 transcribeBtn.IsEnabled = false;
                 string heard = slice ?? sourceFile;
                 Task.Run(() =>
                 {
                     try
                     {
-                        string words = TranscribeWav(heard);
+                        string problem;
+                        string words = WhisperTranscriber.Transcribe(cacheDir, heard, out problem);
+                        bool windows = false;
+                        // Installed Whisper that fails stays failed. Windows is only the stand-in while Whisper is absent.
+                        if (problem == null && words == null)
+                        {
+                            words = TranscribeWav(heard);
+                            windows = true;
+                        }
                         win.Dispatcher.BeginInvoke((Action)(() =>
                         {
-                            if (clonePath != sourceFile) return;
                             transcribeBtn.IsEnabled = true;
+                            if (clonePath != sourceFile) return;
+                            if (!string.IsNullOrEmpty(problem)) { say(problem); return; }
                             if (!string.IsNullOrWhiteSpace(words))
                             {
                                 cloneWords.Text = words;
-                                say(partial
-                                    ? "Transcribed that stretch. Check the words match what you hear."
-                                    : "Transcribed speech! Review and fine-tune any words if needed.");
+                                say(windows
+                                    ? "Transcribed with Windows speech recognition. Whisper, in File > Extensions, is used instead once it is installed."
+                                    : "Transcribed with Whisper. Check the words match what you hear.");
                             }
                             else
                             {

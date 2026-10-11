@@ -336,6 +336,9 @@ than with the build:
 | Kokoro voices | Kokoro-82M model and voices | Apache 2.0 |
 | Kokoro voices | kokoro-js (bundles Transformers.js, ONNX Runtime Web) | MIT / Apache 2.0 / MIT |
 | Wiktionary dictionary | English Wiktionary text | CC BY-SA 3.0 and GFDL |
+| Whisper transcription | whisper.cpp 1.9.5 (build b5454) | MIT |
+| Whisper transcription | OpenAI Whisper English weights | MIT |
+| Whisper transcription | OpenBLAS (`libopenblas.dll` in that build) | BSD-3-Clause |
 
 `ExtensionInfo.Notice` is written into the extension folder as `LICENSE.txt` as it
 installs; the Wiktionary archive carries its own. CC BY-SA is share-alike, which is why

@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.16.12";
+        internal const string AppVersion = "0.16.13";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -5721,7 +5721,7 @@ namespace TypoZen
                      + "holds the casts you chose. Voice recordings are in that box; the voices themselves are not. "
                      + "After that, each box is as you left it the last time you cleared. "
                      + "A book that is open stays unpacked. "
-                     + "Extensions you installed -- the Kokoro voices, the Wiktionary dictionary -- are removed in File > Extensions, "
+                     + "Extensions you installed -- the Kokoro voices, the Wiktionary dictionary, Whisper -- are removed in File > Extensions, "
                      + "which shows what each one is using.",
                 TextWrapping = TextWrapping.Wrap,
                 Opacity = 0.75,

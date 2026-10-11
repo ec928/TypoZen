@@ -220,6 +220,12 @@ runs, never at launch, on a lookup or while reading. `Extensions.cs` owns all of
   fallback, and a machine without WebGPU is told to stay on the Windows voices
 - **Wiktionary dictionary** -> `dictionaries\Wiktionary\`, which the existing dictionary
   discovery then finds. Published as a GitHub release asset, checked by SHA-256
+- **Whisper transcription** -> `extensions\Whisper\`. Optional, and not in the installer.
+  Clone voice Transcribe uses it only when `Release\whisper-cli.exe` and the chosen ggml
+  model are both on disk. Otherwise Windows speech recognition, and the status says so.
+  An installed Whisper that fails is reported and is not replaced by Windows. The program
+  is whisper.cpp 1.9.5, Windows CPU build b5454 (OpenBLAS, not CUDA), so it does not take
+  the graphics card from a narrator. Three English sizes; Small is selected by default
 - **A missing extension leaves no menu.** The Kokoro node hides, exactly as the dictionary
   menu already hides itself while there is only one dictionary
 - **`kokoro-js` reaches the network in two places no setting covers** -- the model host

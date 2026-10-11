@@ -1,6 +1,6 @@
 # TypoZen Privacy Policy
 
-_Last updated: 25 September 2026._
+_Last updated: 11 October 2026._
 
 **Short version: TypoZen sends nothing anywhere. Everything it remembers stays on your
 computer, and you can delete all of it from inside the app.**
@@ -104,8 +104,10 @@ Three things can still cause network traffic, and you should know about all of t
   GitHub releases. Qwen narration fetches Python from github.com, its libraries from
   pypi.org and download.pytorch.org, and its models from huggingface.co, each at a pinned
   version. Breeze narration fetches the same from the same places, its code from
-  codeload.github.com, and its model from huggingface.co. Once installed, either narrator
-  runs with the network off and answers only programs on the same PC.
+  codeload.github.com, and its model from huggingface.co. Whisper transcription fetches
+  its program from github.com and its English model from huggingface.co, each checked
+  against a pinned SHA-256. Once installed, a narrator runs with the network off and
+  answers only programs on the same PC. Whisper runs on this PC and makes no further request.
 - **Documents you open.** If a document references a remote image (`![](https://…)`), that
   image is fetched when the document is displayed. That is the document's request, made
   because you opened it — not something TypoZen initiates on its own. Links you click are
