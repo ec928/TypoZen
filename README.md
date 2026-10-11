@@ -374,7 +374,7 @@ Breeze narration is a second narrator, beside Qwen rather than instead of it. On
 
 **Sounds in the text.** Breeze performs **Performative Audio Cues**: a sound written in round brackets, such as `(giggles)` or `(cough)`, where it should happen. They are for Breeze; with Qwen they are simply part of the text it is given. The instructions and moods in [Characters, voices and directing a line](#characters-voices-and-directing-a-line) work with Breeze too.
 
-**How strongly it acts.** Every instruction Breeze is given — an emotion cue, a bracket of your own words, a mood tag — is followed with an **Emotion strength**, set in Narrator Manager under **Emotion cues**: 1 barely, 4 by default (Breeze's own recommendation), up to 10. A number in a tag sets it for that line alone: `[sad:9]`, `[shouts loudly:9]`, `Anna [whispers softly:2] said`. A character in **Cast for this book** has a strength of their own for all their lines, 4 unless you change it on their row; the Emotion strength setting then applies to the narration. The number is never spoken, and the Qwen narrator, which has no strength, ignores it. A line with no instruction is not affected; a line with one takes about half as long again to prepare.
+**How strongly it acts.** Every instruction Breeze is given — an emotion cue, a bracket of your own words, a mood tag — is followed with an **Emotion strength**, set in Narrator Manager under **Emotion cues**: 1 barely, 4 by default (Breeze's own recommendation), up to 10. A number at the end of a bracket sets it for the stretch that bracket directs: `"[shouts loudly:9] Get out!"`, `[sad:9]`. A character in **Cast for this book** has a strength of their own for all their lines, 4 unless you change it on their row; the Emotion strength setting then applies to the narration. The number is never spoken, and the Qwen narrator, which has no strength, ignores it. A line with no instruction is not affected; a line with one takes about half as long again to prepare.
 
 **Narration Monitor.** **File → Read Aloud → Narration Monitor** opens a window beside the reading that shows, as each piece starts to play, who is speaking and in which voice, the exact text the narrator was given, its instruction and strength, whether it was rendered just now or came from saved audio — and the settings behind every piece. Each Read Aloud is a run under its own header — the time, the narrator, the voice, the instruction and whether Emotion cues were on — with its pieces newest first, so one run never blurs into the next. **Copy all** copies the lot, **Clear** empties it, and the label at the foot shows `narration.log` in File Explorer (that file records when pieces were asked for and played, never their text). It works with either narrator and shows the book's text on screen only; the monitor itself writes nothing.
 
@@ -386,14 +386,14 @@ This applies to both narrators. The narrator reads the whole book, except the di
 
 #### Using Tags
 
-To determine how tags affect delivery, TypoZen uses a **strict positional logic**. You can write your own instructions in square brackets, or use built-in emotion tags.
+To determine how tags affect delivery, TypoZen uses a **strict positional logic**. Square brackets hold instructions: your own words, or one of the built-in moods below.
 
-1. **In-Quote Instructions `[ ]`**: Apply exclusively to the quoted text. They take effect from their exact position until the end of the quote or until a new instruction inside the quote is hit.
-2. **Narrator Instructions `[ ]`**: Apply exclusively outside of quotes. They take effect from their exact position until the end of the paragraph block or until a new outside-quote instruction is hit.
-3. **Double Brackets `[[ ]]`**: Act as a hard override, superseding any global instructions or prior local tags for that domain. Single brackets simply append to the existing global instruction.
-4. **Performative Audio Cues `( )`**: a sound in round brackets, such as `(giggles)` or `(cough)`. They are not instructions: TypoZen leaves them in the text as written, and Breeze performs them where they stand — inside a quote in that character's voice, outside quotes in the narrator's. Breeze only. See **Performative Audio Cues** below for which words work.
+1. **In-Quote Instructions `[ ]`**: written inside a quote, they direct that quote only. They take effect from their exact position until the end of the quote or until a new instruction inside the quote is hit.
+2. **Narrator Instructions `[ ]`**: written outside quotes, they direct the narrator — including a quote the narrator reads for a character with no voice, unless that quote has its own instruction. They take effect from their exact position until the end of the paragraph or until a new outside-quote instruction is hit.
+3. **Single and double brackets**: `[ ]` is added to that voice's usual instruction — the character's cast box, or the narrator's box — and the Emotion cue words still follow. `[[ ]]` replaces both. Either kind takes over from the instruction before it.
+4. **Performative Audio Cues `( )`**: a sound in round brackets, such as `(giggles)` or `(cough)`. They are not instructions: TypoZen leaves them in the text as written, and Breeze performs them where they stand, in the voice reading that text. Breeze only. See **Performative Audio Cues** below for which words work.
 
-Square brackets are always instructions; a sound is never written in them. `[laughing]` is an instruction, like `[sadly]`.
+In your own text, square brackets are always instructions; a sound is never written in them. `[laughing]` is an instruction, like `[sadly]`.
 
 Because tags apply exactly from where they are placed, placing a tag in the middle of a sentence will cleanly cut the audio piece there and shift the delivery going forward. 
 
@@ -406,7 +406,7 @@ Because tags apply exactly from where they are placed, placing a tag in the midd
 | `But I forgive you anyway (giggles)` | Anna | *Softly* | Takes over from *Angry*. `(giggles)` is performed natively by Breeze. |
 | `Surprising even herself.` | narrator | *excited, loud* | Takes over from *steady, whisper*. |
 
-- In an ePub, which cannot be edited, the app does all of this from the text by itself, parsing built-in emotion tags.
+- An ePub cannot be edited, so it has no instructions of yours; how its own brackets are read is under **ePubs** below.
 
 #### Who reads a line of dialogue
 
@@ -460,7 +460,6 @@ With Tom's **Instruction** box set to `gruff and slow`, and the narrator's to `m
 - Brackets side by side are one instruction: two singles are both added, in order; a double overrides them.
 - `:1` to `:10` at the end, inside the brackets, is Breeze's strength for that stretch: `"[shouts:9] Get out!"`.
 - An instruction can be a full sentence: `[Read it plainly. Speak softly]`.
-- Square brackets in your own text are always taken as instructions, so use them only for that.
 
 #### Performative Audio Cues
 
@@ -481,14 +480,15 @@ These words in square brackets change the delivery from where they stand, single
 
 #### ePubs — what the app does by itself
 
-An ePub cannot be edited, so nothing in it is a tag:
+An ePub cannot be edited, so it has no instructions of yours:
 
 | | What happens |
 |---|---|
 | Who reads each line | the rules in **Who reads a line of dialogue** above |
 | Global instructions | the character's and narrator's boxes, as everywhere |
 | Each line's own colour | **Emotion cues**: the book's describing words (`she whispered`), `!`, a trailing `—` or `...`, and italic thoughts |
-| Square brackets in the book | built-in sound and mood words (`[laughing]`, `[sad]`) are performed; any other brackets are read aloud as part of the text |
+| Square brackets in the book | the built-in mood words (`[sad]`) are performed, and Breeze performs the sound words `[laughing]` `[giggles]` `[gasp]` `[sighing]` `[cough]` `[clears throat]` `[snorts]`; any other brackets are read aloud as part of the text |
+| Round brackets in the book | sent to the narrator as part of the text, so Breeze performs a word it knows as a sound: `(sigh)` |
 
 #### Checking
 
@@ -497,7 +497,7 @@ An ePub cannot be edited, so nothing in it is a tag:
 
 #### Tips
 
-- `"Go," Tom said.` is the form that never fails.
+- `"Go," Tom said.` is the most reliable way to give a line to a character.
 - Several similar words move a voice more than one: `whispers, speaks very quietly, softly, low pitched and very slowly`.
 - Keep describing words simple — *she said quietly* — and leave Emotion cues ticked.
 
