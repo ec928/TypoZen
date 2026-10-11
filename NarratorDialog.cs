@@ -319,13 +319,27 @@ namespace TypoZen
         [DllImport("winmm.dll", EntryPoint = "mciSendStringA", ExactSpelling = true, CharSet = CharSet.Ansi)]
         private static extern int mciSendString(string command, System.Text.StringBuilder buffer, int bufferSize, IntPtr hwndCallback);
 
+        /// <summary>
+        /// 16-bit, 44.1 kHz, mono. The wave mapper's own default is 8-bit, 11 kHz, which is
+        /// what a microphone take was on 2026-10-11. 48 kHz is not in that mapper's set.
+        /// One command, so a refused rate cannot leave the device half-configured.
+        /// </summary>
+        private const string MicFormatCommand =
+            "set recsound bitspersample 16 channels 1 samplespersec 44100 alignment 2 bytespersec 88200";
+
         private static void NormalizeWavFile(string path)
         {
             try
             {
                 if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
                 byte[] bytes = File.ReadAllBytes(path);
+                // Only a canonical 16-bit PCM file. An 8-bit take read as pairs looks
+                // already loud, and scaling it would destroy the samples.
                 if (bytes.Length <= 44) return;
+                if (bytes[0] != (byte)'R' || bytes[8] != (byte)'W') return;
+                if (BitConverter.ToInt16(bytes, 20) != 1) return;
+                if (BitConverter.ToInt16(bytes, 34) != 16) return;
+                if (bytes[36] != (byte)'d') return;
                 short maxPeak = 0;
                 for (int i = 44; i < bytes.Length - 1; i += 2)
                 {
@@ -462,9 +476,9 @@ namespace TypoZen
         /// when the reader picked the other narrator at the top (true for Breeze).
         /// </summary>
         public static void Show(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved,
-                                bool breezeReading, Action<bool> narratorChosen)
+                                bool breezeReading, Action<bool> narratorChosen, Func<string> recordingsDir)
         {
-            Build(owner, cacheDir, appDir, book, sendToPage, saved, true, breezeReading, narratorChosen).ShowDialog();
+            Build(owner, cacheDir, appDir, book, sendToPage, saved, true, breezeReading, narratorChosen, recordingsDir).ShowDialog();
         }
 
         /// <summary>
@@ -472,7 +486,7 @@ namespace TypoZen
         /// layout without showing it (checking the design by eye before a release).
         /// </summary>
         internal static Window Build(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved, bool start,
-                                     bool breezeReading = false, Action<bool> narratorChosen = null)
+                                     bool breezeReading = false, Action<bool> narratorChosen = null, Func<string> recordingsDir = null)
         {
             var settings = QwenNarrator.LoadSettings(cacheDir);
             bool haveQwen = QwenNarrator.Installed(cacheDir, appDir), haveBreeze = BreezeNarrator.Installed(cacheDir, appDir);
@@ -2177,7 +2191,14 @@ namespace TypoZen
                 try { if (player != null) player.Stop(); } catch { }
                 try { if (clipPlayer != null) { clipPlayer.Stop(); } } catch { }
 
-                string recFolder = System.IO.Path.Combine(cacheDir, "recordings");
+                string recFolder;
+                try
+                {
+                    recFolder = recordingsDir != null
+                        ? recordingsDir()
+                        : System.IO.Path.Combine(cacheDir, "recordings");
+                }
+                catch { recFolder = System.IO.Path.Combine(cacheDir, "recordings"); }
                 try { System.IO.Directory.CreateDirectory(recFolder); } catch { }
 
                 if (mode == "mic")
@@ -2186,13 +2207,15 @@ namespace TypoZen
                     recordedPath = System.IO.Path.Combine(recFolder, "recording_mic_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".wav");
 
                     int rOpen = mciSendString("open new Type waveaudio alias recsound", null, 0, IntPtr.Zero);
-                    mciSendString("set recsound time format ms", null, 0, IntPtr.Zero);
-                    mciSendString("set recsound channels 1", null, 0, IntPtr.Zero);
-                    int rRec = mciSendString("record recsound", null, 0, IntPtr.Zero);
+                    int rFmt = rOpen == 0 ? mciSendString(MicFormatCommand, null, 0, IntPtr.Zero) : -1;
+                    int rRec = rFmt == 0 ? mciSendString("record recsound", null, 0, IntPtr.Zero) : -1;
 
-                    if (rOpen != 0 || rRec != 0)
+                    if (rOpen != 0 || rFmt != 0 || rRec != 0)
                     {
-                        say("Could not access microphone. Check Windows microphone permissions.");
+                        try { mciSendString("close recsound", null, 0, IntPtr.Zero); } catch { }
+                        say(rOpen == 0 && rFmt != 0
+                            ? "Could not set a 16-bit recording format."
+                            : "Could not access microphone. Check Windows microphone permissions.");
                         return;
                     }
 

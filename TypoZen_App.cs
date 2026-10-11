@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.16.10";
+        internal const string AppVersion = "0.16.11";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1755,7 +1755,10 @@ namespace TypoZen
                                             string id = breeze ? BreezeNarrator.CurrentVoice(cache) : QwenNarrator.CurrentVoice(cache), name = id;
                                             foreach (var v in breeze ? BreezeNarrator.SavedVoices(cache) : QwenNarrator.SavedVoices(cache)) if (v.Key == id) name = v.Value;
                                             SetKokoroVoice(breeze ? BreezeNarrator.VoiceId : QwenNarrator.VoiceId, name);
-                                        });
+                                        },
+                                        // Chosen when a recording starts, so Privacy Mode turning on
+                                        // while the window is open still keeps the take out of the cache.
+                                        () => Path.Combine(SuppressDocumentTraces() ? PrivateLoadDir() : CacheDir(), "recordings"));
                 }
                 catch (Exception ex) { LogFault("narrator settings", ex); }
             });
@@ -5539,7 +5542,12 @@ namespace TypoZen
         private List<string> NarrationTraceFiles(out List<string> dirs)
         {
             string root = QwenNarrator.RootDir(CacheDir()), breeze = BreezeNarrator.RootDir(CacheDir());
-            dirs = new List<string> { QwenNarrator.CacheDir(CacheDir()), Path.Combine(root, "cast"), BreezeNarrator.CacheDir(CacheDir()) };
+            dirs = new List<string> {
+                QwenNarrator.CacheDir(CacheDir()), Path.Combine(root, "cast"), BreezeNarrator.CacheDir(CacheDir()),
+                // Microphone and PC-audio takes for a voice clone. Not a voice, and not the
+                // rendered narration beside it. Voices stay in the extension's voices folder.
+                Path.Combine(CacheDir(), "recordings")
+            };
             if (!string.IsNullOrEmpty(QwenNarrator.PrivateCacheDir)) dirs.Add(QwenNarrator.PrivateCacheDir);
             if (!string.IsNullOrEmpty(BreezeNarrator.PrivateCacheDir)) dirs.Add(BreezeNarrator.PrivateCacheDir);
             var files = new List<string>();
@@ -5695,13 +5703,14 @@ namespace TypoZen
             var cbLogs     = add("logs", "Diagnostic logs", HumanSize(logBytes) + ", may name files you opened", true);
             // Only offered once the narrator has been installed; there is nothing to clear before.
             CheckBox cbNarr = null;
-            if (Directory.Exists(QwenNarrator.RootDir(cache)) || Directory.Exists(BreezeNarrator.RootDir(cache)))
+            if (Directory.Exists(QwenNarrator.RootDir(cache)) || Directory.Exists(BreezeNarrator.RootDir(cache))
+                || Directory.Exists(Path.Combine(cache, "recordings")))
             {
                 List<string> narrDirs;
                 long narrBytes = 0;
                 foreach (string f in NarrationTraceFiles(out narrDirs)) narrBytes += SizeOfFile(f);
                 foreach (string d in narrDirs) narrBytes += SizeOfDir(d);
-                cbNarr = add("narration", "Narration: audio, logs and book casts",
+                cbNarr = add("narration", "Narration: audio, logs, book casts and voice recordings",
                              HumanSize(narrBytes) + "; voices are kept", false);
             }
 
@@ -5709,7 +5718,8 @@ namespace TypoZen
             {
                 Text = "Bookmarks, added words and custom themes are things you made, so they "
                      + "start unticked; so does narration, which takes minutes to render again and "
-                     + "holds the casts you chose. After that, each box is as you left it the last time you cleared. "
+                     + "holds the casts you chose. Voice recordings are in that box; the voices themselves are not. "
+                     + "After that, each box is as you left it the last time you cleared. "
                      + "A book that is open stays unpacked. "
                      + "Extensions you installed -- the Kokoro voices, the Wiktionary dictionary -- are removed in File > Extensions, "
                      + "which shows what each one is using.",
@@ -5967,7 +5977,7 @@ namespace TypoZen
                 // Folders are emptied but kept: two are mapped as virtual hosts for the page.
                 foreach (string d in narrDirs) ExtensionInstaller.Purge(d, false);
                 QwenNarrator.ForgetSessionCasts();
-                done.Add("narration audio, logs and casts");
+                done.Add("narration audio, logs, casts and voice recordings");
             }
 
             string booksLine = "";
@@ -6985,7 +6995,12 @@ namespace TypoZen
             // attach to the real WebView2, with the real WPF host, real window size and real
             // focus behaviour. Off unless --debug, so an ordinary run never opens a port.
             string extraArgs =
-                "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1, MAP localbooks 127.0.0.1, MAP localbooksp 127.0.0.1, MAP localview 127.0.0.1, MAP localload 127.0.0.1, MAP localloadp 127.0.0.1, MAP localpdf 127.0.0.1\""
+                "--host-resolver-rules=\"MAP localapp 127.0.0.1, MAP docfolder 127.0.0.1, MAP localbooks 127.0.0.1, MAP localbooksp 127.0.0.1, MAP localview 127.0.0.1, MAP localload 127.0.0.1, MAP localloadp 127.0.0.1, MAP localpdf 127.0.0.1"
+                + ", MAP " + ExtensionCatalog.HostName + " 127.0.0.1"
+                + ", MAP " + QwenNarrator.HostName + " 127.0.0.1"
+                + ", MAP " + QwenNarrator.PrivateHostName + " 127.0.0.1"
+                + ", MAP " + BreezeNarrator.HostName + " 127.0.0.1"
+                + ", MAP " + BreezeNarrator.PrivateHostName + " 127.0.0.1\""
                 + " --disable-background-networking"
                 + " --disable-component-update"
                 + " --disable-sync"
@@ -7037,8 +7052,10 @@ namespace TypoZen
                 // before the mapping is consulted. Measured here: 2,063 ms -> 61 ms.
                 // Pinning them to loopback skips the lookup. localbooks / localview /
                 // localload were added later, and Privacy Mode's localloadp / localbooksp
-                // after that. Each must stay on this list or it pays the same NXDOMAIN
-                // cost. The app itself makes no network requests.
+                // after that. Narration and the extensions host are appended from the same
+                // constants the folder mapping uses (localnarration, localnarrationp,
+                // localbreeze, localbreezep, localextensions). Each must stay on this list
+                // or it pays the same NXDOMAIN cost. The app itself makes no network requests.
                 // Second group: WebView2's browser process otherwise runs Chromium background
                 // services on startup - component updates, Safe Browsing list refreshes, sync -
                 // even though this app never requests a URL. Switched off here.

@@ -3,6 +3,25 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
+## Voice capture and the host-pin list (2026-10-11)
+
+Audit of the tree at 0.16.10. The internal install of this work is 0.16.11. The reader and the editor were left as they are: book
+export to Markdown stays hidden, the cold-start caches stay declined, `TypoZen_App.cs`
+stays one file, and the Qwen narrator stays the narrator. Nothing here is a GitHub release.
+
+What was found, and where it stands:
+
+| Item | What was wrong | Plan | Status |
+|---|---|---|---|
+| Microphone capture | `NarratorDialog` opened the wave device and set only the channel count. Windows then records 8-bit, 11 kHz. Three takes that morning (`recording_20261011_031404.wav`, `031459`, `031513`) are that format, and the samples sit within a few counts of silence. The 95% boost reads the file as 16-bit, so it does not lift an 8-bit take. | Record 16-bit, 44.1 kHz, mono, and leave the file alone unless it really is 16-bit PCM. 44.1 kHz is the rate the old wave mapper accepts; 48 kHz is not. | **Done.** Format commands checked with a short capture (see below). A full take through Narrator Manager was not recorded. |
+| Where recordings go | Files land in `TypoZen_Cache_Portable\recordings`. Privacy Mode still wrote them there. Clear Stored Data's narration box removes rendered audio, logs and casts, and does not mention this folder, so a PC-audio take survives the clear. | While Privacy Mode is on, write new recordings under the private temp folder, which already goes away when the window closes. Add the cache folder to the narration clear, and say so. Voices stay. | **Done.** Not clicked through in the Clear Stored Data window. |
+| Virtual-host pins | `BuildWebView2Options` pinned the book and load hosts and not `localnarration`, `localnarrationp`, `localbreeze`, `localbreezep`, or `localextensions`. The comment beside the list says an omitted host pays a DNS lookup before the folder mapping. | Add those five, taken from the same constants the mapping uses. | **Done.** Not measured against a remote DNS. |
+| Merriweather in the README | The README said the face is 4.4 MB, with 3.3 MB of layout tables, and that pinning two axes would shrink it. The files in `fonts\` are 662 KB and 667 KB. The face is still variable, weights 300 to 900. | Say the size that is on disk. | **Done.** |
+
+The PC-audio path was already 48 kHz, 16-bit, and the two later takes that day peak at 31129, the 95% boost. It was not changed.
+
+Microphone check: the same format command the dialog now sends, captured for under a second and then deleted. Header was 44100 Hz, 16-bit, mono. The open and the record both returned 0.
+
 ## 0. File associations (added 2026-09-28) — **done**, see Done
 
 Capture both custom and hardcoded file extensions (e.g. `.md`, `.txt`, `.epub`, `.pdf`) for
