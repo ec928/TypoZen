@@ -39,6 +39,8 @@ namespace TypoZen
         private static System.Speech.Synthesis.SpeechSynthesizer _sapiSynth;
         private static System.Windows.Media.MediaPlayer _player;
         public static Action OnPlaybackFinished;
+        /// <summary>Invoked on fatal synthesis/network error so host can prompt fallback rather than silent skipping.</summary>
+        public static Action<string> OnPlaybackError;
         /// <summary>One line per step, for debug.log. Never passed the text being read.</summary>
         public static Action<string> Log;
         /// <summary>Strictly opt-in: online natural voices (Edge Speech) enabled via File -> Extensions.</summary>
@@ -296,7 +298,16 @@ namespace TypoZen
                     if (!ok || !File.Exists(mp3))
                     {
                         Note("play #" + gen + " edge synthesis failed or returned no audio");
-                        Finish();
+                        if (OnPlaybackError != null)
+                        {
+                            var errHandler = OnPlaybackError;
+                            OnPlaybackError = null;
+                            try { errHandler("network_error"); } catch { }
+                        }
+                        else
+                        {
+                            Finish();
+                        }
                         return;
                     }
 
@@ -416,6 +427,7 @@ namespace TypoZen
         {
             // Also retires a play still synthesising, so it cannot start after Stop.
             _generation++;
+            OnPlaybackError = null;
             SoundStopped();
             try { _edgeCts?.Cancel(); _edgeCts?.Dispose(); _edgeCts = null; } catch { }
             if (_sapiPrompt != null)

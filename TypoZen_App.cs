@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.16.21";
+        internal const string AppVersion = "0.16.22";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -7467,6 +7467,11 @@ namespace TypoZen
                         SendMsg("tts_finished");
                     }));
                 };
+                TypoZen_TTS.OnPlaybackError = err => {
+                    Dispatcher.BeginInvoke(new Action(() => {
+                        HandleSpeechNetworkError(text);
+                    }));
+                };
                 // Each step of a play -- synthesised, opened, ended, or why it failed -- in
                 // debug.log, so a play that goes silent says where. Never the text itself.
                 if (TypoZen_TTS.Log == null)
@@ -11875,6 +11880,76 @@ namespace TypoZen
                 }
             }
             catch (Exception ex) { LogFault("voice status", ex); }
+        }
+
+        private void HandleSpeechNetworkError(string text)
+        {
+            ShowReadAloudState(false);
+
+            // Determine local fallback voice (offline Natural or Classic)
+            var localVoices = TypoZen_TTS.GetVoices(false);
+            VoiceInfo fallback = null;
+            if (_ttsVoiceId != null && _ttsVoiceId.StartsWith("edge:"))
+            {
+                var currentOnline = EdgeSpeechClient.CuratedVoices.Find(v => "edge:" + v.ShortName == _ttsVoiceId);
+                if (currentOnline != null)
+                {
+                    fallback = localVoices.Find(v => string.Equals(v.Culture, currentOnline.Culture, StringComparison.OrdinalIgnoreCase)
+                                                  && string.Equals(v.Gender, currentOnline.Gender, StringComparison.OrdinalIgnoreCase))
+                            ?? localVoices.Find(v => string.Equals(v.Culture, currentOnline.Culture, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+            if (fallback == null)
+            {
+                fallback = localVoices.Find(v => v.Kind == "local")
+                        ?? localVoices.Find(v => v.Kind == "")
+                        ?? (localVoices.Count > 0 ? localVoices[0] : null);
+            }
+
+            string fallbackName = fallback != null ? fallback.Name : "Windows installed voice";
+
+            var res = WinForms.MessageBox.Show(
+                "Microsoft Online Voices could not be reached (connection failed or offline).\n\n" +
+                "Would you like to carry on reading with \"" + fallbackName + "\"?",
+                "Read Aloud - Online Speech Unavailable",
+                WinForms.MessageBoxButtons.YesNo,
+                WinForms.MessageBoxIcon.Question);
+
+            if (res == WinForms.DialogResult.Yes && fallback != null)
+            {
+                // Switch voice to local fallback
+                _ttsVoiceId = fallback.Id;
+                var prefs = LoadHostPrefs();
+                prefs.TtsVoiceId = _ttsVoiceId;
+                WriteHostPrefs(prefs);
+                SetKokoroVoice("windows_voice", fallback.Name);
+                UpdateWindowsVoicesCheckmark();
+
+                // Re-arm handlers so subsequent paragraphs continue through the local voice
+                ShowReadAloudState(true);
+                TypoZen_TTS.OnPlaybackFinished = () => {
+                    Dispatcher.BeginInvoke(new Action(() => {
+                        ShowReadAloudState(false);
+                        SendMsg("tts_finished");
+                    }));
+                };
+                TypoZen_TTS.OnPlaybackError = err => {
+                    Dispatcher.BeginInvoke(new Action(() => {
+                        HandleSpeechNetworkError(text);
+                    }));
+                };
+
+                // Play the current failed chunk with the local voice
+                var _ = TypoZen_TTS.PlayAsync(text, _ttsVoiceId, _ttsSpeed);
+            }
+            else
+            {
+                // User chose not to continue: cleanly stop the reading queue in JS
+                SendMsg("eval:if(typeof stopReading==='function')stopReading();");
+                TypoZen_TTS.Stop();
+                var lbl = FindElement("lblVoice") as TextBlock;
+                if (lbl != null) lbl.Text = "Speech stopped (offline)";
+            }
         }
 
         private void SetAutosave(bool on)

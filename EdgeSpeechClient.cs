@@ -167,16 +167,29 @@ namespace TypoZen
                 ct.ThrowIfCancellationRequested();
 
                 tcp = new TcpClient();
-                var connectTask = tcp.ConnectAsync(Host, Port);
-                using (ct.Register(() => { try { tcp?.Close(); } catch { } }))
+                // 5-second connect timeout prevents hanging on offline/unreachable networks
+                using (var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, connectCts.Token))
                 {
-                    await connectTask.ConfigureAwait(false);
+                    var connectTask = tcp.ConnectAsync(Host, Port);
+                    using (linkedCts.Token.Register(() => { try { tcp?.Close(); } catch { } }))
+                    {
+                        await connectTask.ConfigureAwait(false);
+                    }
                 }
 
                 ct.ThrowIfCancellationRequested();
 
                 ssl = new SslStream(tcp.GetStream(), false);
-                await ssl.AuthenticateAsClientAsync(Host).ConfigureAwait(false);
+                using (var tlsCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                using (var linkedTlsCts = CancellationTokenSource.CreateLinkedTokenSource(ct, tlsCts.Token))
+                {
+                    var authTask = ssl.AuthenticateAsClientAsync(Host);
+                    using (linkedTlsCts.Token.Register(() => { try { tcp?.Close(); } catch { } }))
+                    {
+                        await authTask.ConfigureAwait(false);
+                    }
+                }
 
                 // Create Sec-WebSocket-Key
                 byte[] keyBytes = new byte[16];
@@ -299,7 +312,7 @@ namespace TypoZen
             }
             catch (OperationCanceledException)
             {
-                log?.Invoke("edge-tts cancelled");
+                log?.Invoke(ct.IsCancellationRequested ? "edge-tts cancelled" : "edge-tts connection timed out (5s)");
                 return false;
             }
             catch (Exception ex)
