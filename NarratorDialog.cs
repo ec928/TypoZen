@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Media;
+using System.Runtime.InteropServices;
+using System.Speech.Recognition;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -34,6 +36,42 @@ namespace TypoZen
     /// </summary>
     internal static class NarratorDialog
     {
+        [DllImport("winmm.dll", EntryPoint = "mciSendStringA", ExactSpelling = true, CharSet = CharSet.Ansi)]
+        private static extern int mciSendString(string command, System.Text.StringBuilder buffer, int bufferSize, IntPtr hwndCallback);
+
+        private static string TranscribeWav(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+            try
+            {
+                using (var engine = new SpeechRecognitionEngine())
+                {
+                    engine.LoadGrammar(new DictationGrammar());
+                    engine.SetInputToWaveFile(path);
+                    var sb = new System.Text.StringBuilder();
+                    while (true)
+                    {
+                        try
+                        {
+                            var result = engine.Recognize();
+                            if (result == null) break;
+                            if (!string.IsNullOrWhiteSpace(result.Text))
+                            {
+                                if (sb.Length > 0) sb.Append(" ");
+                                sb.Append(result.Text);
+                            }
+                        }
+                        catch { break; }
+                    }
+                    string text = sb.ToString().Trim();
+                    return string.IsNullOrEmpty(text) ? null : text;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
         /// <summary>Set while the dialog is open: the page's answer to a cast scan (host_narrator_cast).</summary>
         public static Action<string> CastScanArrived;
 
@@ -506,11 +544,14 @@ namespace TypoZen
             var clonePanel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
             var cloneWhy = note("Clone needs the Breeze narrator: choose Breeze at the top of the Narrator window.");
             var cloneFile = button("Choose recording...");
+            var recordBtn = button("● Record");
+            recordBtn.ToolTip = "Record speech from your microphone (3 to 20 seconds).";
+            recordBtn.Margin = new Thickness(6, 0, 0, 0);
             var previewClip = button("▶ Play");
             previewClip.ToolTip = "Listen to the selected recording before cloning.";
             previewClip.IsEnabled = false;
             previewClip.Margin = new Thickness(6, 0, 6, 0);
-            var cloneFileName = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.8, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 220 };
+            var cloneFileName = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.8, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 150 };
             var cloneWords = new TextBox { TextWrapping = TextWrapping.Wrap, AcceptsReturn = false, Height = 48, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             var cloneFrom = new TextBox { Width = 56, Height = 26, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0) };
             var cloneTo = new TextBox { Width = 56, Height = 26, VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
@@ -518,9 +559,13 @@ namespace TypoZen
             cloneGo.HorizontalAlignment = HorizontalAlignment.Left;
             cloneGo.Margin = new Thickness(0, 8, 0, 0);
             string clonePath = null;
+            var transcribeBtn = button("✨ Transcribe");
+            transcribeBtn.ToolTip = "Automatically transcribe the spoken words using Windows Speech Recognition.";
+            transcribeBtn.IsEnabled = false;
+            transcribeBtn.Margin = new Thickness(8, 0, 0, 0);
 
             clonePanel.Children.Add(note("3 to 20 seconds of one person, and exactly the words they say. Only a voice you have the right to use."));
-            clonePanel.Children.Add(row(new UIElement[] { cloneFile, previewClip, cloneFileName }));
+            clonePanel.Children.Add(row(new UIElement[] { cloneFile, recordBtn, previewClip, cloneFileName }));
             clonePanel.Children.Add(new TextBlock { Text = "The words said in the recording", Margin = new Thickness(0, 8, 0, 4) });
             clonePanel.Children.Add(cloneWords);
             var useDesign = button("Use the design passage");
@@ -529,7 +574,7 @@ namespace TypoZen
             useDesign.HorizontalAlignment = HorizontalAlignment.Left;
             useDesign.Click += (s, e) => cloneWords.Text = "The road ran straight across the plain, and the mountains beyond it were pale with distance. "
                 + "She had been walking since the morning, and the light had not changed at all. There was nothing to mark the hours but the sound of her own steps.";
-            clonePanel.Children.Add(useDesign);
+            clonePanel.Children.Add(row(new UIElement[] { useDesign, transcribeBtn }));
             clonePanel.Children.Add(row(new UIElement[] {
                 new TextBlock { Text = "Use from", VerticalAlignment = VerticalAlignment.Center }, cloneFrom,
                 new TextBlock { Text = "to", VerticalAlignment = VerticalAlignment.Center }, cloneTo,
@@ -972,7 +1017,7 @@ namespace TypoZen
 
             // Anything that needs the narrator goes through here: off the UI thread, with the
             // buttons that would start another such call disabled until it is done.
-            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, renameVoice, design, importVoice, playA, takeA, cloneGo, previewClip };
+            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, renameVoice, design, importVoice, playA, takeA, cloneGo, previewClip, recordBtn, transcribeBtn };
             // Find characters asks the page, not the narrator, so it is never held up by one (it was: the
             // whole window sat greyed for the narrator's 40-second start, 2026-10-09).
             // These need the narrator itself, and wait while it starts; the rest of the window does not.
@@ -1726,9 +1771,131 @@ namespace TypoZen
                 cloneFileName.Text = System.IO.Path.GetFileName(clonePath);
                 cloneFileName.ToolTip = clonePath;
                 previewClip.IsEnabled = true;
+                transcribeBtn.IsEnabled = clonePath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase);
             };
+
+            bool isRecording = false;
+            int recordSeconds = 0;
+            var recordTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            string recordedPath = null;
+
+            Action stopRecording = () =>
+            {
+                if (!isRecording) return;
+                isRecording = false;
+                recordTimer.Stop();
+                recordBtn.Content = "● Record";
+                mciSendString("save recsound \"" + recordedPath + "\"", null, 0, IntPtr.Zero);
+                mciSendString("close recsound", null, 0, IntPtr.Zero);
+
+                if (System.IO.File.Exists(recordedPath) && new System.IO.FileInfo(recordedPath).Length > 2000)
+                {
+                    clonePath = recordedPath;
+                    cloneFileName.Text = System.IO.Path.GetFileName(clonePath) + string.Format(" ({0}s)", recordSeconds);
+                    cloneFileName.ToolTip = clonePath;
+                    previewClip.IsEnabled = true;
+                    transcribeBtn.IsEnabled = true;
+                    say(string.Format("Recorded {0}s. Transcribing speech...", recordSeconds));
+                    Task.Run(() =>
+                    {
+                        string words = TranscribeWav(recordedPath);
+                        win.Dispatcher.BeginInvoke((Action)(() =>
+                        {
+                            if (!string.IsNullOrWhiteSpace(words))
+                            {
+                                cloneWords.Text = words;
+                                say("Transcribed speech! Review and fine-tune any words if needed.");
+                            }
+                            else
+                            {
+                                say("Recorded! Type the words said in the recording, or use the design passage.");
+                            }
+                        }));
+                    });
+                }
+                else
+                {
+                    say("Recording was too short or empty. Try again.");
+                }
+            };
+
+            Action startRecording = () =>
+            {
+                if (isRecording) return;
+                try { mciSendString("close recsound", null, 0, IntPtr.Zero); } catch { }
+
+                string recFolder = System.IO.Path.Combine(cacheDir, "recordings");
+                try { System.IO.Directory.CreateDirectory(recFolder); } catch { }
+                recordedPath = System.IO.Path.Combine(recFolder, "recording_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".wav");
+
+                int rOpen = mciSendString("open new Type waveaudio alias recsound", null, 0, IntPtr.Zero);
+                mciSendString("set recsound time format ms", null, 0, IntPtr.Zero);
+                mciSendString("set recsound channels 1", null, 0, IntPtr.Zero);
+                int rRec = mciSendString("record recsound", null, 0, IntPtr.Zero);
+
+                if (rOpen != 0 || rRec != 0)
+                {
+                    say("Could not access microphone. Check Windows microphone permissions.");
+                    return;
+                }
+
+                isRecording = true;
+                recordSeconds = 0;
+                recordBtn.Content = "■ Stop (0s)";
+                recordTimer.Start();
+                say("Recording from microphone... Click Stop when done (up to 20s).");
+            };
+
+            recordTimer.Tick += (s, e) =>
+            {
+                recordSeconds++;
+                recordBtn.Content = string.Format("■ Stop ({0}s)", recordSeconds);
+                if (recordSeconds >= 20) stopRecording();
+            };
+
+            recordBtn.Click += (s, e) =>
+            {
+                if (isRecording) stopRecording();
+                else startRecording();
+            };
+
+            transcribeBtn.Click += (s, e) =>
+            {
+                if (string.IsNullOrEmpty(clonePath) || !System.IO.File.Exists(clonePath))
+                {
+                    say("Choose or record audio first.");
+                    return;
+                }
+                if (!clonePath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                {
+                    say("Speech-to-text requires a WAV file (such as a microphone recording).");
+                    return;
+                }
+                say("Transcribing audio...");
+                transcribeBtn.IsEnabled = false;
+                string path = clonePath;
+                Task.Run(() =>
+                {
+                    string words = TranscribeWav(path);
+                    win.Dispatcher.BeginInvoke((Action)(() =>
+                    {
+                        transcribeBtn.IsEnabled = true;
+                        if (!string.IsNullOrWhiteSpace(words))
+                        {
+                            cloneWords.Text = words;
+                            say("Transcribed speech! Review and fine-tune any words if needed.");
+                        }
+                        else
+                        {
+                            say("Could not transcribe speech. Please type the words spoken.");
+                        }
+                    }));
+                });
+            };
+
             previewClip.Click += (s, e) =>
             {
+                if (isRecording) stopRecording();
                 if (!string.IsNullOrEmpty(clonePath) && System.IO.File.Exists(clonePath))
                     play(clonePath);
             };
@@ -1954,6 +2121,7 @@ namespace TypoZen
                     statusNow = status; busyNow = busyBar;
                     candidates.Children.Clear();
                     clearCandidates();
+                    try { if (isRecording) stopRecording(); } catch { }
                     try { if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); } } catch { }
                     // Detach the library and its status line, so the next opening can show them.
                     libScroll.Content = null;
