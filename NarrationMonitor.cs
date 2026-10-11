@@ -25,7 +25,6 @@ namespace TypoZen
     {
         private static Window _win;
         private static TextBlock _settings;
-        private static TextBox _now;
         private static TextBox _before;
         private static TextBlock _logLabel;
         private static readonly List<string> _entries = new List<string>();
@@ -63,31 +62,23 @@ namespace TypoZen
             DialogTheme.Apply(w, owner);
             Func<string, TextBlock> heading = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 10, 0, 4) };
             _settings = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.85, Text = "Nothing has been read yet." };
-            _now = new TextBox
-            {
-                IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                MinHeight = 150, FontSize = 12.5, BorderThickness = new Thickness(1), Text = "Press Read Aloud with a narrator voice chosen."
-            };
             // One text, newest first, so Ctrl+A and Copy take all of it; entries wrap to the width.
             // While the reader has a selection, new pieces wait, so it is not lost under them.
             _before = new TextBox
             {
                 IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, FontSize = 11.5, BorderThickness = new Thickness(1),
-                Text = string.Join("\r\n\r\n", _entries)
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, FontSize = 12, BorderThickness = new Thickness(1),
+                Text = _entries.Count == 0 ? "Press Read Aloud with a narrator voice chosen." : string.Join("\r\n\r\n", _entries)
             };
             _before.SelectionChanged += (s, e) => { if (_stale && _before.SelectionLength == 0) ShowEntries(); };
-            var top = new StackPanel { Margin = new Thickness(14, 4, 14, 0) };
+            var top = new StackPanel { Margin = new Thickness(14, 4, 14, 8) };
             top.Children.Add(heading("Settings for every piece"));
             top.Children.Add(_settings);
-            top.Children.Add(heading("Playing now"));
-            top.Children.Add(_now);
-            top.Children.Add(heading("Before"));
             var copy = new Button { Content = "Copy all", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 8, 0),
-                                    ToolTip = "Copy Playing now and every run below" };
+                                    ToolTip = "Copy every run" };
             copy.Click += (s, e) =>
             {
-                try { Clipboard.SetText(_now.Text + "\r\n\r\n" + string.Join("\r\n\r\n", _entries)); } catch { }
+                try { Clipboard.SetText(_before.Text); } catch { }
             };
             var clear = new Button { Content = "Clear", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(0, 0, 12, 0),
                                      ToolTip = "Empty the history; the next Read Aloud starts it again" };
@@ -97,7 +88,7 @@ namespace TypoZen
                 _reading = double.NaN;
                 _runs = 0;
                 _stale = false;
-                _before.Text = "";
+                ShowEntries();
             };
             _logFor = logFor;
             _logLabel = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Cursor = System.Windows.Input.Cursors.Hand, Opacity = 0.85 };
@@ -186,7 +177,6 @@ namespace TypoZen
                     now.Append("\r\n").Append(pad).Append("Instruction: ").Append(ins.Length == 0 ? "none" : ins);
                     if (breeze && ins.Length > 0) now.Append("  (strength ").Append(Num(p, "strength", 1).ToString("0.#")).Append(')');
                 }
-                _now.Text = now.ToString();
                 // History keeps the whole of it -- text, instruction, strength, part by part -- not the
                 // first words alone (Ed, 2026-10-09: "log history is incomplete").
                 // A new reading starts a run: its header first, with the settings it was read with, so
@@ -201,12 +191,12 @@ namespace TypoZen
                         + Str(st, "voice") + "  ·  " + ins + "  ·  cues " + (cues ? "on" : "off")
                         + (breeze ? ", strength " + Num(st, "strength", 4).ToString("0.#") : "") + "  ════════");
                 }
-                _entries.Insert(1, DateTime.Now.ToString("HH:mm:ss") + "  " + now.ToString().TrimEnd());
+                _entries.Insert(Math.Min(1, _entries.Count), DateTime.Now.ToString("HH:mm:ss") + "  " + now.ToString().TrimEnd());
                 while (_entries.Count > Kept) _entries.RemoveAt(_entries.Count - 1);
                 ShowEntries();
                 ShowLog(breeze ? "breeze" : "qwen", st.TryGetValue("private", out o) && o is bool && (bool)o);
             }
-            catch (Exception ex) { if (_now != null) _now.Text = "Could not show this piece: " + ex.Message; }
+            catch (Exception ex) { if (_before != null && _entries.Count == 0) _before.Text = "Could not show this piece: " + ex.Message; }
         }
 
         private static void ShowEntries()
@@ -214,7 +204,7 @@ namespace TypoZen
             if (_before == null) return;
             if (_before.SelectionLength > 0) { _stale = true; return; }
             _stale = false;
-            _before.Text = string.Join("\r\n\r\n", _entries);
+            _before.Text = _entries.Count == 0 ? "Press Read Aloud with a narrator voice chosen." : string.Join("\r\n\r\n", _entries);
         }
 
         /// <summary>The engine whose narration.log was written last, before any piece says which.</summary>
