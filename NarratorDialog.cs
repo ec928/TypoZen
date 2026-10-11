@@ -1097,11 +1097,21 @@ namespace TypoZen
             Action<string> readClipLength = path =>
             {
                 clipSeconds = null;
+                Action applyDefaultSpan = () =>
+                {
+                    if (clipSeconds.HasValue && clipSeconds.Value > 0)
+                    {
+                        double defaultEnd = Math.Min(clipSeconds.Value, CloneMaxSeconds);
+                        cloneFrom.Text = "0.0";
+                        cloneTo.Text = defaultEnd.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+                    }
+                    refreshCloneSpan();
+                };
                 WavLayout layout;
                 if (TryWavLayout(path, out layout))
                 {
                     clipSeconds = layout.Seconds;
-                    refreshCloneSpan();
+                    applyDefaultSpan();
                     return;
                 }
                 try { if (durationProbe != null) { durationProbe.Close(); durationProbe = null; } } catch { }
@@ -1115,7 +1125,7 @@ namespace TypoZen
                     {
                         if (clonePath != watch) return;
                         if (secs > 0) clipSeconds = secs;
-                        refreshCloneSpan();
+                        applyDefaultSpan();
                         try { if (durationProbe == mp) { mp.Close(); durationProbe = null; } } catch { }
                     }));
                 };
@@ -2561,7 +2571,8 @@ namespace TypoZen
                 double fromSec; double? end; string error;
                 if (!TryCloneSpan(out fromSec, out end, out error)) { say(error); return; }
                 string sourceFile = clonePath;
-                bool partial = cloneFrom.Text.Trim().Length > 0 || cloneTo.Text.Trim().Length > 0;
+                bool isFull = fromSec <= 0.001 && (!end.HasValue || (clipSeconds.HasValue && end.Value >= clipSeconds.Value - 0.05));
+                bool partial = !isFull;
                 string slice = null;
                 if (partial)
                 {
