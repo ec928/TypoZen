@@ -2616,16 +2616,24 @@ namespace TypoZen
                 if (words.Length == 0) { say("Type exactly what is said in the recording."); return; }
                 double fromSec; double? end; string error;
                 if (!TryCloneSpan(out fromSec, out end, out error)) { say(error); return; }
+                bool sendStart = cloneFrom.Text.Trim().Length > 0;
+                bool sendEnd = cloneTo.Text.Trim().Length > 0;
                 if (clipSeconds.HasValue)
                 {
                     double len = Math.Max(0, (end ?? clipSeconds.Value) - fromSec);
                     string limit = SpanLimit(len);
                     if (limit.Length > 0) { say(limit.Trim()); return; }
+                    // A 20 second take is 20.01 on disk: the recorder's last buffer. The note
+                    // already calls that 20. The sidecar refuses anything over 20, so send 20.
+                    double cap = fromSec + CloneMaxSeconds;
+                    if ((end ?? clipSeconds.Value) > cap + 0.0001)
+                    {
+                        end = cap;
+                        sendEnd = true;
+                    }
                 }
                 candidates.Children.Clear();
                 string path = clonePath;
-                bool sendStart = cloneFrom.Text.Trim().Length > 0;
-                bool sendEnd = cloneTo.Text.Trim().Length > 0;
                 string startText = fromSec.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 string endText = (end ?? fromSec).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 work("Cloning the voice from the recording:", 10, () =>

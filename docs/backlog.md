@@ -5,7 +5,7 @@ Work agreed but not built, newest decisions first. Defects and product limits li
 
 ## Voice capture and the host-pin list (2026-10-11)
 
-Audit of the tree at 0.16.10. The internal install is 0.16.13, which includes that work and Whisper transcription. The reader and the editor were left as they are: book
+Audit of the tree at 0.16.10. The internal install is 0.16.14, which includes that work, Whisper transcription, and the 20-second clone take. The reader and the editor were left as they are: book
 export to Markdown stays hidden, the cold-start caches stay declined, `TypoZen_App.cs`
 stays one file, and the Qwen narrator stays the narrator. Nothing here is a GitHub release.
 
@@ -20,7 +20,9 @@ What was found, and where it stands:
 
 The PC-audio path was already 48 kHz, 16-bit, and the two later takes that day peak at 31129, the 95% boost. It was not changed.
 
-Whisper transcription is an optional extension in 0.16.13, not part of the installer. **File → Extensions** offers Base English (161.8 MB), Small English (485.7 MB, selected, marked recommended) and Medium English (1.4 GB). Those figures are the model plus the whisper.cpp program. The program is the Windows CPU build b5454 (whisper.cpp 1.9.5), which unpacks to `Release\whisper-cli.exe`. Once that program and the chosen model are on disk, Clone voice Transcribe uses Whisper and does not call Windows speech recognition. A synthesized sentence ("The rain had not stopped for three days.") run through that program with the tiny English model, which is not one of the three offered, came back as that sentence. Small was not downloaded. Transcribe was not clicked in Narrator Manager. The Start Menu shortcut opens `%LOCALAPPDATA%\Programs\TypoZen\TypoZen.exe`, and that file is 0.16.13 and matches the project exe.
+Whisper transcription is an optional extension in 0.16.13, not part of the installer. **File → Extensions** offers Base English (161.8 MB), Small English (485.7 MB, selected, marked recommended) and Medium English (1.4 GB). Those figures are the model plus the whisper.cpp program. The program is the Windows CPU build b5454 (whisper.cpp 1.9.5), which unpacks to `Release\whisper-cli.exe`. Once that program and the chosen model are on disk, Clone voice Transcribe uses Whisper and does not call Windows speech recognition. A synthesized sentence ("The rain had not stopped for three days.") run through that program with the tiny English model, which is not one of the three offered, came back as that sentence. Small was not downloaded. Transcribe was not clicked in Narrator Manager. The Start Menu shortcut opens `%LOCALAPPDATA%\Programs\TypoZen\TypoZen.exe`. For 0.16.14 that file matches the project exe, and so does `tools\breeze-narrator\sidecar.py`.
+
+Make a candidate rejected a PC take the recorder had stopped at 20 seconds. `recording_pc_20261011_132312.wav` is 20.01 seconds (48 kHz, one extra buffer). The note shows that as 20.0 and allows it, within 0.05 seconds. The sidecar refused anything over 20.0 and printed it as "20 seconds". A stretch that is over 20 by at most that 0.05 is sent as 20 seconds, and the sidecar drops the same tail. A longer file is still refused. Make a candidate was not clicked after the change.
 
 Microphone check: the same format command the dialog now sends, captured for under a second and then deleted. Header was 44100 Hz, 16-bit, mono. The open and the record both returned 0.
 

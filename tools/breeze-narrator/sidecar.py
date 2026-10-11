@@ -531,8 +531,13 @@ class Narrator(object):
         secs = len(audio) / float(sr)
         if secs < CLONE_MIN_S:
             raise ValueError('the recording is %.1f seconds; a voice needs at least %d' % (secs, CLONE_MIN_S))
+        # The same 0.05s as SpanLimit in NarratorDialog. A take stopped at 20 seconds
+        # is 20.01 on disk (one buffer). That tail is not a longer clip.
+        if secs > CLONE_MAX_S and secs <= CLONE_MAX_S + 0.05:
+            audio = audio[:int(round(CLONE_MAX_S * sr))]
+            secs = len(audio) / float(sr)
         if secs > CLONE_MAX_S:
-            raise ValueError('the recording is %.0f seconds; choose %d seconds or less of it' % (secs, CLONE_MAX_S))
+            raise ValueError('the recording is %.1f seconds; choose %d seconds or less of it' % (secs, CLONE_MAX_S))
         if float(np.sqrt(np.mean(audio ** 2))) < 0.003:
             raise ValueError('the recording is silent or nearly so')
         if sr != SAMPLE_RATE:
