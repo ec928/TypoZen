@@ -853,6 +853,26 @@ class Narrator(object):
         self.reload_voices()
         log('deleted voice %s (to the Recycle Bin)' % vid)
 
+    def update_voice(self, vid, name=None, description=None):
+        if vid in BUILTIN_VOICES or vid in MODEL_SPEAKERS or vid.startswith('_') or '/' in vid or '\\' in vid:
+            raise ValueError('cannot edit voice %s' % vid)
+        d = os.path.join(self.voices_dir, vid)
+        meta_p = os.path.join(d, 'meta.json')
+        if not os.path.isfile(meta_p):
+            raise ValueError('meta.json not found for voice %s' % vid)
+        with open(meta_p, encoding='utf-8') as f:
+            meta = json.load(f)
+        if name is not None:
+            name = (name or '').strip()[:60]
+            if name:
+                meta['name'] = name
+        if description is not None:
+            meta['description'] = (description or '').strip()[:600]
+        with open(meta_p, 'w', encoding='utf-8') as f:
+            json.dump(meta, f)
+        self.reload_voices()
+        log('updated voice %s: name="%s"' % (vid, meta.get('name', '')))
+
     def preview(self, voice, style, reading=None):
         """PREVIEW_TEXT in a voice and style, through the cache like any other piece."""
         items, _ = self.render_group([{'id': 0, 'text': PREVIEW_TEXT}], voice, 1234, reading, style)
@@ -953,6 +973,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {'id': vid, 'name': name, 'already': already})
             elif self.path.startswith('/voices/delete'):
                 n.delete_voice(body.get('id') or '')
+                self._send(200, {'ok': True})
+            elif self.path.startswith('/voices/update'):
+                n.update_voice(body.get('id') or '', body.get('name'), body.get('description'))
                 self._send(200, {'ok': True})
             elif self.path.startswith('/preview'):
                 path, secs = n.preview(n.known_voice(body.get('voice') or DEFAULT_VOICE), body.get('style') or '')

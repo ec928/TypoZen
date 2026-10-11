@@ -925,24 +925,24 @@ namespace TypoZen
             libPlayRow.Children.Add(libPlayOpt);
             libPlayRow.Children.Add(libPlay);
 
-            var renameVoice = button("Rename...");
-            renameVoice.ToolTip = "Change this voice's display name.";
+            var editVoice = button("Edit...");
+            editVoice.ToolTip = "Change this voice's name or description.";
             var exportVoice = button("Export...");
             exportVoice.ToolTip = "Saves this voice as a .tzvoice file, to keep or use on another PC. Designing from the same description makes a different person each time, so a voice you like is worth keeping.";
             var deleteVoice = button("Delete...");
             var importVoice = button("Import...");
-            foreach (var b in new[] { libPlay, renameVoice, exportVoice, deleteVoice, importVoice })
+            foreach (var b in new[] { libPlay, editVoice, exportVoice, deleteVoice, importVoice })
             {
                 b.HorizontalContentAlignment = HorizontalAlignment.Left;
             }
-            renameVoice.Margin = new Thickness(0, 0, 0, 8);
+            editVoice.Margin = new Thickness(0, 0, 0, 8);
             exportVoice.Margin = new Thickness(0, 0, 0, 8);
             deleteVoice.Margin = new Thickness(0, 0, 0, 8);
             importVoice.Margin = new Thickness(0, 0, 0, 8);
 
             var libButtons = new StackPanel { Margin = new Thickness(8, 0, 0, 0), Width = 132 };
             libButtons.Children.Add(libPlayRow);
-            libButtons.Children.Add(renameVoice);
+            libButtons.Children.Add(editVoice);
             libButtons.Children.Add(exportVoice);
             libButtons.Children.Add(deleteVoice);
             libButtons.Children.Add(new Separator { Margin = new Thickness(0, 0, 0, 8), Opacity = 0.4 });
@@ -1563,7 +1563,7 @@ namespace TypoZen
             {
                 var v = libList.SelectedItem as VoiceItem;
                 deleteVoice.IsEnabled = removable(v);
-                renameVoice.IsEnabled = removable(v);
+                editVoice.IsEnabled = removable(v);
                 // Any voice with its recordings on disk can be saved, including the other narrator's;
                 // only deleting is limited to the narrator that owns it.
                 exportVoice.IsEnabled = v != null && !string.IsNullOrEmpty(v.Preview) && System.IO.File.Exists(v.Preview);
@@ -1623,7 +1623,7 @@ namespace TypoZen
 
             // Anything that needs the narrator goes through here: off the UI thread, with the
             // buttons that would start another such call disabled until it is done.
-            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, renameVoice, design, importVoice, playA, takeA, cloneGo, previewClip, recordMicBtn, recordPcBtn, transcribeBtn };
+            var busyButtons = new List<Button> { playVoice, libPlay, deleteVoice, editVoice, design, importVoice, playA, takeA, cloneGo, previewClip, recordMicBtn, recordPcBtn, transcribeBtn };
             // Find characters asks the page, not the narrator, so it is never held up by one (it was: the
             // whole window sat greyed for the narrator's 40-second start, 2026-10-09).
             // These need the narrator itself, and wait while it starts; the rest of the window does not.
@@ -1797,10 +1797,15 @@ namespace TypoZen
                 try { Clipboard.SetText(v.Description); say("Copied the description of \"" + v.Name + "\"."); }
                 catch (Exception ex) { say("Could not copy: " + ex.Message); }
             };
+            Action doEditVoice = null;
             var useDesc = new MenuItem { Header = "Use as starting point" };
             useDesc.Click += (s, e) => startFrom(libList.SelectedItem as VoiceItem);
+            var editMenu = new MenuItem { Header = "Edit voice..." };
+            editMenu.Click += (s, e) => { if (doEditVoice != null) doEditVoice(); };
             libMenu.Items.Add(copyDesc);
             libMenu.Items.Add(useDesc);
+            libMenu.Items.Add(new Separator());
+            libMenu.Items.Add(editMenu);
             // Right-click picks the voice under the pointer first, as lists everywhere else do.
             libList.PreviewMouseRightButtonDown += (s, e) =>
             {
@@ -1808,10 +1813,16 @@ namespace TypoZen
                 while (hit != null && !(hit is ListBoxItem)) hit = VisualTreeHelper.GetParent(hit);
                 if (hit != null) ((ListBoxItem)hit).IsSelected = true;
             };
+            libList.MouseDoubleClick += (s, e) =>
+            {
+                var v = libList.SelectedItem as VoiceItem;
+                if (removable(v) && doEditVoice != null) doEditVoice();
+            };
             libMenu.Opened += (s, e) =>
             {
                 var v = libList.SelectedItem as VoiceItem;
                 copyDesc.IsEnabled = useDesc.IsEnabled = v != null && !string.IsNullOrWhiteSpace(v.Description);
+                editMenu.IsEnabled = removable(v);
             };
             libList.ContextMenu = libMenu;
             // A right-click menu opens in a window of its own and need not find this one's styles, so
@@ -1857,6 +1868,50 @@ namespace TypoZen
                 w.Content = panel;
                 w.Loaded += (s, e) => { box.Focus(); box.CaretIndex = box.Text.Length; };
                 return w.ShowDialog() == true ? box.Text.Trim() : null;
+            };
+
+            Func<string, string, Tuple<string, string>> editVoiceDetails = (initialName, initialDesc) =>
+            {
+                var w = new Window
+                {
+                    Title = "Edit voice", Width = 520, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, Owner = win,
+                    Background = win.Background, Foreground = win.Foreground
+                };
+                DialogTheme.Apply(w, win);
+                var editNameBox = new TextBox
+                {
+                    Text = initialName ?? "", Margin = new Thickness(0, 4, 0, 12), Height = 30,
+                    VerticalContentAlignment = VerticalAlignment.Center, Padding = new Thickness(6, 4, 6, 4)
+                };
+                var editDescBox = new TextBox
+                {
+                    Text = initialDesc ?? "", Margin = new Thickness(0, 4, 0, 16), MinHeight = 65, MaxHeight = 140,
+                    TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    Padding = new Thickness(6, 5, 6, 5)
+                };
+                var ok = new Button { Content = "Save", Width = 88, Height = 30, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
+                var no = new Button { Content = "Cancel", Width = 88, Height = 30, IsCancel = true };
+                ok.Click += (s, e) =>
+                {
+                    if (string.IsNullOrWhiteSpace(editNameBox.Text))
+                    {
+                        MessageBox.Show(w, "Give the voice a name.", "Edit voice", MessageBoxButton.OK, MessageBoxImage.Information);
+                        return;
+                    }
+                    w.DialogResult = true;
+                };
+                var panel = new StackPanel { Margin = new Thickness(20, 16, 20, 18) };
+                panel.Children.Add(new TextBlock { Text = "Name:", FontWeight = FontWeights.SemiBold });
+                panel.Children.Add(editNameBox);
+                panel.Children.Add(new TextBlock { Text = "Description:", FontWeight = FontWeights.SemiBold });
+                panel.Children.Add(editDescBox);
+                var br = row(new UIElement[] { ok, no });
+                br.HorizontalAlignment = HorizontalAlignment.Right;
+                panel.Children.Add(br);
+                w.Content = panel;
+                w.Loaded += (s, e) => { editNameBox.Focus(); editNameBox.SelectAll(); };
+                return w.ShowDialog() == true ? Tuple.Create(editNameBox.Text.Trim(), editDescBox.Text.Trim()) : null;
             };
 
             savePreset.Click += (s, e) =>
@@ -2169,21 +2224,40 @@ namespace TypoZen
             ContextMenuService.SetShowOnDisabled(sampleOpt, true);
             ContextMenuService.SetShowOnDisabled(libPlayOpt, true);
 
-            renameVoice.Click += (s, e) =>
+            doEditVoice = () =>
             {
                 var v = libList.SelectedItem as VoiceItem;
-                if (!removable(v) || string.IsNullOrEmpty(v.Preview)) return;
-                string curName = v.Name;
-                string newName = ask("Rename voice", "Enter a new name for this voice:", curName);
-                if (string.IsNullOrWhiteSpace(newName) || newName.Trim() == curName) return;
-                newName = newName.Trim();
+                if (!removable(v)) return;
+                string curName = v.Name ?? "";
+                string curDesc = v.Description ?? "";
+                var res = editVoiceDetails(curName, curDesc);
+                if (res == null) return;
+                string newName = res.Item1, newDesc = res.Item2;
+                if (newName == curName && newDesc == curDesc) return;
                 try
                 {
-                    string dir = System.IO.Path.GetDirectoryName(v.Preview);
+                    string dir = !string.IsNullOrEmpty(v.Preview) ? System.IO.Path.GetDirectoryName(v.Preview) : null;
+                    if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir))
+                    {
+                        string own = System.IO.Path.Combine(side.VoicesDir(cacheDir), v.Id);
+                        dir = System.IO.Directory.Exists(own) ? own : System.IO.Path.Combine(new Side { Breeze = false }.VoicesDir(cacheDir), v.Id);
+                    }
                     string metaPath = System.IO.Path.Combine(dir, "meta.json");
                     var meta = QwenNarrator.ReadJson(metaPath);
                     meta["name"] = newName;
+                    meta["description"] = newDesc;
                     System.IO.File.WriteAllText(metaPath, new JavaScriptSerializer().Serialize(meta), System.Text.Encoding.UTF8);
+
+                    if (side.Engine.Ready())
+                    {
+                        try
+                        {
+                            side.Engine.Call("POST", "/voices/update", new JavaScriptSerializer().Serialize(
+                                new Dictionary<string, object> { { "id", v.Id }, { "name", newName }, { "description", newDesc } }), 10000);
+                        }
+                        catch { }
+                    }
+
                     string keptId = v.Id;
                     loadVoices();
                     win.Dispatcher.Invoke((Action)(() =>
@@ -2197,13 +2271,14 @@ namespace TypoZen
                             break;
                         }
                     }));
-                    say("Renamed voice to \"" + newName + "\".");
+                    say("Updated voice \"" + newName + "\".");
                 }
                 catch (Exception ex)
                 {
-                    say("Could not rename voice: " + ex.Message);
+                    say("Could not update voice: " + ex.Message);
                 }
             };
+            editVoice.Click += (s, e) => doEditVoice();
 
             deleteVoice.Click += (s, e) =>
             {
