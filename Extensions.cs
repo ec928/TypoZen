@@ -540,9 +540,10 @@ namespace TypoZen
             {
                 Title = "Extensions",
                 Width = 980,
-                Height = 670,
+                Height = 740,
                 MinWidth = 820,
                 MinHeight = 520,
+                MaxHeight = SystemParameters.WorkArea.Height - 32,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ResizeMode = ResizeMode.CanResizeWithGrip,
                 ShowInTaskbar = false,
@@ -552,7 +553,7 @@ namespace TypoZen
             try { win.Owner = owner; } catch { }
             DialogTheme.Apply(win, owner);
 
-            var header = new StackPanel { Margin = new Thickness(22, 18, 22, 14) };
+            var header = new StackPanel { Margin = new Thickness(22, 14, 22, 10) };
             header.Children.Add(new TextBlock
             {
                 Text = "Extensions",
@@ -647,8 +648,8 @@ namespace TypoZen
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(6),
                     Background = new SolidColorBrush(Color.FromArgb(12, 128, 128, 128)),
-                    Padding = new Thickness(14, 12, 14, 12),
-                    Margin = new Thickness(0, 0, 0, 12)
+                    Padding = new Thickness(14, 10, 14, 10),
+                    Margin = new Thickness(0, 0, 0, 10)
                 };
 
                 var panel = new StackPanel();
@@ -725,7 +726,7 @@ namespace TypoZen
 
                 var state = new TextBlock
                 {
-                    Margin = new Thickness(0, 10, 0, 6),
+                    Margin = new Thickness(0, 7, 0, 5),
                     Opacity = 0.85,
                     FontSize = 11.5,
                     TextWrapping = TextWrapping.Wrap
@@ -992,7 +993,7 @@ namespace TypoZen
                 BorderThickness = new Thickness(0, 1, 0, 0),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(40, 128, 128, 128)),
                 Background = new SolidColorBrush(Color.FromArgb(12, 128, 128, 128)),
-                Padding = new Thickness(22, 12, 22, 12)
+                Padding = new Thickness(22, 10, 22, 10)
             };
             footerBorder.Child = footerGrid;
 
@@ -1007,7 +1008,7 @@ namespace TypoZen
                 Content = contentGrid,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Padding = new Thickness(22, 0, 22, 12)
+                Padding = new Thickness(22, 0, 22, 4)
             };
             outer.Children.Add(scrollViewer);
             win.Content = outer;
