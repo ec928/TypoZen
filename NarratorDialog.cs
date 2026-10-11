@@ -2470,10 +2470,25 @@ namespace TypoZen
 
             cloneFile.Click += (s, e) =>
             {
+                string recFolder = null;
+                try
+                {
+                    recFolder = recordingsDir != null
+                        ? recordingsDir()
+                        : System.IO.Path.Combine(cacheDir, "recordings");
+                }
+                catch { }
+                if (string.IsNullOrEmpty(recFolder) || !System.IO.Directory.Exists(recFolder))
+                {
+                    try { recFolder = System.IO.Path.Combine(cacheDir, "recordings"); } catch { }
+                }
+                try { if (!string.IsNullOrEmpty(recFolder)) System.IO.Directory.CreateDirectory(recFolder); } catch { }
+
                 var dlg = new Microsoft.Win32.OpenFileDialog
                 {
                     Title = "A recording to clone the voice from",
-                    Filter = "Recordings (*.wav, *.flac, *.ogg, *.mp3)|*.wav;*.flac;*.ogg;*.mp3"
+                    Filter = "Recordings (*.wav, *.flac, *.ogg, *.mp3)|*.wav;*.flac;*.ogg;*.mp3",
+                    InitialDirectory = (!string.IsNullOrEmpty(recFolder) && System.IO.Directory.Exists(recFolder)) ? recFolder : null
                 };
                 if (dlg.ShowDialog(win) != true) return;
                 useRecording(dlg.FileName, System.IO.Path.GetFileName(dlg.FileName));
