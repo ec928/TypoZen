@@ -479,6 +479,9 @@ class Narrator(object):
         if preview_render:
             preview = self._generate(PREVIEW_TEXT, told=instruction(style, '', 'narration'),
                                      reference=ref, transcript=transcript)
+            prev_peak = float(np.max(np.abs(preview))) if len(preview) else 0.0
+            if prev_peak > 0:
+                preview = preview * (0.95 / prev_peak)
             sf.write(os.path.join(d, 'preview.wav'), preview, self.sr, subtype='PCM_16')
         else:
             shutil.copyfile(ref, os.path.join(d, 'preview.wav'))
@@ -537,7 +540,7 @@ class Narrator(object):
             audio = soxr.resample(audio, sr, SAMPLE_RATE)
         peak = float(np.max(np.abs(audio)))
         if peak > 0:
-            audio = audio * min(1.0, 0.95 / peak)
+            audio = audio * (0.95 / peak)
         with self.lock:
             t = time.time()
             shutil.rmtree(os.path.join(self.voices_dir, '_candidates'), ignore_errors=True)

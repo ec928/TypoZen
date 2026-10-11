@@ -246,7 +246,28 @@ namespace TypoZen
 
                         if (bytes.Length <= 44) return false;
 
-                        hasAudio = _maxPeak >= 0.001f;
+                        short maxPeak = 0;
+                        for (int i = 44; i < bytes.Length - 1; i += 2)
+                        {
+                            short sample = (short)(bytes[i] | (bytes[i + 1] << 8));
+                            short abs = sample < 0 ? (sample == short.MinValue ? short.MaxValue : (short)-sample) : sample;
+                            if (abs > maxPeak) maxPeak = abs;
+                        }
+
+                        hasAudio = maxPeak > 30;
+
+                        if (maxPeak > 30 && maxPeak < 30000)
+                        {
+                            float boost = (32767f * 0.95f) / (float)maxPeak;
+                            for (int i = 44; i < bytes.Length - 1; i += 2)
+                            {
+                                short sample = (short)(bytes[i] | (bytes[i + 1] << 8));
+                                int boosted = (int)Math.Round(sample * boost);
+                                short clamped = (short)Math.Max(-32767, Math.Min(32767, boosted));
+                                bytes[i] = (byte)(clamped & 0xFF);
+                                bytes[i + 1] = (byte)((clamped >> 8) & 0xFF);
+                            }
+                        }
 
                         int dataLen = bytes.Length - 44;
                         using (var bw = new BinaryWriter(new MemoryStream(bytes)))
@@ -297,6 +318,37 @@ namespace TypoZen
 
         [DllImport("winmm.dll", EntryPoint = "mciSendStringA", ExactSpelling = true, CharSet = CharSet.Ansi)]
         private static extern int mciSendString(string command, System.Text.StringBuilder buffer, int bufferSize, IntPtr hwndCallback);
+
+        private static void NormalizeWavFile(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+                byte[] bytes = File.ReadAllBytes(path);
+                if (bytes.Length <= 44) return;
+                short maxPeak = 0;
+                for (int i = 44; i < bytes.Length - 1; i += 2)
+                {
+                    short sample = (short)(bytes[i] | (bytes[i + 1] << 8));
+                    short abs = sample < 0 ? (sample == short.MinValue ? short.MaxValue : (short)-sample) : sample;
+                    if (abs > maxPeak) maxPeak = abs;
+                }
+                if (maxPeak > 30 && maxPeak < 30000)
+                {
+                    float boost = (32767f * 0.95f) / (float)maxPeak;
+                    for (int i = 44; i < bytes.Length - 1; i += 2)
+                    {
+                        short sample = (short)(bytes[i] | (bytes[i + 1] << 8));
+                        int boosted = (int)Math.Round(sample * boost);
+                        short clamped = (short)Math.Max(-32767, Math.Min(32767, boosted));
+                        bytes[i] = (byte)(clamped & 0xFF);
+                        bytes[i + 1] = (byte)((clamped >> 8) & 0xFF);
+                    }
+                    File.WriteAllBytes(path, bytes);
+                }
+            }
+            catch { }
+        }
 
         private static string TranscribeWav(string path)
         {
@@ -1004,19 +1056,23 @@ namespace TypoZen
                 {
                     if (player != null) { player.Stop(); player = null; }
                     if (clipPlayer != null) { clipPlayer.Stop(); clipPlayer.Close(); clipPlayer = null; }
-                    if (path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
-                    {
-                        player = new SoundPlayer(path);
-                        player.Play();
-                    }
-                    else
-                    {
-                        clipPlayer = new System.Windows.Media.MediaPlayer();
-                        clipPlayer.Open(new Uri(path));
-                        clipPlayer.Play();
-                    }
+                    clipPlayer = new System.Windows.Media.MediaPlayer();
+                    clipPlayer.Open(new Uri(System.IO.Path.GetFullPath(path)));
+                    clipPlayer.Volume = 1.0;
+                    clipPlayer.Play();
                 }
-                catch (Exception ex) { say("Could not play audio: " + ex.Message); }
+                catch
+                {
+                    try
+                    {
+                        if (path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                        {
+                            player = new SoundPlayer(path);
+                            player.Play();
+                        }
+                    }
+                    catch (Exception ex) { say("Could not play audio: " + ex.Message); }
+                }
             };
 
             // The voice a cast row is set to. Rows are built before the voice list exists, so
@@ -2067,6 +2123,7 @@ namespace TypoZen
                 {
                     mciSendString("save recsound \"" + recordedPath + "\"", null, 0, IntPtr.Zero);
                     mciSendString("close recsound", null, 0, IntPtr.Zero);
+                    NormalizeWavFile(recordedPath);
                 }
                 else if (mode == "pc")
                 {
