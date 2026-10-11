@@ -74,7 +74,7 @@ async function runSuite(name, limitMs) {
     let r;
     for (let i = 0; i < 3; i++) {
         r = await runOnce(name, limitMs);
-        if (r.code === 0 || !/TargetCloseError|Protocol error/.test(r.err)) break;
+        if (r.code === 0 || !/TargetCloseError|Protocol[Ee]rror|Protocol error/.test(r.err)) break;
         console.log('  RETRY ' + name + ' (sandbox crash, attempt ' + (i + 1) + ' of 3)');
     }
     return r;

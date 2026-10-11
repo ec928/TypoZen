@@ -60,6 +60,40 @@ namespace TypoZen
             catch { }
         }
 
+        public const long MaxCacheBytes = 1024L * 1024L * 1024L; // 1 GB cap
+
+        /// <summary>
+        /// Keep narration audio cache from growing without limit (max 1 GB per engine).
+        /// Evicts the oldest .wav files first (LRU) until under 90% of the cap (~920 MB).
+        /// </summary>
+        public void PruneCache(string cacheDir, long maxBytes = MaxCacheBytes)
+        {
+            try
+            {
+                string dir = CacheDir != null ? CacheDir(cacheDir) : null;
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+                var di = new DirectoryInfo(dir);
+                var files = di.GetFiles("*.wav");
+                long total = 0;
+                foreach (var f in files) total += f.Length;
+                if (total <= maxBytes) return;
+                Array.Sort(files, (a, b) => a.LastWriteTimeUtc.CompareTo(b.LastWriteTimeUtc));
+                long target = (long)(maxBytes * 0.9);
+                foreach (var f in files)
+                {
+                    if (total <= target) break;
+                    try
+                    {
+                        long len = f.Length;
+                        f.Delete();
+                        total -= len;
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
         /// <summary>Both halves present: the environment in the data folder and the script beside the exe.</summary>
         public bool Installed(string cacheDir, string appDir)
         {
@@ -165,6 +199,7 @@ namespace TypoZen
         /// </summary>
         public async Task<bool> EnsureRunning(string cacheDir, string appDir, Action<string> say, CancellationToken cancel)
         {
+            _ = Task.Run(() => PruneCache(cacheDir));
             _logPath = Path.Combine(RootDir(cacheDir), "narration.log");
             Log("---- narrate requested; script " + ScriptPath(appDir));
             if (!Installed(cacheDir, appDir))

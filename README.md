@@ -24,6 +24,28 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 
 *Requirements: Windows 10 version 1809 or later, 64-bit. Requires the WebView2 runtime, which is already present on current Windows.*
 
+### Where TypoZen is installed & stores data
+
+TypoZen keeps program binaries and user data strictly separated:
+
+| Component | Path | Notes |
+| --- | --- | --- |
+| **Installed app** | `%LocalAppData%\Programs\TypoZen\` | Per-user executable (`TypoZen.exe`), DLLs, and bundled assets. |
+| **Portable app** | *Folder of your choice* | Anywhere you unpack the zip; no files are created beside the executable. |
+| **Store app** | `%ProgramFiles%\WindowsApps\` | Sandboxed Windows package directory. |
+
+#### Data, settings and audio storage
+
+All user data for both the installer and portable builds lives in a single folder:  
+`%LocalAppData%\TypoZen_Cache_Portable\` *(Press `Win + R` and paste to open)*
+
+- **Recordings (`\recordings\`):** Microphone and PC audio recordings captured for voice cloning (`.wav`).
+- **Narration audio (`\extensions\<Engine>\narration\`):** Speech rendered by Breeze or Qwen. Saved as `.wav` chunks for instant, replayable reading without re-running the GPU. Automatically capped at 1 GB per engine (oldest recordings are automatically evicted when new speech is rendered).
+- **Voice profiles (`\extensions\<Engine>\voices\`):** Cloned and custom voice profiles, metadata, and reference audio. Kept safe even if an extension is uninstalled.
+- **AI Extensions (`\extensions\`):** Python runtimes, model weights, and inference sidecars for Breeze, Qwen, or Kokoro.
+- **Settings & books:** `settings.json` (preferences), `TypoZen_Themes.json` (custom themes), `book_positions.txt` (reading progress), and unzipped ePub caches.
+- **Privacy Mode (`%TEMP%\TypoZen_Private_*`):** When Privacy Mode is active, all narration, logs, and temporary document traces are routed to an ephemeral directory deleted immediately upon closing the window.
+
 ---
 ## Highlights
 

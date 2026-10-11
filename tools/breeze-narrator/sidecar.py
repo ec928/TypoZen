@@ -296,6 +296,39 @@ class Narrator(object):
         self.voices = {}            # id -> {'reference', 'transcript', 'hash', meta...}
         os.makedirs(cache_dir, exist_ok=True)
         os.makedirs(self.voices_dir, exist_ok=True)
+        self._prune_cache()
+
+    def _prune_cache(self, max_bytes=1024 * 1024 * 1024):
+        """Keep narration audio cache from exceeding 1 GB by evicting oldest wav files (LRU)."""
+        try:
+            if not self.cache_dir or not os.path.isdir(self.cache_dir):
+                return
+            entries = []
+            total = 0
+            for e in os.scandir(self.cache_dir):
+                if e.is_file() and e.name.endswith('.wav'):
+                    st = e.stat()
+                    entries.append((st.st_mtime, st.st_size, e.path))
+                    total += st.st_size
+            if total <= max_bytes:
+                return
+            entries.sort(key=lambda x: x[0])
+            target = int(max_bytes * 0.9)
+            pruned_count = 0
+            for mtime, size, p in entries:
+                if total <= target:
+                    break
+                try:
+                    os.unlink(p)
+                    total -= size
+                    pruned_count += 1
+                except Exception:
+                    pass
+            if pruned_count:
+                log('pruned narration cache: deleted %d old files, now %.1f MB'
+                    % (pruned_count, total / (1024.0 * 1024.0)))
+        except Exception as e:
+            log('prune cache error: %s' % e)
 
     # ---- the model -----------------------------------------------------------------------
 
@@ -786,6 +819,8 @@ class Narrator(object):
         cached = len(blocks) - made
         if cached:
             log('%d of %d pieces from the cache' % (cached, len(blocks)))
+        if made and not private:
+            self._prune_cache()
         return ([{'id': b['id'], 'file': k + '.wav', 'seconds': round(s, 3), 'private': p, 'instruction': i,
                   'voice': v, 'cached': n not in fresh,
                   'parts': [{'text': t, 'instruction': ins, 'strength': st} for t, ins, st in ps]}

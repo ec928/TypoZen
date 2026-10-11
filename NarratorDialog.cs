@@ -837,10 +837,20 @@ namespace TypoZen
             tryTop.Children.Add(note("The settings on the left, saved or not, on this text. Ctrl+Enter plays."));
             var sampleBox = new TextBox { Text = _sample, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 170, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             tryTop.Children.Add(sampleBox);
+            var tryActions = new Grid { Margin = new Thickness(0, 8, 0, 8) };
+            tryActions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            tryActions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            tryActions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var useSelection = button("Use text selected in the document");
-            useSelection.HorizontalAlignment = HorizontalAlignment.Left;
-            useSelection.Margin = new Thickness(0, 8, 0, 8);
-            tryTop.Children.Add(useSelection);
+            useSelection.Margin = new Thickness(0);
+            Grid.SetColumn(useSelection, 0);
+            var openNarrationDir = button("Open narration folder");
+            openNarrationDir.Margin = new Thickness(0);
+            openNarrationDir.ToolTip = "Open the folder where rendered narration audio (.wav) is stored.";
+            Grid.SetColumn(openNarrationDir, 2);
+            tryActions.Children.Add(useSelection);
+            tryActions.Children.Add(openNarrationDir);
+            tryTop.Children.Add(tryActions);
 
             // Current and Previous: what each is, and a Play for each. Previous fills itself -- the
             // last different settings played -- so comparing is play, change, play, then switch.
@@ -931,7 +941,10 @@ namespace TypoZen
             exportVoice.ToolTip = "Saves this voice as a .tzvoice file, to keep or use on another PC. Designing from the same description makes a different person each time, so a voice you like is worth keeping.";
             var deleteVoice = button("Delete...");
             var importVoice = button("Import...");
-            foreach (var b in new[] { libPlay, editVoice, exportVoice, deleteVoice, importVoice })
+            var openVoiceFolder = button("Open folder");
+            openVoiceFolder.ToolTip = "Open this voice's folder in File Explorer.";
+            openVoiceFolder.IsEnabled = false;
+            foreach (var b in new[] { libPlay, editVoice, exportVoice, deleteVoice, importVoice, openVoiceFolder })
             {
                 b.HorizontalContentAlignment = HorizontalAlignment.Left;
             }
@@ -939,6 +952,7 @@ namespace TypoZen
             exportVoice.Margin = new Thickness(0, 0, 0, 8);
             deleteVoice.Margin = new Thickness(0, 0, 0, 8);
             importVoice.Margin = new Thickness(0, 0, 0, 8);
+            openVoiceFolder.Margin = new Thickness(0, 0, 0, 8);
 
             var libButtons = new StackPanel { Margin = new Thickness(8, 0, 0, 0), Width = 132 };
             libButtons.Children.Add(libPlayRow);
@@ -947,6 +961,7 @@ namespace TypoZen
             libButtons.Children.Add(deleteVoice);
             libButtons.Children.Add(new Separator { Margin = new Thickness(0, 0, 0, 8), Opacity = 0.4 });
             libButtons.Children.Add(importVoice);
+            libButtons.Children.Add(openVoiceFolder);
 
             var libRow = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
             DockPanel.SetDock(libButtons, Dock.Right);
@@ -1567,6 +1582,7 @@ namespace TypoZen
                 // Any voice with its recordings on disk can be saved, including the other narrator's;
                 // only deleting is limited to the narrator that owns it.
                 exportVoice.IsEnabled = v != null && !string.IsNullOrEmpty(v.Preview) && System.IO.File.Exists(v.Preview);
+                openVoiceFolder.IsEnabled = v != null;
             };
 
             Action fillVoices = () =>
@@ -2077,6 +2093,33 @@ namespace TypoZen
                 runTrial(kept, "Previous");
             };
             useSelection.Click += (s, e) => sendToPage("cmd:narrator_trial_selection");
+            openNarrationDir.Click += (s, e) =>
+            {
+                string targetDir = null;
+                string selectedDir = side.AudioDir(cacheDir);
+                bool selectedReady = side.Engine.EnvironmentReady != null && side.Engine.EnvironmentReady(cacheDir);
+                if (selectedReady || System.IO.Directory.Exists(selectedDir))
+                {
+                    targetDir = selectedDir;
+                }
+                else
+                {
+                    string otherDir = side.Breeze ? QwenNarrator.CacheDir(cacheDir) : BreezeNarrator.CacheDir(cacheDir);
+                    if (System.IO.Directory.Exists(otherDir)) targetDir = otherDir;
+                    else targetDir = selectedDir;
+                }
+                try { if (!System.IO.Directory.Exists(targetDir)) System.IO.Directory.CreateDirectory(targetDir); } catch { }
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        Arguments = "\"" + targetDir + "\"",
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception ex) { say("Could not open folder: " + ex.Message); }
+            };
             TrialArrived = json =>
             {
                 try
@@ -2377,6 +2420,41 @@ namespace TypoZen
                     say(all.Substring(0, 1).ToUpper() + all.Substring(1) + "."
                         + (any ? " Choose it on the Reading tab, or for a character on Cast." : ""));
                 });
+            };
+
+            openVoiceFolder.Click += (s, e) =>
+            {
+                var v = libList.SelectedItem as VoiceItem;
+                string dir = null;
+                if (v != null)
+                {
+                    if (!string.IsNullOrEmpty(v.Preview) && System.IO.File.Exists(v.Preview))
+                        dir = System.IO.Path.GetDirectoryName(v.Preview);
+                    if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir))
+                    {
+                        string breezeDir = System.IO.Path.Combine(BreezeNarrator.RootDir(cacheDir), "voices", v.Id);
+                        string qwenDir = System.IO.Path.Combine(QwenNarrator.RootDir(cacheDir), "voices", v.Id);
+                        if (System.IO.Directory.Exists(breezeDir)) dir = breezeDir;
+                        else if (System.IO.Directory.Exists(qwenDir)) dir = qwenDir;
+                        else if (v.Source == "qwen") dir = qwenDir;
+                        else dir = System.IO.Path.Combine(side.VoicesDir(cacheDir), v.Id);
+                    }
+                }
+                if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir))
+                {
+                    dir = side.VoicesDir(cacheDir);
+                }
+                try { if (!System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir); } catch { }
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        Arguments = "\"" + dir + "\"",
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception ex) { say("Could not open folder: " + ex.Message); }
             };
 
             // The candidates a design or a clone came back with, each with Play, a name and Keep.

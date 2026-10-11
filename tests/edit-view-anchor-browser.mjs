@@ -39,7 +39,7 @@ try {
     await page.setViewport({ width: 1300, height: 900 });
     page.on('pageerror', e => { failed++; console.error('  FAIL page threw: ' + e.message); });
     const url = 'file:///' + path.join(appDir, 'TypoZen_Template.html').replace(/\\/g, '/');
-    await page.goto(url, { waitUntil: 'load' });
+    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
     await page.waitForFunction(() => typeof handleCommand === 'function', { timeout: 15000 });
 
     const findRaw = (re, from) => page.evaluate((src, f) => {

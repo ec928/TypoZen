@@ -529,12 +529,15 @@
             // The wrapper's own top and bottom padding (0 in Source). This read `|| 40`, which
             // turned a real 0 into 40, and took another 8 off: Source stopped 48px short of
             // the bottom of the pane, where Preview runs to the edge.
+            // In Source, bottom padding is 0 by contract (applyEditorChromeForMode); do not
+            // read computed paddingBottom which may be mid-transition (0.3s).
             let vPad = 0;
             try {
                 const wrap = document.getElementById('editor-wrapper');
                 if (wrap) {
                     const cs = window.getComputedStyle(wrap);
-                    vPad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+                    const bPad = state.mode === 'source' ? 0 : (parseFloat(cs.paddingBottom) || 0);
+                    vPad = (parseFloat(cs.paddingTop) || 0) + bPad;
                 }
             } catch (e2) {}
             // Fill the height inside the wrapper (scrollbar stays in-pane, not off-screen).

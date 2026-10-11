@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.16.19";
+        internal const string AppVersion = "0.16.20";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1321,7 +1321,16 @@ namespace TypoZen
                     setAlignmentValue();
             };
             Program.PerfMark("XAML loaded");
-            this.Loaded += (s, e) => { Program.PerfMark("window Loaded"); InitializeWebViewAsync(); };
+            this.Loaded += (s, e) =>
+            {
+                Program.PerfMark("window Loaded");
+                InitializeWebViewAsync();
+                Task.Run(() =>
+                {
+                    try { BreezeNarrator.Engine.PruneCache(CacheDir()); } catch { }
+                    try { QwenNarrator.Engine.PruneCache(CacheDir()); } catch { }
+                });
+            };
             this.Activated += Window_Activated;
             this.Closed += (s, e) =>
             {
