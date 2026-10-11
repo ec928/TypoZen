@@ -114,7 +114,12 @@ namespace TypoZen
             }
             catch (WebException ex)
             {
-                if (ex.Response == null) throw;
+                if (ex.Response == null)
+                {
+                    if (_process == null || _process.HasExited)
+                        throw new Exception("The " + Name + " narrator is not running.");
+                    throw;
+                }
                 string text;
                 using (var r = new StreamReader(ex.Response.GetResponseStream(), Encoding.UTF8)) text = r.ReadToEnd();
                 object err;

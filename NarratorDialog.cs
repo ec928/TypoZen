@@ -1624,6 +1624,14 @@ namespace TypoZen
                 if (narratorReady) return;
                 foreach (var b in needNarrator) { b.IsEnabled = false; b.ToolTip = "Waiting for the narrator to start"; }
             };
+            Action ensureNarrator = () =>
+            {
+                if (side.Engine.Ready()) return;
+                win.Dispatcher.Invoke((Action)(() => say("Starting the " + side.Name + " narrator...")));
+                bool up = side.Engine.EnsureRunning(cacheDir, appDir, m => { if (!string.IsNullOrEmpty(m)) win.Dispatcher.Invoke((Action)(() => say(m))); }, CancellationToken.None).Result;
+                if (!up) throw new Exception("The " + side.Name + " narrator could not be started.");
+                narratorReady = true;
+            };
             // `expect` is the usual time in seconds, shown against a running clock; 0 for none.
             work = (what, expect, job) =>
             {
@@ -2046,6 +2054,7 @@ namespace TypoZen
                 double strength = side.Breeze ? strengthSlider.Value : 0;
                 work("Reading the sample line in this voice:", 10, () =>
                 {
+                    ensureNarrator();
                     var block = new Dictionary<string, object> { { "id", 0 }, { "text", text }, { "role", "narration" }, { "instruction", told } };
                     var body = new Dictionary<string, object> { { "voice", id }, { "instruction", "" }, { "blocks", new object[] { block } }, { "reading", 0 } };
                     if (strength > 0) body["strength"] = strength;
@@ -2069,6 +2078,7 @@ namespace TypoZen
                 string id = v != null ? v.Id : "";
                 work("Rendering a sample in this voice:", 15, () =>
                 {
+                    ensureNarrator();
                     string json = side.Engine.Call("POST", "/preview", new JavaScriptSerializer().Serialize(
                         new Dictionary<string, object> { { "voice", id }, { "style", "" } }), 120000);
                     var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
@@ -2200,6 +2210,7 @@ namespace TypoZen
                 bool both = side.Breeze && v.Source == "qwen";
                 work("Deleting...", 0, () =>
                 {
+                    ensureNarrator();
                     side.Engine.Call("POST", "/voices/delete", new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "id", id }, { "both", both } }), 10000);
                     loadVoices();
                     say("Deleted \"" + v.Name + "\".");
@@ -2257,6 +2268,7 @@ namespace TypoZen
                 string[] files = dlg.FileNames;
                 work("Importing...", 0, () =>
                 {
+                    ensureNarrator();
                     // The narrator's voice is left as it is: selecting what was imported would make
                     // it the narrator's voice at the next Save, which nobody asked for.
                     var said = new List<string>();
@@ -2310,6 +2322,7 @@ namespace TypoZen
                                 name.IsEnabled = false;
                                 work("Keeping \"" + nm + "\"...", 0, () =>
                                 {
+                                    ensureNarrator();
                                     var keptReply = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
                                         side.Engine.Call("POST", "/voices/keep", new JavaScriptSerializer().Serialize(
                                             new Dictionary<string, object> { { "candidate", cid }, { "name", nm } }), 10000));
@@ -2349,6 +2362,7 @@ namespace TypoZen
                 int count = side.Breeze ? 2 : 3;
                 work("Creating " + (count == 2 ? "two" : "three") + " candidates from your description. The graphics card is busy meanwhile.", side.Breeze ? 30 : 90, () =>
                 {
+                    ensureNarrator();
                     showCandidates(side.Engine.Call("POST", "/design", new JavaScriptSerializer().Serialize(
                         new Dictionary<string, object> { { "description", desc }, { "count", count }, { "style", style } }), 300000));
                     say((count == 2 ? "Two" : "Three") + " candidates. Play them, then name and keep the one you want.");
@@ -2638,6 +2652,7 @@ namespace TypoZen
                 string endText = (end ?? fromSec).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 work("Cloning the voice from the recording:", 10, () =>
                 {
+                    ensureNarrator();
                     var body = new Dictionary<string, object> { { "path", path }, { "transcript", words } };
                     if (sendStart) body["start"] = startText;
                     if (sendEnd) body["end"] = endText;
@@ -2939,8 +2954,18 @@ namespace TypoZen
 
             if (start) startSide();
 
+            // While the Narrator Manager window is open, ping the engine every 2 minutes so the
+            // sidecar's 15-minute idle watchdog does not shut down while the user is actively working.
+            var keepAliveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMinutes(2) };
+            keepAliveTimer.Tick += (s, e) =>
+            {
+                if (side.Engine.Running) Task.Run(() => { try { side.Engine.SetLogging(!NarratorEngine.PrivateMode); } catch { } });
+            };
+            keepAliveTimer.Start();
+
             win.Closed += (s, e) =>
             {
+                try { keepAliveTimer.Stop(); } catch { }
                 dirtyTimer.Stop();
                 clearCandidates();
                 CastScanArrived = null;
