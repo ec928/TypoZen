@@ -1336,9 +1336,27 @@ function narrationDirection(text, el) {
  */
 // Sentence words that are capitalised and are not people. Without this, "After" would be
 // a character whenever it was the only capital word near a quotation.
-const NOT_A_NAME = /^(After|Then|But|And|When|While|Before|Once|Suddenly|However|Meanwhile|Later|Soon|Still|There|Here|Yes|No|Oh|Well|Now|So|Yet|Thus|Therefore|Perhaps|Maybe|He|She|It|They|We|You|I|The|A|An|This|That|These|Those|His|Her|Its|Their|My|Your|Our|Me|Him|Them|Us|In|On|At|From|With|Without|For|Of|To|By|As|Into|Across|Behind|Beside|Outside|Inside|If|Though|Although|Because|Since|Until|Even|Only|Just|Not|All|Some|Every|Each|Both|What|Why|How|Where|Who|Which|Someone|Something|Nothing|Nobody|Everyone|Everything|Somewhere)$/;
+const NOT_A_NAME = /^(Again|After|Then|But|And|When|While|Before|Once|Suddenly|However|Meanwhile|Later|Soon|Still|There|Here|Yes|No|Oh|Well|Now|So|Yet|Thus|Therefore|Perhaps|Maybe|He|She|It|They|We|You|I|The|A|An|This|That|These|Those|His|Her|Its|Their|My|Your|Our|Me|Him|Them|Us|In|On|At|From|With|Without|For|Of|To|By|As|Into|Across|Behind|Beside|Outside|Inside|If|Though|Although|Because|Since|Until|Even|Only|Just|Not|All|Some|Every|Each|Both|What|Why|How|Where|Who|Which|Someone|Something|Nothing|Nobody|Everyone|Everything|Somewhere)$/;
 // Dialogue tags only. "talked" is not one: "Bob talked, then Jill said" is Jill.
 const SPEECH_VERB = /^(say|says|said|ask|asks|asked|reply|replies|replied|protested|continued|began|added|tell|tells|told|cried|call|calls|called|answered|admitted|agreed|whispered|murmured|muttered|shouted|yelled|snapped|hissed|laughed|sighed|gasped|wept|sobbed|pleaded|begged|demanded|insisted|stammered|growled|barked|roared|screamed|announced|explained|observed|remarked|suggested|warned|retorted|exclaimed|responded|conceded|repeated|interrupted|breathed)$/i;
+
+const FAMILY_RELATION = /^(mother|father|mom|mum|dad|parent|parents|wife|husband|spouse|sister|brother|sibling|siblings|daughter|son|child|children|grandmother|grandfather|grandma|grandpa|aunt|uncle|cousin|niece|nephew)$/i;
+const RELATION_NOUN = /^(mother|father|mom|mum|dad|parent|parents|wife|husband|spouse|sister|brother|sibling|siblings|daughter|son|child|children|grandmother|grandfather|grandma|grandpa|aunt|uncle|cousin|niece|nephew|friend|companion|servant|maid|butler|valet|master|mistress|boss|secretary|assistant|guard|captain|soldier|officer|general|doctor|nurse|lawyer|teacher|student|pupil|apprentice|follower|disciple|host|hostess|guest|visitor|neighbor|neighbour|colleague|partner|ally|enemy|rival|captor|captive|peer|associate|clerk|driver|cook|housekeeper|retainer|henchman|agent|representative|delegate|envoy|messenger|successor|predecessor|woman|man|lady|girl|boy|person|people)$/i;
+
+function isPossessive(word) {
+    return /^[A-Z][A-Za-z'’-]*[’']s$/i.test(word) || /^[A-Z][A-Za-z'’-]*s[’']$/i.test(word);
+}
+
+function isRelationPhrase(who) {
+    if (!who) return false;
+    const parts = who.trim().split(/\s+/);
+    const last = parts[parts.length - 1];
+    if (FAMILY_RELATION.test(last)) return true;
+    if (parts.length > 1 && (isPossessive(parts[0]) || /^(his|her|their|my|your|our)$/i.test(parts[0])) && RELATION_NOUN.test(last)) {
+        return true;
+    }
+    return false;
+}
 
 function quoteWords(text) {
     // A line instruction sits in brackets beside the name. Its words are not part of
@@ -1378,7 +1396,19 @@ function sentenceSubject(sentence) {
         // "Looking at Tom," "Smiling," "Suddenly": an opening participle or adverb, not a name.
         if (i === 0 && /^[A-Z][a-z]{3,}(?:ing|ed|ly)$/.test(words[0]) && /^[a-z]/.test(words[1] || '')) continue;
         if (isPronoun(words[i])) return words[i];
-        if (looksLikeName(words[i])) return nameSpan(words, i);
+        if (looksLikeName(words[i])) {
+            if (isPossessive(words[i])) {
+                if (i + 1 < words.length && /^voices?$/i.test(words[i + 1])) {
+                    return nameSpan(words, i).replace(/[’']s$/i, '').replace(/s[’']$/i, 's');
+                }
+                if (i + 1 < words.length && (RELATION_NOUN.test(words[i + 1]) || (i + 2 < words.length && RELATION_NOUN.test(words[i + 2])))) {
+                    const rel = RELATION_NOUN.test(words[i + 1]) ? words[i + 1] : words[i + 2];
+                    return nameSpan(words, i) + ' ' + rel;
+                }
+                continue;
+            }
+            return nameSpan(words, i);
+        }
     }
     return null;
 }
@@ -1416,19 +1446,66 @@ function speakerBeside(words, nearEnd) {
         // The subject stands before the verb. The name after it was spoken to.
         for (let i = verbAt - 1; i >= 0 && inWindow(i); i--) {
             if (isPronoun(words[i])) return { who: words[i], dist: distOf(verbAt), verb: true };
-            if (looksLikeName(words[i])) return { who: nameSpan(words, i), dist: distOf(verbAt), verb: true };
+            if (/^voices?$/i.test(words[i]) && i > 0 && isPossessive(words[i - 1])) {
+                return { who: nameSpan(words, i - 1).replace(/[’']s$/i, '').replace(/s[’']$/i, 's'), dist: distOf(verbAt), verb: true };
+            }
+            if (RELATION_NOUN.test(words[i])) {
+                let p = i - 1;
+                if (p > 0 && !isPossessive(words[p]) && !looksLikeName(words[p]) && !/^(his|her|their|my|your|our|the)$/i.test(words[p])) p--;
+                if (p >= 0 && (isPossessive(words[p]) || looksLikeName(words[p]))) {
+                    return { who: nameSpan(words, p) + ' ' + words[i], dist: distOf(verbAt), verb: true };
+                }
+                if (p >= 0 && /^(his|her|their|my|your|our|the)$/i.test(words[p])) {
+                    return { who: words[p] + ' ' + words[i], dist: distOf(verbAt), verb: true };
+                }
+                return { who: words[i], dist: distOf(verbAt), verb: true };
+            }
+            if (looksLikeName(words[i])) {
+                if (isPossessive(words[i])) {
+                    if (i + 1 < verbAt) {
+                        if (/^voices?$/i.test(words[i + 1])) {
+                            return { who: nameSpan(words, i).replace(/[’']s$/i, '').replace(/s[’']$/i, 's'), dist: distOf(verbAt), verb: true };
+                        }
+                        return { who: nameSpan(words, i) + ' ' + words[i + 1], dist: distOf(verbAt), verb: true };
+                    }
+                    continue;
+                }
+                return { who: nameSpan(words, i), dist: distOf(verbAt), verb: true };
+            }
         }
         for (let i = verbAt + 1; i < n && inWindow(i); i++) {
             // "the banker said, directing his words at Jessica": a name after a preposition is
             // whom it was aimed at, not who spoke.
             if (i > 0 && OBJECT_MARK.test(words[i - 1])) continue;
             if (isPronoun(words[i])) return { who: words[i], dist: distOf(verbAt), verb: true };
-            if (looksLikeName(words[i])) return { who: nameSpan(words, i), dist: distOf(verbAt), verb: true };
+            if (looksLikeName(words[i])) {
+                if (isPossessive(words[i])) {
+                    if (i + 1 < n) {
+                        if (/^voices?$/i.test(words[i + 1])) {
+                            return { who: nameSpan(words, i).replace(/[’']s$/i, '').replace(/s[’']$/i, 's'), dist: distOf(verbAt), verb: true };
+                        }
+                        if (RELATION_NOUN.test(words[i + 1])) {
+                            return { who: nameSpan(words, i) + ' ' + words[i + 1], dist: distOf(verbAt), verb: true };
+                        }
+                    }
+                    continue;
+                }
+                return { who: nameSpan(words, i), dist: distOf(verbAt), verb: true };
+            }
         }
         return null;
     }
     for (let i = nearEnd ? n - 1 : 0; inWindow(i) && i >= 0 && i < n; i += nearEnd ? -1 : 1) {
         if (!looksLikeName(words[i])) continue;
+        if (isPossessive(words[i])) {
+            if (i + 1 < n && /^voices?$/i.test(words[i + 1])) {
+                return { who: nameSpan(words, i).replace(/[’']s$/i, '').replace(/s[’']$/i, 's'), dist: distOf(i), verb: false };
+            }
+            if (i + 1 < n && RELATION_NOUN.test(words[i + 1])) {
+                return { who: nameSpan(words, i) + ' ' + words[i + 1], dist: distOf(i), verb: false };
+            }
+            continue;
+        }
         return { who: nameSpan(words, i), dist: distOf(i), verb: false };
     }
     return null;
@@ -1436,6 +1513,7 @@ function speakerBeside(words, nearEnd) {
 
 function speakerKey(who) {
     if (!who || /^(he|she|it|they|i)$/i.test(who)) return '';
+    if (isRelationPhrase(who)) return '';
     return who.replace(/^the\s+/i, '').trim().replace(/[’']s$/, '').replace(/\s+/g, ' ').toLowerCase();
 }
 
@@ -1544,14 +1622,37 @@ function doneTo(q, key, known) {
 function attributeParagraphs(texts, known) {
     const result = [];
     const recent = [];                          // speakers of the dialogue paragraphs just before
+    let lastAddressed = null;                   // character vocatively addressed in question just before
+    let lastQuestionSpeaker = null;             // speaker of that question
     for (const text of texts) {
         const qs = narrationQuotes(text);
-        if (!qs.length) { result.push(qs); recent.length = 0; continue; }
+        if (!qs.length) {
+            result.push(qs);
+            recent.length = 0;
+            lastAddressed = null;
+            lastQuestionSpeaker = null;
+            continue;
+        }
         const outside = blankBrackets(text).replace(quoteRegex(text), ' ');
         const named = new Set((outside.match(/[A-Z][\w’'-]+/g) || []).map(w => castKey(speakerKey(w), known)).filter(k => known.has(k)));
         const explicit = new Set(qs.filter(q => q.key).map(q => q.key));
+        const isAnswering = /\b(answered|replied|responded|retorted|countered|conceded)\b/i.test(outside) ||
+            qs.some(q => /\b(answered|replied|responded|retorted|countered|conceded)\b/i.test(q.tag || ''));
+
         for (const q of qs) {
             if (q.key) continue;
+
+            // 1. If answering a question that addressed a known character:
+            if (isAnswering && lastAddressed && known.has(lastAddressed) && lastAddressed !== lastQuestionSpeaker) {
+                const possessorMatch = q.who && q.who.match(/^([A-Z][A-Za-z'’-]*)[’']s\s+/i);
+                const possessorKey = possessorMatch ? castKey(speakerKey(possessorMatch[1]), known) : null;
+                if (!possessorKey || possessorKey !== lastAddressed) {
+                    q.key = lastAddressed;
+                    continue;
+                }
+            }
+
+            // 2. Standard pronoun / single named candidate
             if (q.who && named.size === 1 && !doneTo(q, [...named][0], known)) q.key = [...named][0];   // "he said", one candidate
             else if (explicit.size === 1) q.key = [...explicit][0];           // one speaker per paragraph
         }
@@ -1562,6 +1663,25 @@ function attributeParagraphs(texts, known) {
         }
         const speaker = (qs.find(q => q.key) || {}).key;
         if (speaker) recent.push(speaker); else recent.length = 0;
+
+        let nextAddressed = null;
+        for (const q of qs) {
+            if (/[?]["'”’]?\s*$/.test(q.inner) || /[?]/.test(q.inner)) {
+                const endMatch = /[,\s]+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)?)\s*[?]["'”’]?\s*$/.exec(q.inner);
+                const startMatch = /^\s*["'“‘]?\s*([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+)?)\s*,\s+[^?!]+[?]/i.exec(q.inner);
+                const voc = (endMatch && endMatch[1]) || (startMatch && startMatch[1]);
+                if (voc && !NOT_A_NAME.test(voc)) {
+                    const vk = castKey(speakerKey(voc), known);
+                    if (vk && known.has(vk) && vk !== speaker) {
+                        nextAddressed = vk;
+                        break;
+                    }
+                }
+            }
+        }
+        lastAddressed = nextAddressed;
+        lastQuestionSpeaker = speaker;
+
         result.push(qs);
     }
     return result;

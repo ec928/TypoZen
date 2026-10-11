@@ -754,6 +754,49 @@ console.log('--- a speech tag is added to the standing instruction');
     }
     api.setCast({ anna: 'qwen-ryan' });
 }
+
+console.log('--- possessive modifier guard and vocative question-answer attribution');
+{
+    api.setCast({ paul: 'v-paul', jessica: 'v-jessica' });
+    const whoAcross = paras => api.narrationBatches(paras.map(t => ({ innerText: t, getAttribute: () => null })), 0, 4)
+        .flat().filter(p => p.role === 'dialogue').map(p => p.voice);
+
+    // 1. Standalone quotation: "Paul's mother" is not Paul, key stays empty (narrator voice)
+    const qAlone = api.narrationQuotes('Paul’s mother answered in her soft contralto: “The Atreides are known to start late getting their growth, Your Reverence.”');
+    eq('Paul\'s mother answered does not attribute to Paul', qAlone.map(q => q.key), ['']);
+    eq('Paul\'s mother speaker who is recorded', qAlone.map(q => q.who.replace(/’/g, "'")), ['Paul\'s mother']);
+
+    // 2. "Paul's voice" attributes to Paul
+    const qVoice = api.narrationQuotes('Paul’s voice replied, "I am here."');
+    eq('Paul\'s voice attributes to Paul', qVoice.map(q => q.key), ['paul']);
+
+    // 3. "Again Paul said" does not create "again paul"
+    const qAgain = api.narrationQuotes('Again Paul said, "I am here."');
+    eq('Again Paul said attributes to Paul alone', qAgain.map(q => q.key), ['paul']);
+
+    // 4. Vocative question to Jessica followed by Paul's mother answering -> resolves to Jessica
+    const duneDialogue = whoAcross([
+        '"Is he not small for his age, Jessica?" the old woman asked.',
+        'Paul’s mother answered in her soft contralto: “The Atreides are known to start late getting their growth, Your Reverence.”'
+    ]);
+    eq('vocative question to Jessica followed by Paul\'s mother answering speaks in Jessica\'s voice', duneDialogue, ['v-jessica']);
+
+    // 5. Unclear context: without a vocative question to Jessica, err on caution -> narrator voice
+    const unclearDialogue = whoAcross([
+        'The cold wind blew against the shutters.',
+        'Paul’s mother answered in her soft contralto: “The Atreides are known to start late getting their growth, Your Reverence.”'
+    ]);
+    eq('unclear attribution errs on side of caution and sticks to narrator voice', unclearDialogue, []);
+
+    // 6. Question asked of Paul, but answered by Paul's mother -> must never attribute to Paul
+    const questionToPaul = whoAcross([
+        '"Are you ready, Paul?" the Reverend Mother asked.',
+        'Paul’s mother answered: “He is ready.”'
+    ]);
+    eq('question to Paul answered by Paul\'s mother never attributes to Paul', questionToPaul, []);
+
+    api.setCast({ anna: 'qwen-ryan' });
+}
 check('cues off sends no direction',
     /direction: cuesOn && stock \? dir : ''/.test(src));
 check('reading and Try it both pass the standing instruction',
