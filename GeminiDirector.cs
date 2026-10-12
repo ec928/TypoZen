@@ -16,8 +16,8 @@ namespace TypoZen
     /// </summary>
     public static class GeminiDirector
     {
-        public const string DefaultModel = "gemini-3.8-flash";
-        public const string FallbackModel = "gemini-flash-latest";
+        public const string DefaultModel = "gemini-3.5-flash";
+        public const string FallbackModel = "gemini-flash-lite-latest";
 
         public sealed class VoiceOption
         {
@@ -611,8 +611,15 @@ Remember to return ONLY the JSON object.",
 
         private static GeminiCastResult ExecuteWithFallback(string apiKey, string preferredModel, string systemPrompt, string userPrompt)
         {
-            string[] modelsToTry = new string[] { preferredModel, "gemini-3.8-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-pro" };
+            var modelsToTry = new List<string>();
+            if (!string.IsNullOrEmpty(preferredModel)) modelsToTry.Add(preferredModel);
+            foreach (var m in new[] { "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash" })
+            {
+                if (!modelsToTry.Contains(m)) modelsToTry.Add(m);
+            }
+
             Exception lastEx = null;
+            bool anyRateLimit = false;
 
             foreach (var m in modelsToTry)
             {
@@ -624,9 +631,18 @@ Remember to return ONLY the JSON object.",
                 catch (WebException wex)
                 {
                     lastEx = wex;
-                    if (wex.Response is HttpWebResponse httpResp && ((int)httpResp.StatusCode == 404 || (int)httpResp.StatusCode == 400))
+                    if (wex.Response is HttpWebResponse httpResp)
                     {
-                        continue;
+                        int status = (int)httpResp.StatusCode;
+                        if (status == 429) anyRateLimit = true;
+                        // 404: model deprecated / not found
+                        // 400: bad request / unsupported parameters
+                        // 429: quota exhausted for this model on free tier - try next model!
+                        // 503: server overloaded / unavailable - try next model!
+                        if (status == 404 || status == 400 || status == 429 || status == 503)
+                        {
+                            continue;
+                        }
                     }
                     string respBody = ReadErrorResponse(wex);
                     throw new InvalidOperationException("Gemini API error (" + wex.Message + "): " + respBody, wex);
@@ -635,6 +651,12 @@ Remember to return ONLY the JSON object.",
                 {
                     lastEx = ex;
                 }
+            }
+
+            if (anyRateLimit)
+            {
+                throw new InvalidOperationException(
+                    "Gemini API daily quota exceeded across all available free-tier models. Please retry in 24 hours, or enable Pay-As-You-Go billing in Google AI Studio (aistudio.google.com) to remove the free tier rate limits.");
             }
 
             throw new InvalidOperationException("Could not complete Gemini request: " + (lastEx != null ? lastEx.Message : "unknown error"), lastEx);
