@@ -1192,6 +1192,7 @@ namespace TypoZen
             Button findCast = null;
             Button smartCast = null;
             Button apiKeyBtn = null;
+            Button clearCast = null;
             TextBox filterBox = null;
             StackPanel castPage = null;
             ProgressBar smartCastProgress = null;
@@ -1205,18 +1206,24 @@ namespace TypoZen
                     castPage.Children.Add(note("Privacy Mode is on: this book's cast is kept until TypoZen closes and is not saved to disk."));
                 findCast = button("Find characters");
                 findCast.HorizontalAlignment = HorizontalAlignment.Left;
+                findCast.Margin = new Thickness(0, 0, 8, 0);
 
                 smartCast = primary("Smart Cast (Gemini)");
                 smartCast.Margin = new Thickness(0, 0, 8, 0);
-                smartCast.ToolTip = "Smart Cast (Google Gemini)\r\n\r\nAutomatically discovers characters, assigns voice archetypes, and maps quotes for accurate acting.\r\nRequires a free Gemini API key from Google AI Studio:\r\nhttps://aistudio.google.com/app/apikey";
+                smartCast.ToolTip = "Smart Cast (Google Gemini)\r\n\r\nAutomatically discovers characters across the entire novel, assigns universal voice archetypes, and attributes quotes for accurate acting.\r\nRequires a free Gemini API key from Google AI Studio:\r\nhttps://aistudio.google.com/app/apikey";
 
                 apiKeyBtn = button(GeminiDirector.HasApiKey() ? "API Key \u2713" : "API Key...");
+                apiKeyBtn.Margin = new Thickness(0, 0, 8, 0);
                 apiKeyBtn.ToolTip = "Google Gemini API Key\r\n\r\nClick to manage your key. Get a free key at:\r\nhttps://aistudio.google.com/app/apikey\r\n(Stored securely on your PC via Windows DPAPI encryption)";
+
+                clearCast = button("Clear cast");
+                clearCast.ToolTip = "Clear all character voice assignments and quotes for this book.";
 
                 var castButtons = new StackPanel { Orientation = Orientation.Horizontal };
                 castButtons.Children.Add(findCast);
                 castButtons.Children.Add(smartCast);
                 castButtons.Children.Add(apiKeyBtn);
+                castButtons.Children.Add(clearCast);
 
                 filterBox = new TextBox { Width = 200, VerticalContentAlignment = VerticalAlignment.Center };
                 var filterHint = new TextBlock
@@ -1269,7 +1276,8 @@ namespace TypoZen
                     new TextBlock { Text = "Voice", Width = 220, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
                     new TextBlock { Text = "Instruction", Width = 360, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
                     new TextBlock { Text = "Strength", Width = 60, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7,
-                                    ToolTip = "Breeze only: how hard this character's lines follow their instruction, 1 to 10." }
+                                    ToolTip = "Breeze only: how hard this character's lines follow their instruction, 1 to 10." },
+                    new TextBlock { Width = 24, Margin = new Thickness(8, 0, 0, 0) }
                 }));
                 castPage.Children.Add(castPanel);
                 castPage.Children.Add(castEmpty);
@@ -1599,9 +1607,34 @@ namespace TypoZen
                     strengthBox.CaretIndex = strengthBox.Text.Length;
                     e.Handled = true;
                 };
-                var castLine = row(new UIElement[] { playLine, label, lines, cb, sayCell, strengthBox });
+                var removeBtn = button("\u2715");
+                removeBtn.Width = 24;
+                removeBtn.Height = 26;
+                removeBtn.Padding = new Thickness(0);
+                removeBtn.Margin = new Thickness(8, 0, 0, 0);
+                removeBtn.ToolTip = "Remove " + shownName + " from cast";
+                if (busyWhat != null) removeBtn.IsEnabled = false;
+
+                var castLine = row(new UIElement[] { playLine, label, lines, cb, sayCell, strengthBox, removeBtn });
                 castLine.Margin = new Thickness(0);
                 var stripe = new Border { Child = castLine, Padding = new Thickness(0, 3, 4, 3), CornerRadius = new CornerRadius(3), Tag = shownName };
+
+                removeBtn.Click += (s, e) =>
+                {
+                    castPanel.Children.Remove(stripe);
+                    castRows.RemoveAll(r => r.Item1 == key);
+                    castPlays.Remove(playLine);
+                    castStrengthText.Remove(key);
+                    castStrengthBoxes.Remove(key);
+                    cast.Voices.Remove(key);
+                    cast.Names.Remove(key);
+                    cast.Instructions.Remove(key);
+                    cast.Strengths.Remove(key);
+                    if (castRows.Count == 0) castEmpty.Visibility = Visibility.Visible;
+                    say("Removed " + shownName + " from cast. Click Save to apply.");
+                    unsaved.Visibility = Visibility.Visible;
+                };
+
                 if (filterBox != null && !string.IsNullOrWhiteSpace(filterBox.Text))
                 {
                     string q = filterBox.Text.Trim().ToLowerInvariant();
@@ -3015,6 +3048,37 @@ namespace TypoZen
             if (apiKeyBtn != null)
             {
                 apiKeyBtn.Click += (s, e) => showApiKeyModal();
+            }
+
+            if (clearCast != null)
+            {
+                clearCast.Click += (s, e) =>
+                {
+                    if (castRows.Count == 0 && cast.Voices.Count == 0)
+                    {
+                        say("Cast is already empty.");
+                        return;
+                    }
+                    if (MessageBox.Show(win, "Clear all character voice assignments and dialogue quotes for this book?", "Clear cast",
+                                        MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
+
+                    castPanel.Children.Clear();
+                    castRows.Clear();
+                    castPlays.Clear();
+                    castStrengthText.Clear();
+                    castStrengthBoxes.Clear();
+                    castEmpty.Visibility = Visibility.Visible;
+
+                    cast.Voices.Clear();
+                    cast.Names.Clear();
+                    cast.Instructions.Clear();
+                    cast.Strengths.Clear();
+                    cast.QuoteScript.Clear();
+                    cast.QuoteCues.Clear();
+
+                    say("Cleared all cast characters and quotes for this book. Click Save to apply.");
+                    unsaved.Visibility = Visibility.Visible;
+                };
             }
 
             if (smartCast != null)
