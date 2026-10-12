@@ -178,6 +178,81 @@ namespace TypoZen
             return new Dictionary<string, object>();
         }
 
+        public static string FormatJson(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return json;
+            var sb = new StringBuilder();
+            bool inQuote = false;
+            bool escape = false;
+            int indent = 0;
+            for (int i = 0; i < json.Length; i++)
+            {
+                char ch = json[i];
+                if (escape)
+                {
+                    sb.Append(ch);
+                    escape = false;
+                    continue;
+                }
+                if (ch == '\\')
+                {
+                    sb.Append(ch);
+                    if (inQuote) escape = true;
+                    continue;
+                }
+                if (ch == '"')
+                {
+                    inQuote = !inQuote;
+                    sb.Append(ch);
+                    continue;
+                }
+                if (inQuote)
+                {
+                    sb.Append(ch);
+                    continue;
+                }
+                if (ch == '{' || ch == '[')
+                {
+                    if (i + 1 < json.Length && ((ch == '{' && json[i + 1] == '}') || (ch == '[' && json[i + 1] == ']')))
+                    {
+                        sb.Append(ch);
+                        sb.Append(json[++i]);
+                        continue;
+                    }
+                    sb.Append(ch);
+                    sb.AppendLine();
+                    indent++;
+                    sb.Append(new string(' ', indent * 2));
+                }
+                else if (ch == '}' || ch == ']')
+                {
+                    sb.AppendLine();
+                    indent = Math.Max(0, indent - 1);
+                    sb.Append(new string(' ', indent * 2));
+                    sb.Append(ch);
+                }
+                else if (ch == ',')
+                {
+                    sb.Append(ch);
+                    sb.AppendLine();
+                    sb.Append(new string(' ', indent * 2));
+                }
+                else if (ch == ':')
+                {
+                    sb.Append(": ");
+                }
+                else if (ch == ' ' || ch == '\r' || ch == '\n' || ch == '\t')
+                {
+                    // Skip whitespace outside strings
+                }
+                else
+                {
+                    sb.Append(ch);
+                }
+            }
+            return sb.ToString();
+        }
+
         /// <summary>A cast character's strength when none was set.</summary>
         public const double CastStrengthDefault = 4;
 
@@ -235,7 +310,7 @@ namespace TypoZen
             {
                 { "voice", s.Voice ?? "" }, { "breezeVoice", s.BreezeVoice ?? "" }, { "breezeStrength", s.BreezeStrength }, { "monitor", s.Monitor }, { "sampleText", s.SampleText ?? "" }, { "sampleInstruction", s.SampleInstruction ?? "" }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }
             };
-            File.WriteAllText(SettingsPath(cacheDir), new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
+            File.WriteAllText(SettingsPath(cacheDir), FormatJson(new JavaScriptSerializer().Serialize(d)), Encoding.UTF8);
         }
 
         private static string PresetsPath(string cacheDir) { return Path.Combine(RootDir(cacheDir), "presets.json"); }
@@ -253,7 +328,7 @@ namespace TypoZen
             var map = new Dictionary<string, object>();
             foreach (var kv in presets) map[kv.Key] = kv.Value;
             string path = PresetsPath(cacheDir), part = path + ".part";
-            File.WriteAllText(part, new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "presets", map } }), Encoding.UTF8);
+            File.WriteAllText(part, FormatJson(new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "presets", map } })), Encoding.UTF8);
             if (File.Exists(path)) File.Replace(part, path, null); else File.Move(part, path);
         }
 
@@ -337,7 +412,7 @@ namespace TypoZen
                 { "script", c.QuoteScript },
                 { "cues", c.QuoteCues }
             };
-            File.WriteAllText(path, new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
+            File.WriteAllText(path, FormatJson(new JavaScriptSerializer().Serialize(d)), Encoding.UTF8);
         }
 
         /// <summary>The built-in voice's id and name, as the narrator lists it.</summary>
