@@ -624,9 +624,9 @@ namespace TypoZen
             var win = new Window
             {
                 Title = "Narrator Manager",
-                Width = 1000,
+                Width = 1140,
                 Height = 740,
-                MinWidth = 820,
+                MinWidth = 1040,
                 MinHeight = 640,            // below this, "What the narrator was told" has no room
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ResizeMode = ResizeMode.CanResizeWithGrip,
@@ -1276,7 +1276,7 @@ namespace TypoZen
                                     ToolTip = "Exact line count in current chapter, or ~estimate across the full novel for characters who speak later." },
                     new TextBlock { Text = "Voice", Width = 220, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
                     new TextBlock { Text = "Instruction", Width = 360, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
-                    new TextBlock { Text = "Strength", Width = 60, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7,
+                    new TextBlock { Text = "Strength", Width = 52, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7, TextAlignment = TextAlignment.Center,
                                     ToolTip = "Breeze only: how hard this character's lines follow their instruction, 1 to 10." },
                     new TextBlock { Width = 24, Margin = new Thickness(8, 0, 0, 0) }
                 }));
@@ -1497,7 +1497,8 @@ namespace TypoZen
                 }
                 var strengthBox = new TextBox
                 {
-                    Text = castStrengthText[key], Width = 44, Height = 28, Margin = new Thickness(8, 0, 0, 0),
+                    Text = castStrengthText[key], Width = 52, Height = 28, Margin = new Thickness(8, 0, 0, 0),
+                    TextAlignment = TextAlignment.Center,
                     VerticalContentAlignment = VerticalAlignment.Center, MaxLength = 4, IsEnabled = side.Breeze,
                     ToolTip = "Breeze only: how hard this character's lines follow their instruction, 1 to 10 (default 4). A tag's own number, [sad:9], still wins."
                 };
