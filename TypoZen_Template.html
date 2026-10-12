@@ -579,7 +579,7 @@
                     <h3>Quick guide</h3>
                     <table class="tz-help-table tz-help-rules">
                         <tbody>
-                            <tr><td>Give a character their own voice</td><td><strong>Cast for this book &gt; Find characters</strong>, pick a voice on their row, Save.</td></tr>
+                            <tr><td>Give a character their own voice</td><td><strong>Cast for this book &gt; Find characters</strong> (or <strong>Smart Cast</strong>), pick a voice on their row, Save.</td></tr>
                             <tr><td>Make sure a line goes to them</td><td>Name and <em>said</em> in the quote's sentence: <code>"Go," Tom said.</code></td></tr>
                             <tr><td>Set how a character always sounds</td><td>Their <strong>Instruction</strong> box in the cast.</td></tr>
                             <tr><td>Set how the narrator always sounds</td><td>The <strong>Instruction</strong> box on Reading. Never applies to voiced characters.</td></tr>
@@ -596,8 +596,10 @@
                     <h3>Who reads a line of dialogue</h3>
                     <table class="tz-help-table tz-help-rules">
                         <tbody>
+                            <tr><td>A quote mapped by <strong>Smart Cast</strong></td><td>The scripted character, with their delivery cue.</td></tr>
                             <tr><td><code>"Go," Tom said.</code> &middot; <code>Tom asked, "Where?"</code></td><td>Tom.</td></tr>
                             <tr><td><code>Tom turned to Anna. "We have to go."</code></td><td>Tom, who acts, not Anna.</td></tr>
+                            <tr><td><code>"Here we are!" The voice was Duke Leto's.</code></td><td>Duke Leto (voice attribution right after a quote).</td></tr>
                             <tr><td><code>Anna stood up. "Go," she said.</code></td><td>Anna, the only character named.</td></tr>
                             <tr><td><code>"Go," she told Tom.</code></td><td>The narrator: Tom is being spoken to.</td></tr>
                             <tr><td>A line with no name in a back-and-forth</td><td>Whoever spoke two lines before.</td></tr>
@@ -622,7 +624,7 @@
                         <li><strong>Voice</strong>: who reads. <strong>Manage voices...</strong> designs new voices from a description<span data-engine="breeze">, clones one from a short recording (only a voice you have the right to use)</span>, and imports or exports them.</li>
                         <li><strong>Instruction</strong>: how the narrator reads. <strong>Emotion cues</strong>: leave ticked.<span data-engine="breeze"> <strong>Emotion strength</strong>: how strongly Breeze follows instructions, 4 by default.</span></li>
                         <li><strong>Try it</strong>: plays any text with the settings on screen, saved or not, and shows what the narrator was told. It has no cast, so every line is the narrator's.</li>
-                        <li><strong>Cast for this book</strong>: characters, their voices and instructions<span data-engine="breeze"> and strength</span>. The play button on a row speaks a line in that voice.</li>
+                        <li><strong>Cast for this book</strong>: characters, their voices and instructions<span data-engine="breeze"> and strength</span>. <strong>Smart Cast</strong> uses Google Gemini (with your own API key under <strong>API Key...</strong> and model config in <code>gemini.json</code>) to discover characters, aliases, and dialogue across the book; <strong>Clear cast</strong> resets the table, and <strong>✕</strong> removes a single row. The play button on a row speaks a line in that voice.</li>
                     </ul>
                 </section>
                 <section class="tz-help-sec">

@@ -461,13 +461,16 @@ The same in every kind of document. The first row that fits wins.
 Under **Narrator Manager > Cast for this book**, TypoZen provides automated casting and script direction:
 
 - **Find characters**: Scans the book locally and extracts every named speaker, counting their spoken lines.
-- **Smart Cast** (Google Gemini): Analyzes the novel's title and text, discovers the full dramatis personae across the entire book, maps each character to a universal vocal archetype, and attributes multi-turn dialogue with emotional delivery cues.
-- **Clear cast**: Resets all character assignments, line instructions, and AI script overrides for the current book in one click.
+- **Smart Cast** (Google Gemini): Runs a two-phase AI Script Director pass with live batch progress:
+  1. *Dramatis Personae:* Analyzes the novel's title and text to discover every speaking character across the entire book, canonicalizing names and aliases/honorifics (so a character referred to by title, surname, or nickname shares one cast entry), estimating total novel dialogue lines, and matching each character to the best voice in your library or the 19 universal vocal archetypes.
+  2. *Dialogue Attribution:* Processes chapter dialogue in 25-block batches to attribute multi-turn banter, unlabelled quotes, and emotional delivery cues without gateway timeouts.
+- **Clear cast & Row Removal (`✕`)**: **Clear cast** resets all character assignments, line instructions, and AI script overrides for the current book in one click, while the **`✕`** button on each row removes an individual character.
+- **Readable Cast Storage**: Per-book casts and Smart Cast quote mappings are saved as clean, multiline formatted JSON in `%LocalAppData%\TypoZen_Cache_Portable\extensions\QwenTTS\cast\<BookHash>.json` (`book`, `cast`, `names`, `say`, `strength`, `script`, and `cues`).
 - **API Key & Model Settings**: Configure your Google AI Studio API key and customize Gemini AI models:
   - *Storage:* The API key is stored securely on your PC via Windows DPAPI encryption (`%LOCALAPPDATA%\TypoZen\gemini.key`).
   - *Model Configuration (`gemini.json`):* Stored at `%LOCALAPPDATA%\TypoZen\gemini.json`. You can inspect or update the primary model, the automated fallback model chain, and the REST endpoint URL whenever Google releases new models (e.g. `gemini-3.6-flash`, `gemini-4.0-flash`).
   - *Direct In-App Access:* In the **API Key...** dialog in Narrator Manager, click **Find gemini.json 📁** to reveal and highlight the configuration file in Windows File Explorer, or click **Open File ✎** to open it directly in your text editor. You can also adjust the primary model directly in the dialog.
-  - *Automatic Fallback Protection:* If the primary model hits a quota limit (HTTP 429) or is unavailable, TypoZen automatically cycles through the configured fallback chain (`gemini-flash-lite-latest`, `gemini-3.5-flash-lite`, `gemini-3.6-flash`, etc.). If `gemini.json` is missing or corrupted, TypoZen safely falls back to built-in defaults.
+  - *Automatic Fallback Protection:* If the primary model hits a quota limit (HTTP 429/503) or is retired (HTTP 404), TypoZen automatically cycles through the configured fallback chain (`gemini-flash-lite-latest`, `gemini-3.5-flash-lite`, `gemini-3.6-flash`, etc.). If `gemini.json` is missing or corrupted, TypoZen safely falls back to built-in defaults.
   - *Developer Overrides:* `GEMINI_MODEL`, `GEMINI_API_KEY`, and `GEMINI_API_ENDPOINT` environment variables take precedence if specified.
   - *Quota Note:* Developer API keys from [Google AI Studio](https://aistudio.google.com/app/apikey) use their own platform quotas. A consumer Google One / Gemini Advanced ($20/month) subscription applies only to consumer chat (`gemini.google.com`) and does not increase AI Studio API limits. For higher API rate limits, link pay-as-you-go billing in Google AI Studio / Google Cloud.
 

@@ -1,6 +1,6 @@
 # TypoZen Privacy Policy
 
-_Last updated: 11 October 2026._
+_Last updated: 12 October 2026._
 
 **Short version: TypoZen sends nothing anywhere. Everything it remembers stays on your
 computer, and you can delete all of it from inside the app.**
