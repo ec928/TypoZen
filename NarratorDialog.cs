@@ -1206,10 +1206,10 @@ namespace TypoZen
 
                 smartCast = primary("Smart Cast (Gemini)");
                 smartCast.Margin = new Thickness(0, 0, 8, 0);
-                smartCast.ToolTip = "Use Google Gemini to discover characters, auto-assign best-fit voice archetypes, and attribute quotes across complex dialogue.";
+                smartCast.ToolTip = "Smart Cast (Google Gemini)\r\n\r\nAutomatically discovers characters, assigns voice archetypes, and maps quotes for accurate acting.\r\nRequires a free Gemini API key from Google AI Studio:\r\nhttps://aistudio.google.com/app/apikey";
 
                 apiKeyBtn = button(GeminiDirector.HasApiKey() ? "API Key \u2713" : "API Key...");
-                apiKeyBtn.ToolTip = "Configure or change your Google Gemini API key (stored securely via DPAPI).";
+                apiKeyBtn.ToolTip = "Google Gemini API Key\r\n\r\nClick to manage your key. Get a free key at:\r\nhttps://aistudio.google.com/app/apikey\r\n(Stored securely on your PC via Windows DPAPI encryption)";
 
                 var castButtons = new StackPanel { Orientation = Orientation.Horizontal };
                 castButtons.Children.Add(findCast);
@@ -2917,7 +2917,7 @@ namespace TypoZen
                 var keyWin = new Window
                 {
                     Title = "Google Gemini API Key",
-                    Width = 460, Height = 220,
+                    Width = 520, Height = 280,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
                     Owner = win, ResizeMode = ResizeMode.NoResize,
                     ShowInTaskbar = false,
@@ -2927,7 +2927,35 @@ namespace TypoZen
                 var pnl = new StackPanel { Margin = new Thickness(20) };
                 pnl.Children.Add(heading("Google Gemini API Key"));
                 pnl.Children.Add(note("Required for AI character casting and dialogue quote attribution. Stored securely on your PC via Windows Data Protection (DPAPI)."));
-                var keyBox = new TextBox { Text = GeminiDirector.GetApiKey(), Margin = new Thickness(0, 6, 0, 12), Height = 28, VerticalContentAlignment = VerticalAlignment.Center };
+
+                var linkRow = new DockPanel { Margin = new Thickness(0, 6, 0, 8) };
+                var openSiteBtn = button("Get Key at Google AI Studio \u2197");
+                openSiteBtn.ToolTip = "Open https://aistudio.google.com/app/apikey in your default browser";
+                openSiteBtn.Click += (s, e) =>
+                {
+                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://aistudio.google.com/app/apikey") { UseShellExecute = true }); } catch { }
+                };
+                DockPanel.SetDock(openSiteBtn, Dock.Right);
+                linkRow.Children.Add(openSiteBtn);
+
+                var linkTb = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+                linkTb.Inlines.Add(new System.Windows.Documents.Run("Get a free API key at "));
+                var hl = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run("aistudio.google.com/app/apikey"))
+                {
+                    NavigateUri = new Uri("https://aistudio.google.com/app/apikey"),
+                    Cursor = Cursors.Hand,
+                    Foreground = Brushes.DodgerBlue
+                };
+                hl.RequestNavigate += (s, e) =>
+                {
+                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); } catch { }
+                    e.Handled = true;
+                };
+                linkTb.Inlines.Add(hl);
+                linkRow.Children.Add(linkTb);
+                pnl.Children.Add(linkRow);
+
+                var keyBox = new TextBox { Text = GeminiDirector.GetApiKey(), Margin = new Thickness(0, 0, 0, 14), Height = 28, VerticalContentAlignment = VerticalAlignment.Center };
                 pnl.Children.Add(keyBox);
                 var keyBtns = new DockPanel();
                 var saveKey = primary("Save Key");
