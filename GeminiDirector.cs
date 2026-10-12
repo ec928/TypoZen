@@ -150,6 +150,175 @@ namespace TypoZen
 
         #endregion
 
+        #region Model Configuration (gemini.json)
+
+        public sealed class GeminiConfig
+        {
+            public string model { get; set; }
+            public List<string> fallbackModels { get; set; }
+            public string endpoint { get; set; }
+
+            public GeminiConfig()
+            {
+                model = DefaultModel;
+                fallbackModels = new List<string>
+                {
+                    "gemini-flash-lite-latest",
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.6-flash",
+                    "gemini-3.1-flash-lite",
+                    "gemini-3.8-flash"
+                };
+                endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{0}:generateContent";
+            }
+        }
+
+        public static string ConfigFilePath()
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(appData, "TypoZen", "gemini.json");
+        }
+
+        public static string EnsureConfigFileExists()
+        {
+            string path = ConfigFilePath();
+            try
+            {
+                if (!File.Exists(path))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    string defaultJson =
+@"{
+  ""model"": ""gemini-3.5-flash"",
+  ""fallbackModels"": [
+    ""gemini-flash-lite-latest"",
+    ""gemini-3.5-flash-lite"",
+    ""gemini-3.6-flash"",
+    ""gemini-3.1-flash-lite"",
+    ""gemini-3.8-flash""
+  ],
+  ""endpoint"": ""https://generativelanguage.googleapis.com/v1beta/models/{0}:generateContent""
+}
+";
+                    File.WriteAllText(path, defaultJson, Encoding.UTF8);
+                }
+            }
+            catch { }
+            return path;
+        }
+
+        public static GeminiConfig LoadConfig()
+        {
+            var cfg = new GeminiConfig();
+            try
+            {
+                string path = ConfigFilePath();
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path, Encoding.UTF8);
+                    var ser = new JavaScriptSerializer();
+                    var dict = ser.Deserialize<Dictionary<string, object>>(json);
+                    if (dict != null)
+                    {
+                        foreach (var k in new[] { "model", "Model", "preferredModel", "PreferredModel", "primaryModel" })
+                        {
+                            object val;
+                            if (dict.TryGetValue(k, out val) && val is string s && !string.IsNullOrWhiteSpace(s))
+                            {
+                                cfg.model = s.Trim();
+                                break;
+                            }
+                        }
+
+                        foreach (var k in new[] { "fallbackModels", "FallbackModels", "fallback_models", "fallbacks", "models" })
+                        {
+                            object val;
+                            if (dict.TryGetValue(k, out val) && val is System.Collections.IList list)
+                            {
+                                var fbList = new List<string>();
+                                foreach (var item in list)
+                                {
+                                    if (item != null)
+                                    {
+                                        string mName = item.ToString().Trim();
+                                        if (!string.IsNullOrEmpty(mName) && !fbList.Contains(mName))
+                                        {
+                                            fbList.Add(mName);
+                                        }
+                                    }
+                                }
+                                if (fbList.Count > 0)
+                                {
+                                    cfg.fallbackModels = fbList;
+                                }
+                                break;
+                            }
+                        }
+
+                        foreach (var k in new[] { "endpoint", "Endpoint", "apiEndpoint", "url" })
+                        {
+                            object val;
+                            if (dict.TryGetValue(k, out val) && val is string s && !string.IsNullOrWhiteSpace(s))
+                            {
+                                cfg.endpoint = s.Trim();
+                                break;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    EnsureConfigFileExists();
+                }
+            }
+            catch
+            {
+                // Fall back safely to default config if parse fails
+            }
+
+            // Environment overrides
+            string envModel = Environment.GetEnvironmentVariable("GEMINI_MODEL");
+            if (!string.IsNullOrWhiteSpace(envModel)) cfg.model = envModel.Trim();
+
+            string envEndpoint = Environment.GetEnvironmentVariable("GEMINI_API_ENDPOINT");
+            if (!string.IsNullOrWhiteSpace(envEndpoint)) cfg.endpoint = envEndpoint.Trim();
+
+            return cfg;
+        }
+
+        public static void SaveConfig(GeminiConfig config)
+        {
+            if (config == null) return;
+            try
+            {
+                string path = ConfigFilePath();
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                var sb = new StringBuilder();
+                sb.AppendLine("{");
+                sb.AppendLine(string.Format("  \"model\": \"{0}\",", EscapeJsonString(config.model ?? DefaultModel)));
+                sb.AppendLine("  \"fallbackModels\": [");
+                var list = config.fallbackModels ?? new List<string>();
+                for (int i = 0; i < list.Count; i++)
+                {
+                    string comma = (i < list.Count - 1) ? "," : "";
+                    sb.AppendLine(string.Format("    \"{0}\"{1}", EscapeJsonString(list[i]), comma));
+                }
+                sb.AppendLine("  ],");
+                sb.AppendLine(string.Format("  \"endpoint\": \"{0}\"", EscapeJsonString(string.IsNullOrWhiteSpace(config.endpoint) ? "https://generativelanguage.googleapis.com/v1beta/models/{0}:generateContent" : config.endpoint)));
+                sb.AppendLine("}");
+                File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+            }
+            catch { }
+        }
+
+        private static string EscapeJsonString(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+
+        #endregion
+
         #region Prompt Construction & REST Client
 
         private static string CleanBookTitle(string title)
@@ -494,6 +663,12 @@ Remember to return ONLY the JSON object.",
             string cleanTitle = CleanBookTitle(bookTitle);
             var catalog = GetConsolidatedVoiceCatalog(availableVoices);
 
+            var config = LoadConfig();
+            if (string.IsNullOrEmpty(model) || model == DefaultModel)
+            {
+                model = !string.IsNullOrEmpty(config.model) ? config.model : DefaultModel;
+            }
+
             const int chunkSize = 25;
             int totalToAnalyze = Math.Min(dialogueBlocks.Count, 75);
             int totalQuoteBatches = (totalToAnalyze + chunkSize - 1) / chunkSize;
@@ -611,8 +786,27 @@ Remember to return ONLY the JSON object.",
 
         private static GeminiCastResult ExecuteWithFallback(string apiKey, string preferredModel, string systemPrompt, string userPrompt)
         {
+            var config = LoadConfig();
             var modelsToTry = new List<string>();
-            if (!string.IsNullOrEmpty(preferredModel)) modelsToTry.Add(preferredModel);
+            if (!string.IsNullOrEmpty(preferredModel) && preferredModel != DefaultModel)
+            {
+                modelsToTry.Add(preferredModel);
+            }
+            if (!string.IsNullOrEmpty(config.model) && !modelsToTry.Contains(config.model))
+            {
+                modelsToTry.Add(config.model);
+            }
+            if (!string.IsNullOrEmpty(preferredModel) && !modelsToTry.Contains(preferredModel))
+            {
+                modelsToTry.Add(preferredModel);
+            }
+            if (config.fallbackModels != null)
+            {
+                foreach (var m in config.fallbackModels)
+                {
+                    if (!string.IsNullOrEmpty(m) && !modelsToTry.Contains(m)) modelsToTry.Add(m);
+                }
+            }
             foreach (var m in new[] { "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash" })
             {
                 if (!modelsToTry.Contains(m)) modelsToTry.Add(m);
@@ -625,7 +819,7 @@ Remember to return ONLY the JSON object.",
             {
                 try
                 {
-                    var res = ExecuteGeminiRequest(apiKey, m, systemPrompt, userPrompt);
+                    var res = ExecuteGeminiRequest(apiKey, m, systemPrompt, userPrompt, config.endpoint);
                     if (res != null) return res;
                 }
                 catch (WebException wex)
@@ -656,16 +850,36 @@ Remember to return ONLY the JSON object.",
             if (anyRateLimit)
             {
                 throw new InvalidOperationException(
-                    "Gemini API daily quota exceeded across all available free-tier models. Please retry in 24 hours, or enable Pay-As-You-Go billing in Google AI Studio (aistudio.google.com) to remove the free tier rate limits.");
+                    "Gemini API daily quota exceeded across all available models. Please retry in 24 hours, or enable Pay-As-You-Go billing in Google AI Studio (aistudio.google.com) to remove the free tier rate limits.");
             }
 
             throw new InvalidOperationException("Could not complete Gemini request: " + (lastEx != null ? lastEx.Message : "unknown error"), lastEx);
         }
 
-        private static GeminiCastResult ExecuteGeminiRequest(string apiKey, string model, string systemPrompt, string userPrompt)
+        private static GeminiCastResult ExecuteGeminiRequest(string apiKey, string model, string systemPrompt, string userPrompt, string endpointTemplate = null)
         {
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-            string url = string.Format("https://generativelanguage.googleapis.com/v1beta/models/{0}:generateContent?key={1}", model, apiKey);
+            if (string.IsNullOrWhiteSpace(endpointTemplate))
+            {
+                endpointTemplate = "https://generativelanguage.googleapis.com/v1beta/models/{0}:generateContent";
+            }
+
+            string url;
+            if (endpointTemplate.Contains("{1}"))
+            {
+                url = string.Format(endpointTemplate, model, apiKey);
+            }
+            else if (endpointTemplate.Contains("{0}"))
+            {
+                string formatted = string.Format(endpointTemplate, model);
+                string sep = formatted.Contains("?") ? "&" : "?";
+                url = formatted + sep + "key=" + Uri.EscapeDataString(apiKey);
+            }
+            else
+            {
+                string sep = endpointTemplate.Contains("?") ? "&" : "?";
+                url = endpointTemplate.TrimEnd('/') + "/" + model + ":generateContent" + sep + "key=" + Uri.EscapeDataString(apiKey);
+            }
 
             var reqBody = new Dictionary<string, object>
             {

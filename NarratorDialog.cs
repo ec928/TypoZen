@@ -2996,10 +2996,11 @@ namespace TypoZen
 
             Action showApiKeyModal = () =>
             {
+                var cfg = GeminiDirector.LoadConfig();
                 var keyWin = new Window
                 {
-                    Title = "Google Gemini API Key",
-                    Width = 520, Height = 280,
+                    Title = "Google Gemini API & Model Settings",
+                    Width = 560, Height = 410,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
                     Owner = win, ResizeMode = ResizeMode.NoResize,
                     ShowInTaskbar = false,
@@ -3010,7 +3011,7 @@ namespace TypoZen
                 pnl.Children.Add(heading("Google Gemini API Key"));
                 pnl.Children.Add(note("Required for AI character casting and dialogue quote attribution. Stored securely on your PC via Windows Data Protection (DPAPI)."));
 
-                var linkRow = new DockPanel { Margin = new Thickness(0, 6, 0, 8) };
+                var linkRow = new DockPanel { Margin = new Thickness(0, 4, 0, 8) };
                 var openSiteBtn = button("Get Key at Google AI Studio \u2197");
                 openSiteBtn.ToolTip = "Open https://aistudio.google.com/app/apikey in your default browser";
                 openSiteBtn.Click += (s, e) =>
@@ -3037,16 +3038,81 @@ namespace TypoZen
                 linkRow.Children.Add(linkTb);
                 pnl.Children.Add(linkRow);
 
-                var keyBox = new TextBox { Text = GeminiDirector.GetApiKey(), Margin = new Thickness(0, 0, 0, 14), Height = 28, VerticalContentAlignment = VerticalAlignment.Center };
+                var keyBox = new TextBox { Text = GeminiDirector.GetApiKey(), Margin = new Thickness(0, 0, 0, 12), Height = 28, VerticalContentAlignment = VerticalAlignment.Center };
                 pnl.Children.Add(keyBox);
+
+                pnl.Children.Add(heading("Model Configuration (gemini.json)"));
+                pnl.Children.Add(note("Specify the primary Gemini model to use. Advanced fallback models and endpoints are saved in gemini.json."));
+
+                var modelRow = new DockPanel { Margin = new Thickness(0, 0, 0, 16) };
+
+                var configButtons = new StackPanel { Orientation = Orientation.Horizontal };
+                DockPanel.SetDock(configButtons, Dock.Right);
+
+                var findFileBtn = button("Find gemini.json \ud83d\udcc1");
+                findFileBtn.ToolTip = "Highlight gemini.json in Windows File Explorer.\r\nPath: %LOCALAPPDATA%\\TypoZen\\gemini.json";
+                findFileBtn.Click += (s, e) =>
+                {
+                    try
+                    {
+                        string cfgPath = GeminiDirector.EnsureConfigFileExists();
+                        System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + cfgPath + "\"");
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.GetDirectoryName(GeminiDirector.ConfigFilePath())) { UseShellExecute = true });
+                        }
+                        catch { }
+                    }
+                };
+
+                var openFileBtn = button("Open File \u270e");
+                openFileBtn.ToolTip = "Open gemini.json in your default text editor (e.g. Notepad) to edit models and endpoints directly.";
+                openFileBtn.Margin = new Thickness(0);
+                openFileBtn.Click += (s, e) =>
+                {
+                    try
+                    {
+                        string cfgPath = GeminiDirector.EnsureConfigFileExists();
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(cfgPath) { UseShellExecute = true });
+                    }
+                    catch { }
+                };
+
+                configButtons.Children.Add(findFileBtn);
+                configButtons.Children.Add(openFileBtn);
+                modelRow.Children.Add(configButtons);
+
+                var modelLabel = new TextBlock { Text = "Primary Model: ", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+                DockPanel.SetDock(modelLabel, Dock.Left);
+                modelRow.Children.Add(modelLabel);
+
+                var modelBox = new TextBox
+                {
+                    Text = !string.IsNullOrWhiteSpace(cfg.model) ? cfg.model : GeminiDirector.DefaultModel,
+                    Height = 28,
+                    VerticalContentAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 8, 0)
+                };
+                modelRow.Children.Add(modelBox);
+                pnl.Children.Add(modelRow);
+
                 var keyBtns = new DockPanel();
-                var saveKey = primary("Save Key");
-                var clearKey = button("Clear");
+                var saveKey = primary("Save Settings");
+                var clearKey = button("Clear Key");
                 var cancelKey = button("Cancel");
                 cancelKey.IsCancel = true;
                 saveKey.Click += (sk, se) =>
                 {
                     GeminiDirector.SaveApiKey(keyBox.Text.Trim());
+                    string newModel = modelBox.Text.Trim();
+                    if (!string.IsNullOrEmpty(newModel))
+                    {
+                        cfg.model = newModel;
+                        GeminiDirector.SaveConfig(cfg);
+                    }
                     if (apiKeyBtn != null) apiKeyBtn.Content = GeminiDirector.HasApiKey() ? "API Key \u2713" : "API Key...";
                     keyWin.DialogResult = true;
                 };
