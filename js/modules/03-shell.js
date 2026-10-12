@@ -1140,6 +1140,10 @@
                     // host_narrator_cast.
                     try { if (typeof window.narrationCastScan === 'function') window.narrationCastScan(); } catch (eC) {}
                 }
+                else if (msg === "cmd:narrator_cast_gemini") {
+                    // Narrator Manager asks for dialogue excerpts for Gemini Script Director.
+                    try { if (typeof window.narrationGeminiPayload === 'function') window.narrationGeminiPayload(); } catch (eG) {}
+                }
                 else if (msg.startsWith("cmd:narrator_trial:")) {
                     // Narrator Manager' Try it; answers come back as host_narrator_trial.
                     try { window.narrationTrial(msg.substring(19)); } catch (eT) {}

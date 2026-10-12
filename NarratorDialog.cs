@@ -515,6 +515,8 @@ namespace TypoZen
         }
         /// <summary>Set while the dialog is open: the page's answer to a cast scan (host_narrator_cast).</summary>
         public static Action<string> CastScanArrived;
+        /// <summary>Set while the dialog is open: the page's dialogue excerpts for Gemini (host_narrator_gemini_payload).</summary>
+        public static Action<string> GeminiPayloadArrived;
 
         /// <summary>Set while the dialog is open: the page's answers to Try it (host_narrator_trial).</summary>
         public static Action<string> TrialArrived;
@@ -1188,6 +1190,8 @@ namespace TypoZen
             var castEmpty = note("No characters yet. Find characters lists who speaks in this book.");
             castEmpty.Margin = new Thickness(36, 8, 0, 0);
             Button findCast = null;
+            Button smartCast = null;
+            Button apiKeyBtn = null;
             TextBox filterBox = null;
             StackPanel castPage = null;
             if (!string.IsNullOrEmpty(book))
@@ -1199,6 +1203,18 @@ namespace TypoZen
                     castPage.Children.Add(note("Privacy Mode is on: this book's cast is kept until TypoZen closes and is not saved to disk."));
                 findCast = button("Find characters");
                 findCast.HorizontalAlignment = HorizontalAlignment.Left;
+
+                smartCast = primary("Smart Cast (Gemini)");
+                smartCast.Margin = new Thickness(0, 0, 8, 0);
+                smartCast.ToolTip = "Use Google Gemini to discover characters, auto-assign best-fit voice archetypes, and attribute quotes across complex dialogue.";
+
+                apiKeyBtn = button(GeminiDirector.HasApiKey() ? "API Key \u2713" : "API Key...");
+                apiKeyBtn.ToolTip = "Configure or change your Google Gemini API key (stored securely via DPAPI).";
+
+                var castButtons = new StackPanel { Orientation = Orientation.Horizontal };
+                castButtons.Children.Add(findCast);
+                castButtons.Children.Add(smartCast);
+                castButtons.Children.Add(apiKeyBtn);
 
                 filterBox = new TextBox { Width = 200, VerticalContentAlignment = VerticalAlignment.Center };
                 var filterHint = new TextBlock
@@ -1226,7 +1242,7 @@ namespace TypoZen
                 var castActionRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
                 DockPanel.SetDock(filterCell, Dock.Right);
                 castActionRow.Children.Add(filterCell);
-                castActionRow.Children.Add(findCast);
+                castActionRow.Children.Add(castButtons);
                 castPage.Children.Add(castActionRow);
 
                 castPage.Children.Add(row(new UIElement[] {
@@ -2896,6 +2912,208 @@ namespace TypoZen
                 };
             }
 
+            Action showApiKeyModal = () =>
+            {
+                var keyWin = new Window
+                {
+                    Title = "Google Gemini API Key",
+                    Width = 460, Height = 220,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    Owner = win, ResizeMode = ResizeMode.NoResize,
+                    ShowInTaskbar = false,
+                    Background = win.Background, Foreground = win.Foreground
+                };
+                DialogTheme.Apply(keyWin, win);
+                var pnl = new StackPanel { Margin = new Thickness(20) };
+                pnl.Children.Add(heading("Google Gemini API Key"));
+                pnl.Children.Add(note("Required for AI character casting and dialogue quote attribution. Stored securely on your PC via Windows Data Protection (DPAPI)."));
+                var keyBox = new TextBox { Text = GeminiDirector.GetApiKey(), Margin = new Thickness(0, 6, 0, 12), Height = 28, VerticalContentAlignment = VerticalAlignment.Center };
+                pnl.Children.Add(keyBox);
+                var keyBtns = new DockPanel();
+                var saveKey = primary("Save Key");
+                var clearKey = button("Clear");
+                var cancelKey = button("Cancel");
+                cancelKey.IsCancel = true;
+                saveKey.Click += (sk, se) =>
+                {
+                    GeminiDirector.SaveApiKey(keyBox.Text.Trim());
+                    if (apiKeyBtn != null) apiKeyBtn.Content = GeminiDirector.HasApiKey() ? "API Key \u2713" : "API Key...";
+                    keyWin.DialogResult = true;
+                };
+                clearKey.Click += (ck, ce) =>
+                {
+                    GeminiDirector.SaveApiKey("");
+                    if (apiKeyBtn != null) apiKeyBtn.Content = "API Key...";
+                    keyWin.DialogResult = true;
+                };
+                var rightBtns = new StackPanel { Orientation = Orientation.Horizontal };
+                rightBtns.Children.Add(saveKey);
+                rightBtns.Children.Add(cancelKey);
+                DockPanel.SetDock(rightBtns, Dock.Right);
+                keyBtns.Children.Add(rightBtns);
+                keyBtns.Children.Add(clearKey);
+                pnl.Children.Add(keyBtns);
+                keyWin.Content = pnl;
+                keyWin.ShowDialog();
+            };
+
+            if (apiKeyBtn != null)
+            {
+                apiKeyBtn.Click += (s, e) => showApiKeyModal();
+            }
+
+            if (smartCast != null)
+            {
+                smartCast.Click += (s, e) =>
+                {
+                    if (!GeminiDirector.HasApiKey())
+                    {
+                        showApiKeyModal();
+                        if (!GeminiDirector.HasApiKey()) return;
+                    }
+                    say("Extracting dialogue excerpts for Gemini Script Director...");
+                    busyBar.Visibility = Visibility.Visible;
+                    sendToPage("cmd:narrator_cast_gemini");
+                };
+
+                GeminiPayloadArrived = json =>
+                {
+                    new System.Threading.Thread(() =>
+                    {
+                        try
+                        {
+                            var ser = new JavaScriptSerializer { MaxJsonLength = 20 * 1024 * 1024 };
+                            var data = ser.Deserialize<Dictionary<string, object>>(json);
+                            var blocksList = new List<string>();
+                            object bObj;
+                            if (data != null && data.TryGetValue("blocks", out bObj) && bObj is System.Collections.IEnumerable bEnum)
+                            {
+                                foreach (var o in bEnum) if (o != null) blocksList.Add(o.ToString());
+                            }
+
+                            if (blocksList.Count == 0)
+                            {
+                                win.Dispatcher.BeginInvoke((Action)(() =>
+                                {
+                                    busyBar.Visibility = Visibility.Collapsed;
+                                    say("No dialogue quotes found to analyze in this book.");
+                                }));
+                                return;
+                            }
+
+                            win.Dispatcher.BeginInvoke((Action)(() =>
+                            {
+                                say("Gemini is analyzing characters, mapping voices, and attributing dialogue quotes...");
+                            }));
+
+                            // Gather available voices (repertory cast + installed)
+                            var availableVoices = new List<GeminiDirector.VoiceOption>();
+                            foreach (var vi in voices)
+                            {
+                                if (!string.IsNullOrEmpty(vi.Id))
+                                    availableVoices.Add(new GeminiDirector.VoiceOption { Id = vi.Id, Name = vi.Name, Description = vi.Description });
+                            }
+
+                            var allSaved = QwenNarrator.SavedVoices(cacheDir);
+                            foreach (var kv in allSaved)
+                            {
+                                if (!availableVoices.Exists(v => v.Id == kv.Key))
+                                    availableVoices.Add(new GeminiDirector.VoiceOption { Id = kv.Key, Name = kv.Value });
+                            }
+
+                            // If repertory catalog exists, include archetype descriptions
+                            string repCatalogPath = System.IO.Path.Combine(BreezeNarrator.RootDir(cacheDir), "voices", "repertory_catalog.json");
+                            if (System.IO.File.Exists(repCatalogPath))
+                            {
+                                try
+                                {
+                                    var repJson = System.IO.File.ReadAllText(repCatalogPath, System.Text.Encoding.UTF8);
+                                    var repDict = ser.Deserialize<Dictionary<string, object>>(repJson);
+                                    object archList;
+                                    if (repDict != null && repDict.TryGetValue("archetypes", out archList) && archList is System.Collections.IEnumerable aEnum)
+                                    {
+                                        foreach (var a in aEnum)
+                                        {
+                                            if (a is Dictionary<string, object> ad)
+                                            {
+                                                string vid = Convert.ToString(ad["id"]);
+                                                string desc = Convert.ToString(ad["description"]);
+                                                var found = availableVoices.Find(v => v.Id == vid);
+                                                if (found != null && string.IsNullOrEmpty(found.Description))
+                                                    found.Description = desc;
+                                            }
+                                        }
+                                    }
+                                }
+                                catch { }
+                            }
+
+                            string bookTitle = System.IO.Path.GetFileNameWithoutExtension(book);
+                            var result = GeminiDirector.AnalyzeAndCast(bookTitle, blocksList, availableVoices);
+
+                            win.Dispatcher.BeginInvoke((Action)(() =>
+                            {
+                                busyBar.Visibility = Visibility.Collapsed;
+                                try
+                                {
+                                    // Clear existing rows and populate with Gemini's character casting
+                                    castPanel.Children.Clear();
+                                    castRows.Clear();
+                                    castPlays.Clear();
+
+                                    int shown = 0;
+                                    foreach (var c in result.Characters)
+                                    {
+                                        if (shown++ >= 50) break;
+                                        string key = c.Key;
+                                        string name = c.Name + "  (" + c.Lines + " lines)";
+                                        addCastRow(key, name, c.Voice, c.Instruction);
+                                        if (c.Strength > 0)
+                                        {
+                                            castStrengthText[key] = c.Strength.ToString("0.#");
+                                            TextBox sb;
+                                            if (castStrengthBoxes.TryGetValue(key, out sb)) sb.Text = castStrengthText[key];
+                                        }
+                                    }
+
+                                    // Populate quote attribution script
+                                    cast.QuoteScript.Clear();
+                                    cast.QuoteCues.Clear();
+                                    foreach (var q in result.Quotes)
+                                    {
+                                        if (string.IsNullOrEmpty(q.Quote) || string.IsNullOrEmpty(q.Speaker)) continue;
+                                        string norm = q.Quote.Trim().ToLowerInvariant();
+                                        cast.QuoteScript[q.Para + ":" + norm] = q.Speaker;
+                                        cast.QuoteScript[norm] = q.Speaker;
+                                        if (!string.IsNullOrEmpty(q.Cue))
+                                        {
+                                            cast.QuoteCues[q.Para + ":" + norm] = q.Cue;
+                                            cast.QuoteCues[norm] = q.Cue;
+                                        }
+                                    }
+
+                                    say(string.Format("AI Cast complete via {0}: {1} characters cast, {2} quotes mapped. Click Save to apply.",
+                                        result.ModelUsed ?? "Gemini", result.Characters.Count, result.Quotes.Count));
+                                    unsaved.Visibility = Visibility.Visible;
+                                }
+                                catch (Exception popEx)
+                                {
+                                    say("Could not display cast: " + popEx.Message);
+                                }
+                            }));
+                        }
+                        catch (Exception ex)
+                        {
+                            win.Dispatcher.BeginInvoke((Action)(() =>
+                            {
+                                busyBar.Visibility = Visibility.Collapsed;
+                                say("Gemini error: " + ex.Message);
+                            }));
+                        }
+                    }).Start();
+                };
+            }
+
             Func<bool> doSave = () =>
             {
                 try
@@ -3148,6 +3366,7 @@ namespace TypoZen
                 dirtyTimer.Stop();
                 clearCandidates();
                 CastScanArrived = null;
+                GeminiPayloadArrived = null;
                 TrialArrived = null;
                 _sample = sampleBox.Text;
                 try { sendToPage("cmd:narrator_trial_stop"); } catch { }

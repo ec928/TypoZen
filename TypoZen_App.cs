@@ -7523,6 +7523,13 @@ namespace TypoZen
                 if (cb != null) cb(msg.Substring(19));
                 return;
             }
+            else if (msg.StartsWith("host_narrator_gemini_payload:", StringComparison.Ordinal))
+            {
+                // The page's dialogue excerpts for Gemini Script Director.
+                var cb = NarratorDialog.GeminiPayloadArrived;
+                if (cb != null) cb(msg.Substring(29));
+                return;
+            }
             else if (msg.StartsWith("host_narrator_trial:", StringComparison.Ordinal))
             {
                 // Narrator Manager' Try it: the pieces and what the narrator was told, or the end.

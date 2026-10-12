@@ -511,6 +511,9 @@ let _narrAudioHostPrivate = 'localnarrationp';
 let _narrStrength = 0;
 // Breeze strength per cast character (Cast for this book); a character without one is at 4.
 let _narrCastStrength = {};
+// AI Script Director quote attribution maps (quote/para -> speaker key, quote/para -> delivery cue)
+let _narrCastScript = {};
+let _narrCastCues = {};
 // The settings the narration monitor shows beside each piece: what shapes every line.
 let _narrShown = {};
 // The narration monitor is open (cmd:narr_monitor:on): each piece reports itself as it plays.
@@ -530,7 +533,7 @@ function narrAudioUrl(item) {
 window.setNarratorSettings = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
-        const before = JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrCastSay, _narrDirect]);
+        const before = JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrCastSay, _narrDirect, _narrCastScript]);
         _narrVoice = s.voice || '';
         _narrVoiceName = s.voiceName || '';
         _narrStyle = s.style || '';
@@ -545,6 +548,8 @@ window.setNarratorSettings = function (json) {
         NARRATION_BATCH = s.batch > 0 ? s.batch : 8;
         _narrStrength = parseFloat(s.strength) || 0;
         _narrCastStrength = (s.castStrength && typeof s.castStrength === 'object') ? s.castStrength : {};
+        _narrCastScript = (s.castScript && typeof s.castScript === 'object') ? s.castScript : {};
+        _narrCastCues = (s.castCues && typeof s.castCues === 'object') ? s.castCues : {};
         _narrShown = {
             engine: s.engine || 'qwen', voice: s.voiceName || s.voice || '', instruction: _narrInstruction,
             cuesOn: _narrDirect, cue: _narrCue, strength: _narrStrength, speed: _narrSpeed, private: _narrPrivate
@@ -1589,10 +1594,20 @@ function narrationQuotes(text) {
             else pick = left.dist <= right.dist ? left : right;
         } else pick = left || right;
         const who = pick ? pick.who : null;
+        const inner = text.slice(m.index + 1, m.index + m[0].length - 1);
+        let key = castKey(speakerKey(who), _narrCast);
+        let tag = quoteCueTag(text, m.index, m[0].length);
+        if (typeof _narrCastScript !== 'undefined' && _narrCastScript && Object.keys(_narrCastScript).length) {
+            const norm = inner.trim().toLowerCase();
+            const matchedKey = _narrCastScript[norm];
+            if (matchedKey && typeof _narrCast !== 'undefined' && _narrCast && _narrCast[matchedKey]) key = matchedKey;
+            const matchedCue = typeof _narrCastCues !== 'undefined' && _narrCastCues && _narrCastCues[norm];
+            if (matchedCue && !tag) tag = matchedCue;
+        }
         const q = {
-            start: m.index, end: m.index + m[0].length, inner: text.slice(m.index + 1, m.index + m[0].length - 1), who: who,
-            tag: quoteCueTag(text, m.index, m[0].length),
-            key: castKey(speakerKey(who), _narrCast),
+            start: m.index, end: m.index + m[0].length, inner: inner, who: who,
+            tag: tag,
+            key: key,
             context: [beatBefore, beatAfter]
         };
         out.push(q);
@@ -1624,7 +1639,8 @@ function attributeParagraphs(texts, known) {
     const recent = [];                          // speakers of the dialogue paragraphs just before
     let lastAddressed = null;                   // character vocatively addressed in question just before
     let lastQuestionSpeaker = null;             // speaker of that question
-    for (const text of texts) {
+    for (let textIdx = 0; textIdx < texts.length; textIdx++) {
+        const text = texts[textIdx];
         const qs = narrationQuotes(text);
         if (!qs.length) {
             result.push(qs);
@@ -1632,6 +1648,19 @@ function attributeParagraphs(texts, known) {
             lastAddressed = null;
             lastQuestionSpeaker = null;
             continue;
+        }
+
+        // Apply AI Script Director quote attribution (para:norm or norm)
+        if (typeof _narrCastScript !== 'undefined' && _narrCastScript && Object.keys(_narrCastScript).length) {
+            for (const q of qs) {
+                const norm = (q.inner || '').trim().toLowerCase();
+                const matched = _narrCastScript[textIdx + ':' + norm] || _narrCastScript[norm];
+                if (matched && typeof _narrCast !== 'undefined' && _narrCast && _narrCast[matched]) {
+                    q.key = matched;
+                    const cue = (typeof _narrCastCues !== 'undefined' && _narrCastCues) ? (_narrCastCues[textIdx + ':' + norm] || _narrCastCues[norm]) : '';
+                    if (cue && !q.tag) q.tag = cue;
+                }
+            }
         }
         const outside = blankBrackets(text).replace(quoteRegex(text), ' ');
         const named = new Set((outside.match(/[A-Z][\w’'-]+/g) || []).map(w => castKey(speakerKey(w), known)).filter(k => known.has(k)));
@@ -1762,6 +1791,38 @@ window.narrationCastScan = function () {
         window.chrome.webview.postMessage('host_narrator_cast:' + JSON.stringify({ whole: src.whole, characters: list }));
     } catch (e) {}
     return list;
+};
+
+/**
+ * Extracts dialogue paragraphs from the document/chapter for the Gemini Script Director.
+ * Sent to the host as host_narrator_gemini_payload.
+ */
+window.narrationGeminiPayload = function () {
+    narrTagsFor(typeof DocumentModel !== 'undefined' ? DocumentModel : null);
+    const src = castScanTexts();
+    const blocks = [];
+    for (let i = 0; i < src.texts.length; i++) {
+        const t = (src.texts[i] || '').trim();
+        if (/[“"‘]/.test(t)) {
+            blocks.push(t);
+            if (blocks.length >= 250) break;
+        }
+    }
+    if (!blocks.length) {
+        for (let i = 0; i < Math.min(src.texts.length, 50); i++) {
+            const t = (src.texts[i] || '').trim();
+            if (t) blocks.push(t);
+        }
+    }
+    narrLog('gemini payload: ' + blocks.length + ' dialogue blocks extracted'
+        + (src.whole ? ', whole book' : ', loaded part'));
+    try {
+        window.chrome.webview.postMessage('host_narrator_gemini_payload:' + JSON.stringify({
+            whole: src.whole,
+            blocks: blocks
+        }));
+    } catch (e) {}
+    return blocks;
 };
 
 /** A cast line's own direction: the speech tag's words, else its punctuation. */

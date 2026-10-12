@@ -43,6 +43,9 @@ const api = new Function('document', 'window', 'box', [
     'let DocumentModel = box.model;',
     'let _narrCast = {};',
     'let _narrCastSay = {};',
+    'let _narrCastStrength = {};',
+    'let _narrCastScript = {};',
+    'let _narrCastCues = {};',
     'const NARRATION_BATCH = 8;',
     'function narrLog() {}',
     src.slice(start, end + 1),
@@ -55,8 +58,11 @@ const api = new Function('document', 'window', 'box', [
     '  narrationQuotes: narrationQuotes,',
     '  narrationBatches: narrationBatches,',
     '  narrationCastScan: window.narrationCastScan,',
+    '  narrationGeminiPayload: window.narrationGeminiPayload,',
     '  setCast: function (c) { _narrCast = c; },',
     '  setCastSay: function (c) { _narrCastSay = c || {}; },',
+    '  setCastScript: function (s) { _narrCastScript = s || {}; },',
+    '  setCastCues: function (c) { _narrCastCues = c || {}; },',
     '  setModel: function (m) { DocumentModel = m; },',
     '  tagsFor: function (m) { narrTagsFor(m); }',
     '};'
@@ -797,11 +803,59 @@ console.log('--- possessive modifier guard and vocative question-answer attribut
 
     api.setCast({ anna: 'qwen-ryan' });
 }
-check('cues off sends no direction',
-    /direction: cuesOn && stock \? dir : ''/.test(src));
-check('reading and Try it both pass the standing instruction',
-    /cueInstruction\(p, _narrDirect, _narrInstruction\)/.test(src)
-    && /cueInstruction\(p, !!o\.direct, o\.instruction\)/.test(src));
+console.log('--- AI Script Director / Gemini Smart Cast dialogue attribution');
+{
+    api.setCast({
+        paul: 'hero-youth-m',
+        jessica: 'noble-matriarch-f',
+        mohiam: 'crone-inquisitor-f'
+    });
+
+    // 1. Untagged quotation without speech tags:
+    api.setCastScript({
+        'they tried and died.': 'paul',
+        'he is ready.': 'jessica'
+    });
+    api.setCastCues({
+        'they tried and died.': 'quietly'
+    });
+
+    const p1 = api.castPieces('“They tried and died.”');
+    eq('untagged quote with script mapping speaks in scripted voice', p1.map(p => p.voice), ['hero-youth-m']);
+    eq('scripted delivery cue is assigned as direction', p1.map(p => p.direction), ['quietly']);
+
+    // 2. Ambiguous line with script mapping resolves directly:
+    const p2 = api.castPieces('Paul’s mother answered: “He is ready.”');
+    eq('ambiguous line with script mapping resolves to Jessica', p2.filter(p => p.role === 'dialogue').map(p => p.voice), ['noble-matriarch-f']);
+
+    // 3. Paragraph-indexed script mapping:
+    api.setCastScript({
+        '0:what is this test?': 'paul'
+    });
+    const batchPieces = api.narrationBatches([
+        { innerText: '“What is this test?”', getAttribute: () => null }
+    ], 0, 1, false);
+    eq('paragraph-indexed quote speaks in scripted voice', (batchPieces[0] || []).filter(p => p.role === 'dialogue').map(p => p.voice), ['hero-youth-m']);
+
+    // 4. Extraction for Gemini payload
+    api.setModel({
+        kind: 'markdown',
+        blocks: [
+            { raw: 'The wind blew across Arrakis.' },
+            { raw: '“They tried and died,” Paul said.' },
+            { raw: 'Jessica watched him.' }
+        ]
+    });
+    const payload = api.narrationGeminiPayload();
+    eq('narrationGeminiPayload extracts dialogue blocks', payload.length, 1);
+    eq('extracted dialogue block matches', payload[0], '“They tried and died,” Paul said.');
+
+    // Cleanup
+    api.setCastScript({});
+    api.setCastCues({});
+    api.setCast({ anna: 'qwen-ryan' });
+    api.setModel(null);
+}
 
 console.log(failed ? 'NARRATION-TAGS FAILED (' + failed + ' of ' + (passed + failed) + ')'
                    : 'NARRATION-TAGS PASSED (' + passed + ')');

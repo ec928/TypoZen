@@ -214,7 +214,7 @@ if (-not $compiled) {
 
     $wpfAssemblies = @(
         "System", "System.Core", "System.Drawing", "System.Windows.Forms",
-        "Microsoft.VisualBasic",
+        "Microsoft.VisualBasic", "System.Security",
         "System.IO.Compression", "System.IO.Compression.FileSystem",
         "System.Xml", "System.Xaml", "WindowsBase", "PresentationCore",
         "PresentationFramework", "WindowsFormsIntegration"

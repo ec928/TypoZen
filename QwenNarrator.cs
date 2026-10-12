@@ -150,6 +150,10 @@ namespace TypoZen
             // Breeze's strength for each character's lines (1-10). A character without one is at
             // CastStrengthDefault, not the narrator's Emotion strength (Ed, 2026-10-09).
             public Dictionary<string, double> Strengths = new Dictionary<string, double>();
+            // AI Script Director quote attribution map: "para:normQuote" or "normQuote" -> speakerKey
+            public Dictionary<string, string> QuoteScript = new Dictionary<string, string>();
+            // AI Script Director delivery cue map: "para:normQuote" or "normQuote" -> cue
+            public Dictionary<string, string> QuoteCues = new Dictionary<string, string>();
         }
 
         private static string SettingsPath(string cacheDir) { return Path.Combine(RootDir(cacheDir), "narrator.json"); }
@@ -287,7 +291,9 @@ namespace TypoZen
                 Voices = new Dictionary<string, string>(c.Voices),
                 Names = new Dictionary<string, string>(c.Names),
                 Instructions = new Dictionary<string, string>(c.Instructions),
-                Strengths = new Dictionary<string, double>(c.Strengths)
+                Strengths = new Dictionary<string, double>(c.Strengths),
+                QuoteScript = new Dictionary<string, string>(c.QuoteScript),
+                QuoteCues = new Dictionary<string, string>(c.QuoteCues)
             };
         }
 
@@ -298,7 +304,15 @@ namespace TypoZen
             lock (SessionCasts)
                 if (SessionCasts.TryGetValue(CastPath(cacheDir, book), out held)) return Copy(held);
             var d = ReadJson(CastPath(cacheDir, book));
-            return new Cast { Voices = StringMap(d, "cast"), Names = StringMap(d, "names"), Instructions = StringMap(d, "say"), Strengths = NumberMap(d, "strength") };
+            return new Cast
+            {
+                Voices = StringMap(d, "cast"),
+                Names = StringMap(d, "names"),
+                Instructions = StringMap(d, "say"),
+                Strengths = NumberMap(d, "strength"),
+                QuoteScript = StringMap(d, "script"),
+                QuoteCues = StringMap(d, "cues")
+            };
         }
 
         public static void SaveCast(string cacheDir, string book, Cast c)
@@ -313,7 +327,16 @@ namespace TypoZen
             // Saved for good now, so the session's copy no longer stands in front of the file.
             lock (SessionCasts) SessionCasts.Remove(path);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            var d = new Dictionary<string, object> { { "book", book }, { "cast", c.Voices }, { "names", c.Names }, { "say", c.Instructions }, { "strength", c.Strengths } };
+            var d = new Dictionary<string, object>
+            {
+                { "book", book },
+                { "cast", c.Voices },
+                { "names", c.Names },
+                { "say", c.Instructions },
+                { "strength", c.Strengths },
+                { "script", c.QuoteScript },
+                { "cues", c.QuoteCues }
+            };
             File.WriteAllText(path, new JavaScriptSerializer().Serialize(d), Encoding.UTF8);
         }
 
@@ -413,6 +436,8 @@ namespace TypoZen
                 { "cast", cast.Voices },
                 { "castSay", cast.Instructions },
                 { "castStrength", cast.Strengths },
+                { "castScript", cast.QuoteScript },
+                { "castCues", cast.QuoteCues },
                 // Render into this session's private folder, not the lasting cache.
                 { "private", privateMode },
                 // Where the page fetches this narrator's audio from (BreezeNarrator has its own).
