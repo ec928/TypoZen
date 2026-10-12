@@ -1264,8 +1264,8 @@ namespace TypoZen
 
                 castPage.Children.Add(row(new UIElement[] {
                     new TextBlock { Width = 28, Margin = new Thickness(0, 0, 8, 0) },
-                    new TextBlock { Text = "Character", Width = 160, Opacity = 0.7 },
-                    new TextBlock { Text = "Lines", Width = 44, Opacity = 0.7 },
+                    new TextBlock { Text = "Character", Width = 180, Opacity = 0.7 },
+                    new TextBlock { Text = "Lines", Width = 68, Opacity = 0.7 },
                     new TextBlock { Text = "Voice", Width = 220, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
                     new TextBlock { Text = "Instruction", Width = 360, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
                     new TextBlock { Text = "Strength", Width = 60, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7,
@@ -1430,6 +1430,16 @@ namespace TypoZen
                 foreach (var v in voices) cb.Items.Add(v);
                 cb.SelectedIndex = 0;
                 for (int i = 1; i < cb.Items.Count; i++) if (((VoiceItem)cb.Items[i]).Id == selected) cb.SelectedIndex = i;
+                if (!string.IsNullOrEmpty(selected) && cb.SelectedIndex == 0)
+                {
+                    var arch = GeminiDirector.UniversalArchetypes.Find(a => a.Id == selected);
+                    if (arch != null)
+                    {
+                        var vi = new VoiceItem { Id = arch.Id, Name = arch.Name, Description = arch.Description, Source = "archetype" };
+                        cb.Items.Add(vi);
+                        cb.SelectedItem = vi;
+                    }
+                }
                 cb.SelectionChanged += (s, e) =>
                 {
                     var item = cb.SelectedItem as VoiceItem;
@@ -1567,10 +1577,10 @@ namespace TypoZen
                 }
                 var label = new TextBlock
                 {
-                    Text = shownName, Width = 160, VerticalAlignment = VerticalAlignment.Center,
+                    Text = shownName, Width = 180, VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = name
                 };
-                var lines = new TextBlock { Text = lineCount, Width = 44, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
+                var lines = new TextBlock { Text = lineCount, Width = 68, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
                 // An empty instruction box says what it is for, rather than looking unfinished.
                 var sayCell = new Grid { Margin = sayBox.Margin };
                 sayBox.Margin = new Thickness(0);
@@ -3077,6 +3087,12 @@ namespace TypoZen
 
                             // If repertory catalog exists, include archetype descriptions
                             string repCatalogPath = System.IO.Path.Combine(BreezeNarrator.RootDir(cacheDir), "voices", "repertory_catalog.json");
+                            if (!System.IO.File.Exists(repCatalogPath))
+                            {
+                                string alt = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TypoZen_Cache_Portable", "extensions", "BreezeTTS", "voices", "repertory_catalog.json");
+                                if (System.IO.File.Exists(alt)) repCatalogPath = alt;
+                            }
+
                             if (System.IO.File.Exists(repCatalogPath))
                             {
                                 try
@@ -3091,10 +3107,17 @@ namespace TypoZen
                                             if (a is Dictionary<string, object> ad)
                                             {
                                                 string vid = Convert.ToString(ad["id"]);
+                                                string vname = Convert.ToString(ad["name"]);
                                                 string desc = Convert.ToString(ad["description"]);
                                                 var found = availableVoices.Find(v => v.Id == vid);
-                                                if (found != null && string.IsNullOrEmpty(found.Description))
-                                                    found.Description = desc;
+                                                if (found != null)
+                                                {
+                                                    if (string.IsNullOrEmpty(found.Description)) found.Description = desc;
+                                                }
+                                                else
+                                                {
+                                                    availableVoices.Add(new GeminiDirector.VoiceOption { Id = vid, Name = vname, Description = desc });
+                                                }
                                             }
                                         }
                                     }
@@ -3102,7 +3125,8 @@ namespace TypoZen
                                 catch { }
                             }
 
-                            string bookTitle = System.IO.Path.GetFileNameWithoutExtension(book);
+                            string payloadTitle = data != null && data.ContainsKey("title") ? Convert.ToString(data["title"]) : "";
+                            string bookTitle = !string.IsNullOrWhiteSpace(payloadTitle) ? payloadTitle : (System.IO.Path.GetFileNameWithoutExtension(book) ?? "Book");
                             var result = GeminiDirector.AnalyzeAndCast(bookTitle, blocksList, availableVoices, (cur, total, msg) =>
                             {
                                 win.Dispatcher.BeginInvoke((Action)(() =>
@@ -3137,11 +3161,15 @@ namespace TypoZen
                                     castPlays.Clear();
 
                                     int shown = 0;
+                                    int speakingCount = 0;
                                     foreach (var c in result.Characters)
                                     {
-                                        if (shown++ >= 50) break;
+                                        if (shown++ >= 60) break;
+                                        if (c.Lines > 0) speakingCount++;
                                         string key = c.Key;
-                                        string name = c.Name + "  (" + c.Lines + " lines)";
+                                        string name = c.Lines > 0
+                                            ? string.Format("{0}  ({1} lines)", c.Name, c.Lines)
+                                            : string.Format("{0}  (book cast)", c.Name);
                                         addCastRow(key, name, c.Voice, c.Instruction);
                                         if (c.Strength > 0)
                                         {
@@ -3167,8 +3195,8 @@ namespace TypoZen
                                         }
                                     }
 
-                                    say(string.Format("AI Cast complete via {0}: {1} characters cast, {2} quotes mapped. Click Save to apply.",
-                                        result.ModelUsed ?? "Gemini", result.Characters.Count, result.Quotes.Count));
+                                    say(string.Format("AI Cast complete via {0}: {1} novel characters cast ({2} in this chapter), {3} quotes mapped. Click Save to apply.",
+                                        result.ModelUsed ?? "Gemini", result.Characters.Count, speakingCount, result.Quotes.Count));
                                     unsaved.Visibility = Visibility.Visible;
                                 }
                                 catch (Exception popEx)

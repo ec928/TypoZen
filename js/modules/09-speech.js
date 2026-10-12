@@ -1814,11 +1814,18 @@ window.narrationGeminiPayload = function () {
             if (t) blocks.push(t);
         }
     }
+    let docTitle = "";
+    if (typeof DocumentModel !== 'undefined' && DocumentModel && DocumentModel.title) {
+        docTitle = DocumentModel.title;
+    } else if (typeof document !== 'undefined' && document.title && document.title !== "TypoZen Editor") {
+        docTitle = document.title;
+    }
     narrLog('gemini payload: ' + blocks.length + ' dialogue blocks extracted'
-        + (src.whole ? ', whole book' : ', loaded part'));
+        + (src.whole ? ', whole book' : ', loaded part') + (docTitle ? ', title: ' + docTitle : ''));
     try {
         window.chrome.webview.postMessage('host_narrator_gemini_payload:' + JSON.stringify({
             whole: src.whole,
+            title: docTitle,
             blocks: blocks
         }));
     } catch (e) {}
