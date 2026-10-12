@@ -624,9 +624,9 @@ namespace TypoZen
             var win = new Window
             {
                 Title = "Narrator Manager",
-                Width = 1140,
+                Width = 1080,
                 Height = 740,
-                MinWidth = 1040,
+                MinWidth = 1000,
                 MinHeight = 640,            // below this, "What the narrator was told" has no room
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 ResizeMode = ResizeMode.CanResizeWithGrip,
