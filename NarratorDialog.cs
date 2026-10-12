@@ -1194,6 +1194,8 @@ namespace TypoZen
             Button apiKeyBtn = null;
             TextBox filterBox = null;
             StackPanel castPage = null;
+            ProgressBar smartCastProgress = null;
+            TextBlock smartCastStatus = null;
             if (!string.IsNullOrEmpty(book))
             {
                 castPage = new StackPanel();
@@ -1244,6 +1246,21 @@ namespace TypoZen
                 castActionRow.Children.Add(filterCell);
                 castActionRow.Children.Add(castButtons);
                 castPage.Children.Add(castActionRow);
+
+                smartCastStatus = new TextBlock
+                {
+                    Text = "", FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(0, 2, 0, 4), Opacity = 0.9,
+                    Visibility = Visibility.Collapsed
+                };
+                smartCastProgress = new ProgressBar
+                {
+                    Height = 6, Margin = new Thickness(0, 0, 0, 8),
+                    Minimum = 0, Maximum = 100, Value = 0,
+                    Visibility = Visibility.Collapsed
+                };
+                castPage.Children.Add(smartCastStatus);
+                castPage.Children.Add(smartCastProgress);
 
                 castPage.Children.Add(row(new UIElement[] {
                     new TextBlock { Width = 28, Margin = new Thickness(0, 0, 8, 0) },
@@ -2999,6 +3016,17 @@ namespace TypoZen
                         showApiKeyModal();
                         if (!GeminiDirector.HasApiKey()) return;
                     }
+                    if (smartCastStatus != null)
+                    {
+                        smartCastStatus.Text = "Extracting dialogue excerpts for Gemini Script Director...";
+                        smartCastStatus.Visibility = Visibility.Visible;
+                    }
+                    if (smartCastProgress != null)
+                    {
+                        smartCastProgress.IsIndeterminate = true;
+                        smartCastProgress.Visibility = Visibility.Visible;
+                    }
+                    smartCast.IsEnabled = false;
                     say("Extracting dialogue excerpts for Gemini Script Director...");
                     busyBar.Visibility = Visibility.Visible;
                     sendToPage("cmd:narrator_cast_gemini");
@@ -3023,16 +3051,14 @@ namespace TypoZen
                             {
                                 win.Dispatcher.BeginInvoke((Action)(() =>
                                 {
+                                    smartCast.IsEnabled = true;
+                                    if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
+                                    if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
                                     busyBar.Visibility = Visibility.Collapsed;
                                     say("No dialogue quotes found to analyze in this book.");
                                 }));
                                 return;
                             }
-
-                            win.Dispatcher.BeginInvoke((Action)(() =>
-                            {
-                                say("Gemini is analyzing characters, mapping voices, and attributing dialogue quotes...");
-                            }));
 
                             // Gather available voices (repertory cast + installed)
                             var availableVoices = new List<GeminiDirector.VoiceOption>();
@@ -3077,10 +3103,31 @@ namespace TypoZen
                             }
 
                             string bookTitle = System.IO.Path.GetFileNameWithoutExtension(book);
-                            var result = GeminiDirector.AnalyzeAndCast(bookTitle, blocksList, availableVoices);
+                            var result = GeminiDirector.AnalyzeAndCast(bookTitle, blocksList, availableVoices, (cur, total, msg) =>
+                            {
+                                win.Dispatcher.BeginInvoke((Action)(() =>
+                                {
+                                    if (smartCastProgress != null)
+                                    {
+                                        smartCastProgress.IsIndeterminate = false;
+                                        smartCastProgress.Minimum = 0;
+                                        smartCastProgress.Maximum = total;
+                                        smartCastProgress.Value = cur;
+                                    }
+                                    if (smartCastStatus != null)
+                                    {
+                                        smartCastStatus.Text = msg;
+                                        smartCastStatus.Visibility = Visibility.Visible;
+                                    }
+                                    say(msg);
+                                }));
+                            });
 
                             win.Dispatcher.BeginInvoke((Action)(() =>
                             {
+                                smartCast.IsEnabled = true;
+                                if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
+                                if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
                                 busyBar.Visibility = Visibility.Collapsed;
                                 try
                                 {
@@ -3134,6 +3181,9 @@ namespace TypoZen
                         {
                             win.Dispatcher.BeginInvoke((Action)(() =>
                             {
+                                smartCast.IsEnabled = true;
+                                if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
+                                if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
                                 busyBar.Visibility = Visibility.Collapsed;
                                 say("Gemini error: " + ex.Message);
                             }));

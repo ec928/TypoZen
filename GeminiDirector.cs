@@ -120,7 +120,13 @@ namespace TypoZen
 
         #region Prompt Construction & REST Client
 
-        public static GeminiCastResult AnalyzeAndCast(string bookTitle, List<string> dialogueBlocks, List<VoiceOption> availableVoices, string customApiKey = null, string model = DefaultModel)
+        public static GeminiCastResult AnalyzeAndCast(
+            string bookTitle, 
+            List<string> dialogueBlocks, 
+            List<VoiceOption> availableVoices, 
+            Action<int, int, string> onProgress = null,
+            string customApiKey = null, 
+            string model = DefaultModel)
         {
             string apiKey = !string.IsNullOrEmpty(customApiKey) ? customApiKey.Trim() : GetApiKey();
             if (string.IsNullOrEmpty(apiKey))
@@ -137,14 +143,34 @@ namespace TypoZen
                 voiceSb.AppendLine(string.Format("- Voice ID: \"{0}\", Name: \"{1}\", Acoustic traits: \"{2}\"", v.Id, v.Name, v.Description ?? ""));
             }
 
-            // Build dialogue text blocks
-            var textSb = new StringBuilder();
-            for (int i = 0; i < dialogueBlocks.Count; i++)
-            {
-                textSb.AppendLine(string.Format("[Paragraph {0}]: {1}", i, dialogueBlocks[i]));
-            }
+            const int chunkSize = 25;
+            int totalToAnalyze = Math.Min(dialogueBlocks.Count, 75);
+            int totalBatches = (totalToAnalyze + chunkSize - 1) / chunkSize;
 
-            string systemPrompt = 
+            var aggregatedResult = new GeminiCastResult();
+            var knownCharsDict = new Dictionary<string, CharacterCast>();
+
+            for (int b = 0; b < totalBatches; b++)
+            {
+                int startIdx = b * chunkSize;
+                int count = Math.Min(chunkSize, totalToAnalyze - startIdx);
+                var chunkBlocks = dialogueBlocks.GetRange(startIdx, count);
+
+                string statusMsg = b == 0
+                    ? string.Format("Discovering characters & voice archetypes (Part 1 of {0})...", totalBatches)
+                    : string.Format("Attributing dialogue quotes (Part {0} of {1})...", b + 1, totalBatches);
+
+                if (onProgress != null)
+                    onProgress(b + 1, totalBatches, statusMsg);
+
+                // Build dialogue text blocks with relative paragraph numbering for Gemini
+                var textSb = new StringBuilder();
+                for (int i = 0; i < chunkBlocks.Count; i++)
+                {
+                    textSb.AppendLine(string.Format("[Paragraph {0}]: {1}", i, chunkBlocks[i]));
+                }
+
+                string systemPrompt = 
 @"You are an expert Audio Drama Casting Director and Literary Dialogue Attributor.
 Analyze the provided novel excerpt, discover all speaking characters, map them to the best-fitting voice archetype from the provided catalog, and attribute each spoken dialogue quotation accurately.
 
@@ -181,7 +207,7 @@ You must return ONLY a JSON object conforming strictly to this JSON schema:
   ]
 }";
 
-            string userPrompt = string.Format(
+                string userPrompt = string.Format(
 @"BOOK TITLE: {0}
 
 AVAILABLE VOICE CATALOG:
@@ -191,36 +217,73 @@ TEXT TO ANALYZE AND CAST:
 {2}
 
 Remember to return ONLY the JSON object.",
-                bookTitle ?? "Book", voiceSb.ToString(), textSb.ToString());
+                    bookTitle ?? "Book", voiceSb.ToString(), textSb.ToString());
 
-            // Attempt request with primary model, fallback if needed
-            string[] modelsToTry = new string[] { model, "gemini-3.8-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-pro" };
-            Exception lastEx = null;
+                // Attempt request with primary model, fallback if needed
+                string[] modelsToTry = new string[] { model, "gemini-3.8-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-pro" };
+                Exception lastEx = null;
+                GeminiCastResult batchResult = null;
 
-            foreach (var m in modelsToTry)
-            {
-                try
+                foreach (var m in modelsToTry)
                 {
-                    return ExecuteGeminiRequest(apiKey, m, systemPrompt, userPrompt);
-                }
-                catch (WebException wex)
-                {
-                    lastEx = wex;
-                    string respBody = ReadErrorResponse(wex);
-                    if (wex.Response is HttpWebResponse httpResp && ((int)httpResp.StatusCode == 404 || (int)httpResp.StatusCode == 400))
+                    try
                     {
-                        // Model not supported or deprecated, try next model in list
-                        continue;
+                        batchResult = ExecuteGeminiRequest(apiKey, m, systemPrompt, userPrompt);
+                        if (batchResult != null) break;
                     }
-                    throw new InvalidOperationException("Gemini API error (" + wex.Message + "): " + respBody, wex);
+                    catch (WebException wex)
+                    {
+                        lastEx = wex;
+                        if (wex.Response is HttpWebResponse httpResp && ((int)httpResp.StatusCode == 404 || (int)httpResp.StatusCode == 400))
+                        {
+                            continue;
+                        }
+                        if (b > 0) break;
+                        string respBody = ReadErrorResponse(wex);
+                        throw new InvalidOperationException("Gemini API error (" + wex.Message + "): " + respBody, wex);
+                    }
+                    catch (Exception ex)
+                    {
+                        lastEx = ex;
+                    }
                 }
-                catch (Exception ex)
+
+                if (batchResult == null)
                 {
-                    lastEx = ex;
+                    if (b == 0)
+                        throw new InvalidOperationException("Could not complete Gemini request: " + (lastEx != null ? lastEx.Message : "unknown error"), lastEx);
+                    else
+                        break;
+                }
+
+                aggregatedResult.ModelUsed = batchResult.ModelUsed;
+
+                // Merge characters
+                foreach (var c in batchResult.Characters)
+                {
+                    if (string.IsNullOrEmpty(c.Key)) continue;
+                    CharacterCast existing;
+                    if (knownCharsDict.TryGetValue(c.Key, out existing))
+                    {
+                        existing.Lines += c.Lines;
+                    }
+                    else
+                    {
+                        knownCharsDict[c.Key] = c;
+                    }
+                }
+
+                // Merge quotes with actual book block offset
+                foreach (var q in batchResult.Quotes)
+                {
+                    q.Para += startIdx;
+                    aggregatedResult.Quotes.Add(q);
                 }
             }
 
-            throw new InvalidOperationException("Could not complete Gemini request: " + (lastEx != null ? lastEx.Message : "unknown error"), lastEx);
+            aggregatedResult.Characters.AddRange(knownCharsDict.Values);
+            aggregatedResult.Characters.Sort((a, b) => b.Lines.CompareTo(a.Lines));
+            return aggregatedResult;
         }
 
         private static GeminiCastResult ExecuteGeminiRequest(string apiKey, string model, string systemPrompt, string userPrompt)
@@ -262,8 +325,12 @@ Remember to return ONLY the JSON object.",
             var request = (HttpWebRequest)WebRequest.Create(url);
             request.Method = "POST";
             request.ContentType = "application/json; charset=utf-8";
+            request.Headers.Add("x-goog-api-key", apiKey);
+            request.KeepAlive = false;
+            request.ServicePoint.Expect100Continue = false;
             request.ContentLength = payloadBytes.Length;
-            request.Timeout = 120000; // 2 minutes timeout for novel chunks
+            request.Timeout = 120000;
+            request.ReadWriteTimeout = 120000;
 
             using (var stream = request.GetRequestStream())
             {

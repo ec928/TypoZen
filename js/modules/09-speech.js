@@ -1805,7 +1805,7 @@ window.narrationGeminiPayload = function () {
         const t = (src.texts[i] || '').trim();
         if (/[“"‘]/.test(t)) {
             blocks.push(t);
-            if (blocks.length >= 250) break;
+            if (blocks.length >= 75) break;
         }
     }
     if (!blocks.length) {
