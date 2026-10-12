@@ -52,7 +52,7 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. Prepared for the 0.16.25 Store package._
+_Limit 1,500 characters. Submitted to the Store for the 0.16.25 package (2026-10-13)._
 
 - New: Smart Cast (AI Script Director) in Narrator Manager. Optionally connect your own Google Gemini API key to automatically discover a novel's full character cast, merge aliases/titles, assign matching voices from a 19-voice theatrical repertory, and attribute complex multi-turn dialogue with emotional delivery cues.
 - Future-proof AI model configuration: customize primary and fallback Gemini models in %LOCALAPPDATA%\TypoZen\gemini.json (with automatic quota fallback and one-click access from the API Key dialog).
