@@ -60,7 +60,7 @@ All user data for both the installer and portable builds lives in a single folde
 
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
-- **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows — or in **Microsoft Online Natural Voices** (opt-in under Extensions), a **Kokoro neural voice**, or the **Qwen narrator**. Choose the voice and speed in **File → Read Aloud**.
+- **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows — or in **Microsoft Online Natural Voices** (opt-in under Extensions), a **Kokoro neural voice**, the **Qwen narrator**, or the **Breeze TTS narrator** with full character casts, voice cloning, and AI Smart Cast. Choose the voice and speed in **File → Read Aloud**.
 - **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said in the voice you have chosen for reading aloud -- or, with the Qwen narrator chosen, in the quick voice on your computer closest to it (same country and gender), since the narrator takes too long to start for one word.
 - **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
 - **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
@@ -72,7 +72,7 @@ All user data for both the installer and portable builds lives in a single folde
 - **25 curated built-in themes:** Choose from dark, light, and mono themes, or use **Customise Theme…** to build and save your own palettes. Every state takes its colour from the theme, one colour per meaning: the accent for what is current (selection, the search match you are on, the paragraph being read aloud), a highlighter colour of the theme's own for marks, and faint washes of the text colour for hover and the cursor's paragraph.
 - **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions. Drag tabs into any order; the order is kept.
 - **Offline & Portable:** Zero telemetry, and nothing on the network unless you enable an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
-- **Extensions, if you want them:** **File > Extensions** offers **Microsoft Natural Voices** (opt-in streaming natural voices directly from Microsoft Edge speech services), **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, **Whisper** to transcribe a voice recording, and **Qwen narration** — an AI narrator that reads a book in character voices (experimental; needs an NVIDIA graphics card). All are optional and strictly user-controlled. Removing or disabling an extension instantly takes away what it added. Whisper adds no menu of its own.
+- **Extensions, if you want them:** **File > Extensions** offers **Microsoft Natural Voices** (opt-in streaming natural voices directly from Microsoft Edge speech services), **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, **Whisper** to transcribe a voice recording, and **Breeze TTS / Qwen narration** — AI narrators that read books with distinct character voices, voice cloning, and AI casting (experimental; needs an NVIDIA graphics card). All are optional and strictly user-controlled. Removing or disabling an extension instantly takes away what it added. Whisper adds no menu of its own.
 ---
 ## Architecture & Tech Stack
 TypoZen is a hybrid native-web application designed for speed, local-first privacy, and an ultra-lightweight footprint.
@@ -439,20 +439,56 @@ The same in every kind of document. The first row that fits wins.
 
 | In the text | Read by |
 |---|---|
+| A quote mapped by **Smart Cast** (AI Script Director) | the scripted character, with their delivery cue |
 | A name and a speaking word in the quote's sentence: `"Go," Tom said.` · `Tom asked, "Where?"` · `"Go," said Tom.` | Tom |
 | One person speaking to another: `"Go," Jill told Paul.` | Jill, the speaker, not Paul |
 | No speaking word, but someone acts beside the quote: `Tom turned to Anna. "We have to go."` | Tom, who acts, not Anna |
+| Voice attribution right after a quote: `“Here we are!” The voice was Duke Leto’s.` | Duke Leto |
 | *she* or *he*: `Anna stood up. "Go," she said.` | Anna, when the paragraph names only one character |
 | *she* or *he* beside someone else's name: `"Go," she told Tom.` | the narrator: Tom is being spoken to, so "she" is someone else |
 | *she* or *he* in a paragraph naming two characters, or none | the narrator |
-| A line with no name in a back-and-forth: `"Hello," Tom said.` / `"Hi," Anna said.` / `"How are you?"` | Tom, who spoke two lines before. Narration between the lines stops this |
+| A line with no name in a back-and-forth: `"Hello," Tom said.` / `"Hi," Anna said.` / `"How are you?"` | Tom, who spoke two lines before (dialogue thread preserved across short action beats) |
 | A character with no voice in the cast | the narrator |
 
 - When the speaker is unclear, the narrator reads the line — never the wrong character.
 - Names count as written in full: **Mr Bennet** and **Mrs Bennet** are two characters. A surname on its own matches only when one character has it.
-- A name on the line before the quote does not count.
+- Backward voice attribution: sentences like `The voice was [Name]’s` or `The voice belonged to [Name]` immediately following a quotation attribute that line to the named character.
 - Dialogue can use double quotes (`"…"` or `“…”`) or, as British books do, single curly quotes (`‘…’`).
 - To make sure a line goes to the right character in your own text, give it a name and a speaking word: `"Go," Tom said.`
+
+#### Smart Cast & Voice Repertory Ensemble
+
+Under **Narrator Manager > Cast for this book**, TypoZen provides automated casting and script direction:
+
+- **Find characters**: Scans the book locally and extracts every named speaker, counting their spoken lines.
+- **Smart Cast** (Google Gemini): Analyzes the novel's title and text, discovers the full dramatis personae across the entire book, maps each character to a universal vocal archetype, and attributes multi-turn dialogue with emotional delivery cues.
+- **Clear cast**: Resets all character assignments, line instructions, and AI script overrides for the current book in one click.
+- **API Key**: Configure your Google AI Studio API key (stored securely on your PC via Windows DPAPI encryption).
+  - *Quota Note:* Developer API keys from [Google AI Studio](https://aistudio.google.com/app/apikey) use their own platform quotas. A consumer Google One / Gemini Advanced ($20/month) subscription applies only to consumer chat (`gemini.google.com`) and does not increase AI Studio API limits. For higher API rate limits, link pay-as-you-go billing in Google AI Studio / Google Cloud.
+
+##### The 19 Universal Voice Archetypes (Breeze TTS)
+
+| Archetype ID | Voice Archetype | Profile | Example Roles |
+|:---|:---|:---|:---|
+| `hero-youth-m` | **Hero / Youth (Male)** | Clear bright tenor, earnest, thoughtful, sharp diction | Protagonists, young heroes, squires |
+| `noble-matriarch-f` | **Noble Matriarch (Female)** | Soft contralto, composed, serene, quiet authority | Queens, matriarchs, diplomats |
+| `ruler-commander-m` | **Ruler / Commander (Male)** | Deep resonant baritone, dignified, natural command | Emperors, dukes, fleet commanders |
+| `crone-inquisitor-f` | **Crone / Inquisitor (Female)** | Dry, raspy elderly voice, cold imperious severity | High priestesses, dowagers, witches |
+| `veteran-soldier-m` | **Veteran Soldier (Male)** | Rough gravelly baritone, battle-scarred, loyal warmth | Veteran captains, warriors, marshals |
+| `servant-companion-m` | **Servant / Companion (Male)** | Grounded baritone, candid, loyal retainer, dry wit | Sidekicks, faithful retainers, companions |
+| `maid-attendant-f` | **Maid / Attendant (Female)** | Practical warm alto, bustling, firm, slightly maternal | Housekeepers, attendants, maids |
+| `guard-sentry-m` | **Guard / Sentry (Male)** | Gruff tenor/baritone, blunt military brevity, vigilant | Palace guards, sentries, watchmen |
+| `fierce-warrior-f` | **Fierce Warrior (Female)** | Clear resonant mezzo, fierce, direct, ringing intensity | Shieldmaidens, rebels, desert fighters |
+| `arrogant-noble-m` | **Arrogant Noble (Male)** | High-strung tenor, petulant, proud, theatrical | Spoiled princes, vain rivals, duelists |
+| `scheming-courtier-m` | **Scheming Courtier (Male)** | Silky smooth baritone, oily, polished, sinister warmth | Whispering viziers, corrupt advisors |
+| `scholar-mentat-m` | **Scholar / Mentat (Male)** | Precise elderly intellectual, dry calculating diction | Mentats, philosophers, librarians |
+| `twisted-minion-m` | **Twisted Minion (Male)** | Sibilant tenor, purring whisper, gloating, cruel | Poisoners, torturers, sinister henchmen |
+| `tyrant-overlord-m` | **Tyrant / Overlord (Male)** | Deep rumbling bass, heavy, guttural, menacing | Galactic tyrants, warlords, autocrats |
+| `nomad-chieftain-m` | **Nomad Chieftain (Male)** | Weathered desert baritone, solemn, sand-blown, reverent | Clan naibs, desert elders, guides |
+| `sorrowful-healer-m` | **Sorrowful Healer (Male)** | Soft-spoken tenor, melancholic, weary grief | Tragic informants, healers, doctors |
+| `synthetic-drone-x` | **Synthetic Drone (Neutral)** | Crisp synthesized cadence, ultra-articulate, dry wit | Ship AIs, androids, culture drones |
+| `ingenue-ward-f` | **Ingenue / Ward (Female)** | Lyrical soprano, sweet, innocent, melodic delivery | Young princesses, gentle wards, maidens |
+| `alien-emissary-x` | **Alien Emissary (Neutral)** | Spacious ethereal cadence, ancient, enigmatic | Cosmic entities, telepaths, emissaries |
 
 #### Global instructions — set once, apply everywhere
 

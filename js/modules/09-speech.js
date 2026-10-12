@@ -1644,9 +1644,34 @@ function attributeParagraphs(texts, known) {
         const qs = narrationQuotes(text);
         if (!qs.length) {
             result.push(qs);
-            recent.length = 0;
-            lastAddressed = null;
-            lastQuestionSpeaker = null;
+            // Backward voice attribution: e.g. "The voice was Duke Leto's."
+            const voiceMatch = /^\s*the\s+voice\s+(?:was|belonged\s+to)\s+([A-Z][\w’'-]+(?:\s+[A-Z][\w’'-]+)?)[’']s/i.exec(text);
+            if (voiceMatch) {
+                const vk = castKey(speakerKey(voiceMatch[1]), known);
+                if (vk && known.has(vk)) {
+                    if (result.length > 1 && result[result.length - 2].length > 0) {
+                        const prevQs = result[result.length - 2];
+                        for (const pq of prevQs) {
+                            if (!pq.key) pq.key = vk;
+                        }
+                    }
+                    recent.length = 0;
+                    recent.push(vk);
+                    continue;
+                }
+            }
+            // If paragraph introduces/describes a known character as subject (e.g. "Duke Leto strided into the hall.")
+            const sSub = sentenceSubject(text);
+            const sKey = sSub ? castKey(speakerKey(sSub), known) : null;
+            if (sKey && known.has(sKey)) {
+                recent.length = 0;
+                recent.push(sKey);
+            } else if (text.length > 350) {
+                // Only reset recent dialogue thread on long scene transitions / lengthy descriptions
+                recent.length = 0;
+                lastAddressed = null;
+                lastQuestionSpeaker = null;
+            }
             continue;
         }
 
@@ -1804,7 +1829,22 @@ window.narrationGeminiPayload = function () {
     for (let i = 0; i < src.texts.length; i++) {
         const t = (src.texts[i] || '').trim();
         if (/[“"‘]/.test(t)) {
-            blocks.push(t);
+            let combined = t;
+            // If this quote has no speech tag in its own paragraph, and the next paragraph is an explicit voice attribution
+            if (i + 1 < src.texts.length) {
+                const nextT = (src.texts[i + 1] || '').trim();
+                if (/^\s*the\s+voice\s+(?:was|belonged\s+to)\b/i.test(nextT)) {
+                    combined = combined + ' ' + nextT;
+                }
+            }
+            // If preceding paragraph was a short entrance/action beat and current quote only has a pronoun
+            if (i > 0 && /^\s*["'“‘]/.test(t) && /\b(he|she|they)\s+said\b/i.test(t)) {
+                const prevT = (src.texts[i - 1] || '').trim();
+                if (prevT && !/[“"‘]/.test(prevT) && prevT.length < 200 && /\b[A-Z][\w’'-]+/.test(prevT)) {
+                    combined = prevT + ' ' + combined;
+                }
+            }
+            blocks.push(combined);
             if (blocks.length >= 75) break;
         }
     }

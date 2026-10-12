@@ -850,6 +850,19 @@ console.log('--- AI Script Director / Gemini Smart Cast dialogue attribution');
     eq('narrationGeminiPayload extracts dialogue blocks', payload.length, 1);
     eq('extracted dialogue block matches', payload[0], '“They tried and died,” Paul said.');
 
+    // 5. Backward voice attribution heuristic in attributeParagraphs:
+    api.setCast({
+        leto: 'ruler-commander-m',
+        jessica: 'noble-matriarch-f'
+    });
+    api.setCastScript({});
+    const backwardDialogue = api.narrationBatches([
+        { innerText: '“Here we are!”', getAttribute: () => null },
+        { innerText: 'The voice was Duke Leto’s.', getAttribute: () => null },
+        { innerText: '“I thought you might have lost yourself in this hideous place,” Duke Leto said.', getAttribute: () => null }
+    ], 0, 4).flat().filter(p => p.role === 'dialogue').map(p => p.voice);
+    eq('backward voice attribution binds quote to Duke Leto', backwardDialogue, ['ruler-commander-m', 'ruler-commander-m']);
+
     // Cleanup
     api.setCastScript({});
     api.setCastCues({});
