@@ -58,6 +58,14 @@ namespace TypoZen
             public double Strength { get; set; }
             public int Lines { get; set; }
             public string Role { get; set; }
+            public int BookLines { get; set; }
+            public List<string> Aliases { get; set; }
+
+            public CharacterCast()
+            {
+                Aliases = new List<string>();
+                Strength = 4.0;
+            }
         }
 
         public sealed class QuoteAttribution
@@ -223,11 +231,23 @@ Map every single character to the most fitting voice archetype from the provided
 RULES:
 1. Comprehensiveness: For recognized literary works, epics, and novels (e.g. Dune, Matter, Pride and Prejudice, etc.), you MUST cast the entire novel's dramatis personae (15-25 characters), NOT just the characters who speak in the opening excerpt.
    Include characters across the entire work (e.g. for Dune: Baron Vladimir Harkonnen, Emperor Shaddam IV, Paul Atreides, Lady Jessica, Duke Leto Atreides, Thufir Hawat, Gurney Halleck, Duncan Idaho, Stilgar, Chani, Dr. Wellington Yueh, Reverend Mother Gaius Helen Mohiam, Feyd-Rautha, Glossu Rabban, Piter De Vries, Princess Irulan, Count Fenring, Alia Atreides, Shadout Mapes, Liet-Kynes).
-2. Character Keys: Use clean, lowercase canonical keys (e.g. 'paul', 'jessica', 'leto', 'baron', 'emperor', 'feyd', 'rabban', 'piter', 'stilgar', 'chani', 'gurney', 'idaho', 'hawat', 'yueh', 'mohiam', 'irulan', 'mapes', 'kynes', 'fenring', 'alia').
-3. Voice Archetype: Choose the best-fitting Voice ID from the catalog based on gender, vocal register, acoustic traits, and character personality.
-4. Acting Instruction: Provide vivid acting delivery instructions (under 60 chars) suitable for TTS emotion prompting.
-5. Emotion Strength: Assign a recommended Breeze emotion strength between 1.0 and 10.0 (default 4.0).
-6. Dramatic Role: Briefly describe their dramatic function or archetype.
+2. Canonical Keys: Use clean, lowercase single-word canonical keys (e.g. 'paul', 'jessica', 'leto', 'baron', 'emperor', 'feyd', 'rabban', 'piter', 'stilgar', 'chani', 'gurney', 'idaho', 'hawat', 'yueh', 'mohiam', 'irulan', 'mapes', 'kynes', 'fenring', 'alia').
+3. Estimated Novel Lines ('bookLines'): Estimate the approximate number of spoken dialogue lines this character speaks across the entire novel (e.g. Paul: ~480, Jessica: ~320, Baron Harkonnen: ~160, Duke Leto: ~130, Stilgar: ~170, Gurney: ~110, Hawat: ~95, Chani: ~90, Feyd: ~75, Yueh: ~65, Mohiam: ~60, Duncan: ~45, Emperor: ~40, Rabban: ~35, Irulan: ~20).
+4. Aliases ('aliases'): Provide an array of alternative names, titles, honorifics, surnames, and short forms used for this character throughout the book so dialogue quotes can be accurately mapped.
+   Examples:
+   - Duke Leto: [""duke"", ""the duke"", ""leto"", ""duke leto"", ""duke leto atreides"", ""leto atreides"", ""my lord""]
+   - Paul: [""paul"", ""the boy"", ""young master"", ""paul atreides"", ""muad'dib"", ""usul"", ""the duke paul atreides""]
+   - Baron: [""baron"", ""the baron"", ""vladimir"", ""vladimir harkonnen"", ""baron harkonnen"", ""baron vladimir""]
+   - Jessica: [""jessica"", ""lady jessica"", ""his mother"", ""the lady jessica""]
+   - Mohiam: [""mohiam"", ""reverend mother"", ""gaius helen mohiam"", ""the reverend mother"", ""old woman""]
+   - Yueh: [""yueh"", ""dr. yueh"", ""doctor yueh"", ""wellington yueh""]
+   - Hawat: [""hawat"", ""thufir"", ""thufir hawat"", ""the mentat""]
+   - Irulan: [""irulan"", ""princess irulan""]
+   - Emperor: [""emperor"", ""shaddam"", ""shaddam iv"", ""padishah emperor""]
+5. Voice Archetype: Choose the best-fitting Voice ID from the catalog based on gender, vocal register, acoustic traits, and character personality.
+6. Acting Instruction: Provide vivid acting delivery instructions (under 60 chars) suitable for TTS emotion prompting.
+7. Emotion Strength: Assign a recommended Breeze emotion strength between 1.0 and 10.0 (default 4.0).
+8. Dramatic Role: Briefly describe their dramatic function or archetype.
 
 Return ONLY a valid JSON object adhering strictly to this JSON schema:
 {
@@ -238,7 +258,9 @@ Return ONLY a valid JSON object adhering strictly to this JSON schema:
       ""voice"": ""voice-id-from-catalog"",
       ""instruction"": ""acting delivery instruction"",
       ""strength"": 4.0,
-      ""role"": ""Dramatic role""
+      ""role"": ""Dramatic role"",
+      ""bookLines"": 130,
+      ""aliases"": [""alias1"", ""alias2""]
     }
   ]
 }";
@@ -286,7 +308,14 @@ Remember to return ONLY the JSON object.",
             foreach (var kc in knownCharacters)
             {
                 if (string.IsNullOrEmpty(kc.Key)) continue;
-                knownSb.AppendLine(string.Format("- {0}: {1}", kc.Key, kc.Name));
+                if (kc.Aliases != null && kc.Aliases.Count > 0)
+                {
+                    knownSb.AppendLine(string.Format("- {0}: {1} (aliases: {2})", kc.Key, kc.Name, string.Join(", ", kc.Aliases)));
+                }
+                else
+                {
+                    knownSb.AppendLine(string.Format("- {0}: {1}", kc.Key, kc.Name));
+                }
             }
 
             var catalogText = FormatVoiceCatalogForPrompt(voiceCatalog);
@@ -296,10 +325,10 @@ Remember to return ONLY the JSON object.",
 Attribute each spoken dialogue quotation in the provided paragraphs to the TRUE speaker using the provided canonical dramatis personae keys.
 
 RULES:
-1. Canonical Speaker Keys: Use the provided character keys whenever possible (e.g. 'paul', 'jessica', 'mohiam', 'hawat', 'leto', 'baron', 'emperor', etc.).
+1. Canonical Speaker Keys: Attribute each quote strictly to the provided character keys (e.g. use 'leto' for the Duke / Duke Leto, 'paul' for Paul / the boy, 'jessica' for Lady Jessica / his mother, 'mohiam' for the Reverend Mother, 'hawat' for Thufir Hawat, etc.). Do NOT create new keys like 'duke' or 'paul atreides' when a canonical character already exists!
 2. Attribution Logic: Resolve pronouns ('he said', 'she whispered'), relational epithets ('his mother', 'the Duke'), and multi-turn banter without speech tags based on surrounding narrative context.
 3. Delivery Cues: Extract emotional cues or delivery direction indicated in the surrounding prose (e.g. 'whispering', 'coldly', 'gently', 'furious').
-4. Minor / New Characters: If an unlisted minor character speaks (e.g. a guard, soldier, or servant), create a clean lowercase key and assign them a voice archetype in 'newCharacters'.
+4. Minor / New Characters: Only if an unlisted new character speaks (e.g. an unlisted guard or servant), create a clean lowercase key and assign them a voice archetype in 'newCharacters'.
 
 Return ONLY a valid JSON object adhering strictly to this schema:
 {
@@ -348,6 +377,105 @@ Remember to return ONLY the JSON object.",
             return new GeminiCastResult { ModelUsed = preferredModel };
         }
 
+        #region Canonical Speaker Resolution
+
+        private static string NormalizeToken(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return "";
+            text = text.Trim().ToLowerInvariant();
+            if (text.StartsWith("the ")) text = text.Substring(4).Trim();
+            var sb = new StringBuilder();
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (char.IsLetterOrDigit(c) || char.IsWhiteSpace(c)) sb.Append(c);
+            }
+            return sb.ToString().Trim();
+        }
+
+        private static void RegisterInAliasMap(CharacterCast c, Dictionary<string, CharacterCast> map)
+        {
+            if (c == null) return;
+            if (!string.IsNullOrEmpty(c.Key))
+            {
+                map[c.Key.ToLowerInvariant()] = c;
+                string normKey = NormalizeToken(c.Key);
+                if (!string.IsNullOrEmpty(normKey)) map[normKey] = c;
+            }
+            if (!string.IsNullOrEmpty(c.Name))
+            {
+                map[c.Name.ToLowerInvariant()] = c;
+                string normName = NormalizeToken(c.Name);
+                if (!string.IsNullOrEmpty(normName)) map[normName] = c;
+
+                // Split name tokens (e.g. "Duke Leto Atreides")
+                string[] parts = c.Name.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var p in parts)
+                {
+                    string low = p.Trim().ToLowerInvariant();
+                    if (low.Length >= 3 && !map.ContainsKey(low))
+                    {
+                        map[low] = c;
+                    }
+                }
+            }
+            if (c.Aliases != null)
+            {
+                foreach (var a in c.Aliases)
+                {
+                    if (string.IsNullOrWhiteSpace(a)) continue;
+                    string low = a.Trim().ToLowerInvariant();
+                    map[low] = c;
+                    string norm = NormalizeToken(a);
+                    if (!string.IsNullOrEmpty(norm)) map[norm] = c;
+                }
+            }
+        }
+
+        private static Dictionary<string, CharacterCast> BuildAliasMap(IEnumerable<CharacterCast> characters)
+        {
+            var map = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in characters)
+            {
+                RegisterInAliasMap(c, map);
+            }
+            return map;
+        }
+
+        public static CharacterCast ResolveSpeaker(string rawSpeaker, Dictionary<string, CharacterCast> aliasMap, Dictionary<string, CharacterCast> charsDict)
+        {
+            if (string.IsNullOrWhiteSpace(rawSpeaker)) return null;
+            string key = rawSpeaker.Trim().ToLowerInvariant();
+
+            CharacterCast match;
+            if (aliasMap != null && aliasMap.TryGetValue(key, out match)) return match;
+
+            string norm = NormalizeToken(key);
+            if (!string.IsNullOrEmpty(norm) && aliasMap != null && aliasMap.TryGetValue(norm, out match)) return match;
+
+            if (charsDict != null && charsDict.TryGetValue(key, out match)) return match;
+
+            // Fuzzy/contains match: check if rawSpeaker is contained in any character name or key
+            if (charsDict != null)
+            {
+                foreach (var c in charsDict.Values)
+                {
+                    if (string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase)) return c;
+                    if (string.Equals(c.Name, key, StringComparison.OrdinalIgnoreCase)) return c;
+                    if (c.Aliases != null && c.Aliases.Exists(a => string.Equals(a, key, StringComparison.OrdinalIgnoreCase))) return c;
+
+                    // If speaker contains key (e.g. "duke leto" contains "leto", "paul atreides" contains "paul")
+                    if (key.Contains(c.Key.ToLowerInvariant())) return c;
+                    if (c.Name.ToLowerInvariant().Contains(key)) return c;
+                    if (key.Contains(c.Name.ToLowerInvariant())) return c;
+                }
+            }
+
+            return null;
+        }
+
+        #endregion
+
         public static GeminiCastResult AnalyzeAndCast(
             string bookTitle, 
             List<string> dialogueBlocks, 
@@ -392,6 +520,9 @@ Remember to return ONLY the JSON object.",
                 }
             }
 
+            // Build alias lookup map for resolving speakers
+            var aliasMap = BuildAliasMap(charsDict.Values);
+
             // ================================================================
             // PHASE 2: Attribute Dialogue Quotes in Chapter Excerpts
             // ================================================================
@@ -410,26 +541,46 @@ Remember to return ONLY the JSON object.",
                 var knownList = new List<CharacterCast>(charsDict.Values);
                 var chunkResult = AttributeDialogueChunk(apiKey, chunkBlocks, startIdx, knownList, catalog, ref modelUsed, model);
 
-                // Merge quotes and increment lines count for speakers
+                // Merge quotes and increment lines count for speakers via canonical resolver
                 foreach (var q in chunkResult.Quotes)
                 {
-                    aggregatedResult.Quotes.Add(q);
                     if (!string.IsNullOrEmpty(q.Speaker))
                     {
-                        CharacterCast existing;
-                        if (charsDict.TryGetValue(q.Speaker, out existing))
+                        var canonical = ResolveSpeaker(q.Speaker, aliasMap, charsDict);
+                        if (canonical != null)
                         {
-                            existing.Lines++;
+                            q.Speaker = canonical.Key;
+                            canonical.Lines++;
+                        }
+                        else
+                        {
+                            CharacterCast existing;
+                            if (charsDict.TryGetValue(q.Speaker, out existing))
+                            {
+                                existing.Lines++;
+                            }
                         }
                     }
+                    aggregatedResult.Quotes.Add(q);
                 }
 
-                // Add any new minor characters discovered in dialogue
+                // Add any new minor characters discovered in dialogue ONLY if they are truly novel
                 foreach (var nc in chunkResult.Characters)
                 {
-                    if (!string.IsNullOrEmpty(nc.Key) && !charsDict.ContainsKey(nc.Key))
+                    if (string.IsNullOrEmpty(nc.Key)) continue;
+
+                    var matched = ResolveSpeaker(nc.Key, aliasMap, charsDict)
+                               ?? ResolveSpeaker(nc.Name, aliasMap, charsDict);
+
+                    if (matched != null)
+                    {
+                        // Duplicate alias from Phase 2! Merge line count into existing canonical character
+                        matched.Lines += nc.Lines;
+                    }
+                    else if (!charsDict.ContainsKey(nc.Key))
                     {
                         charsDict[nc.Key] = nc;
+                        RegisterInAliasMap(nc, aliasMap);
                     }
                 }
             }
@@ -444,10 +595,13 @@ Remember to return ONLY the JSON object.",
                 else remainingBookCast.Add(c);
             }
 
-            // Spoken characters sorted by line count descending
+            // Spoken characters sorted by chapter line count descending
             speakingInChapter.Sort((a, b) => b.Lines.CompareTo(a.Lines));
 
-            // Combined cast: current speakers first, then the entire novel cast!
+            // Remaining novel characters sorted by estimated novel dialogue prominence descending
+            remainingBookCast.Sort((a, b) => b.BookLines.CompareTo(a.BookLines));
+
+            // Combined cast: active speakers first, then major novel characters by prominence
             aggregatedResult.Characters.AddRange(speakingInChapter);
             aggregatedResult.Characters.AddRange(remainingBookCast);
             aggregatedResult.ModelUsed = modelUsed;
@@ -625,6 +779,35 @@ Remember to return ONLY the JSON object.",
                         {
                             try { lines = Convert.ToInt32(c["lines"]); } catch { }
                         }
+                        int bookLines = 0;
+                        if (c.ContainsKey("bookLines") && c["bookLines"] != null)
+                        {
+                            try { bookLines = Convert.ToInt32(c["bookLines"]); } catch { }
+                        }
+                        else if (c.ContainsKey("book_lines") && c["book_lines"] != null)
+                        {
+                            try { bookLines = Convert.ToInt32(c["book_lines"]); } catch { }
+                        }
+                        else if (c.ContainsKey("estimatedLines") && c["estimatedLines"] != null)
+                        {
+                            try { bookLines = Convert.ToInt32(c["estimatedLines"]); } catch { }
+                        }
+
+                        var aliases = new List<string>();
+                        object aliasesObj = null;
+                        if (c.ContainsKey("aliases")) aliasesObj = c["aliases"];
+                        else if (c.ContainsKey("alias")) aliasesObj = c["alias"];
+
+                        if (aliasesObj is System.Collections.IEnumerable aEnum)
+                        {
+                            foreach (var a in aEnum)
+                            {
+                                if (a == null) continue;
+                                string astr = Convert.ToString(a).Trim();
+                                if (!string.IsNullOrEmpty(astr) && !aliases.Contains(astr))
+                                    aliases.Add(astr);
+                            }
+                        }
 
                         if (!string.IsNullOrEmpty(key))
                         {
@@ -636,6 +819,8 @@ Remember to return ONLY the JSON object.",
                                 Instruction = instr,
                                 Strength = strength,
                                 Lines = lines,
+                                BookLines = bookLines,
+                                Aliases = aliases,
                                 Role = role
                             });
                         }

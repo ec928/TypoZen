@@ -1272,7 +1272,8 @@ namespace TypoZen
                 castPage.Children.Add(row(new UIElement[] {
                     new TextBlock { Width = 28, Margin = new Thickness(0, 0, 8, 0) },
                     new TextBlock { Text = "Character", Width = 180, Opacity = 0.7 },
-                    new TextBlock { Text = "Lines", Width = 68, Opacity = 0.7 },
+                    new TextBlock { Text = "Lines", Width = 68, Opacity = 0.7,
+                                    ToolTip = "Exact line count in current chapter, or ~estimate across the full novel for characters who speak later." },
                     new TextBlock { Text = "Voice", Width = 220, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
                     new TextBlock { Text = "Instruction", Width = 360, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7 },
                     new TextBlock { Text = "Strength", Width = 60, Margin = new Thickness(8, 0, 0, 0), Opacity = 0.7,
@@ -1588,7 +1589,28 @@ namespace TypoZen
                     Text = shownName, Width = 180, VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = name
                 };
-                var lines = new TextBlock { Text = lineCount, Width = 68, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
+                string lineTip = null;
+                if (lineCount.StartsWith("~"))
+                {
+                    lineTip = string.Format("Estimated {0} spoken dialogue lines across the entire novel (speaks in later chapters)", lineCount);
+                }
+                else if (!string.IsNullOrEmpty(lineCount) && int.TryParse(lineCount, out _))
+                {
+                    lineTip = string.Format("{0} spoken dialogue lines in loaded chapter", lineCount);
+                }
+                else if (lineCount == "book cast")
+                {
+                    lineTip = "Cast member from the novel";
+                }
+                else if (!string.IsNullOrEmpty(lineCount))
+                {
+                    lineTip = lineCount;
+                }
+                var lines = new TextBlock
+                {
+                    Text = lineCount, Width = 68, VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7,
+                    ToolTip = lineTip
+                };
                 // An empty instruction box says what it is for, rather than looking unfinished.
                 var sayCell = new Grid { Margin = sayBox.Margin };
                 sayBox.Margin = new Thickness(0);
@@ -3233,7 +3255,9 @@ namespace TypoZen
                                         string key = c.Key;
                                         string name = c.Lines > 0
                                             ? string.Format("{0}  ({1} lines)", c.Name, c.Lines)
-                                            : string.Format("{0}  (book cast)", c.Name);
+                                            : (c.BookLines > 0
+                                                ? string.Format("{0}  (~{1} lines)", c.Name, c.BookLines)
+                                                : string.Format("{0}  (book cast)", c.Name));
                                         addCastRow(key, name, c.Voice, c.Instruction);
                                         if (c.Strength > 0)
                                         {
