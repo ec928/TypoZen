@@ -16,8 +16,8 @@ namespace TypoZen
     /// </summary>
     public static class GeminiDirector
     {
-        public const string DefaultModel = "gemini-2.5-flash";
-        public const string FallbackModel = "gemini-2.0-flash";
+        public const string DefaultModel = "gemini-3.8-flash";
+        public const string FallbackModel = "gemini-flash-latest";
 
         public sealed class VoiceOption
         {
@@ -194,7 +194,7 @@ Remember to return ONLY the JSON object.",
                 bookTitle ?? "Book", voiceSb.ToString(), textSb.ToString());
 
             // Attempt request with primary model, fallback if needed
-            string[] modelsToTry = new string[] { model, FallbackModel, "gemini-1.5-pro", "gemini-1.5-flash" };
+            string[] modelsToTry = new string[] { model, "gemini-3.8-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-pro" };
             Exception lastEx = null;
 
             foreach (var m in modelsToTry)
