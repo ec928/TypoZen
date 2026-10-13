@@ -13482,10 +13482,14 @@ namespace TypoZen
                         if (!_tabs[idx].IsDirty) Pass("freshly loaded buffer reads clean");
                         else Fail("freshly loaded buffer already reported dirty");
 
-                        // Edit, then sync with NO pause for the debounce to fire.
+                        // Edit, then sync with NO pause for the debounce to fire. The edit goes
+                        // into the document model, which is what saving reads; it posts no
+                        // "typing" ping, so the host's own flag still says clean. (It used to set
+                        // a block's data-raw attribute, which the model never reads -- the
+                        // check then failed on a buffer nobody had edited. A real keystroke
+                        // closed within milliseconds was prompted every time, 2026-10-13.)
                         await _webView.CoreWebView2.ExecuteScriptAsync(
-                            "(function(){ var b = document.querySelector('#editor .block');" +
-                            " if (b) b.setAttribute('data-raw', '# Doc A EDITED_JUST_NOW'); })()");
+                            "(function(){ DocumentModel.setBlockRaw(0, '# Doc A EDITED_JUST_NOW'); })()");
                         SyncActiveTabFromEditor();
 
                         if (_tabs[idx].IsDirty) Pass("edit seen immediately, before the stats debounce fires");
