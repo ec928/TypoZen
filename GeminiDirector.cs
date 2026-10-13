@@ -5,6 +5,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace TypoZen
@@ -418,7 +419,8 @@ namespace TypoZen
             List<string> sampleExcerpts,
             List<VoiceOption> voiceCatalog,
             ref string modelUsed,
-            string preferredModel = DefaultModel)
+            string preferredModel = DefaultModel,
+            CancellationToken cancel = default(CancellationToken))
         {
             var catalogText = FormatVoiceCatalogForPrompt(voiceCatalog);
             var excerptsSb = new StringBuilder();
@@ -486,7 +488,7 @@ AVAILABLE VOICE CATALOG:
 Remember to return ONLY the JSON object.",
                 bookTitle, excerptsSb.ToString(), catalogText);
 
-            var result = ExecuteWithFallback(apiKey, preferredModel, systemPrompt, userPrompt);
+            var result = ExecuteWithFallback(apiKey, preferredModel, systemPrompt, userPrompt, cancel);
             if (result != null)
             {
                 modelUsed = result.ModelUsed;
@@ -505,7 +507,8 @@ Remember to return ONLY the JSON object.",
             List<CharacterCast> knownCharacters,
             List<VoiceOption> voiceCatalog,
             ref string modelUsed,
-            string preferredModel = DefaultModel)
+            string preferredModel = DefaultModel,
+            CancellationToken cancel = default(CancellationToken))
         {
             var textSb = new StringBuilder();
             for (int i = 0; i < chunkBlocks.Count; i++)
@@ -573,7 +576,7 @@ PARAGRAPHS TO ATTRIBUTE:
 Remember to return ONLY the JSON object.",
                 knownSb.ToString(), catalogText, textSb.ToString());
 
-            var batchRes = ExecuteWithFallback(apiKey, preferredModel, systemPrompt, userPrompt);
+            var batchRes = ExecuteWithFallback(apiKey, preferredModel, systemPrompt, userPrompt, cancel);
             if (batchRes != null)
             {
                 modelUsed = batchRes.ModelUsed;
@@ -872,8 +875,9 @@ Remember to return ONLY the JSON object.",
             List<string> dialogueBlocks, 
             List<VoiceOption> availableVoices, 
             Action<int, int, string> onProgress = null,
-            string customApiKey = null, 
-            string model = DefaultModel)
+            string customApiKey = null,
+            string model = DefaultModel,
+            CancellationToken cancel = default(CancellationToken))
         {
             string apiKey = !string.IsNullOrEmpty(customApiKey) ? customApiKey.Trim() : GetApiKey();
             if (string.IsNullOrEmpty(apiKey))
@@ -906,7 +910,7 @@ Remember to return ONLY the JSON object.",
                 onProgress(1, totalSteps, string.Format("Discovering full novel cast for '{0}' (Part 1 of {1})...", cleanTitle, totalSteps));
 
             var sampleExcerpts = SelectSampleExcerpts(dialogueBlocks, 12);
-            var fullBookCast = DiscoverBookDramatisPersonae(apiKey, cleanTitle, sampleExcerpts, catalog, ref modelUsed, model);
+            var fullBookCast = DiscoverBookDramatisPersonae(apiKey, cleanTitle, sampleExcerpts, catalog, ref modelUsed, model, cancel);
 
             foreach (var fc in fullBookCast)
             {
@@ -936,7 +940,7 @@ Remember to return ONLY the JSON object.",
                     onProgress(stepNumber, totalSteps, string.Format("Attributing chapter dialogue quotes (Part {0} of {1})...", stepNumber, totalSteps));
 
                 var knownList = new List<CharacterCast>(charsDict.Values);
-                var chunkResult = AttributeDialogueChunk(apiKey, chunkBlocks, startIdx, knownList, catalog, ref modelUsed, model);
+                var chunkResult = AttributeDialogueChunk(apiKey, chunkBlocks, startIdx, knownList, catalog, ref modelUsed, model, cancel);
 
                 // Merge quotes and increment lines count for speakers via canonical resolver
                 foreach (var q in chunkResult.Quotes)
@@ -1021,7 +1025,7 @@ Remember to return ONLY the JSON object.",
             return aggregatedResult;
         }
 
-        private static GeminiCastResult ExecuteWithFallback(string apiKey, string preferredModel, string systemPrompt, string userPrompt)
+        private static GeminiCastResult ExecuteWithFallback(string apiKey, string preferredModel, string systemPrompt, string userPrompt, CancellationToken cancel)
         {
             var config = LoadConfig();
             var modelsToTry = new List<string>();
@@ -1051,16 +1055,22 @@ Remember to return ONLY the JSON object.",
 
             Exception lastEx = null;
             bool anyRateLimit = false;
+            // A dropped connection or a timeout is the network, not the model: after two in a row,
+            // stop rather than wait out every model's two-minute timeout in turn.
+            int connectionFailures = 0;
 
             foreach (var m in modelsToTry)
             {
+                cancel.ThrowIfCancellationRequested();
                 try
                 {
-                    var res = ExecuteGeminiRequest(apiKey, m, systemPrompt, userPrompt, config.endpoint);
+                    var res = ExecuteGeminiRequest(apiKey, m, systemPrompt, userPrompt, config.endpoint, cancel);
                     if (res != null) return res;
                 }
+                catch (OperationCanceledException) { throw; }
                 catch (WebException wex)
                 {
+                    if (cancel.IsCancellationRequested) throw new OperationCanceledException(cancel);
                     lastEx = wex;
                     if (wex.Response is HttpWebResponse httpResp)
                     {
@@ -1082,6 +1092,7 @@ Remember to return ONLY the JSON object.",
                         // 503: server overloaded / unavailable - try next model!
                         if (status == 404 || status == 400 || status == 429 || status == 503)
                         {
+                            connectionFailures = 0;
                             continue;
                         }
                     }
@@ -1091,7 +1102,9 @@ Remember to return ONLY the JSON object.",
                              wex.Status == WebExceptionStatus.SendFailure ||
                              wex.Status == WebExceptionStatus.Timeout)
                     {
-                        // Transient connection reset or socket closure: try next model in fallback chain!
+                        // Transient connection reset or socket closure: try the next model once.
+                        if (++connectionFailures >= 2)
+                            throw new InvalidOperationException("Could not reach Gemini (" + wex.Message + "). Check the connection and try again.", wex);
                         continue;
                     }
                     string respBody = ReadErrorResponse(wex);
@@ -1112,7 +1125,7 @@ Remember to return ONLY the JSON object.",
             throw new InvalidOperationException("Could not complete Gemini request: " + (lastEx != null ? lastEx.Message : "unknown error"), lastEx);
         }
 
-        private static GeminiCastResult ExecuteGeminiRequest(string apiKey, string model, string systemPrompt, string userPrompt, string endpointTemplate = null)
+        private static GeminiCastResult ExecuteGeminiRequest(string apiKey, string model, string systemPrompt, string userPrompt, string endpointTemplate, CancellationToken cancel)
         {
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
             if (string.IsNullOrWhiteSpace(endpointTemplate))
@@ -1179,16 +1192,20 @@ Remember to return ONLY the JSON object.",
             request.Timeout = 120000;
             request.ReadWriteTimeout = 120000;
 
-            using (var stream = request.GetRequestStream())
+            // Cancel aborts the request in flight: the wait ends at once, as a WebException.
+            using (cancel.Register(() => { try { request.Abort(); } catch { } }))
             {
-                stream.Write(payloadBytes, 0, payloadBytes.Length);
-            }
+                using (var stream = request.GetRequestStream())
+                {
+                    stream.Write(payloadBytes, 0, payloadBytes.Length);
+                }
 
-            using (var response = (HttpWebResponse)request.GetResponse())
-            using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
-            {
-                string respJson = reader.ReadToEnd();
-                return ParseGeminiResponse(respJson, model);
+                using (var response = (HttpWebResponse)request.GetResponse())
+                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
+                {
+                    string respJson = reader.ReadToEnd();
+                    return ParseGeminiResponse(respJson, model);
+                }
             }
         }
 

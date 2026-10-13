@@ -1191,6 +1191,9 @@ namespace TypoZen
             castEmpty.Margin = new Thickness(36, 8, 0, 0);
             Button findCast = null;
             Button smartCast = null;
+            // The Smart Cast run in progress, which the button then stops; null when none is.
+            CancellationTokenSource smartCastRun = null;
+            bool smartCastAsking = false;   // the run has reached Gemini (the page's excerpts arrived)
             Button apiKeyBtn = null;
             Button clearCast = null;
             TextBox filterBox = null;
@@ -3173,8 +3176,29 @@ namespace TypoZen
 
             if (smartCast != null)
             {
+                Action<string> smartCastEnded = msg =>
+                {
+                    smartCastRun = null;
+                    smartCastAsking = false;
+                    smartCast.Content = "Smart Cast (Gemini)";
+                    smartCast.IsEnabled = true;
+                    if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
+                    if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
+                    busyBar.Visibility = Visibility.Collapsed;
+                    if (msg != null) say(msg);
+                };
+
                 smartCast.Click += (s, e) =>
                 {
+                    if (smartCastRun != null)
+                    {
+                        smartCastRun.Cancel();
+                        // Still waiting on the page: nothing has gone to Gemini, so it is over now.
+                        if (!smartCastAsking) { smartCastEnded("Smart Cast stopped. The cast was not changed."); return; }
+                        smartCast.IsEnabled = false;
+                        say("Stopping Smart Cast...");
+                        return;
+                    }
                     // Smart Cast sends the book's dialogue to Google. Privacy Mode blocks it,
                     // as it blocks the online Edge voices.
                     if (QwenNarrator.PrivateMode)
@@ -3197,7 +3221,8 @@ namespace TypoZen
                         smartCastProgress.IsIndeterminate = true;
                         smartCastProgress.Visibility = Visibility.Visible;
                     }
-                    smartCast.IsEnabled = false;
+                    smartCastRun = new CancellationTokenSource();
+                    smartCast.Content = "Stop Smart Cast";
                     say("Extracting dialogue excerpts for Gemini Script Director...");
                     busyBar.Visibility = Visibility.Visible;
                     sendToPage("cmd:narrator_cast_gemini");
@@ -3205,6 +3230,9 @@ namespace TypoZen
 
                 GeminiPayloadArrived = json =>
                 {
+                    if (smartCastRun == null) return;   // stopped before the page answered
+                    smartCastAsking = true;
+                    var stop = smartCastRun.Token;
                     new System.Threading.Thread(() =>
                     {
                         try
@@ -3233,14 +3261,7 @@ namespace TypoZen
 
                             if (blocksList.Count == 0)
                             {
-                                win.Dispatcher.BeginInvoke((Action)(() =>
-                                {
-                                    smartCast.IsEnabled = true;
-                                    if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
-                                    if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
-                                    busyBar.Visibility = Visibility.Collapsed;
-                                    say("No dialogue quotes found to analyze in this book.");
-                                }));
+                                win.Dispatcher.BeginInvoke((Action)(() => smartCastEnded("No dialogue quotes found to analyze in this book.")));
                                 return;
                             }
 
@@ -3316,14 +3337,11 @@ namespace TypoZen
                                     }
                                     say(msg);
                                 }));
-                            });
+                            }, null, GeminiDirector.DefaultModel, stop);
 
                             win.Dispatcher.BeginInvoke((Action)(() =>
                             {
-                                smartCast.IsEnabled = true;
-                                if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
-                                if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
-                                busyBar.Visibility = Visibility.Collapsed;
+                                smartCastEnded(null);
                                 try
                                 {
                                     // Clear existing rows and populate with Gemini's character casting
@@ -3390,18 +3408,15 @@ namespace TypoZen
                                 }
                             }));
                         }
+                        catch (OperationCanceledException)
+                        {
+                            win.Dispatcher.BeginInvoke((Action)(() => smartCastEnded("Smart Cast stopped. The cast was not changed.")));
+                        }
                         catch (Exception ex)
                         {
-                            win.Dispatcher.BeginInvoke((Action)(() =>
-                            {
-                                smartCast.IsEnabled = true;
-                                if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
-                                if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
-                                busyBar.Visibility = Visibility.Collapsed;
-                                say("Gemini error: " + ex.Message);
-                            }));
+                            win.Dispatcher.BeginInvoke((Action)(() => smartCastEnded("Gemini error: " + ex.Message)));
                         }
-                    }).Start();
+                    }) { IsBackground = true }.Start();
                 };
             }
 
@@ -3658,6 +3673,7 @@ namespace TypoZen
                 clearCandidates();
                 CastScanArrived = null;
                 GeminiPayloadArrived = null;
+                try { if (smartCastRun != null) smartCastRun.Cancel(); } catch { }
                 TrialArrived = null;
                 _sample = sampleBox.Text;
                 try { sendToPage("cmd:narrator_trial_stop"); } catch { }
