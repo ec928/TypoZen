@@ -80,6 +80,7 @@ namespace TypoZen
         {
             public List<CharacterCast> Characters = new List<CharacterCast>();
             public List<QuoteAttribution> Quotes = new List<QuoteAttribution>();
+            public Dictionary<string, string> ResolvedAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             public string ModelUsed { get; set; }
         }
 
@@ -423,7 +424,7 @@ namespace TypoZen
             var excerptsSb = new StringBuilder();
             if (sampleExcerpts != null)
             {
-                int count = Math.Min(sampleExcerpts.Count, 8);
+                int count = Math.Min(sampleExcerpts.Count, 12);
                 for (int i = 0; i < count; i++)
                 {
                     excerptsSb.AppendLine(string.Format("[Excerpt {0}]: {1}", i + 1, sampleExcerpts[i]));
@@ -438,9 +439,10 @@ Map every single character to the most fitting voice archetype from the provided
 RULES:
 1. Comprehensiveness: For recognized literary works, epics, and novels (e.g. Dune, Matter, Pride and Prejudice, etc.), you MUST cast the entire novel's dramatis personae (15-25 characters), NOT just the characters who speak in the opening excerpt.
    Include characters across the entire work (e.g. for Dune: Baron Vladimir Harkonnen, Emperor Shaddam IV, Paul Atreides, Lady Jessica, Duke Leto Atreides, Thufir Hawat, Gurney Halleck, Duncan Idaho, Stilgar, Chani, Dr. Wellington Yueh, Reverend Mother Gaius Helen Mohiam, Feyd-Rautha, Glossu Rabban, Piter De Vries, Princess Irulan, Count Fenring, Alia Atreides, Shadout Mapes, Liet-Kynes).
+   For unrecognized texts, personal manuscripts, short stories, or works with a small cast, cast ONLY the speaking characters actually present in the excerpts or known to belong to the work — never invent characters to pad the count.
 2. Canonical Keys: Use clean, lowercase single-word canonical keys (e.g. 'paul', 'jessica', 'leto', 'baron', 'emperor', 'feyd', 'rabban', 'piter', 'stilgar', 'chani', 'gurney', 'idaho', 'hawat', 'yueh', 'mohiam', 'irulan', 'mapes', 'kynes', 'fenring', 'alia').
 3. Estimated Novel Lines ('bookLines'): Estimate the approximate number of spoken dialogue lines this character speaks across the entire novel (e.g. Paul: ~480, Jessica: ~320, Baron Harkonnen: ~160, Duke Leto: ~130, Stilgar: ~170, Gurney: ~110, Hawat: ~95, Chani: ~90, Feyd: ~75, Yueh: ~65, Mohiam: ~60, Duncan: ~45, Emperor: ~40, Rabban: ~35, Irulan: ~20).
-4. Aliases ('aliases'): Provide an array of alternative names, titles, honorifics, surnames, and short forms used for this character throughout the book so dialogue quotes can be accurately mapped.
+4. Aliases ('aliases'): Provide an array of alternative names, titles, honorifics, surnames, and short forms used for this character throughout the book so dialogue quotes can be accurately mapped. Do not use a bare shared family surname (e.g. 'atreides', 'bennet') as a standalone alias when multiple characters in the work share that surname; use their given name, title, or full name instead.
    Examples:
    - Duke Leto: [""duke"", ""the duke"", ""leto"", ""duke leto"", ""duke leto atreides"", ""leto atreides"", ""my lord""]
    - Paul: [""paul"", ""the boy"", ""young master"", ""paul atreides"", ""muad'dib"", ""usul"", ""the duke paul atreides""]
@@ -586,21 +588,74 @@ Remember to return ONLY the JSON object.",
 
         #region Canonical Speaker Resolution
 
+        private static readonly HashSet<string> GenericTitleStopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "the", "mr", "mrs", "ms", "miss", "dr", "doctor", "sir", "lord", "lady",
+            "duke", "duchess", "baron", "baroness", "count", "countess", "prince", "princess",
+            "king", "queen", "emperor", "empress", "reverend", "mother", "father", "sister",
+            "brother", "captain", "general", "major", "colonel", "lieutenant", "sergeant",
+            "master", "mistress", "old", "young", "saint", "de", "von", "van"
+        };
+
         private static string NormalizeToken(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return "";
             text = text.Trim().ToLowerInvariant();
             if (text.StartsWith("the ")) text = text.Substring(4).Trim();
             var sb = new StringBuilder();
+            bool prevSpace = false;
             for (int i = 0; i < text.Length; i++)
             {
                 char c = text[i];
-                if (char.IsLetterOrDigit(c) || char.IsWhiteSpace(c)) sb.Append(c);
+                if (char.IsLetterOrDigit(c))
+                {
+                    sb.Append(c);
+                    prevSpace = false;
+                }
+                else if (char.IsWhiteSpace(c) || c == '-' || c == '_')
+                {
+                    if (!prevSpace && sb.Length > 0)
+                    {
+                        sb.Append(' ');
+                        prevSpace = true;
+                    }
+                }
             }
             return sb.ToString().Trim();
         }
 
-        private static void RegisterInAliasMap(CharacterCast c, Dictionary<string, CharacterCast> map)
+        /// <summary>
+        /// Returns true if haystack contains needle as a contiguous sequence of whole words
+        /// (so "duke leto" contains "leto", and "paul atreides" contains "paul", but "fred" never matches "ed").
+        /// </summary>
+        private static bool ContainsWholeWords(string haystack, string needle)
+        {
+            string normHaystack = NormalizeToken(haystack);
+            string normNeedle = NormalizeToken(needle);
+            if (string.IsNullOrEmpty(normHaystack) || string.IsNullOrEmpty(normNeedle)) return false;
+            if (normHaystack == normNeedle) return true;
+
+            string[] hWords = normHaystack.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] nWords = normNeedle.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (nWords.Length == 0 || nWords.Length > hWords.Length) return false;
+
+            for (int i = 0; i <= hWords.Length - nWords.Length; i++)
+            {
+                bool allMatch = true;
+                for (int j = 0; j < nWords.Length; j++)
+                {
+                    if (!string.Equals(hWords[i + j], nWords[j], StringComparison.OrdinalIgnoreCase))
+                    {
+                        allMatch = false;
+                        break;
+                    }
+                }
+                if (allMatch) return true;
+            }
+            return false;
+        }
+
+        private static void RegisterInAliasMap(CharacterCast c, Dictionary<string, CharacterCast> map, HashSet<string> ambiguousTokens = null)
         {
             if (c == null) return;
             if (!string.IsNullOrEmpty(c.Key))
@@ -611,16 +666,20 @@ Remember to return ONLY the JSON object.",
             }
             if (!string.IsNullOrEmpty(c.Name))
             {
-                map[c.Name.ToLowerInvariant()] = c;
+                string lowName = c.Name.Trim().ToLowerInvariant();
+                if (!map.ContainsKey(lowName)) map[lowName] = c;
                 string normName = NormalizeToken(c.Name);
-                if (!string.IsNullOrEmpty(normName)) map[normName] = c;
+                if (!string.IsNullOrEmpty(normName) && !map.ContainsKey(normName)) map[normName] = c;
 
-                // Split name tokens (e.g. "Duke Leto Atreides")
+                // Split name tokens (e.g. "Duke Leto Atreides") — register only unique, non-title tokens
                 string[] parts = c.Name.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (var p in parts)
                 {
-                    string low = p.Trim().ToLowerInvariant();
-                    if (low.Length >= 3 && !map.ContainsKey(low))
+                    string low = NormalizeToken(p);
+                    if (low.Length >= 3
+                        && !GenericTitleStopWords.Contains(low)
+                        && (ambiguousTokens == null || !ambiguousTokens.Contains(low))
+                        && !map.ContainsKey(low))
                     {
                         map[low] = c;
                     }
@@ -632,19 +691,95 @@ Remember to return ONLY the JSON object.",
                 {
                     if (string.IsNullOrWhiteSpace(a)) continue;
                     string low = a.Trim().ToLowerInvariant();
-                    map[low] = c;
                     string norm = NormalizeToken(a);
-                    if (!string.IsNullOrEmpty(norm)) map[norm] = c;
+                    if (ambiguousTokens != null && (ambiguousTokens.Contains(low) || (!string.IsNullOrEmpty(norm) && ambiguousTokens.Contains(norm))))
+                    {
+                        continue;
+                    }
+                    if (!map.ContainsKey(low)) map[low] = c;
+                    if (!string.IsNullOrEmpty(norm) && !map.ContainsKey(norm)) map[norm] = c;
                 }
             }
         }
 
         private static Dictionary<string, CharacterCast> BuildAliasMap(IEnumerable<CharacterCast> characters)
         {
-            var map = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
+            var list = new List<CharacterCast>();
+            var canonicalKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var nameWordCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var aliasOwners = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
+            var ambiguousTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var c in characters)
             {
-                RegisterInAliasMap(c, map);
+                if (c == null) continue;
+                list.Add(c);
+                if (!string.IsNullOrEmpty(c.Key))
+                {
+                    canonicalKeys.Add(c.Key.Trim().ToLowerInvariant());
+                    string nk = NormalizeToken(c.Key);
+                    if (!string.IsNullOrEmpty(nk)) canonicalKeys.Add(nk);
+                }
+                if (!string.IsNullOrEmpty(c.Name))
+                {
+                    canonicalKeys.Add(c.Name.Trim().ToLowerInvariant());
+                    string nn = NormalizeToken(c.Name);
+                    if (!string.IsNullOrEmpty(nn)) canonicalKeys.Add(nn);
+
+                    var seenInThisChar = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    string[] parts = c.Name.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var p in parts)
+                    {
+                        string low = NormalizeToken(p);
+                        if (low.Length >= 3 && seenInThisChar.Add(low))
+                        {
+                            int prev;
+                            nameWordCounts.TryGetValue(low, out prev);
+                            nameWordCounts[low] = prev + 1;
+                        }
+                    }
+                }
+            }
+
+            // Any single-word name part shared by 2+ characters (e.g. "atreides", "bennet", "harkonnen")
+            // is ambiguous as a standalone token unless it is explicitly a character's canonical Key.
+            foreach (var kv in nameWordCounts)
+            {
+                if (kv.Value > 1 && !canonicalKeys.Contains(kv.Key))
+                {
+                    ambiguousTokens.Add(kv.Key);
+                }
+            }
+
+            // Any alias claimed by 2+ different characters (that isn't a canonical Key or full Name) is also ambiguous.
+            foreach (var c in list)
+            {
+                if (c.Aliases == null) continue;
+                foreach (var a in c.Aliases)
+                {
+                    if (string.IsNullOrWhiteSpace(a)) continue;
+                    string norm = NormalizeToken(a);
+                    if (string.IsNullOrEmpty(norm) || canonicalKeys.Contains(norm)) continue;
+                    CharacterCast prevOwner;
+                    if (aliasOwners.TryGetValue(norm, out prevOwner))
+                    {
+                        if (!ReferenceEquals(prevOwner, c))
+                        {
+                            ambiguousTokens.Add(norm);
+                            ambiguousTokens.Add(a.Trim().ToLowerInvariant());
+                        }
+                    }
+                    else
+                    {
+                        aliasOwners[norm] = c;
+                    }
+                }
+            }
+
+            var map = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in list)
+            {
+                RegisterInAliasMap(c, map, ambiguousTokens);
             }
             return map;
         }
@@ -662,23 +797,72 @@ Remember to return ONLY the JSON object.",
 
             if (charsDict != null && charsDict.TryGetValue(key, out match)) return match;
 
-            // Fuzzy/contains match: check if rawSpeaker is contained in any character name or key
             if (charsDict != null)
             {
                 foreach (var c in charsDict.Values)
                 {
                     if (string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase)) return c;
                     if (string.Equals(c.Name, key, StringComparison.OrdinalIgnoreCase)) return c;
-                    if (c.Aliases != null && c.Aliases.Exists(a => string.Equals(a, key, StringComparison.OrdinalIgnoreCase))) return c;
-
-                    // If speaker contains key (e.g. "duke leto" contains "leto", "paul atreides" contains "paul")
-                    if (key.Contains(c.Key.ToLowerInvariant())) return c;
-                    if (c.Name.ToLowerInvariant().Contains(key)) return c;
-                    if (key.Contains(c.Name.ToLowerInvariant())) return c;
+                    if (!string.IsNullOrEmpty(norm) && string.Equals(NormalizeToken(c.Name), norm, StringComparison.OrdinalIgnoreCase)) return c;
                 }
+
+                // Whole-word boundary & alias fallback: only resolve when a match uniquely identifies ONE character
+                // (prevents "ed" from matching "fred", and prevents bare "Atreides" from picking whichever Atreides came first).
+                CharacterCast keyMatch = null;
+                int keyMatchCount = 0;
+                CharacterCast nameMatch = null;
+                int nameMatchCount = 0;
+                bool isStopWord = !string.IsNullOrEmpty(norm) && GenericTitleStopWords.Contains(norm);
+
+                foreach (var c in charsDict.Values)
+                {
+                    if (!string.IsNullOrEmpty(c.Key) && ContainsWholeWords(key, c.Key))
+                    {
+                        keyMatch = c;
+                        keyMatchCount++;
+                    }
+
+                    bool hasAlias = c.Aliases != null && c.Aliases.Exists(a =>
+                        string.Equals(a, key, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrEmpty(norm) && string.Equals(NormalizeToken(a), norm, StringComparison.OrdinalIgnoreCase)));
+                    bool hasNameWord = !string.IsNullOrEmpty(c.Name) &&
+                        ((!isStopWord && ContainsWholeWords(c.Name, key)) || ContainsWholeWords(key, c.Name));
+
+                    if (hasAlias || hasNameWord)
+                    {
+                        nameMatch = c;
+                        nameMatchCount++;
+                    }
+                }
+
+                if (keyMatchCount == 1) return keyMatch;
+                if (nameMatchCount == 1) return nameMatch;
             }
 
             return null;
+        }
+
+        private static List<string> SelectSampleExcerpts(List<string> dialogueBlocks, int maxSamples)
+        {
+            if (dialogueBlocks == null || dialogueBlocks.Count == 0) return new List<string>();
+            if (dialogueBlocks.Count <= maxSamples) return new List<string>(dialogueBlocks);
+
+            var result = new List<string>(maxSamples);
+            int openingCount = Math.Min(4, maxSamples);
+            for (int i = 0; i < openingCount; i++)
+            {
+                result.Add(dialogueBlocks[i]);
+            }
+
+            int remainingNeeded = maxSamples - openingCount;
+            int remainingPool = dialogueBlocks.Count - openingCount;
+            for (int i = 0; i < remainingNeeded; i++)
+            {
+                int idx = openingCount + (int)Math.Floor((i + 0.5) * remainingPool / remainingNeeded);
+                if (idx >= dialogueBlocks.Count) idx = dialogueBlocks.Count - 1;
+                result.Add(dialogueBlocks[idx]);
+            }
+            return result;
         }
 
         #endregion
@@ -721,7 +905,7 @@ Remember to return ONLY the JSON object.",
             if (onProgress != null)
                 onProgress(1, totalSteps, string.Format("Discovering full novel cast for '{0}' (Part 1 of {1})...", cleanTitle, totalSteps));
 
-            var sampleExcerpts = dialogueBlocks.GetRange(0, Math.Min(dialogueBlocks.Count, 8));
+            var sampleExcerpts = SelectSampleExcerpts(dialogueBlocks, 12);
             var fullBookCast = DiscoverBookDramatisPersonae(apiKey, cleanTitle, sampleExcerpts, catalog, ref modelUsed, model);
 
             foreach (var fc in fullBookCast)
@@ -818,6 +1002,21 @@ Remember to return ONLY the JSON object.",
             aggregatedResult.Characters.AddRange(speakingInChapter);
             aggregatedResult.Characters.AddRange(remainingBookCast);
             aggregatedResult.ModelUsed = modelUsed;
+
+            var finalAliasMap = BuildAliasMap(aggregatedResult.Characters);
+            foreach (var kv in finalAliasMap)
+            {
+                if (!string.IsNullOrEmpty(kv.Key) && kv.Value != null && !string.IsNullOrEmpty(kv.Value.Key))
+                {
+                    string aliasKey = kv.Key.Trim().ToLowerInvariant();
+                    if (aliasKey.StartsWith("the ")) aliasKey = aliasKey.Substring(4).Trim();
+                    string canonicalKey = kv.Value.Key.Trim().ToLowerInvariant();
+                    if (!string.IsNullOrEmpty(aliasKey) && aliasKey != canonicalKey)
+                    {
+                        aggregatedResult.ResolvedAliases[aliasKey] = canonicalKey;
+                    }
+                }
+            }
 
             return aggregatedResult;
         }

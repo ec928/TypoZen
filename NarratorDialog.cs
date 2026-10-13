@@ -3164,6 +3164,7 @@ namespace TypoZen
                     cast.Strengths.Clear();
                     cast.QuoteScript.Clear();
                     cast.QuoteCues.Clear();
+                    cast.Aliases.Clear();
 
                     say("Cleared all cast characters and quotes for this book. Click Save to apply.");
                     unsaved.Visibility = Visibility.Visible;
@@ -3338,9 +3339,17 @@ namespace TypoZen
                                         }
                                     }
 
-                                    // Populate quote attribution script
+                                    // Populate quote attribution script and book-wide aliases
                                     cast.QuoteScript.Clear();
                                     cast.QuoteCues.Clear();
+                                    cast.Aliases.Clear();
+                                    if (result.ResolvedAliases != null)
+                                    {
+                                        foreach (var kv in result.ResolvedAliases)
+                                        {
+                                            cast.Aliases[kv.Key] = kv.Value;
+                                        }
+                                    }
                                     foreach (var q in result.Quotes)
                                     {
                                         if (string.IsNullOrEmpty(q.Quote) || string.IsNullOrEmpty(q.Speaker)) continue;

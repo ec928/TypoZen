@@ -46,6 +46,7 @@ const api = new Function('document', 'window', 'box', [
     'let _narrCastStrength = {};',
     'let _narrCastScript = {};',
     'let _narrCastCues = {};',
+    'let _narrCastAliases = {};',
     'const NARRATION_BATCH = 8;',
     'function narrLog() {}',
     src.slice(start, end + 1),
@@ -63,6 +64,7 @@ const api = new Function('document', 'window', 'box', [
     '  setCastSay: function (c) { _narrCastSay = c || {}; },',
     '  setCastScript: function (s) { _narrCastScript = s || {}; },',
     '  setCastCues: function (c) { _narrCastCues = c || {}; },',
+    '  setCastAliases: function (a) { _narrCastAliases = a || {}; },',
     '  setModel: function (m) { DocumentModel = m; },',
     '  tagsFor: function (m) { narrTagsFor(m); }',
     '};'
@@ -863,9 +865,36 @@ console.log('--- AI Script Director / Gemini Smart Cast dialogue attribution');
     ], 0, 4).flat().filter(p => p.role === 'dialogue').map(p => p.voice);
     eq('backward voice attribution binds quote to Duke Leto', backwardDialogue, ['ruler-commander-m', 'ruler-commander-m']);
 
+    // 6. Book-wide alias map resolves full names, titles, and honorifics in later chapters (without QuoteScript):
+    api.setCast({
+        paul: 'hero-youth-m',
+        leto: 'ruler-commander-m',
+        mohiam: 'crone-inquisitor-f',
+        baron: 'tyrant-overlord-m'
+    });
+    api.setCastAliases({
+        'paul atreides': 'paul',
+        "muad'dib": 'paul',
+        'duke': 'leto',
+        'duke leto atreides': 'leto',
+        'reverend mother': 'mohiam',
+        'baron harkonnen': 'baron'
+    });
+    const ch2Dialogue = api.narrationBatches([
+        { innerText: '“Hold your ground,” Paul Atreides said.', getAttribute: () => null },
+        { innerText: '“We shall see,” the Duke replied.', getAttribute: () => null },
+        { innerText: 'The Reverend Mother stepped forward. “Come here,” she said.', getAttribute: () => null },
+        { innerText: '“Crush them,” Baron Harkonnen growled.', getAttribute: () => null },
+        { innerText: '“Listen to me,” Muad’Dib said.', getAttribute: () => null }
+    ], 0, 6).flat().filter(p => p.role === 'dialogue').map(p => p.voice);
+    eq('book-wide alias map resolves full names, titles, and honorifics in later chapters',
+        ch2Dialogue,
+        ['hero-youth-m', 'ruler-commander-m', 'crone-inquisitor-f', 'tyrant-overlord-m', 'hero-youth-m']);
+
     // Cleanup
     api.setCastScript({});
     api.setCastCues({});
+    api.setCastAliases({});
     api.setCast({ anna: 'qwen-ryan' });
     api.setModel(null);
 }

@@ -511,9 +511,10 @@ let _narrAudioHostPrivate = 'localnarrationp';
 let _narrStrength = 0;
 // Breeze strength per cast character (Cast for this book); a character without one is at 4.
 let _narrCastStrength = {};
-// AI Script Director quote attribution maps (quote/para -> speaker key, quote/para -> delivery cue)
+// AI Script Director quote attribution maps (quote/para -> speaker key, quote/para -> delivery cue, alias -> speaker key)
 let _narrCastScript = {};
 let _narrCastCues = {};
+let _narrCastAliases = {};
 // The settings the narration monitor shows beside each piece: what shapes every line.
 let _narrShown = {};
 // The narration monitor is open (cmd:narr_monitor:on): each piece reports itself as it plays.
@@ -533,7 +534,7 @@ function narrAudioUrl(item) {
 window.setNarratorSettings = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
-        const before = JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrCastSay, _narrDirect, _narrCastScript]);
+        const before = JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrCastSay, _narrDirect, _narrCastScript, _narrCastAliases]);
         _narrVoice = s.voice || '';
         _narrVoiceName = s.voiceName || '';
         _narrStyle = s.style || '';
@@ -550,6 +551,7 @@ window.setNarratorSettings = function (json) {
         _narrCastStrength = (s.castStrength && typeof s.castStrength === 'object') ? s.castStrength : {};
         _narrCastScript = (s.castScript && typeof s.castScript === 'object') ? s.castScript : {};
         _narrCastCues = (s.castCues && typeof s.castCues === 'object') ? s.castCues : {};
+        _narrCastAliases = (s.castAliases && typeof s.castAliases === 'object') ? s.castAliases : {};
         _narrShown = {
             engine: s.engine || 'qwen', voice: s.voiceName || s.voice || '', instruction: _narrInstruction,
             cuesOn: _narrDirect, cue: _narrCue, strength: _narrStrength, speed: _narrSpeed, private: _narrPrivate
@@ -558,7 +560,7 @@ window.setNarratorSettings = function (json) {
         if (_renderedAudio) _renderedAudio.playbackRate = _narrSpeed;
         // A new voice, style or cast while narrating: start again at the paragraph being read,
         // in the new voice, rather than play out what was already rendered in the old one.
-        if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrCastSay, _narrDirect]) && _narrActive && isPlaying) {
+        if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrCastSay, _narrDirect, _narrCastScript, _narrCastAliases]) && _narrActive && isPlaying) {
             narrLog('settings changed while narrating: restarting at the current paragraph');
             _qwenPending = null;
             try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
@@ -1354,6 +1356,8 @@ function isPossessive(word) {
 
 function isRelationPhrase(who) {
     if (!who) return false;
+    const norm = who.replace(/^the\s+/i, '').trim().replace(/[’']s$/, '').replace(/\s+/g, ' ').toLowerCase();
+    if (typeof _narrCastAliases !== 'undefined' && _narrCastAliases && _narrCastAliases[norm]) return false;
     const parts = who.trim().split(/\s+/);
     const last = parts[parts.length - 1];
     if (FAMILY_RELATION.test(last)) return true;
@@ -1532,6 +1536,11 @@ function castKey(key, keys) {
     if (!key || !keys) return key;
     const has = k => (keys instanceof Set ? keys.has(k) : Object.prototype.hasOwnProperty.call(keys, k));
     if (has(key)) return key;
+    if (typeof _narrCastAliases !== 'undefined' && _narrCastAliases) {
+        const norm = key.replace(/’/g, "'").replace(/\./g, '').replace(/\s+/g, ' ').trim();
+        const mapped = _narrCastAliases[key] || _narrCastAliases[norm] || _narrCastAliases[norm.replace(/'/g, '')];
+        if (mapped && has(mapped)) return mapped;
+    }
     const last = key.split(' ').pop();
     if (last !== key && has(last)) return last;
     const all = keys instanceof Set ? [...keys] : Object.keys(keys);
@@ -1688,7 +1697,8 @@ function attributeParagraphs(texts, known) {
             }
         }
         const outside = blankBrackets(text).replace(quoteRegex(text), ' ');
-        const named = new Set((outside.match(/[A-Z][\w’'-]+/g) || []).map(w => castKey(speakerKey(w), known)).filter(k => known.has(k)));
+        const candSpans = (outside.match(/[A-Z][\w’'-]+/g) || []).concat(outside.match(/[A-Z][\w’'-]+(?:\s+[A-Z][\w’'-]+)+/g) || []);
+        const named = new Set(candSpans.map(w => castKey(speakerKey(w), known)).filter(k => known.has(k)));
         const explicit = new Set(qs.filter(q => q.key).map(q => q.key));
         const isAnswering = /\b(answered|replied|responded|retorted|countered|conceded)\b/i.test(outside) ||
             qs.some(q => /\b(answered|replied|responded|retorted|countered|conceded)\b/i.test(q.tag || ''));

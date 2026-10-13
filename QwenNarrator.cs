@@ -154,6 +154,8 @@ namespace TypoZen
             public Dictionary<string, string> QuoteScript = new Dictionary<string, string>();
             // AI Script Director delivery cue map: "para:normQuote" or "normQuote" -> cue
             public Dictionary<string, string> QuoteCues = new Dictionary<string, string>();
+            // Book-wide character alias map: "alias / title / full name" -> canonical speakerKey
+            public Dictionary<string, string> Aliases = new Dictionary<string, string>();
         }
 
         private static string SettingsPath(string cacheDir) { return Path.Combine(RootDir(cacheDir), "narrator.json"); }
@@ -368,7 +370,8 @@ namespace TypoZen
                 Instructions = new Dictionary<string, string>(c.Instructions),
                 Strengths = new Dictionary<string, double>(c.Strengths),
                 QuoteScript = new Dictionary<string, string>(c.QuoteScript),
-                QuoteCues = new Dictionary<string, string>(c.QuoteCues)
+                QuoteCues = new Dictionary<string, string>(c.QuoteCues),
+                Aliases = new Dictionary<string, string>(c.Aliases)
             };
         }
 
@@ -386,7 +389,8 @@ namespace TypoZen
                 Instructions = StringMap(d, "say"),
                 Strengths = NumberMap(d, "strength"),
                 QuoteScript = StringMap(d, "script"),
-                QuoteCues = StringMap(d, "cues")
+                QuoteCues = StringMap(d, "cues"),
+                Aliases = StringMap(d, "aliases")
             };
         }
 
@@ -410,7 +414,8 @@ namespace TypoZen
                 { "say", c.Instructions },
                 { "strength", c.Strengths },
                 { "script", c.QuoteScript },
-                { "cues", c.QuoteCues }
+                { "cues", c.QuoteCues },
+                { "aliases", c.Aliases }
             };
             File.WriteAllText(path, FormatJson(new JavaScriptSerializer().Serialize(d)), Encoding.UTF8);
         }
@@ -513,6 +518,7 @@ namespace TypoZen
                 { "castStrength", cast.Strengths },
                 { "castScript", cast.QuoteScript },
                 { "castCues", cast.QuoteCues },
+                { "castAliases", cast.Aliases },
                 // Render into this session's private folder, not the lasting cache.
                 { "private", privateMode },
                 // Where the page fetches this narrator's audio from (BreezeNarrator has its own).
