@@ -75,6 +75,9 @@ namespace TypoZen
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool AllowSetForegroundWindow(uint dwProcessId);
 
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        internal static extern void ExitProcess(uint exitCode);
+
         /// <summary>
         /// The MSIX package family name, or null when running unpackaged (portable).
         ///
@@ -521,10 +524,29 @@ namespace TypoZen
                         if (HandoffToRunningInstance(launch))
                             return;
                     }
-                    // Last resort: start a second window rather than drop the file open.
-                    // Still install the open pipe so further Explorer opens can attach.
+                    // No pipe, but the mutex is held: the other TypoZen is closing (it stops
+                    // its pipe first) or still starting (its pipe not up yet). For up to 5 s,
+                    // become the one instance as soon as it has gone, or hand off as soon as
+                    // its pipe answers -- rather than open a second window beside it.
+                    try
+                    {
+                        var wait = new Mutex(false, SingleInstanceMutexName);
+                        var until = DateTime.UtcNow.AddSeconds(5);
+                        bool got = false;
+                        while (!got && DateTime.UtcNow < until)
+                        {
+                            try { got = wait.WaitOne(100); }
+                            catch (AbandonedMutexException) { got = true; }   // it exited holding it
+                            if (!got && HandoffToRunningInstance(launch)) { wait.Dispose(); return; }
+                        }
+                        if (got) { mutex = wait; createdNew = true; }
+                        else wait.Dispose();
+                    }
+                    catch { }
+                    // Still held after that: start a second window rather than drop the file
+                    // open. It installs the open pipe so further Explorer opens can attach.
                 }
-                else
+                if (createdNew)
                 {
                     try
                     {
@@ -1332,11 +1354,8 @@ namespace TypoZen
                 });
             };
             this.Activated += Window_Activated;
-            this.Closed += (s, e) =>
-            {
-                StopSingleInstanceOpenServer();
-                DisposeDiskWatchers();
-            };
+            // The open pipe and the disk watchers stop in the main Closed handler (below,
+            // in the window setup). A handler here never ran: that one ends the process.
         }
 
         /// <summary>
@@ -1902,13 +1921,22 @@ namespace TypoZen
             this.Closing += TypoZenWindow_Closing;
             this.Closed += (s, e) =>
             {
+                Program.PerfMark("close: Closed handler");
+                // First: stop taking files from later launches. This window will never open
+                // them -- a file double-clicked just after closing was accepted here and
+                // dropped. With the pipe gone, the new launch waits for this process to exit
+                // and opens it itself (Program.Main).
+                StopSingleInstanceOpenServer();
+                DisposeDiskWatchers();
                 UninstallEditorKeyFilter();
                 SaveWindowState();
                 PruneLoadStageDir(maxAgeMinutes: 0);   // nothing is in flight once we are closing
+                Program.PerfMark("close: state saved, stage pruned");
                 // The narrator holds several gigabytes of VRAM while it is up. It was started
                 // for this window's reading and must not outlive it.
                 try { QwenNarrator.Stop(); } catch { }
                 try { BreezeNarrator.Stop(); } catch { }
+                Program.PerfMark("close: narrators stopped");
                 try
                 {
                     if (_webView != null)
@@ -1918,6 +1946,7 @@ namespace TypoZen
                     }
                 }
                 catch {}
+                Program.PerfMark("close: WebView disposed");
                 // After the WebView is gone, never before: Chromium holds handles on the
                 // images it has fetched, so deleting the extraction while it is alive fails
                 // silently and leaves exactly what privacy mode is there to remove. This is
@@ -1929,8 +1958,14 @@ namespace TypoZen
                 // once the page has navigated; exit is the only safe time to remove it.
                 try { if (_privateLoadDir != null && Directory.Exists(_privateLoadDir))
                           Directory.Delete(_privateLoadDir, true); } catch { }
+                Program.PerfMark("close: private folders removed; exiting");
                 Application.Current.Shutdown();
-                Environment.Exit(0);
+                // ExitProcess, not Environment.Exit: everything above is written, and the
+                // runtime's own shutdown after this point took 2.6 s while the window was
+                // already gone -- holding the single-instance mutex, so a file opened in that
+                // time was dropped or took 5-6 s. Measured 2026-10-13: exit 2,650 ms -> 80 ms;
+                // localStorage and the tab session still survive a relaunch.
+                Program.ExitProcess(0);
             };
 
             try
@@ -3083,6 +3118,7 @@ namespace TypoZen
 
         private void TypoZenWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
+            Program.PerfMark("close: Closing handler");
             _closeClickCount++;
 
             // Second close (or force): always exit. Never block on the editor again —
@@ -3203,6 +3239,7 @@ namespace TypoZen
                 SaveWindowState();
                 PersistSessionMeta();
                 PersistTabSession();
+                Program.PerfMark("close: Closing handler done, session saved");
             }
             finally { _closePromptActive = false; }
         }
