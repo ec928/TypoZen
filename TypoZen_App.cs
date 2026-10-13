@@ -16699,6 +16699,9 @@ namespace TypoZen
                 using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write))
                     e.Request.Content.CopyTo(fs);
                 if (new FileInfo(tmp).Length < 8) throw new IOException("the PDF came back empty");
+                // Never swap in something that is not a PDF: the target may be the reader's own
+                // file. Today the page sends a PDF or reports an error; this keeps it that way.
+                if (!LooksLikePdf(tmp)) throw new IOException("what came back was not a PDF");
                 if (File.Exists(target)) File.Replace(tmp, target, null);
                 else File.Move(tmp, target);
                 tmp = null;
@@ -16713,6 +16716,29 @@ namespace TypoZen
             {
                 if (tmp != null) try { File.Delete(tmp); } catch { }
             }
+        }
+
+        /// <summary>
+        /// True when the file has a PDF header, "%PDF-", within its first 1024 bytes -- the
+        /// limit readers allow for leading bytes before it.
+        /// </summary>
+        internal static bool LooksLikePdf(string path)
+        {
+            try
+            {
+                byte[] head = new byte[1024];
+                int n;
+                using (var fs = File.OpenRead(path)) n = fs.Read(head, 0, head.Length);
+                byte[] sig = { (byte)'%', (byte)'P', (byte)'D', (byte)'F', (byte)'-' };
+                for (int i = 0; i + sig.Length <= n; i++)
+                {
+                    int k = 0;
+                    while (k < sig.Length && head[i + k] == sig[k]) k++;
+                    if (k == sig.Length) return true;
+                }
+            }
+            catch { }
+            return false;
         }
 
         private static bool CopyFileAtomic(string from, string to, out string error)
