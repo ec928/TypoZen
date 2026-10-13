@@ -133,6 +133,20 @@ theme. Links in the editor now take the theme accent. A book link has no `href` 
 (06-render-epub.js moves it to `data-book-href`), so a rule on `a[href]` matched none of them
 -- 0.5.5 shipped that and changed nothing.
 
+### Several lines pasted inside a line — **fixed** (0.16.32)
+
+A multi-line paste in Preview never split the line at the caret: a whole line pasted at the
+start of another ran into it (`unoalpha`), and one pasted mid-line came out in the wrong order.
+Plain text that began with a line break lost it to a trim added in 0.2.36. Guarded by
+two cases in `keyboard-editing-cases.mjs`.
+
+### Windows-1252 notes opened as damaged UTF-8 — **fixed** (0.16.31)
+
+From 0.14.3, a file with fewer than ten non-ASCII bytes that were not UTF-8 -- "café", Word's
+curly apostrophes -- opened with U+FFFD in their place, and saving wrote that over the original.
+Damaged UTF-8 now needs real UTF-8 in the file; a file still read that way asks before the save
+that would write U+FFFD. Guarded by the encoding block of the `TYPOZEN_TAB_E2E` self-test.
+
 ### Pasting into a line — **fixed** (0.5.5)
 
 A paste lost its own leading and trailing spaces, and `**bold**` pasted into bold text saved as
