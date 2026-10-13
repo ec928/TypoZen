@@ -180,6 +180,26 @@ namespace TypoZen
             try { OnPlaybackFinished?.Invoke(); } catch { }
         }
 
+        /// <summary>
+        /// On exit: stop, and delete this process's read-aloud audio from the temp folder. A
+        /// play's file was only ever removed by the next play, so the last passage read stayed
+        /// in %TEMP% for good -- Privacy Mode included. Only this process's files: another
+        /// TypoZen (the Store copy beside the portable one) may be playing its own.
+        /// </summary>
+        public static void DeleteAudioFiles()
+        {
+            try { Stop(); } catch { }
+            try
+            {
+                string mine = "typozen_tts_" + System.Diagnostics.Process.GetCurrentProcess().Id + "_*.*";
+                foreach (string f in Directory.GetFiles(Path.GetTempPath(), mine))
+                {
+                    try { File.Delete(f); } catch { }
+                }
+            }
+            catch { }
+        }
+
         /// <summary>This play's own audio file; earlier ones are deleted once nothing holds them.</summary>
         private static string NewAudioPath(int gen, string ext = ".wav")
         {

@@ -1936,6 +1936,8 @@ namespace TypoZen
                 // for this window's reading and must not outlive it.
                 try { QwenNarrator.Stop(); } catch { }
                 try { BreezeNarrator.Stop(); } catch { }
+                // The last passage read aloud is an audio file in %TEMP%; it goes with us.
+                try { TypoZen_TTS.DeleteAudioFiles(); } catch { }
                 Program.PerfMark("close: narrators stopped");
                 try
                 {

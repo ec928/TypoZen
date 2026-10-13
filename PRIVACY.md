@@ -62,6 +62,10 @@ they are.)
 Your documents themselves are saved wherever you choose to save them. TypoZen does not
 copy them anywhere else.
 
+Reading aloud with a Windows voice or a Microsoft online voice writes the audio of the
+passage being read to Windows' temporary folder (`typozen_tts_*` files). TypoZen deletes
+them when it closes. (Versions 0.16.34 and earlier left the last passage's audio there.)
+
 Some of this data can identify you indirectly — a file path may contain your user name,
 and recent files and search terms describe what you have been working on. That data
 never leaves your computer, but it is on your computer, which is why the controls below
