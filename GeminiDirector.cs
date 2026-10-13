@@ -870,6 +870,16 @@ Remember to return ONLY the JSON object.",
                     {
                         int status = (int)httpResp.StatusCode;
                         if (status == 429) anyRateLimit = true;
+                        // A bad key is the same for every model: say so at once. Google answers
+                        // one with 400 INVALID_ARGUMENT, reason API_KEY_INVALID (checked
+                        // 2026-10-13); 401/403 is a key without access (or one Google disabled).
+                        if (status == 400 || status == 401 || status == 403)
+                        {
+                            string body = ReadErrorResponse(wex);
+                            if (status != 400 || body.IndexOf("API_KEY_INVALID", StringComparison.Ordinal) >= 0)
+                                throw new InvalidOperationException(
+                                    "Google rejected the Gemini API key (" + GoogleMessage(body, status) + "). Check it under API Key... in Narrator Manager.", wex);
+                        }
                         // 404: model deprecated / not found
                         // 400: bad request / unsupported parameters
                         // 429: quota exhausted for this model on free tier - try next model!
@@ -974,6 +984,21 @@ Remember to return ONLY the JSON object.",
                 string respJson = reader.ReadToEnd();
                 return ParseGeminiResponse(respJson, model);
             }
+        }
+
+        /// <summary>The "message" in Google's error JSON, or the HTTP status if there is none.</summary>
+        private static string GoogleMessage(string body, int status)
+        {
+            try
+            {
+                var root = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(body);
+                object err, msg;
+                if (root != null && root.TryGetValue("error", out err) && err is Dictionary<string, object> e
+                    && e.TryGetValue("message", out msg) && msg is string s && s.Trim().Length > 0)
+                    return s.Trim();
+            }
+            catch { }
+            return "HTTP " + status;
         }
 
         private static string ReadErrorResponse(WebException wex)
