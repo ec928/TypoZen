@@ -15,6 +15,11 @@ EXE = ROOT / "TypoZen.exe"
 OUT = ROOT / "tests" / "_tab_e2e_out"
 
 
+def kill_own(proc):
+    """End only the process tree this script started."""
+    subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
+
+
 def main():
     if not EXE.exists():
         print("FAIL: TypoZen.exe not found at", EXE)
@@ -24,12 +29,13 @@ def main():
         shutil.rmtree(OUT, ignore_errors=True)
     OUT.mkdir(parents=True, exist_ok=True)
 
-    # Kill any running instance
-    subprocess.run(["taskkill", "/IM", "TypoZen.exe", "/F"], capture_output=True)
-    time.sleep(0.4)
-
+    # Never kill a TypoZen this script did not start: `taskkill /IM TypoZen.exe /F` here
+    # closed the user's own editor without saving. TYPOZEN_TAB_E2E turns off the
+    # single-instance server, so this run can sit beside an open one; its own profile
+    # folder keeps it out of that one's settings and session.
     env = os.environ.copy()
     env["TYPOZEN_TAB_E2E"] = str(OUT)
+    env["TYPOZEN_PROFILE_DIR"] = str(OUT / "profile")
 
     print("Starting TypoZen tab content E2E...")
     print("  OUT=", OUT)
@@ -57,22 +63,14 @@ def main():
         time.sleep(0.25)
     else:
         print("FAIL: timed out waiting for tab-e2e-result.txt")
-        try:
-            proc.kill()
-        except Exception:
-            pass
-        subprocess.run(["taskkill", "/IM", "TypoZen.exe", "/F"], capture_output=True)
+        kill_own(proc)
         return 1
 
-    # Ensure process gone
+    # Ensure the process this script started is gone (and its WebView2 children).
     try:
         proc.wait(timeout=5)
     except Exception:
-        try:
-            proc.kill()
-        except Exception:
-            pass
-    subprocess.run(["taskkill", "/IM", "TypoZen.exe", "/F"], capture_output=True)
+        kill_own(proc)
 
     text = result_path.read_text(encoding="utf-8", errors="replace")
     print(text)
