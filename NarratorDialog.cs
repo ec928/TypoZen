@@ -3217,6 +3217,19 @@ namespace TypoZen
                             {
                                 foreach (var o in bEnum) if (o != null) blocksList.Add(o.ToString());
                             }
+                            // The block index of each excerpt (-1 for none), parallel to blocks: Gemini
+                            // numbers the excerpts, playback numbers the book's blocks.
+                            var parasList = new List<int>();
+                            object pObj;
+                            if (data != null && data.TryGetValue("paras", out pObj) && pObj is System.Collections.IEnumerable pEnum)
+                            {
+                                foreach (var o in pEnum)
+                                {
+                                    int pn;
+                                    parasList.Add(o != null && int.TryParse(o.ToString(), out pn) ? pn : -1);
+                                }
+                            }
+                            if (parasList.Count != blocksList.Count) parasList.Clear();
 
                             if (blocksList.Count == 0)
                             {
@@ -3354,11 +3367,15 @@ namespace TypoZen
                                     {
                                         if (string.IsNullOrEmpty(q.Quote) || string.IsNullOrEmpty(q.Speaker)) continue;
                                         string norm = q.Quote.Trim().ToLowerInvariant();
-                                        cast.QuoteScript[q.Para + ":" + norm] = q.Speaker;
+                                        // "@<block>:<quote>" is this paragraph's own answer and overrides the
+                                        // page's rules; "<quote>" alone gives way to a speaking word in the text.
+                                        int quoteBlock = q.Para >= 0 && q.Para < parasList.Count ? parasList[q.Para] : -1;
+                                        string quoteHere = quoteBlock >= 0 ? "@" + quoteBlock + ":" + norm : null;
+                                        if (quoteHere != null) cast.QuoteScript[quoteHere] = q.Speaker;
                                         cast.QuoteScript[norm] = q.Speaker;
                                         if (!string.IsNullOrEmpty(q.Cue))
                                         {
-                                            cast.QuoteCues[q.Para + ":" + norm] = q.Cue;
+                                            if (quoteHere != null) cast.QuoteCues[quoteHere] = q.Cue;
                                             cast.QuoteCues[norm] = q.Cue;
                                         }
                                     }

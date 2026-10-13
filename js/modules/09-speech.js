@@ -1606,12 +1606,16 @@ function narrationQuotes(text) {
         const inner = text.slice(m.index + 1, m.index + m[0].length - 1);
         let key = castKey(speakerKey(who), _narrCast);
         let tag = quoteCueTag(text, m.index, m[0].length);
-        if (typeof _narrCastScript !== 'undefined' && _narrCastScript && Object.keys(_narrCastScript).length) {
+        // Smart Cast's script by the quote's words alone yields to a speaking word in the text:
+        // '"What?" said Paul.' stays Paul's, whoever Gemini heard say "What?" elsewhere.
+        if (!(key && pick && pick.verb) && typeof _narrCastScript !== 'undefined' && _narrCastScript && Object.keys(_narrCastScript).length) {
             const norm = inner.trim().toLowerCase();
             const matchedKey = _narrCastScript[norm];
-            if (matchedKey && typeof _narrCast !== 'undefined' && _narrCast && _narrCast[matchedKey]) key = matchedKey;
-            const matchedCue = typeof _narrCastCues !== 'undefined' && _narrCastCues && _narrCastCues[norm];
-            if (matchedCue && !tag) tag = matchedCue;
+            if (matchedKey && typeof _narrCast !== 'undefined' && _narrCast && _narrCast[matchedKey]) {
+                key = matchedKey;
+                const matchedCue = typeof _narrCastCues !== 'undefined' && _narrCastCues && _narrCastCues[norm];
+                if (matchedCue && !tag) tag = matchedCue;
+            }
         }
         const q = {
             start: m.index, end: m.index + m[0].length, inner: inner, who: who,
@@ -1643,7 +1647,14 @@ function doneTo(q, key, known) {
     });
 }
 
-function attributeParagraphs(texts, known) {
+/** A paragraph's block index (data-model-index), the key Smart Cast's script uses; -1 if none. */
+function scriptBlockIndex(el) {
+    const idx = el && el.getAttribute ? parseInt(el.getAttribute('data-model-index'), 10) : NaN;
+    return isFinite(idx) ? idx : -1;
+}
+
+/** `at`, when given, is each text's block index, for Smart Cast's per-paragraph script. */
+function attributeParagraphs(texts, known, at) {
     const result = [];
     const recent = [];                          // speakers of the dialogue paragraphs just before
     let lastAddressed = null;                   // character vocatively addressed in question just before
@@ -1684,14 +1695,16 @@ function attributeParagraphs(texts, known) {
             continue;
         }
 
-        // Apply AI Script Director quote attribution (para:norm or norm)
-        if (typeof _narrCastScript !== 'undefined' && _narrCastScript && Object.keys(_narrCastScript).length) {
+        // Smart Cast's script for this very paragraph ('@<block>:<quote>') overrides the rules:
+        // Gemini read the quote in place. (The words-only entries were applied in narrationQuotes.)
+        const block = at && at[textIdx] >= 0 ? at[textIdx] : -1;
+        if (block >= 0 && typeof _narrCastScript !== 'undefined' && _narrCastScript && Object.keys(_narrCastScript).length) {
             for (const q of qs) {
-                const norm = (q.inner || '').trim().toLowerCase();
-                const matched = _narrCastScript[textIdx + ':' + norm] || _narrCastScript[norm];
+                const k = '@' + block + ':' + (q.inner || '').trim().toLowerCase();
+                const matched = _narrCastScript[k];
                 if (matched && typeof _narrCast !== 'undefined' && _narrCast && _narrCast[matched]) {
                     q.key = matched;
-                    const cue = (typeof _narrCastCues !== 'undefined' && _narrCastCues) ? (_narrCastCues[textIdx + ':' + norm] || _narrCastCues[norm]) : '';
+                    const cue = (typeof _narrCastCues !== 'undefined' && _narrCastCues) ? _narrCastCues[k] : '';
                     if (cue && !q.tag) q.tag = cue;
                 }
             }
@@ -1779,12 +1792,13 @@ function castScanTexts() {
         && Array.isArray(DocumentModel.blocks) && DocumentModel.blocks.length) {
         return {
             whole: true,
-            texts: DocumentModel.blocks.map(b => oneNotation(String(b && b.raw || '').trim()))
+            texts: DocumentModel.blocks.map(b => oneNotation(String(b && b.raw || '').trim())),
+            at: DocumentModel.blocks.map((b, i) => i)
         };
     }
     const all = (typeof document !== 'undefined' && document.querySelectorAll)
         ? Array.from(document.querySelectorAll('#editor .block')) : [];
-    return { whole: false, texts: all.map(el => oneNotation((el.innerText || '').trim())) };
+    return { whole: false, texts: all.map(el => oneNotation((el.innerText || '').trim())), at: all.map(scriptBlockIndex) };
 }
 
 /**
@@ -1796,7 +1810,7 @@ window.narrationCastScan = function () {
     const src = castScanTexts();
     const known = knownSpeakers(src.texts);
     const counts = {}, names = {};
-    attributeParagraphs(src.texts, known).forEach(qs => qs.forEach(q => {
+    attributeParagraphs(src.texts, known, src.at).forEach(qs => qs.forEach(q => {
         if (!q.key) return;
         counts[q.key] = (counts[q.key] || 0) + 1;
         if (q.who && !/^(he|she|it|they|i)$/i.test(q.who)) {
@@ -1836,6 +1850,8 @@ window.narrationGeminiPayload = function () {
     narrTagsFor(typeof DocumentModel !== 'undefined' ? DocumentModel : null);
     const src = castScanTexts();
     const blocks = [];
+    // Each excerpt's block index, so the host keys Gemini's answer to the paragraph it was about.
+    const paras = [];
     for (let i = 0; i < src.texts.length; i++) {
         const t = (src.texts[i] || '').trim();
         if (/[“"‘]/.test(t)) {
@@ -1855,13 +1871,14 @@ window.narrationGeminiPayload = function () {
                 }
             }
             blocks.push(combined);
+            paras.push(src.at[i]);
             if (blocks.length >= 75) break;
         }
     }
     if (!blocks.length) {
         for (let i = 0; i < Math.min(src.texts.length, 50); i++) {
             const t = (src.texts[i] || '').trim();
-            if (t) blocks.push(t);
+            if (t) { blocks.push(t); paras.push(src.at[i]); }
         }
     }
     let docTitle = "";
@@ -1876,7 +1893,8 @@ window.narrationGeminiPayload = function () {
         window.chrome.webview.postMessage('host_narrator_gemini_payload:' + JSON.stringify({
             whole: src.whole,
             title: docTitle,
-            blocks: blocks
+            blocks: blocks,
+            paras: paras
         }));
     } catch (e) {}
     return blocks;
@@ -2072,9 +2090,8 @@ function narrationBatches(all, from, maxBatches, graduated, firstText) {
         first = Math.max(0, from - 4);
         const known = knownSpeakers(all);
         Object.keys(_narrCast).forEach(k => known.add(k));
-        const texts = all.slice(first, Math.min(all.length, from + limit + 40))
-            .map(el => narrationText(el));
-        speakers = attributeParagraphs(texts, known);
+        const span = all.slice(first, Math.min(all.length, from + limit + 40));
+        speakers = attributeParagraphs(span.map(el => narrationText(el)), known, span.map(scriptBlockIndex));
     }
     let i = from;
     for (; i < all.length && pieces.length < limit; i++) {

@@ -830,14 +830,23 @@ console.log('--- AI Script Director / Gemini Smart Cast dialogue attribution');
     const p2 = api.castPieces('Paul’s mother answered: “He is ready.”');
     eq('ambiguous line with script mapping resolves to Jessica', p2.filter(p => p.role === 'dialogue').map(p => p.voice), ['noble-matriarch-f']);
 
-    // 3. Paragraph-indexed script mapping:
+    // 3. Paragraph-indexed script mapping, keyed by the block's data-model-index:
+    const blockEl = (text, idx) => ({ innerText: text, getAttribute: a => (a === 'data-model-index' && idx != null ? String(idx) : null) });
+    const dialogueVoices = els => api.narrationBatches(els, 0, 4, false).flat().filter(p => p.role === 'dialogue').map(p => p.voice);
     api.setCastScript({
-        '0:what is this test?': 'paul'
+        '@0:what is this test?': 'paul'
     });
-    const batchPieces = api.narrationBatches([
-        { innerText: '“What is this test?”', getAttribute: () => null }
-    ], 0, 1, false);
-    eq('paragraph-indexed quote speaks in scripted voice', (batchPieces[0] || []).filter(p => p.role === 'dialogue').map(p => p.voice), ['hero-youth-m']);
+    eq('paragraph-indexed quote speaks in scripted voice', dialogueVoices([blockEl('“What is this test?”', 0)]), ['hero-youth-m']);
+
+    // 3b. A quote's words alone never outvote a speaking word: Gemini gave a chapter-1 "What?" to
+    // Jessica, and that pinned every "What?" in the book on her, even '"What?" said Paul.' (0.16.29).
+    api.setCastScript({ 'what?': 'jessica' });
+    eq('words-only script yields to "said Paul"', dialogueVoices([blockEl('“What?” said Paul.', 40)]), ['hero-youth-m']);
+    eq('words-only script still fills an untagged quote', dialogueVoices([blockEl('“What?”', 40)]), ['noble-matriarch-f']);
+    // The paragraph Gemini read is its own answer, over the speaking word.
+    api.setCastScript({ 'what?': 'jessica', '@7:what?': 'jessica' });
+    eq('paragraph-matched script overrides the speaking word', dialogueVoices([blockEl('“What?” said Paul.', 7)]), ['noble-matriarch-f']);
+    eq('paragraph key does not match another block', dialogueVoices([blockEl('“What?” said Paul.', 8)]), ['hero-youth-m']);
 
     // 4. Extraction for Gemini payload
     api.setModel({
@@ -851,6 +860,8 @@ console.log('--- AI Script Director / Gemini Smart Cast dialogue attribution');
     const payload = api.narrationGeminiPayload();
     eq('narrationGeminiPayload extracts dialogue blocks', payload.length, 1);
     eq('extracted dialogue block matches', payload[0], '“They tried and died,” Paul said.');
+    const sent = JSON.parse(posted.filter(m => m.startsWith('host_narrator_gemini_payload:')).pop().slice(29));
+    eq('payload gives each excerpt its block index', sent.paras, [1]);
 
     // 5. Backward voice attribution heuristic in attributeParagraphs:
     api.setCast({

@@ -439,9 +439,10 @@ The same in every kind of document. The first row that fits wins.
 
 | In the text | Read by |
 |---|---|
-| A quote mapped by **Smart Cast** (AI Script Director) | the scripted character, with their delivery cue |
+| A quote **Smart Cast** (AI Script Director) mapped in this paragraph | the scripted character, with their delivery cue |
 | A name and a speaking word in the quote's sentence: `"Go," Tom said.` · `Tom asked, "Where?"` · `"Go," said Tom.` | Tom |
 | One person speaking to another: `"Go," Jill told Paul.` | Jill, the speaker, not Paul |
+| The same words as a quote Smart Cast mapped in another paragraph | the scripted character, with their delivery cue |
 | No speaking word, but someone acts beside the quote: `Tom turned to Anna. "We have to go."` | Tom, who acts, not Anna |
 | Voice attribution right after a quote: `“Here we are!” The voice was Duke Leto’s.` | Duke Leto |
 | *she* or *he*: `Anna stood up. "Go," she said.` | Anna, when the paragraph names only one character |
