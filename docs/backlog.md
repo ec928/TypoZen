@@ -3,7 +3,22 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
-## AI Script Director / Gemini Smart Cast for complex literary dialogue (2026-10-11)
+## AI Script Director / Gemini Smart Cast for complex literary dialogue (2026-10-11) — **built** (first released in 0.16.25)
+
+**As built, it differs from the proposal below.** The README section "Smart Cast & Voice
+Repertory Ensemble" describes what users get; `GeminiDirector.cs` is the code.
+
+| Proposal | As built |
+|---|---|
+| `HttpClient` over TLS 1.3, in `TypoZen_App.cs` | `HttpWebRequest` with TLS 1.2 enabled, in `GeminiDirector.cs`; the key goes in the `x-goog-api-key` header only |
+| The whole novel, or a chapter, in one request | Two phases: the cast from the title and 12 sampled excerpts, then up to 75 dialogue paragraphs of the loaded chapter or document, 25 per request |
+| Schema-enforced JSON | JSON response mode (`responseMimeType`); the schema is in the prompt, not enforced |
+| A script cached next to the book | Saved with the book's cast under the profile folder (`extensions\QwenTTS\cast\<BookHash>.json`) |
+| The script annotates every quote | It covers the paragraphs sent. A quote matched to its paragraph overrides the page's speaker rules; the same words elsewhere in the book give way to a speaking word that names someone (`"What?" said Paul.`). README, "Who reads a line of dialogue" |
+
+Smart Cast can be stopped while it runs (the button reads **Stop Smart Cast**), and it is off while Privacy Mode is on.
+
+The proposal as agreed follows.
 
 In complex literary fiction (such as *Dune*, *A Song of Ice and Fire*, classic Russian literature), character dialogue attribution using pure regex/heuristic rules hits an unavoidable ceiling. Characters are continually referred to by shifting aliases, epithets, and relational descriptions (*"Paul's mother"*, *"the Duke's concubine"*, *"the Bene Gesserit lady"*, *"the boy"*, *"the old woman"*), and multi-turn banter often carries no speech tags. While TypoZen's conservative narrator fallback prevents jarring misattribution, users who take time to assign custom cast voices miss having those voices utilized across the novel.
 
