@@ -1085,6 +1085,15 @@ Remember to return ONLY the JSON object.",
                             continue;
                         }
                     }
+                    else if (wex.Status == WebExceptionStatus.ConnectionClosed ||
+                             wex.Status == WebExceptionStatus.KeepAliveFailure ||
+                             wex.Status == WebExceptionStatus.ReceiveFailure ||
+                             wex.Status == WebExceptionStatus.SendFailure ||
+                             wex.Status == WebExceptionStatus.Timeout)
+                    {
+                        // Transient connection reset or socket closure: try next model in fallback chain!
+                        continue;
+                    }
                     string respBody = ReadErrorResponse(wex);
                     throw new InvalidOperationException("Gemini API error (" + wex.Message + "): " + respBody, wex);
                 }
@@ -1163,7 +1172,8 @@ Remember to return ONLY the JSON object.",
             request.Method = "POST";
             request.ContentType = "application/json; charset=utf-8";
             request.Headers.Add("x-goog-api-key", apiKey);
-            request.KeepAlive = false;
+            request.UserAgent = "TypoZen";
+            request.KeepAlive = true;
             request.ServicePoint.Expect100Continue = false;
             request.ContentLength = payloadBytes.Length;
             request.Timeout = 120000;
