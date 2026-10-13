@@ -471,7 +471,7 @@
                         const md = htmlToMarkdown(html);
                         if (md) {
                             e.preventDefault();
-                            insertPastedPlainText(md);
+                            insertPastedPlainText(md, true);
                             return;
                         }
                     }

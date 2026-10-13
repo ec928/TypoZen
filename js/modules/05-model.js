@@ -1977,13 +1977,73 @@
                 .replace(/^ | $/g, ' ');
         }
 
-        function insertPastedPlainText(text) {
+        /**
+         * Remove what follows a collapsed caret in `block` and return it as Markdown, or ''.
+         * The block's own wrapper (a paragraph, a heading) stays behind: only its inline
+         * content moves, marks and all.
+         */
+        function cutTextAfterCaret(block) {
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount || !sel.isCollapsed || !block.contains(sel.anchorNode)) return '';
+            const r = document.createRange();
+            r.setStart(sel.anchorNode, sel.anchorOffset);
+            r.setEnd(block, block.childNodes.length);
+            const plain = r.toString();
+            if (!plain) return '';
+            const lead = /^[\s ]+/.exec(plain);
+            const frag = r.extractContents();
+            // The words left behind may now end in an ordinary space, which the browser drops
+            // at the end of a line ("The " + "one" became "Theone"). Keep it as a no-break
+            // space, as withKeptEdgeSpaces does; saving turns it back into a space.
+            try {
+                const tw = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+                let lastText = null, n;
+                while ((n = tw.nextNode())) lastText = n;
+                if (lastText && / $/.test(lastText.nodeValue)) {
+                    lastText.nodeValue = lastText.nodeValue.slice(0, -1) + ' ';
+                    // Rewriting the node moved the caret to its start; the tail is gone, so
+                    // the caret belongs at the end of what is left.
+                    const back = document.createRange();
+                    back.setStart(lastText, lastText.nodeValue.length);
+                    back.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(back);
+                }
+            } catch (eS) {}
+            let nodes = Array.from(frag.childNodes);
+            // A partly selected wrapper comes back as a clone of it: keep its children.
+            while (nodes.length === 1 && nodes[0].nodeType === 1
+                   && /^(P|H[1-6]|BLOCKQUOTE|LI|UL|OL|DIV)$/.test(nodes[0].tagName)) {
+                nodes = Array.from(nodes[0].childNodes);
+            }
+            const tmp = document.createElement('div');
+            tmp.className = 'block';
+            const p = document.createElement('p');
+            nodes.forEach(n => p.appendChild(n));
+            tmp.appendChild(p);
+            let md = '';
+            try { md = state.revealOnFocus ? (p.textContent || '') : blockHtmlToMarkdown(tmp); }
+            catch (e) { md = p.textContent || ''; }
+            // The converter trims; the space before the moved words is part of them.
+            if (lead && !/^\s/.test(md)) md = lead[0].replace(/ /g, ' ') + md;
+            return md;
+        }
+
+        function insertPastedPlainText(text, fromHtml) {
             if (text == null || text === '') return;
             // A paste into the middle of a line keeps its own spaces: " Pasted" after a word
             // arrived as "wordPasted", because the clean-up trims every paste.
             const lead = /^[ \t]+/.exec(String(text)), trail = /[ \t]+$/.exec(String(text));
+            // Plain text keeps a line break it starts or ends with, as Notepad does: "\nuno"
+            // pasted after "alpha" starts a new line. The trim dropped it, and the paste ran
+            // on as "alphauno" (since 2026-08-30). Not for HTML, whose markup puts breaks
+            // around everything.
+            const breakBefore = !fromHtml && /^[ \t]*\r?\n/.test(String(text));
+            const breakAfter = !fromHtml && /\r?\n[ \t]*$/.test(String(text));
             text = stripClipboardLeadRepeat(text);
-            if (text && text.indexOf('\n') < 0) text = (lead ? lead[0] : '') + text + (trail ? trail[0] : '');
+            if (text && text.indexOf('\n') < 0 && !breakBefore && !breakAfter)
+                text = (lead ? lead[0] : '') + text + (trail ? trail[0] : '');
+            if (text) text = (breakBefore ? '\n' : '') + text + (breakAfter ? '\n' : '');
 
             if (state.mode === 'source') {
                 if (!sourceEditor) return;
@@ -2026,6 +2086,7 @@
 
             const rawLines = String(text).split(/\r?\n/);
             const blockTexts = [];
+            let pasteCaretBeforeTail = '';
             let currentCode = null;
             let currentTable = null;
             for (let i = 0; i < rawLines.length; i++) {
@@ -2108,6 +2169,20 @@
                 return;
             }
 
+            // Several lines pasted inside a line split it, as in any editor: the text after the
+            // caret moves to the end of the last pasted line. It used to stay where it was, so
+            // a whole line pasted at the start of another ran into it ("unoalpha"), and one
+            // pasted mid-line came out in the wrong order ("alunopha" / "dos").
+            if (blockTexts.length > 1 && active && active.classList && active.classList.contains('block')) {
+                const tail = cutTextAfterCaret(active);
+                if (tail) {
+                    const last = blockTexts.length - 1;
+                    if (/^\s*(```|\|)/.test(blockTexts[last])) blockTexts.push(tail);   // never into a fence or table
+                    else blockTexts[last] += tail;
+                    pasteCaretBeforeTail = tail;
+                }
+            }
+
             if (active && active.classList && active.classList.contains('block')) {
                 const currentRaw = active.getAttribute('data-raw') || active.innerText || '';
                 if (!currentRaw.trim()) {
@@ -2148,7 +2223,16 @@
                         || elementForModelIndex(lastIdx);
                 }
                 if (currentBlock && editor.contains(currentBlock)) {
-                    focusBlock(currentBlock, (currentBlock.innerText || '').length);
+                    // The caret goes where the paste ended: before the line's moved tail.
+                    let tailLen = 0;
+                    if (pasteCaretBeforeTail) {
+                        try {
+                            const t = document.createElement('div');
+                            renderBlockPreview(t, pasteCaretBeforeTail);
+                            tailLen = (t.innerText || '').length;
+                        } catch (eT) {}
+                    }
+                    focusBlock(currentBlock, Math.max(0, (currentBlock.innerText || '').length - tailLen));
                 }
             } else {
                 for (let i = 0; i < blockTexts.length; i++) {
@@ -2327,9 +2411,11 @@
             // Try HTML first for external rich content (browser pages, Word, etc.)
             // Skip if it's TypoZen's own copy (marked with data-source="typozen")
             let text = '';
+            let fromHtml = false;
             const html = dt ? dt.getData('text/html') : '';
             if (html && html.indexOf('data-source="typozen"') === -1) {
                 text = htmlToMarkdown(html);
+                fromHtml = !!text;
             }
             if (!text) {
                 text = dt ? dt.getData('text/plain') : '';
@@ -2354,7 +2440,7 @@
                     } catch (err2) {}
                 }
             }
-            insertPastedPlainText(text);
+            insertPastedPlainText(text, fromHtml);
         });
 
         // Drag & drop an image file straight into the document

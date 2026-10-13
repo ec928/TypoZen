@@ -251,6 +251,21 @@ try {
                 await kb.press('End'); await kb.type(' '); await chord(['Control'], 'v'); await sleep(300);
             },
             DOC.replace('The quick brown fox jumps.', 'The quick brown fox jumps. quick'));
+        // Several lines pasted inside a line split it, and the caret ends where the paste did.
+        // Until 0.16.32 Preview left the rest of the line on the first line ("The onequick
+        // brown fox jumps." then "two"), and dropped a break the clipboard text started with.
+        await run(mode, 'Ctrl+V of two lines mid-line splits the line', DOC, at('quick', 4, 2),
+            async () => {
+                await page.evaluate(() => navigator.clipboard.writeText('one\ntwo'));
+                await chord(['Control'], 'v'); await sleep(300); await kb.type('Z');
+            },
+            (g) => /The one\n+twoZquick brown fox jumps\./.test(g));
+        await run(mode, 'Ctrl+V of text starting with a line break starts a new line', DOC, at('quick', 3, 2),
+            async () => {
+                await page.evaluate(() => navigator.clipboard.writeText('\nuno'));
+                await kb.press('End'); await chord(['Control'], 'v'); await sleep(300); await kb.type('Z');
+            },
+            (g) => /The quick brown fox jumps\.\n+unoZ\n/.test(g));
         if (!SRC) {
             await run(mode, 'Ctrl+B bolds the selection', DOC, at('quick', 4, 2),
                 async () => { for (let i = 0; i < 5; i++) await chord(['Shift'], 'ArrowRight'); await chord(['Control'], 'b'); await sleep(300); },
