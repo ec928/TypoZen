@@ -3172,8 +3172,45 @@ namespace TypoZen
 
             if (smartCast != null)
             {
+                // While Smart Cast runs, its button reads Cancel. A cancel (or closing the window)
+                // stops before the next request and keeps the parts already done.
+                var smartRun = new bool[3];            // [0] running, [1] cancel asked, [2] requests started
+                object smartLabel = smartCast.Content;
+                Action smartDone = () =>
+                {
+                    smartRun[0] = false;
+                    smartRun[2] = false;
+                    smartCast.Content = smartLabel;
+                    smartCast.IsEnabled = true;
+                };
+                win.Closed += (s, e) => { System.Threading.Volatile.Write(ref smartRun[1], true); };
+
                 smartCast.Click += (s, e) =>
                 {
+                    if (smartRun[0])
+                    {
+                        System.Threading.Volatile.Write(ref smartRun[1], true);
+                        if (!smartRun[2])
+                        {
+                            // The page has not answered yet: nothing has been sent, so stop now.
+                            smartDone();
+                            if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
+                            if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
+                            busyBar.Visibility = Visibility.Collapsed;
+                            say("Smart Cast cancelled.");
+                            return;
+                        }
+                        smartCast.IsEnabled = false;
+                        say("Stopping Smart Cast after the part in progress...");
+                        return;
+                    }
+                    // Smart Cast sends the book's dialogue to Google. Privacy Mode blocks it,
+                    // as it blocks the online Edge voices.
+                    if (QwenNarrator.PrivateMode)
+                    {
+                        say("Smart Cast is off while Privacy Mode is on: it sends the book's dialogue to Google.");
+                        return;
+                    }
                     if (!GeminiDirector.HasApiKey())
                     {
                         showApiKeyModal();
@@ -3189,7 +3226,9 @@ namespace TypoZen
                         smartCastProgress.IsIndeterminate = true;
                         smartCastProgress.Visibility = Visibility.Visible;
                     }
-                    smartCast.IsEnabled = false;
+                    smartRun[0] = true;
+                    smartRun[1] = false;
+                    smartCast.Content = "Cancel";
                     say("Extracting dialogue excerpts for Gemini Script Director...");
                     busyBar.Visibility = Visibility.Visible;
                     sendToPage("cmd:narrator_cast_gemini");
@@ -3197,6 +3236,8 @@ namespace TypoZen
 
                 GeminiPayloadArrived = json =>
                 {
+                    if (!smartRun[0] || smartRun[1]) return;      // cancelled before the page answered
+                    smartRun[2] = true;
                     new System.Threading.Thread(() =>
                     {
                         try
@@ -3207,14 +3248,27 @@ namespace TypoZen
                             object bObj;
                             if (data != null && data.TryGetValue("blocks", out bObj) && bObj is System.Collections.IEnumerable bEnum)
                             {
-                                foreach (var o in bEnum) if (o != null) blocksList.Add(o.ToString());
+                                foreach (var o in bEnum) blocksList.Add(o != null ? o.ToString() : "");
                             }
+                            Func<string, List<string>> strings = name =>
+                            {
+                                var list = new List<string>();
+                                object v;
+                                if (data != null && data.TryGetValue(name, out v) && v is System.Collections.IEnumerable en && !(v is string))
+                                    foreach (var o in en) if (o != null) list.Add(o.ToString());
+                                return list;
+                            };
+                            var blockIndex = new List<int>();
+                            foreach (var s in strings("idx")) { int n; blockIndex.Add(int.TryParse(s, out n) ? n : -1); }
+                            if (blockIndex.Count != blocksList.Count) blockIndex = null;   // an older page: no index
+                            var samples = strings("samples");
+                            var localSpeakers = strings("speakers");
 
                             if (blocksList.Count == 0)
                             {
                                 win.Dispatcher.BeginInvoke((Action)(() =>
                                 {
-                                    smartCast.IsEnabled = true;
+                                    smartDone();
                                     if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
                                     if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
                                     busyBar.Visibility = Visibility.Collapsed;
@@ -3239,12 +3293,9 @@ namespace TypoZen
                             }
 
                             // If repertory catalog exists, include archetype descriptions
+                            // This install's own Breeze folder only: a Store install never reads the
+                            // installer build's profile.
                             string repCatalogPath = System.IO.Path.Combine(BreezeNarrator.RootDir(cacheDir), "voices", "repertory_catalog.json");
-                            if (!System.IO.File.Exists(repCatalogPath))
-                            {
-                                string alt = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TypoZen_Cache_Portable", "extensions", "BreezeTTS", "voices", "repertory_catalog.json");
-                                if (System.IO.File.Exists(alt)) repCatalogPath = alt;
-                            }
 
                             if (System.IO.File.Exists(repCatalogPath))
                             {
@@ -3280,7 +3331,7 @@ namespace TypoZen
 
                             string payloadTitle = data != null && data.ContainsKey("title") ? Convert.ToString(data["title"]) : "";
                             string bookTitle = !string.IsNullOrWhiteSpace(payloadTitle) ? payloadTitle : (System.IO.Path.GetFileNameWithoutExtension(book) ?? "Book");
-                            var result = GeminiDirector.AnalyzeAndCast(bookTitle, blocksList, availableVoices, (cur, total, msg) =>
+                            var result = GeminiDirector.AnalyzeAndCast(bookTitle, blocksList, blockIndex, samples, localSpeakers, availableVoices, (cur, total, msg) =>
                             {
                                 win.Dispatcher.BeginInvoke((Action)(() =>
                                 {
@@ -3298,11 +3349,11 @@ namespace TypoZen
                                     }
                                     say(msg);
                                 }));
-                            });
+                            }, () => System.Threading.Volatile.Read(ref smartRun[1]));
 
                             win.Dispatcher.BeginInvoke((Action)(() =>
                             {
-                                smartCast.IsEnabled = true;
+                                smartDone();
                                 if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
                                 if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
                                 busyBar.Visibility = Visibility.Collapsed;
@@ -3335,23 +3386,42 @@ namespace TypoZen
                                     }
 
                                     // Populate quote attribution script
+                                    // Each quote is keyed by its paragraph and its text. The text alone is a
+                                    // key too, but only for a quote with one speaker: "Yes." said by five
+                                    // characters must not go to whichever came last.
                                     cast.QuoteScript.Clear();
                                     cast.QuoteCues.Clear();
+                                    var textSpeaker = new Dictionary<string, string>();
+                                    var textShared = new HashSet<string>();
                                     foreach (var q in result.Quotes)
                                     {
                                         if (string.IsNullOrEmpty(q.Quote) || string.IsNullOrEmpty(q.Speaker)) continue;
                                         string norm = q.Quote.Trim().ToLowerInvariant();
-                                        cast.QuoteScript[q.Para + ":" + norm] = q.Speaker;
-                                        cast.QuoteScript[norm] = q.Speaker;
-                                        if (!string.IsNullOrEmpty(q.Cue))
+                                        if (q.Para >= 0)
                                         {
-                                            cast.QuoteCues[q.Para + ":" + norm] = q.Cue;
-                                            cast.QuoteCues[norm] = q.Cue;
+                                            cast.QuoteScript[q.Para + ":" + norm] = q.Speaker;
+                                            if (!string.IsNullOrEmpty(q.Cue)) cast.QuoteCues[q.Para + ":" + norm] = q.Cue;
+                                        }
+                                        string had;
+                                        if (textSpeaker.TryGetValue(norm, out had) && had != q.Speaker) textShared.Add(norm);
+                                        else
+                                        {
+                                            textSpeaker[norm] = q.Speaker;
+                                            if (!string.IsNullOrEmpty(q.Cue)) cast.QuoteCues[norm] = q.Cue;
                                         }
                                     }
+                                    foreach (var kv in textSpeaker)
+                                    {
+                                        if (textShared.Contains(kv.Key)) cast.QuoteCues.Remove(kv.Key);
+                                        else cast.QuoteScript[kv.Key] = kv.Value;
+                                    }
 
-                                    say(string.Format("AI Cast complete via {0}: {1} novel characters cast ({2} in this chapter), {3} quotes mapped. Click Save to apply.",
-                                        result.ModelUsed ?? "Gemini", result.Characters.Count, speakingCount, result.Quotes.Count));
+                                    string doneText = result.Stopped == null
+                                        ? "AI Cast complete via {0}"
+                                        : "Smart Cast stopped after {4} of {5} parts ({6}); kept what was done, via {0}";
+                                    say(string.Format(doneText + ": {1} characters cast ({2} speak in the text sent), {3} quotes mapped. Click Save to apply.",
+                                        result.ModelUsed ?? "Gemini", result.Characters.Count, speakingCount, result.Quotes.Count,
+                                        result.BatchesDone, result.BatchesTotal, result.Stopped));
                                     unsaved.Visibility = Visibility.Visible;
                                 }
                                 catch (Exception popEx)
@@ -3364,7 +3434,7 @@ namespace TypoZen
                         {
                             win.Dispatcher.BeginInvoke((Action)(() =>
                             {
-                                smartCast.IsEnabled = true;
+                                smartDone();
                                 if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
                                 if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
                                 busyBar.Visibility = Visibility.Collapsed;

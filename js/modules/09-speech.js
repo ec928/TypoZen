@@ -1784,9 +1784,20 @@ function castScanTexts() {
 window.narrationCastScan = function () {
     narrTagsFor(typeof DocumentModel !== 'undefined' ? DocumentModel : null);
     const src = castScanTexts();
-    const known = knownSpeakers(src.texts);
+    const list = castSpeakerList(src.texts);
+    narrLog('cast scan: ' + list.length + ' characters over ' + src.texts.length + ' blocks'
+        + (src.whole ? ', whole book' : ', loaded part'));
+    try {
+        window.chrome.webview.postMessage('host_narrator_cast:' + JSON.stringify({ whole: src.whole, characters: list }));
+    } catch (e) {}
+    return list;
+};
+
+/** Find characters' list: each named speaker in these texts with their line count. */
+function castSpeakerList(texts) {
+    const known = knownSpeakers(texts);
     const counts = {}, names = {};
-    attributeParagraphs(src.texts, known).forEach(qs => qs.forEach(q => {
+    attributeParagraphs(texts, known).forEach(qs => qs.forEach(q => {
         if (!q.key) return;
         counts[q.key] = (counts[q.key] || 0) + 1;
         if (q.who && !/^(he|she|it|they|i)$/i.test(q.who)) {
@@ -1810,13 +1821,13 @@ window.narrationCastScan = function () {
         const name = Object.keys(forms).sort((a, b) => forms[b] - forms[a])[0] || k;
         return { key: k, name: name, lines: counts[k] };
     }).sort((a, b) => b.lines - a.lines);
-    narrLog('cast scan: ' + list.length + ' characters over ' + src.texts.length + ' blocks'
-        + (src.whole ? ', whole book' : ', loaded part'));
-    try {
-        window.chrome.webview.postMessage('host_narrator_cast:' + JSON.stringify({ whole: src.whole, characters: list }));
-    } catch (e) {}
     return list;
-};
+}
+
+/** Most dialogue paragraphs one Smart Cast sends: 20 requests of 25. */
+const GEMINI_MAX_BLOCKS = 500;
+/** Excerpts spread across the text, so casting sees more than the opening. */
+const GEMINI_SAMPLES = 24;
 
 /**
  * Extracts dialogue paragraphs from the document/chapter for the Gemini Script Director.
@@ -1826,6 +1837,9 @@ window.narrationGeminiPayload = function () {
     narrTagsFor(typeof DocumentModel !== 'undefined' ? DocumentModel : null);
     const src = castScanTexts();
     const blocks = [];
+    // Each block's paragraph index in src.texts: the script is keyed by it, and
+    // attributeParagraphs looks lines up by the same index (textIdx).
+    const idx = [];
     for (let i = 0; i < src.texts.length; i++) {
         const t = (src.texts[i] || '').trim();
         if (/[“"‘]/.test(t)) {
@@ -1845,15 +1859,21 @@ window.narrationGeminiPayload = function () {
                 }
             }
             blocks.push(combined);
-            if (blocks.length >= 75) break;
+            idx.push(i);
+            if (blocks.length >= GEMINI_MAX_BLOCKS) break;
         }
     }
     if (!blocks.length) {
         for (let i = 0; i < Math.min(src.texts.length, 50); i++) {
             const t = (src.texts[i] || '').trim();
-            if (t) blocks.push(t);
+            if (t) { blocks.push(t); idx.push(i); }
         }
     }
+    const speakers = castSpeakerList(src.texts).slice(0, 40).map(s => s.name + ' (' + s.lines + ' lines)');
+    const samples = [];
+    if (blocks.length <= GEMINI_SAMPLES) samples.push(...blocks);
+    else for (let s = 0; s < GEMINI_SAMPLES; s++)
+        samples.push(blocks[Math.floor(s * (blocks.length - 1) / (GEMINI_SAMPLES - 1))]);
     let docTitle = "";
     if (typeof DocumentModel !== 'undefined' && DocumentModel && DocumentModel.title) {
         docTitle = DocumentModel.title;
@@ -1866,7 +1886,10 @@ window.narrationGeminiPayload = function () {
         window.chrome.webview.postMessage('host_narrator_gemini_payload:' + JSON.stringify({
             whole: src.whole,
             title: docTitle,
-            blocks: blocks
+            blocks: blocks,
+            idx: idx,
+            speakers: speakers,
+            samples: samples
         }));
     } catch (e) {}
     return blocks;
