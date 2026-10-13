@@ -14221,9 +14221,15 @@ namespace TypoZen
                     Pass("menu is not a manual toggle (always discoverable from the top edge)");
 
                     // Left-edge sidebar hover geometry (open strip is thin; stay band is wide).
+                    // The thin strip is the closed sidebar's: with it open or hovered the wide
+                    // stay band applies, as it should, and x=80 is inside it. Earlier steps can
+                    // leave it open, which is how this failed on every run.
+                    bool sidebarWasOpen = _sidebarOpen, leftHoverWas = _leftHover;
+                    _sidebarOpen = false; _leftHover = false;
                     bool leftHit = ShouldRevealSidebar(4, ActualHeight / 2);
                     bool leftMiss = ShouldRevealSidebar(80, ActualHeight / 2);
                     bool leftOvershoot = ShouldRevealSidebar(-10, ActualHeight / 2);
+                    _sidebarOpen = sidebarWasOpen; _leftHover = leftHoverWas;
                     if (leftHit && !leftMiss && leftOvershoot)
                         Pass("sidebar reveal band is the extreme left strip");
                     else Fail("sidebar reveal geometry wrong (hit=" + leftHit + " miss=" + leftMiss + " overshoot=" + leftOvershoot + ")");
