@@ -111,9 +111,8 @@ are off until you turn them on, and Privacy Mode switches both off:
 - **Smart Cast** (Narrator Manager → Cast for this book, with a Google Gemini API key you
   supply). When you click it, TypoZen sends Google's Gemini service
   (`generativelanguage.googleapis.com`) the title of the book or document that is open, up
-  to 500 of its paragraphs of dialogue (or its first 50 paragraphs if it has none), the
-  names of up to 40 speakers found in it, and the names and descriptions of your voices.
-  For an epub this is the part of the book TypoZen has loaded, not the whole book. Google sends back the characters, their voices and
+  to 75 of its paragraphs of dialogue (or its first 50 paragraphs if it has none), and the
+  names and descriptions of your voices. Google sends back the characters, their voices and
   who speaks each line. Each click sends this again. The request is made under your own key,
   so Google's terms for the Gemini API apply to it, not this policy. Do not use Smart Cast on
   writing you do not want to share with Google.

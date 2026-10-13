@@ -279,46 +279,6 @@ api.setModel({
     api.setCast({ anna: 'qwen-ryan' });
 }
 
-console.log('--- Smart Cast payload: up to 500 dialogue paragraphs, each with its index, plus speakers and spread samples');
-{
-    const blocks = [];
-    for (let n = 0; n < 700; n++) {
-        blocks.push({ raw: 'The road ran on past the mill.' });                 // narration: not sent
-        blocks.push({ raw: '"Line ' + n + '," said ' + (n % 3 ? 'Anna Smith' : 'Tom Price') + '.' });
-    }
-    api.setModel({ kind: 'markdown', blocks: blocks });
-    api.setCast({});
-    posted.length = 0;
-    api.narrationGeminiPayload();
-    const msg = posted.find(m => m.startsWith('host_narrator_gemini_payload:'));
-    const p = JSON.parse(msg.slice('host_narrator_gemini_payload:'.length));
-    eq('capped at 500 blocks', p.blocks.length, 500);
-    eq('one index per block', p.idx.length, 500);
-    eq('index is the paragraph in the text (odd lines hold the dialogue)', p.idx.slice(0, 3), [1, 3, 5]);
-    check('each index points at its own paragraph', p.idx.every((ix, k) => blocks[ix].raw === p.blocks[k]), 'index and text disagree');
-    eq('24 samples', p.samples.length, 24);
-    eq('samples run from first to last block', [p.samples[0], p.samples[23]], [p.blocks[0], p.blocks[499]]);
-    eq('speakers from Find characters, most lines first',
-        p.speakers.map(s => s.replace(/ \(\d+ lines\)$/, '')), ['Anna Smith', 'Tom Price']);
-    check('the scan still answers Find characters', api.narrationCastScan().length === 2, 'scan changed');
-}
-{
-    api.setModel({ kind: 'markdown', blocks: [{ raw: 'No dialogue here.' }, { raw: '' }, { raw: 'Nor here.' }] });
-    posted.length = 0;
-    api.narrationGeminiPayload();
-    const p = JSON.parse(posted.find(m => m.startsWith('host_narrator_gemini_payload:')).slice(29));
-    eq('no dialogue: the non-empty paragraphs, with their indexes', [p.blocks, p.idx], [['No dialogue here.', 'Nor here.'], [0, 2]]);
-}
-api.setModel({
-    kind: 'markdown',
-    blocks: [
-        { raw: '"My dear," said Mr. Bennet.' }, { raw: '"Yes," said Mr. Bennet.' },
-        { raw: '"Oh!" said Mrs. Bennet.' }, { raw: '"No," said Mrs. Bennet.' },
-        { raw: '"Hi," said Anna Smith.' }, { raw: '"Bye," Smith said.' }
-    ]
-});
-api.setCast({ anna: 'qwen-ryan' });
-
 console.log('--- the subject of an action beat speaks; a listener is never the pronoun');
 {
     api.setCast({ tom: 'v-tom', anna: 'v-anna' });

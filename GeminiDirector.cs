@@ -81,11 +81,6 @@ namespace TypoZen
             public List<CharacterCast> Characters = new List<CharacterCast>();
             public List<QuoteAttribution> Quotes = new List<QuoteAttribution>();
             public string ModelUsed { get; set; }
-            /// <summary>Attribution requests finished, and how many there were to do.</summary>
-            public int BatchesDone { get; set; }
-            public int BatchesTotal { get; set; }
-            /// <summary>Why attribution stopped early ("cancelled", or the error); null when it finished.</summary>
-            public string Stopped { get; set; }
         }
 
         #region API Key Storage (DPAPI)
@@ -420,7 +415,6 @@ namespace TypoZen
             string apiKey,
             string bookTitle,
             List<string> sampleExcerpts,
-            List<string> localSpeakers,
             List<VoiceOption> voiceCatalog,
             ref string modelUsed,
             string preferredModel = DefaultModel)
@@ -429,28 +423,34 @@ namespace TypoZen
             var excerptsSb = new StringBuilder();
             if (sampleExcerpts != null)
             {
-                int count = Math.Min(sampleExcerpts.Count, 24);
+                int count = Math.Min(sampleExcerpts.Count, 8);
                 for (int i = 0; i < count; i++)
                 {
                     excerptsSb.AppendLine(string.Format("[Excerpt {0}]: {1}", i + 1, sampleExcerpts[i]));
                 }
             }
-            var speakersSb = new StringBuilder();
-            if (localSpeakers != null)
-                foreach (var s in localSpeakers) if (!string.IsNullOrWhiteSpace(s)) speakersSb.AppendLine("- " + s.Trim());
-            if (speakersSb.Length == 0) speakersSb.AppendLine("(none found)");
 
-            // No book is named in these prompts: examples from one novel made the model cast
-            // that novel's people into others, and "you MUST cast 15-25" made it invent them.
             string systemPrompt =
-@"You are an expert Audio Drama Casting Director.
-Given a book's title, a list of speakers found in its text by a simple scan, and excerpts spread across its dialogue, cast the characters who speak, mapping each to the most fitting voice from the provided catalog.
+@"You are an expert Audio Drama Casting Director and Literary Scholar.
+Given a novel's title and sample excerpts, discover and cast the COMPLETE DRAMATIS PERSONAE for the ENTIRE NOVEL (all major, supporting, and key recurring characters: protagonists, antagonists, mentors, rulers, warriors, retainers, and specialists).
+Map every single character to the most fitting voice archetype from the provided catalog.
 
 RULES:
-1. Evidence: Cast a character only if they appear in the speaker list or the excerpts, or if you are certain they are a speaking character of this exact published work. Never invent characters. A short or unfamiliar text may have only a few characters; that is fine. The speaker list comes from a simple scan and can contain non-names (a place, a word that starts a sentence): leave those out.
-2. Canonical Keys: Use a clean, lowercase key for each character, normally the name the text uses most (e.g. 'anna', 'tom', 'mrs bennet'). Two characters who share a surname (Mr and Mrs Bennet) are two characters with two keys.
-3. Estimated Lines ('bookLines'): Estimate the number of spoken lines this character has in the whole book. Use the speaker list's counts as a guide.
-4. Aliases ('aliases'): List the other names, titles, honorifics, nicknames and epithets the text uses for this character (e.g. for a character called Anna Price: ""anna"", ""miss price"", ""the governess""). Do not give one alias to two characters.
+1. Comprehensiveness: For recognized literary works, epics, and novels (e.g. Dune, Matter, Pride and Prejudice, etc.), you MUST cast the entire novel's dramatis personae (15-25 characters), NOT just the characters who speak in the opening excerpt.
+   Include characters across the entire work (e.g. for Dune: Baron Vladimir Harkonnen, Emperor Shaddam IV, Paul Atreides, Lady Jessica, Duke Leto Atreides, Thufir Hawat, Gurney Halleck, Duncan Idaho, Stilgar, Chani, Dr. Wellington Yueh, Reverend Mother Gaius Helen Mohiam, Feyd-Rautha, Glossu Rabban, Piter De Vries, Princess Irulan, Count Fenring, Alia Atreides, Shadout Mapes, Liet-Kynes).
+2. Canonical Keys: Use clean, lowercase single-word canonical keys (e.g. 'paul', 'jessica', 'leto', 'baron', 'emperor', 'feyd', 'rabban', 'piter', 'stilgar', 'chani', 'gurney', 'idaho', 'hawat', 'yueh', 'mohiam', 'irulan', 'mapes', 'kynes', 'fenring', 'alia').
+3. Estimated Novel Lines ('bookLines'): Estimate the approximate number of spoken dialogue lines this character speaks across the entire novel (e.g. Paul: ~480, Jessica: ~320, Baron Harkonnen: ~160, Duke Leto: ~130, Stilgar: ~170, Gurney: ~110, Hawat: ~95, Chani: ~90, Feyd: ~75, Yueh: ~65, Mohiam: ~60, Duncan: ~45, Emperor: ~40, Rabban: ~35, Irulan: ~20).
+4. Aliases ('aliases'): Provide an array of alternative names, titles, honorifics, surnames, and short forms used for this character throughout the book so dialogue quotes can be accurately mapped.
+   Examples:
+   - Duke Leto: [""duke"", ""the duke"", ""leto"", ""duke leto"", ""duke leto atreides"", ""leto atreides"", ""my lord""]
+   - Paul: [""paul"", ""the boy"", ""young master"", ""paul atreides"", ""muad'dib"", ""usul"", ""the duke paul atreides""]
+   - Baron: [""baron"", ""the baron"", ""vladimir"", ""vladimir harkonnen"", ""baron harkonnen"", ""baron vladimir""]
+   - Jessica: [""jessica"", ""lady jessica"", ""his mother"", ""the lady jessica""]
+   - Mohiam: [""mohiam"", ""reverend mother"", ""gaius helen mohiam"", ""the reverend mother"", ""old woman""]
+   - Yueh: [""yueh"", ""dr. yueh"", ""doctor yueh"", ""wellington yueh""]
+   - Hawat: [""hawat"", ""thufir"", ""thufir hawat"", ""the mentat""]
+   - Irulan: [""irulan"", ""princess irulan""]
+   - Emperor: [""emperor"", ""shaddam"", ""shaddam iv"", ""padishah emperor""]
 5. Voice Archetype: Choose the best-fitting Voice ID from the catalog based on gender, vocal register, acoustic traits, and character personality.
 6. Acting Instruction: Provide vivid acting delivery instructions (under 60 chars) suitable for TTS emotion prompting.
 7. Emotion Strength: Assign a recommended Breeze emotion strength between 1.0 and 10.0 (default 4.0).
@@ -475,17 +475,14 @@ Return ONLY a valid JSON object adhering strictly to this JSON schema:
             string userPrompt = string.Format(
 @"BOOK TITLE: {0}
 
-SPEAKERS FOUND IN THE TEXT (name, lines):
+SAMPLE EXCERPTS:
 {1}
 
-SAMPLE EXCERPTS:
+AVAILABLE VOICE CATALOG:
 {2}
 
-AVAILABLE VOICE CATALOG:
-{3}
-
 Remember to return ONLY the JSON object.",
-                bookTitle, speakersSb.ToString(), excerptsSb.ToString(), catalogText);
+                bookTitle, excerptsSb.ToString(), catalogText);
 
             var result = ExecuteWithFallback(apiKey, preferredModel, systemPrompt, userPrompt);
             if (result != null)
@@ -535,8 +532,8 @@ Remember to return ONLY the JSON object.",
 Attribute each spoken dialogue quotation in the provided paragraphs to the TRUE speaker using the provided canonical dramatis personae keys.
 
 RULES:
-1. Canonical Speaker Keys: Attribute each quote strictly to the provided character keys, using the aliases to resolve titles and epithets to the right key. Do NOT create a new key for a character who already has one under another name.
-2. Attribution Logic: Resolve pronouns ('he said', 'she whispered'), relational epithets ('his mother', 'the captain'), and multi-turn banter without speech tags based on surrounding narrative context. If you cannot tell who speaks a quote, leave it out rather than guess.
+1. Canonical Speaker Keys: Attribute each quote strictly to the provided character keys (e.g. use 'leto' for the Duke / Duke Leto, 'paul' for Paul / the boy, 'jessica' for Lady Jessica / his mother, 'mohiam' for the Reverend Mother, 'hawat' for Thufir Hawat, etc.). Do NOT create new keys like 'duke' or 'paul atreides' when a canonical character already exists!
+2. Attribution Logic: Resolve pronouns ('he said', 'she whispered'), relational epithets ('his mother', 'the Duke'), and multi-turn banter without speech tags based on surrounding narrative context.
 3. Delivery Cues: Extract emotional cues or delivery direction indicated in the surrounding prose (e.g. 'whispering', 'coldly', 'gently', 'furious').
 4. Minor / New Characters: Only if an unlisted new character speaks (e.g. an unlisted guard or servant), create a clean lowercase key and assign them a voice archetype in 'newCharacters'.
 
@@ -603,95 +600,95 @@ Remember to return ONLY the JSON object.",
             return sb.ToString().Trim();
         }
 
-        /// <summary>
-        /// Every name a character answers to, matched whole -- never as part of another word.
-        /// The rule is the local attribution's: when it is unclear who speaks, the narrator
-        /// reads the line, never the wrong character. So a name two characters share (an alias
-        /// given to both, "Atreides" in two full names) belongs to neither, and a part of a
-        /// full name counts only when one character has it. The old resolver also matched any
-        /// substring ("ed" took "fred"), and a shared name went to whoever was listed first.
-        /// </summary>
-        public sealed class AliasIndex
+        private static void RegisterInAliasMap(CharacterCast c, Dictionary<string, CharacterCast> map)
         {
-            private readonly Dictionary<string, CharacterCast> _full = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
-            private readonly HashSet<string> _fullShared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            private readonly Dictionary<string, CharacterCast> _part = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
-            private readonly HashSet<string> _partShared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            private static void Put(Dictionary<string, CharacterCast> map, HashSet<string> shared, string name, CharacterCast c)
+            if (c == null) return;
+            if (!string.IsNullOrEmpty(c.Key))
             {
-                foreach (string form in new[] { (name ?? "").Trim().ToLowerInvariant(), NormalizeToken(name) })
-                {
-                    if (string.IsNullOrEmpty(form) || shared.Contains(form)) continue;
-                    CharacterCast had;
-                    if (map.TryGetValue(form, out had))
-                    {
-                        if (had != c) { map.Remove(form); shared.Add(form); }
-                    }
-                    else map[form] = c;
-                }
+                map[c.Key.ToLowerInvariant()] = c;
+                string normKey = NormalizeToken(c.Key);
+                if (!string.IsNullOrEmpty(normKey)) map[normKey] = c;
             }
-
-            public void Add(CharacterCast c)
+            if (!string.IsNullOrEmpty(c.Name))
             {
-                if (c == null) return;
-                Put(_full, _fullShared, c.Key, c);
-                Put(_full, _fullShared, c.Name, c);
-                if (c.Aliases != null) foreach (var a in c.Aliases) Put(_full, _fullShared, a, c);
-                if (!string.IsNullOrEmpty(c.Name))
+                map[c.Name.ToLowerInvariant()] = c;
+                string normName = NormalizeToken(c.Name);
+                if (!string.IsNullOrEmpty(normName)) map[normName] = c;
+
+                // Split name tokens (e.g. "Duke Leto Atreides")
+                string[] parts = c.Name.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var p in parts)
                 {
-                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var p in c.Name.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries))
+                    string low = p.Trim().ToLowerInvariant();
+                    if (low.Length >= 3 && !map.ContainsKey(low))
                     {
-                        string low = p.Trim().ToLowerInvariant();
-                        if (low.Length >= 3 && low != "the" && seen.Add(low)) Put(_part, _partShared, low, c);
+                        map[low] = c;
                     }
                 }
             }
-
-            public CharacterCast Resolve(string raw)
+            if (c.Aliases != null)
             {
-                if (string.IsNullOrWhiteSpace(raw)) return null;
-                CharacterCast c;
-                foreach (string form in new[] { raw.Trim().ToLowerInvariant(), NormalizeToken(raw) })
+                foreach (var a in c.Aliases)
                 {
-                    if (string.IsNullOrEmpty(form)) continue;
-                    if (_full.TryGetValue(form, out c)) return c;
-                    if (_fullShared.Contains(form)) return null;      // two characters' name: neither
+                    if (string.IsNullOrWhiteSpace(a)) continue;
+                    string low = a.Trim().ToLowerInvariant();
+                    map[low] = c;
+                    string norm = NormalizeToken(a);
+                    if (!string.IsNullOrEmpty(norm)) map[norm] = c;
                 }
-                foreach (string form in new[] { raw.Trim().ToLowerInvariant(), NormalizeToken(raw) })
-                {
-                    if (string.IsNullOrEmpty(form)) continue;
-                    if (_part.TryGetValue(form, out c)) return c;
-                }
-                return null;
             }
         }
 
-        public static AliasIndex BuildAliasIndex(IEnumerable<CharacterCast> characters)
+        private static Dictionary<string, CharacterCast> BuildAliasMap(IEnumerable<CharacterCast> characters)
         {
-            var index = new AliasIndex();
-            foreach (var c in characters) index.Add(c);
-            return index;
+            var map = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in characters)
+            {
+                RegisterInAliasMap(c, map);
+            }
+            return map;
+        }
+
+        public static CharacterCast ResolveSpeaker(string rawSpeaker, Dictionary<string, CharacterCast> aliasMap, Dictionary<string, CharacterCast> charsDict)
+        {
+            if (string.IsNullOrWhiteSpace(rawSpeaker)) return null;
+            string key = rawSpeaker.Trim().ToLowerInvariant();
+
+            CharacterCast match;
+            if (aliasMap != null && aliasMap.TryGetValue(key, out match)) return match;
+
+            string norm = NormalizeToken(key);
+            if (!string.IsNullOrEmpty(norm) && aliasMap != null && aliasMap.TryGetValue(norm, out match)) return match;
+
+            if (charsDict != null && charsDict.TryGetValue(key, out match)) return match;
+
+            // Fuzzy/contains match: check if rawSpeaker is contained in any character name or key
+            if (charsDict != null)
+            {
+                foreach (var c in charsDict.Values)
+                {
+                    if (string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase)) return c;
+                    if (string.Equals(c.Name, key, StringComparison.OrdinalIgnoreCase)) return c;
+                    if (c.Aliases != null && c.Aliases.Exists(a => string.Equals(a, key, StringComparison.OrdinalIgnoreCase))) return c;
+
+                    // If speaker contains key (e.g. "duke leto" contains "leto", "paul atreides" contains "paul")
+                    if (key.Contains(c.Key.ToLowerInvariant())) return c;
+                    if (c.Name.ToLowerInvariant().Contains(key)) return c;
+                    if (key.Contains(c.Name.ToLowerInvariant())) return c;
+                }
+            }
+
+            return null;
         }
 
         #endregion
 
-        /// <param name="dialogueBlocks">Up to 500 dialogue paragraphs, attributed 25 to a request.</param>
-        /// <param name="blockIndex">Each block's paragraph index in the page's texts; quotes are keyed by it.</param>
-        /// <param name="samples">Excerpts spread across the text, for casting; null uses the first 8 blocks.</param>
-        /// <param name="localSpeakers">Find characters' list ("Name (12 lines)"), for casting.</param>
-        /// <param name="cancelled">Checked before each request; true stops and keeps what is done.</param>
         public static GeminiCastResult AnalyzeAndCast(
-            string bookTitle,
-            List<string> dialogueBlocks,
-            List<int> blockIndex,
-            List<string> samples,
-            List<string> localSpeakers,
-            List<VoiceOption> availableVoices,
+            string bookTitle, 
+            List<string> dialogueBlocks, 
+            List<VoiceOption> availableVoices, 
             Action<int, int, string> onProgress = null,
-            Func<bool> cancelled = null,
-            string customApiKey = null,
+            string customApiKey = null, 
             string model = DefaultModel)
         {
             string apiKey = !string.IsNullOrEmpty(customApiKey) ? customApiKey.Trim() : GetApiKey();
@@ -711,7 +708,7 @@ Remember to return ONLY the JSON object.",
             }
 
             const int chunkSize = 25;
-            int totalToAnalyze = dialogueBlocks.Count;
+            int totalToAnalyze = Math.Min(dialogueBlocks.Count, 75);
             int totalQuoteBatches = (totalToAnalyze + chunkSize - 1) / chunkSize;
             int totalSteps = 1 + totalQuoteBatches;
 
@@ -719,93 +716,89 @@ Remember to return ONLY the JSON object.",
             var charsDict = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
 
             // ================================================================
-            // PHASE 1: Cast the characters, from the scan's speakers and spread excerpts
+            // PHASE 1: Discover Full Novel Dramatis Personae & Voice Archetypes
             // ================================================================
             if (onProgress != null)
-                onProgress(1, totalSteps, string.Format("Casting characters for '{0}' (part 1 of {1})...", cleanTitle, totalSteps));
+                onProgress(1, totalSteps, string.Format("Discovering full novel cast for '{0}' (Part 1 of {1})...", cleanTitle, totalSteps));
 
-            var sampleExcerpts = samples != null && samples.Count > 0
-                ? samples
-                : dialogueBlocks.GetRange(0, Math.Min(dialogueBlocks.Count, 8));
-            var fullBookCast = DiscoverBookDramatisPersonae(apiKey, cleanTitle, sampleExcerpts, localSpeakers, catalog, ref modelUsed, model);
+            var sampleExcerpts = dialogueBlocks.GetRange(0, Math.Min(dialogueBlocks.Count, 8));
+            var fullBookCast = DiscoverBookDramatisPersonae(apiKey, cleanTitle, sampleExcerpts, catalog, ref modelUsed, model);
 
             foreach (var fc in fullBookCast)
             {
                 if (!string.IsNullOrEmpty(fc.Key) && !charsDict.ContainsKey(fc.Key))
                 {
-                    fc.Lines = 0; // counted from the attribution below
+                    fc.Lines = 0; // reset lines for chapter attribution
                     charsDict[fc.Key] = fc;
                 }
             }
 
-            var aliases = BuildAliasIndex(charsDict.Values);
+            // Build alias lookup map for resolving speakers
+            var aliasMap = BuildAliasMap(charsDict.Values);
 
             // ================================================================
-            // PHASE 2: Attribute every dialogue block, 25 to a request
+            // PHASE 2: Attribute Dialogue Quotes in Chapter Excerpts
             // ================================================================
-            var aggregatedResult = new GeminiCastResult { ModelUsed = modelUsed, BatchesTotal = totalQuoteBatches };
+            var aggregatedResult = new GeminiCastResult { ModelUsed = modelUsed };
 
             for (int b = 0; b < totalQuoteBatches; b++)
             {
-                if (cancelled != null && cancelled())
-                {
-                    aggregatedResult.Stopped = "cancelled";
-                    break;
-                }
                 int startIdx = b * chunkSize;
                 int count = Math.Min(chunkSize, totalToAnalyze - startIdx);
                 var chunkBlocks = dialogueBlocks.GetRange(startIdx, count);
 
                 int stepNumber = b + 2;
                 if (onProgress != null)
-                    onProgress(stepNumber, totalSteps, string.Format("Attributing dialogue (part {0} of {1})...", stepNumber, totalSteps));
+                    onProgress(stepNumber, totalSteps, string.Format("Attributing chapter dialogue quotes (Part {0} of {1})...", stepNumber, totalSteps));
 
-                GeminiCastResult chunkResult;
-                try
-                {
-                    var knownList = new List<CharacterCast>(charsDict.Values);
-                    chunkResult = AttributeDialogueChunk(apiKey, chunkBlocks, 0, knownList, catalog, ref modelUsed, model);
-                }
-                catch (Exception ex)
-                {
-                    // A quota or network failure part way keeps the parts already done.
-                    aggregatedResult.Stopped = ex.Message;
-                    break;
-                }
+                var knownList = new List<CharacterCast>(charsDict.Values);
+                var chunkResult = AttributeDialogueChunk(apiKey, chunkBlocks, startIdx, knownList, catalog, ref modelUsed, model);
 
-                // New minor characters first, so this request's quotes can name them; only when no existing one answers to their name
-                foreach (var nc in chunkResult.Characters)
-                {
-                    if (string.IsNullOrEmpty(nc.Key)) continue;
-                    var matched = aliases.Resolve(nc.Key) ?? aliases.Resolve(nc.Name);
-                    if (matched == null && !charsDict.ContainsKey(nc.Key))
-                    {
-                        charsDict[nc.Key] = nc;
-                        aliases.Add(nc);
-                    }
-                }
+                // Merge quotes and increment lines count for speakers via canonical resolver
                 foreach (var q in chunkResult.Quotes)
                 {
-                    // The model numbers paragraphs within its request; map to the page's index.
-                    // A number outside the request cannot be placed, so the quote is keyed by its
-                    // text alone (Para -1).
-                    int local = q.Para;
-                    int pos = startIdx + local;
-                    q.Para = (local >= 0 && local < count)
-                        ? (blockIndex != null && pos < blockIndex.Count ? blockIndex[pos] : pos)
-                        : -1;
-
-                    if (string.IsNullOrEmpty(q.Speaker)) continue;
-                    var canonical = aliases.Resolve(q.Speaker);
-                    if (canonical == null) continue;          // unknown or shared name: the narrator reads it
-                    q.Speaker = canonical.Key;
-                    canonical.Lines++;
+                    if (!string.IsNullOrEmpty(q.Speaker))
+                    {
+                        var canonical = ResolveSpeaker(q.Speaker, aliasMap, charsDict);
+                        if (canonical != null)
+                        {
+                            q.Speaker = canonical.Key;
+                            canonical.Lines++;
+                        }
+                        else
+                        {
+                            CharacterCast existing;
+                            if (charsDict.TryGetValue(q.Speaker, out existing))
+                            {
+                                existing.Lines++;
+                            }
+                        }
+                    }
                     aggregatedResult.Quotes.Add(q);
                 }
 
-                aggregatedResult.BatchesDone = b + 1;
+                // Add any new minor characters discovered in dialogue ONLY if they are truly novel
+                foreach (var nc in chunkResult.Characters)
+                {
+                    if (string.IsNullOrEmpty(nc.Key)) continue;
+
+                    var matched = ResolveSpeaker(nc.Key, aliasMap, charsDict)
+                               ?? ResolveSpeaker(nc.Name, aliasMap, charsDict);
+
+                    if (matched != null)
+                    {
+                        // Duplicate alias from Phase 2! Merge line count into existing canonical character
+                        matched.Lines += nc.Lines;
+                    }
+                    else if (!charsDict.ContainsKey(nc.Key))
+                    {
+                        charsDict[nc.Key] = nc;
+                        RegisterInAliasMap(nc, aliasMap);
+                    }
+                }
             }
 
+            // Separate into characters who speak in this chapter vs remaining book cast
             var speakingInChapter = new List<CharacterCast>();
             var remainingBookCast = new List<CharacterCast>();
 
@@ -815,9 +808,13 @@ Remember to return ONLY the JSON object.",
                 else remainingBookCast.Add(c);
             }
 
+            // Spoken characters sorted by chapter line count descending
             speakingInChapter.Sort((a, b) => b.Lines.CompareTo(a.Lines));
+
+            // Remaining novel characters sorted by estimated novel dialogue prominence descending
             remainingBookCast.Sort((a, b) => b.BookLines.CompareTo(a.BookLines));
 
+            // Combined cast: active speakers first, then major novel characters by prominence
             aggregatedResult.Characters.AddRange(speakingInChapter);
             aggregatedResult.Characters.AddRange(remainingBookCast);
             aggregatedResult.ModelUsed = modelUsed;
