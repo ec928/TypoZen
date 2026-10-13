@@ -3457,6 +3457,30 @@ namespace TypoZen
             return res == WinForms.DialogResult.Yes;
         }
 
+        /// <summary>
+        /// A file read as damaged UTF-8 shows its unreadable bytes as U+FFFD, and saving over
+        /// it writes that character in their place for good. The overwrite-loss guard cannot
+        /// see it: it re-reads the old file through the same decoder. Ask first; default No.
+        /// </summary>
+        private bool ConfirmRecoveredSave(DocTab tab, string newText)
+        {
+            if (tab == null || tab.SourceEncoding != RecoveredUtf8 || string.IsNullOrEmpty(newText)) return true;
+            int lost = 0;
+            foreach (char c in newText) if (c == '�') lost++;
+            if (lost == 0) return true;
+            if (_e2eMode) return true;             // never block a headless run on a dialog
+            var res = WinForms.MessageBox.Show(
+                (lost == 1 ? "1 character" : lost + " characters") + " in this file could not be read as text and show as �. " +
+                "Saving writes � in their place, and the original bytes are lost." +
+                Environment.NewLine + Environment.NewLine +
+                "Save anyway? (Save As keeps the original file as it is.)",
+                "Unreadable characters",
+                WinForms.MessageBoxButtons.YesNo,
+                WinForms.MessageBoxIcon.Warning,
+                WinForms.MessageBoxDefaultButton.Button2);
+            return res == WinForms.DialogResult.Yes;
+        }
+
         private bool SaveTabNow(DocTab tab, bool forceSaveAs)
         {
             if (tab == null) return false;
@@ -3596,6 +3620,7 @@ namespace TypoZen
                 }
             }
             if (overwritingOwnFile && !ConfirmOverwriteLoss(tab, path, outText)) return false;
+            if (overwritingOwnFile && !ConfirmRecoveredSave(tab, outText)) return false;
 
             // Images pasted while the document was untitled move beside it now; see
             // AdoptPendingImages. After every prompt, so nothing is copied for a save the
@@ -3633,6 +3658,8 @@ namespace TypoZen
 
             tab.FilePath = path;
             tab.IsDirty = false;
+            // Written as UTF-8: what is on disk now reads back as plain UTF-8.
+            if (tab.SourceEncoding == RecoveredUtf8) tab.SourceEncoding = "UTF-8";
             StampTabDisk(tab, path, outText);
             try { SyncDiskWatchers(); } catch { }
             // Images removed from the document are now unreferenced — recycle them.
@@ -8991,7 +9018,7 @@ namespace TypoZen
         /// no way to decline the conversion, and hid "never warn me again" behind a button
         /// labelled No -- the one button a hurried reader takes for "do not convert it".
         /// The conversion is lossless, so the fact belongs in the status bar, not in the
-        /// reader's way.
+        /// reader's way. (A damaged UTF-8 file is the exception: ConfirmRecoveredSave asks.)
         /// </summary>
         private void ShowEncodingChip(string encodingName)
         {
@@ -11995,6 +12022,7 @@ namespace TypoZen
             if (tab == null || !tab.IsDirty) return;
             if (string.IsNullOrEmpty(tab.FilePath)) return;      // never prompt for a path
             if (IsReadOnlyTab(tab)) return;                      // book / native never written
+            if (tab.SourceEncoding == RecoveredUtf8) return;     // asks before its first save; not unattended
             // The buffer must be current, or autosave would write a stale copy over the
             // file it is meant to be protecting. A failed pull means try again later.
             if (!SyncActiveTabFromEditor()) { ArmAutosave(); return; }
@@ -13384,6 +13412,25 @@ namespace TypoZen
                     got = ReadTextFileDetect(plainPath, out encName);
                     if (got == ACCENTS && encName == "UTF-8") Pass("plain UTF-8 unchanged");
                     else Fail("plain UTF-8 decode wrong enc=" + encName + " got=[" + Trunc(got) + "]");
+
+                    // A Windows-1252 note with Word's curly apostrophes is ANSI, not damaged
+                    // UTF-8: no byte of it is UTF-8 (read as "Recovered" until 0.16.31).
+                    const string QUOTES = "It’s the sort of note people keep. It’s fine.";
+                    string quotesPath = Path.Combine(dir, "enc_ansi_quotes.txt");
+                    File.WriteAllBytes(quotesPath, Encoding.GetEncoding(1252).GetBytes(QUOTES));
+                    got = ReadTextFileDetect(quotesPath, out encName);
+                    if (got == QUOTES) Pass("ANSI curly quotes decoded correctly (" + encName + ")");
+                    else Fail("ANSI curly quotes wrong enc=" + encName + " got=[" + Trunc(got) + "]");
+
+                    // Real UTF-8 with one damaged byte stays UTF-8, and only that byte is lost.
+                    string damagedPath = Path.Combine(dir, "enc_utf8_damaged.md");
+                    var damaged = new List<byte>(new UTF8Encoding(false).GetBytes(ACCENTS + " " + ACCENTS));
+                    damaged.Insert(5, 0xFF);
+                    File.WriteAllBytes(damagedPath, damaged.ToArray());
+                    got = ReadTextFileDetect(damagedPath, out encName);
+                    if (encName == RecoveredUtf8 && got.Replace("�", "") == ACCENTS + " " + ACCENTS)
+                        Pass("damaged UTF-8 kept as UTF-8 with one replacement");
+                    else Fail("damaged UTF-8 wrong enc=" + encName + " got=[" + Trunc(got) + "]");
 
                     // Round trip through the editor: open the ANSI file, save it, reread.
                     LoadFileFromPath(ansiPath);
@@ -15848,27 +15895,42 @@ namespace TypoZen
             }
             catch (DecoderFallbackException)
             {
-                // Heuristic Fallback: 
-                // If it fails strict UTF-8, it might just be a corrupted UTF-8 file (e.g. 1 bad byte).
-                // We decode using a replacement fallback and count the number of replaced characters ().
-                // If the corruption rate is very low (< 0.1% of the string, or just a few bytes), 
-                // we tolerate it as UTF-8 so the rest of the document survives.
-                // Otherwise, we assume it's actually a legacy ANSI file and decode it that way.
-                
-                string lenient = new UTF8Encoding(false, false).GetString(bytes);
-                int badCount = 0;
-                for (int i = 0; i < lenient.Length; i++) {
-                    if (lenient[i] == '\uFFFD') badCount++;
-                }
-                
-                if (badCount < 10 || badCount < lenient.Length * 0.001) 
+                // Not valid UTF-8: a UTF-8 file with a few damaged bytes, or a legacy ANSI file.
+                // A damaged UTF-8 file still holds real UTF-8 -- multi-byte characters that
+                // decode. An ANSI file holds none: its only non-ASCII bytes stand alone. Telling
+                // them apart by the count of bad bytes alone (0.14.3 to 0.16.30) read any ANSI
+                // note with under ten accents or curly quotes as UTF-8, "caf\u00E9" came up as
+                // "caf\uFFFD", and the first save wrote that over the original.
+                int good, bad;
+                CountUtf8Sequences(bytes, out good, out bad);
+                if (good > bad && (bad < 10 || bad < bytes.Length * 0.001))
                 {
-                    encodingName = "UTF-8 (Recovered)";
-                    return lenient;
+                    encodingName = RecoveredUtf8;
+                    return new UTF8Encoding(false, false).GetString(bytes);
                 }
-                
+
                 encodingName = "ANSI (codepage " + Encoding.Default.CodePage + ")";
                 return Encoding.Default.GetString(bytes);
+            }
+        }
+
+        /// <summary>Encoding name for UTF-8 read with damaged bytes replaced by U+FFFD.</summary>
+        private const string RecoveredUtf8 = "UTF-8 (Recovered)";
+
+        /// <summary>Well-formed multi-byte UTF-8 sequences in `bytes`, and bytes that start none.</summary>
+        private static void CountUtf8Sequences(byte[] bytes, out int good, out int bad)
+        {
+            good = 0; bad = 0;
+            int i = 0;
+            while (i < bytes.Length)
+            {
+                byte b = bytes[i];
+                if (b < 0x80) { i++; continue; }
+                int len = b >= 0xC2 && b <= 0xDF ? 2 : b >= 0xE0 && b <= 0xEF ? 3 : b >= 0xF0 && b <= 0xF4 ? 4 : 0;
+                bool ok = len > 0 && i + len <= bytes.Length;
+                for (int k = 1; ok && k < len; k++) ok = (bytes[i + k] & 0xC0) == 0x80;
+                if (ok) { good++; i += len; }
+                else { bad++; i++; }
             }
         }
 
