@@ -22,7 +22,7 @@ except the Description's privacy paragraph, reworded after that (Ed, 2026-09-30)
 "makes absolutely zero network requests" is untrue once an extension is installed. Ed put
 that paragraph into Partner Center on 2026-09-30._
 
-Read ePubs in a real two-page spread, or have them read to you. Read and annotate PDFs. Write Markdown and watch it become the page as you type. One quiet window, 25 themes, text-to-speech built in, an offline dictionary/thesaurus, and nothing sent anywhere.
+Read ePubs in a real two-page spread, or have them read to you. Read and annotate PDFs. Write Markdown and watch it become the page as you type. One quiet window, 25 themes, text-to-speech built in, an offline dictionary/thesaurus, and nothing sent anywhere unless you turn on an online feature.
 
 ---
 
@@ -30,7 +30,7 @@ Read ePubs in a real two-page spread, or have them read to you. Read and annotat
 
 _Limit 10,000 characters. Headings are plain lines: the Store shows no formatting._
 
-A calm place to write, and a beautiful place to read. TypoZen is a distraction-free WYSIWYG Markdown editor, a paginated ePub reader, and a full PDF reader—all built into a single, quiet window. Write your notes in the morning and read a novel in the evening, without ever changing apps, breaking your focus, or sending a single byte of data to the cloud.
+A calm place to write, and a beautiful place to read. TypoZen is a distraction-free WYSIWYG Markdown editor, a paginated ePub reader, and a full PDF reader—all built into a single, quiet window. Write your notes in the morning and read a novel in the evening, without ever changing apps or breaking your focus. Nothing goes to the cloud unless you turn on one of the optional online features.
 
 Writing that stays out of your way
 Type Markdown and watch it format instantly—headings, tables, task lists, and code fences render as you write. Need to edit raw markup or code? Flip seamlessly to Source mode, a genuine code editor powered by CodeMirror 6, capable of opening megabyte-sized files and hundreds of thousands of lines without a stutter. Features like Focus mode (dimming all but the current sentence), Typewriter scroll, and auto-hide chrome ensure absolute immersion.
@@ -42,7 +42,7 @@ Listen and research, completely offline
 Select any text to look up its definition and synonyms using the built-in, completely offline dictionary featuring over 150,000 definitions. Sit back and use Read Aloud to hear your books or PDFs spoken in your local Windows voices. Every word, search, and definition stays strictly on your hard drive.
 
 Private by construction, not by promise
-TypoZen operates entirely offline. It features no accounts, no telemetry, no forced sync, and makes absolutely zero background network requests. The application only connects to the internet if you explicitly choose to download an optional extension.
+TypoZen works offline. It has no accounts, no telemetry, no forced sync, and makes no background network requests. It connects to the internet only when you download an optional extension, read aloud in one of Microsoft's optional online voices (the text read is sent to Microsoft), or run Smart Cast with your own Google Gemini key (the book's dialogue is sent to Google). Both online features are off until you turn them on, and Privacy Mode switches them off.
 
 Choose from 25 hand-crafted themes—from low-glare dark modes to warm, paper-like light modes. TypoZen bundles premium typefaces including Inter, Literata, Merriweather, and Source Sans 3, JetBrains Mono so your documents look perfect on any machine.
 
@@ -102,7 +102,7 @@ _Up to 20 bullets, 200 characters each._
 15. Focus mode, typewriter scrolling and ZenMode, which hides the whole interface until you reach for it
 16. 25 built-in themes plus your own; selections, search and highlights take their colours from the theme
 17. Bundled typefaces — Inter, Literata, Merriweather and Source Sans 3 — with no network requests
-18. Private by design: no telemetry, nothing sent anywhere, and a Privacy Mode that stores no history
+18. Private by design: no telemetry, nothing sent unless you turn on an online feature, and a Privacy Mode that stores no history
 19. Images, videos and web pages open read-only in their own tabs, so nothing is edited by accident
 20. Export to HTML, print or save as PDF; text saved as UTF-8 with its line endings preserved
 
@@ -177,7 +177,7 @@ TypoZen is a Win32 desktop app packaged as MSIX (Desktop Bridge). It cannot run 
 
 Used for ordinary document editing: opening and saving files at paths the user picks in standard Windows dialogs, which AppContainer forbids, and reading bundled fonts and dictionary.
 
-The only capability declared. No data collection, no sign-in. Network use only while the user installs an optional extension from File > Extensions.
+The only capability declared. No data collection, no sign-in. Network use only when the user installs an optional extension, turns on online voices, or runs Smart Cast with their own Gemini key.
 
 ---
 
@@ -207,7 +207,7 @@ Privacy policy: https://github.com/ec928/TypoZen/blob/master/PRIVACY.md
 _Optional, recommended 270 characters or fewer. Deliberately NOT the opening line of the
 Description above, which is already on the same page._
 
-Read ePubs in a real two-page spread, or have them read to you. Read and annotate PDFs. Write Markdown and watch it become the page as you type. One quiet window, 25 themes, an offline dictionary, and nothing sent anywhere.
+Read ePubs in a real two-page spread, or have them read to you. Read and annotate PDFs. Write Markdown and watch it become the page as you type. One quiet window, 25 themes, an offline dictionary, and nothing sent anywhere unless you turn on an online feature.
 
 Leave **Short title** and **Voice title** empty -- both are Xbox-only (installation screens
 and Kinect voice). Leave the three **Xbox images** empty for the same reason: Xbox is
@@ -248,7 +248,7 @@ Verified against the shipping build on 6 September 2026:
 | "over 110,000 synonym sets" | `thesaurus.tsv` — 114,022 entries (was 110,543) |
 | "25 themes" | `TypoZen_Themes.json` — 25 entries |
 | "200,000-character manuscript" | `tests/large-scroll-mixed.md` — 214,626 bytes |
-| "no network requests" | no HttpClient/WebRequest/socket in the host; no fetch/XHR/sendBeacon in the page |
+| "no background network requests" | the host's only requests are extension downloads (`Extensions.cs`, `QwenInstaller.cs`), the local narrator (`NarratorEngine.cs`, this PC only), online voices (`EdgeSpeechClient.cs`) and Smart Cast (`GeminiDirector.cs`) -- each started by the user. The page's own fetch() calls go to URLs the host gives it: its local virtual hosts and the narrator on this PC; no XHR or sendBeacon (checked 2026-10-13). A document's own remote images are fetched when it is shown (PRIVACY.md) |
 
 The About dialog once said "Over 150,000 offline definitions" and "40,000+ block
 documents". The first overstated the dictionary by about 2,500 entries at the time (it is

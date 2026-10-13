@@ -1,8 +1,10 @@
 # TypoZen Privacy Policy
 
-_Last updated: 12 October 2026._
+_Last updated: 13 October 2026._
 
-**Short version: TypoZen sends nothing anywhere. Everything it remembers stays on your
+**Short version: TypoZen sends nothing anywhere unless you turn on one of its two optional
+online features: Microsoft's online voices, or Smart Cast with your own Google Gemini key
+(see [Network activity](#network-activity)). Everything it remembers stays on your
 computer, and you can delete all of it from inside the app.**
 
 TypoZen is a Markdown editor and epub reader that runs entirely on your machine. There
@@ -33,6 +35,7 @@ package data.)
 | `window_state.json` | Window size and position |
 | `debug.log` | Diagnostic output: errors, and the steps of each read-aloud (voice, timings — never the text). Run with `--debug` it also records the editor's own diagnostics, which can include file paths. Kept to about 4 MB |
 | `perf.log` | Start-up timings, written only when the `TYPOZEN_PERF` environment variable is set |
+| `gemini\gemini.key`, `gemini\gemini.json` | Only if you use Smart Cast: your Gemini API key, encrypted with Windows' own data protection for your user account (if Windows cannot encrypt it, it is saved as plain text), and the Gemini models to use |
 
 If you install the optional extensions in **File → Extensions**, they keep their files in
 `extensions\` and `dictionaries\` in the same folder. Qwen narration adds, in
@@ -71,7 +74,8 @@ Under **File → Privacy**:
 - **Privacy Mode** — stops TypoZen writing anything that names a document: no session, no
   reading positions, no bookmarks, no recent files, no autosave, no `debug.log`. Books are
   unpacked, and narration audio rendered, into a temporary folder deleted when TypoZen
-  closes; a narrator cast you save is kept only until then. It is forward-looking: it
+  closes; a narrator cast you save is kept only until then. It also switches off the two
+  online features: Microsoft's online voices and Smart Cast. It is forward-looking: it
   prevents new writes but does not delete what is already stored.
 - **Remember unsaved documents between sessions** — turn off to stop unsaved content being
   kept between runs.
@@ -92,11 +96,29 @@ You can also simply delete that folder.
 
 ## Network activity
 
-TypoZen makes no network requests of its own unless you install an extension. Fonts are bundled with the app rather than
+TypoZen makes no network requests of its own unless you install an extension or turn on
+one of the two online features below. Fonts are bundled with the app rather than
 fetched, the editor page is served from local disk, and the dictionary and thesaurus are
 local files.
 
-Three things can still cause network traffic, and you should know about all of them:
+Two optional features send text to an online service, and only while you use them. Both
+are off until you turn them on, and Privacy Mode switches both off:
+
+- **Microsoft online voices** (turned on in **File → Extensions**, "Cloud · Edge Speech").
+  When you choose one of these voices to read aloud, the text being read is sent to
+  Microsoft's speech service (`speech.platform.bing.com`), which returns the audio. Local
+  voices send nothing.
+- **Smart Cast** (Narrator Manager → Cast for this book, with a Google Gemini API key you
+  supply). When you click it, TypoZen sends Google's Gemini service
+  (`generativelanguage.googleapis.com`) the title of the book or document that is open, up
+  to 500 of its paragraphs of dialogue (or its first 50 paragraphs if it has none), the
+  names of up to 40 speakers found in it, and the names and descriptions of your voices.
+  For an epub this is the part of the book TypoZen has loaded, not the whole book. Google sends back the characters, their voices and
+  who speaks each line. Each click sends this again. The request is made under your own key,
+  so Google's terms for the Gemini API apply to it, not this policy. Do not use Smart Cast on
+  writing you do not want to share with Google.
+
+The following can also cause network traffic, and you should know about all of them:
 
 - **Extensions you install.** **File → Extensions** downloads only while an install you
   started is running, and nothing about you or your documents is sent. Kokoro voices come
