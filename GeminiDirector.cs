@@ -1133,22 +1133,15 @@ Remember to return ONLY the JSON object.",
                 endpointTemplate = "https://generativelanguage.googleapis.com/v1beta/models/{0}:generateContent";
             }
 
+            // The key travels in the x-goog-api-key header only, never the URL, where proxies and
+            // logs keep it. An endpoint set in gemini.json may still ask for it there with {1}.
             string url;
             if (endpointTemplate.Contains("{1}"))
-            {
-                url = string.Format(endpointTemplate, model, apiKey);
-            }
+                url = string.Format(endpointTemplate, model, Uri.EscapeDataString(apiKey));
             else if (endpointTemplate.Contains("{0}"))
-            {
-                string formatted = string.Format(endpointTemplate, model);
-                string sep = formatted.Contains("?") ? "&" : "?";
-                url = formatted + sep + "key=" + Uri.EscapeDataString(apiKey);
-            }
+                url = string.Format(endpointTemplate, model);
             else
-            {
-                string sep = endpointTemplate.Contains("?") ? "&" : "?";
-                url = endpointTemplate.TrimEnd('/') + "/" + model + ":generateContent" + sep + "key=" + Uri.EscapeDataString(apiKey);
-            }
+                url = endpointTemplate.TrimEnd('/') + "/" + model + ":generateContent";
 
             var reqBody = new Dictionary<string, object>
             {
