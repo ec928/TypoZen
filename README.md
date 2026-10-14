@@ -449,6 +449,7 @@ The same in every kind of document. The first row that fits wins.
 | *she* or *he* beside someone else's name: `"Go," she told Tom.` | the narrator: Tom is being spoken to, so "she" is someone else |
 | *she* or *he* in a paragraph naming two characters, or none | the narrator |
 | A line with no name in a back-and-forth: `"Hello," Tom said.` / `"Hi," Anna said.` / `"How are you?"` | Tom, who spoke two lines before (dialogue thread preserved across short action beats) |
+| A narration paragraph that names two or more characters ends the back-and-forth: `Kate glanced at Ben.` / `"Ready?" Tom asked.` / `"Always."` | the narrator for `"Always."`, until a line names its speaker: which of them answers is a guess |
 | A character with no voice in the cast | the narrator |
 
 - When the speaker is unclear, the narrator reads the line — never the wrong character.

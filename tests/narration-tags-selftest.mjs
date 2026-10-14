@@ -847,6 +847,32 @@ console.log('--- AI Script Director / Gemini Smart Cast dialogue attribution');
     api.setCastScript({ 'what?': 'jessica', '@7:what?': 'jessica' });
     eq('paragraph-matched script overrides the speaking word', dialogueVoices([blockEl('“What?” said Paul.', 7)]), ['noble-matriarch-f']);
     eq('paragraph key does not match another block', dialogueVoices([blockEl('“What?” said Paul.', 8)]), ['hero-youth-m']);
+    api.setCastScript({});
+
+    // 3c. A narration paragraph naming two characters ends the back-and-forth: which of them
+    // speaks next is a guess. It started a thread with the first one named, and Mr. Bennet's
+    // reply was read as Catherine's (Pride and Prejudice, chapter 7).
+    api.setCast({ catherine: 'v-catherine', lydia: 'v-lydia', 'mrs bennet': 'v-mrs', 'mr bennet': 'v-mr' });
+    const pp = [
+        'Catherine was disconcerted, and made no answer; but Lydia, with perfect indifference, continued to express her admiration of Captain Carter.',
+        '“I am astonished, my dear,” said Mrs. Bennet, “that you should be so ready to think your own children silly.”',
+        '“If my children are silly I must hope to be always sensible of it.”'
+    ];
+    eq('a beat naming two characters starts no thread: the reply is the narrator\'s, not Catherine\'s',
+        dialogueVoices(pp.map((t, k) => blockEl(t, k))), ['v-mrs', 'v-mrs']);   // the reply is narration
+    // The README's example of the rule, as printed there.
+    api.setCast({ kate: 'v-kate', ben: 'v-ben', tom: 'v-tom' });
+    eq('README example: after "Kate glanced at Ben." the untagged "Always." is the narrator\'s',
+        dialogueVoices(['Kate glanced at Ben.', '"Ready?" Tom asked.', '"Always."'].map((t, k) => blockEl(t, k))), ['v-tom']);
+    // One character named still starts one, as before.
+    const one = [
+        'Duke Leto strided into the hall.',
+        '“Here we are!” said Paul.',
+        '“And here we stay.”'
+    ];
+    api.setCast({ leto: 'v-leto', paul: 'v-paul' });
+    eq('a beat naming one character still starts a thread with them',
+        dialogueVoices(one.map((t, k) => blockEl(t, k))), ['v-paul', 'v-leto']);
 
     // 4. Extraction for Gemini payload
     api.setModel({

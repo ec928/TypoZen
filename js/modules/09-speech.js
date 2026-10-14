@@ -1680,7 +1680,22 @@ function attributeParagraphs(texts, known, at) {
                     continue;
                 }
             }
-            // If paragraph introduces/describes a known character as subject (e.g. "Duke Leto strided into the hall.")
+            // The characters this paragraph names, as the quoted paragraphs count them below.
+            const beat = blankBrackets(text);
+            const beatSpans = (beat.match(/[A-Z][\w’'-]+/g) || []).concat(beat.match(/[A-Z][\w’'-]+(?:\s+[A-Z][\w’'-]+)+/g) || []);
+            const beatNamed = new Set(beatSpans.map(w => castKey(speakerKey(w), known)).filter(k => known.has(k)));
+            // Naming two or more ends the thread: which of them speaks next is a guess, and a
+            // wrong voice is worse than the narrator's. "Catherine was disconcerted, and made no
+            // answer; but Lydia..." started a thread with Catherine, and Mr. Bennet's next untagged
+            // reply was read as hers (Pride and Prejudice, chapter 7).
+            if (beatNamed.size >= 2) {
+                recent.length = 0;
+                lastAddressed = null;
+                lastQuestionSpeaker = null;
+                continue;
+            }
+            // A paragraph about one known character starts a thread with them (e.g. "Duke Leto
+            // strided into the hall.").
             const sSub = sentenceSubject(text);
             const sKey = sSub ? castKey(speakerKey(sSub), known) : null;
             if (sKey && known.has(sKey)) {
