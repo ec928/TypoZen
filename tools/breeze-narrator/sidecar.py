@@ -831,23 +831,50 @@ class Narrator(object):
         return os.path.join(self.cache_dir, items[0]['file']), items[0]['seconds']
 
 
+# The page TypoZen serves itself (https://localapp) is the one web page allowed to call this.
+# Loopback alone does not keep the others out: any site open in a browser on this PC can send
+# requests to 127.0.0.1, and with "*" it could read the replies -- and since any body is read
+# as JSON, even a plain-text POST it cannot read the answer to would delete or clone a voice.
+# Browsers always name the page's origin on such a request; TypoZen's own requests name none.
+ALLOWED_ORIGINS = ('https://localapp',)
+
+
 class Handler(BaseHTTPRequestHandler):
     narrator = None
+
+    def _origin_ok(self):
+        origin = self.headers.get('Origin')
+        return origin is None or origin in ALLOWED_ORIGINS
+
+    def _refuse(self):
+        log('refused a request from %s' % self.headers.get('Origin'))
+        self.send_response(403)
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
+    def _cors(self):
+        origin = self.headers.get('Origin')
+        if origin in ALLOWED_ORIGINS:
+            self.send_header('Access-Control-Allow-Origin', origin)
+            self.send_header('Vary', 'Origin')
 
     def _send(self, code, payload):
         body = json.dumps(payload).encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
-        # Bound to the loopback; the page TypoZen serves calls this directly.
-        self.send_header('Access-Control-Allow-Origin', '*')
+        # The page TypoZen serves calls this directly.
+        self._cors()
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self):
+        if not self._origin_ok():
+            self._refuse()
+            return
         self.send_response(204)
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self._cors()
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Content-Length', '0')
@@ -857,6 +884,9 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        if not self._origin_ok():
+            self._refuse()
+            return
         n = Handler.narrator
         if self.path.startswith('/health'):
             self._send(200, {'ready': n.ready, 'error': n.load_error, 'private': n.private_dir or '',
@@ -911,6 +941,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, {'error': '%s: %s' % (type(e).__name__, e)})
 
     def do_POST(self):
+        if not self._origin_ok():
+            self._refuse()
+            return
         length = int(self.headers.get('Content-Length') or 0)
         try:
             body = json.loads(self.rfile.read(length) or b'{}')
