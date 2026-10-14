@@ -76,7 +76,8 @@ const examples = [
     ['Tom turned to Anna. "We have to go."', 'both', null, {}, r => voices(r).join() === 'TOM'],
     ['Anna stood up. "Go," she said.', 'both', null, {}, r => voices(r).join() === 'ANNA'],
     ['"Go," she told Tom.', 'both', null, {}, r => voices(r).length === 0],
-    ['"How are you?"', 'readme', ['"Hello," Tom said.', '"Hi," Anna said.', '"How are you?"'], {}, r => voices(r).join() === 'TOM,ANNA,TOM'],
+    // No back-and-forth guess (0.16.39): the untagged third line is the narrator's.
+    ['"How are you?"', 'readme', ['"Hello," Tom said.', '"Hi," Anna said.', '"How are you?"'], {}, r => voices(r).join() === 'TOM,ANNA'],
     ['**Mr Bennet** and **Mrs Bennet** are two characters', 'readme', ['"Yes," said Mr Bennet.', '"No," said Mrs Bennet.'],
         { cast: { 'mr bennet': 'MR', 'mrs bennet': 'MRS' } }, r => voices(r).join() === 'MR,MRS'],
     // The two rules, on the README's worked example: Tom's box is "gruff and slow", the narrator's "measured"

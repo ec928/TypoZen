@@ -74,7 +74,8 @@ const S = [
   [['"Tom!" Anna shouted.'], [['ANNA', 'bright, shouted'], ['N', NB]]],
   [['"I am not going," Tom said, turning to Anna, "and you cannot make me."'], [['TOM', 'gruff, turning'], ['N', NB], ['TOM', 'gruff, turning']]],
   [['"Go," Tom said. "Now," Anna said. "Fine," Jill said.'], [['TOM', 'gruff'], ['N', NB], ['ANNA', 'bright'], ['N', NB], ['JILL', 'calm'], ['N', NB]]],
-  [['"Hello," Tom said.', '"Hi," Anna said.', '"How are you?"'], [['TOM', 'gruff'], ['N', NB], ['ANNA', 'bright'], ['N', NB], ['TOM', 'gruff']]],
+  // No back-and-forth guess (0.16.39): an untagged line is the narrator's.
+  [['"Hello," Tom said.', '"Hi," Anna said.', '"How are you?"'], [['TOM', 'gruff'], ['N', NB], ['ANNA', 'bright'], ['N', NB], ['N', NB]]],
   [['[sadly]', '"Go," Tom said.'], [['TOM', 'gruff'], ['N', NB]]],
   [['"Go," Mara said.'], [['N', NB]]],
   [['[angrily] "Go," Mara said.'], [['N', NB + ', angrily']]],

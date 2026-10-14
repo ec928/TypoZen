@@ -1656,7 +1656,10 @@ function scriptBlockIndex(el) {
 /** `at`, when given, is each text's block index, for Smart Cast's per-paragraph script. */
 function attributeParagraphs(texts, known, at) {
     const result = [];
-    const recent = [];                          // speakers of the dialogue paragraphs just before
+    // There is no back-and-forth guess: a line with nothing naming its speaker is the
+    // narrator's. "Whoever spoke two lines before" was wrong once in three in Pride and
+    // Prejudice, where a third person answers untagged -- Darcy's "Certainly not." read as
+    // Bingley (removed in 0.16.39; Ed: correct over voiced).
     let lastAddressed = null;                   // character vocatively addressed in question just before
     let lastQuestionSpeaker = null;             // speaker of that question
     for (let textIdx = 0; textIdx < texts.length; textIdx++) {
@@ -1675,35 +1678,15 @@ function attributeParagraphs(texts, known, at) {
                             if (!pq.key) pq.key = vk;
                         }
                     }
-                    recent.length = 0;
-                    recent.push(vk);
                     continue;
                 }
             }
-            // The characters this paragraph names, as the quoted paragraphs count them below.
+            // A long description, or narration naming two or more characters, ends a question's
+            // claim on the answer (rule 1 below): who answers after it is a guess.
             const beat = blankBrackets(text);
             const beatSpans = (beat.match(/[A-Z][\w’'-]+/g) || []).concat(beat.match(/[A-Z][\w’'-]+(?:\s+[A-Z][\w’'-]+)+/g) || []);
             const beatNamed = new Set(beatSpans.map(w => castKey(speakerKey(w), known)).filter(k => known.has(k)));
-            // Naming two or more ends the thread: which of them speaks next is a guess, and a
-            // wrong voice is worse than the narrator's. "Catherine was disconcerted, and made no
-            // answer; but Lydia..." started a thread with Catherine, and Mr. Bennet's next untagged
-            // reply was read as hers (Pride and Prejudice, chapter 7).
-            if (beatNamed.size >= 2) {
-                recent.length = 0;
-                lastAddressed = null;
-                lastQuestionSpeaker = null;
-                continue;
-            }
-            // A paragraph about one known character starts a thread with them (e.g. "Duke Leto
-            // strided into the hall.").
-            const sSub = sentenceSubject(text);
-            const sKey = sSub ? castKey(speakerKey(sSub), known) : null;
-            if (sKey && known.has(sKey)) {
-                recent.length = 0;
-                recent.push(sKey);
-            } else if (text.length > 350) {
-                // Only reset recent dialogue thread on long scene transitions / lengthy descriptions
-                recent.length = 0;
+            if (text.length > 350 || beatNamed.size >= 2) {
                 lastAddressed = null;
                 lastQuestionSpeaker = null;
             }
@@ -1748,13 +1731,7 @@ function attributeParagraphs(texts, known, at) {
             if (q.who && named.size === 1 && !doneTo(q, [...named][0], known)) q.key = [...named][0];   // "he said", one candidate
             else if (explicit.size === 1) q.key = [...explicit][0];           // one speaker per paragraph
         }
-        if (!qs.some(q => q.key) && !qs.some(q => q.who) && recent.length >= 2 &&
-            recent[recent.length - 1] !== recent[recent.length - 2]) {
-            const k = recent[recent.length - 2];                              // A, B, A, B...
-            qs.forEach(q => { q.key = k; });
-        }
         const speaker = (qs.find(q => q.key) || {}).key;
-        if (speaker) recent.push(speaker); else recent.length = 0;
 
         let nextAddressed = null;
         for (const q of qs) {

@@ -864,15 +864,19 @@ console.log('--- AI Script Director / Gemini Smart Cast dialogue attribution');
     api.setCast({ kate: 'v-kate', ben: 'v-ben', tom: 'v-tom' });
     eq('README example: after "Kate glanced at Ben." the untagged "Always." is the narrator\'s',
         dialogueVoices(['Kate glanced at Ben.', '"Ready?" Tom asked.', '"Always."'].map((t, k) => blockEl(t, k))), ['v-tom']);
-    // One character named still starts one, as before.
+    // No back-and-forth guess at all (0.16.39): even after a beat naming one character, an
+    // untagged line is the narrator's. It used to go to "whoever spoke two lines before".
     const one = [
         'Duke Leto strided into the hall.',
         '“Here we are!” said Paul.',
         '“And here we stay.”'
     ];
     api.setCast({ leto: 'v-leto', paul: 'v-paul' });
-    eq('a beat naming one character still starts a thread with them',
-        dialogueVoices(one.map((t, k) => blockEl(t, k))), ['v-paul', 'v-leto']);
+    eq('an untagged line is the narrator\'s, not a guess from the turn-taking',
+        dialogueVoices(one.map((t, k) => blockEl(t, k))), ['v-paul']);
+    api.setCast({ tom: 'v-tom', anna: 'v-anna' });
+    eq('nor in a plain two-person exchange',
+        dialogueVoices(['“Hello,” Tom said.', '“Hi,” Anna said.', '“How are you?”'].map((t, k) => blockEl(t, k))), ['v-tom', 'v-anna']);
 
     // 4. Extraction for Gemini payload
     api.setModel({
