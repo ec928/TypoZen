@@ -52,14 +52,17 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. Submitted to the Store for the 0.16.25 package (2026-10-13)._
+_Limit 1,500 characters. For the 0.17.0 package (2026-10-14). The 0.16.25 text it replaces is in git history._
 
-- New: Smart Cast (AI Script Director) in Narrator Manager. Optionally connect your own Google Gemini API key to automatically discover a novel's full character cast, merge aliases/titles, assign matching voices from a 19-voice theatrical repertory, and attribute complex multi-turn dialogue with emotional delivery cues.
-- Future-proof AI model configuration: customize primary and fallback Gemini models in %LOCALAPPDATA%\TypoZen\gemini.json (with automatic quota fallback and one-click access from the API Key dialog).
-- New: Microsoft Online Natural Voices available as an opt-in extension in File > Extensions, with automatic local-voice fallback if the connection drops.
-- Smarter local dialogue attribution: accurately handles backward voice attribution ("The voice was Duke Leto's"), entrance action beats, possessive relations, and vocative question-answer pairs without letting surrounding prose hijack the speaker's voice.
-- Narrator Manager & Voice Cloning improvements: added Clear Cast and per-character remove (✕) buttons, wider 1080px layout, readable multiline cast JSON files, optional Whisper transcription for cloned voices, folder shortcut buttons, and a 1 GB narration cache cap.
-- Instant Extensions dialog opening with non-blocking background size checks.
+- Smart Cast: a Stop button while it runs; a rejected Gemini key is reported at once; a quote it maps applies to the paragraph Gemini read, and a speaker named in the text always wins elsewhere.
+- Narration never guesses: a line with nothing naming its speaker is read by the narrator, so a character's voice never reads someone else's line.
+- Security: only TypoZen can use the Qwen and Breeze narrators. Web pages open in your browser are refused.
+- Older Windows text files (Windows-1252) open with their accents and curly quotes intact. A genuinely damaged file asks before saving over its unreadable characters.
+- Pasting several lines into the middle of a line splits it correctly, and a paste that starts with a line break keeps it.
+- Closing is instant, and a file opened just after closing is no longer lost.
+- Read-aloud audio is deleted from Windows' temporary folder when TypoZen closes.
+- The Kokoro voices download is pinned to fixed files and checked as it arrives.
+- Saving a PDF never writes anything but a PDF over your file.
 
 ---
 
@@ -70,9 +73,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.16.25.0); every other package removed from the submission |
+| 2 | Packages | the newest MSIX (0.17.0.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.16.25 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.17.0 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |
