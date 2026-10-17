@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.17.5";
+        internal const string AppVersion = "0.17.6";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1797,7 +1797,10 @@ namespace TypoZen
                                         },
                                         // Chosen when a recording starts, so Privacy Mode turning on
                                         // while the window is open still keeps the take out of the cache.
-                                        () => Path.Combine(SuppressDocumentTraces() ? PrivateLoadDir() : CacheDir(), "recordings"));
+                                        () => Path.Combine(SuppressDocumentTraces() ? PrivateLoadDir() : CacheDir(), "recordings"),
+                                        _ttsSpeed,
+                                        // The same speed as Voice Sampler and Speed; saved() then sends it to the page.
+                                        sp => { _ttsSpeed = sp; var prefs = LoadHostPrefs(); prefs.TtsSpeed = sp; WriteHostPrefs(prefs); });
                 }
                 catch (Exception ex) { LogFault("narrator settings", ex); }
             });

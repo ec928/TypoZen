@@ -706,7 +706,7 @@ function playRenderedChunk(url, chunk) {
         window.__lastChunkUrl = url;          // what is actually playing, for tests and debug.log
         if (_renderedAudio) { _renderedAudio.pause(); _renderedAudio = null; }
         const a = new Audio(url);
-        // The reading speed from Configure Speed. Chromium keeps the pitch while changing
+        // The reading speed (Narrator Manager, or Voice Sampler and Speed). Chromium keeps the pitch while changing
         // the rate, so faster is brisker, not squeakier.
         a.playbackRate = _narrSpeed;
         _renderedAudio = a;
@@ -1009,7 +1009,7 @@ window.narrationTrial = async function (json) {
             const url = _trialQueue.shift();
             if (!url) { _trialAudio = null; trialTell({ kind: 'ended' }); return; }
             _trialAudio = new Audio(url);
-            _trialAudio.playbackRate = _narrSpeed;
+            _trialAudio.playbackRate = o.speed > 0 ? o.speed : _narrSpeed;   // the slider, saved or not
             _trialAudio.onended = next;
             _trialAudio.onerror = () => { if (run === _trialRun) trialTell({ kind: 'error', message: 'could not play ' + url }); };
             _trialAudio.play().catch(err => { if (run === _trialRun) trialTell({ kind: 'error', message: String(err && err.message || err) }); });
