@@ -33,7 +33,7 @@ namespace TypoZen
         private static string _engine;
         // Each Read Aloud is a run: a header, then its pieces newest first, so one run never runs into
         // the next (Ed, 2026-10-10). _reading is the page's reading number for the run on top.
-        private static double _reading = double.NaN;
+        private static string _reading = "";
         private static int _runs;
         private const int Kept = 200;
 
@@ -68,7 +68,7 @@ namespace TypoZen
             {
                 IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, FontSize = 12, BorderThickness = new Thickness(1),
-                Text = _entries.Count == 0 ? "Press Read Aloud with a narrator voice chosen." : string.Join("\r\n\r\n", _entries)
+                Text = _entries.Count == 0 ? "Press Read Aloud." : string.Join("\r\n\r\n", _entries)
             };
             _before.SelectionChanged += (s, e) => { if (_stale && _before.SelectionLength == 0) ShowEntries(); };
             var top = new StackPanel { Margin = new Thickness(14, 4, 14, 8) };
@@ -85,7 +85,7 @@ namespace TypoZen
             clear.Click += (s, e) =>
             {
                 _entries.Clear();
-                _reading = double.NaN;
+                _reading = "";
                 _runs = 0;
                 _stale = false;
                 ShowEntries();
@@ -133,12 +133,15 @@ namespace TypoZen
                 var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
                 object o;
                 var st = d.TryGetValue("settings", out o) ? o as Dictionary<string, object> ?? new Dictionary<string, object>() : new Dictionary<string, object>();
+                // A Windows, online or Kokoro voice: no instruction, cues, cast or rendering --
+                // what it is given, and the words its respellings changed.
+                if (Str(st, "engine") == "voice") { SpokenPiece(d, st); return; }
                 string engine = Str(st, "engine") == "breeze" ? "Breeze" : "Qwen";
                 bool breeze = engine == "Breeze";
 
                 var sb = new StringBuilder();
                 sb.Append(engine).Append(" narrator, voice ").Append(Str(st, "voice"));
-                sb.Append(".  Speed ").Append(Num(st, "speed", 1).ToString("0.##")).Append('.');
+                sb.Append(".  Speed ").Append(Speed(Num(st, "speed", 1))).Append('.');
                 string instr = Str(st, "instruction");
                 sb.Append("  Standing instruction: ").Append(instr.Length == 0 ? "none" : "“" + instr + "”").Append('.');
                 bool cues = st.TryGetValue("cuesOn", out o) && o is bool && (bool)o;
@@ -160,7 +163,7 @@ namespace TypoZen
                 var now = new StringBuilder();
                 // Who speaks, then in which voice: a character by the name the cast found for them.
                 string who = role == "dialogue" ? speakerName(Str(d, "speaker")) : "Narrator";
-                now.Append(who).Append(" · voice ").Append(voice)
+                now.Append(who).Append(" · voice ").Append(voice).Append(" · ").Append(Speed(Num(st, "speed", 1)))
                    .Append(" · ").Append(secs.ToString("0.0")).Append("s · ").Append(cached ? "saved" : "rendered");
                 if (ownStrength > 0) now.Append(" · line strength ").Append(ownStrength.ToString("0.#"));
                 var parts = d.TryGetValue("parts", out o) ? o as System.Collections.IEnumerable : null;
@@ -181,14 +184,14 @@ namespace TypoZen
                 // first words alone (Ed, 2026-10-09: "log history is incomplete").
                 // A new reading starts a run: its header first, with the settings it was read with, so
                 // two runs with different settings can be told apart. Its pieces go under the header.
-                double reading = Num(d, "reading", -1);
+                string reading = "narrator:" + Num(d, "reading", -1);
                 if (reading != _reading)
                 {
                     _reading = reading;
                     _runs++;
                     string ins = instr.Length == 0 ? "no instruction" : "instruction “" + (instr.Length > 60 ? instr.Substring(0, 57) + "..." : instr) + "”";
                     _entries.Insert(0, "════════  Run " + _runs + "  ·  " + DateTime.Now.ToString("HH:mm:ss") + "  ·  " + engine + ", "
-                        + Str(st, "voice") + "  ·  " + ins + "  ·  cues " + (cues ? "on" : "off")
+                        + Str(st, "voice") + "  ·  " + Speed(Num(st, "speed", 1)) + "  ·  " + ins + "  ·  cues " + (cues ? "on" : "off")
                         + (breeze ? ", strength " + Num(st, "strength", 4).ToString("0.#") : "") + "  ════════");
                 }
                 _entries.Insert(Math.Min(1, _entries.Count), DateTime.Now.ToString("HH:mm:ss") + "  " + now.ToString().TrimEnd());
@@ -199,12 +202,61 @@ namespace TypoZen
             catch (Exception ex) { if (_before != null && _entries.Count == 0) _before.Text = "Could not show this piece: " + ex.Message; }
         }
 
+        /// <summary>Speed as the reading bar writes it: ×1, ×1.25.</summary>
+        private static string Speed(double v)
+        {
+            return "\u00d7" + v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// A piece read by a Windows, online or Kokoro voice: the voice and speed, the text it was
+        /// given -- after the respellings, so "lives" may be "livz" -- and each word changed.
+        /// </summary>
+        private static void SpokenPiece(Dictionary<string, object> d, Dictionary<string, object> st)
+        {
+            object o;
+            string voice = Str(st, "voice");
+            if (voice.Length == 0) voice = "the chosen voice";
+            string speed = Speed(Num(st, "speed", 1));
+            _settings.Text = voice + ".  Speed " + speed + ".  This voice takes no instruction, cues or cast: "
+                + "each line shows the text it was given and any words respelled for it.";
+
+            var now = new StringBuilder();
+            now.Append("Narrator · ").Append(voice).Append(" · ").Append(speed);
+            foreach (var po in (d.TryGetValue("parts", out o) ? o as System.Collections.IEnumerable : null) ?? new object[0])
+            {
+                var p = po as Dictionary<string, object>;
+                if (p == null) continue;
+                now.Append("\r\nText: ").Append(Str(p, "text"));
+                var changed = new List<string>();
+                foreach (var c in (p.TryGetValue("changes", out o) ? o as System.Collections.IEnumerable : null) ?? new object[0])
+                    if (c != null) changed.Add(c.ToString());
+                if (changed.Count > 0) now.Append("\r\nChanged: ").Append(string.Join(", ", changed));
+            }
+            string reading = "voice:" + Num(d, "reading", -1);
+            if (reading != _reading)
+            {
+                _reading = reading;
+                _runs++;
+                _entries.Insert(0, "════════  Run " + _runs + "  ·  " + DateTime.Now.ToString("HH:mm:ss") + "  ·  "
+                    + voice + "  ·  " + speed + "  ════════");
+            }
+            _entries.Insert(Math.Min(1, _entries.Count), DateTime.Now.ToString("HH:mm:ss") + "  " + now.ToString());
+            while (_entries.Count > Kept) _entries.RemoveAt(_entries.Count - 1);
+            ShowEntries();
+            if (_logLabel != null)
+            {
+                _logLabel.Text = "This voice keeps no narration log.";
+                _logLabel.ToolTip = null;
+            }
+        }
+
         private static void ShowEntries()
         {
             if (_before == null) return;
             if (_before.SelectionLength > 0) { _stale = true; return; }
             _stale = false;
-            _before.Text = _entries.Count == 0 ? "Press Read Aloud with a narrator voice chosen." : string.Join("\r\n\r\n", _entries);
+            _before.Text = _entries.Count == 0 ? "Press Read Aloud." : string.Join("\r\n\r\n", _entries);
         }
 
         /// <summary>The engine whose narration.log was written last, before any piece says which.</summary>

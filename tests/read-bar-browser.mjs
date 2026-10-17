@@ -56,7 +56,7 @@ try {
     await page.evaluate(() => window.setReadBar('{"show":true,"paused":false,"voice":"Breeze: Mary (RP, Breeze)","speed":1,"chapter":false}'));
     let b = await bar();
     assert(b && !b.hidden, 'the bar shows while reading');
-    assert(b.voice === 'Breeze: Mary (RP, Breeze)' && b.speed === '1×' && b.play === 'Pause', 'it shows the voice, the speed and Pause (' + JSON.stringify(b) + ')');
+    assert(b.voice === 'Breeze: Mary (RP, Breeze)' && b.speed === '×1' && b.play === 'Pause', 'it shows the voice, the speed and Pause (' + JSON.stringify(b) + ')');
     const mid = await page.evaluate(() => { const r = document.getElementById('main-container').getBoundingClientRect(); return r.left + r.width / 2; });
     assert(b.box.y + b.box.h <= 700 && b.box.y > 600 && Math.abs(b.box.x + b.box.w / 2 - mid) < 2, 'it floats at the bottom, centred under the text (' + JSON.stringify(b.box) + ', text centre ' + mid + ')');
     if (shots) await page.screenshot({ path: path.join(shots, 'bar-dark.png') });
@@ -68,7 +68,7 @@ try {
     await click('faster');
     let posts = await page.evaluate(() => window.__posts.filter(p => p.startsWith('host_read_bar:')));
     assert(JSON.stringify(posts) === '["host_read_bar:menu","host_read_bar:chapter","host_read_bar:speed:1.25"]', 'menu, chapter and speed go to the host (' + JSON.stringify(posts) + ')');
-    assert((await bar()).speed === '1.25×', 'the speed shows at once');
+    assert((await bar()).speed === '×1.25', 'the speed shows at once');
 
     await page.evaluate(() => window.setReadBar('{"show":true,"paused":true,"speed":0.5,"chapter":true}'));
     b = await bar();
@@ -90,9 +90,7 @@ try {
         const m = document.querySelector('#tzReadBar .rb-monitor');
         return { shown: getComputedStyle(m).display !== 'none', on: m.classList.contains('on') };
     });
-    assert(!(await mon()).shown, 'no Narration Monitor button with a Windows or Kokoro voice');
-    await page.evaluate(() => window.setReadBar('{"monitor":true,"monitorOpen":false}'));
-    assert((await mon()).shown && !(await mon()).on, 'with the Qwen or Breeze narrator, the Narration Monitor button shows');
+    assert((await mon()).shown && !(await mon()).on, 'the Narration Monitor button shows, whatever the voice');
     await page.evaluate(() => { window.__posts = []; });
     await click('monitor');
     assert(JSON.stringify(await page.evaluate(() => window.__posts)) === '["host_read_bar:monitor"]', 'it asks the host to open the monitor');

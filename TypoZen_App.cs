@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.17.8";
+        internal const string AppVersion = "0.17.9";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -4091,8 +4091,6 @@ namespace TypoZen
                     var helpItem = FindElement(helpName) as Control;
                     if (helpItem != null) helpItem.Visibility = qwen || breeze ? Visibility.Visible : Visibility.Collapsed;
                 }
-                var monitorItem = FindElement("mNarrMonitor") as MenuItem;
-                if (monitorItem != null) monitorItem.Visibility = qwen || breeze ? Visibility.Visible : Visibility.Collapsed;
                 // Open again if it was open when TypoZen last closed.
                 if ((qwen || breeze) && !NarrationMonitor.IsOpen && !_monitorRestored)
                 {
@@ -11329,8 +11327,8 @@ namespace TypoZen
         // ---- The reading bar ---------------------------------------------------------------------
         // While a reading is underway its controls float at the bottom of the page (09-speech.js,
         // setReadBar) instead of growing the toolbar: Previous, Pause, Next, Stop, the voice --
-        // whose button opens File > Read Aloud's own menu where it is -- Narration Monitor with
-        // the Qwen or Breeze narrator, the speed, and Stop at end of chapter. The host owns the
+        // whose button opens File > Read Aloud's own menu where it is -- Narration Monitor, the
+        // speed, and Stop at end of chapter. The host owns the
         // state and sends it whenever any of it changes.
         private bool _readBarLive;
 
@@ -11346,9 +11344,6 @@ namespace TypoZen
                 {
                     { "show", _readBarLive }, { "paused", _readAloudHold }, { "voice", voice },
                     { "speed", _ttsSpeed }, { "chapter", _stopAtChapter },
-                    // The Narration Monitor follows the Qwen or Breeze narrator; with a Windows,
-                    // Kokoro or online voice it has nothing to show, so the bar has no button.
-                    { "monitor", _kokoroVoiceId == QwenNarrator.VoiceId || _kokoroVoiceId == BreezeNarrator.VoiceId },
                     { "monitorOpen", NarrationMonitor.IsOpen }
                 };
                 SendMsg("cmd:read_bar:" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(state));

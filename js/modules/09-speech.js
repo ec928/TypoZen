@@ -458,7 +458,7 @@ function readBarBuild() {
         '<span class="rb-sep"></span>' +
         '<button type="button" class="rb-text rb-voice" data-a="menu" title="Voice and Read Aloud settings">' +
             '<span class="rb-voice-name"></span><span class="rb-caret">\uE70D</span></button>' +
-        '<button type="button" class="rb-icon rb-monitor" data-a="monitor" title="Narration Monitor" hidden>\uE8BD</button>' +
+        '<button type="button" class="rb-icon rb-monitor" data-a="monitor" title="Narration Monitor">\uE8BD</button>' +
         '<span class="rb-sep"></span>' +
         '<button type="button" class="rb-icon rb-small" data-a="slower" title="Slower">\uE738</button>' +
         '<span class="rb-speed" title="Reading speed"></span>' +
@@ -514,11 +514,10 @@ function readBarPaint() {
     el.classList.toggle('rb-paused', !!s.paused);
     el.querySelector('.rb-voice-name').textContent = s.voice || 'Voice';
     const sp = Number(s.speed) || 1;
-    el.querySelector('.rb-speed').textContent = (Math.round(sp * 100) / 100) + '\u00d7';
+    el.querySelector('.rb-speed').textContent = '\u00d7' + (Math.round(sp * 100) / 100);
     el.querySelector('[data-a="slower"]').disabled = sp <= READ_BAR_SPEEDS[0] + 0.001;
     el.querySelector('[data-a="faster"]').disabled = sp >= READ_BAR_SPEEDS[READ_BAR_SPEEDS.length - 1] - 0.001;
     const mon = el.querySelector('.rb-monitor');
-    mon.hidden = !s.monitor;
     mon.classList.toggle('on', !!s.monitorOpen);
     mon.setAttribute('aria-pressed', s.monitorOpen ? 'true' : 'false');
     const ch = el.querySelector('.rb-chapter');
@@ -681,6 +680,7 @@ function readAloudSkip(dir) {
 
 function startReadingChunks(chunks) {
     if (!chunks || chunks.length === 0) return false;
+    _ttsRunNo++;
 
     _ttsPlayed = [];
     _ttsCurrent = null;
@@ -2927,18 +2927,23 @@ document.addEventListener('scroll', function () {
     _prefetchTimer = setTimeout(prefetchNarration, 1200);
 }, { capture: true, passive: true });
 
-function applyTTSOverrides(text) {
+/**
+ * The text a Windows, online or Kokoro voice is given, with its respellings. `changes`, when
+ * given, collects each one as { from, to }, for the narration monitor.
+ */
+function applyTTSOverrides(text, changes) {
     if (!text) return text;
     let t = text;
+    const note = (from, to) => { if (changes) changes.push({ from: from, to: to }); return to; };
 
     // 1. Regex overrides for common Dune terms
-    t = t.replace(/\bBene Gesserit\b/g, 'Benny Jesserit');
-    t = t.replace(/\bKwisatz Haderach\b/g, 'Kwee-satz Hader-ack');
-    t = t.replace(/\bHarkonnen\b/g, 'Har-ko-nen');
-    t = t.replace(/\bChani\b/g, 'Chah-nee');
-    t = t.replace(/\bTleilaxu\b/g, 'Tlay-lak-soo');
-    t = t.replace(/\bSardaukar\b/g, 'Sar-dow-kar');
-    t = t.replace(/\bGhola\b/g, 'Go-lah');
+    t = t.replace(/\bBene Gesserit\b/g, m => note(m, 'Benny Jesserit'));
+    t = t.replace(/\bKwisatz Haderach\b/g, m => note(m, 'Kwee-satz Hader-ack'));
+    t = t.replace(/\bHarkonnen\b/g, m => note(m, 'Har-ko-nen'));
+    t = t.replace(/\bChani\b/g, m => note(m, 'Chah-nee'));
+    t = t.replace(/\bTleilaxu\b/g, m => note(m, 'Tlay-lak-soo'));
+    t = t.replace(/\bSardaukar\b/g, m => note(m, 'Sar-dow-kar'));
+    t = t.replace(/\bGhola\b/g, m => note(m, 'Go-lah'));
 
     // 2. POS Tagger for homographs
     if (typeof window.nlp === 'function') {
@@ -2950,6 +2955,7 @@ function applyTTSOverrides(text) {
                 if (m.has('#Verb')) {
                     let prev = m.lookBehind('.$').text().toLowerCase().trim();
                     if (['nine', 'past', 'other', 'many', 'their', 'our', 'your', 'my', 'his', 'her', 'previous', 'future'].includes(prev)) return;
+                    note(m.text().trim(), 'livz');
                     m.replaceWith('livz');
                 }
             });
@@ -2957,6 +2963,7 @@ function applyTTSOverrides(text) {
             // "read" (past tense)
             doc.match('read').forEach(m => {
                 if (m.has('#PastTense')) {
+                    note(m.text().trim(), 'red');
                     m.replaceWith('red');
                 }
             });
@@ -2968,8 +2975,26 @@ function applyTTSOverrides(text) {
     return t;
 }
 
+// Each Read Aloud with a Windows, online or Kokoro voice: a run in the narration monitor.
+let _ttsRunNo = 0;
+
+/** The monitor's line for a voice that is not the narrator: what it is given, and what changed. */
+function tellMonitorSpoken(text) {
+    if (!_narrMonitor || !text) return;
+    try {
+        const changes = [];
+        const spoken = applyTTSOverrides(text, changes);
+        window.chrome.webview.postMessage('host_narr_monitor:' + JSON.stringify({
+            kind: 'piece', reading: _ttsRunNo, role: 'narration',
+            settings: { engine: 'voice', voice: _readBarState.voice || '', speed: window._tzReadSpeed || 1 },
+            parts: [{ text: spoken, changes: changes.map(c => c.from + ' \u2192 ' + c.to) }]
+        }));
+    } catch (e) {}
+}
+
 function sendTTSPlay(text) {
     _ttsChunkStarted = true;
+    tellMonitorSpoken(text);
     if (_isKokoroReady && _kokoroEngine) {
         if (isKokoroVoice(_kokoroVoice)) {
             playKokoroChunk(text, _kokoroVoice, _currentTTSChunkIdx);
