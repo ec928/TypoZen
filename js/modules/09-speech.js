@@ -674,6 +674,12 @@ function readAloudPause() {
 
 function readAloudSkip(dir) {
     if (!isPlaying) return;
+    // Previous with nothing earlier heard in this reading: the paragraph before in the
+    // document. It used to go no further back than where the reading started (2026-10-17).
+    if (dir < 0) {
+        const key = ttsParagraphKey(_ttsCurrent);
+        if (!_ttsPlayed.some(p => ttsParagraphKey(p) !== key) && readFromParagraphBefore()) return;
+    }
     const plan = ttsSkipParagraph(_ttsPlayed, _ttsCurrent, _ttsChunks, dir);
     if (!plan.moved) return;
     abandonCurrentSound();
@@ -961,6 +967,9 @@ window.setNarratorSettings = function (json) {
         if (before !== JSON.stringify([_narrVoice, _narrStyle, _narrInstruction, _narrCue, _narrCast, _narrCastSay, _narrDirect, _narrCastScript, _narrCastAliases]) && _narrActive && isPlaying) {
             narrLog('settings changed while narrating: restarting at the current paragraph');
             _qwenPending = null;
+            // From the paragraph playing. It used to start from the cursor, or the top of the
+            // screen -- several paragraphs back (2026-10-17).
+            if (_currentTTSBlockEl && _currentTTSBlockEl.isConnected) _readFrom = { el: _currentTTSBlockEl, until: Date.now() + 120000 };
             try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
         }
         narrLog('settings: voice ' + (_narrVoice || 'default') +
@@ -3293,7 +3302,26 @@ function unloadKokoro() {
  * voice, a narrator choice was read by a Windows voice (2026-10-17).
  */
 function restartReadingInNewVoice(voiceId) {
-    const el = _currentTTSBlockEl;
+    restartReadingFrom(_currentTTSBlockEl, voiceId);
+}
+
+/** The paragraph before the one being read, in the document: read from there. False if none. */
+function readFromParagraphBefore() {
+    const cur = _currentTTSBlockEl;
+    if (!cur || !cur.isConnected || pdfReading()) return false;
+    const all = readingBlocks();
+    const i = all.indexOf(cur);
+    for (let j = i - 1; j >= 0; j--) {
+        if (readAloud(all[j]) && (all[j].textContent || '').trim()) {
+            restartReadingFrom(all[j], _kokoroVoice);
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Stop, and read again from this paragraph in the voice chosen now. */
+function restartReadingFrom(el, voiceId) {
     stopReading();
     if (el && el.isConnected) _readFrom = { el: el, until: Date.now() + 120000 };
     const go = () => { try { speakSelection(); } catch (e) {} };

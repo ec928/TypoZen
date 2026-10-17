@@ -78,6 +78,42 @@ try {
     });
     const n2n = await page.evaluate(() => window.__posts.filter(p => /^host_(tts_stop|qwen_narrate)/.test(p)).length);
     assert(n2n === 0, 'narrator to narrator is left to the narrator');
+
+    // Previous, in a reading started at the second paragraph: the first, though never heard.
+    const prev = await page.evaluate(async () => {
+        const wait = (ms) => new Promise(r => setTimeout(r, ms));
+        window.setKokoroVoice('windows_voice', 'Microsoft Hazel');
+        try { stopReading(); } catch (e) {}
+        const blocks = [...document.querySelectorAll('#editor .block')].filter(b => b.textContent.trim());
+        _readFrom = { el: blocks[1], until: Date.now() + 60000 };
+        try { window.getSelection().removeAllRanges(); } catch (e) {}
+        speakSelection();
+        await wait(100);
+        const started = _currentTTSBlockEl && _currentTTSBlockEl.textContent.trim();
+        window.__posts = [];
+        readAloudSkip(-1);
+        await wait(200);
+        const plays = window.__posts.filter(p => p.startsWith('host_tts_play:')).map(p => JSON.parse(p.substring(14)).text);
+        return { started, plays, now: _currentTTSBlockEl && _currentTTSBlockEl.textContent.trim() };
+    });
+    assert(prev.started === 'Second paragraph here.', 'the reading starts at the second paragraph');
+    assert(prev.now === 'First paragraph here.' && prev.plays[0] === 'First paragraph here.',
+        'Previous goes to the first, before where it started (' + JSON.stringify(prev) + ')');
+
+    // A narrator voice changed mid-narration: again from the paragraph playing, not the cursor.
+    const narr = await page.evaluate(() => {
+        const blocks = [...document.querySelectorAll('#editor .block')].filter(b => b.textContent.trim());
+        try { stopReading(); } catch (e) {}
+        isPlaying = true; _narrActive = true; _currentTTSBlockEl = blocks[2];
+        window.__posts = [];
+        window.setNarratorSettings({ voice: 'some-other-voice', engine: 'breeze' });
+        const asked = window.__posts.some(p => p === 'host_qwen_narrate');
+        isPlaying = false; _narrActive = false;
+        const c = readingCaret();
+        return { asked, from: c && c.block.textContent.trim() };
+    });
+    assert(narr.asked && narr.from === 'Third paragraph here.',
+        'a narrator voice change goes on from the paragraph playing (' + JSON.stringify(narr) + ')');
 } catch (e) {
     failed++;
     console.error('  FAIL ' + (e && e.stack || e));
