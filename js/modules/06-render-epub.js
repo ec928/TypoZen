@@ -2665,6 +2665,17 @@
                 return '<a href="' + u + '" target="_blank">' + label + '</a>';
             });
 
+            // The tags just made are set aside while emphasis runs, as code spans are, so the
+            // rules below see only text. They used to see the tags: the underscore of
+            // target="_blank" opened an _italic_ later in the paragraph, the link showed
+            // `blank">` as text, and editing the paragraph saved that into the file (found
+            // 2026-10-17). A link's text stays outside, so [**bold**](url) is still bold.
+            const tagSpans = [];
+            res = res.replace(/<a [^>]*>|<\/a>|<img [^>]*\/>/g, function (m) {
+                tagSpans.push(m);
+                return '@@TZTAG' + (tagSpans.length - 1) + '@@';
+            });
+
             // 4. Emphasis. Longest marker first. Markers must hug non-space text so
             //    "2 * 3 and 4 * 5" stays literal, and underscores never match inside a
             //    word so snake_case / MAX_BUFFER_SIZE survive untouched (they used to
@@ -2687,6 +2698,8 @@
             // A tab shows at its width (Tab types one, typeTabAtCaret); plain HTML
             // collapses it to a space. The span serializes back to the tab itself.
             res = res.replace(/\t/g, '<span class="tz-tab">\t</span>');
+
+            res = res.replace(/@@TZTAG(\d+)@@/g, function (m, i) { return tagSpans[Number(i)] || ''; });
 
             // 5. Restore code spans as literal text.
             res = res.replace(/@@TZCODE(\d+)@@/g, function (m, i) {

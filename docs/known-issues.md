@@ -149,6 +149,17 @@ the browser, which merged a space in from the spacer: the file was saved with it
 line now ignores Delete. Guarded by `virt-delete-end-browser.mjs`; the wider class (editing
 a long file in every layout and position) by `long-edit-sweep.mjs`, run on demand.
 
+### A link and `_italic_` in one paragraph broke the link, and an edit saved it — **fixed** (0.17.10)
+
+Preview's emphasis rules ran over the link HTML it had just made, so the underscore of
+`target="_blank"` opened an `_italic_` (or `__bold__`) later in the same paragraph, and a `_`
+or `*` inside a URL could do the same. The paragraph showed `blank">` before the link text,
+and typing anything in it saved the damage to the file:
+`See [blank">the docs](https://x.y/z) and _soft text.` -- or, with `_` and `*` in the URL,
+an `<em>` tag inside it. `*italic*` alone was safe. Links and pictures are now set aside while
+emphasis runs, as code spans already were. Files edited in Preview before this could still
+carry the damage: look for `blank">` in link text. Guarded by `link-emphasis-browser.mjs`.
+
 ### Pasting at the end of a long file in two-page Preview overwrote the start — **fixed** (0.17.1)
 
 A page window is one range. After a multi-line paste, the blocks on screen were numbered
