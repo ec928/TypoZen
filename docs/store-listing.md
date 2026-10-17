@@ -52,17 +52,18 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.17.0 package (2026-10-14). The 0.16.25 text it replaces is in git history._
+_Limit 1,500 characters. For the 0.18.0 package (2026-10-18). The 0.17.0 text it replaces is in git history._
 
-- Smart Cast: a Stop button while it runs; a rejected Gemini key is reported at once; a quote it maps applies to the paragraph Gemini read, and a speaker named in the text always wins elsewhere.
-- Narration never guesses: a line with nothing naming its speaker is read by the narrator, so a character's voice never reads someone else's line.
-- Security: only TypoZen can use the Qwen and Breeze narrators. Web pages open in your browser are refused.
-- Older Windows text files (Windows-1252) open with their accents and curly quotes intact. A genuinely damaged file asks before saving over its unreadable characters.
-- Pasting several lines into the middle of a line splits it correctly, and a paste that starts with a line break keeps it.
-- Closing is instant, and a file opened just after closing is no longer lost.
-- Read-aloud audio is deleted from Windows' temporary folder when TypoZen closes.
-- The Kokoro voices download is pinned to fixed files and checked as it arrives.
-- Saving a PDF never writes anything but a PDF over your file.
+- New reading bar: while reading aloud, the controls float under the text: pause, previous and next paragraph, stop, the voice and its menu, speed, stop at end of chapter, and Narration Monitor. It says what it is doing (starting, preparing, paused) and stays put through voice changes and jumps.
+- Reading speed for the Qwen and Breeze narrators, on the bar or in Narrator Manager.
+- Narration Monitor works with every voice and shows the exact text each voice is given.
+- Changing voice mid-reading carries on from the same paragraph. Previous and Next reach paragraphs before the start, or not yet prepared.
+- Windows and Kokoro voices no longer read Markdown symbols aloud.
+- Fixed: a link and _italic_ text in the same paragraph could damage the link when the paragraph was edited.
+- Fixed: pasting in two-page Preview could overwrite the start of a long file.
+- Fixed: Delete at the end of a long file added a space.
+- Spelling: TypoZen's own names and inline code are no longer flagged, and misspellings get a squiggle without a red box.
+- A narrator starts once, however often Read Aloud is pressed while it loads.
 
 ---
 
@@ -73,9 +74,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.17.0.0); every other package removed from the submission |
+| 2 | Packages | the newest MSIX (0.18.0.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.17.0 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.18.0 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |
@@ -95,7 +96,7 @@ _Up to 20 bullets, 200 characters each._
 5. Books keep the publisher's typography, embedded fonts and footnotes; the page, its margins and colours stay yours
 6. A PDF reader: single pages or two-page spreads, Find, bookmarks and highlights
 7. Annotate PDFs, fill in forms and save; the text of scanned pages is read on your computer
-8. Read aloud in any Windows voice, or in optional neural voices, with the passage highlighted as it is read
+8. Read aloud in any Windows voice or optional neural voices, the passage highlighted, with a floating player for pause, skip, voice and speed
 9. Spelling: every misspelling on screen underlined in Preview and Source (not in code); select any word for corrections
 10. Offline dictionary and thesaurus — over 150,000 definitions; no lookup ever leaves your computer
 11. Search the whole document from a sidebar, with every match highlighted — even in very long files
