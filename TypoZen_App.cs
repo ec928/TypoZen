@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.17.4";
+        internal const string AppVersion = "0.17.5";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -11292,6 +11292,7 @@ namespace TypoZen
             if (mode == "paused") _readAloudHold = true;
             else _readAloudHold = false;
             ShowReadAloudState(mode == "playing" || mode == "paused");
+            UpdateVoiceStatus();                                   // "reading" / "paused"
         }
 
         private void ShowReadAloudState(bool reading)
@@ -12014,7 +12015,7 @@ namespace TypoZen
                     text = (breeze ? "Breeze: " : "Qwen: ") + name;
                     if (_narrationPhase == "starting") text += " · starting…";
                     else if (_narrationPhase == "preparing") text += " · preparing…";
-                    else if (_narrationPhase == "reading") text += " · reading";
+                    else if (_narrationPhase == "reading") text += _readAloudHold ? " · paused" : " · reading";
                     else if (_narrationPhase == "failed") text += " · could not start";
                 }
                 else if (IsKokoroVoiceId(_kokoroVoiceId))
