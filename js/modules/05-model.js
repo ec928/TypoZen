@@ -3547,7 +3547,14 @@
                 // the last row. At the end of a page the next line is in the model.
                 const hasOffscreenNext = !nextMounted && mi >= 0
                     && mi + 1 < DocumentModel.blocks.length;
-                if (!nextMounted && !hasOffscreenNext) return;
+                if (!nextMounted && !hasOffscreenNext) {
+                    // The last line of the file: nothing to pull up -- and not the browser's
+                    // to try either. In scrolling Preview of a long file the window's
+                    // .virt-spacer follows the last line, and the browser's own Delete put a
+                    // space at its end ("KEEP-2999 ", saved).
+                    e.preventDefault();
+                    return;
+                }
 
                 e.preventDefault();
                 e.stopPropagation();

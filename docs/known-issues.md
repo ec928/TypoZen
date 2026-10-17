@@ -141,6 +141,14 @@ is in the document. Backspace now joins onto it and shows that line. Delete at t
 of a range pulls the next line up the same way. The first line of the file and the last
 line still have nothing to join. Guarded by `page-line-join-browser.mjs`.
 
+### Delete at the end of a long file added a space — **fixed** (0.17.2)
+
+In scrolling Preview, a file of 2,000 lines or more is mounted as a window, with a spacer
+after the last line. Delete at the end of the last line has nothing to pull up, so it went to
+the browser, which merged a space in from the spacer: the file was saved with it. The last
+line now ignores Delete. Guarded by `virt-delete-end-browser.mjs`; the wider class (editing
+a long file in every layout and position) by `long-edit-sweep.mjs`, run on demand.
+
 ### Pasting at the end of a long file in two-page Preview overwrote the start — **fixed** (0.17.1)
 
 A page window is one range. After a multi-line paste, the blocks on screen were numbered
