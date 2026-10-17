@@ -628,6 +628,11 @@
 
         function reindexMountedBlocks() {
             if (!editor || DocumentModel.virtEnabled) return;
+            // A page window is one range of a longer file. Stamping those elements
+            // 0..n makes the next syncMountedToModel — the undo snapshot after a
+            // paste or Enter — write this page over the start of the document.
+            // shiftMountedModelIndices already moved the real indices.
+            if (typeof pageWindowingActive === 'function' && pageWindowingActive()) return;
             const all = editor.querySelectorAll('.block');
             for (let i = 0; i < all.length; i++) {
                 all[i].setAttribute('data-model-index', String(i));
@@ -643,6 +648,11 @@
             try { el.remove(); } catch (e) {}
             if (mi >= 0) {
                 DocumentModel.removeBlockAt(mi);
+            } else if (typeof pageWindowingActive === 'function' && pageWindowingActive()) {
+                // The node is already gone from this window. Rebuilding the model
+                // from the blocks still mounted would replace the document with one page.
+                _contentCache = null;
+                return;
             } else if (!DocumentModel.virtEnabled) {
                 try { DocumentModel.rebuildFromFullDom(); } catch (e2) {}
                 return;
@@ -3448,27 +3458,57 @@
                 }
 
                 const prev = block.previousElementSibling;
-                if (!prev || !prev.classList.contains('block')) return;    // first line: nothing to merge into
+                const prevMounted = !!(prev && prev.classList && prev.classList.contains('block'));
+                const mi = (typeof DocumentModel !== 'undefined')
+                    ? DocumentModel.modelIndexOfEl(block) : -1;
+                // No previous element is the first line of the file only when this block
+                // is row 0. On a later page the line above is in the model, not the DOM.
+                if (!prevMounted && !(mi > 0)) return;
 
                 e.preventDefault();
                 e.stopPropagation();
                 if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
 
                 HistoryManager.beginEdit();
-                const prevRaw = normalizeBlockRaw(readBlockRawSafe(prev));
-                const joinAt = prevRaw.length;
-                writeBlockRaw(prev, prevRaw + curRaw);
-                removeBlockEl(block);
+                let joinAt = 0;
+                let focusEl = prevMounted ? prev : null;
+                if (prevMounted) {
+                    const prevRaw = normalizeBlockRaw(readBlockRawSafe(prev));
+                    joinAt = prevRaw.length;
+                    writeBlockRaw(prev, prevRaw + curRaw);
+                    removeBlockEl(block);
+                } else {
+                    const prevRaw = normalizeBlockRaw(
+                        (DocumentModel.blocks[mi - 1] && DocumentModel.blocks[mi - 1].raw) || '');
+                    joinAt = prevRaw.length;
+                    DocumentModel.setBlockRaw(mi - 1, prevRaw + curRaw);
+                    removeBlockEl(block);
+                    const prevIdx = mi - 1;
+                    try {
+                        if (typeof pageWindowingActive === 'function' && pageWindowingActive()
+                            && typeof PageChunks !== 'undefined' && typeof mountPageChunk === 'function') {
+                            PageChunks.ensure(DocumentModel.blocks.length);
+                            const c = PageChunks.chunkOfBlock(prevIdx);
+                            if (PageChunks.mounted !== c) mountPageChunk(c);
+                        } else if (DocumentModel.virtEnabled && typeof mountVirtWindow === 'function') {
+                            mountVirtWindow(true, { anchorIndex: prevIdx, anchorOffset: -48 });
+                        }
+                    } catch (eShow) {}
+                    focusEl = (typeof elementForModelIndex === 'function' && elementForModelIndex(prevIdx))
+                        || (editor && editor.querySelector('.block[data-model-index="' + prevIdx + '"]'));
+                }
                 window.isProgrammaticFocus = true;
-                focusBlock(prev);
-                // Now, not only on the timeout: focusBlock leaves the caret at the END of
-                // the line, and a second Backspace pressed before the timeout (quick hands,
-                // key repeat) deleted the last letter there instead of the next join.
-                try { setCaretAtOffset(prev, joinAt); } catch (err4) {}
-                setTimeout(function () {
-                    try { setCaretAtOffset(prev, joinAt); } catch (err3) {}
-                    ensureCaretVisible(prev);
-                }, 0);
+                if (focusEl) {
+                    focusBlock(focusEl);
+                    // Now, not only on the timeout: focusBlock leaves the caret at the END of
+                    // the line, and a second Backspace pressed before the timeout (quick hands,
+                    // key repeat) deleted the last letter there instead of the next join.
+                    try { setCaretAtOffset(focusEl, joinAt); } catch (err4) {}
+                    setTimeout(function () {
+                        try { setCaretAtOffset(focusEl, joinAt); } catch (err3) {}
+                        ensureCaretVisible(focusEl);
+                    }, 0);
+                }
                 updateStats();
                 updateOutline();
                 HistoryManager.commitEdit();
@@ -3500,7 +3540,14 @@
                 if (!isCaretAtEndOfBlock(block)) return;                      // mid-line: browser deletes a character
 
                 const next = block.nextElementSibling;
-                if (!next || !next.classList.contains('block')) return;       // last line: nothing to pull up
+                const nextMounted = !!(next && next.classList && next.classList.contains('block'));
+                const mi = (typeof DocumentModel !== 'undefined')
+                    ? DocumentModel.modelIndexOfEl(block) : -1;
+                // No next element is the last line of the file only when this block is
+                // the last row. At the end of a page the next line is in the model.
+                const hasOffscreenNext = !nextMounted && mi >= 0
+                    && mi + 1 < DocumentModel.blocks.length;
+                if (!nextMounted && !hasOffscreenNext) return;
 
                 e.preventDefault();
                 e.stopPropagation();
@@ -3512,17 +3559,22 @@
                 // pulled-up line's content was read as "" and then destroyed when the block
                 // was removed. Intermittent, and it ate whole lines when it hit.
                 const curRaw = normalizeBlockRaw(readBlockRawSafe(block));
-                let tailRaw = normalizeBlockRaw(readBlockRawSafe(next));
+                let tailRaw = nextMounted
+                    ? normalizeBlockRaw(readBlockRawSafe(next))
+                    : normalizeBlockRaw(
+                        (DocumentModel.blocks[mi + 1] && DocumentModel.blocks[mi + 1].raw) || '');
                 // Joining onto real text drops the pulled-up line's own marker so we do not
                 // get "- one- two". Pulling onto an EMPTY line keeps it, so deleting a blank
                 // line above a list leaves the list item intact.
                 if (curRaw !== '') {
                     tailRaw = isListLine(tailRaw) ? stripListMarkerKeepBody(tailRaw) : stripBlockPrefix(tailRaw);
+                    if (tailRaw == null) tailRaw = '';
                 }
 
                 const joinAt = curRaw.length;
                 writeBlockRaw(block, curRaw + tailRaw);
-                removeBlockEl(next);
+                if (nextMounted) removeBlockEl(next);
+                else DocumentModel.removeBlockAt(mi + 1);
                 window.isProgrammaticFocus = true;
                 focusBlock(block);
                 // Now as well as on the timeout: a second Delete pressed before it ran
@@ -3798,7 +3850,9 @@
             // Keep DocumentModel in sync with structural insert (Enter, expand, …).
             try {
                 let afterIdx = DocumentModel.modelIndexOfEl(insertAfter);
-                if (afterIdx < 0 && insertAfter && editor) {
+                const partialPage = typeof pageWindowingActive === 'function' && pageWindowingActive();
+                // DOM order is the model order only when the whole document is mounted.
+                if (afterIdx < 0 && insertAfter && editor && !partialPage) {
                     const all = editor.querySelectorAll('.block');
                     afterIdx = Array.prototype.indexOf.call(all, insertAfter);
                 }
@@ -3808,6 +3862,11 @@
                     block.setAttribute('data-model-index', String(newIdx));
                     if (DocumentModel.virtEnabled) mountVirtWindow(true);
                     else reindexMountedBlocks();
+                } else if (partialPage) {
+                    // A missing index must not rebuild the model from one window.
+                    // Appending keeps the rest of the file.
+                    newIdx = DocumentModel.insertBlockAfterIndex(-1, initialRaw);
+                    block.setAttribute('data-model-index', String(newIdx));
                 } else if (!DocumentModel.virtEnabled) {
                     DocumentModel.rebuildFromFullDom();
                 } else {

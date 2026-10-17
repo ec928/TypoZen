@@ -133,6 +133,22 @@ theme. Links in the editor now take the theme accent. A book link has no `href` 
 (06-render-epub.js moves it to `data-book-href`), so a rule on `a[href]` matched none of them
 -- 0.5.5 shipped that and changed nothing.
 
+### Backspace at the top of a later page did not join the line above — **fixed** (0.17.1)
+
+Two-page Preview shows one range of a long file. Backspace at the start of that range
+looked for the previous line on the page, found none, and did nothing. The line above
+is in the document. Backspace now joins onto it and shows that line. Delete at the end
+of a range pulls the next line up the same way. The first line of the file and the last
+line still have nothing to join. Guarded by `page-line-join-browser.mjs`.
+
+### Pasting at the end of a long file in two-page Preview overwrote the start — **fixed** (0.17.1)
+
+A page window is one range. After a multi-line paste, the blocks on screen were numbered
+0, 1, 2. The paste's undo snapshot then wrote that page into the start of the file, and
+the later lines of the paste landed in the middle. A page window's indices are left
+alone; `shiftMountedModelIndices` is what moves them. A missing index no longer rebuilds
+the model from the mounted range. Guarded by `page-paste-end-browser.mjs`.
+
 ### Several lines pasted inside a line — **fixed** (0.16.32)
 
 A multi-line paste in Preview never split the line at the caret: a whole line pasted at the
