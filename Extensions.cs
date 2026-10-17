@@ -456,7 +456,7 @@ namespace TypoZen
                 Blurb = "Expressive audiobook narration by Breeze TTS 2 (3B parameters), running entirely on this PC. "
                       + "Clones voices from reference recordings, performs native audio cues like (giggles) and (sigh), "
                       + "and starts speaking within seconds. Reads Qwen voices and casts too.\n\n"
-                      + "• Hardware: NVIDIA GPU with 12 GB+ VRAM (~9 GB VRAM during reading)\n"
+                      + "• Hardware: NVIDIA GPU with 12 GB+ VRAM (~10 GB VRAM during reading)\n"
                       + "• Features: Zero-shot voice cloning, character casts, inline vocal events\n"
                       + "• Licence: Research & non-commercial use (BreezeBlue / RESONIA, Inc.)",
                 Dir = BreezeNarrator.RootDir(cacheDir),

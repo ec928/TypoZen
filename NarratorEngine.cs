@@ -16,7 +16,7 @@ namespace TypoZen
     /// each; both sidecars answer the same HTTP requests, so the page reads with either.
     ///
     /// Only one engine holds the graphics card at a time: the two models together do not fit a
-    /// 12 GB card (Breeze about 9 GB, Qwen about 6), and Windows pages GPU memory to system RAM
+    /// 12 GB card (Breeze about 10 GB, Qwen about 6), and Windows pages GPU memory to system RAM
     /// rather than failing, which turns a fast narrator into a crawling one. Starting one stops
     /// the other.
     /// </summary>

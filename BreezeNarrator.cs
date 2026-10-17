@@ -37,7 +37,8 @@ namespace TypoZen
                 RootDir = BreezeNarrator.RootDir,
                 ScriptFolder = "breeze-narrator",
                 NeedFree = 16L * 1024 * 1024 * 1024,
-                // About 9 GB while reading (measured on a 12 GB card, 2026-10-08). A card reported
+                // About 10 GB while reading (9 GB measured on a 12 GB card on 2026-10-08; 11.7 GB
+                // in use on 2026-10-17, of which about 1.5 GB was already taken). A card reported
                 // as "12 GB" has a little under 12 GiB, so the line is drawn at 11.
                 MinGpuMiB = 11 * 1024,
                 Notice = LicenceSummary
