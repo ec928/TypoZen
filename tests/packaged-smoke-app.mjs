@@ -33,6 +33,23 @@ const check = (ok, what, detail) => {
     else { fail++; console.log('  FAIL  ' + what + (detail ? '   ' + detail : '')); }
 };
 
+// Test-Packaged.ps1 returns as soon as it has launched the AUMID; on a cold start the
+// debug port is not open yet, and connecting at once fails with ECONNREFUSED. Wait for it
+// the way app-harness.mjs's waitForDevTools does.
+{
+    const deadline = Date.now() + 45000;
+    let up = false, lastErr = null;
+    while (!up && Date.now() < deadline) {
+        try { up = (await fetch('http://127.0.0.1:9333/json/version')).ok; } catch (e) { lastErr = e; }
+        if (!up) await sleep(250);
+    }
+    if (!up) {
+        console.error('The packaged TypoZen did not open its DevTools port 9333 within 45s. ' +
+            'Is it running (.\\tools\\Test-Packaged.ps1)? ' + (lastErr ? lastErr.message : ''));
+        process.exit(1);
+    }
+}
+
 const browser = await puppeteer.connect({ browserURL: 'http://127.0.0.1:9333', defaultViewport: null });
 const pages = await browser.pages();
 const page = pages.find(p => p.url().includes('localapp')) || pages[0];
