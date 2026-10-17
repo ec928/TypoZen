@@ -430,7 +430,7 @@ function ttsSkipParagraph(played, current, queue, dir) {
 
 // --- end read-aloud transport ---
 
-// --- The reading bar (prototype, branch proto/reading-bar) ---
+// --- The reading bar ---
 // While a reading is underway, its controls float at the bottom of the page instead of
 // growing the toolbar: Previous, Pause, Next, Stop, the voice (its button opens File > Read
 // Aloud's own menu, at the bar), the speed, and Stop at end of chapter. The host owns the

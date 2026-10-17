@@ -1,5 +1,5 @@
 /**
- * The reading bar (prototype): it shows and hides with the host's state, repaints from it,
+ * The reading bar: it shows and hides with the host's state, repaints from it,
  * and each button does its job -- page actions in the page, the rest as messages to the
  * host. Headless; the host is played by a stub.
  */

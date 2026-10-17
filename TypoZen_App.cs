@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.17.6";
+        internal const string AppVersion = "0.17.7";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -11371,7 +11371,7 @@ namespace TypoZen
             PushReadBar();
         }
 
-        // ---- The reading bar (prototype, branch proto/reading-bar) ----------------------------
+        // ---- The reading bar ---------------------------------------------------------------------
         // While a reading is underway its controls float at the bottom of the page (09-speech.js,
         // setReadBar) instead of growing the toolbar: Previous, Pause, Next, Stop, the voice --
         // whose button opens File > Read Aloud's own menu where it is -- the speed, and Stop at

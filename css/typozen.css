@@ -1496,7 +1496,7 @@
            Anchored to the selection rather than parked in chrome: looking a word up
            is something you do without leaving the sentence, which is the whole point
            of it. Chrome metrics, not document metrics -- it is a menu surface. */
-        /* The reading bar (prototype): the read-aloud controls, floating at the bottom of the
+        /* The reading bar: the read-aloud controls, floating at the bottom of the
            page while a reading is underway (09-speech.js, setReadBar). Opaque for the same
            reason as #selPop; it floats over the document. */
         #tzReadBar {
