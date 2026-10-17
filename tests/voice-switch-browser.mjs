@@ -100,6 +100,26 @@ try {
     assert(prev.now === 'First paragraph here.' && prev.plays[0] === 'First paragraph here.',
         'Previous goes to the first, before where it started (' + JSON.stringify(prev) + ')');
 
+    // Next while what comes next is not queued yet (a narrator still rendering it): the next
+    // paragraph in the document, not nothing.
+    const next = await page.evaluate(async () => {
+        const wait = (ms) => new Promise(r => setTimeout(r, ms));
+        try { stopReading(); } catch (e) {}
+        const blocks = [...document.querySelectorAll('#editor .block')].filter(b => b.textContent.trim());
+        _readFrom = { el: blocks[0], until: Date.now() + 60000 };
+        try { window.getSelection().removeAllRanges(); } catch (e) {}
+        speakSelection();
+        await wait(100);
+        _ttsChunks = [];                       // the rest not rendered yet
+        window.__posts = [];
+        readAloudSkip(1);
+        await wait(200);
+        const plays = window.__posts.filter(p => p.startsWith('host_tts_play:')).map(p => JSON.parse(p.substring(14)).text);
+        return { plays, now: _currentTTSBlockEl && _currentTTSBlockEl.textContent.trim() };
+    });
+    assert(next.now === 'Second paragraph here.' && next.plays[0] === 'Second paragraph here.',
+        'Next with nothing queued goes to the next paragraph (' + JSON.stringify(next) + ')');
+
     // A narrator voice changed mid-narration: again from the paragraph playing, not the cursor.
     const narr = await page.evaluate(() => {
         const blocks = [...document.querySelectorAll('#editor .block')].filter(b => b.textContent.trim());

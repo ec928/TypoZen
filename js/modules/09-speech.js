@@ -678,10 +678,12 @@ function readAloudSkip(dir) {
     // document. It used to go no further back than where the reading started (2026-10-17).
     if (dir < 0) {
         const key = ttsParagraphKey(_ttsCurrent);
-        if (!_ttsPlayed.some(p => ttsParagraphKey(p) !== key) && readFromParagraphBefore()) return;
+        if (!_ttsPlayed.some(p => ttsParagraphKey(p) !== key) && readFromParagraphNear(-1)) return;
     }
     const plan = ttsSkipParagraph(_ttsPlayed, _ttsCurrent, _ttsChunks, dir);
-    if (!plan.moved) return;
+    // Next with nothing queued yet -- a narrator still rendering what comes next: the next
+    // paragraph in the document, read once it is rendered. Next used to do nothing (2026-10-17).
+    if (!plan.moved) { if (dir > 0) readFromParagraphNear(1); return; }
     abandonCurrentSound();
     _ttsPaused = false;
     _ttsPlayed = plan.played;
@@ -3305,13 +3307,17 @@ function restartReadingInNewVoice(voiceId) {
     restartReadingFrom(_currentTTSBlockEl, voiceId);
 }
 
-/** The paragraph before the one being read, in the document: read from there. False if none. */
-function readFromParagraphBefore() {
+/**
+ * The paragraph before (dir -1) or after (+1) the one being read, in the document: read from
+ * there. False if there is none.
+ */
+function readFromParagraphNear(dir) {
     const cur = _currentTTSBlockEl;
     if (!cur || !cur.isConnected || pdfReading()) return false;
     const all = readingBlocks();
     const i = all.indexOf(cur);
-    for (let j = i - 1; j >= 0; j--) {
+    if (i < 0) return false;
+    for (let j = i + dir; j >= 0 && j < all.length; j += dir) {
         if (readAloud(all[j]) && (all[j].textContent || '').trim()) {
             restartReadingFrom(all[j], _kokoroVoice);
             return true;
