@@ -678,28 +678,11 @@
                 </StackPanel>
 
                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <!-- One control. The speaker is always there. Previous, Pause, Next and
-                         Narration Monitor appear to its left only while a reading is underway
-                         (including while paused), so the speaker stays put beside Mode.
-                         C# shows and hides them in ShowReadAloudState. -->
+                    <!-- One control: the speaker, Read Aloud, and Stop while reading. The other
+                         controls of a reading are on the reading bar, at the bottom of the page
+                         (09-speech.js, setReadBar). -->
                     <Border x:Name="grpReadAloud" Style="{StaticResource SegmentGroup}" Margin="0,0,12,0">
                         <StackPanel Orientation="Horizontal">
-                            <Button x:Name="btnReadMonitor" Style="{StaticResource SegmentButton}"
-                                    Content="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                    Visibility="Collapsed" ToolTip="Narration Monitor"/>
-                            <Border x:Name="divReadMonitor" Style="{StaticResource SegmentDivider}" Visibility="Collapsed"/>
-                            <Button x:Name="btnReadPrev" Style="{StaticResource SegmentButton}"
-                                    Content="&#xE892;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                    Visibility="Collapsed" ToolTip="Previous paragraph"/>
-                            <Border x:Name="divReadPrev" Style="{StaticResource SegmentDivider}" Visibility="Collapsed"/>
-                            <Button x:Name="btnReadPause" Style="{StaticResource SegmentButton}"
-                                    Content="&#xE769;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                    Visibility="Collapsed" ToolTip="Pause"/>
-                            <Border x:Name="divReadPause" Style="{StaticResource SegmentDivider}" Visibility="Collapsed"/>
-                            <Button x:Name="btnReadNext" Style="{StaticResource SegmentButton}"
-                                    Content="&#xE893;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                    Visibility="Collapsed" ToolTip="Next paragraph"/>
-                            <Border x:Name="divReadNext" Style="{StaticResource SegmentDivider}" Visibility="Collapsed"/>
                             <Button x:Name="btnReadAloud" Style="{StaticResource SegmentButton}"
                                     Content="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="14"
                                     ToolTip="Read Aloud"/>

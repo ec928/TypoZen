@@ -1550,6 +1550,8 @@
         #tzReadBar .rb-speed { min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; color: var(--tx-muted, inherit); }
         #tzReadBar .rb-sep { width: 1px; height: 18px; background: var(--border, #3F3F46); margin: 0 4px; }
         #tzReadBar .rb-chapter { color: var(--tx-muted, inherit); }
+        #tzReadBar .rb-monitor[hidden] { display: none; }
+        #tzReadBar .rb-monitor.on { background: var(--accent-bg, rgba(255,255,255,0.1)); }
         /* On: the page's own text colour on the accent fill, and a tick -- --accent-tx on
            --accent-bg was pale on pale in Gruvbox Light. */
         #tzReadBar .rb-chapter.on { color: var(--tx, inherit); background: var(--accent-bg, rgba(255,255,255,0.1)); }

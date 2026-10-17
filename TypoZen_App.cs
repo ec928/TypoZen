@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.17.7";
+        internal const string AppVersion = "0.17.8";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1696,10 +1696,6 @@ namespace TypoZen
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
             BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
             BindClick("btnReadAloud", (s, e) => SendMsg("cmd:read_aloud_doc"));
-            BindClick("btnReadPause", (s, e) => SendMsg("cmd:read_aloud_pause"));
-            BindClick("btnReadPrev", (s, e) => SendMsg("cmd:read_aloud_prev"));
-            BindClick("btnReadNext", (s, e) => SendMsg("cmd:read_aloud_next"));
-            BindClick("btnReadMonitor", (s, e) => SetNarrationMonitor(!NarrationMonitor.IsOpen));
             ShowReadAloudState(false);
 
             BindClick("mSidebarOutline", (s, e) => SendMsg("cmd:show_outline"));
@@ -2391,7 +2387,7 @@ namespace TypoZen
                         SetMenuChecked("mNarrMonitor", false);
                         try { SendMsg("cmd:narr_monitor:off"); } catch { }
                         SaveMonitorChoice(false);
-                        UpdateReadMonitorButton();
+                        PushReadBar();
                     },
                     // Each engine's narration.log, where NarratorEngine writes it.
                     engine => Path.Combine(engine == "breeze" ? BreezeNarrator.RootDir(CacheDir()) : QwenNarrator.RootDir(CacheDir()),
@@ -2400,7 +2396,7 @@ namespace TypoZen
                 SetMenuChecked("mNarrMonitor", on);
                 SendMsg("cmd:narr_monitor:" + (on ? "on" : "off"));
                 SaveMonitorChoice(on);
-                UpdateReadMonitorButton();
+                PushReadBar();
             }
             catch (Exception ex) { LogFault("narration monitor", ex); }
         }
@@ -11326,62 +11322,20 @@ namespace TypoZen
                 btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
                 _readAloudHold = false;
             }
-            SetReadAloudExtras(reading);
-        }
-
-        /// <summary>
-        /// Previous, Pause, Next and Narration Monitor, to the left of the speaker.
-        /// Visible only while a reading is underway.
-        /// </summary>
-        private void SetReadAloudExtras(bool live)
-        {
-            _readBarLive = live;
-            // With the reading bar, the toolbar keeps only the speaker (Stop while reading).
-            bool inToolbar = live && !ReadBarOn;
-            var vis = inToolbar ? Visibility.Visible : Visibility.Collapsed;
-            foreach (string name in new[] {
-                "btnReadPrev", "divReadPrev",
-                "btnReadPause", "divReadPause", "btnReadNext", "divReadNext" })
-            {
-                var el = FindElement(name) as UIElement;
-                if (el != null) el.Visibility = vis;
-            }
-            // The Narration Monitor follows the Qwen or Breeze narrator; with a Windows,
-            // Kokoro or online voice it has nothing to show, so its button stays hidden.
-            bool narrator = _kokoroVoiceId == QwenNarrator.VoiceId || _kokoroVoiceId == BreezeNarrator.VoiceId;
-            var monVis = inToolbar && narrator ? Visibility.Visible : Visibility.Collapsed;
-            foreach (string name in new[] { "btnReadMonitor", "divReadMonitor" })
-            {
-                var el = FindElement(name) as UIElement;
-                if (el != null) el.Visibility = monVis;
-            }
-            var font = new FontFamily(IconFont());
-            foreach (string name in new[] { "btnReadMonitor", "btnReadPrev", "btnReadPause", "btnReadNext" })
-            {
-                var b = FindElement(name) as System.Windows.Controls.Button;
-                if (b != null) b.FontFamily = font;
-            }
-            var pause = FindElement("btnReadPause") as System.Windows.Controls.Button;
-            if (pause != null)
-            {
-                pause.Content = _readAloudHold ? "\uE768" : "\uE769";   // Play, Pause
-                pause.ToolTip = _readAloudHold ? "Resume" : "Pause";
-            }
-            UpdateReadMonitorButton();
+            _readBarLive = reading;
             PushReadBar();
         }
 
         // ---- The reading bar ---------------------------------------------------------------------
         // While a reading is underway its controls float at the bottom of the page (09-speech.js,
         // setReadBar) instead of growing the toolbar: Previous, Pause, Next, Stop, the voice --
-        // whose button opens File > Read Aloud's own menu where it is -- the speed, and Stop at
-        // end of chapter. The host owns the state and sends it whenever any of it changes.
-        private static readonly bool ReadBarOn = true;
+        // whose button opens File > Read Aloud's own menu where it is -- Narration Monitor with
+        // the Qwen or Breeze narrator, the speed, and Stop at end of chapter. The host owns the
+        // state and sends it whenever any of it changes.
         private bool _readBarLive;
 
         private void PushReadBar()
         {
-            if (!ReadBarOn) return;
             try
             {
                 var lbl = FindElement("lblVoice") as TextBlock;
@@ -11391,7 +11345,11 @@ namespace TypoZen
                 var state = new Dictionary<string, object>
                 {
                     { "show", _readBarLive }, { "paused", _readAloudHold }, { "voice", voice },
-                    { "speed", _ttsSpeed }, { "chapter", _stopAtChapter }
+                    { "speed", _ttsSpeed }, { "chapter", _stopAtChapter },
+                    // The Narration Monitor follows the Qwen or Breeze narrator; with a Windows,
+                    // Kokoro or online voice it has nothing to show, so the bar has no button.
+                    { "monitor", _kokoroVoiceId == QwenNarrator.VoiceId || _kokoroVoiceId == BreezeNarrator.VoiceId },
+                    { "monitorOpen", NarrationMonitor.IsOpen }
                 };
                 SendMsg("cmd:read_bar:" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(state));
             }
@@ -11403,6 +11361,7 @@ namespace TypoZen
         {
             if (what == "menu") { ShowReadAloudMenuAtCursor(); return; }
             if (what == "chapter") { SetStopAtChapter(!_stopAtChapter); PushReadBar(); return; }
+            if (what == "monitor") { SetNarrationMonitor(!NarrationMonitor.IsOpen); return; }
             if (what.StartsWith("speed:", StringComparison.Ordinal))
             {
                 double sp;
@@ -11491,13 +11450,6 @@ namespace TypoZen
             if (into.Count > 0 && into[into.Count - 1] is Separator) into.RemoveAt(into.Count - 1);
         }
 
-        /// <summary>The group's Narration Monitor button, shaded while the window is open.</summary>
-        private void UpdateReadMonitorButton()
-        {
-            var mon = FindElement("btnReadMonitor") as System.Windows.Controls.Button;
-            if (mon == null) return;
-            SetToolbarActive(mon, NarrationMonitor.IsOpen && mon.Visibility == Visibility.Visible);
-        }
         private string _iconFont;
 
         /// <summary>Segoe Fluent Icons where Windows has it (11), else Segoe MDL2 Assets (10).</summary>

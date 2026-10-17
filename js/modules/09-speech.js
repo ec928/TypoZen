@@ -458,6 +458,7 @@ function readBarBuild() {
         '<span class="rb-sep"></span>' +
         '<button type="button" class="rb-text rb-voice" data-a="menu" title="Voice and Read Aloud settings">' +
             '<span class="rb-voice-name"></span><span class="rb-caret">\uE70D</span></button>' +
+        '<button type="button" class="rb-icon rb-monitor" data-a="monitor" title="Narration Monitor" hidden>\uE8BD</button>' +
         '<span class="rb-sep"></span>' +
         '<button type="button" class="rb-icon rb-small" data-a="slower" title="Slower">\uE738</button>' +
         '<span class="rb-speed" title="Reading speed"></span>' +
@@ -492,6 +493,7 @@ function readBarAct(a) {
     else if (a === 'stop') { if (isPlaying) stopReading(); }
     else if (a === 'menu') readBarPost('menu');
     else if (a === 'chapter') readBarPost('chapter');
+    else if (a === 'monitor') readBarPost('monitor');
     else if (a === 'slower' || a === 'faster') {
         const v = readBarStep(a === 'faster' ? 1 : -1);
         if (Math.abs(v - (Number(_readBarState.speed) || 1)) < 0.001) return;
@@ -515,6 +517,10 @@ function readBarPaint() {
     el.querySelector('.rb-speed').textContent = (Math.round(sp * 100) / 100) + '\u00d7';
     el.querySelector('[data-a="slower"]').disabled = sp <= READ_BAR_SPEEDS[0] + 0.001;
     el.querySelector('[data-a="faster"]').disabled = sp >= READ_BAR_SPEEDS[READ_BAR_SPEEDS.length - 1] - 0.001;
+    const mon = el.querySelector('.rb-monitor');
+    mon.hidden = !s.monitor;
+    mon.classList.toggle('on', !!s.monitorOpen);
+    mon.setAttribute('aria-pressed', s.monitorOpen ? 'true' : 'false');
     const ch = el.querySelector('.rb-chapter');
     ch.setAttribute('aria-pressed', s.chapter ? 'true' : 'false');
     ch.classList.toggle('on', !!s.chapter);

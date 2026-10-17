@@ -86,6 +86,19 @@ try {
     });
     assert(keepCaret, 'pressing the bar does not take the caret');
 
+    const mon = () => page.evaluate(() => {
+        const m = document.querySelector('#tzReadBar .rb-monitor');
+        return { shown: getComputedStyle(m).display !== 'none', on: m.classList.contains('on') };
+    });
+    assert(!(await mon()).shown, 'no Narration Monitor button with a Windows or Kokoro voice');
+    await page.evaluate(() => window.setReadBar('{"monitor":true,"monitorOpen":false}'));
+    assert((await mon()).shown && !(await mon()).on, 'with the Qwen or Breeze narrator, the Narration Monitor button shows');
+    await page.evaluate(() => { window.__posts = []; });
+    await click('monitor');
+    assert(JSON.stringify(await page.evaluate(() => window.__posts)) === '["host_read_bar:monitor"]', 'it asks the host to open the monitor');
+    await page.evaluate(() => window.setReadBar('{"monitorOpen":true}'));
+    assert((await mon()).on, 'shaded while the monitor is open');
+
     await page.evaluate(() => window.setReadBar('{"show":false}'));
     assert((await bar()).hidden, 'it goes when the reading stops');
 } catch (e) {
