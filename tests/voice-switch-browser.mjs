@@ -120,6 +120,38 @@ try {
     assert(next.now === 'Second paragraph here.' && next.plays[0] === 'Second paragraph here.',
         'Next with nothing queued goes to the next paragraph (' + JSON.stringify(next) + ')');
 
+    // The reading bar stays through all of it: the page tells the host a restart, never a stop
+    // (a stop is what takes the bar down). Then Stop while the narrator loads does stop.
+    const bar = await page.evaluate(async () => {
+        const wait = (ms) => new Promise(r => setTimeout(r, ms));
+        const stops = () => window.__posts.filter(p => p === 'host_tts_stop').length;
+        const restarts = () => window.__posts.filter(p => p === 'host_tts_stop:restart').length;
+        const out = {};
+        window.setKokoroVoice('windows_voice', 'Microsoft Hazel');
+        try { stopReading(); } catch (e) {}
+        const blocks = [...document.querySelectorAll('#editor .block')].filter(b => b.textContent.trim());
+        _readFrom = { el: blocks[1], until: Date.now() + 60000 };
+        try { window.getSelection().removeAllRanges(); } catch (e) {}
+        speakSelection();
+        await wait(100);
+        window.__posts = []; readAloudSkip(-1); await wait(150);
+        out.prev = { stops: stops(), restarts: restarts() };
+        window.__posts = []; _ttsChunks = []; readAloudSkip(1); await wait(150);
+        out.next = { stops: stops(), restarts: restarts() };
+        window.__posts = []; window.setKokoroVoice('breeze_narrator', 'Mary (RP, Breeze)'); await wait(150);
+        out.voice = { stops: stops(), restarts: restarts(), narrate: window.__posts.includes('host_qwen_narrate'), starting: window.tzNarrStarting ? window.tzNarrStarting() : null };
+        // The toolbar's button while the narrator loads: a stop, not a second request.
+        window.__posts = []; handleCommand('read_aloud_doc'); await wait(50);
+        out.stopWhileLoading = { stops: stops(), narrate: window.__posts.includes('host_qwen_narrate'), starting: window.tzNarrStarting ? window.tzNarrStarting() : null };
+        return out;
+    });
+    assert(bar.prev.stops === 0 && bar.prev.restarts === 1, 'Previous past the start keeps the bar (' + JSON.stringify(bar.prev) + ')');
+    assert(bar.next.stops === 0 && bar.next.restarts === 1, 'Next past what is queued keeps the bar (' + JSON.stringify(bar.next) + ')');
+    assert(bar.voice.stops === 0 && bar.voice.restarts === 1 && bar.voice.narrate && bar.voice.starting,
+        'a voice change keeps the bar while the narrator starts (' + JSON.stringify(bar.voice) + ')');
+    assert(bar.stopWhileLoading.stops === 1 && !bar.stopWhileLoading.narrate && !bar.stopWhileLoading.starting,
+        'Stop while the narrator loads stops it (' + JSON.stringify(bar.stopWhileLoading) + ')');
+
     // A narrator voice changed mid-narration: again from the paragraph playing, not the cursor.
     const narr = await page.evaluate(() => {
         const blocks = [...document.querySelectorAll('#editor .block')].filter(b => b.textContent.trim());

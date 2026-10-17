@@ -1115,6 +1115,9 @@
                     // state the toolbar button is given by the host.
                     try { if (typeof nativeTTSFinished === 'function') nativeTTSFinished(); } catch (eT) {}
                 }
+                else if (msg === "cmd:narrate_failed") {
+                    try { if (window.narrateFailed) window.narrateFailed(); } catch (eF) {}
+                }
                 else if (msg.startsWith("cmd:narrate:")) {
                     // The sidecar is up; the page does the rest.
                     try {
@@ -1888,7 +1891,8 @@
                 return;
             }
             if (cmd === "read_aloud_doc") {
-                if (typeof isPlaying !== 'undefined' && isPlaying) {
+                // The toolbar's Stop while a narrator is still loading stops too.
+                if ((typeof isPlaying !== 'undefined' && isPlaying) || (window.tzNarrStarting && window.tzNarrStarting())) {
                     if (typeof stopReading === 'function') stopReading();
                 } else {
                     if (typeof speakSelection === 'function') speakSelection();

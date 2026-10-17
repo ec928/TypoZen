@@ -130,6 +130,11 @@ function readingBlocks() {
 let _currentTTSBlockEl = null;
 let _currentTTSChunkIdx = null;
 let _readFrom = null;   // { el, until }: where a reading restarted in a new voice begins
+// A narrator reading asked for and not yet under way (the narrator loading, or rendering its
+// first piece). The bar is up and Stop stops it; Read Aloud does not ask again.
+let _narrStarting = false;
+window.tzNarrStarting = function () { return _narrStarting; };
+window.narrateFailed = function () { _narrStarting = false; };
 
 // True from pointer-down until pointer-up. Reading must not scroll or steal a
 // selection the reader is in the middle of making.
@@ -187,6 +192,7 @@ function speakSelection() {
         } catch (e) {}
         _qwenPending = selText && el ? { text: selText, el: el } : null;
         narrLog('read requested: ' + (_qwenPending ? 'the selection, ' + selText.length + ' chars' : 'from here'));
+        _narrStarting = true;
         try { window.chrome.webview.postMessage('host_qwen_narrate'); } catch (e) {}
         return;
     }
@@ -497,7 +503,7 @@ function readBarAct(a) {
     if (a === 'prev') readAloudSkip(-1);
     else if (a === 'next') readAloudSkip(1);
     else if (a === 'pause') readAloudPause();
-    else if (a === 'stop') { if (isPlaying) stopReading(); }
+    else if (a === 'stop') stopReading();
     else if (a === 'menu') readBarPost('menu');
     else if (a === 'chapter') readBarPost('chapter');
     else if (a === 'monitor') readBarPost('monitor');
@@ -2657,8 +2663,9 @@ function firstVisibleBlock(all, editor) {
 async function startQwenNarration(base) {
     const editor = document.getElementById('editor');
     if (!editor) return;
+    _narrStarting = false;
     // Starting somewhere new stops what was playing and cancels what was still rendering.
-    if (isPlaying) stopReading();
+    if (isPlaying) stopReading(true);
     cancelNarrationPrefetch();
     const pending = _qwenPending;
     _qwenPending = null;
@@ -3070,7 +3077,13 @@ window.stopNarration = function () {
     _narrationBase = '';
 };
 
-function stopReading() {
+/**
+ * `restart`: the reading starts again at once -- a voice change, Previous or Next past what is
+ * queued, the narrator taking over -- so the host keeps the reading bar up. A stop it told
+ * about hid the bar for each of those, which read as something gone wrong (Ed, 2026-10-17).
+ */
+function stopReading(restart) {
+    if (!restart) _narrStarting = false;
     if (_narrActive) {
         // Who stopped it: the Stop button, a new reading, or the queue running dry.
         let from = '';
@@ -3114,7 +3127,7 @@ function stopReading() {
     _ttsAwaitingNative = false;
     _ttsChunkStarted = false;
     _stopChapterAt = null;
-    try { window.chrome.webview.postMessage("host_tts_stop"); } catch(e){}
+    try { window.chrome.webview.postMessage(restart ? "host_tts_stop:restart" : "host_tts_stop"); } catch(e){}
     isPlaying = false;
     showReadAloudState();
 }
@@ -3328,9 +3341,10 @@ function readFromParagraphNear(dir) {
 
 /** Stop, and read again from this paragraph in the voice chosen now. */
 function restartReadingFrom(el, voiceId) {
-    stopReading();
+    stopReading(true);
     if (el && el.isConnected) _readFrom = { el: el, until: Date.now() + 120000 };
-    const go = () => { try { speakSelection(); } catch (e) {} };
+    // Nothing started after all (nothing left to read): then it is a stop, and the bar goes.
+    const go = () => { try { speakSelection(); } catch (e) {} if (!isPlaying && !_narrStarting) stopReading(); };
     if (!isKokoroVoice(voiceId)) { setTimeout(go, 0); return; }
     // A Kokoro voice reads once its engine is up, not in a Windows voice meanwhile.
     const end = Date.now() + 60000;
@@ -3338,6 +3352,7 @@ function restartReadingFrom(el, voiceId) {
         if (_kokoroVoice !== voiceId) return;                      // chosen again since
         if (_isKokoroReady) { go(); return; }
         if (Date.now() < end) setTimeout(wait, 250);
+        else stopReading();                                        // Kokoro never came up
     };
     wait();
 }

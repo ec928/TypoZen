@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.17.13";
+        internal const string AppVersion = "0.17.14";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -2370,7 +2370,13 @@ namespace TypoZen
                 var engine = ChosenNarrator() ?? QwenNarrator.Engine;
                 bool up = await engine.EnsureRunning(CacheDir(), _appDir, NarratorStatus, CancellationToken.None);
                 if (request != _narrateRequest) return;
-                if (!up) { NarratorFailed(); return; }
+                if (!up)
+                {
+                    NarratorFailed();
+                    ShowReadAloudTransport("idle");             // the bar goes: nothing will play
+                    SendMsg("cmd:narrate_failed");
+                    return;
+                }
                 // The other narrator chosen while this one loaded: read with that one instead.
                 if (ChosenNarrator() != null && ChosenNarrator() != engine) { StartQwenNarration(); return; }
                 if (ChosenNarrator() == null) return;           // a non-narrator voice chosen meanwhile
@@ -7684,7 +7690,9 @@ namespace TypoZen
             else if (msg == "host_qwen_narrate")
             {
                 // Read Aloud, Read or Read from here with the Qwen voice chosen: make sure
-                // the narrator is up, then the page narrates what it asked for.
+                // the narrator is up, then the page narrates what it asked for. The reading
+                // bar is up from now, through the narrator's load, not from the first sound.
+                ShowReadAloudTransport("playing");
                 StartQwenNarration();
                 return;
             }
@@ -7692,6 +7700,14 @@ namespace TypoZen
             {
                 // The engine finished loading its model. Nothing to do -- the menu already
                 // reflects what is installed, not what has been loaded.
+                return;
+            }
+            else if (msg == "host_tts_stop:restart")
+            {
+                // Stopped to start again at once: what was waiting or sounding stops, the
+                // reading bar stays.
+                _narrateRequest++;
+                TypoZen_TTS.Stop();
                 return;
             }
             else if (msg == "host_tts_stop")
