@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.17.10";
+        internal const string AppVersion = "0.17.11";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -2361,16 +2361,26 @@ namespace TypoZen
         /// </summary>
         private async void StartQwenNarration()
         {
+            // Only the latest request narrates. Read Aloud, Stop and Read Aloud again while the
+            // narrator loads used to start both readings once it was up; Stop (host_tts_stop)
+            // and every newer request now cancel one still waiting.
+            int request = ++_narrateRequest;
             try
             {
                 var engine = ChosenNarrator() ?? QwenNarrator.Engine;
                 bool up = await engine.EnsureRunning(CacheDir(), _appDir, NarratorStatus, CancellationToken.None);
+                if (request != _narrateRequest) return;
                 if (!up) { NarratorFailed(); return; }
+                // The other narrator chosen while this one loaded: read with that one instead.
+                if (ChosenNarrator() != null && ChosenNarrator() != engine) { StartQwenNarration(); return; }
+                if (ChosenNarrator() == null) return;           // a non-narrator voice chosen meanwhile
                 SendNarratorSettings();
                 SendMsg("cmd:narrate:" + engine.BaseUrl);
             }
             catch (Exception ex) { LogFault("start narration", ex); }
         }
+
+        private int _narrateRequest;
 
         /// <summary>
         /// Read Aloud > Narration Monitor on or off: the window, the menu tick, the page's reports,
@@ -7622,6 +7632,19 @@ namespace TypoZen
                 UpdateWindowsVoicesCheckmark();
                 // A narrator voice restored at launch, or switched to: warm up if a book is open.
                 if (ChosenNarrator() != null && ChosenNarrator() != wasNarrator) WarmNarrator();
+                // A Kokoro voice runs on the graphics card too: a narrator there, running or
+                // still loading, steps off it, as the narrators do for each other. Both at once
+                // overfill a 12 GB card, and Windows then stalls -- keyboard included -- until
+                // TypoZen closes (2026-10-17). Off the UI thread: a stop waits up to 3 s.
+                if (IsKokoroVoiceId(_kokoroVoiceId))
+                {
+                    _narrateRequest++;
+                    System.Threading.Tasks.Task.Run(() =>
+                    {
+                        try { QwenNarrator.Engine.StopAny("a Kokoro voice was chosen"); } catch { }
+                        try { BreezeNarrator.Engine.StopAny("a Kokoro voice was chosen"); } catch { }
+                    });
+                }
                 return;
             }
             else if (msg.StartsWith("host_narrator_cast:", StringComparison.Ordinal))
@@ -7673,6 +7696,7 @@ namespace TypoZen
             }
             else if (msg == "host_tts_stop")
             {
+                _narrateRequest++;                              // a narrate still waiting is cancelled
                 ShowReadAloudTransport("idle");
                 TypoZen_TTS.Stop();
                 return;

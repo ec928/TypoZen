@@ -199,6 +199,34 @@ namespace TypoZen
         /// </summary>
         public async Task<bool> EnsureRunning(string cacheDir, string appDir, Action<string> say, CancellationToken cancel)
         {
+            // One start at a time. Choosing a voice, a book opening and Read Aloud each ask for
+            // the narrator; while it is loading, a second request waits for the same start
+            // rather than polling beside it (2026-10-17: stop and Read Aloud again mid-load).
+            TaskCompletionSource<bool> mine = null;
+            Task<bool> under;
+            lock (_gate)
+            {
+                if (_start != null && !_start.IsCompleted) under = _start;
+                else { mine = new TaskCompletionSource<bool>(); _start = under = mine.Task; }
+            }
+            if (mine == null)
+            {
+                Log("start already under way; this request waits for it");
+                return await under.ConfigureAwait(false);
+            }
+            try
+            {
+                bool ok = await StartOnce(cacheDir, appDir, say, cancel).ConfigureAwait(false);
+                mine.TrySetResult(ok);
+                return ok;
+            }
+            catch (Exception ex) { mine.TrySetResult(false); Log("start failed: " + ex.Message); return false; }
+        }
+
+        private Task<bool> _start;
+
+        private async Task<bool> StartOnce(string cacheDir, string appDir, Action<string> say, CancellationToken cancel)
+        {
             _ = Task.Run(() => PruneCache(cacheDir));
             _logPath = Path.Combine(RootDir(cacheDir), "narration.log");
             Log("---- narrate requested; script " + ScriptPath(appDir));

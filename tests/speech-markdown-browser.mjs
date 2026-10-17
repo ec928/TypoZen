@@ -34,6 +34,7 @@ try {
         'See [the docs](https://x.y/z) and _soft_ text with `code`.', '',
         '- a list item with **bold**', '',
         '> a quoted line', '',
+        '---', '',
         '![A harbour at night](harbour.png)', ''
     ].join('\n');
     const want = ['Write in the morning, read in the evening.', 'The Ferry', 'See the docs and soft text with code.',

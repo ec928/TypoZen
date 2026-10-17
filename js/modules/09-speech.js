@@ -77,6 +77,12 @@ document.addEventListener('selectionchange', function() {
  * document -- then reading starts where it always did.
  */
 function readingCaret() {
+    // A reading restarted in a new voice: from the paragraph that was playing, once.
+    if (_readFrom) {
+        const r = _readFrom;
+        _readFrom = null;
+        if (r.el && r.el.isConnected && Date.now() < r.until) return { block: r.el, text: r.el.textContent || '' };
+    }
     const editor = document.getElementById('editor');
     const sel = window.getSelection();
     if (!editor || !sel || !sel.rangeCount || !sel.isCollapsed) return null;
@@ -123,6 +129,7 @@ function readingBlocks() {
 
 let _currentTTSBlockEl = null;
 let _currentTTSChunkIdx = null;
+let _readFrom = null;   // { el, until }: where a reading restarted in a new voice begins
 
 // True from pointer-down until pointer-up. Reading must not scroll or steal a
 // selection the reader is in the middle of making.
@@ -784,6 +791,7 @@ function playNextChunk() {
             // plays it. Missing it here meant narration silently fell back to a Windows
             // voice in Pages, which is the layout most reading happens in.
             if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl, chunk);
+            else if (!chunkSpeechText(chunk).trim()) setTimeout(playNextChunk, 10);   // nothing to say (---)
             else sendTTSPlay(chunkSpeechText(chunk));
         });
         return;
@@ -810,6 +818,7 @@ function playNextChunk() {
         // Nothing above this line knows the difference, which is the point: the highlight,
         // the page turning and the stop button are the same code they always were.
         if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl, chunk);
+        else if (!chunkSpeechText(chunk).trim()) setTimeout(playNextChunk, 10);   // nothing to say (---)
         else sendTTSPlay(chunkSpeechText(chunk));
     }
 }
@@ -3011,7 +3020,8 @@ function chunkSpeechText(chunk) {
             // A picture alone shows no text: its alt text, if it has one, rather than its source.
             const alts = (String(chunk.text || '').match(/!\[([^\]]*)\]/g) || [])
                 .map(m => m.slice(2, -1).trim()).filter(Boolean).join('. ');
-            t = shown || alts || chunk.text;
+            // A rule (---) or an empty line shows nothing and says nothing.
+            t = shown || alts || '';
         }
     } catch (e) {}
     chunk.spoken = t;
@@ -3199,6 +3209,7 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
         if (!silent) showKokoroStatus("Loading the voice model...");
         
         const worker = new Worker('js/kokoro-worker.js', { type: 'module' });
+        _kokoroWorker = worker;
         let pendingGenerate = {};
         let generateIdCounter = 0;
 
@@ -3259,6 +3270,43 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
 }
 
 function isKokoroVoice(id) { return /^(af|am|bf|bm)_/.test(id || ''); }
+
+let _kokoroWorker = null;
+/**
+ * Take Kokoro off the graphics card. A narrator needs nearly all of a 12 GB card, and Kokoro,
+ * once loaded, stayed there until TypoZen closed: with Breeze loading beside it Windows
+ * stalled, keyboard included (2026-10-17). It loads again when a Kokoro voice is chosen.
+ */
+function unloadKokoro() {
+    if (!_kokoroWorker && !_isKokoroReady && !_isKokoroInitializing) return;
+    try { if (_kokoroWorker) _kokoroWorker.terminate(); } catch (e) {}
+    _kokoroWorker = null;
+    _kokoroEngine = null;
+    _isKokoroReady = false;
+    _isKokoroInitializing = false;
+    _prefetchedAudio = null;
+}
+
+/**
+ * The voice changed while reading: carry on from the paragraph that was playing, in the new
+ * voice. Before, the rest of the reading went on through the old path -- after a Kokoro
+ * voice, a narrator choice was read by a Windows voice (2026-10-17).
+ */
+function restartReadingInNewVoice(voiceId) {
+    const el = _currentTTSBlockEl;
+    stopReading();
+    if (el && el.isConnected) _readFrom = { el: el, until: Date.now() + 120000 };
+    const go = () => { try { speakSelection(); } catch (e) {} };
+    if (!isKokoroVoice(voiceId)) { setTimeout(go, 0); return; }
+    // A Kokoro voice reads once its engine is up, not in a Windows voice meanwhile.
+    const end = Date.now() + 60000;
+    const wait = () => {
+        if (_kokoroVoice !== voiceId) return;                      // chosen again since
+        if (_isKokoroReady) { go(); return; }
+        if (Date.now() < end) setTimeout(wait, 250);
+    };
+    wait();
+}
 /**
  * A narrator voice -- the Qwen or the Breeze narrator -- chosen in File > Read Aloud like any other
  * voice. Both answer the same requests; the host says which one and where its audio is.
@@ -3274,6 +3322,7 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
     // The host resets this to the Windows voices whenever the extension is missing, which
     // happens on every launch without it: saying so each time would be noise.
     const unchanged = (voiceId === _kokoroVoice && friendlyName === _kokoroVoiceFriendly);
+    const was = _kokoroVoice;
     _kokoroVoice = voiceId;
     _kokoroVoiceFriendly = friendlyName;
     localStorage.setItem('kokoro_voice', voiceId);
@@ -3284,6 +3333,12 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
 
     let displayName = friendlyName || voiceId;
     const isAutoReset = (voiceId === 'windows_voice' && friendlyName === 'Windows voice');
+
+    // A narrator takes the graphics card: Kokoro steps off it.
+    if (isQwenVoice(voiceId)) unloadKokoro();
+    // Reading when the voice changes: go on in the new one. One narrator voice to another is
+    // already restarted by the narrator's settings (setNarratorSettings).
+    if (isPlaying && was !== voiceId && !(isQwenVoice(was) && isQwenVoice(voiceId))) restartReadingInNewVoice(voiceId);
 
     if (isKokoroVoice(voiceId) && !_isKokoroReady) {
         setupKokoro(false, "Kokoro is ready. Voice set to " + displayName + ".");
