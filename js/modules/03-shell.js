@@ -1115,8 +1115,11 @@
                     // state the toolbar button is given by the host.
                     try { if (typeof nativeTTSFinished === 'function') nativeTTSFinished(); } catch (eT) {}
                 }
-                else if (msg === "cmd:narrate_failed") {
-                    try { if (window.narrateFailed) window.narrateFailed(); } catch (eF) {}
+                else if (msg.startsWith("cmd:narrate_failed")) {
+                    try { if (window.narrateFailed) window.narrateFailed(msg.substring(19)); } catch (eF) {}
+                }
+                else if (msg.startsWith("cmd:narrator_starting:")) {
+                    try { if (window.setNarratorStarting) window.setNarratorStarting(msg.substring(22)); } catch (eS) {}
                 }
                 else if (msg.startsWith("cmd:narrate:")) {
                     // The sidecar is up; the page does the rest.
@@ -1166,7 +1169,12 @@
                     // than leave a menu click looking like it did nothing.
                     try {
                         const text = msg.substring(20);
-                        if (!text) document.getElementById('kokoro-status')?.remove();
+                        if (!text) {
+                            document.getElementById('kokoro-status')?.remove();
+                            if (window.setNarratorStarting) window.setNarratorStarting(null);
+                        }
+                        // While reading, the bar's caption says it (cmd:narrator_starting).
+                        else if (window.tzReadBarLive && window.tzReadBarLive()) { }
                         else if (typeof showKokoroStatus === 'function') showKokoroStatus(text);
                     } catch (eS) {}
                 }

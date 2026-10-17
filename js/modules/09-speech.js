@@ -455,6 +455,59 @@ let _readBarEl = null;
 let _readBarState = { show: false, paused: false, voice: '', speed: 1, chapter: false };
 window._tzReadSpeed = 1;
 
+// The bar's caption: what the reading is doing when it is not simply playing, on top of the
+// bar, so the controls never move. One place for it: while the bar is up, reading messages
+// are not popped up as well -- a pop-up sat where the bar is and covered it, and the status
+// bar said the same again (Ed, 2026-10-17). Three sources, shown in this order:
+//   fail   -- the narrator did not start: the reason, Retry, Close; the bar stays until chosen
+//   start  -- an engine loading (Breeze, Qwen, Kokoro): controls but Stop dimmed
+//   wait   -- the narrator rendering: "Preparing" dims them too; "Catching up" does not
+// and, when none of them, "Paused".
+const _readCaption = { fail: null, start: null, wait: null };
+
+/** Is the reading bar up? Then reading messages go to its caption, not a pop-up. */
+function readBarLive() { return !!_readBarState.show; }
+window.tzReadBarLive = readBarLive;
+
+/** Set (`c` = { text, progress, busy }) or clear (null) one of the caption's sources. */
+function readCaption(slot, c) {
+    _readCaption[slot] = c || null;
+    readBarPaint();
+}
+window.tzReadCaption = readCaption;
+
+/** "18 s of ~40 s", or "52 s" once past the estimate. */
+function readClock(s, estimate) {
+    s = Math.max(0, Math.round(s));
+    return estimate > 0 && s <= estimate ? s + ' s of ~' + Math.round(estimate) + ' s' : s + ' s';
+}
+
+/**
+ * A narrator start-up, from the host: { engine, waited, usual } each tick; null when it is
+ * up. A first start can run well past the usual time: it says so rather than look stuck.
+ */
+window.setNarratorStarting = function (json) {
+    try {
+        if (!json) { readCaption('start', null); return; }
+        const o = typeof json === 'string' ? JSON.parse(json) : json;
+        const w = Number(o.waited) || 0, usual = Number(o.usual) || 0;
+        readCaption('start', {
+            text: 'Starting ' + (o.engine || 'the narrator') + ' · ' + readClock(w, usual) +
+                  (usual > 0 && w > usual ? ' · a first start takes longer' : ''),
+            progress: usual > 0 && w <= usual ? Math.min(0.95, w / usual) : null,
+            busy: true
+        });
+    } catch (e) {}
+};
+
+/** The narrator did not start: say why, on the bar, until Retry or Close. */
+window.narrateFailed = function (reason) {
+    _narrStarting = false;
+    readCaption('start', null);
+    readCaption('wait', null);
+    readCaption('fail', { text: 'Couldn\u2019t start the narrator', title: reason || '', fail: true });
+};
+
 function readBarPost(m) { try { window.chrome.webview.postMessage('host_read_bar:' + m); } catch (e) {} }
 
 function readBarBuild() {
@@ -478,7 +531,11 @@ function readBarBuild() {
         '<button type="button" class="rb-icon rb-small" data-a="faster" title="Faster">\uE710</button>' +
         '<span class="rb-sep"></span>' +
         '<button type="button" class="rb-text rb-chapter" data-a="chapter" aria-pressed="false" ' +
-            'title="Finish this chapter and stop">End of chapter</button>';
+            'title="Finish this chapter and stop">End of chapter</button>' +
+        '<div class="rb-caption" hidden><span class="rb-caption-text"></span>' +
+            '<button type="button" class="rb-text rb-retry" data-a="retry">Retry</button>' +
+            '<button type="button" class="rb-text rb-close" data-a="close">Close</button>' +
+            '<span class="rb-progress"><span></span></span></div>';
     // A press must not take the caret or the selection from the page.
     el.addEventListener('mousedown', function (e) { e.preventDefault(); });
     el.addEventListener('click', function (e) {
@@ -507,6 +564,8 @@ function readBarAct(a) {
     else if (a === 'menu') readBarPost('menu');
     else if (a === 'chapter') readBarPost('chapter');
     else if (a === 'monitor') readBarPost('monitor');
+    else if (a === 'retry') { readCaption('fail', null); _narrStarting = false; try { speakSelection(); } catch (e) {} }
+    else if (a === 'close') { readCaption('fail', null); stopReading(); }
     else if (a === 'slower' || a === 'faster') {
         const v = readBarStep(a === 'faster' ? 1 : -1);
         if (Math.abs(v - (Number(_readBarState.speed) || 1)) < 0.001) return;
@@ -518,7 +577,11 @@ function readBarAct(a) {
 
 function readBarPaint() {
     const s = _readBarState;
-    if (!s.show) { if (_readBarEl) _readBarEl.hidden = true; return; }
+    if (!s.show) {
+        _readCaption.fail = _readCaption.start = _readCaption.wait = null;
+        if (_readBarEl) _readBarEl.hidden = true;
+        return;
+    }
     if (!_readBarEl) _readBarEl = readBarBuild();
     const el = _readBarEl;
     const play = el.querySelector('.rb-play');
@@ -536,6 +599,24 @@ function readBarPaint() {
     const ch = el.querySelector('.rb-chapter');
     ch.setAttribute('aria-pressed', s.chapter ? 'true' : 'false');
     ch.classList.toggle('on', !!s.chapter);
+    // The caption, and the controls that cannot do anything yet dimmed.
+    const c = _readCaption.fail || _readCaption.start || _readCaption.wait ||
+              (s.paused ? { text: 'Paused' } : null);
+    const cap = el.querySelector('.rb-caption');
+    cap.hidden = !c;
+    if (c) {
+        cap.querySelector('.rb-caption-text').textContent = c.text;
+        cap.title = c.title || '';
+        cap.classList.toggle('rb-fail', !!c.fail);
+        cap.querySelector('.rb-retry').hidden = !c.fail;
+        cap.querySelector('.rb-close').hidden = !c.fail;
+        const bar = cap.querySelector('.rb-progress');
+        bar.hidden = c.progress == null;
+        if (c.progress != null) bar.firstChild.style.width = Math.round(c.progress * 100) + '%';
+    }
+    const busy = !!(c && (c.busy || c.fail));
+    el.classList.toggle('rb-busy', busy);
+    ['prev', 'pause', 'next'].forEach(function (a) { el.querySelector('[data-a="' + a + '"]').disabled = busy; });
     el.hidden = false;
     readBarPlace();
 }
@@ -750,7 +831,7 @@ function playNextChunk() {
             if (_narrActive && !_narrSilentSince) {
                 _narrSilentSince = performance.now();
                 narrLog('SILENT: queue empty, waiting for the next batch');
-                narrWait('is catching up with the next passage', 0);
+                narrWait('is catching up with the next passage', 0, 'Catching up', false);
             }
             setTimeout(playNextChunk, 400);
             return;
@@ -995,12 +1076,18 @@ window.setNarratorSettings = function (json) {
  * status bar is told too (host_narration_phase).
  */
 let _narrWaitTimer = 0;
-function narrWait(what, estimate) {
+function narrWait(what, estimate, label, busy) {
     narrWaitEnd();
     const t0 = performance.now();
     const who = _narrVoiceName || 'The narrator';
     const tick = () => {
         const s = Math.round((performance.now() - t0) / 1000);
+        if (readBarLive() && label) {
+            readCaption('wait', { text: label + ' \u00b7 ' + readClock(s, estimate),
+                                  progress: estimate > 0 && s <= estimate ? Math.min(0.95, s / estimate) : null,
+                                  busy: busy !== false });
+            return;
+        }
         let clock = s + 's';
         if (estimate > 0) clock = s <= estimate ? s + 's of about ' + Math.round(estimate) + 's'
                                                 : s + 's, longer than the usual ' + Math.round(estimate) + 's';
@@ -1015,6 +1102,7 @@ function narrWaitEnd() {
     if (!_narrWaitTimer) return false;
     clearInterval(_narrWaitTimer);
     _narrWaitTimer = 0;
+    if (_readCaption.wait) readCaption('wait', null);
     document.getElementById('kokoro-status')?.remove();
     return true;
 }
@@ -2713,7 +2801,7 @@ async function startQwenNarration(base) {
     narrLog('reading ' + reading + ' begins');
     // A batch takes as long as its longest paragraph (see batchRenderEstimate);
     // anything already rendered comes from the cache and the clock just vanishes sooner.
-    narrWait('is preparing the first passage', batchRenderEstimate(queue[0]));
+    narrWait('is preparing the first passage', batchRenderEstimate(queue[0]), 'Preparing');
     _narrationPending = true;
     const secondsOf = chunks => chunks.reduce((n, c) => n + c.seconds, 0);
     let next = 1;
@@ -2730,7 +2818,7 @@ async function startQwenNarration(base) {
                     batchRenderEstimate(queue[next]).toFixed(0) + 's: waiting for it before the first word');
             if (reading === _narrationReading)
                 narrWait('has ' + Math.round(secondsOf(firstChunks)) + 's ready and is preparing the next passage too, so the reading will not stop partway',
-                         batchRenderEstimate(queue[next]));
+                         batchRenderEstimate(queue[next]), 'Preparing the next passage too');
             firstChunks = firstChunks.concat(playable(await renderNarration(base, queue[next], reading)));
             next++;
         }
@@ -2844,7 +2932,7 @@ async function narrateSelection(base, sel) {
     narrLog('reading ' + reading + ' begins: the selection, ' + pieces.length + ' pieces');
     let estimate = 0;
     for (let k = 0; k < pieces.length; k += NARRATION_BATCH) estimate += batchRenderEstimate(pieces.slice(k, k + NARRATION_BATCH));
-    narrWait('is preparing the selection', estimate);
+    narrWait('is preparing the selection', estimate, 'Preparing the selection');
     try {
         const chunks = [];
         for (let k = 0; k < pieces.length; k += NARRATION_BATCH) {
@@ -3140,12 +3228,15 @@ let _audioCtx = null;
 
 function showKokoroStatus(text) {
     let div = document.getElementById('kokoro-status');
+    // Never on top of the reading bar: above it, when it is up.
+    const bar = _readBarEl && !_readBarEl.hidden ? _readBarEl.getBoundingClientRect() : null;
     if (!div) {
         div = document.createElement('div');
         div.id = 'kokoro-status';
         div.style.cssText = "position:fixed; bottom:20px; right:20px; background:#111; color:#fff; padding:15px 25px; border-radius:8px; z-index:99999; font-family:sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.5);";
         document.body.appendChild(div);
     }
+    div.style.bottom = bar ? Math.round(window.innerHeight - bar.top + 44) + 'px' : '20px';
     div.innerText = text;
 }
 
@@ -3275,6 +3366,7 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
         });
 
         _isKokoroReady = true;
+        if (_readCaption.start) readCaption('start', null);
         _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         try { window.chrome.webview.postMessage("cmd:kokoro_ready"); } catch(e){}
 
@@ -3285,6 +3377,7 @@ async function setupKokoro(silent = false, successMsg = "Kokoro is ready. Pick a
 
     } catch (err) {
         _isKokoroInitializing = false;
+        if (_readCaption.start) readCaption('start', null);
         console.error(err);
         try { if (typeof window.showDebugTelemetry === 'function') window.showDebugTelemetry("Kokoro init failed: " + err.message); } catch(e){}
         showKokoroStatus("Kokoro could not start: " + err.message + ". Using the Windows voices.");
@@ -3349,7 +3442,7 @@ function restartReadingFrom(el, voiceId) {
     // A Kokoro voice reads once its engine is up, not in a Windows voice meanwhile.
     const end = Date.now() + 60000;
     const wait = () => {
-        if (_kokoroVoice !== voiceId) return;                      // chosen again since
+        if (_kokoroVoice !== voiceId) { go(); return; }            // another voice since (or Kokoro failed): read in it
         if (_isKokoroReady) { go(); return; }
         if (Date.now() < end) setTimeout(wait, 250);
         else stopReading();                                        // Kokoro never came up
@@ -3390,7 +3483,10 @@ window.setKokoroVoice = function(voiceId, friendlyName) {
     if (isPlaying && was !== voiceId && !(isQwenVoice(was) && isQwenVoice(voiceId))) restartReadingInNewVoice(voiceId);
 
     if (isKokoroVoice(voiceId) && !_isKokoroReady) {
-        setupKokoro(false, "Kokoro is ready. Voice set to " + displayName + ".");
+        setupKokoro(readBarLive(), "Kokoro is ready. Voice set to " + displayName + ".");
+        if (readBarLive()) readCaption('start', { text: 'Starting Kokoro', busy: true });
+    } else if (readBarLive()) {
+        // Reading: the name on the bar says it; a narrator's start-up is its caption.
     } else if (isQwenVoice(voiceId)) {
         // The host starts the narrator on this choice and reports its progress itself.
         const engine = voiceId === 'breeze_narrator' ? "Breeze" : "Qwen";

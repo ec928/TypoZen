@@ -1555,6 +1555,40 @@
            --accent-bg was pale on pale in Gruvbox Light. */
         #tzReadBar .rb-chapter.on { color: var(--tx, inherit); background: var(--accent-bg, rgba(255,255,255,0.1)); }
         #tzReadBar .rb-chapter.on::before { content: '\2713'; margin-right: 5px; }
+        /* The caption: what the reading is doing, on top of the bar, so the controls never
+           move. Same surface as the bar; a thin line under the words when there is an estimate. */
+        #tzReadBar .rb-caption {
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 6px);
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 100%;
+            padding: 5px 14px 7px;
+            background-color: var(--bg, #18181B);
+            background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            border: 1px solid var(--border, #3F3F46);
+            border-radius: 999px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+            color: var(--tx-muted, inherit);
+            font-size: calc(var(--ui-fs, 13px) * 0.95);
+            white-space: nowrap;
+        }
+        #tzReadBar .rb-caption[hidden] { display: none; }
+        #tzReadBar .rb-caption-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; font-variant-numeric: tabular-nums; }
+        #tzReadBar .rb-caption.rb-fail { color: var(--tx, inherit); }
+        #tzReadBar .rb-caption button { height: 24px; padding: 0 10px; background: var(--accent-bg, rgba(255,255,255,0.1)); }
+        #tzReadBar .rb-caption button[hidden] { display: none; }
+        #tzReadBar .rb-progress {
+            position: absolute; left: 14px; right: 14px; bottom: 3px; height: 2px;
+            border-radius: 2px; background: var(--border, #3F3F46); overflow: hidden;
+        }
+        #tzReadBar .rb-progress[hidden] { display: none; }
+        #tzReadBar .rb-progress > span { display: block; height: 100%; width: 0; background: var(--accent, #c4a7e7); transition: width 0.9s linear; }
+        /* Loading or preparing: what cannot do anything yet is dimmed (disabled in code too). */
+        #tzReadBar.rb-busy [data-a="prev"], #tzReadBar.rb-busy [data-a="pause"], #tzReadBar.rb-busy [data-a="next"] { opacity: 0.3; }
         @media print { #tzReadBar { display: none !important; } }
 
         #selPop {

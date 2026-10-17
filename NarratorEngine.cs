@@ -206,17 +206,26 @@ namespace TypoZen
             Task<bool> under;
             lock (_gate)
             {
-                if (_start != null && !_start.IsCompleted) under = _start;
-                else { mine = new TaskCompletionSource<bool>(); _start = under = mine.Task; }
+                if (_start != null && !_start.IsCompleted) { under = _start; if (say != null) _sayToo.Add(say); }
+                else { mine = new TaskCompletionSource<bool>(); _start = under = mine.Task; _sayToo.Clear(); }
             }
             if (mine == null)
             {
                 Log("start already under way; this request waits for it");
                 return await under.ConfigureAwait(false);
             }
+            // Every request waiting on this start hears its progress, not just the first: a
+            // Read Aloud joining a start that choosing the voice began has a bar to fill.
+            Action<string> sayAll = m =>
+            {
+                if (say != null) say(m);
+                List<Action<string>> also;
+                lock (_gate) also = new List<Action<string>>(_sayToo);
+                foreach (var a in also) { try { a(m); } catch { } }
+            };
             try
             {
-                bool ok = await StartOnce(cacheDir, appDir, say, cancel).ConfigureAwait(false);
+                bool ok = await StartOnce(cacheDir, appDir, sayAll, cancel).ConfigureAwait(false);
                 mine.TrySetResult(ok);
                 return ok;
             }
@@ -224,6 +233,7 @@ namespace TypoZen
         }
 
         private Task<bool> _start;
+        private readonly List<Action<string>> _sayToo = new List<Action<string>>();
 
         private async Task<bool> StartOnce(string cacheDir, string appDir, Action<string> say, CancellationToken cancel)
         {

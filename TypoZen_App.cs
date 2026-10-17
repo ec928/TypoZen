@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.17.14";
+        internal const string AppVersion = "0.17.15";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -2372,9 +2372,11 @@ namespace TypoZen
                 if (request != _narrateRequest) return;
                 if (!up)
                 {
+                    // The bar stays, saying why, with Retry and Close: a failure that just
+                    // vanished read as nothing having happened.
                     NarratorFailed();
-                    ShowReadAloudTransport("idle");             // the bar goes: nothing will play
-                    SendMsg("cmd:narrate_failed");
+                    string why = _narrLastSay ?? "";
+                    Dispatcher.BeginInvoke((Action)(() => SendMsg("cmd:narrate_failed:" + why)));
                     return;
                 }
                 // The other narrator chosen while this one loaded: read with that one instead.
@@ -2387,6 +2389,8 @@ namespace TypoZen
         }
 
         private int _narrateRequest;
+        private DateTime _narrStartT0 = DateTime.MinValue;
+        private string _narrLastSay = "";
 
         /// <summary>
         /// Read Aloud > Narration Monitor on or off: the window, the menu tick, the page's reports,
@@ -2590,6 +2594,21 @@ namespace TypoZen
                 Dispatcher.BeginInvoke((Action)(() =>
                 {
                     try { SendMsg("cmd:narrator_status:" + (m ?? "")); } catch (Exception ex) { LogFault("narrator status", ex); }
+                    // The same, as figures for the reading bar's caption: which narrator, how long
+                    // so far, how long it usually takes. A failure's words are kept for its caption.
+                    try
+                    {
+                        if (string.IsNullOrEmpty(m)) _narrStartT0 = DateTime.MinValue;
+                        else if (m.StartsWith("Starting") || m.StartsWith("Restarting"))
+                        {
+                            if (_narrStartT0 == DateTime.MinValue) _narrStartT0 = DateTime.Now;
+                            bool breeze = (ChosenNarrator() ?? QwenNarrator.Engine) == BreezeNarrator.Engine;
+                            SendMsg("cmd:narrator_starting:{\"engine\":\"" + (breeze ? "Breeze" : "Qwen") + "\",\"waited\":"
+                                + (int)(DateTime.Now - _narrStartT0).TotalSeconds + ",\"usual\":" + (breeze ? 40 : 25) + "}");
+                        }
+                        else _narrLastSay = m;
+                    }
+                    catch (Exception ex) { LogFault("narrator starting", ex); }
                     // Only the narrator's start-up reports through here; the page reports the rest.
                     if (!string.IsNullOrEmpty(m)) _narrationPhase = "starting";
                     else if (_narrationPhase == "starting") _narrationPhase = "";
