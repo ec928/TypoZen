@@ -150,7 +150,7 @@ namespace TypoZen
                     int len = _box.GetSpellingErrorLength(start);
                     if (len <= 0) { pos = start + 1; continue; }
                     string word = text.Substring(start, Math.Min(len, text.Length - start));
-                    if (!IsCheckableWord(word)) { pos = start + len; continue; }
+                    if (!IsCheckableWord(word) || IsBuiltInWord(word)) { pos = start + len; continue; }
                     hits.Add(new Hit
                     {
                         Start = start,
@@ -285,6 +285,27 @@ namespace TypoZen
                 dicts.Add(new Uri(_lexPath));
             }
             catch { }
+        }
+
+        // Names the app itself uses that the Windows dictionary does not know, and file
+        // extensions. Its own README showed "TypoZen" underlined seventeen times
+        // (2026-10-17). Kept apart from the user's word list, so they never depend on it.
+        static readonly HashSet<string> _builtInWords = new HashSet<string>(new[]
+        {
+            "TypoZen", "ZenSeek", "ZenMode", "ePub", "ePubs", "CodeMirror", "WebView",
+            "Markdown", "WordNet", "Literata", "Gruvbox", "Catppuccin", "Kokoro", "Qwen",
+            "PdfPig", "MakeAppx", "PowerShell", "GitHub", "OneDrive", "JavaScript",
+            "js", "json", "css", "html", "htm", "md", "txt", "epub", "pdf", "png", "jpg",
+            "jpeg", "svg", "webp", "gif", "wav", "docx", "tsv", "csv"
+        }, StringComparer.OrdinalIgnoreCase);
+
+        static bool IsBuiltInWord(string w)
+        {
+            if (_builtInWords.Contains(w)) return true;
+            // "TypoZen's"
+            if (w.Length > 2 && (w.EndsWith("'s") || w.EndsWith("’s")))
+                return _builtInWords.Contains(w.Substring(0, w.Length - 2));
+            return false;
         }
 
         static bool IsCheckableWord(string w)

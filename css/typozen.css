@@ -1471,10 +1471,10 @@
         #pdfView .tzPdfBand.arrive { background-color: var(--arrive-bg); }
         /* Windows spell checker hits, one look in both views: Preview paints them with the
            Highlight API, Source draws them as decorations on its own text (01a-source.js).
-           Not dictionary.tsv -- that file is definitions. */
+           Not dictionary.tsv -- that file is definitions. The squiggle alone: a red box as
+           well made every flagged name look like an error highlight (2026-10-17). */
         ::highlight(typozen-spell), #source-cm .typozen-spell {
             text-decoration: underline wavy #ef4444;
-            background-color: color-mix(in srgb, #ef4444 14%, transparent);
         }
         .selpop-spell {
             flex-wrap: wrap;

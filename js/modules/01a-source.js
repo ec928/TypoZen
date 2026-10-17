@@ -239,11 +239,21 @@
             /** Underline what is known about these lines; unknown ones stay clean until answered. */
             const paintSpelling = (v, lines) => {
                 const n = v.state.doc.length, decos = [], words = [];
+                // Inline code (`.epub`) is not prose, as in Preview.
+                const code = [];
+                if (kind === 'markdown' && lines.length) {
+                    CM.syntaxTree(v.state).iterate({ from: lines[0].from, to: Math.min(n, lines[lines.length - 1].from + lines[lines.length - 1].text.length), enter: (node) => {
+                        if (node.name !== 'InlineCode') return;
+                        code.push([node.from, node.to]);
+                        return false;
+                    } });
+                }
                 for (const l of lines) {
                     const hits = window.spellCached(l.text);
                     if (!hits) continue;
                     for (const h of hits) {
                         const x = l.from + h.start, y = x + h.len;
+                        if (code.some(c => x < c[1] && y > c[0])) continue;
                         if (x < y && y <= n) { decos.push(spellMark.range(x, y)); words.push(h.word); }
                     }
                 }

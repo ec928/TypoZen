@@ -3164,7 +3164,12 @@
                 if (!hits) continue;
                 for (const h of hits) {
                     const r = rangeForPlainOffset(it.el, h.start, h.len);
-                    if (r) { ranges.push(r); words.push(h.word); }
+                    if (!r) continue;
+                    // Inline code (`.epub`) is not prose: a file name or identifier there
+                    // is spelled as it must be.
+                    const sc = r.startContainer.parentElement;
+                    if (sc && sc.closest('code, kbd, samp')) continue;
+                    ranges.push(r); words.push(h.word);
                 }
             }
             _spellHits = words;
