@@ -11327,11 +11327,20 @@ namespace TypoZen
         {
             var vis = live ? Visibility.Visible : Visibility.Collapsed;
             foreach (string name in new[] {
-                "btnReadMonitor", "divReadMonitor", "btnReadPrev", "divReadPrev",
+                "btnReadPrev", "divReadPrev",
                 "btnReadPause", "divReadPause", "btnReadNext", "divReadNext" })
             {
                 var el = FindElement(name) as UIElement;
                 if (el != null) el.Visibility = vis;
+            }
+            // The Narration Monitor follows the Qwen or Breeze narrator; with a Windows,
+            // Kokoro or online voice it has nothing to show, so its button stays hidden.
+            bool narrator = _kokoroVoiceId == QwenNarrator.VoiceId || _kokoroVoiceId == BreezeNarrator.VoiceId;
+            var monVis = live && narrator ? Visibility.Visible : Visibility.Collapsed;
+            foreach (string name in new[] { "btnReadMonitor", "divReadMonitor" })
+            {
+                var el = FindElement(name) as UIElement;
+                if (el != null) el.Visibility = monVis;
             }
             var font = new FontFamily(IconFont());
             foreach (string name in new[] { "btnReadMonitor", "btnReadPrev", "btnReadPause", "btnReadNext" })
