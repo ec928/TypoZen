@@ -1,6 +1,14 @@
 // Native C# WinRT TTS Bridge
 
 let isPlaying = false;
+let _ttsPaused = false;
+let _ttsPlayed = [];
+let _ttsCurrent = null;
+let _ttsChunks = [];
+let _stopAtChapter = false;
+let _stopChapterAt = null;     // exclusive block index, or null when the tick has no boundary
+let _ttsAwaitingNative = false;
+let _ttsChunkStarted = false;
 
 // The popover's read-aloud control in its two states, drawn to match the toolbar button:
 const READ_ALOUD_HTML =
@@ -313,9 +321,259 @@ async function speakWordKokoro(voice, text) {
     finally { _kokoroVoice = keep; }
 }
 
+// --- read-aloud transport (tested in tests/read-aloud-transport-selftest.mjs) ---
+
+/** The block a chunk highlights, or null when the chunk is not a paragraph. */
+function ttsBlockOf(chunk) {
+    if (!chunk) return null;
+    if (chunk.idx != null && isFinite(Number(chunk.idx))) return Number(chunk.idx);
+    if (chunk.at != null && isFinite(Number(chunk.at))) return Number(chunk.at);
+    if (chunk.el && chunk.el.getAttribute) {
+        const n = parseInt(chunk.el.getAttribute('data-model-index'), 10);
+        if (isFinite(n)) return n;
+    }
+    return null;
+}
+
+/**
+ * One paragraph, however many pieces the narrator split it into.
+ * Chunks with no block of their own stay separate.
+ */
+function ttsParagraphKey(chunk) {
+    const bi = ttsBlockOf(chunk);
+    if (bi != null) return 'b' + bi;
+    if (!chunk) return '';
+    if (chunk.el) {
+        if (!chunk.el.__ttsKey) chunk.el.__ttsKey = 'e' + (++ttsParagraphKey._n);
+        return chunk.el.__ttsKey;
+    }
+    if (!chunk.__ttsKey) chunk.__ttsKey = 'u' + (++ttsParagraphKey._n);
+    return chunk.__ttsKey;
+}
+ttsParagraphKey._n = 0;
+
+/** True when this chunk is the next chapter, or later. `end` null means there is no boundary. */
+function ttsPastChapter(chunk, end) {
+    // null is not 0. `null >= 0` is true in JavaScript, and that would stop a reading
+    // on its first paragraph whenever the tick is off or the document has no chapter.
+    if (end == null || !(end >= 0) || !chunk) return false;
+    const bi = ttsBlockOf(chunk);
+    return bi != null && bi >= end;
+}
+
+/**
+ * The first block of the next chapter, or null when this block is the last one
+ * or the document has no chapters. `units` are { start, end } in order; `entries`
+ * are outline headings { bi }. A book uses its units. Anything else uses headings.
+ */
+function ttsChapterEnd(bi, units, entries) {
+    if (!(bi >= 0)) return null;
+    if (units && units.length) {
+        let lo = 0, hi = units.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (units[mid].start <= bi) lo = mid; else hi = mid - 1;
+        }
+        const u = units[lo];
+        if (u && isFinite(u.end) && u.end > bi) return u.end;
+        return null;
+    }
+    if (entries && entries.length) {
+        for (let i = 0; i < entries.length; i++) {
+            const at = entries[i].bi | 0;
+            if (at > bi) return at;
+        }
+    }
+    return null;
+}
+
+/**
+ * Move by a whole paragraph.
+ * played: chunks already started, oldest first, not including current.
+ * current: the chunk playing now, or null.
+ * queue: chunks not yet started.
+ * dir: 1 next, -1 previous. Previous on the first paragraph restarts it.
+ * Returns new arrays and moved:false when Next has nowhere to go.
+ */
+function ttsSkipParagraph(played, current, queue, dir) {
+    const key = ttsParagraphKey(current);
+    const rest = queue.slice();
+    let same = 0;
+    while (same < rest.length && key && ttsParagraphKey(rest[same]) === key) same++;
+    const currentPieces = [];
+    for (let i = 0; i < played.length; i++) if (key && ttsParagraphKey(played[i]) === key) currentPieces.push(played[i]);
+    if (current) currentPieces.push(current);
+    currentPieces.push.apply(currentPieces, rest.slice(0, same));
+    const after = rest.slice(same);
+    const before = [];
+    for (let i = 0; i < played.length; i++) if (ttsParagraphKey(played[i]) !== key) before.push(played[i]);
+
+    if (dir > 0) {
+        if (!after.length) return { played: played.slice(), current: current, queue: queue.slice(), moved: false };
+        const hist = played.slice();
+        if (current) hist.push(current);
+        return { played: hist, current: null, queue: after, moved: true };
+    }
+    if (!before.length) {
+        return { played: [], current: null, queue: currentPieces.concat(after), moved: currentPieces.length > 0 };
+    }
+    const prevKey = ttsParagraphKey(before[before.length - 1]);
+    let split = before.length;
+    while (split > 0 && ttsParagraphKey(before[split - 1]) === prevKey) split--;
+    return {
+        played: before.slice(0, split),
+        current: null,
+        queue: before.slice(split).concat(currentPieces, after),
+        moved: true
+    };
+}
+
+// --- end read-aloud transport ---
+
+/** The chapter boundary for a block, from the book's units or the outline. */
+function readingChapterEnd(bi) {
+    let units = null, entries = null;
+    try {
+        if (typeof bookUnitOfBlock === 'function' && typeof _bookUnits !== 'undefined' && _bookUnits && _bookUnits.length)
+            units = _bookUnits;
+    } catch (e) {}
+    if (!units) {
+        try { if (typeof _chapterEntries !== 'undefined') entries = _chapterEntries; } catch (e) {}
+    }
+    return ttsChapterEnd(bi, units, entries);
+}
+
+function postReadAloudTransport(mode) {
+    try { window.chrome.webview.postMessage('host_tts_transport:' + mode); } catch (e) {}
+}
+
+/** Apply the menu tick. During a reading, "this chapter" is the one now playing. */
+window.setStopAtChapter = function (on) {
+    _stopAtChapter = !!on;
+    if (!_stopAtChapter) { _stopChapterAt = null; return; }
+    const bi = ttsBlockOf(_ttsCurrent) != null ? ttsBlockOf(_ttsCurrent)
+        : (_ttsChunks[0] ? ttsBlockOf(_ttsChunks[0]) : null);
+    if (bi == null) return;
+    _stopChapterAt = readingChapterEnd(bi);
+    if (_stopChapterAt == null) return;
+    const keep = [];
+    for (let i = 0; i < _ttsChunks.length; i++) {
+        if (ttsPastChapter(_ttsChunks[i], _stopChapterAt)) break;
+        keep.push(_ttsChunks[i]);
+    }
+    _ttsChunks = keep;
+};
+
+function kokoroBusy() {
+    return !!(typeof isKokoroVoice === 'function' && isKokoroVoice(_kokoroVoice) &&
+        (_kokoroAudioSource || _isPlayingChunk ||
+            (_generationQueue && _generationQueue.length) || (_playQueue && _playQueue.length)));
+}
+
+/** Stop the sound that is playing. The queue, the highlight and isPlaying stay. */
+function abandonCurrentSound() {
+    if (_renderedAudio) {
+        try {
+            _renderedAudio.onended = null;
+            _renderedAudio.onerror = null;
+            _renderedAudio.pause();
+        } catch (e) {}
+        _renderedAudio = null;
+    }
+    if (typeof _generationId !== 'undefined') {
+        _generationId++;
+        _generationQueue = [];
+        _playQueue = [];
+        _isGenerating = false;
+        _isPlayingChunk = false;
+    }
+    if (_kokoroAudioSource) {
+        try { _kokoroAudioSource.onended = null; _kokoroAudioSource.stop(); } catch (e) {}
+        _kokoroAudioSource = null;
+    }
+    try { if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume(); } catch (e) {}
+    _ttsAwaitingNative = false;
+    try { window.chrome.webview.postMessage('host_tts_halt'); } catch (e) {}
+}
+
+function pauseReading() {
+    if (!isPlaying || _ttsPaused) return;
+    _ttsPaused = true;
+    if (_renderedAudio) {
+        try { _renderedAudio.pause(); } catch (e) {}
+    } else if (kokoroBusy()) {
+        try { if (_audioCtx && _audioCtx.state === 'running') _audioCtx.suspend(); } catch (e) {}
+    } else if (_ttsAwaitingNative) {
+        try { window.chrome.webview.postMessage('host_tts_pause'); } catch (e) {}
+    }
+    postReadAloudTransport('paused');
+}
+
+function resumeReading() {
+    if (!isPlaying || !_ttsPaused) return;
+    _ttsPaused = false;
+    postReadAloudTransport('playing');
+    if (_renderedAudio) {
+        _renderedAudio.play().catch(function () { if (isPlaying && !_ttsPaused) playNextChunk(); });
+        return;
+    }
+    if (_audioCtx && _audioCtx.state === 'suspended') {
+        _audioCtx.resume().then(function () {
+            if (isPlaying && !_ttsPaused && typeof processPlayQueue === 'function') processPlayQueue(_generationId);
+        });
+        return;
+    }
+    if (_ttsAwaitingNative) {
+        try { window.chrome.webview.postMessage('host_tts_resume'); } catch (e) {}
+        return;
+    }
+    if (kokoroBusy() && typeof processPlayQueue === 'function') {
+        processPlayQueue(_generationId);
+        return;
+    }
+    // Nothing is sounding. A paragraph that never started (a page turn landed in the
+    // pause) goes back on the queue. One that already finished stays finished.
+    if (_ttsCurrent && !_ttsChunkStarted) {
+        _ttsChunks.unshift(_ttsCurrent);
+        _ttsCurrent = null;
+    }
+    playNextChunk();
+}
+
+function readAloudPause() {
+    if (!isPlaying) return;
+    if (_ttsPaused) resumeReading();
+    else pauseReading();
+}
+
+function readAloudSkip(dir) {
+    if (!isPlaying) return;
+    const plan = ttsSkipParagraph(_ttsPlayed, _ttsCurrent, _ttsChunks, dir);
+    if (!plan.moved) return;
+    abandonCurrentSound();
+    _ttsPaused = false;
+    _ttsPlayed = plan.played;
+    _ttsCurrent = null;
+    _ttsChunks = plan.queue;
+    postReadAloudTransport('playing');
+    playNextChunk();
+}
+
 function startReadingChunks(chunks) {
-    if (!chunks || chunks.length === 0) return;
-    
+    if (!chunks || chunks.length === 0) return false;
+
+    _ttsPlayed = [];
+    _ttsCurrent = null;
+    _ttsPaused = false;
+    if (_stopAtChapter) {
+        const bi = ttsBlockOf(chunks[0]);
+        _stopChapterAt = bi == null ? null : readingChapterEnd(bi);
+        if (_stopChapterAt != null) chunks = chunks.filter(function (c) { return !ttsPastChapter(c, _stopChapterAt); });
+    } else {
+        _stopChapterAt = null;
+    }
+    if (!chunks.length) return false;
+
     _ttsChunks = chunks;
     isPlaying = true;
     showReadAloudState();
@@ -328,6 +586,7 @@ function startReadingChunks(chunks) {
     try { window.chrome.webview.postMessage("host_tts_start"); } catch(e){}
 
     playNextChunk();
+    return true;
 }
 
 function clearTTSFocus() {
@@ -339,6 +598,7 @@ function clearTTSFocus() {
 }
 
 function playNextChunk() {
+    if (_ttsPaused) return;
     clearTTSFocus();
 
     if (!isPlaying) { stopReading(); return; }
@@ -370,6 +630,14 @@ function playNextChunk() {
         setTimeout(playNextChunk, 10);
         return;
     }
+    if (ttsPastChapter(chunk, _stopChapterAt)) {
+        if (_narrActive) narrLog('stop at chapter: block ' + ttsBlockOf(chunk));
+        stopReading();
+        return;
+    }
+    if (_ttsCurrent) _ttsPlayed.push(_ttsCurrent);
+    _ttsCurrent = chunk;
+    _ttsChunkStarted = false;
     _currentTTSChunkIdx = chunk.idx;
 
     const editor = document.getElementById('editor');
@@ -384,7 +652,7 @@ function playNextChunk() {
         goToPageHoldingBlock(chunk.idx);
         // Wait a frame for DOM to update after page turn
         requestAnimationFrame(() => {
-            if (!isPlaying) return;
+            if (!isPlaying || _ttsPaused) return;
             if (editor) {
                 targetEl = editor.querySelector('[data-model-index="' + chunk.idx + '"]');
                 if (targetEl) {
@@ -432,6 +700,7 @@ let _narrSilentSince = 0;
 
 /** Play one pre-rendered file, then carry on down the queue. */
 function playRenderedChunk(url, chunk) {
+    _ttsChunkStarted = true;
     const name = String(url).split('/').pop();
     try {
         window.__lastChunkUrl = url;          // what is actually playing, for tests and debug.log
@@ -452,22 +721,22 @@ function playRenderedChunk(url, chunk) {
             try { (window.__narrLog = window.__narrLog || []).push(['end', performance.now()]); } catch (e) {}
             narrLog('ended ' + name + ' after ' + ((performance.now() - began) / 1000).toFixed(1) + 's');
             _renderedAudio = null;
-            if (isPlaying) playNextChunk();
+            if (isPlaying && !_ttsPaused) playNextChunk();
         };
         a.onerror = () => {
             narrLog('audio ERROR on ' + name + ': code ' + (a.error ? a.error.code + ' ' + (a.error.message || '') : '?'));
             _renderedAudio = null;
             showKokoroStatus('Narration audio could not be played.');
             setTimeout(() => { document.getElementById('kokoro-status')?.remove(); }, 4000);
-            if (isPlaying) playNextChunk();
+            if (isPlaying && !_ttsPaused) playNextChunk();
         };
         a.play().catch(err => {
             narrLog('play() REFUSED for ' + name + ': ' + (err && (err.name + ' ' + err.message) || err));
-            if (isPlaying) playNextChunk();
+            if (isPlaying && !_ttsPaused) playNextChunk();
         });
     } catch (e) {
         narrLog('playRenderedChunk threw on ' + name + ': ' + (e && e.message || e));
-        if (isPlaying) playNextChunk();
+        if (isPlaying && !_ttsPaused) playNextChunk();
     }
 }
 
@@ -2324,7 +2593,12 @@ async function startQwenNarration(base) {
         narrPhase('reading');
         narrLog('first sound: ' + firstChunks.length + ' pieces, ' +
                 firstChunks.reduce((n, c) => n + c.seconds, 0).toFixed(1) + 's of audio queued');
-        startReadingChunks(firstChunks);
+        if (!startReadingChunks(firstChunks)) {
+            _narrationPending = false;
+            _narrActive = false;
+            narrPhase('');
+            narrLog('nothing left to play after stop-at-chapter');
+        }
     } catch (err) {
         _narrationPending = false;
         narrLog('narration FAILED before first sound: ' + (err && err.message || err));
@@ -2349,6 +2623,10 @@ async function startQwenNarration(base) {
                     more = add.nextFrom;
                     add.forEach(b => queue.push(b));
                 }
+                if (_stopChapterAt != null && queue[n] && queue[n].length && queue[n][0].at >= _stopChapterAt) {
+                    narrLog('stop at chapter: not rendering past block ' + _stopChapterAt);
+                    break;
+                }
                 // About ninety seconds ahead is plenty; beyond that is work nobody may hear.
                 // Except before a batch that will take longer than that to render -- one long
                 // paragraph is enough -- which is asked for early enough to arrive in time.
@@ -2366,7 +2644,15 @@ async function startQwenNarration(base) {
                     narrLog('batch ' + n + ' arrived but ' + (!isPlaying ? 'playback had stopped' : 'reading ' + reading + ' is stale'));
                     break;
                 }
-                for (const c of chunks) _ttsChunks.push(c);
+                let pastChapter = false;
+                for (const c of chunks) {
+                    if (ttsPastChapter(c, _stopChapterAt)) { pastChapter = true; break; }
+                    _ttsChunks.push(c);
+                }
+                if (pastChapter) {
+                    narrLog('stop at chapter: audio from block ' + _stopChapterAt + ' was not queued');
+                    break;
+                }
             }
             if (n >= queue.length) narrLog('render-behind finished: all ' + (queue.length - 1) + ' later batches requested');
         } catch (err) {
@@ -2563,6 +2849,7 @@ function applyTTSOverrides(text) {
 }
 
 function sendTTSPlay(text) {
+    _ttsChunkStarted = true;
     if (_isKokoroReady && _kokoroEngine) {
         if (isKokoroVoice(_kokoroVoice)) {
             playKokoroChunk(text, _kokoroVoice, _currentTTSChunkIdx);
@@ -2573,6 +2860,7 @@ function sendTTSPlay(text) {
     text = applyTTSOverrides(text);
 
     if (text.length > 30000) text = text.substring(0, 30000);
+    _ttsAwaitingNative = true;
     try { 
         window.chrome.webview.postMessage("host_tts_play:" + JSON.stringify({
             text: text
@@ -2627,6 +2915,13 @@ function stopReading() {
         _playQueue = [];
     }
     
+    try { if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume(); } catch (e) {}
+    _ttsPaused = false;
+    _ttsCurrent = null;
+    _ttsPlayed = [];
+    _ttsAwaitingNative = false;
+    _ttsChunkStarted = false;
+    _stopChapterAt = null;
     try { window.chrome.webview.postMessage("host_tts_stop"); } catch(e){}
     isPlaying = false;
     showReadAloudState();
@@ -2956,7 +3251,7 @@ async function processGenerationQueue(genId, voice) {
 }
 
 async function processPlayQueue(genId) {
-    if (_isPlayingChunk || !isPlaying || genId !== _generationId) return;
+    if (_isPlayingChunk || !isPlaying || _ttsPaused || genId !== _generationId) return;
     
     if (_playQueue.length === 0) {
         if (_generationQueue.length === 0) {
@@ -3024,6 +3319,8 @@ async function playKokoroChunk(text, voice, chunkIdx) {
 
 // Called by 03-shell.js when native TTS finishes reading
 function nativeTTSFinished() {
+    _ttsAwaitingNative = false;
+    if (_ttsPaused) return;
     if (_ttsChunks && _ttsChunks.length > 0) {
         playNextChunk();
     } else {

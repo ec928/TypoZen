@@ -486,6 +486,8 @@
                                 <MenuItem x:Name="mOnlineVoices" Header="Microsoft _Online Voices" Visibility="Collapsed"
                                           ToolTip="High-quality neural natural voices streamed from Microsoft's speech service. Requires an internet connection."/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
+                                <MenuItem x:Name="mStopAtChapter" Header="Stop at end of _chapter" IsCheckable="True"
+                                          ToolTip="Finish this chapter and stop. In a book, the chapter named in the status bar. In a text or Markdown file, the section under the current heading. Remembered."/>
                             </MenuItem>
                             <!-- Access key t, not x: Exit already has x in this menu, and a
                                  shared access key cycles the highlight instead of opening. -->
@@ -674,9 +676,33 @@
                 </StackPanel>
 
                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <Button x:Name="btnReadAloud" Style="{StaticResource GhostToolbarButton}" 
-                            Content="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                            Margin="0,0,12,0" ToolTip="Read Aloud"/>
+                    <!-- One control. The speaker is always there. Previous, Pause, Next and
+                         Narration Monitor appear to its left only while a reading is underway
+                         (including while paused), so the speaker stays put beside Mode.
+                         C# shows and hides them in ShowReadAloudState. -->
+                    <Border x:Name="grpReadAloud" Style="{StaticResource SegmentGroup}" Margin="0,0,12,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="btnReadMonitor" Style="{StaticResource SegmentButton}"
+                                    Content="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                    Visibility="Collapsed" ToolTip="Narration Monitor"/>
+                            <Border x:Name="divReadMonitor" Style="{StaticResource SegmentDivider}" Visibility="Collapsed"/>
+                            <Button x:Name="btnReadPrev" Style="{StaticResource SegmentButton}"
+                                    Content="&#xE892;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                    Visibility="Collapsed" ToolTip="Previous paragraph"/>
+                            <Border x:Name="divReadPrev" Style="{StaticResource SegmentDivider}" Visibility="Collapsed"/>
+                            <Button x:Name="btnReadPause" Style="{StaticResource SegmentButton}"
+                                    Content="&#xE769;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                    Visibility="Collapsed" ToolTip="Pause"/>
+                            <Border x:Name="divReadPause" Style="{StaticResource SegmentDivider}" Visibility="Collapsed"/>
+                            <Button x:Name="btnReadNext" Style="{StaticResource SegmentButton}"
+                                    Content="&#xE893;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                    Visibility="Collapsed" ToolTip="Next paragraph"/>
+                            <Border x:Name="divReadNext" Style="{StaticResource SegmentDivider}" Visibility="Collapsed"/>
+                            <Button x:Name="btnReadAloud" Style="{StaticResource SegmentButton}"
+                                    Content="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                    ToolTip="Read Aloud"/>
+                        </StackPanel>
+                    </Border>
 
                     <!-- Phase 3A: three segmented controls, Mode then Column then Scroll.
                          Each group is a bordered strip of SegmentButtons; C# paints the

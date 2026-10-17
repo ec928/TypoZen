@@ -54,6 +54,11 @@ namespace TypoZen
         // every failure ends the play, and a newer play retires an older one.
         private static int _generation;
         private static string _currentWav;
+        /// <summary>The generation the open player belongs to. A later Stop or Halt retires it,
+        /// so MediaEnded from the file just closed is not the end of the next paragraph.</summary>
+        private static int _playerGen;
+        /// <summary>Pause arrived before this play had a sound to hold. Resume starts it.</summary>
+        private static bool _held;
 
         // SAPI voices speak straight to the audio device, from the first audio they have.
         // They used to be synthesised whole into a wav and only then played: fine for IVONA
@@ -127,9 +132,14 @@ namespace TypoZen
             _sapiSynth = new System.Speech.Synthesis.SpeechSynthesizer();
             _player = new System.Windows.Media.MediaPlayer();
             _player.MediaOpened += (s, e) => { _sounding = true; Note("opened, " + DurationText() + ", playing"); };
-            _player.MediaEnded += (s, e) => { SoundStopped(); Note("ended"); Finish(); };
+            _player.MediaEnded += (s, e) =>
+            {
+                if (_playerGen != _generation) { Note("ended after this play was replaced"); return; }
+                SoundStopped(); Note("ended"); Finish();
+            };
             _player.MediaFailed += (s, e) =>
             {
+                if (_playerGen != _generation) return;
                 SoundStopped();
                 Note("player failed: " + (e.ErrorException != null ? e.ErrorException.Message : "unknown"));
                 Finish();
@@ -331,9 +341,7 @@ namespace TypoZen
                         return;
                     }
 
-                    _currentWav = mp3;
-                    _player.Open(new Uri(mp3));
-                    _player.Play();
+                    OpenAndPlay(gen, mp3);
                     return;
                 }
                 else if (voiceId != null && voiceId.StartsWith("sapi:"))
@@ -372,7 +380,12 @@ namespace TypoZen
                     _sapiClock = System.Diagnostics.Stopwatch.StartNew();
                     _sounding = true;
                     _sapiPrompt = _sapiSynth.SpeakAsync(pb);
-                    Note("play #" + gen + " speaking directly, voice ready after " + sw.ElapsedMilliseconds + " ms");
+                    if (_held)
+                    {
+                        try { _sapiSynth.Pause(); } catch { }
+                        Note("play #" + gen + " held before it started");
+                    }
+                    else Note("play #" + gen + " speaking directly, voice ready after " + sw.ElapsedMilliseconds + " ms");
                     return;
                 }
                 else
@@ -419,9 +432,7 @@ namespace TypoZen
                             ? ": " + WakeSilenceMs + " ms of silence first, for the output to wake"
                             : ": not plain PCM, played without the wake-up silence"));
                     }
-                    _currentWav = wav;
-                    _player.Open(new Uri(wav));
-                    _player.Play();
+                    OpenAndPlay(gen, wav);
                 }
             }
             catch (Exception ex)
@@ -431,21 +442,46 @@ namespace TypoZen
             }
         }
 
+        /// <summary>Open this play's file and start it, unless Pause is already held.</summary>
+        private static void OpenAndPlay(int gen, string path)
+        {
+            _currentWav = path;
+            _playerGen = gen;
+            _player.Open(new Uri(path));
+            if (_held)
+            {
+                Note("play #" + gen + " held before it started");
+                return;
+            }
+            _player.Play();
+        }
+
         public static void Pause()
         {
+            _held = true;
             if (_sapiPrompt != null) { try { _sapiSynth.Pause(); } catch { } return; }
-            _player.Pause();
+            try { _player.Pause(); } catch { }
         }
 
         public static void Resume()
         {
+            _held = false;
             if (_sapiPrompt != null) { try { _sapiSynth.Resume(); } catch { } return; }
-            _player.Play();
+            try { _player.Play(); } catch { }
+        }
+
+        /// <summary>Drop the sound without reporting that the paragraph ended.</summary>
+        public static void Halt()
+        {
+            Stop();
         }
 
         public static void Stop()
         {
             // Also retires a play still synthesising, so it cannot start after Stop.
+            // Bumped before the player is closed, so a MediaEnded from this close does not
+            // match _playerGen and is not reported as the paragraph ending.
+            _held = false;
             _generation++;
             OnPlaybackError = null;
             SoundStopped();

@@ -1895,6 +1895,22 @@
                 }
                 return;
             }
+            if (cmd === "read_aloud_pause") {
+                if (typeof readAloudPause === 'function') readAloudPause();
+                return;
+            }
+            if (cmd === "read_aloud_prev") {
+                if (typeof readAloudSkip === 'function') readAloudSkip(-1);
+                return;
+            }
+            if (cmd === "read_aloud_next") {
+                if (typeof readAloudSkip === 'function') readAloudSkip(1);
+                return;
+            }
+            if (cmd.startsWith("stop_at_chapter:")) {
+                if (typeof window.setStopAtChapter === 'function') window.setStopAtChapter(cmd.endsWith("on"));
+                return;
+            }
             if (cmd === "wordwrap_on") { document.body.classList.remove("nowrap"); return; }
             if (cmd === "wordwrap_off") { document.body.classList.add("nowrap"); return; }
 

@@ -1696,6 +1696,10 @@ namespace TypoZen
             BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
             BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
             BindClick("btnReadAloud", (s, e) => SendMsg("cmd:read_aloud_doc"));
+            BindClick("btnReadPause", (s, e) => SendMsg("cmd:read_aloud_pause"));
+            BindClick("btnReadPrev", (s, e) => SendMsg("cmd:read_aloud_prev"));
+            BindClick("btnReadNext", (s, e) => SendMsg("cmd:read_aloud_next"));
+            BindClick("btnReadMonitor", (s, e) => SetNarrationMonitor(!NarrationMonitor.IsOpen));
             ShowReadAloudState(false);
 
             BindClick("mSidebarOutline", (s, e) => SendMsg("cmd:show_outline"));
@@ -1762,7 +1766,10 @@ namespace TypoZen
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
             var mSpeed = FindElement("mConfigureSpeed") as MenuItem; if (mSpeed != null) mSpeed.Header = "Voice Sampler and Speed..."; BindClick("mConfigureSpeed", (s, e) => ShowConfigureVoiceDialog());
+            BindClick("mStopAtChapter", (s, e) => SetStopAtChapter(!_stopAtChapter));
             var initialPrefs = LoadHostPrefs();
+            _stopAtChapter = initialPrefs.StopAtChapter;
+            SetMenuChecked("mStopAtChapter", _stopAtChapter);
             _enableOnlineVoices = initialPrefs.EnableOnlineVoices;
             TypoZen_TTS.EnableOnlineVoices = _enableOnlineVoices && !_privacyMode;
             PopulateWindowsVoicesMenu();
@@ -2381,6 +2388,7 @@ namespace TypoZen
                         SetMenuChecked("mNarrMonitor", false);
                         try { SendMsg("cmd:narr_monitor:off"); } catch { }
                         SaveMonitorChoice(false);
+                        UpdateReadMonitorButton();
                     },
                     // Each engine's narration.log, where NarratorEngine writes it.
                     engine => Path.Combine(engine == "breeze" ? BreezeNarrator.RootDir(CacheDir()) : QwenNarrator.RootDir(CacheDir()),
@@ -2389,6 +2397,7 @@ namespace TypoZen
                 SetMenuChecked("mNarrMonitor", on);
                 SendMsg("cmd:narr_monitor:" + (on ? "on" : "off"));
                 SaveMonitorChoice(on);
+                UpdateReadMonitorButton();
             }
             catch (Exception ex) { LogFault("narration monitor", ex); }
         }
@@ -2526,8 +2535,29 @@ namespace TypoZen
                     : QwenNarrator.PageSettingsJson(CacheDir(), _currentFilePath, _ttsSpeed, SuppressDocumentTraces());
                 SendMsg("cmd:narrator_settings:" + json);
                 SendMsg("cmd:narr_monitor:" + (NarrationMonitor.IsOpen ? "on" : "off"));
+                SendMsg("cmd:stop_at_chapter:" + (_stopAtChapter ? "on" : "off"));
             }
             catch (Exception ex) { LogFault("narrator settings", ex); }
+        }
+
+        /// <summary>
+        /// File &gt; Read Aloud &gt; Stop at end of chapter. Remembered with the voice and the speed.
+        /// The page applies it to the reading underway and to the next one.
+        /// </summary>
+        private bool _stopAtChapter;
+
+        private void SetStopAtChapter(bool on)
+        {
+            _stopAtChapter = on;
+            SetMenuChecked("mStopAtChapter", on);
+            try
+            {
+                var prefs = LoadHostPrefs();
+                prefs.StopAtChapter = on;
+                WriteHostPrefs(prefs);
+            }
+            catch (Exception ex) { LogFault("stop at chapter", ex); }
+            try { SendMsg("cmd:stop_at_chapter:" + (on ? "on" : "off")); } catch { }
         }
 
         /// <summary>
@@ -7525,11 +7555,9 @@ namespace TypoZen
 
                 TypoZen_TTS.OnPlaybackFinished = () => {
                     Dispatcher.BeginInvoke(new Action(() => {
-                        ShowReadAloudState(false);
-                        // A message the page's dispatcher handles. This was
-                        // "eval:nativeTTSFinished()", which nothing handles: the page never
-                        // heard playback end, so its Play/Stop stayed on Stop and the next
-                        // toolbar press stopped instead of playing.
+                        // The page decides when the reading is over. Clearing the toolbar
+                        // here flashed Read aloud between paragraphs, and would hide the
+                        // transport group for one chunk. host_tts_stop does that, once.
                         SendMsg("tts_finished");
                     }));
                 };
@@ -7567,9 +7595,20 @@ namespace TypoZen
                 TypoZen_TTS.Resume();
                 return;
             }
+            else if (msg == "host_tts_halt")
+            {
+                // Previous / Next paragraph: drop the sound without ending the reading.
+                TypoZen_TTS.Halt();
+                return;
+            }
+            else if (msg.StartsWith("host_tts_transport:", StringComparison.Ordinal))
+            {
+                ShowReadAloudTransport(msg.Substring("host_tts_transport:".Length));
+                return;
+            }
             else if (msg == "host_tts_start")
             {
-                ShowReadAloudState(true);
+                ShowReadAloudTransport("playing");
                 return;
             }
             else if (msg.StartsWith("host_kokoro_voice_restored:", StringComparison.Ordinal))
@@ -7631,7 +7670,7 @@ namespace TypoZen
             }
             else if (msg == "host_tts_stop")
             {
-                ShowReadAloudState(false);
+                ShowReadAloudTransport("idle");
                 TypoZen_TTS.Stop();
                 return;
             }
@@ -7929,6 +7968,9 @@ namespace TypoZen
                                 UpdateWindowsVoicesCheckmark();
                             }
                             if (prefs.TtsSpeed > 0) _ttsSpeed = prefs.TtsSpeed;
+                            _stopAtChapter = prefs.StopAtChapter;
+                            SetMenuChecked("mStopAtChapter", _stopAtChapter);
+                            SendMsg("cmd:stop_at_chapter:" + (_stopAtChapter ? "on" : "off"));
                         }
                     }
                     catch { }
@@ -8749,6 +8791,8 @@ namespace TypoZen
             public string TtsVoiceId = "";
             public double TtsSpeed = 1.0;
             public bool EnableOnlineVoices;
+            /// <summary>File &gt; Read Aloud &gt; Stop at end of chapter.</summary>
+            public bool StopAtChapter;
         }
 
         private static string JsonEscape(string s)
@@ -8928,6 +8972,7 @@ namespace TypoZen
                 s = ExtractJsonString(json, "ttsVoiceId"); if (s != null) { p.TtsVoiceId = s; }
                 s = ExtractJsonString(json, "ttsSpeed"); if (s != null && double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double speed)) { p.TtsSpeed = speed; }
                 b = ExtractJsonBool(json, "enableOnlineVoices"); if (b.HasValue) p.EnableOnlineVoices = b.Value;
+                b = ExtractJsonBool(json, "stopAtChapter"); if (b.HasValue) p.StopAtChapter = b.Value;
             }
             catch { }
             return p;
@@ -8969,6 +9014,7 @@ namespace TypoZen
                 + "\"ttsVoiceId\":\"" + JsonEscape(p.TtsVoiceId ?? "") + "\","
                 + "\"ttsSpeed\":\"" + p.TtsSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\","
                 + "\"enableOnlineVoices\":" + (p.EnableOnlineVoices ? "true" : "false") + ","
+                + "\"stopAtChapter\":" + (p.StopAtChapter ? "true" : "false") + ","
                 + "\"lastContent\":\"\""
                 + "}";
             string prefsPath = PrefsPath();
@@ -11235,6 +11281,19 @@ namespace TypoZen
         /// The A-with-waves glyph is only in Segoe Fluent Icons (Windows 11); Segoe MDL2
         /// Assets (Windows 10) gets the speaker with waves instead.
         /// </summary>
+        private bool _readAloudHold;
+
+        /// <summary>
+        /// "playing", "paused" or "idle". The speaker stays Stop for both live states;
+        /// Pause swaps to Resume while held. Idle collapses the group back to the speaker.
+        /// </summary>
+        private void ShowReadAloudTransport(string mode)
+        {
+            if (mode == "paused") _readAloudHold = true;
+            else _readAloudHold = false;
+            ShowReadAloudState(mode == "playing" || mode == "paused");
+        }
+
         private void ShowReadAloudState(bool reading)
         {
             var btn = this.FindName("btnReadAloud") as System.Windows.Controls.Button;
@@ -11255,7 +11314,46 @@ namespace TypoZen
                 btn.ToolTip = "Read aloud (the selection, or the page)";
                 btn.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
                 btn.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
+                _readAloudHold = false;
             }
+            SetReadAloudExtras(reading);
+        }
+
+        /// <summary>
+        /// Previous, Pause, Next and Narration Monitor, to the left of the speaker.
+        /// Visible only while a reading is underway.
+        /// </summary>
+        private void SetReadAloudExtras(bool live)
+        {
+            var vis = live ? Visibility.Visible : Visibility.Collapsed;
+            foreach (string name in new[] {
+                "btnReadMonitor", "divReadMonitor", "btnReadPrev", "divReadPrev",
+                "btnReadPause", "divReadPause", "btnReadNext", "divReadNext" })
+            {
+                var el = FindElement(name) as UIElement;
+                if (el != null) el.Visibility = vis;
+            }
+            var font = new FontFamily(IconFont());
+            foreach (string name in new[] { "btnReadMonitor", "btnReadPrev", "btnReadPause", "btnReadNext" })
+            {
+                var b = FindElement(name) as System.Windows.Controls.Button;
+                if (b != null) b.FontFamily = font;
+            }
+            var pause = FindElement("btnReadPause") as System.Windows.Controls.Button;
+            if (pause != null)
+            {
+                pause.Content = _readAloudHold ? "\uE768" : "\uE769";   // Play, Pause
+                pause.ToolTip = _readAloudHold ? "Resume" : "Pause";
+            }
+            UpdateReadMonitorButton();
+        }
+
+        /// <summary>The group's Narration Monitor button, shaded while the window is open.</summary>
+        private void UpdateReadMonitorButton()
+        {
+            var mon = FindElement("btnReadMonitor") as System.Windows.Controls.Button;
+            if (mon == null) return;
+            SetToolbarActive(mon, NarrationMonitor.IsOpen && mon.Visibility == Visibility.Visible);
         }
         private string _iconFont;
 
@@ -12002,7 +12100,6 @@ namespace TypoZen
                 ShowReadAloudState(true);
                 TypoZen_TTS.OnPlaybackFinished = () => {
                     Dispatcher.BeginInvoke(new Action(() => {
-                        ShowReadAloudState(false);
                         SendMsg("tts_finished");
                     }));
                 };
