@@ -237,17 +237,17 @@ function speakSelection() {
         const idx = caret ? parseInt(caret.block.getAttribute('data-model-index'), 10) : 0;
         if (isFinite(idx) && DocumentModel.blocks && DocumentModel.blocks[idx]) {
             if (caret && caret.text !== DocumentModel.blocks[idx].raw) {
-                chunks.push({ idx: idx, text: caret.text });
+                chunks.push({ idx: idx, text: caret.text, md: true });
                 for (let i = idx + 1; i < DocumentModel.blocks.length; i++) {
-                    if (DocumentModel.blocks[i].raw) chunks.push({ idx: i, text: DocumentModel.blocks[i].raw });
+                    if (DocumentModel.blocks[i].raw) chunks.push({ idx: i, text: DocumentModel.blocks[i].raw, md: true });
                 }
             } else {
                 for (let i = idx; i < DocumentModel.blocks.length; i++) {
-                    if (DocumentModel.blocks[i].raw) chunks.push({ idx: i, text: DocumentModel.blocks[i].raw });
+                    if (DocumentModel.blocks[i].raw) chunks.push({ idx: i, text: DocumentModel.blocks[i].raw, md: true });
                 }
             }
         } else {
-            chunks.push({ text: DocumentModel.toMarkdown() });
+            chunks.push({ text: DocumentModel.toMarkdown(), md: true });
         }
     } else {
         // EPUB or simple DOM fallback
@@ -784,7 +784,7 @@ function playNextChunk() {
             // plays it. Missing it here meant narration silently fell back to a Windows
             // voice in Pages, which is the layout most reading happens in.
             if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl, chunk);
-            else sendTTSPlay(chunk.text);
+            else sendTTSPlay(chunkSpeechText(chunk));
         });
         return;
     } else {
@@ -810,7 +810,7 @@ function playNextChunk() {
         // Nothing above this line knows the difference, which is the point: the highlight,
         // the page turning and the stop button are the same code they always were.
         if (chunk.audioUrl) playRenderedChunk(chunk.audioUrl, chunk);
-        else sendTTSPlay(chunk.text);
+        else sendTTSPlay(chunkSpeechText(chunk));
     }
 }
 
@@ -2992,6 +2992,32 @@ function tellMonitorSpoken(text) {
     } catch (e) {}
 }
 
+/**
+ * What a Windows, online or Kokoro voice is given for a paragraph. A Markdown paragraph is
+ * read as Preview shows it, not as written: its source has **, #, list markers and link
+ * syntax, which a voice reads out or stumbles on (the narration monitor showed
+ * "**Write in the morning...**", 2026-10-17). Rendered once, when it is first needed --
+ * not for the whole file when the reading starts. Code is read as it is.
+ */
+function chunkSpeechText(chunk) {
+    if (!chunk) return '';
+    if (!chunk.md) return chunk.text;
+    if (chunk.spoken != null) return chunk.spoken;
+    let t = chunk.text;
+    try {
+        if (typeof createPreviewBlockEl === 'function' && !(typeof isCodeDocument === 'function' && isCodeDocument())) {
+            const el = createPreviewBlockEl(String(chunk.text || ''), false, chunk.idx);
+            const shown = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            // A picture alone shows no text: its alt text, if it has one, rather than its source.
+            const alts = (String(chunk.text || '').match(/!\[([^\]]*)\]/g) || [])
+                .map(m => m.slice(2, -1).trim()).filter(Boolean).join('. ');
+            t = shown || alts || chunk.text;
+        }
+    } catch (e) {}
+    chunk.spoken = t;
+    return t;
+}
+
 function sendTTSPlay(text) {
     _ttsChunkStarted = true;
     tellMonitorSpoken(text);
@@ -3326,7 +3352,7 @@ async function prefetchNextKokoro(genId) {
     if (!nextChunk || !nextChunk.text || !nextChunk.text.trim()) return;
 
     const voice = _kokoroVoice;
-    const text = applyTTSOverrides(nextChunk.text);
+    const text = applyTTSOverrides(chunkSpeechText(nextChunk));
     const groups = buildSentenceGroups(text);
     if (groups.length === 0) return;
 
