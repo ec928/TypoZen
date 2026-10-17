@@ -430,6 +430,120 @@ function ttsSkipParagraph(played, current, queue, dir) {
 
 // --- end read-aloud transport ---
 
+// --- The reading bar (prototype, branch proto/reading-bar) ---
+// While a reading is underway, its controls float at the bottom of the page instead of
+// growing the toolbar: Previous, Pause, Next, Stop, the voice (its button opens File > Read
+// Aloud's own menu, at the bar), the speed, and Stop at end of chapter. The host owns the
+// state and sends all of it whenever any of it changes (cmd:read_bar:, PushReadBar).
+// Floating, not a strip: a strip would change the page's height and repaginate a book
+// mid-reading.
+const READ_BAR_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+let _readBarEl = null;
+let _readBarState = { show: false, paused: false, voice: '', speed: 1, chapter: false };
+window._tzReadSpeed = 1;
+
+function readBarPost(m) { try { window.chrome.webview.postMessage('host_read_bar:' + m); } catch (e) {} }
+
+function readBarBuild() {
+    const el = document.createElement('div');
+    el.id = 'tzReadBar';
+    el.hidden = true;
+    el.setAttribute('role', 'toolbar');
+    el.setAttribute('aria-label', 'Reading aloud');
+    el.innerHTML =
+        '<button type="button" class="rb-icon" data-a="prev" title="Previous paragraph">\uE892</button>' +
+        '<button type="button" class="rb-icon rb-play" data-a="pause" title="Pause">\uE769</button>' +
+        '<button type="button" class="rb-icon" data-a="next" title="Next paragraph">\uE893</button>' +
+        '<button type="button" class="rb-icon" data-a="stop" title="Stop reading">\uE71A</button>' +
+        '<span class="rb-sep"></span>' +
+        '<button type="button" class="rb-text rb-voice" data-a="menu" title="Voice and Read Aloud settings">' +
+            '<span class="rb-voice-name"></span><span class="rb-caret">\uE70D</span></button>' +
+        '<span class="rb-sep"></span>' +
+        '<button type="button" class="rb-icon rb-small" data-a="slower" title="Slower">\uE738</button>' +
+        '<span class="rb-speed" title="Reading speed"></span>' +
+        '<button type="button" class="rb-icon rb-small" data-a="faster" title="Faster">\uE710</button>' +
+        '<span class="rb-sep"></span>' +
+        '<button type="button" class="rb-text rb-chapter" data-a="chapter" aria-pressed="false" ' +
+            'title="Finish this chapter and stop">End of chapter</button>';
+    // A press must not take the caret or the selection from the page.
+    el.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    el.addEventListener('click', function (e) {
+        const b = e.target.closest('button');
+        if (b) readBarAct(b.getAttribute('data-a'));
+    });
+    document.body.appendChild(el);
+    return el;
+}
+
+function readBarStep(dir) {
+    const cur = Number(_readBarState.speed) || 1;
+    let i = READ_BAR_SPEEDS.findIndex(function (v) { return v >= cur - 0.001; });
+    if (i < 0) i = READ_BAR_SPEEDS.length - 1;
+    if (dir > 0) i = READ_BAR_SPEEDS[i] > cur + 0.001 ? i : i + 1;
+    else i = i - 1;
+    i = Math.max(0, Math.min(READ_BAR_SPEEDS.length - 1, i));
+    return READ_BAR_SPEEDS[i];
+}
+
+function readBarAct(a) {
+    if (a === 'prev') readAloudSkip(-1);
+    else if (a === 'next') readAloudSkip(1);
+    else if (a === 'pause') readAloudPause();
+    else if (a === 'stop') { if (isPlaying) stopReading(); }
+    else if (a === 'menu') readBarPost('menu');
+    else if (a === 'chapter') readBarPost('chapter');
+    else if (a === 'slower' || a === 'faster') {
+        const v = readBarStep(a === 'faster' ? 1 : -1);
+        if (Math.abs(v - (Number(_readBarState.speed) || 1)) < 0.001) return;
+        _readBarState.speed = v;          // show it now; the host's answer confirms it
+        readBarPaint();
+        readBarPost('speed:' + v);
+    }
+}
+
+function readBarPaint() {
+    const s = _readBarState;
+    if (!s.show) { if (_readBarEl) _readBarEl.hidden = true; return; }
+    if (!_readBarEl) _readBarEl = readBarBuild();
+    const el = _readBarEl;
+    const play = el.querySelector('.rb-play');
+    play.textContent = s.paused ? '\uE768' : '\uE769';
+    play.title = s.paused ? 'Resume' : 'Pause';
+    el.classList.toggle('rb-paused', !!s.paused);
+    el.querySelector('.rb-voice-name').textContent = s.voice || 'Voice';
+    const sp = Number(s.speed) || 1;
+    el.querySelector('.rb-speed').textContent = (Math.round(sp * 100) / 100) + '\u00d7';
+    el.querySelector('[data-a="slower"]').disabled = sp <= READ_BAR_SPEEDS[0] + 0.001;
+    el.querySelector('[data-a="faster"]').disabled = sp >= READ_BAR_SPEEDS[READ_BAR_SPEEDS.length - 1] - 0.001;
+    const ch = el.querySelector('.rb-chapter');
+    ch.setAttribute('aria-pressed', s.chapter ? 'true' : 'false');
+    ch.classList.toggle('on', !!s.chapter);
+    el.hidden = false;
+    readBarPlace();
+}
+
+/** Centred under the text, not the window: the sidebar is not what is being read. */
+function readBarPlace() {
+    if (!_readBarEl || _readBarEl.hidden) return;
+    const main = document.getElementById('main-container');
+    const r = main ? main.getBoundingClientRect() : { left: 0, width: window.innerWidth };
+    let hz = 1;
+    try { hz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--host-zoom')) || 1; } catch (e) {}
+    _readBarEl.style.left = Math.round((r.left + r.width / 2) * hz) + 'px';
+    // No wider than the text area, less a margin each side.
+    _readBarEl.style.maxWidth = Math.max(200, Math.round((r.width - 24) * hz)) + 'px';
+}
+window.addEventListener('resize', readBarPlace);
+
+window.setReadBar = function (json) {
+    try {
+        const s = typeof json === 'string' ? JSON.parse(json) : json;
+        _readBarState = Object.assign(_readBarState, s || {});
+        window._tzReadSpeed = Math.max(0.5, Math.min(2, Number(_readBarState.speed) || 1));
+        readBarPaint();
+    } catch (e) {}
+};
+
 /** The chapter boundary for a block, from the book's units or the outline. */
 function readingChapterEnd(bi) {
     let units = null, entries = null;
@@ -3189,7 +3303,7 @@ async function prefetchNextKokoro(genId) {
     for (const group of groups) {
         if (!isPlaying || genId !== _generationId) return; // cancelled
         try {
-            const audio = await _kokoroEngine.generate(group, { voice: voice, speed: 1.0 });
+            const audio = await _kokoroEngine.generate(group, { voice: voice, speed: window._tzReadSpeed || 1 });
             buffers.push(audio);
         } catch (e) { return; }
     }
@@ -3234,7 +3348,7 @@ async function processGenerationQueue(genId, voice) {
     while (_generationQueue.length > 0 && isPlaying && genId === _generationId) {
         const sentence = _generationQueue.shift();
         try {
-            const audio = await _kokoroEngine.generate(sentence, { voice: voice, speed: 1.0 });
+            const audio = await _kokoroEngine.generate(sentence, { voice: voice, speed: window._tzReadSpeed || 1 });
             if (!isPlaying || genId !== _generationId) break;
             _playQueue.push(audio);
             processPlayQueue(genId);

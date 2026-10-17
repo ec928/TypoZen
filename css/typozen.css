@@ -1496,6 +1496,66 @@
            Anchored to the selection rather than parked in chrome: looking a word up
            is something you do without leaving the sentence, which is the whole point
            of it. Chrome metrics, not document metrics -- it is a menu surface. */
+        /* The reading bar (prototype): the read-aloud controls, floating at the bottom of the
+           page while a reading is underway (09-speech.js, setReadBar). Opaque for the same
+           reason as #selPop; it floats over the document. */
+        #tzReadBar {
+            position: fixed;
+            left: 50%;
+            bottom: 14px;
+            transform: translateX(-50%);
+            z-index: 45;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            padding: 4px 6px;
+            background-color: var(--bg, #18181B);
+            background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            border: 1px solid var(--border, #3F3F46);
+            border-radius: 999px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.38);
+            font-family: var(--ui-font);
+            font-size: var(--ui-fs);
+            color: var(--tx, #F4F4F5);
+            zoom: calc(1 / var(--host-zoom, 1));
+            user-select: none;
+            white-space: nowrap;
+        }
+        #tzReadBar[hidden] { display: none; }
+        #tzReadBar button {
+            border: 0;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            border-radius: 999px;
+            height: 30px;
+            min-width: 30px;
+            padding: 0 8px;
+            font: inherit;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        #tzReadBar button:hover:not(:disabled) { background: var(--tint-hover, rgba(255,255,255,0.08)); }
+        #tzReadBar button:disabled { opacity: 0.35; cursor: default; }
+        #tzReadBar .rb-icon { font-family: var(--ui-icon-font); font-size: 14px; padding: 0; }
+        #tzReadBar .rb-small { font-size: 10px; min-width: 24px; height: 24px; }
+        #tzReadBar .rb-play { background: var(--accent-bg, rgba(255,255,255,0.1)); min-width: 34px; height: 34px; }
+        #tzReadBar .rb-caret { font-family: var(--ui-icon-font); font-size: 9px; opacity: 0.7; }
+        /* In a narrow window the voice's name gives way first; the controls keep their size. */
+        #tzReadBar .rb-voice { min-width: 0; flex: 0 1 auto; }
+        #tzReadBar .rb-voice-name { max-width: 18em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        #tzReadBar > :not(.rb-voice) { flex: 0 0 auto; }
+        #tzReadBar .rb-speed { min-width: 3.2em; text-align: center; font-variant-numeric: tabular-nums; color: var(--tx-muted, inherit); }
+        #tzReadBar .rb-sep { width: 1px; height: 18px; background: var(--border, #3F3F46); margin: 0 4px; }
+        #tzReadBar .rb-chapter { color: var(--tx-muted, inherit); }
+        /* On: the page's own text colour on the accent fill, and a tick -- --accent-tx on
+           --accent-bg was pale on pale in Gruvbox Light. */
+        #tzReadBar .rb-chapter.on { color: var(--tx, inherit); background: var(--accent-bg, rgba(255,255,255,0.1)); }
+        #tzReadBar .rb-chapter.on::before { content: '\2713'; margin-right: 5px; }
+        @media print { #tzReadBar { display: none !important; } }
+
         #selPop {
             position: fixed;
             z-index: 40;

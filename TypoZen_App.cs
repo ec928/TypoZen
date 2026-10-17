@@ -2561,6 +2561,7 @@ namespace TypoZen
             }
             catch (Exception ex) { LogFault("stop at chapter", ex); }
             try { SendMsg("cmd:stop_at_chapter:" + (on ? "on" : "off")); } catch { }
+            PushReadBar();
         }
 
         /// <summary>
@@ -7598,6 +7599,11 @@ namespace TypoZen
                 TypoZen_TTS.Resume();
                 return;
             }
+            else if (msg.StartsWith("host_read_bar:", StringComparison.Ordinal))
+            {
+                HandleReadBar(msg.Substring("host_read_bar:".Length));
+                return;
+            }
             else if (msg == "host_tts_halt")
             {
                 // Previous / Next paragraph: drop the sound without ending the reading.
@@ -11329,7 +11335,10 @@ namespace TypoZen
         /// </summary>
         private void SetReadAloudExtras(bool live)
         {
-            var vis = live ? Visibility.Visible : Visibility.Collapsed;
+            _readBarLive = live;
+            // With the reading bar, the toolbar keeps only the speaker (Stop while reading).
+            bool inToolbar = live && !ReadBarOn;
+            var vis = inToolbar ? Visibility.Visible : Visibility.Collapsed;
             foreach (string name in new[] {
                 "btnReadPrev", "divReadPrev",
                 "btnReadPause", "divReadPause", "btnReadNext", "divReadNext" })
@@ -11340,7 +11349,7 @@ namespace TypoZen
             // The Narration Monitor follows the Qwen or Breeze narrator; with a Windows,
             // Kokoro or online voice it has nothing to show, so its button stays hidden.
             bool narrator = _kokoroVoiceId == QwenNarrator.VoiceId || _kokoroVoiceId == BreezeNarrator.VoiceId;
-            var monVis = live && narrator ? Visibility.Visible : Visibility.Collapsed;
+            var monVis = inToolbar && narrator ? Visibility.Visible : Visibility.Collapsed;
             foreach (string name in new[] { "btnReadMonitor", "divReadMonitor" })
             {
                 var el = FindElement(name) as UIElement;
@@ -11359,6 +11368,127 @@ namespace TypoZen
                 pause.ToolTip = _readAloudHold ? "Resume" : "Pause";
             }
             UpdateReadMonitorButton();
+            PushReadBar();
+        }
+
+        // ---- The reading bar (prototype, branch proto/reading-bar) ----------------------------
+        // While a reading is underway its controls float at the bottom of the page (09-speech.js,
+        // setReadBar) instead of growing the toolbar: Previous, Pause, Next, Stop, the voice --
+        // whose button opens File > Read Aloud's own menu where it is -- the speed, and Stop at
+        // end of chapter. The host owns the state and sends it whenever any of it changes.
+        private static readonly bool ReadBarOn = true;
+        private bool _readBarLive;
+
+        private void PushReadBar()
+        {
+            if (!ReadBarOn) return;
+            try
+            {
+                var lbl = FindElement("lblVoice") as TextBlock;
+                string voice = lbl != null ? (lbl.Text ?? "") : "";
+                int dot = voice.IndexOf(" \u00b7 ", StringComparison.Ordinal);
+                if (dot > 0) voice = voice.Substring(0, dot);
+                var state = new Dictionary<string, object>
+                {
+                    { "show", _readBarLive }, { "paused", _readAloudHold }, { "voice", voice },
+                    { "speed", _ttsSpeed }, { "chapter", _stopAtChapter }
+                };
+                SendMsg("cmd:read_bar:" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(state));
+            }
+            catch (Exception ex) { LogFault("read bar", ex); }
+        }
+
+        /// <summary>The bar's buttons that the host answers: menu, speed:N, chapter.</summary>
+        private void HandleReadBar(string what)
+        {
+            if (what == "menu") { ShowReadAloudMenuAtCursor(); return; }
+            if (what == "chapter") { SetStopAtChapter(!_stopAtChapter); PushReadBar(); return; }
+            if (what.StartsWith("speed:", StringComparison.Ordinal))
+            {
+                double sp;
+                if (!double.TryParse(what.Substring(6), System.Globalization.NumberStyles.Float,
+                                     System.Globalization.CultureInfo.InvariantCulture, out sp)) return;
+                _ttsSpeed = Math.Max(0.5, Math.Min(2.0, Math.Round(sp, 2)));
+                try { var prefs = LoadHostPrefs(); prefs.TtsSpeed = _ttsSpeed; WriteHostPrefs(prefs); }
+                catch (Exception ex) { LogFault("read bar speed", ex); }
+                // The narrator changes the rate of what is playing now; a Windows voice takes it
+                // from the next paragraph; Kokoro from the next piece it prepares (setReadBar).
+                if (ChosenNarrator() != null) SendNarratorSettings();
+                PushReadBar();
+            }
+        }
+
+        /// <summary>
+        /// File > Read Aloud, opened at the pointer: a copy of the menu built from the real one
+        /// each time, so it cannot drift from it, and each item does what the real one does.
+        /// </summary>
+        private void ShowReadAloudMenuAtCursor()
+        {
+            var src = FindElement("mReadAloudMenu") as MenuItem;
+            if (src == null) return;
+            try { RebuildQwenVoiceMenu(); } catch { }
+            try { RebuildBreezeVoiceMenu(); } catch { }
+            var cm = new ContextMenu();
+            // The theme lives in the window's resources (menu brushes, item templates); a
+            // context menu is not in the window's tree, so it gets a copy.
+            foreach (object k in this.Resources.Keys) cm.Resources[k] = this.Resources[k];
+            var st = TryFindResource(typeof(ContextMenu)) as Style;
+            if (st != null) cm.Style = st;
+            // The plain frame the main menu's submenus have: WPF's own context menu template
+            // draws a pale icon gutter down the left, which no theme here colours.
+            cm.Template = (ControlTemplate)XamlReader.Parse(
+                "<ControlTemplate TargetType='ContextMenu' xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'>" +
+                "<Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' " +
+                "BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='6' Padding='0,4'>" +
+                "<StackPanel IsItemsHost='True' KeyboardNavigation.DirectionalNavigation='Cycle'/></Border></ControlTemplate>");
+            MirrorMenuItems(src, cm.Items);
+            // The click happened in the WebView, which WPF's mouse does not follow: place it
+            // from the real cursor, in device-independent units.
+            var pt = WinForms.Cursor.Position;
+            double sx = 1, sy = 1;
+            var ps = PresentationSource.FromVisual(this);
+            if (ps != null && ps.CompositionTarget != null)
+            {
+                sx = ps.CompositionTarget.TransformFromDevice.M11;
+                sy = ps.CompositionTarget.TransformFromDevice.M22;
+            }
+            cm.Placement = PlacementMode.AbsolutePoint;
+            cm.HorizontalOffset = pt.X * sx;
+            cm.VerticalOffset = pt.Y * sy;
+            cm.IsOpen = true;
+        }
+
+        private static void MirrorMenuItems(ItemsControl src, ItemCollection into)
+        {
+            bool lastSep = true;
+            foreach (object o in src.Items)
+            {
+                var mi = o as MenuItem;
+                if (mi != null)
+                {
+                    if (mi.Visibility != Visibility.Visible) continue;
+                    var m = new MenuItem
+                    {
+                        Header = mi.Header, IsCheckable = mi.IsCheckable, IsChecked = mi.IsChecked,
+                        IsEnabled = mi.IsEnabled, ToolTip = mi.ToolTip, InputGestureText = mi.InputGestureText
+                    };
+                    if (mi.Items.Count > 0) MirrorMenuItems(mi, m.Items);
+                    else
+                    {
+                        var orig = mi;
+                        m.Click += (s, e) => orig.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, orig));
+                    }
+                    into.Add(m);
+                    lastSep = false;
+                }
+                else if (o is Separator)
+                {
+                    if (((Separator)o).Visibility != Visibility.Visible || lastSep) continue;
+                    into.Add(new Separator());
+                    lastSep = true;
+                }
+            }
+            if (into.Count > 0 && into[into.Count - 1] is Separator) into.RemoveAt(into.Count - 1);
         }
 
         /// <summary>The group's Narration Monitor button, shaded while the window is open.</summary>
@@ -12056,6 +12186,7 @@ namespace TypoZen
                     text = "Windows: " + name;
                 }
                 lbl.Text = text;
+                PushReadBar();
                 var icon = FindElement("lblVoiceIcon") as TextBlock;
                 if (icon != null)
                 {

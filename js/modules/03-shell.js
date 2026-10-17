@@ -1895,6 +1895,10 @@
                 }
                 return;
             }
+            if (cmd.startsWith("read_bar:")) {
+                if (typeof window.setReadBar === 'function') window.setReadBar(cmd.substring(9));
+                return;
+            }
             if (cmd === "read_aloud_pause") {
                 if (typeof readAloudPause === 'function') readAloudPause();
                 return;
