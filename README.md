@@ -30,7 +30,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 ### Writing
 
 - **Dual-mode editing:** Seamlessly switch between WYSIWYG Preview and Source. The two lay text out alike, so the line you are on stays where it is.
-- **Source is a real code editor:** built on CodeMirror 6, with highlighting in your theme's colours for Markdown and for code and markup � HTML, XML, CSS, JSON, JavaScript, C# and more, plus features like structural code outline, line numbers, bracket matching, folding, and indent guides.
+- **Source is a real code editor:** built on CodeMirror 6, with highlighting in your theme's colours for Markdown and for code and markup — HTML, XML, CSS, JSON, JavaScript, C# and more, plus features like structural code outline, line numbers, bracket matching, folding, and indent guides.
 - **Live block editing:** Format Markdown and text on the fly, including headings, lists, tables, tasks, emphasis, and fenced code.
 - **Deep immersion:** Engage Focus mode, Typewriter scroll, and ZenMode, which hides the whole UI until you reach for it, to eliminate distractions while you work.
 - **Engineered for massive files:** Preview builds only the part of the document on screen, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it. Source opens files of megabytes, with lines hundreds of thousands of characters long, at once.
@@ -39,7 +39,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 ### Reading & Research
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
 - **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows — or in **Microsoft Online Natural Voices** (opt-in under Extensions), a **Kokoro neural voice**, the **Qwen narrator**, or the **Breeze TTS narrator** with full character casts, voice cloning, and AI Smart Cast. Choose the voice and speed in **File → Read Aloud**. While a reading is underway, a reading bar at the bottom of the page holds pause, previous and next paragraph, stop, the voice and its menu, the speed, and stop at end of chapter. **Stop at end of chapter** is also in the File → Read Aloud menu.
-- **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said in the voice you have chosen for reading aloud -- or, with the Qwen narrator chosen, in the quick voice on your computer closest to it (same country and gender), since the narrator takes too long to start for one word.
+- **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said in the voice you have chosen for reading aloud -- or, with the Qwen or Breeze narrator chosen, in the quick voice on your computer closest to it (same country and gender), since a narrator takes too long to start for one word.
 - **Document Search:** Dedicated search sidebar (`Alt+S`) with full match highlighting and navigation. Acts as a seamless reader for ZenSeek searches.
 - **Marks & Annotations:** Highlight text, write notes, and drop bookmarks that intelligently survive document edits.
 - **A full PDF reader:** single pages or two-page spreads, real selectable text, Find and Search across pages, the outline, read aloud, bookmarks and highlights, and your place remembered. Annotate, fill in forms and save; the text of scanned pages is read on your computer; save pages or pictures as images, and print.
@@ -51,6 +51,7 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 - **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions. Drag tabs into any order; the order is kept.
 - **Offline & Portable:** Zero telemetry, and nothing on the network unless you enable an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
 - **Extensions, if you want them:** **File > Extensions** offers **Microsoft Natural Voices** (opt-in streaming natural voices directly from Microsoft Edge speech services), **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, **Whisper** to transcribe a voice recording, and **Breeze TTS / Qwen narration** — AI narrators that read books with distinct character voices, voice cloning, and AI casting (experimental; needs an NVIDIA graphics card). All are optional and strictly user-controlled. Removing or disabling an extension instantly takes away what it added. Whisper adds no menu of its own.
+
 ---
 
 ## Writing & Editing
@@ -70,7 +71,7 @@ TypoZen opens Markdown of any size in Live Preview.
 - **Raw Performance:** `.txt`, `.log`, and `.csv` files open natively in Source mode for raw Notepad-class performance.
 
 ### Writing tools
-- **Spelling:** The native Windows spell checker underlines misspellings in both Preview and Source modes (except inside code blocks). Right-click for replacements.
+- **Spelling:** The Windows spell checker underlines misspellings in both Preview and Source (not in code, inline code or fenced code blocks). Select a word for replacements; see **Spelling** below.
 - **Find & Replace (`Ctrl+F` / `Ctrl+H`):** Searches the entire document model instantly, even virtualized off-screen sections.
 - **Live Match Highlighting:** All search matches are highlighted concurrently in both Source and Preview modes.
 - **Search Sidebar (`Alt+S`):** Dedicated sidebar with match-case and whole-word toggles. Remembers your last 8 searches across all sessions.
@@ -80,7 +81,7 @@ TypoZen opens Markdown of any size in Live Preview.
   - `http`, `https` and `mailto` open in the default browser and carry a `↗`. **Only** those three schemes are handed to the shell: a link's address comes out of document content, and without that restriction a `file:` or custom-scheme link would be a way to make opening a note launch a program. Everything path-shaped is opened as a *document*, which reads a file and cannot run one.
   - `#heading` jumps within the document, through the same path an outline click uses. Slugs follow the usual Markdown convention — lower-cased, punctuation dropped, each remaining space becoming its own hyphen, so `## Look & feel` is `#look--feel` — and letters in any script are kept, so `## 日本語` is `#日本語`. An anchor that matches no heading does nothing rather than guessing.
   - A plain click still places the caret — this is an editor, and link text has to stay editable. `Ctrl+click` opens directly.
-- Table insert
+- **Tables** — the toolbar's table button inserts one; inside a table, `Tab` moves between cells and grows the table at the end
 - **Tab types a tab**, in Preview and Source, as in Notepad; `Shift+Tab` takes one back. On a list item Tab nests the list instead, and in a table it moves between cells. A run of tabs wraps onto the next line like any other space, and a tab is saved as a tab
 - **Spaces are kept as typed** in Preview as in Source -- a double space, a space at the start of a line, a space or tab at the end of one -- and each is its own step for Undo
 - **A clicked picture is removed only by a deliberate `Delete`, `Backspace` or Cut.** Typing, Space, Tab, paste and bold/italic do nothing to it; `Enter` adds a line after it
@@ -92,13 +93,17 @@ TypoZen opens Markdown of any size in Live Preview.
 - **Justified** (View) — **off by default, including for books.** Every test book asks for it — _Xeelee_ on 96 rules, _Matter_ on 7 — and those declarations are rewritten to read this switch rather than dropped, so they keep their selectors and the publisher's _centred_ and _right-aligned_ rules are untouched
 - **Hyphenation follows justification**, because on a screen they are one decision. A browser justifies by stretching word spaces and nothing else, so justified-without-hyphens is what opens rivers of white down a narrow column; ragged-right-with-hyphens breaks words to close a gap that isn't there. Limits are `6 3 3` — six characters in the word, three either side of the break — against Chromium's default `5 2 2`, which will leave `a-` hanging at a column edge. `hyphens: auto` is **inert without a language**, so a book's own `<html lang>` is carried onto `#editor` and cleared when the book closes; hyphenating French by English rules is worse than not hyphenating, so a book that declares nothing inherits the page rather than being guessed at
 - **Word Wrap** (View) — applies in **Source** and **scroll Preview** only. On **Pages**, **Reader**, or an **epub**, the menu item is **disabled** (no fake tick); the stored preference returns when wrap can apply again
-- Sidebar (`Ctrl+\`): live outline (headings, or a book's own TOC) and the Search pane
+- Sidebar (`Alt+\`): live outline (headings, or a book's own TOC) and the Search pane
 - Zoom: `Ctrl++` / `Ctrl+-` / `Ctrl+0` or Ctrl+scroll
 - **Notepad-style chrome** — document tabs in the **title bar** with min/max/close; File/Edit/View and format icons on the command row below
 - **ZenMode** (View → ZenMode (autohide UI)) — hides everything but the page: the command row, the tabs, the window buttons and the status bar. Pointer to the **top** (or bare Alt) brings it all back, window buttons and dragging included; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back
 - The menu is **always discoverable** — there is no hide-the-menu toggle. When auto-hide is off it stays put; when on, reach the top of the window
-- **Left-edge sidebar hover** (View → Side Panel Auto-hide) — **off by default**, and separate from chrome auto-hide: wanting a bare reading window is not the same as wanting the outline to follow the mouse. Switched on, and with the sidebar unpinned (closed by the toggle), moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it (stay band covers the full bar so Match case / Whole word stay usable). Opening with the toolbar, `Ctrl+\`, or Alt+S **pins** it until you close it again
+- **Left-edge sidebar hover** (View → Side Panel Auto-hide) — **off by default**, and separate from chrome auto-hide: wanting a bare reading window is not the same as wanting the outline to follow the mouse. Switched on, and with the sidebar unpinned (closed by the toggle), moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it (stay band covers the full bar so Match case / Whole word stay usable). Opening with the toolbar, `Alt+\`, or Alt+S **pins** it until you close it again
 - **Alt+F / E / V / T / H** open the matching top-level menu from the keyboard (including while the editor has focus); **Alt+S** is Search, not a menu letter
+- **Enter keeps your indentation in Source.** A textarea drops the caret to column zero, so every indented structure — a fence, a YAML block, a nested list — had to be re-indented by hand on every line. A list carries its marker too (`3.` becomes `4.`), and Enter on an empty bullet ends the list and removes the stray marker. Brackets and quotes are deliberately left alone: auto-closing them turns hostile the moment it guesses wrong, and prose is full of apostrophes
+- **Headings are separated by space, not rules.** One hairline under `h1` only, mixed from the theme's own text colour rather than `--border` (which draws the sidebar edge and the scrollbar thumb — chrome furniture, and this lives inside the document). `h2` has none: solid-under-h1 plus dashed-under-h2 is the GitHub-markdown idiom, not a book one. Headings sit 1.25em from what precedes them and 0.3em from their own text, so a section reads as a section. No rule at all in Pages — `break-after: avoid` routinely puts a heading at the top of a column, which made the rule the second thing on the page and, across a two-column spread, two lines at different heights
+- **Fenced code is syntax highlighted** — `json`, `xml`/`xaml`, and a C-family lexer covering `cs`, `js`, `ts`, Java, Go, Rust and similar. A fence with no language, or one that is not recognised, is left plain rather than guessed at. Painted with the **CSS Custom Highlight API**, not by wrapping tokens in elements. That is not an implementation detail: a `<span>` inside a `.block` round-trips into `data-raw`, and Markdown's own DOM repair splits such spans into separate lines — which corrupted a real file when a whole-document code mode was attempted (see `docs/developer-editor-analysis.md`). Ranges are not DOM, so nothing can serialise, repair or split them. The trade is the API's property ceiling: colour only, no bold keywords or italic comments
+- Formatting controls grey themselves out whenever the document cannot take an edit — Reader mode, and every epub. They were live-looking and inert there; Word Wrap had greyed itself and said why for a long time, and the nine controls beside it had not. Greyed rather than hidden, so switching modes never shuffles buttons under the pointer
 
 ### Lists
 Bullet, ordered and task lists, with real nesting.
@@ -107,9 +112,6 @@ Bullet, ordered and task lists, with real nesting.
 - Inside a table, `Tab` moves between cells instead and grows the table at the end
 - **Backspace at column 0** walks a ladder: outdent one level → strip the marker (including ordered `1.` and task `- [ ]`) → merge with the previous block
 - `Enter` continues the list at the same indent and kind; ordered numbering follows the previous item _at that level_
-- **Headings are separated by space, not rules.** One hairline under `h1` only, mixed from the theme's own text colour rather than `--border` (which draws the sidebar edge and the scrollbar thumb — chrome furniture, and this lives inside the document). `h2` has none: solid-under-h1 plus dashed-under-h2 is the GitHub-markdown idiom, not a book one. Headings sit 1.25em from what precedes them and 0.3em from their own text, so a section reads as a section. No rule at all in Pages — `break-after: avoid` routinely puts a heading at the top of a column, which made the rule the second thing on the page and, across a two-column spread, two lines at different heights
-- **Fenced code is syntax highlighted** — `json`, `xml`/`xaml`, and a C-family lexer covering `cs`, `js`, `ts`, Java, Go, Rust and similar. A fence with no language, or one that is not recognised, is left plain rather than guessed at. Painted with the **CSS Custom Highlight API**, not by wrapping tokens in elements. That is not an implementation detail: a `<span>` inside a `.block` round-trips into `data-raw`, and Markdown's own DOM repair splits such spans into separate lines — which corrupted a real file when a whole-document code mode was attempted (see `docs/developer-editor-analysis.md`). Ranges are not DOM, so nothing can serialise, repair or split them. The trade is the API's property ceiling: colour only, no bold keywords or italic comments
-- Formatting controls grey themselves out whenever the document cannot take an edit — Reader mode, and every epub. They were live-looking and inert there; Word Wrap had greyed itself and said why for a long time, and the nine controls beside it had not. Greyed rather than hidden, so switching modes never shuffles buttons under the pointer
 - Formatting and toolbar list toggles preserve indent; un-listing clears it to level 0
 - Indentation is a property of the raw Markdown (leading spaces), rendered with `margin-left` rather than nested `<ul>` DOM — so Source round-trips exactly
 
@@ -122,7 +124,7 @@ Bullet, ordered and task lists, with real nesting.
 - Chromium's own spell checker is switched off in both views, so there is one dictionary and one look.
 - **Checked word by word, each word once.** The checker is slow over long text (about 4–5 ms a character), so it is sent each new word rather than whole paragraphs: a long paragraph underlines in a fraction of the time, and a word it has seen before costs nothing. A word is judged on its own, without its sentence.
 
-Preview uses **WPF’s built-in dictionaries** — English, French, German and Spanish, the same engine a WPF TextBox uses — in your Windows display language. Other languages will not underline until a dictionary for them is available.
+The checker uses **WPF’s built-in dictionaries** — English, French, German and Spanish, the same engine a WPF TextBox uses — in your Windows display language. Other languages will not underline until a dictionary for them is available.
 
 *Not to be confused with the bundled dictionary:* `dictionary.tsv` is WordNet, used for **Look up** (definitions and synonyms) below. It is not a spell list — it does not know `teh` from `the`, and using it as one would underline every inflection.
 
@@ -151,7 +153,6 @@ Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only
 - Chapters start a new page, images and internal links work, and the reading position is remembered per book across sessions.
 - **Where you are is the chapter, not a page of the whole book.** The foot shows the chapter ("Chapter 4 of 48") and the page inside it ("Page 2 of 23"). That count is the pages of this chapter, taken from the layout, and it is exact: a chapter is laid out whole and starts on a new page. There is no whole-book total and no Go to page. The scrubber is how far through the text you are, by words, with a mark at each chapter and, in an omnibus, a taller mark where each novel starts. The status percentage is that same position. Click the chapter name in the status bar to jump to its start.
 - A book is never dirty, never saved over, and Save As refuses any path ending `.epub`.
-- **Smart Pronunciation:** TypoZen includes `compromise.js`, a lightweight offline Part-Of-Speech tagger, to resolve grammatical homographs (like the verb "lives" vs the noun "lives") before they reach the text-to-speech engine. This ensures context-aware, accurate reading even on older local TTS models.
 
 ### Reading PDFs
 A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing downloaded). Its text is never edited; annotations and form entries can be added and saved (below).
@@ -226,10 +227,6 @@ Three ways to set one, because the single place marker this replaced went unused
 | **Marks pane** | **Mark this paragraph**, which becomes **Remove this mark** |
 | **Keyboard** | `Ctrl+Shift+M` toggles, `Ctrl+Shift+P` opens the pane |
 
-- **Enter keeps your indentation in Source.** A textarea drops the caret to column zero, so every indented structure — a fence, a YAML block, a nested list — had to be re-indented by hand on every line. A list carries its marker too (`3.` becomes `4.`), and Enter on an empty bullet ends the list and removes the stray marker. Brackets and quotes are deliberately left alone: auto-closing them turns hostile the moment it guesses wrong, and prose is full of apostrophes
-- **Look up and Find in document work in Source too.** They did not, and nobody had decided that: a textarea selection is not a DOM Selection, so the popover check for "is this inside the editor" failed and it never appeared. **Highlight stays out of Source** — it anchors to a block and Source has none, so it is hidden rather than shown-and-inert
-- **Highlighting a selection opens the Marks pane on it.** A highlight is a faint wash over text you are already looking at, so pressing the button gave almost no evidence it had worked — and the list it joined was behind a collapsed sidebar and an unselected tab. Same move _Find in document_ makes, through the same command the menu and `Ctrl+Shift+P` use
-
 - **Ordered by position, never by when they were made.** You read forwards; a list in creation order has to be translated every time you look at it. The mark you are nearest is highlighted
 - **Named from their own text**, so a new one is legible without being typed. Double-click to rename; empty the name to get the text back
 - **Ticks on the scrubber** show every mark across the whole book — five marks over 604 pages is a shape you read at a glance
@@ -245,6 +242,7 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 - **Named by the words it quotes.** Double-click the row to write a **note** — for a highlight that edits the note, not the quotation, since renaming it would be rewriting the book
 - Highlighting the same range twice removes it, the same toggle the gutter and the button use
 - Stored beside bookmarks, with the same fingerprint anchor, so a highlight follows its sentence when the document is edited above it
+- **Highlighting a selection opens the Marks pane on it.** A highlight is a faint wash over text you are already looking at, so pressing the button gave almost no evidence it had worked — and the list it joined was behind a collapsed sidebar and an unselected tab. Same move _Find in document_ makes, through the same command the menu and `Ctrl+Shift+P` use
 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your _reading position_, which is automatic, written atomically as you read, and unaffected by any of this.
 
@@ -278,6 +276,7 @@ TSV first, because that is what a WordNet or Wiktionary export converts to in on
 - **Hear the word** — the speaker beside the word in the popover says it aloud, in the voice chosen for Read aloud, whichever dictionary answered. It says the word as selected (`ran`), not the entry it was answered from (`run`)
 - **"ran → run"** — when there is no entry for the selected word and the answer is for a shorter or base form, the title says so, so a nearby word's meaning is not read as this one's. Synonyms always belong to the word that was defined
 - **Pronunciations** show under the word when the dictionary has them: a third column in `dictionary.tsv` (word, tab, senses, tab, pronunciation). The bundled WordNet has none, so this appears only with a dictionary of your own that includes them
+- **Look up and Find in document work in Source too.** They did not, and nobody had decided that: a textarea selection is not a DOM Selection, so the popover check for "is this inside the editor" failed and it never appeared. **Highlight stays out of Source** — it anchors to a block and Source has none, so it is hidden rather than shown-and-inert
 
 ## Reading aloud
 **Read aloud** is the **A)))** button at the right of the toolbar, and **Read aloud** in the selection popover. With text selected it reads the selection. With nothing selected it starts at the **text cursor** — from the start of the word it is in — when the cursor is on the page you are looking at, and reads on from there: to the end of the page in a book in Pages, to the end of the document otherwise (in Source mode, the raw text). With no cursor on screen — a book just opened, or a cursor left on a page since turned away from — it starts at the top of what is on screen, or of the document. While it reads, the popover's control becomes **Stop**. The toolbar button shows a stop square on the highlight. **Stop** ends the reading. Both return to Read aloud by themselves when the speech ends.
@@ -294,7 +293,11 @@ When the reading is not simply playing, a **caption** on top of the bar says wha
 
 **File → Read Aloud → Stop at end of chapter** finishes the chapter and stops. In a book, that is the chapter named in the status bar. In a text or Markdown file, it is the section under the current heading, up to the next heading. Where the document has no such chapter, reading continues to the end. The tick is remembered. Set it before Read aloud, or while a reading is underway.
 
-**The voices are Windows' own**, running on your machine. **File → Read Aloud → Windows Installed Voices** lists every voice installed in Windows — both kinds Windows has, the classic SAPI 5 voices and the newer Windows.Media ones — and **Voice Sampler** plays a sample in each. **File → Read Aloud → Speed** sets the pace, from ×0.5 to ×2 in steps of 0.1, for every voice; the choices are remembered. TypoZen ships no voices and fetches none.
+**Narration Monitor.** **File → Read Aloud → Narration Monitor**, also in the reading bar's voice menu while a reading is underway, opens a window beside the reading that shows, as each piece starts to play, who is speaking and in which voice, the speed (×1, ×1.2), the exact text the narrator was given, its instruction and strength, whether it was rendered just now or came from saved audio — and the settings behind every piece. Each Read Aloud is a run under its own header — the time, the narrator, the voice, the speed, the instruction and whether Emotion cues were on — with its pieces newest first, so one run never blurs into the next. **Copy all** copies the lot, **Clear** empties it, and the label at the foot shows `narration.log` in File Explorer (that file records when pieces were asked for and played, never their text). It shows the book's text on screen only; the monitor itself writes nothing.
+
+With a Windows, online or Kokoro voice the monitor shows less, because those voices take no instruction, cues or cast and read every line in the one voice: each paragraph's voice and speed, and the exact text the voice was given. Before those voices speak, TypoZen respells a few words so they are said right: "lives" as a verb becomes "livz" and "read" in the past tense "red" (the compromise word tagger decides which), and some Dune names are spelled out ("Harkonnen" becomes "Har-ko-nen"). Each word changed is listed under the text, as `Changed: lives → livz`. The narrators get the text as written. These voices keep no narration log.
+
+**The voices are Windows' own**, running on your machine. **File → Read Aloud → Windows Installed Voices** lists every voice installed in Windows — both kinds Windows has, the classic SAPI 5 voices and the newer Windows.Media ones — and **Voice Sampler** plays a sample in each. **File → Read Aloud → Speed** sets the pace, from ×0.5 to ×2 in steps of 0.1, for every voice; the choices are remembered. TypoZen itself ships no voices; any beyond Windows' own come from an extension you choose to install.
 
 The list is **grouped by what each voice actually is**, read from the voice's own description rather than its name: **Natural** ones running on this computer, **Classic** older ones, and **Online** ones — which are kept in a submenu of their own and labelled, because unlike everything else here they are spoken by a web service, and what TypoZen reads aloud is sent to it. On a machine with only the voices Windows ships, there is nothing to group and the list appears plain.
 
@@ -302,7 +305,7 @@ The list is **grouped by what each voice actually is**, read from the voice's ow
 - **Long passages start at once.** SAPI 5 voices speak straight to the audio device from the first audio they produce; they used to be rendered whole before a word was heard, which for a slow voice meant a 17-second wait on a long selection. Windows.Media voices are rendered first — they are fast — into a temporary file in `%TEMP%` that is replaced by the next one
 - **Nothing is left hanging.** A voice that fails, or audio the player cannot open, ends the play and puts the controls back to Read aloud, rather than leaving them on Stop with nothing playing. Each play's steps — voice, length of text, time to first audio, end or failure — go to `debug.log` in the data folder, except in Privacy Mode; the text itself is never logged
 
-**Neural voices, if you install them.** **File → Extensions** offers Kokoro, a voice model that runs on your graphics card and reads far more naturally than the Windows voices. It is a 186 MB download — the model, the runtime and fourteen voices — and once it is there, everything happens on your computer: the engine is loaded from the data folder, not a CDN, and the model is read from disk. Measured on a WebGPU card it generates about eleven seconds of speech per second of work, so it keeps well ahead of itself; without WebGPU it is slower than speech and TypoZen says so and stays with the Windows voices. The **Kokoro Voices** menu exists only while the extension is installed. The two narrators are separate: [the Qwen narrator](#the-qwen-narrator) and [the Breeze narrator](#the-breeze-narrator); [Characters, voices and directing a line](#characters-voices-and-directing-a-line) covers both.
+**Neural voices, if you install them.** **File → Extensions** offers Kokoro, a voice model that runs on your graphics card and reads far more naturally than the Windows voices. It is a 186 MB download (348 MB at full precision) — the model, the runtime and 28 American and British voices — and once it is there, everything happens on your computer: the engine is loaded from the data folder, not a CDN, and the model is read from disk. Measured on a WebGPU card it generates about eleven seconds of speech per second of work, so it keeps well ahead of itself; without WebGPU it is slower than speech and TypoZen says so and stays with the Windows voices. The **Kokoro Voices** menu exists only while the extension is installed. The two narrators are separate: [the Qwen narrator](#the-qwen-narrator) and [the Breeze narrator](#the-breeze-narrator); [Characters, voices and directing a line](#characters-voices-and-directing-a-line) covers both.
 
 ## Files & Export
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
@@ -310,8 +313,8 @@ The list is **grouped by what each voice actually is**, read from the voice's ow
 - **Reload when the file changes on disk** — engine documents only (not books or PDF/images). A stamp of write-time, size and a cheap fingerprint is taken on load and after Save. Coming back to the window, switching to the tab, a watcher on the file's folder, or Save / Autosave, compares that stamp. If the tab is **clean**, it reloads quietly. If it is **dirty**, a prompt offers Reload (discard edits), Keep editing (the next Save overwrites disk), or Save As. Autosave will not overwrite an external edit: it shows the same prompt instead. OneDrive touching mtime without changing bytes is ignored; TypoZen's own atomic save is ignored for two seconds so the temp/`Replace` dance does not look like someone else's write. Untitled buffers have no path and are not watched.
 - **Standalone HTML export** — self-contained, with the active theme's styles embedded
 - **Select All copies the whole document**, not the part of it currently laid out. On a long file only a window of paragraphs exists in the page at a time, and copying what was on screen put one per cent of a 205,842-character document on the clipboard with nothing to say so
-- Print / Export PDF (`Ctrl+P`) — Chromium print UI; a long document or book prints whole, from a complete copy built for the print (see [Reading PDFs, web, images, and media](#reading-pdfs))
-- CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path` (Phase 6 — done)
+- Print / Export PDF (`Ctrl+P`) — Chromium print UI; a long document or book prints whole, from a complete copy built for the print (see [Reading web, images, and media](#reading-web-images-and-media))
+- CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path`
 
 ### Tabs
 Full multi-document editing, with the tab strip living in the title bar.
@@ -382,9 +385,9 @@ preferred on load once it exists. An update replaces the shipped file and cannot
 Also restored: window size and position, theme, margins, mode, line and paragraph spacing, justification, F7/F8/F9, zoom, scrubber/status-bar visibility, chrome auto-hide, side-panel auto-hide, open tab paths **and each tab's column layout** (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
 
 ### Network behaviour
-**TypoZen itself requests nothing over the network**, with one exception you control: installing an extension (**File → Extensions**) downloads it while you watch, and nothing is fetched before or after. Fonts are bundled, the editor page is served from disk through a virtual host, and the page issues no outbound requests — an installed extension is served the same way, from the data folder through a virtual host, so the speech engine and its model are read from disk rather than a CDN. A document that references a remote image (`![](https://…)`) will still load it — that is the document's request, not the app's.
+**TypoZen itself requests nothing over the network** unless you turn on a feature that needs it: installing an extension (**File → Extensions**) downloads it while you watch, and nothing is fetched before or after; **Microsoft Online Voices**, once switched on in Extensions, send the text being read to Microsoft; and **Smart Cast**, given your own Google Gemini key, sends the book's dialogue to Google. Privacy Mode switches the last two off. Fonts are bundled, the editor page is served from disk through a virtual host, and the page issues no outbound requests — an installed extension is served the same way, from the data folder through a virtual host, so the speech engine and its model are read from disk rather than a CDN. A document that references a remote image (`![](https://…)`) will still load it — that is the document's request, not the app's.
 
-**Read aloud uses the voices installed in Windows**, which run locally. A voice added to Windows by third-party software may itself go online — some adapters register web-based voices that send the text being read to a server. That is the voice's request, not TypoZen's, and choosing a local voice avoids it.
+**Read aloud uses the voices installed in Windows**, which run locally, unless you choose a Microsoft Online voice. A voice added to Windows by third-party software may itself go online — some adapters register web-based voices that send the text being read to a server. That is the voice's request, not TypoZen's, and choosing a local voice avoids it.
 
 **The WebView2 runtime is a different matter, and it is not fully silent.** The environment is created with Chromium's background services disabled:
 
@@ -441,7 +444,7 @@ All user data for both the installer and portable builds lives in a single folde
 | Turn the page while search has matches | `Left` / `Right` (paginated); also `PageUp` / `PageDown`. In Reader or a book, `Space` / `Shift+Space` too |
 | Turn the page (Reader / book, no search hits) | Arrows, or `Space` / `Shift+Space` |
 | Find & Replace | `Ctrl+H` |
-| Bookmark this page (toggle) | `Ctrl+Shift+M` |
+| Bookmark this paragraph (toggle) | `Ctrl+Shift+M` |
 | Show bookmarks | `Ctrl+Shift+P` |
 | Return from jump (search/outline/goto) | `Ctrl+Shift+J` |
 | Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
@@ -461,7 +464,7 @@ Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboa
 ---
 
 ## Extensions
-**File → Extensions** is the one place TypoZen uses the network, and only while an install is running. Nothing is downloaded unless you ask for it, nothing is contacted at launch, and an extension you have not installed leaves no menu behind.
+**File → Extensions** downloads only while an install you asked for is running. Nothing is contacted at launch, and an extension you have not installed leaves no menu behind. It is also where **Microsoft Online Voices** are switched on, the only voices spoken by a web service: what they read is sent to Microsoft. See [Network behaviour](#network-behaviour).
 
 | | Download | Where it goes |
 |---|---|---|
@@ -480,7 +483,7 @@ Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboa
 - **The speech engine is rewritten as it installs.** `kokoro-js` has two addresses baked in — a model host and one hardcoded URL for the voice files — that no setting covers. Both are rewritten to point at the local folder, and each must appear exactly once: if a future version of the library moves them, the install stops rather than leaving an engine that quietly calls out
 - **All are optional in the real sense.** The built-in dictionary and the Windows voices are unaffected, and **File → Dictionary** switches between dictionaries once there is more than one
 
-**More voices.** Any voice installed into Windows appears in Configure Voice with no change to TypoZen — commercial SAPI 5 voice packs, for example. Windows' Narrator "natural" voices are a special case: Windows makes them available to Narrator only, not to other apps. Third-party adapters exist that register them as ordinary SAPI 5 voices, and TypoZen lists whatever such an adapter registers; they are not part of TypoZen, depend on details of Windows that can change with an update, and some also offer online voices that send the text being read to a web service.
+**More voices.** Any voice installed into Windows appears in **Windows Installed Voices** and **Voice Sampler** with no change to TypoZen — commercial SAPI 5 voice packs, for example. Windows' Narrator "natural" voices are a special case: Windows makes them available to Narrator only, not to other apps. Third-party adapters exist that register them as ordinary SAPI 5 voices, and TypoZen lists whatever such an adapter registers; they are not part of TypoZen, depend on details of Windows that can change with an update, and some also offer online voices that send the text being read to a web service.
 
 ## Narration with Qwen and Breeze
 
@@ -521,10 +524,6 @@ Breeze narration is a second narrator, beside Qwen rather than instead of it. On
 **Sounds in the text.** Breeze performs **Performative Audio Cues**: a sound written in round brackets, such as `(giggles)` or `(cough)`, where it should happen. They are for Breeze; with Qwen they are simply part of the text it is given. The instructions and moods in [Characters, voices and directing a line](#characters-voices-and-directing-a-line) work with Breeze too.
 
 **How strongly it acts.** Every instruction Breeze is given — an emotion cue, a bracket of your own words, a mood tag — is followed with an **Emotion strength**, set in Narrator Manager under **Emotion cues**: 1 barely, 4 by default (Breeze's own recommendation), up to 10. A number at the end of a bracket sets it for the stretch that bracket directs: `"[shouts loudly:9] Get out!"`, `[sad:9]`. A character in **Cast for this book** has a strength of their own for all their lines, 4 unless you change it on their row; the Emotion strength setting then applies to the narration. The number is never spoken, and the Qwen narrator, which has no strength, ignores it. A line with no instruction is not affected; a line with one takes about half as long again to prepare.
-
-**Narration Monitor.** **File → Read Aloud → Narration Monitor**, also in the reading bar's voice menu while a reading is underway, opens a window beside the reading that shows, as each piece starts to play, who is speaking and in which voice, the speed (×1, ×1.2), the exact text the narrator was given, its instruction and strength, whether it was rendered just now or came from saved audio — and the settings behind every piece. Each Read Aloud is a run under its own header — the time, the narrator, the voice, the speed, the instruction and whether Emotion cues were on — with its pieces newest first, so one run never blurs into the next. **Copy all** copies the lot, **Clear** empties it, and the label at the foot shows `narration.log` in File Explorer (that file records when pieces were asked for and played, never their text). It works with either narrator and shows the book's text on screen only; the monitor itself writes nothing.
-
-With a Windows, online or Kokoro voice the monitor shows less, because those voices take no instruction, cues or cast and read every line in the one voice: each paragraph's voice and speed, and the exact text the voice was given. Before those voices speak, TypoZen respells a few words so they are said right: "lives" as a verb becomes "livz" and "read" in the past tense "red" (the compromise word tagger decides which), and some Dune names are spelled out ("Harkonnen" becomes "Har-ko-nen"). Each word changed is listed under the text, as `Changed: lives → livz`. The narrators get the text as written. These voices keep no narration log.
 
 **Licence.** Breeze TTS 2's model is licensed by its makers for research and non-commercial use only, and that includes the audio it makes on your PC: listening to your own books is fine; selling or publishing the audio is not, without their permission. Install shows this before anything is downloaded.
 
@@ -708,7 +707,7 @@ TypoZen is a hybrid native-web application designed for speed, local-first priva
 - **Extensions & AI:**
   - **Kokoro-JS:** Provides high-quality on-device neural Text-to-Speech (TTS) using ONNX models without internet connectivity.
   - **Whisper:** Optional speech-to-text for Clone voice, via whisper.cpp on the processor. Not in the installer.
-  - **Qwen Narrator:** Uses local LLM integration for contextual, character-based story narration (requires NVIDIA GPU).
+  - **Qwen and Breeze narrators:** local speech models (Qwen3-TTS, 1.7 billion parameters; Breeze TTS 2, 3 billion) run by a Python sidecar on an NVIDIA graphics card, for character-based narration.
   - **Compromise.js:** A lightweight, offline Part-Of-Speech tagger used to resolve grammatical homographs for the speech engine.
 
 ### Supported Formats & Behaviors
@@ -745,7 +744,7 @@ of them permit commercial use and redistribution:
 | Qwen (Optional Extension) | Relies on its own license and terms | Fetched on install |
 | Breeze TTS 2 (Optional Extension) | Code Apache 2.0; model, and the audio it makes, research and non-commercial use only | Fetched on install; summary in `extensions\BreezeTTS\LICENSE.txt` |
 
-**Privacy:** [PRIVACY.md](PRIVACY.md) — TypoZen sends nothing anywhere; everything it
+**Privacy:** [PRIVACY.md](PRIVACY.md) — TypoZen sends nothing anywhere unless you turn on an online feature ([Network behaviour](#network-behaviour)); everything it
 remembers is in `%LOCALAPPDATA%\TypoZen_Cache_Portable` and can be cleared from **File → Privacy**.
 
 The OFL allows these faces to be bundled, redistributed and sold with software, on
