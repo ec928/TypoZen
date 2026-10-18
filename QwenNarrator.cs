@@ -163,11 +163,34 @@ namespace TypoZen
 
         private static string CastPath(string cacheDir, string book)
         {
+            string castDir = Path.Combine(RootDir(cacheDir), "cast");
+            string direct;
             using (var sha = SHA1.Create())
             {
                 byte[] h = sha.ComputeHash(Encoding.UTF8.GetBytes((book ?? "").ToLowerInvariant()));
-                return Path.Combine(RootDir(cacheDir), "cast", BitConverter.ToString(h).Replace("-", "").Substring(0, 16) + ".json");
+                direct = Path.Combine(castDir, BitConverter.ToString(h).Replace("-", "").Substring(0, 16) + ".json");
             }
+            try
+            {
+                lock (SessionCasts)
+                    if (SessionCasts.ContainsKey(direct)) return direct;
+                if (File.Exists(direct)) return direct;
+
+                string fileName = Path.GetFileName(book ?? "");
+                if (!string.IsNullOrEmpty(fileName) && !string.Equals(fileName, "README.md", StringComparison.OrdinalIgnoreCase) && Directory.Exists(castDir))
+                {
+                    foreach (string f in Directory.GetFiles(castDir, "*.json"))
+                    {
+                        var d = ReadJson(f);
+                        object bObj;
+                        string savedBook = d.TryGetValue("book", out bObj) ? (bObj as string ?? "") : "";
+                        if (!string.IsNullOrEmpty(savedBook) && string.Equals(Path.GetFileName(savedBook), fileName, StringComparison.OrdinalIgnoreCase))
+                            return f;
+                    }
+                }
+            }
+            catch { }
+            return direct;
         }
 
         internal static Dictionary<string, object> ReadJson(string path)

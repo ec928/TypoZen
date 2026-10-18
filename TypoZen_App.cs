@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.18.13";
+        internal const string AppVersion = "0.18.14";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -3998,11 +3998,26 @@ namespace TypoZen
             }
         }
 
+        private static bool SameBookFileName(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+            try
+            {
+                string fa = Path.GetFileName(a), fb = Path.GetFileName(b);
+                if (string.IsNullOrEmpty(fa) || string.Equals(fa, "README.md", StringComparison.OrdinalIgnoreCase)) return false;
+                return string.Equals(fa, fb, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
         private int RememberedBookPosition(string bookPath)
         {
             LoadBookPositions();
+            if (string.IsNullOrEmpty(bookPath)) return -1;
             int at;
-            if (!string.IsNullOrEmpty(bookPath) && _bookPositions.TryGetValue(bookPath, out at)) return at;
+            if (_bookPositions.TryGetValue(bookPath, out at)) return at;
+            foreach (string k in _bookPositionsOrder.Newest(_bookPositions.Keys, MaxRememberedBooks))
+                if (SameBookFileName(k, bookPath) && _bookPositions.TryGetValue(k, out at)) return at;
             return -1;
         }
 
@@ -4520,9 +4535,13 @@ namespace TypoZen
         private string RememberedBookmarks(string docPath)
         {
             LoadBookmarks();
+            if (string.IsNullOrEmpty(docPath)) return "";
             string payload;
-            if (!string.IsNullOrEmpty(docPath) && _bookmarks.TryGetValue(docPath, out payload))
+            if (_bookmarks.TryGetValue(docPath, out payload))
                 return payload ?? "";
+            foreach (string k in _bookmarksOrder.Newest(_bookmarks.Keys, MaxBookmarkDocs))
+                if (SameBookFileName(k, docPath) && _bookmarks.TryGetValue(k, out payload))
+                    return payload ?? "";
             return "";
         }
 
@@ -4538,8 +4557,19 @@ namespace TypoZen
             payload = payload.Replace("\r", "").Replace("\n", "");
             string had;
             if (_bookmarks.TryGetValue(docPath, out had) && had == payload) return;
-            if (payload.Length == 0) _bookmarks.Remove(docPath);
-            else _bookmarks[docPath] = payload;
+            var sameKeys = new List<string>();
+            foreach (string k in _bookmarks.Keys)
+                if (SameBookFileName(k, docPath)) sameKeys.Add(k);
+            if (payload.Length == 0)
+            {
+                _bookmarks.Remove(docPath);
+                foreach (string k in sameKeys) _bookmarks.Remove(k);
+            }
+            else
+            {
+                _bookmarks[docPath] = payload;
+                foreach (string k in sameKeys) _bookmarks[k] = payload;
+            }
             SaveBookmarks(payload.Length == 0 ? null : docPath);
         }
 
@@ -4563,6 +4593,10 @@ namespace TypoZen
             int had;
             if (_bookPositions.TryGetValue(bookPath, out had) && had == block) return;
             _bookPositions[bookPath] = block;
+            var sameKeys = new List<string>();
+            foreach (string k in _bookPositions.Keys)
+                if (SameBookFileName(k, bookPath)) sameKeys.Add(k);
+            foreach (string k in sameKeys) _bookPositions[k] = block;
             SaveBookPositions(bookPath);
         }
 
