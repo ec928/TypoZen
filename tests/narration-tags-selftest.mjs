@@ -53,6 +53,7 @@ const api = new Function('document', 'window', 'box', [
     'let _bookUnits = null;',
     'const NARRATION_BATCH = 8;',
     'function narrLog() {}',
+    'function readBarPaint() {}',
     src.slice(start, end + 1),
     'return {',
     // The live path: every paragraph is read by directedPieces (the two rules). paragraphPieces is

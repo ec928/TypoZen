@@ -1700,6 +1700,34 @@
                 if (sel && sel.isCollapsed) refreshLastGoodDocRaws();
             } catch (err) {}
         }, true);
+        // Home / End stay in the paragraph. When a visual line ends at an image (it is
+        // contenteditable=false), Chromium's End moves the caret into the NEXT block, and
+        // what you type next lands in a new paragraph there (link-emphasis-browser caught it
+        // once a broken image drew full width). Same move, done here; if it leaves the
+        // block, one character back is the paragraph's own end (or start, for Home). Putting
+        // the old range back instead lost Chromium's line-end affinity, and the next letter
+        // then ate the space after the image.
+        editor.addEventListener('keydown', function (e) {
+            if (e.key !== 'Home' && e.key !== 'End') return;
+            if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.defaultPrevented) return;
+            try {
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount || !sel.isCollapsed || typeof sel.modify !== 'function') return;
+                const from = sel.getRangeAt(0).cloneRange();
+                const blockOf = function (n) {
+                    const el = n && (n.nodeType === 3 ? n.parentElement : n);
+                    return el && el.closest ? el.closest('#editor .block') : null;
+                };
+                const block = blockOf(from.startContainer);
+                if (!block) return;
+                e.preventDefault();
+                sel.modify('move', e.key === 'End' ? 'forward' : 'backward', 'lineboundary');
+                if (blockOf(sel.anchorNode) !== block) {
+                    sel.modify('move', e.key === 'End' ? 'backward' : 'forward', 'character');
+                    if (blockOf(sel.anchorNode) !== block) { sel.removeAllRanges(); sel.addRange(from); }
+                }
+            } catch (err) {}
+        }, true);
         // --- Links: add and edit ----------------------------------------------------
         let _pendingLink = null;
 

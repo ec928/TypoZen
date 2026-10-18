@@ -97,6 +97,11 @@ console.log('\n=== and after eight paragraphs are inserted above it ===');
 writeFixture(8);
 app = await launchApp({ file: 'tests/_bookmark_fixture.md', settleMs: 6000 });
 try {
+    // The page shows marks at their stored index until the settle watcher re-anchors them,
+    // a few hundred ms after they arrive (02-layout.js, armMarkSettleWatch). The launch
+    // settle can return inside that gap; reading then measured the race, not the anchor.
+    for (let i = 0; i < 40 && await app.eval(() => !!_markSettleTimer || !_marks.length); i++)
+        await new Promise(r => setTimeout(r, 100));
     const moved = await app.eval(() => ({
         marks: _marks.map(m => ({ block: m.block, name: m.name })),
         textAtMark: (_marks[0] && _marks[0].block >= 0 &&
