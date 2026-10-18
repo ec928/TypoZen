@@ -29,7 +29,7 @@ One version number, one gate, one deploy target. In order:
 | Release | `gh release create vX.Y.Z <zip> <setup.exe> --notes-file …` | |
 
 **Do not skip the gate to save time.** It is 100 headless suites run four at a time by
-`tests/run-gate.mjs`; for 0.18.0 (2026-10-18) it took 433 s, about seven minutes.
+`tests/run-gate.mjs`; for 0.19.0 (2026-10-18) it took 294 s, about five minutes.
 
 **`bin/` is staging, not disposable.** It exists so a build can be proven before it
 reaches the run location. `obj/` is the disposable one.
@@ -142,7 +142,7 @@ must not be shipped; a zip containing it is shipping a stale artefact.
 Two tiers, and the distinction matters more than the count.
 
 **The gate** — 100 suites, headless, invisible, run by `tests/run-gate.mjs` four at a time
-(`TZ_GATE_JOBS` to change it): 433 s for 0.18.0 on 2026-10-18. With 83 suites it was about
+(`TZ_GATE_JOBS` to change it): 294 s for 0.19.0 on 2026-10-18. With 83 suites it was about
 two minutes four at a time, and 453 s one at a time (2026-10-06).
 Runs inside `Build_TypoZen.ps1` and `tests/run-tests.ps1`, which share the runner.
 Everything that can be tested this way should be.

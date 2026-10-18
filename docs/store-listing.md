@@ -39,7 +39,7 @@ Reading worth sitting down for
 Open an ePub and TypoZen transforms into a premium reader with a genuine two-page spread. It respects the publisher's original typography while smoothly scaling to your preferred font size. PDFs open with their native outlines, text search, and full annotation support. You can even fill out forms, extract images, or read scanned pages using local text recognition.
 
 Listen and research, completely offline
-Select any text to look up its definition and synonyms using the built-in, completely offline dictionary featuring over 150,000 definitions. Sit back and use Read Aloud with a floating transport bar: listen in your local Windows voices, download the optional 86 MB Kokoro offline neural voices, or install the optional Breeze and Qwen local GPU narrators for studio-grade narration, voice cloning, and multi-voice character casting across novels.
+Select any text to look up its definition and synonyms using the built-in, completely offline dictionary featuring over 150,000 definitions. Sit back and use Read Aloud with a floating transport bar: listen in your local Windows voices, download the optional 186 MB Kokoro offline neural voices, or install the optional Breeze and Qwen local GPU narrators for studio-grade narration, voice cloning, and multi-voice character casting across novels.
 
 Private by construction, not by promise
 TypoZen works offline. It has no accounts, no telemetry, no forced sync, and makes no background network requests. It connects to the internet only when you download an optional extension, read aloud in one of Microsoft's optional online voices (the text read is sent to Microsoft), or run Smart Cast with your own Google Gemini key (the book's dialogue is sent to Google). Both online features are off until you turn them on, and Privacy Mode switches them off.
@@ -52,19 +52,17 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.18.0 package (2026-10-18). The 0.17.0 text it replaces is in git history._
+_Limit 1,500 characters. For the 0.19.0 package (2026-10-18). The 0.18.0 text it replaces is in git history._
 
-- New reading bar: while reading aloud, the controls float under the text: pause, previous and next paragraph, stop, the voice and its menu, speed, stop at end of chapter, and Narration Monitor. It says what it is doing (starting, preparing, paused) and stays put through voice changes and jumps.
-- Reading speed for the Qwen and Breeze narrators, on the bar or in Narrator Manager.
-- Smart Cast (optional Google Gemini Script Director): expanded to 200 dialogue paragraphs per chapter, punctuation-tolerant quote matching, and an optional toggle to auto-script upcoming chapters in the background.
-- Narration Monitor works with every voice and shows the exact text each voice is given.
-- Changing voice mid-reading carries on from the same paragraph. Previous and Next reach paragraphs before the start, or not yet prepared.
-- Windows and Kokoro voices no longer read Markdown symbols aloud.
-- Fixed: a link and _italic_ text in the same paragraph could damage the link when the paragraph was edited.
-- Fixed: pasting in two-page Preview could overwrite the start of a long file.
-- Fixed: Delete at the end of a long file added a space.
-- Spelling: TypoZen's own names and inline code are no longer flagged, and misspellings get a squiggle without a red box.
-- A narrator starts once, however often Read Aloud is pressed while it loads.
+- One reading speed for every voice: File > Read Aloud > Speed, from ×0.5 to ×2 in steps of 0.1.
+- A voice picker for large narrator libraries: favourites and recent voices in the menu, plus All voices to search, filter by narrator or character and by gender, and hear samples. Voice menus are grouped female, male and other.
+- Narrator Manager has Favourites... on its Manage voices tab.
+- Smart Cast scripts up to 200 dialogue paragraphs a chapter, matches quotes despite punctuation differences, and can script upcoming chapters in the background (off by default). Script chapter scripts the current chapter with your existing cast.
+- Narrator Manager and the reading bar show whether the current chapter is scripted.
+- A moved or copied ePub or PDF keeps its reading position, bookmarks and cast.
+- A clearer About, with a link to the full User Guide.
+- Fixed: pressing End beside an image could move the cursor into the next paragraph.
+- Fixed: turning off Reveal Markdown on Focus now restores the formatted line; Insert Row Above on a table's header row works; Space turns the page in a book while search results are showing.
 
 ---
 
@@ -75,9 +73,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.18.0.0); every other package removed from the submission |
+| 2 | Packages | the newest MSIX (0.19.0.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.18.0 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.19.0 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |
