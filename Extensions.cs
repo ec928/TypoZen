@@ -820,8 +820,10 @@ namespace TypoZen
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 4, 0, 0)
             };
-            quality.Items.Add("Standard - 186 MB download");
-            quality.Items.Add("Full precision - 348 MB download");
+            // From the file list, as the row's own "to download" figure is: typed in by hand,
+            // these said 186 / 348 MB long after the voices went from 14 to 28.
+            quality.Items.Add("Standard - " + Human(ExtensionCatalog.Kokoro(cacheDir, false).DownloadBytes) + " download");
+            quality.Items.Add("Full precision - " + Human(ExtensionCatalog.Kokoro(cacheDir, true).DownloadBytes) + " download");
             string installedModel = ExtensionCatalog.KokoroModelName(cacheDir);
             quality.SelectedIndex = installedModel == "fp32" ? 1 : 0;
 
