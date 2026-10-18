@@ -525,6 +525,7 @@ function readBarBuild() {
         '<span class="rb-sep"></span>' +
         '<button type="button" class="rb-text rb-voice" data-a="menu" title="Voice and Read Aloud settings">' +
             '<span class="rb-voice-name"></span><span class="rb-caret">\uE70D</span></button>' +
+        '<span class="rb-script" hidden style="font-size:11px;opacity:0.75;padding:0 5px;user-select:none;white-space:nowrap;"></span>' +
         '<span class="rb-sep"></span>' +
         '<button type="button" class="rb-icon rb-small" data-a="slower" title="Slower">\uE738</button>' +
         '<span class="rb-speed" title="Reading speed"></span>' +
@@ -598,6 +599,31 @@ function readBarPaint() {
     play.title = s.paused ? 'Resume' : 'Pause';
     el.classList.toggle('rb-paused', !!s.paused);
     el.querySelector('.rb-voice-name').textContent = s.voice || 'Voice';
+    const rbScript = el.querySelector('.rb-script');
+    if (rbScript) {
+        const isNarr = /^(Breeze|Qwen):/.test(s.voice || '');
+        const hasCast = isNarr && typeof _narrCast !== 'undefined' && _narrCast && Object.keys(_narrCast).length > 0;
+        if (!hasCast) {
+            rbScript.hidden = true;
+        } else {
+            const bi = ttsBlockOf(_ttsCurrent) != null ? ttsBlockOf(_ttsCurrent)
+                : (_ttsChunks && _ttsChunks[0] ? ttsBlockOf(_ttsChunks[0]) : 0);
+            const bounds = chapterBoundsAt(bi >= 0 ? bi : 0);
+            const scripted = hasScriptInRange(bounds.start, bounds.end);
+            rbScript.hidden = false;
+            if (_bgScriptingChapter) {
+                rbScript.textContent = 'Scripting\u2026';
+                rbScript.title = 'Gemini is scripting dialogue for this chapter in the background';
+            } else if (scripted) {
+                rbScript.textContent = '\u2713 Scripted';
+                rbScript.title = 'Current chapter dialogue is scripted by Gemini';
+            } else {
+                const aliasCount = (typeof _narrCastAliases !== 'undefined' && _narrCastAliases) ? Object.keys(_narrCastAliases).length : 0;
+                rbScript.textContent = 'Cast';
+                rbScript.title = 'Book cast' + (aliasCount ? ' + ' + aliasCount + ' character aliases' : '') + ' active (this chapter uses local speaker rules)';
+            }
+        }
+    }
     const sp = Number(s.speed) || 1;
     el.querySelector('.rb-speed').textContent = '\u00d7' + (Math.round(sp * 100) / 100);
     el.querySelector('[data-a="slower"]').disabled = sp <= READ_BAR_SPEEDS[0] + 0.001;
@@ -1018,6 +1044,7 @@ let _narrCastCues = {};
 let _narrCastAliases = {};
 let _narrAutoSmartCast = false;
 let _autoScriptedRanges = {};
+let _bgScriptingChapter = false;
 // The settings the narration monitor shows beside each piece: what shapes every line.
 let _narrShown = {};
 // The narration monitor is open (cmd:narr_monitor:on): each piece reports itself as it plays.
@@ -1043,6 +1070,8 @@ window.mergeNarratorScript = function (json) {
         if (s && s.castCues && typeof s.castCues === 'object') {
             Object.assign(_narrCastCues, s.castCues);
         }
+        _bgScriptingChapter = false;
+        readBarPaint();
         narrLog('smart-cast background script merged: ' + (s && s.castScript ? Object.keys(s.castScript).length : 0) + ' entries');
     } catch (e) {}
 };
@@ -2524,6 +2553,8 @@ function scriptChapterRange(uStart, uEnd) {
     }
     _autoScriptedRanges[rangeKey] = true;
     if (!blocks.length) return false;
+    _bgScriptingChapter = true;
+    readBarPaint();
     narrLog('auto-script: requesting background Gemini script for blocks ' + uStart + '..' + uEnd + ' (' + blocks.length + ' dialogue blocks)');
     try {
         window.chrome.webview.postMessage('host_narrator_gemini_auto:' + JSON.stringify({
@@ -2535,6 +2566,7 @@ function scriptChapterRange(uStart, uEnd) {
 }
 
 function maybeAutoScriptChapterAt(bi, checkImminentNext) {
+    readBarPaint();
     if (!_narrAutoSmartCast || _narrPrivate || !_narrCast || !Object.keys(_narrCast).length || !(bi >= 0)) return false;
     const bounds = chapterBoundsAt(bi);
     let triggered = scriptChapterRange(bounds.start, bounds.end);
@@ -2551,6 +2583,25 @@ function maybeAutoScriptChapterAt(bi, checkImminentNext) {
     return triggered;
 }
 window.maybeAutoScriptChapterAt = maybeAutoScriptChapterAt;
+
+window.narrationChapterInfo = function () {
+    const src = castScanTexts();
+    let minIdx = -1, maxIdx = -1, dlgBlocks = 0;
+    for (let i = 0; i < src.texts.length; i++) {
+        const idx = src.at[i];
+        if (idx >= 0) {
+            if (minIdx < 0 || idx < minIdx) minIdx = idx;
+            if (idx + 1 > maxIdx) maxIdx = idx + 1;
+        }
+        const t = (src.texts[i] || '').trim();
+        if (/[“"‘]/.test(t)) dlgBlocks++;
+    }
+    const info = { start: minIdx >= 0 ? minIdx : 0, end: maxIdx > 0 ? maxIdx : src.texts.length, dialogueBlocks: dlgBlocks, whole: !!src.whole };
+    try {
+        window.chrome.webview.postMessage('host_narrator_chapter_info:' + JSON.stringify(info));
+    } catch (e) {}
+    return info;
+};
 
 /** A cast line's own direction: the speech tag's words, else its punctuation. */
 function quoteDirection(q) {

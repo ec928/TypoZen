@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.18.12";
+        internal const string AppVersion = "0.18.13";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -7757,6 +7757,13 @@ namespace TypoZen
                 // The page's dialogue excerpts for Gemini Script Director.
                 var cb = NarratorDialog.GeminiPayloadArrived;
                 if (cb != null) cb(msg.Substring(29));
+                return;
+            }
+            else if (msg.StartsWith("host_narrator_chapter_info:", StringComparison.Ordinal))
+            {
+                // The page's current chapter block range and dialogue count for Narrator Manager.
+                var cb = NarratorDialog.ChapterInfoArrived;
+                if (cb != null) cb(msg.Substring(27));
                 return;
             }
             else if (msg.StartsWith("host_narrator_gemini_auto:", StringComparison.Ordinal))

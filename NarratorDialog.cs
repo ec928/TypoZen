@@ -517,6 +517,8 @@ namespace TypoZen
         public static Action<string> CastScanArrived;
         /// <summary>Set while the dialog is open: the page's dialogue excerpts for Gemini (host_narrator_gemini_payload).</summary>
         public static Action<string> GeminiPayloadArrived;
+        /// <summary>Set while the dialog is open: the page's current chapter range and dialogue count (host_narrator_chapter_info).</summary>
+        public static Action<string> ChapterInfoArrived;
 
         /// <summary>Set while the dialog is open: the page's answers to Try it (host_narrator_trial).</summary>
         public static Action<string> TrialArrived;
@@ -1218,6 +1220,7 @@ namespace TypoZen
             StackPanel castPage = null;
             ProgressBar smartCastProgress = null;
             TextBlock smartCastStatus = null;
+            TextBlock chapterScriptBadge = null;
             CheckBox autoSmartCastBox = null;
             if (!string.IsNullOrEmpty(book))
             {
@@ -1285,10 +1288,21 @@ namespace TypoZen
                 {
                     Content = "Auto-script new chapters in the background with Gemini",
                     IsChecked = settings.AutoSmartCast,
-                    Margin = new Thickness(0, 0, 0, 8),
+                    VerticalAlignment = VerticalAlignment.Center,
                     ToolTip = "When on, TypoZen automatically attributes dialogue in the background when narration enters an unscripted chapter or approaches the next chapter.\r\nOff by default. Requires a Gemini API key and an existing cast for this book; off while Privacy Mode is on."
                 };
-                castPage.Children.Add(autoSmartCastBox);
+                chapterScriptBadge = new TextBlock
+                {
+                    Text = "",
+                    Opacity = 0.78,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(16, 0, 0, 0)
+                };
+                var autoRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+                DockPanel.SetDock(chapterScriptBadge, Dock.Right);
+                autoRow.Children.Add(chapterScriptBadge);
+                autoRow.Children.Add(autoSmartCastBox);
+                castPage.Children.Add(autoRow);
 
                 smartCastStatus = new TextBlock
                 {
@@ -3068,7 +3082,87 @@ namespace TypoZen
                     scriptDirty = true;
                     say("Cleared all cast characters and quotes for this book. Click Save to apply.");
                     unsaved.Visibility = Visibility.Visible;
+                    if (chapterScriptBadge != null) chapterScriptBadge.Text = "Current chapter not scripted · 0 quotes in book";
                 };
+            }
+
+            int chapStart = -1, chapEnd = -1, chapDlgBlocks = -1;
+            Action updateChapterScriptBadge = () =>
+            {
+                if (chapterScriptBadge == null) return;
+                int totalBlocksInBook = 0;
+                int blocksInChapter = 0;
+                var seenBookBlocks = new HashSet<int>();
+                var seenChapBlocks = new HashSet<int>();
+                if (cast.QuoteScript != null)
+                {
+                    foreach (var k in cast.QuoteScript.Keys)
+                    {
+                        if (string.IsNullOrEmpty(k) || k[0] != '@') continue;
+                        int colon = k.IndexOf(':');
+                        int bi;
+                        if (colon > 1 && int.TryParse(k.Substring(1, colon - 1), out bi))
+                        {
+                            seenBookBlocks.Add(bi);
+                            if (chapStart >= 0 && chapEnd > chapStart && bi >= chapStart && bi < chapEnd)
+                                seenChapBlocks.Add(bi);
+                        }
+                    }
+                }
+                totalBlocksInBook = seenBookBlocks.Count;
+                blocksInChapter = seenChapBlocks.Count;
+                int aliasesCount = cast.Aliases != null ? cast.Aliases.Count : 0;
+                string aliasNote = aliasesCount > 0 ? string.Format(" · {0} aliases active book-wide", aliasesCount) : "";
+
+                if (blocksInChapter > 0)
+                {
+                    chapterScriptBadge.Text = string.Format("\u2713 Current chapter scripted ({0} dialogue paragraphs · {1} in book{2})",
+                        blocksInChapter, totalBlocksInBook, aliasNote);
+                }
+                else if (chapDlgBlocks == 0)
+                {
+                    chapterScriptBadge.Text = string.Format("No dialogue in current chapter · {0} scripted paragraphs in book{1}",
+                        totalBlocksInBook, aliasNote);
+                }
+                else if (chapDlgBlocks > 0)
+                {
+                    chapterScriptBadge.Text = string.Format("Current chapter not scripted ({0} dialogue paragraphs) · {1} in book{2}",
+                        chapDlgBlocks, totalBlocksInBook, aliasNote);
+                }
+                else if (totalBlocksInBook > 0 || aliasesCount > 0)
+                {
+                    chapterScriptBadge.Text = string.Format("{0} scripted paragraphs in book{1}", totalBlocksInBook, aliasNote);
+                }
+                else
+                {
+                    chapterScriptBadge.Text = "No chapter script saved for this book yet";
+                }
+            };
+
+            if (chapterScriptBadge != null)
+            {
+                updateChapterScriptBadge();
+                ChapterInfoArrived = json =>
+                {
+                    win.Dispatcher.BeginInvoke((Action)(() =>
+                    {
+                        try
+                        {
+                            var ser = new JavaScriptSerializer();
+                            var d = ser.Deserialize<Dictionary<string, object>>(json);
+                            if (d != null)
+                            {
+                                object oS, oE, oD;
+                                if (d.TryGetValue("start", out oS)) chapStart = Convert.ToInt32(oS);
+                                if (d.TryGetValue("end", out oE)) chapEnd = Convert.ToInt32(oE);
+                                if (d.TryGetValue("dialogueBlocks", out oD)) chapDlgBlocks = Convert.ToInt32(oD);
+                                updateChapterScriptBadge();
+                            }
+                        }
+                        catch { }
+                    }));
+                };
+                try { if (sendToPage != null) sendToPage("cmd:narrator_chapter_info"); } catch { }
             }
 
             if (smartCast != null)
@@ -3238,6 +3332,7 @@ namespace TypoZen
                                     smartCastEnded(null);
                                     GeminiDirector.StoreAttributedQuotesIntoCast(cast, scriptRes.Quotes, chapterParas);
                                     scriptDirty = true;
+                                    updateChapterScriptBadge();
                                     say(string.Format("Chapter scripted via {0}: {1} dialogue quotes mapped to your existing cast. Click Save to apply.",
                                         scriptRes.ModelUsed ?? "Gemini", scriptRes.Quotes.Count));
                                     unsaved.Visibility = Visibility.Visible;
@@ -3305,6 +3400,7 @@ namespace TypoZen
                                     }
                                     GeminiDirector.StoreAttributedQuotesIntoCast(cast, result.Quotes, parasList);
                                     scriptDirty = true;
+                                    updateChapterScriptBadge();
 
                                     say(string.Format("AI Cast complete via {0}: {1} novel characters cast ({2} in this chapter), {3} quotes mapped. Click Save to apply.",
                                         result.ModelUsed ?? "Gemini", result.Characters.Count, speakingCount, result.Quotes.Count));
@@ -3588,6 +3684,7 @@ namespace TypoZen
                 clearCandidates();
                 CastScanArrived = null;
                 GeminiPayloadArrived = null;
+                ChapterInfoArrived = null;
                 try { if (smartCastRun != null) smartCastRun.Cancel(); } catch { }
                 TrialArrived = null;
                 _sample = sampleBox.Text;
