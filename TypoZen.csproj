@@ -109,6 +109,7 @@
     <Compile Include="NarrationMonitor.cs" />
     <Compile Include="DialogTheme.cs" />
     <Compile Include="NarratorDialog.cs" />
+    <Compile Include="VoicePicker.cs" />
     <Compile Include="GeminiDirector.cs" />
     <Compile Include="SpellCheck.cs" />
     <Compile Include="TypoZen_Launch.cs" />

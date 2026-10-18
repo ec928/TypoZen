@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.18.4";
+        internal const string AppVersion = "0.18.5";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -2684,6 +2684,7 @@ namespace TypoZen
         /// </summary>
         private async void ChooseQwenVoice(string voiceId, string name)
         {
+            try { VoiceList.Used(CacheDir(), voiceId); } catch (Exception ex) { LogFault("recent voices", ex); }
             try
             {
                 var s = QwenNarrator.LoadSettings(CacheDir());
@@ -2719,15 +2720,8 @@ namespace TypoZen
                 string current = QwenNarrator.CurrentVoice(cache);
                 bool qwenReading = _kokoroVoiceId == QwenNarrator.VoiceId;
                 string currentName = QwenNarrator.DefaultVoiceName;
-                menu.Items.Clear();
-                foreach (var v in QwenNarrator.SavedVoices(cache))
-                {
-                    if (v.Key == current) currentName = v.Value;
-                    var mi = new MenuItem { Header = v.Value, IsCheckable = true, IsChecked = qwenReading && v.Key == current };
-                    string id = v.Key, name = v.Value;
-                    mi.Click += (s, e) => ChooseQwenVoice(id, name);
-                    menu.Items.Add(mi);
-                }
+                foreach (var v in QwenNarrator.SavedVoices(cache)) if (v.Key == current) currentName = v.Value;
+                FillNarratorVoiceMenu(menu, false, current, qwenReading, ChooseQwenVoice);
                 // Only the narrator that is reading names its voice: two names read as two readers.
                 menu.Header = qwenReading ? "_Qwen Narrator: " + currentName.Replace("_", "__") : "_Qwen Narrator";
             }
@@ -2741,6 +2735,7 @@ namespace TypoZen
         /// </summary>
         private async void ChooseBreezeVoice(string voiceId, string name)
         {
+            try { VoiceList.Used(CacheDir(), voiceId); } catch (Exception ex) { LogFault("recent voices", ex); }
             try { BreezeNarrator.SetVoice(CacheDir(), voiceId); }
             catch (Exception ex) { LogFault("breeze voice", ex); }
             SetKokoroVoice(BreezeNarrator.VoiceId, name);
@@ -2755,6 +2750,65 @@ namespace TypoZen
             catch (Exception ex) { LogFault("start breeze narrator", ex); }
         }
 
+        /// <summary>
+        /// A narrator's voice submenu, kept short however many voices there are: the voice in use,
+        /// the favourites (starred), the last few chosen, then "All voices..." for the rest, in
+        /// the picker (VoicePicker). Breeze can make dozens; the menu listed them all (Ed, 2026-10-18).
+        /// </summary>
+        private void FillNarratorVoiceMenu(MenuItem menu, bool breeze, string current, bool reading, Action<string, string> choose)
+        {
+            string cache = CacheDir();
+            var entries = VoiceList.Entries(cache, breeze);
+            var byId = new Dictionary<string, VoiceEntry>();
+            foreach (var e in entries) byId[e.Id] = e;
+            menu.Items.Clear();
+            var shown = new HashSet<string>();
+            Action<VoiceEntry> add = e =>
+            {
+                if (e == null || !shown.Add(e.Id)) return;
+                var mi = new MenuItem
+                {
+                    Header = (e.Favourite ? "\u2605 " : "") + e.Name.Replace("_", "__"),
+                    IsCheckable = true, IsChecked = reading && e.Id == current
+                };
+                string id = e.Id, name = e.Name;
+                mi.Click += (s, a) => choose(id, name);
+                menu.Items.Add(mi);
+            };
+            VoiceEntry cur;
+            if (byId.TryGetValue(current ?? "", out cur)) add(cur);
+            foreach (var e in entries) if (e.Favourite) add(e);
+            int recent = 0;
+            foreach (string id in VoiceList.Recent(cache))
+            {
+                if (recent >= VoiceList.RecentKept) break;
+                VoiceEntry e;
+                if (byId.TryGetValue(id, out e) && !shown.Contains(id)) { add(e); recent++; }
+            }
+            menu.Items.Add(new Separator());
+            var allVoices = new MenuItem { Header = "_All voices (" + entries.Count + ")..." };
+            allVoices.Click += (s, a) => ShowVoicePicker(breeze);
+            menu.Items.Add(allVoices);
+        }
+
+        /// <summary>All voices: the picker, searchable; choosing there is choosing in the menu.</summary>
+        private void ShowVoicePicker(bool breeze)
+        {
+            try
+            {
+                string cache = CacheDir();
+                string current = breeze ? BreezeNarrator.CurrentVoice(cache) : QwenNarrator.CurrentVoice(cache);
+                VoicePicker.Show(this, cache, breeze, current,
+                    (id, name) => { if (breeze) ChooseBreezeVoice(id, name); else ChooseQwenVoice(id, name); },
+                    () =>
+                    {
+                        var m = FindElement("mNarratorSettings") as MenuItem;
+                        if (m != null) m.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, m));
+                    });
+            }
+            catch (Exception ex) { LogFault("voice picker", ex); }
+        }
+
         /// <summary>Read Aloud > Breeze Narrator: as RebuildQwenVoiceMenu, with Breeze's voices.</summary>
         private void RebuildBreezeVoiceMenu()
         {
@@ -2766,15 +2820,8 @@ namespace TypoZen
                 string current = BreezeNarrator.CurrentVoice(cache);
                 bool reading = _kokoroVoiceId == BreezeNarrator.VoiceId;
                 string currentName = BreezeNarrator.DefaultVoiceName;
-                menu.Items.Clear();
-                foreach (var v in BreezeNarrator.SavedVoices(cache))
-                {
-                    if (v.Key == current) currentName = v.Value;
-                    var mi = new MenuItem { Header = v.Value.Replace("_", "__"), IsCheckable = true, IsChecked = reading && v.Key == current };
-                    string id = v.Key, name = v.Value;
-                    mi.Click += (s, e) => ChooseBreezeVoice(id, name);
-                    menu.Items.Add(mi);
-                }
+                foreach (var v in BreezeNarrator.SavedVoices(cache)) if (v.Key == current) currentName = v.Value;
+                FillNarratorVoiceMenu(menu, true, current, reading, ChooseBreezeVoice);
                 menu.Header = reading ? "_Breeze Narrator: " + currentName.Replace("_", "__") : "_Breeze Narrator";
             }
             catch (Exception ex) { LogFault("breeze voice menu", ex); }
