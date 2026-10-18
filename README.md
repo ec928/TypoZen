@@ -341,7 +341,7 @@ While a reading is underway, including while it is paused, the **reading bar** f
 
 - **Previous paragraph**, **Pause** and **Next paragraph**. **Pause** holds the place in the paragraph that is playing and continues from there; it becomes **Resume** while paused, and the toolbar's speaker stays **Stop**. **Previous** and **Next** move to the paragraph before or after the one highlighted -- **Previous** further back than where the reading started, and **Next** to a paragraph the narrator has not prepared yet, which plays once it is. A paragraph the narrator has split into pieces is still one paragraph.
 - **Stop**, the same as the toolbar's.
-- **The voice**, by name. It opens the **File → Read Aloud** menu where you are: the voices, Narrator Manager, Narration Monitor, Voice Sampler, Speed, and Stop at end of chapter. Read Aloud's settings are reached from that menu; the bar also shows the ones you change while listening.
+- **The voice**, by name. It opens the **File → Read Aloud** menu where you are: the voices, Narrator Manager, Voice Sampler, then Speed, Stop at end of chapter and Narration Monitor, which apply whatever the voice. Read Aloud's settings are reached from that menu; the bar also shows the ones you change while listening.
 - **Slower** and **Faster**, with the speed between them, from ×0.5 to ×2 in steps of 0.1. It is the same setting as **File → Read Aloud → Speed**, one speed for every voice, and it is remembered. The Qwen and Breeze narrators change the speed of what is playing at once; a Windows voice takes it from the next paragraph, and a Kokoro voice from the next piece it prepares.
 - **End of chapter**, the same setting as **Stop at end of chapter** below, ticked when on.
 

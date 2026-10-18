@@ -470,14 +470,11 @@
                                      unless the Breeze extension is installed. -->
                                 <MenuItem x:Name="mBreezeVoice" Header="_Breeze Narrator" Visibility="Collapsed"
                                           ToolTip="Audiobook narration by Breeze, rendered on this PC's graphics card. It reads in voices made from a description or cloned from a recording, and performs sounds such as [laughing] and [sighing]."/>
-                                <!-- The narrators' own tools, then the sampler, which is for the Windows and Kokoro
-                                     voices and the speed. Help is in Help > Narration, once. -->
+                                <!-- The narrators' own tool, Narrator Manager. Help is in Help > Narration, once. -->
                                 <MenuItem x:Name="mNarratorSettings" Header="_Narrator Manager..." Visibility="Collapsed"
                                           ToolTip="The narrator's voice and how it reads, new voices, and voices for this book's characters."/>
-                                <MenuItem x:Name="mNarrMonitor" Header="Narration _Monitor" IsCheckable="True"
-                                          ToolTip="A window that shows, as each piece plays, what the narrator was given: who speaks, the voice, the text, the instruction and the strength, and the settings behind them."/>
                                 <Separator x:Name="sepNarrTools" Visibility="Collapsed"/>
-                                <!-- The quick voices, and the sampler that is for them and the speed. -->
+                                <!-- The quick voices, and the sampler that plays them. -->
                                 <!-- Filled in code from ExtensionCatalog.Voices, which is also what the
                                      installer downloads, so the menu cannot offer fewer voices than
                                      are on disk. Hidden until the extension is installed. -->
@@ -486,12 +483,14 @@
                                 <MenuItem x:Name="mOnlineVoices" Header="Microsoft _Online Voices" Visibility="Collapsed"
                                           ToolTip="High-quality neural natural voices streamed from Microsoft's speech service. Requires an internet connection."/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
-                                <!-- Speed and Stop at end of chapter apply whatever the voice: their own group.
-                                     Speed's steps are built in code (RebuildSpeedMenu). -->
+                                <!-- What applies whatever the voice: Speed, Stop at end of chapter and Narration Monitor
+                                     (every voice reports to it). Speed's steps are built in code (RebuildSpeedMenu). -->
                                 <Separator/>
                                 <MenuItem x:Name="mSpeedMenu" Header="_Speed"/>
                                 <MenuItem x:Name="mStopAtChapter" Header="Stop at end of _chapter" IsCheckable="True"
                                           ToolTip="Finish this chapter and stop. In a book, the chapter named in the status bar. In a text or Markdown file, the section under the current heading. Remembered."/>
+                                <MenuItem x:Name="mNarrMonitor" Header="Narration _Monitor" IsCheckable="True"
+                                          ToolTip="A window that shows, as each piece plays, exactly what the voice was given: the text, the voice and the speed, and with a narrator who speaks, the instruction and the strength."/>
                             </MenuItem>
                             <!-- Access key t, not x: Exit already has x in this menu, and a
                                  shared access key cycles the highlight instead of opening. -->
