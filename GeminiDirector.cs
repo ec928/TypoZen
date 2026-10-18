@@ -1339,6 +1339,93 @@ Remember to return ONLY the JSON object.",
             keyWin.ShowDialog();
         }
 
+        internal static GeminiCastResult AttributePayloadForExistingCast(
+            string jsonPayload,
+            QwenNarrator.Cast cast,
+            Action<int, int, string> onProgress,
+            CancellationToken token,
+            out List<int> parasList)
+        {
+            List<string> blocksList;
+            string payloadTitle;
+            ParsePayload(jsonPayload, out blocksList, out parasList, out payloadTitle);
+            if (blocksList.Count == 0 || cast == null || cast.Voices == null || cast.Voices.Count == 0) return null;
+
+            string apiKey = GetApiKey();
+            if (string.IsNullOrEmpty(apiKey)) throw new InvalidOperationException("Gemini API key is not configured.");
+
+            var charsDict = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in cast.Voices)
+            {
+                if (string.IsNullOrEmpty(kv.Key)) continue;
+                string name;
+                if (!cast.Names.TryGetValue(kv.Key, out name) || string.IsNullOrEmpty(name)) name = kv.Key;
+                int paren = name.IndexOf("  (", StringComparison.Ordinal);
+                if (paren > 0) name = name.Substring(0, paren).Trim();
+                charsDict[kv.Key] = new CharacterCast { Key = kv.Key, Name = name, Voice = kv.Value };
+            }
+            if (cast.Aliases != null)
+            {
+                foreach (var akv in cast.Aliases)
+                {
+                    CharacterCast owner;
+                    if (!string.IsNullOrEmpty(akv.Key) && !string.IsNullOrEmpty(akv.Value) && charsDict.TryGetValue(akv.Value, out owner))
+                    {
+                        if (!owner.Aliases.Contains(akv.Key)) owner.Aliases.Add(akv.Key);
+                    }
+                }
+            }
+
+            var aliasMap = BuildAliasMap(charsDict.Values);
+            var knownList = new List<CharacterCast>(charsDict.Values);
+            var catalog = GetConsolidatedVoiceCatalog(null);
+
+            const int chunkSize = 40;
+            int totalToAnalyze = Math.Min(blocksList.Count, 200);
+            int totalBatches = (totalToAnalyze + chunkSize - 1) / chunkSize;
+            string modelUsed = DefaultModel;
+            var allQuotes = new List<QuoteAttribution>();
+
+            for (int b = 0; b < totalBatches; b++)
+            {
+                token.ThrowIfCancellationRequested();
+                int startIdx = b * chunkSize;
+                int count = Math.Min(chunkSize, totalToAnalyze - startIdx);
+                var chunkBlocks = blocksList.GetRange(startIdx, count);
+                if (onProgress != null)
+                    onProgress(b + 1, totalBatches + 1, string.Format("Gemini Script Director: Attributing chapter dialogue (batch {0} of {1})...", b + 1, totalBatches));
+                try
+                {
+                    var chunkRes = AttributeDialogueChunk(apiKey, chunkBlocks, startIdx, knownList, catalog, ref modelUsed, DefaultModel, token);
+                    foreach (var q in chunkRes.Quotes)
+                    {
+                        if (!string.IsNullOrEmpty(q.Speaker))
+                        {
+                            var canonical = ResolveSpeaker(q.Speaker, aliasMap, charsDict);
+                            if (canonical != null) q.Speaker = canonical.Key;
+                            else if (!charsDict.ContainsKey(q.Speaker)) continue;
+                            allQuotes.Add(q);
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception)
+                {
+                    if (allQuotes.Count == 0 && b == 0) throw;
+                    break;
+                }
+            }
+
+            if (onProgress != null)
+                onProgress(totalBatches + 1, totalBatches + 1, "Gemini Script Director: Chapter script ready!");
+
+            return new GeminiCastResult
+            {
+                Quotes = allQuotes,
+                ModelUsed = modelUsed
+            };
+        }
+
         private static readonly object _bgGate = new object();
         private static CancellationTokenSource _bgRun;
 
@@ -1380,84 +1467,10 @@ Remember to return ONLY the JSON object.",
                     var cast = QwenNarrator.LoadCast(cacheDir, bookPath);
                     if (cast == null || cast.Voices == null || cast.Voices.Count == 0) return;
 
-                    var ser = new JavaScriptSerializer { MaxJsonLength = 20 * 1024 * 1024 };
-                    List<string> blocksList;
                     List<int> parasList;
-                    string payloadTitle;
-                    ParsePayload(jsonPayload, out blocksList, out parasList, out payloadTitle);
-                    if (parasList.Count != blocksList.Count || blocksList.Count == 0) return;
-
-                    // Reconstruct known CharacterCast entries from saved Cast
-                    var charsDict = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var kv in cast.Voices)
-                    {
-                        if (string.IsNullOrEmpty(kv.Key)) continue;
-                        string name;
-                        if (!cast.Names.TryGetValue(kv.Key, out name) || string.IsNullOrEmpty(name)) name = kv.Key;
-                        // Strip "(N lines)" display suffix if present
-                        int paren = name.IndexOf("  (", StringComparison.Ordinal);
-                        if (paren > 0) name = name.Substring(0, paren).Trim();
-                        var cc = new CharacterCast
-                        {
-                            Key = kv.Key,
-                            Name = name,
-                            Voice = kv.Value
-                        };
-                        charsDict[kv.Key] = cc;
-                    }
-                    if (cast.Aliases != null)
-                    {
-                        foreach (var akv in cast.Aliases)
-                        {
-                            CharacterCast owner;
-                            if (!string.IsNullOrEmpty(akv.Key) && !string.IsNullOrEmpty(akv.Value) && charsDict.TryGetValue(akv.Value, out owner))
-                            {
-                                if (!owner.Aliases.Contains(akv.Key)) owner.Aliases.Add(akv.Key);
-                            }
-                        }
-                    }
-
-                    var aliasMap = BuildAliasMap(charsDict.Values);
-                    var knownList = new List<CharacterCast>(charsDict.Values);
-                    var catalog = GetConsolidatedVoiceCatalog(null);
-                    string apiKey = GetApiKey();
-                    if (string.IsNullOrEmpty(apiKey)) return;
-
-                    const int chunkSize = 40;
-                    int totalToAnalyze = Math.Min(blocksList.Count, 200);
-                    int totalBatches = (totalToAnalyze + chunkSize - 1) / chunkSize;
-                    string modelUsed = DefaultModel;
-                    var allQuotes = new List<QuoteAttribution>();
-
-                    for (int b = 0; b < totalBatches; b++)
-                    {
-                        token.ThrowIfCancellationRequested();
-                        if (QwenNarrator.PrivateMode) return;
-                        int startIdx = b * chunkSize;
-                        int count = Math.Min(chunkSize, totalToAnalyze - startIdx);
-                        var chunkBlocks = blocksList.GetRange(startIdx, count);
-                        try
-                        {
-                            var chunkRes = AttributeDialogueChunk(apiKey, chunkBlocks, startIdx, knownList, catalog, ref modelUsed, DefaultModel, token);
-                            foreach (var q in chunkRes.Quotes)
-                            {
-                                if (!string.IsNullOrEmpty(q.Speaker))
-                                {
-                                    var canonical = ResolveSpeaker(q.Speaker, aliasMap, charsDict);
-                                    if (canonical != null) q.Speaker = canonical.Key;
-                                    else if (!charsDict.ContainsKey(q.Speaker)) continue;
-                                    allQuotes.Add(q);
-                                }
-                            }
-                        }
-                        catch (OperationCanceledException) { throw; }
-                        catch (Exception)
-                        {
-                            break;
-                        }
-                    }
-
-                    if (allQuotes.Count == 0 || QwenNarrator.PrivateMode) return;
+                    var res = AttributePayloadForExistingCast(jsonPayload, cast, null, token, out parasList);
+                    if (res == null || res.Quotes.Count == 0 || QwenNarrator.PrivateMode) return;
+                    var allQuotes = res.Quotes;
 
                     // Re-load latest cast before merging in case user saved changes meanwhile
                     var latestCast = QwenNarrator.LoadCast(cacheDir, bookPath);
@@ -1468,6 +1481,7 @@ Remember to return ONLY the JSON object.",
 
                     if (onMergedJson != null && deltaScript.Count > 0)
                     {
+                        var ser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
                         string mergePayload = ser.Serialize(new Dictionary<string, object>
                         {
                             { "castScript", deltaScript },

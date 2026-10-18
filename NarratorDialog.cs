@@ -1206,9 +1206,12 @@ namespace TypoZen
             castEmpty.Margin = new Thickness(36, 8, 0, 0);
             Button findCast = null;
             Button smartCast = null;
+            Button scriptChapter = null;
             // The Smart Cast run in progress, which the button then stops; null when none is.
             CancellationTokenSource smartCastRun = null;
             bool smartCastAsking = false;   // the run has reached Gemini (the page's excerpts arrived)
+            bool scriptChapterOnly = false; // Phase 2 only (keep existing character cast & voices)
+            bool scriptDirty = false;       // tracks unsaved quote script changes from Smart Cast / Script chapter / Clear cast
             Button apiKeyBtn = null;
             Button clearCast = null;
             TextBox filterBox = null;
@@ -1231,6 +1234,10 @@ namespace TypoZen
                 smartCast.Margin = new Thickness(0, 0, 8, 0);
                 smartCast.ToolTip = "Smart Cast (Google Gemini)\r\n\r\nAutomatically discovers characters across the entire novel, assigns universal voice archetypes, and attributes quotes for accurate acting.\r\nRequires a free Gemini API key from Google AI Studio:\r\nhttps://aistudio.google.com/app/apikey";
 
+                scriptChapter = button("Script chapter");
+                scriptChapter.Margin = new Thickness(0, 0, 8, 0);
+                scriptChapter.ToolTip = "Script chapter (Google Gemini)\r\n\r\nAttributes dialogue quotes in the current chapter using your existing character cast, without changing your character list or voice assignments.";
+
                 apiKeyBtn = button(GeminiDirector.HasApiKey() ? "API Key \u2713" : "API Key...");
                 apiKeyBtn.Margin = new Thickness(0, 0, 8, 0);
                 apiKeyBtn.ToolTip = "Google Gemini API Key\r\n\r\nClick to manage your key. Get a free key at:\r\nhttps://aistudio.google.com/app/apikey\r\n(Stored securely on your PC via Windows DPAPI encryption)";
@@ -1241,6 +1248,7 @@ namespace TypoZen
                 var castButtons = new StackPanel { Orientation = Orientation.Horizontal };
                 castButtons.Children.Add(findCast);
                 castButtons.Children.Add(smartCast);
+                castButtons.Children.Add(scriptChapter);
                 castButtons.Children.Add(apiKeyBtn);
                 castButtons.Children.Add(clearCast);
 
@@ -3057,6 +3065,7 @@ namespace TypoZen
                     cast.QuoteCues.Clear();
                     cast.Aliases.Clear();
 
+                    scriptDirty = true;
                     say("Cleared all cast characters and quotes for this book. Click Save to apply.");
                     unsaved.Visibility = Visibility.Visible;
                 };
@@ -3068,8 +3077,14 @@ namespace TypoZen
                 {
                     smartCastRun = null;
                     smartCastAsking = false;
+                    scriptChapterOnly = false;
                     smartCast.Content = "Smart Cast (Gemini)";
                     smartCast.IsEnabled = true;
+                    if (scriptChapter != null)
+                    {
+                        scriptChapter.Content = "Script chapter";
+                        scriptChapter.IsEnabled = true;
+                    }
                     if (smartCastProgress != null) smartCastProgress.Visibility = Visibility.Collapsed;
                     if (smartCastStatus != null) smartCastStatus.Visibility = Visibility.Collapsed;
                     busyBar.Visibility = Visibility.Collapsed;
@@ -3084,6 +3099,7 @@ namespace TypoZen
                         // Still waiting on the page: nothing has gone to Gemini, so it is over now.
                         if (!smartCastAsking) { smartCastEnded("Smart Cast stopped. The cast was not changed."); return; }
                         smartCast.IsEnabled = false;
+                        if (scriptChapter != null) scriptChapter.IsEnabled = false;
                         say("Stopping Smart Cast...");
                         return;
                     }
@@ -3109,31 +3125,86 @@ namespace TypoZen
                         smartCastProgress.IsIndeterminate = true;
                         smartCastProgress.Visibility = Visibility.Visible;
                     }
+                    scriptChapterOnly = false;
                     smartCastRun = new CancellationTokenSource();
                     smartCast.Content = "Stop Smart Cast";
+                    if (scriptChapter != null) scriptChapter.IsEnabled = false;
                     say("Extracting dialogue excerpts for Gemini Script Director...");
                     busyBar.Visibility = Visibility.Visible;
                     sendToPage("cmd:narrator_cast_gemini");
                 };
 
+                if (scriptChapter != null)
+                {
+                    scriptChapter.Click += (s, e) =>
+                    {
+                        if (smartCastRun != null)
+                        {
+                            smartCastRun.Cancel();
+                            if (!smartCastAsking) { smartCastEnded("Chapter scripting stopped. The cast was not changed."); return; }
+                            scriptChapter.IsEnabled = false;
+                            smartCast.IsEnabled = false;
+                            say("Stopping chapter scripting...");
+                            return;
+                        }
+                        if (QwenNarrator.PrivateMode)
+                        {
+                            say("Chapter scripting is off while Privacy Mode is on: it sends the chapter's dialogue to Google.");
+                            return;
+                        }
+                        // Sync current UI cast rows into cast before checking or scripting
+                        foreach (var r in castRows)
+                        {
+                            string id = castRowVoice(r.Item3);
+                            string line = (r.Item4.Text ?? "").Trim();
+                            if (id.Length > 0)
+                            {
+                                cast.Voices[r.Item1] = id;
+                                cast.Names[r.Item1] = r.Item2;
+                                if (line.Length > 0) cast.Instructions[r.Item1] = line;
+                            }
+                        }
+                        if (cast.Voices == null || cast.Voices.Count == 0)
+                        {
+                            say("Assign at least one character voice (or run Smart Cast first) before scripting a chapter.");
+                            return;
+                        }
+                        if (!GeminiDirector.HasApiKey())
+                        {
+                            showApiKeyModal();
+                            if (!GeminiDirector.HasApiKey()) return;
+                        }
+                        if (smartCastStatus != null)
+                        {
+                            smartCastStatus.Text = "Extracting current chapter dialogue for Gemini...";
+                            smartCastStatus.Visibility = Visibility.Visible;
+                        }
+                        if (smartCastProgress != null)
+                        {
+                            smartCastProgress.IsIndeterminate = true;
+                            smartCastProgress.Visibility = Visibility.Visible;
+                        }
+                        scriptChapterOnly = true;
+                        smartCastRun = new CancellationTokenSource();
+                        scriptChapter.Content = "Stop Scripting";
+                        smartCast.IsEnabled = false;
+                        say("Extracting current chapter dialogue for Gemini...");
+                        busyBar.Visibility = Visibility.Visible;
+                        sendToPage("cmd:narrator_cast_gemini");
+                    };
+                }
+
                 GeminiPayloadArrived = json =>
                 {
                     if (smartCastRun == null) return;   // stopped before the page answered
                     smartCastAsking = true;
+                    bool onlyScript = scriptChapterOnly;
                     var stop = smartCastRun.Token;
                     new System.Threading.Thread(() =>
                     {
                         try
                         {
-                            var baseVoices = new List<GeminiDirector.VoiceOption>();
-                            foreach (var vi in voices)
-                            {
-                                if (!string.IsNullOrEmpty(vi.Id))
-                                    baseVoices.Add(new GeminiDirector.VoiceOption { Id = vi.Id, Name = vi.Name, Description = vi.Description });
-                            }
-
-                            List<int> parasList;
-                            var result = GeminiDirector.AnalyzePayload(json, book, cacheDir, baseVoices, (cur, total, msg) =>
+                            Action<int, int, string> onProgress = (cur, total, msg) =>
                             {
                                 win.Dispatcher.BeginInvoke((Action)(() =>
                                 {
@@ -3151,7 +3222,38 @@ namespace TypoZen
                                     }
                                     say(msg);
                                 }));
-                            }, stop, out parasList);
+                            };
+
+                            if (onlyScript)
+                            {
+                                List<int> chapterParas;
+                                var scriptRes = GeminiDirector.AttributePayloadForExistingCast(json, cast, onProgress, stop, out chapterParas);
+                                if (scriptRes == null)
+                                {
+                                    win.Dispatcher.BeginInvoke((Action)(() => smartCastEnded("No dialogue quotes found to script in this chapter.")));
+                                    return;
+                                }
+                                win.Dispatcher.BeginInvoke((Action)(() =>
+                                {
+                                    smartCastEnded(null);
+                                    GeminiDirector.StoreAttributedQuotesIntoCast(cast, scriptRes.Quotes, chapterParas);
+                                    scriptDirty = true;
+                                    say(string.Format("Chapter scripted via {0}: {1} dialogue quotes mapped to your existing cast. Click Save to apply.",
+                                        scriptRes.ModelUsed ?? "Gemini", scriptRes.Quotes.Count));
+                                    unsaved.Visibility = Visibility.Visible;
+                                }));
+                                return;
+                            }
+
+                            var baseVoices = new List<GeminiDirector.VoiceOption>();
+                            foreach (var vi in voices)
+                            {
+                                if (!string.IsNullOrEmpty(vi.Id))
+                                    baseVoices.Add(new GeminiDirector.VoiceOption { Id = vi.Id, Name = vi.Name, Description = vi.Description });
+                            }
+
+                            List<int> parasList;
+                            var result = GeminiDirector.AnalyzePayload(json, book, cacheDir, baseVoices, onProgress, stop, out parasList);
 
                             if (result == null)
                             {
@@ -3202,6 +3304,7 @@ namespace TypoZen
                                         }
                                     }
                                     GeminiDirector.StoreAttributedQuotesIntoCast(cast, result.Quotes, parasList);
+                                    scriptDirty = true;
 
                                     say(string.Format("AI Cast complete via {0}: {1} novel characters cast ({2} in this chapter), {3} quotes mapped. Click Save to apply.",
                                         result.ModelUsed ?? "Gemini", result.Characters.Count, speakingCount, result.Quotes.Count));
@@ -3258,6 +3361,7 @@ namespace TypoZen
                         }
                     }
                     QwenNarrator.SaveCast(cacheDir, book, cast);
+                    scriptDirty = false;
                     // The other narrator picked at the top: Read Aloud reads with it from now on.
                     if (side.Breeze != openedBreeze && narratorChosen != null) narratorChosen(side.Breeze);
                     openedBreeze = side.Breeze;
@@ -3271,6 +3375,7 @@ namespace TypoZen
             // Unsaved changes: the settings on screen against what is saved, cast included.
             Func<bool> dirty = () =>
             {
+                if (scriptDirty) return true;
                 var v = voiceBox.SelectedItem as VoiceItem;
                 string cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue;
                 if (side.Breeze != openedBreeze
