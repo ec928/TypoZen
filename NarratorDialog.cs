@@ -3023,144 +3023,7 @@ namespace TypoZen
                 };
             }
 
-            Action showApiKeyModal = () =>
-            {
-                var cfg = GeminiDirector.LoadConfig();
-                var keyWin = new Window
-                {
-                    Title = "Google Gemini API & Model Settings",
-                    Width = 560, Height = 410,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    Owner = win, ResizeMode = ResizeMode.NoResize,
-                    ShowInTaskbar = false,
-                    Background = win.Background, Foreground = win.Foreground
-                };
-                DialogTheme.Apply(keyWin, win);
-                var pnl = new StackPanel { Margin = new Thickness(20) };
-                pnl.Children.Add(heading("Google Gemini API Key"));
-                pnl.Children.Add(note("Required for AI character casting and dialogue quote attribution. Stored securely on your PC via Windows Data Protection (DPAPI)."));
-
-                var linkRow = new DockPanel { Margin = new Thickness(0, 4, 0, 8) };
-                var openSiteBtn = button("Get Key at Google AI Studio \u2197");
-                openSiteBtn.ToolTip = "Open https://aistudio.google.com/app/apikey in your default browser";
-                openSiteBtn.Click += (s, e) =>
-                {
-                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://aistudio.google.com/app/apikey") { UseShellExecute = true }); } catch { }
-                };
-                DockPanel.SetDock(openSiteBtn, Dock.Right);
-                linkRow.Children.Add(openSiteBtn);
-
-                var linkTb = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
-                linkTb.Inlines.Add(new System.Windows.Documents.Run("Get a free API key at "));
-                var hl = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run("aistudio.google.com/app/apikey"))
-                {
-                    NavigateUri = new Uri("https://aistudio.google.com/app/apikey"),
-                    Cursor = Cursors.Hand,
-                    Foreground = Brushes.DodgerBlue
-                };
-                hl.RequestNavigate += (s, e) =>
-                {
-                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); } catch { }
-                    e.Handled = true;
-                };
-                linkTb.Inlines.Add(hl);
-                linkRow.Children.Add(linkTb);
-                pnl.Children.Add(linkRow);
-
-                var keyBox = new TextBox { Text = GeminiDirector.GetApiKey(), Margin = new Thickness(0, 0, 0, 12), Height = 28, VerticalContentAlignment = VerticalAlignment.Center };
-                pnl.Children.Add(keyBox);
-
-                pnl.Children.Add(heading("Model Configuration (gemini.json)"));
-                pnl.Children.Add(note("Specify the primary Gemini model to use. Advanced fallback models and endpoints are saved in gemini.json."));
-
-                var modelRow = new DockPanel { Margin = new Thickness(0, 0, 0, 16) };
-
-                var configButtons = new StackPanel { Orientation = Orientation.Horizontal };
-                DockPanel.SetDock(configButtons, Dock.Right);
-
-                var findFileBtn = button("Find gemini.json \ud83d\udcc1");
-                findFileBtn.ToolTip = "Highlight gemini.json in Windows File Explorer.\r\nPath: %LOCALAPPDATA%\\TypoZen\\gemini.json";
-                findFileBtn.Click += (s, e) =>
-                {
-                    try
-                    {
-                        string cfgPath = GeminiDirector.EnsureConfigFileExists();
-                        System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + cfgPath + "\"");
-                    }
-                    catch
-                    {
-                        try
-                        {
-                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.GetDirectoryName(GeminiDirector.ConfigFilePath())) { UseShellExecute = true });
-                        }
-                        catch { }
-                    }
-                };
-
-                var openFileBtn = button("Open File \u270e");
-                openFileBtn.ToolTip = "Open gemini.json in your default text editor (e.g. Notepad) to edit models and endpoints directly.";
-                openFileBtn.Margin = new Thickness(0);
-                openFileBtn.Click += (s, e) =>
-                {
-                    try
-                    {
-                        string cfgPath = GeminiDirector.EnsureConfigFileExists();
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(cfgPath) { UseShellExecute = true });
-                    }
-                    catch { }
-                };
-
-                configButtons.Children.Add(findFileBtn);
-                configButtons.Children.Add(openFileBtn);
-                modelRow.Children.Add(configButtons);
-
-                var modelLabel = new TextBlock { Text = "Primary Model: ", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
-                DockPanel.SetDock(modelLabel, Dock.Left);
-                modelRow.Children.Add(modelLabel);
-
-                var modelBox = new TextBox
-                {
-                    Text = !string.IsNullOrWhiteSpace(cfg.model) ? cfg.model : GeminiDirector.DefaultModel,
-                    Height = 28,
-                    VerticalContentAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 8, 0)
-                };
-                modelRow.Children.Add(modelBox);
-                pnl.Children.Add(modelRow);
-
-                var keyBtns = new DockPanel();
-                var saveKey = primary("Save Settings");
-                var clearKey = button("Clear Key");
-                var cancelKey = button("Cancel");
-                cancelKey.IsCancel = true;
-                saveKey.Click += (sk, se) =>
-                {
-                    GeminiDirector.SaveApiKey(keyBox.Text.Trim());
-                    string newModel = modelBox.Text.Trim();
-                    if (!string.IsNullOrEmpty(newModel))
-                    {
-                        cfg.model = newModel;
-                        GeminiDirector.SaveConfig(cfg);
-                    }
-                    if (apiKeyBtn != null) apiKeyBtn.Content = GeminiDirector.HasApiKey() ? "API Key \u2713" : "API Key...";
-                    keyWin.DialogResult = true;
-                };
-                clearKey.Click += (ck, ce) =>
-                {
-                    GeminiDirector.SaveApiKey("");
-                    if (apiKeyBtn != null) apiKeyBtn.Content = "API Key...";
-                    keyWin.DialogResult = true;
-                };
-                var rightBtns = new StackPanel { Orientation = Orientation.Horizontal };
-                rightBtns.Children.Add(saveKey);
-                rightBtns.Children.Add(cancelKey);
-                DockPanel.SetDock(rightBtns, Dock.Right);
-                keyBtns.Children.Add(rightBtns);
-                keyBtns.Children.Add(clearKey);
-                pnl.Children.Add(keyBtns);
-                keyWin.Content = pnl;
-                keyWin.ShowDialog();
-            };
+            Action showApiKeyModal = () => GeminiDirector.ShowApiKeyDialog(win, heading, note, button, primary, apiKeyBtn);
 
             if (apiKeyBtn != null)
             {
@@ -3262,89 +3125,15 @@ namespace TypoZen
                     {
                         try
                         {
-                            var ser = new JavaScriptSerializer { MaxJsonLength = 20 * 1024 * 1024 };
-                            var data = ser.Deserialize<Dictionary<string, object>>(json);
-                            var blocksList = new List<string>();
-                            object bObj;
-                            if (data != null && data.TryGetValue("blocks", out bObj) && bObj is System.Collections.IEnumerable bEnum)
-                            {
-                                foreach (var o in bEnum) if (o != null) blocksList.Add(o.ToString());
-                            }
-                            // The block index of each excerpt (-1 for none), parallel to blocks: Gemini
-                            // numbers the excerpts, playback numbers the book's blocks.
-                            var parasList = new List<int>();
-                            object pObj;
-                            if (data != null && data.TryGetValue("paras", out pObj) && pObj is System.Collections.IEnumerable pEnum)
-                            {
-                                foreach (var o in pEnum)
-                                {
-                                    int pn;
-                                    parasList.Add(o != null && int.TryParse(o.ToString(), out pn) ? pn : -1);
-                                }
-                            }
-                            if (parasList.Count != blocksList.Count) parasList.Clear();
-
-                            if (blocksList.Count == 0)
-                            {
-                                win.Dispatcher.BeginInvoke((Action)(() => smartCastEnded("No dialogue quotes found to analyze in this book.")));
-                                return;
-                            }
-
-                            // Gather available voices (repertory cast + installed)
-                            var availableVoices = new List<GeminiDirector.VoiceOption>();
+                            var baseVoices = new List<GeminiDirector.VoiceOption>();
                             foreach (var vi in voices)
                             {
                                 if (!string.IsNullOrEmpty(vi.Id))
-                                    availableVoices.Add(new GeminiDirector.VoiceOption { Id = vi.Id, Name = vi.Name, Description = vi.Description });
+                                    baseVoices.Add(new GeminiDirector.VoiceOption { Id = vi.Id, Name = vi.Name, Description = vi.Description });
                             }
 
-                            var allSaved = QwenNarrator.SavedVoices(cacheDir);
-                            foreach (var kv in allSaved)
-                            {
-                                if (!availableVoices.Exists(v => v.Id == kv.Key))
-                                    availableVoices.Add(new GeminiDirector.VoiceOption { Id = kv.Key, Name = kv.Value });
-                            }
-
-                            // If repertory catalog exists, include archetype descriptions
-                            // This install's own Breeze folder only: a Store install never reads the
-                            // installer build's profile.
-                            string repCatalogPath = System.IO.Path.Combine(BreezeNarrator.RootDir(cacheDir), "voices", "repertory_catalog.json");
-
-                            if (System.IO.File.Exists(repCatalogPath))
-                            {
-                                try
-                                {
-                                    var repJson = System.IO.File.ReadAllText(repCatalogPath, System.Text.Encoding.UTF8);
-                                    var repDict = ser.Deserialize<Dictionary<string, object>>(repJson);
-                                    object archList;
-                                    if (repDict != null && repDict.TryGetValue("archetypes", out archList) && archList is System.Collections.IEnumerable aEnum)
-                                    {
-                                        foreach (var a in aEnum)
-                                        {
-                                            if (a is Dictionary<string, object> ad)
-                                            {
-                                                string vid = Convert.ToString(ad["id"]);
-                                                string vname = Convert.ToString(ad["name"]);
-                                                string desc = Convert.ToString(ad["description"]);
-                                                var found = availableVoices.Find(v => v.Id == vid);
-                                                if (found != null)
-                                                {
-                                                    if (string.IsNullOrEmpty(found.Description)) found.Description = desc;
-                                                }
-                                                else
-                                                {
-                                                    availableVoices.Add(new GeminiDirector.VoiceOption { Id = vid, Name = vname, Description = desc });
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                catch { }
-                            }
-
-                            string payloadTitle = data != null && data.ContainsKey("title") ? Convert.ToString(data["title"]) : "";
-                            string bookTitle = !string.IsNullOrWhiteSpace(payloadTitle) ? payloadTitle : (System.IO.Path.GetFileNameWithoutExtension(book) ?? "Book");
-                            var result = GeminiDirector.AnalyzeAndCast(bookTitle, blocksList, availableVoices, (cur, total, msg) =>
+                            List<int> parasList;
+                            var result = GeminiDirector.AnalyzePayload(json, book, cacheDir, baseVoices, (cur, total, msg) =>
                             {
                                 win.Dispatcher.BeginInvoke((Action)(() =>
                                 {
@@ -3362,7 +3151,13 @@ namespace TypoZen
                                     }
                                     say(msg);
                                 }));
-                            }, null, GeminiDirector.DefaultModel, stop);
+                            }, stop, out parasList);
+
+                            if (result == null)
+                            {
+                                win.Dispatcher.BeginInvoke((Action)(() => smartCastEnded("No dialogue quotes found to analyze in this book.")));
+                                return;
+                            }
 
                             win.Dispatcher.BeginInvoke((Action)(() =>
                             {
