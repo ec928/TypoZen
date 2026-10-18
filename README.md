@@ -704,10 +704,15 @@ TypoZen is a hybrid native-web application designed for speed, local-first priva
   - PDF rendering is driven entirely client-side by Mozilla's **PDF.js**.
 - **Backend (Host):** A monolithic **C# WPF** application (TypoZen_App.cs) that handles window management, deep OS integration, native file I/O, and fast inter-process communication (IPC) with the WebView2 control.
 - **Data & Extraction (C#):** **PdfPig** is used natively for lightning-fast image extraction and offline document parsing without relying on the browser.
-- **Extensions & AI:**
+- **Speech & AI:**
+  - **Windows voices:** the host speaks through Windows' own SAPI 5 engine (`System.Speech`), so any voice installed in Windows works.
+  - **Microsoft Online Voices** (opt-in extension): streamed from Microsoft's Edge speech service; the only voices that send text off the machine.
   - **Kokoro-JS:** Provides high-quality on-device neural Text-to-Speech (TTS) using ONNX models without internet connectivity.
+  - **Breeze narrator** (extension): Breeze TTS 2, a 3-billion-parameter speech model that clones a voice from a short reference recording. It runs in its own Python sidecar on an NVIDIA graphics card (about 10 GB of its memory while reading), which the host talks to over HTTP on the loopback only.
+  - **Qwen narrator** (extension): Qwen3-TTS, 1.7 billion parameters, in a sidecar of its own built the same way. Only one narrator is loaded at a time.
+  - **Narration pipeline:** each narrator gets the text as Preview shows it, with numbers spelled out as words and character casts and delivery cues applied per paragraph; the Narration Monitor shows exactly what was sent.
+  - **Smart Cast:** optional, with your own Google Gemini key: maps a passage's dialogue to characters and delivery cues for the narrators.
   - **Whisper:** Optional speech-to-text for Clone voice, via whisper.cpp on the processor. Not in the installer.
-  - **Qwen and Breeze narrators:** local speech models (Qwen3-TTS, 1.7 billion parameters; Breeze TTS 2, 3 billion) run by a Python sidecar on an NVIDIA graphics card, for character-based narration.
   - **Compromise.js:** A lightweight, offline Part-Of-Speech tagger used to resolve grammatical homographs for the speech engine.
 
 ### Supported Formats & Behaviors
