@@ -25,6 +25,16 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 
 *Requirements: Windows 10 version 1809 or later, 64-bit. Requires the WebView2 runtime, which is already present on current Windows.*
 
+### Where it installs
+
+The program and your data are kept apart: the program goes here, and your data goes in one folder of its own (see [Where your data is kept](#where-your-data-is-kept)).
+
+| Component | Path | Notes |
+| --- | --- | --- |
+| **Installed app** | `%LocalAppData%\Programs\TypoZen\` | Per-user executable (`TypoZen.exe`), DLLs, and bundled assets. |
+| **Portable app** | *Folder of your choice* | Anywhere you unpack the zip; no files are created beside the executable. |
+| **Store app** | `%ProgramFiles%\WindowsApps\` | Sandboxed Windows package directory. |
+
 ## Highlights
 
 ### Writing
@@ -205,7 +215,7 @@ image is shown at its own size (use **right-click → Magnify**) and audio is a 
 control, so **Zoom is greyed for images and audio** — in the menu, on the keyboard, and for
 Ctrl+wheel alike, since greying a menu is not the same as disabling a feature.
 
-Format tools and Source/Preview are locked; the file is never marked dirty and never saved over. **Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native WebView; document tab → editor). **A long document prints whole.** TypoZen lays out long documents a piece at a time and the print engine can only take what is on the page, so before printing it builds a complete copy from the document itself — invisible on screen, with the same styling and the book's own typography and pictures — and prints that (Pride and Prejudice: 458 pages, built in about a tenth of a second). Only an omnibus beyond 20,000 blocks is refused, with the reason, rather than printed in part: a PDF with a piece of a document and nothing to say so is worse than no PDF. **Privacy Mode** (File menu) already applies — see [Session & privacy](#session--privacy). Details: `docs/archive/native-reader-plan.md`.
+Format tools and Source/Preview are locked; the file is never marked dirty and never saved over. **Print / Export PDF** (`Ctrl+P`) prints the surface you are looking at (native tab → native WebView; document tab → editor). **A long document prints whole.** TypoZen lays out long documents a piece at a time and the print engine can only take what is on the page, so before printing it builds a complete copy from the document itself — invisible on screen, with the same styling and the book's own typography and pictures — and prints that (Pride and Prejudice: 458 pages, built in about a tenth of a second). Only an omnibus beyond 20,000 blocks is refused, with the reason, rather than printed in part: a PDF with a piece of a document and nothing to say so is worse than no PDF. **Privacy Mode** (File menu) already applies — see [Privacy & what is remembered](#privacy--what-is-remembered). Details: `docs/archive/native-reader-plan.md`.
 
 ### Position in a long document
 The editor's own scrollbar can only span what is currently laid out — about 28 pages of a 1400-page novel — so a paginated view has a scrubber that spans the whole thing.
@@ -362,16 +372,26 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 
 > Earlier versions pulled these from Google Fonts via a `<link>` in `<head>`. That was a render-blocking network round trip on every cold start of a local editor, and because Google's CSS omits `local()`, it shadowed already-installed copies and re-downloaded them. Bundling removed both problems.
 
-## Session, privacy & network
+## Your data, privacy & network
 
-### Session & privacy
-Preferences live under `%LocalAppData%\TypoZen_Cache_Portable\` (the Store version keeps a folder of its own), and so does everything else the app
-writes: extracted books, staged payloads, `debug.log`, and any themes you save. **Nothing is
-written beside the executable**, so TypoZen runs correctly from a read-only or protected location.
+### Where your data is kept
+Everything the installer and portable builds write lives in one folder,
+`%LocalAppData%\TypoZen_Cache_Portable\` (press `Win + R` and paste to open it); the Store version
+keeps a folder of its own. **Nothing is written beside the executable**, so TypoZen runs correctly
+from a read-only or protected location.
+
+- **Recordings (`\recordings\`):** Microphone and PC audio recordings captured for voice cloning (`.wav`).
+- **Narration audio (`\extensions\<Engine>\narration\`):** Speech rendered by Breeze or Qwen. Saved as `.wav` chunks for instant, replayable reading without re-running the GPU. Automatically capped at 1 GB per engine (oldest recordings are automatically evicted when new speech is rendered).
+- **Voice profiles (`\extensions\<Engine>\voices\`):** Cloned and custom voice profiles, metadata, and reference audio. Kept safe even if an extension is uninstalled.
+- **AI Extensions (`\extensions\`):** Python runtimes, model weights, and inference sidecars for Breeze, Qwen, or Kokoro.
+- **Settings & books:** `settings.json` (preferences), `TypoZen_Themes.json` (custom themes), `book_positions.txt` (reading progress), unzipped ePub caches, staged document payloads and `debug.log`.
+- **Privacy Mode (`%TEMP%\TypoZen_Private_*`):** When Privacy Mode is active, all narration, logs, and temporary document traces are routed to an ephemeral directory deleted immediately upon closing the window.
 
 Themes are shipped and saved separately. `TypoZen_Themes.json` beside the app is the read-only
-set that ships; **Save as New** writes your copy to `%LocalAppData%\TypoZen_Cache_Portable\`, which is
+set that ships; **Save as New** writes your copy to the data folder, which is
 preferred on load once it exists. An update replaces the shipped file and cannot touch yours.
+
+### Privacy & what is remembered
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -401,28 +421,6 @@ Even so, the browser process holds **two TLS connections to Microsoft-owned addr
 The endpoint is **not identified**. It does not appear in the Windows DNS cache (Chromium resolves independently) nor in `--log-net-log` output, so no claim is made here about which service it is. No document content is involved either way.
 
 Removing it entirely requires something outside the app — a firewall rule on `msedgewebview2.exe`, which is the shared runtime binary and would also block remote images, or machine-level Edge policy. Neither is applied.
-
-### Where TypoZen is installed & stores data
-
-TypoZen keeps program binaries and user data strictly separated:
-
-| Component | Path | Notes |
-| --- | --- | --- |
-| **Installed app** | `%LocalAppData%\Programs\TypoZen\` | Per-user executable (`TypoZen.exe`), DLLs, and bundled assets. |
-| **Portable app** | *Folder of your choice* | Anywhere you unpack the zip; no files are created beside the executable. |
-| **Store app** | `%ProgramFiles%\WindowsApps\` | Sandboxed Windows package directory. |
-
-#### Data, settings and audio storage
-
-All user data for both the installer and portable builds lives in a single folder:  
-`%LocalAppData%\TypoZen_Cache_Portable\` *(Press `Win + R` and paste to open)*
-
-- **Recordings (`\recordings\`):** Microphone and PC audio recordings captured for voice cloning (`.wav`).
-- **Narration audio (`\extensions\<Engine>\narration\`):** Speech rendered by Breeze or Qwen. Saved as `.wav` chunks for instant, replayable reading without re-running the GPU. Automatically capped at 1 GB per engine (oldest recordings are automatically evicted when new speech is rendered).
-- **Voice profiles (`\extensions\<Engine>\voices\`):** Cloned and custom voice profiles, metadata, and reference audio. Kept safe even if an extension is uninstalled.
-- **AI Extensions (`\extensions\`):** Python runtimes, model weights, and inference sidecars for Breeze, Qwen, or Kokoro.
-- **Settings & books:** `settings.json` (preferences), `TypoZen_Themes.json` (custom themes), `book_positions.txt` (reading progress), and unzipped ePub caches.
-- **Privacy Mode (`%TEMP%\TypoZen_Private_*`):** When Privacy Mode is active, all narration, logs, and temporary document traces are routed to an ephemeral directory deleted immediately upon closing the window.
 
 ---
 
