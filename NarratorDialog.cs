@@ -594,9 +594,9 @@ namespace TypoZen
         /// when the reader picked the other narrator at the top (true for Breeze).
         /// </summary>
         public static void Show(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved,
-                                bool breezeReading, Action<bool> narratorChosen, Func<string> recordingsDir)
+                                bool breezeReading, Action<bool> narratorChosen, Func<string> recordingsDir, bool openVoices = false)
         {
-            Build(owner, cacheDir, appDir, book, sendToPage, saved, true, breezeReading, narratorChosen, recordingsDir).ShowDialog();
+            Build(owner, cacheDir, appDir, book, sendToPage, saved, true, breezeReading, narratorChosen, recordingsDir, openVoices).ShowDialog();
         }
 
         /// <summary>
@@ -604,7 +604,8 @@ namespace TypoZen
         /// layout without showing it (checking the design by eye before a release).
         /// </summary>
         internal static Window Build(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved, bool start,
-                                     bool breezeReading = false, Action<bool> narratorChosen = null, Func<string> recordingsDir = null)
+                                     bool breezeReading = false, Action<bool> narratorChosen = null, Func<string> recordingsDir = null,
+                                     bool openVoices = false)
         {
             var settings = QwenNarrator.LoadSettings(cacheDir);
             bool haveQwen = QwenNarrator.Installed(cacheDir, appDir), haveBreeze = BreezeNarrator.Installed(cacheDir, appDir);
@@ -3535,6 +3536,9 @@ namespace TypoZen
             };
             VoicesWindowForTest = () => win;
             manageVoices.Click += (s, e) => tabs.SelectedItem = voicesTab;
+            // Opened from All voices' "Manage voices...": straight to the voice library, as this
+            // window's own Manage voices button does (it opened on Reading, 2026-10-18).
+            if (openVoices) win.Loaded += (s, e) => tabs.SelectedItem = voicesTab;
             tabs.SelectionChanged += (s, e) =>
             {
                 if (e.Source != tabs) return;

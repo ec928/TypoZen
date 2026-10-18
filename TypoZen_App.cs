@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.18.5";
+        internal const string AppVersion = "0.18.6";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1781,27 +1781,8 @@ namespace TypoZen
             var breezeMenu = FindElement("mBreezeVoice") as MenuItem;
             if (breezeMenu != null) breezeMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == breezeMenu) RebuildBreezeVoiceMenu(); };
             BindClick("mNarrMonitor", (s, e) => SetNarrationMonitor(!NarrationMonitor.IsOpen));
-            BindClick("mNarratorSettings", (s, e) =>
-            {
-                try
-                {
-                    NarratorDialog.Show(this, CacheDir(), _appDir, _currentFilePath, SendMsg,
-                                        () => { SendNarratorSettings(); RebuildQwenVoiceMenu(); RebuildBreezeVoiceMenu(); },
-                                        _kokoroVoiceId == BreezeNarrator.VoiceId,
-                                        breeze =>
-                                        {
-                                            // The narrator chosen at the top of Narrator Manager becomes the reading voice.
-                                            string cache = CacheDir();
-                                            string id = breeze ? BreezeNarrator.CurrentVoice(cache) : QwenNarrator.CurrentVoice(cache), name = id;
-                                            foreach (var v in breeze ? BreezeNarrator.SavedVoices(cache) : QwenNarrator.SavedVoices(cache)) if (v.Key == id) name = v.Value;
-                                            SetKokoroVoice(breeze ? BreezeNarrator.VoiceId : QwenNarrator.VoiceId, name);
-                                        },
-                                        // Chosen when a recording starts, so Privacy Mode turning on
-                                        // while the window is open still keeps the take out of the cache.
-                                        () => Path.Combine(SuppressDocumentTraces() ? PrivateLoadDir() : CacheDir(), "recordings"));
-                }
-                catch (Exception ex) { LogFault("narrator settings", ex); }
-            });
+            BindClick("mNarratorSettings", (s, e) => OpenNarratorManager(_kokoroVoiceId == BreezeNarrator.VoiceId, false));
+
             BindClick("mPrivacyMode", (s, e) => SetPrivacyMode(!_privacyMode));
             BindClick("mWordWrap", (s, e) =>
             {
@@ -2791,6 +2772,33 @@ namespace TypoZen
             menu.Items.Add(allVoices);
         }
 
+        /// <summary>
+        /// Narrator Manager, on the narrator given (`breeze`), and on its Manage voices tab when
+        /// `openVoices` -- as All voices' "Manage voices..." asks.
+        /// </summary>
+        private void OpenNarratorManager(bool breezeSide, bool openVoices)
+        {
+            try
+            {
+                NarratorDialog.Show(this, CacheDir(), _appDir, _currentFilePath, SendMsg,
+                                    () => { SendNarratorSettings(); RebuildQwenVoiceMenu(); RebuildBreezeVoiceMenu(); },
+                                    breezeSide,
+                                    breeze =>
+                                    {
+                                        // The narrator chosen at the top of Narrator Manager becomes the reading voice.
+                                        string cache = CacheDir();
+                                        string id = breeze ? BreezeNarrator.CurrentVoice(cache) : QwenNarrator.CurrentVoice(cache), name = id;
+                                        foreach (var v in breeze ? BreezeNarrator.SavedVoices(cache) : QwenNarrator.SavedVoices(cache)) if (v.Key == id) name = v.Value;
+                                        SetKokoroVoice(breeze ? BreezeNarrator.VoiceId : QwenNarrator.VoiceId, name);
+                                    },
+                                    // Chosen when a recording starts, so Privacy Mode turning on
+                                    // while the window is open still keeps the take out of the cache.
+                                    () => Path.Combine(SuppressDocumentTraces() ? PrivateLoadDir() : CacheDir(), "recordings"),
+                                    openVoices);
+            }
+            catch (Exception ex) { LogFault("narrator settings", ex); }
+        }
+
         /// <summary>All voices: the picker, searchable; choosing there is choosing in the menu.</summary>
         private void ShowVoicePicker(bool breeze)
         {
@@ -2800,11 +2808,7 @@ namespace TypoZen
                 string current = breeze ? BreezeNarrator.CurrentVoice(cache) : QwenNarrator.CurrentVoice(cache);
                 VoicePicker.Show(this, cache, breeze, current,
                     (id, name) => { if (breeze) ChooseBreezeVoice(id, name); else ChooseQwenVoice(id, name); },
-                    () =>
-                    {
-                        var m = FindElement("mNarratorSettings") as MenuItem;
-                        if (m != null) m.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, m));
-                    });
+                    () => OpenNarratorManager(breeze, true));
             }
             catch (Exception ex) { LogFault("voice picker", ex); }
         }
