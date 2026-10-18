@@ -46,7 +46,7 @@ The program and your data are kept apart: the program goes here, and your data g
 - **Engineered for massive files:** Preview builds only the part of the document on screen, so a 200,000-character manuscript scrolls like a short note — and Find still searches every word of it. Source opens files of megabytes, with lines hundreds of thousands of characters long, at once.
 - **Spelling as you type:** wavy underlines under every misspelled word on screen, in Preview and Source (not in code). Select any word for replacements, Ignore, or Add to dictionary.
 
-### Reading & Research
+### Reading
 - **A first-class .epub reader:** Paginated layout with a true two-page spread mode. Supports the publisher's native HTML, full TOC, reading scrubber, and per-tab session memory.
 - **Read aloud:** Sit back and listen. Select a passage and press **Read aloud**, or press it with nothing selected to hear the page you're on, in any voice installed in Windows — or in **Microsoft Online Natural Voices** (opt-in under Extensions), a **Kokoro neural voice**, the **Qwen narrator**, or the **Breeze TTS narrator** with full character casts, voice cloning, and AI Smart Cast. Choose the voice and speed in **File → Read Aloud**. While a reading is underway, a reading bar at the bottom of the page holds pause, previous and next paragraph, stop, the voice and its menu, the speed, and stop at end of chapter. **Stop at end of chapter** is also in the File → Read Aloud menu.
 - **Built-in dictionary & thesaurus:** Over 150,000 offline definitions and over 110,000 synonym sets. Select any word for its most common meanings first — every other sense one click away — its synonyms, how often it appears in what you're reading, and a speaker button to hear it said in the voice you have chosen for reading aloud -- or, with the Qwen or Breeze narrator chosen, in the quick voice on your computer closest to it (same country and gender), since a narrator takes too long to start for one word.
@@ -55,16 +55,16 @@ The program and your data are kept apart: the program goes here, and your data g
 - **A full PDF reader:** single pages or two-page spreads, real selectable text, Find and Search across pages, the outline, read aloud, bookmarks and highlights, and your place remembered. Annotate, fill in forms and save; the text of scanned pages is read on your computer; save pages or pictures as images, and print.
 - **Read everything else safely:** HTML, images, and media open read-only. Never dirty, never saved over. An HTML page's markup opens in Source from the Mode control.
 
-### Look, Session & Privacy
+### Appearance, session & privacy
 - **Bundled premium typography:** Included fonts (Inter, Literata, Merriweather, Source Sans 3, JetBrains Mono) ensure perfect rendering without any network requests.
 - **25 curated built-in themes:** Choose from dark, light, and mono themes, or use **Customise Theme…** to build and save your own palettes. Every state takes its colour from the theme, one colour per meaning: the accent for what is current (selection, the search match you are on, the paragraph being read aloud), a highlighter colour of the theme's own for marks, and faint washes of the text colour for hover and the cursor's paragraph.
 - **Complete session restore:** Remembers your window layout, theme, tabs, margins, and exact reading positions. Drag tabs into any order; the order is kept.
-- **Offline & Portable:** Zero telemetry, and nothing on the network unless you enable an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
-- **Extensions, if you want them:** **File > Extensions** offers **Microsoft Natural Voices** (opt-in streaming natural voices directly from Microsoft Edge speech services), **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, **Whisper** to transcribe a voice recording, and **Breeze TTS / Qwen narration** — AI narrators that read books with distinct character voices, voice cloning, and AI casting (experimental; needs an NVIDIA graphics card). All are optional and strictly user-controlled. Removing or disabling an extension instantly takes away what it added. Whisper adds no menu of its own.
+- **Offline & Portable:** Zero telemetry, and nothing on the network unless you turn on an online feature yourself (see [Network behaviour](#network-behaviour)). For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
 
----
+### Optional extensions
+- **File → Extensions** offers **Microsoft Natural Voices** (opt-in streaming natural voices directly from Microsoft Edge speech services), **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, **Whisper** to transcribe a voice recording, and **Breeze TTS / Qwen narration** — AI narrators that read books with distinct character voices, voice cloning, and AI casting (experimental; needs an NVIDIA graphics card). All are optional and strictly user-controlled. Removing or disabling an extension instantly takes away what it added. Whisper adds no menu of its own.
 
-## Writing & Editing
+## Writing & editing
 
 ### Dual-mode editing
 - **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, emphasis)
@@ -146,11 +146,9 @@ The status bar updates continuously with word count, character count (both group
 
 **Limits — not full CommonMark or Typora:** advanced nested-list edge cases, math, Mermaid and similar extensions are not first-class features.
 
----
+## Reading & research
 
-## Reading & Research
-
-### Reading epubs
+### Reading ePubs
 Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the book's own table of contents in the outline.
 
 - A book's blocks carry the **publisher's own HTML**, not a Markdown conversion. Converting _Blindsight_ to Markdown dropped 6/6 images, 162/162 links, 170/170 list items and 210/210 footnote references, and broke 16 of 17 headings. Carrying the HTML has no conversion step and therefore nothing to lose.
@@ -317,14 +315,28 @@ The list is **grouped by what each voice actually is**, read from the voice's ow
 
 **Neural voices, if you install them.** **File → Extensions** offers Kokoro, a voice model that runs on your graphics card and reads far more naturally than the Windows voices. It is a 186 MB download (348 MB at full precision) — the model, the runtime and 28 American and British voices — and once it is there, everything happens on your computer: the engine is loaded from the data folder, not a CDN, and the model is read from disk. Measured on a WebGPU card it generates about eleven seconds of speech per second of work, so it keeps well ahead of itself; without WebGPU it is slower than speech and TypoZen says so and stays with the Windows voices. The **Kokoro Voices** menu exists only while the extension is installed. The two narrators are separate: [the Qwen narrator](#the-qwen-narrator) and [the Breeze narrator](#the-breeze-narrator); [Characters, voices and directing a line](#characters-voices-and-directing-a-line) covers both.
 
-## Files & Export
+## Files & export
 - New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
 - **Atomic document save** — write to a temp file, flush, then replace the target
 - **Reload when the file changes on disk** — engine documents only (not books or PDF/images). A stamp of write-time, size and a cheap fingerprint is taken on load and after Save. Coming back to the window, switching to the tab, a watcher on the file's folder, or Save / Autosave, compares that stamp. If the tab is **clean**, it reloads quietly. If it is **dirty**, a prompt offers Reload (discard edits), Keep editing (the next Save overwrites disk), or Save As. Autosave will not overwrite an external edit: it shows the same prompt instead. OneDrive touching mtime without changing bytes is ignored; TypoZen's own atomic save is ignored for two seconds so the temp/`Replace` dance does not look like someone else's write. Untitled buffers have no path and are not watched.
 - **Standalone HTML export** — self-contained, with the active theme's styles embedded
 - **Select All copies the whole document**, not the part of it currently laid out. On a long file only a window of paragraphs exists in the page at a time, and copying what was on screen put one per cent of a 205,842-character document on the clipboard with nothing to say so
 - Print / Export PDF (`Ctrl+P`) — Chromium print UI; a long document or book prints whole, from a complete copy built for the print (see [Reading web, images, and media](#reading-web-images-and-media))
-- CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path`
+- CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path`. When installed, TypoZen appears under **Open with** in Explorer for Markdown, text, epub, code files and PDFs
+- **Links:** hover a link for Open, Show in Folder and Edit. Local files open in a tab, http links open in your browser, and `#heading` jumps within the document
+
+### Supported formats
+TypoZen opens files intelligently based on their type. View settings are saved per document type and can be changed.
+
+| Media Type | Extensions | Default Mode | Default Layout (User Editable?) | Default Theme | Font Size / Spacing |
+|---|---|---|---|---|---|
+| **Code / Scripts** | .html, .css, .js, .cs, .json, .bat, .ps1, .log, .csv | Source | Scroll (Fixed) | Tokyo Night | Small / Tight |
+| **Documents** | .md, .txt, untitled | Preview | Scroll (Yes) | Gruvbox | Normal / Normal |
+| **E-books** | .epub | Reader | Pagination 2-Col (Yes) | Rosé Pine Dawn | Large / Relaxed |
+| **PDFs** | .pdf | PDF View | Scroll 1-Col (Yes) | Catppuccin Latte | N/A |
+| **Native Media** | .png, .jpg, .mp4, .mp3 | Read-only | N/A | N/A | N/A |
+
+*Note: If you toggle a tab to Source or Preview mode, or change its column layout, TypoZen remembers that preference for that specific tab via session memory. Click the Mode buttons to reset it!*
 
 ### Tabs
 Full multi-document editing, with the tab strip living in the title bar.
@@ -422,45 +434,6 @@ The endpoint is **not identified**. It does not appear in the Windows DNS cache 
 
 Removing it entirely requires something outside the app — a firewall rule on `msedgewebview2.exe`, which is the shared runtime binary and would also block remote images, or machine-level Edge policy. Neither is applied.
 
----
-
-## Keyboard shortcuts
-| Action | Shortcut |
-| --- | --- |
-| Sidebar (Outline/Search) | `Alt+\` |
-| Find | `Ctrl+F` |
-| New | `Ctrl+N` |
-| Open | `Ctrl+O` |
-| Save | `Ctrl+S` |
-| Save As | `Ctrl+Shift+S` |
-| Print / Export PDF | `Ctrl+P` |
-| Fullscreen | `F11` |
-| Go to page (paginated document or PDF; a book has none) | `Ctrl+G` |
-| Search sidebar | `Alt+S` |
-| Previous / next search result (when matches exist) | `Up` / `Down`, or `F3` / `Shift+F3` |
-| Turn the page (any paginated mode) | `PageUp` / `PageDown`, or the wheel |
-| Turn the page while search has matches | `Left` / `Right` (paginated); also `PageUp` / `PageDown`. In Reader or a book, `Space` / `Shift+Space` too |
-| Turn the page (Reader / book, no search hits) | Arrows, or `Space` / `Shift+Space` |
-| Find & Replace | `Ctrl+H` |
-| Bookmark this paragraph (toggle) | `Ctrl+Shift+M` |
-| Show bookmarks | `Ctrl+Shift+P` |
-| Return from jump (search/outline/goto) | `Ctrl+Shift+J` |
-| Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
-| Strikethrough | `Ctrl+Shift+X` |
-| Close tab | `Ctrl+W` |
-| Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
-| Open File / Edit / View / Themes / Help menu | `Alt+F` / `Alt+E` / `Alt+V` / `Alt+T` / `Alt+H` |
-| Help (syntax & shortcuts) | `F1` |
-| Reveal Markdown | `F7` |
-| Focus mode | `F8` |
-| Typewriter scroll | `F9` |
-
-**Menus (no default shortcut):** Themes → Customise Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → ZenMode (autohide UI), Side Panel Auto-hide · File → Privacy
-
-Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
-
----
-
 ## Extensions
 **File → Extensions** downloads only while an install you asked for is running. Nothing is contacted at launch, and an extension you have not installed leaves no menu behind. It is also where **Microsoft Online Voices** are switched on, the only voices spoken by a web service: what they read is sent to Microsoft. See [Network behaviour](#network-behaviour).
 
@@ -529,7 +502,7 @@ Breeze narration is a second narrator, beside Qwen rather than instead of it. On
 
 This applies to both narrators. The narrator reads the whole book, except the dialogue of characters you give a voice: their quoted lines are read in that voice, and the narrator reads everything else, "she said" included. How each line sounds comes from **global** instructions, which you set once in Narrator Manager, and — in a Markdown or text file — **local** instructions you write in the text.
 
-#### Using Tags
+#### Using tags
 
 To determine how tags affect delivery, TypoZen uses a **strict positional logic**. Square brackets hold instructions: your own words, or one of the built-in moods below.
 
@@ -577,50 +550,6 @@ The same in every kind of document. The first row that fits wins.
 - Dialogue can use double quotes (`"…"` or `“…”`) or, as British books do, single curly quotes (`‘…’`).
 - To make sure a line goes to the right character in your own text, give it a name and a speaking word: `"Go," Tom said.`
 
-#### Smart Cast & Voice Repertory Ensemble
-
-Under **Narrator Manager > Cast for this book**, TypoZen provides automated casting and script direction:
-
-- **Find characters**: Scans the book locally and extracts every named speaker, counting their spoken lines.
-- **Smart Cast** (Google Gemini): Runs a two-phase AI Script Director pass with live batch progress:
-  1. *Dramatis Personae:* Uses the book's title and up to 12 dialogue excerpts sampled across the chapter/document to identify the work's speaking cast (or, for unrecognized texts, only the speakers present in the excerpts), canonicalizing names and aliases/honorifics, estimating novel dialogue prominence, and matching each character to the best voice in your library or the 19 universal vocal archetypes.
-  2. *Dialogue Attribution:* Attributes up to 75 dialogue paragraphs from the current chapter/document in 25-block batches to resolve multi-turn banter, unlabelled quotes, and emotional delivery cues without gateway timeouts; later chapters and remaining dialogue use the local speaker rules above together with the saved character alias map (`aliases`).
-  - Smart Cast is switched off while Privacy Mode is on, because it sends the book's dialogue to Google.
-  - While it runs, the button reads **Stop Smart Cast**. Stopping leaves the cast as it was.
-- **Clear cast & Row Removal (`✕`)**: **Clear cast** resets all character assignments, line instructions, and AI script overrides for the current book in one click, while the **`✕`** button on each row removes an individual character.
-- **Readable Cast Storage**: Per-book casts, character alias maps, and Smart Cast quote mappings are saved as clean, multiline formatted JSON in `%LocalAppData%\TypoZen_Cache_Portable\extensions\QwenTTS\cast\<BookHash>.json` (`book`, `cast`, `names`, `say`, `strength`, `script`, `cues`, and `aliases`).
-- **API Key & Model Settings**: Configure your Google AI Studio API key and customize Gemini AI models:
-  - *Storage:* The API key is stored on your PC, encrypted with Windows DPAPI, in `gemini\gemini.key` inside TypoZen's own data folder (`%LOCALAPPDATA%\TypoZen_Cache_Portable` for the installer build; the Store build has its own). A key saved by 0.16.25 or earlier in `%LOCALAPPDATA%\TypoZen\` is moved there the first time it is used.
-  - *Model Configuration (`gemini.json`):* Stored beside the key, in `gemini\gemini.json`. You can inspect or update the primary model, the automated fallback model chain, and the REST endpoint URL whenever Google releases new models (e.g. `gemini-3.6-flash`, `gemini-4.0-flash`).
-  - *Direct In-App Access:* In the **API Key...** dialog in Narrator Manager, click **Find gemini.json 📁** to reveal and highlight the configuration file in Windows File Explorer, or click **Open File ✎** to open it directly in your text editor. You can also adjust the primary model directly in the dialog.
-  - *Automatic Fallback Protection:* If the primary model hits a quota limit (HTTP 429/503) or is retired (HTTP 404), TypoZen automatically cycles through the configured fallback chain (`gemini-flash-lite-latest`, `gemini-3.5-flash-lite`, `gemini-3.6-flash`, etc.). If `gemini.json` is missing or corrupted, TypoZen safely falls back to built-in defaults.
-  - *Developer Overrides:* `GEMINI_MODEL`, `GEMINI_API_KEY`, and `GEMINI_API_ENDPOINT` environment variables take precedence if specified.
-  - *Quota Note:* Developer API keys from [Google AI Studio](https://aistudio.google.com/app/apikey) use their own platform quotas. A consumer Google One / Gemini Advanced ($20/month) subscription applies only to consumer chat (`gemini.google.com`) and does not increase AI Studio API limits. For higher API rate limits, link pay-as-you-go billing in Google AI Studio / Google Cloud.
-
-##### The 19 Universal Voice Archetypes (Breeze TTS)
-
-| Archetype ID | Voice Archetype | Profile | Example Roles |
-|:---|:---|:---|:---|
-| `hero-youth-m` | **Hero / Youth (Male)** | Clear bright tenor, earnest, thoughtful, sharp diction | Protagonists, young heroes, squires |
-| `noble-matriarch-f` | **Noble Matriarch (Female)** | Soft contralto, composed, serene, quiet authority | Queens, matriarchs, diplomats |
-| `ruler-commander-m` | **Ruler / Commander (Male)** | Deep resonant baritone, dignified, natural command | Emperors, dukes, fleet commanders |
-| `crone-inquisitor-f` | **Crone / Inquisitor (Female)** | Dry, raspy elderly voice, cold imperious severity | High priestesses, dowagers, witches |
-| `veteran-soldier-m` | **Veteran Soldier (Male)** | Rough gravelly baritone, battle-scarred, loyal warmth | Veteran captains, warriors, marshals |
-| `servant-companion-m` | **Servant / Companion (Male)** | Grounded baritone, candid, loyal retainer, dry wit | Sidekicks, faithful retainers, companions |
-| `maid-attendant-f` | **Maid / Attendant (Female)** | Practical warm alto, bustling, firm, slightly maternal | Housekeepers, attendants, maids |
-| `guard-sentry-m` | **Guard / Sentry (Male)** | Gruff tenor/baritone, blunt military brevity, vigilant | Palace guards, sentries, watchmen |
-| `fierce-warrior-f` | **Fierce Warrior (Female)** | Clear resonant mezzo, fierce, direct, ringing intensity | Shieldmaidens, rebels, desert fighters |
-| `arrogant-noble-m` | **Arrogant Noble (Male)** | High-strung tenor, petulant, proud, theatrical | Spoiled princes, vain rivals, duelists |
-| `scheming-courtier-m` | **Scheming Courtier (Male)** | Silky smooth baritone, oily, polished, sinister warmth | Whispering viziers, corrupt advisors |
-| `scholar-mentat-m` | **Scholar / Mentat (Male)** | Precise elderly intellectual, dry calculating diction | Mentats, philosophers, librarians |
-| `twisted-minion-m` | **Twisted Minion (Male)** | Sibilant tenor, purring whisper, gloating, cruel | Poisoners, torturers, sinister henchmen |
-| `tyrant-overlord-m` | **Tyrant / Overlord (Male)** | Deep rumbling bass, heavy, guttural, menacing | Galactic tyrants, warlords, autocrats |
-| `nomad-chieftain-m` | **Nomad Chieftain (Male)** | Weathered desert baritone, solemn, sand-blown, reverent | Clan naibs, desert elders, guides |
-| `sorrowful-healer-m` | **Sorrowful Healer (Male)** | Soft-spoken tenor, melancholic, weary grief | Tragic informants, healers, doctors |
-| `synthetic-drone-x` | **Synthetic Drone (Neutral)** | Crisp synthesized cadence, ultra-articulate, dry wit | Ship AIs, androids, culture drones |
-| `ingenue-ward-f` | **Ingenue / Ward (Female)** | Lyrical soprano, sweet, innocent, melodic delivery | Young princesses, gentle wards, maidens |
-| `alien-emissary-x` | **Alien Emissary (Neutral)** | Spacious ethereal cadence, ancient, enigmatic | Cosmic entities, telepaths, emissaries |
-
 #### Global instructions — set once, apply everywhere
 
 | Setting | Where | Applies to |
@@ -653,7 +582,7 @@ With Tom's **Instruction** box set to `gruff and slow`, and the narrator's to `m
 - `:1` to `:10` at the end, inside the brackets, is Breeze's strength for that stretch: `"[shouts:9] Get out!"`.
 - An instruction can be a full sentence: `[Read it plainly. Speak softly]`.
 
-#### Performative Audio Cues
+#### Performative audio cues
 
 A sound in round brackets, where it should happen: `"Stop it (giggles)," Anna said.` TypoZen does not read or change it; Breeze decides whether it knows the word. Breeze only.
 
@@ -669,6 +598,50 @@ These words in square brackets change the delivery from where they stand, single
 | Kind | Tags |
 |---|---|
 | Moods — to the end of that quote, or of that stretch of narration | `[sad]` `[angry]` `[excited]` `[amazed]` `[serious]` `[sarcastic]` `[curious]` `[mischievously]` `[crying]` `[panicked]` `[tired]` `[asmr]` `[singing]` `[whispers]` `[very slowly]` `[very fast]` `[like dracula]` `[deep and loud shouting]` |
+
+#### Smart Cast & the voice repertory
+
+Under **Narrator Manager > Cast for this book**, TypoZen provides automated casting and script direction:
+
+- **Find characters**: Scans the book locally and extracts every named speaker, counting their spoken lines.
+- **Smart Cast** (Google Gemini): Runs a two-phase AI Script Director pass with live batch progress:
+  1. *Dramatis Personae:* Uses the book's title and up to 12 dialogue excerpts sampled across the chapter/document to identify the work's speaking cast (or, for unrecognized texts, only the speakers present in the excerpts), canonicalizing names and aliases/honorifics, estimating novel dialogue prominence, and matching each character to the best voice in your library or the 19 universal vocal archetypes.
+  2. *Dialogue Attribution:* Attributes up to 75 dialogue paragraphs from the current chapter/document in 25-block batches to resolve multi-turn banter, unlabelled quotes, and emotional delivery cues without gateway timeouts; later chapters and remaining dialogue use the local speaker rules above together with the saved character alias map (`aliases`).
+  - Smart Cast is switched off while Privacy Mode is on, because it sends the book's dialogue to Google.
+  - While it runs, the button reads **Stop Smart Cast**. Stopping leaves the cast as it was.
+- **Clear cast & Row Removal (`✕`)**: **Clear cast** resets all character assignments, line instructions, and AI script overrides for the current book in one click, while the **`✕`** button on each row removes an individual character.
+- **Readable Cast Storage**: Per-book casts, character alias maps, and Smart Cast quote mappings are saved as clean, multiline formatted JSON in `%LocalAppData%\TypoZen_Cache_Portable\extensions\QwenTTS\cast\<BookHash>.json` (`book`, `cast`, `names`, `say`, `strength`, `script`, `cues`, and `aliases`).
+- **API Key & Model Settings**: Configure your Google AI Studio API key and customize Gemini AI models:
+  - *Storage:* The API key is stored on your PC, encrypted with Windows DPAPI, in `gemini\gemini.key` inside TypoZen's own data folder (`%LOCALAPPDATA%\TypoZen_Cache_Portable` for the installer build; the Store build has its own). A key saved by 0.16.25 or earlier in `%LOCALAPPDATA%\TypoZen\` is moved there the first time it is used.
+  - *Model Configuration (`gemini.json`):* Stored beside the key, in `gemini\gemini.json`. You can inspect or update the primary model, the automated fallback model chain, and the REST endpoint URL whenever Google releases new models (e.g. `gemini-3.6-flash`, `gemini-4.0-flash`).
+  - *Direct In-App Access:* In the **API Key...** dialog in Narrator Manager, click **Find gemini.json 📁** to reveal and highlight the configuration file in Windows File Explorer, or click **Open File ✎** to open it directly in your text editor. You can also adjust the primary model directly in the dialog.
+  - *Automatic Fallback Protection:* If the primary model hits a quota limit (HTTP 429/503) or is retired (HTTP 404), TypoZen automatically cycles through the configured fallback chain (`gemini-flash-lite-latest`, `gemini-3.5-flash-lite`, `gemini-3.6-flash`, etc.). If `gemini.json` is missing or corrupted, TypoZen safely falls back to built-in defaults.
+  - *Developer Overrides:* `GEMINI_MODEL`, `GEMINI_API_KEY`, and `GEMINI_API_ENDPOINT` environment variables take precedence if specified.
+  - *Quota Note:* Developer API keys from [Google AI Studio](https://aistudio.google.com/app/apikey) use their own platform quotas. A consumer Google One / Gemini Advanced ($20/month) subscription applies only to consumer chat (`gemini.google.com`) and does not increase AI Studio API limits. For higher API rate limits, link pay-as-you-go billing in Google AI Studio / Google Cloud.
+
+##### The 19 universal voice archetypes (Breeze)
+
+| Archetype ID | Voice Archetype | Profile | Example Roles |
+|:---|:---|:---|:---|
+| `hero-youth-m` | **Hero / Youth (Male)** | Clear bright tenor, earnest, thoughtful, sharp diction | Protagonists, young heroes, squires |
+| `noble-matriarch-f` | **Noble Matriarch (Female)** | Soft contralto, composed, serene, quiet authority | Queens, matriarchs, diplomats |
+| `ruler-commander-m` | **Ruler / Commander (Male)** | Deep resonant baritone, dignified, natural command | Emperors, dukes, fleet commanders |
+| `crone-inquisitor-f` | **Crone / Inquisitor (Female)** | Dry, raspy elderly voice, cold imperious severity | High priestesses, dowagers, witches |
+| `veteran-soldier-m` | **Veteran Soldier (Male)** | Rough gravelly baritone, battle-scarred, loyal warmth | Veteran captains, warriors, marshals |
+| `servant-companion-m` | **Servant / Companion (Male)** | Grounded baritone, candid, loyal retainer, dry wit | Sidekicks, faithful retainers, companions |
+| `maid-attendant-f` | **Maid / Attendant (Female)** | Practical warm alto, bustling, firm, slightly maternal | Housekeepers, attendants, maids |
+| `guard-sentry-m` | **Guard / Sentry (Male)** | Gruff tenor/baritone, blunt military brevity, vigilant | Palace guards, sentries, watchmen |
+| `fierce-warrior-f` | **Fierce Warrior (Female)** | Clear resonant mezzo, fierce, direct, ringing intensity | Shieldmaidens, rebels, desert fighters |
+| `arrogant-noble-m` | **Arrogant Noble (Male)** | High-strung tenor, petulant, proud, theatrical | Spoiled princes, vain rivals, duelists |
+| `scheming-courtier-m` | **Scheming Courtier (Male)** | Silky smooth baritone, oily, polished, sinister warmth | Whispering viziers, corrupt advisors |
+| `scholar-mentat-m` | **Scholar / Mentat (Male)** | Precise elderly intellectual, dry calculating diction | Mentats, philosophers, librarians |
+| `twisted-minion-m` | **Twisted Minion (Male)** | Sibilant tenor, purring whisper, gloating, cruel | Poisoners, torturers, sinister henchmen |
+| `tyrant-overlord-m` | **Tyrant / Overlord (Male)** | Deep rumbling bass, heavy, guttural, menacing | Galactic tyrants, warlords, autocrats |
+| `nomad-chieftain-m` | **Nomad Chieftain (Male)** | Weathered desert baritone, solemn, sand-blown, reverent | Clan naibs, desert elders, guides |
+| `sorrowful-healer-m` | **Sorrowful Healer (Male)** | Soft-spoken tenor, melancholic, weary grief | Tragic informants, healers, doctors |
+| `synthetic-drone-x` | **Synthetic Drone (Neutral)** | Crisp synthesized cadence, ultra-articulate, dry wit | Ship AIs, androids, culture drones |
+| `ingenue-ward-f` | **Ingenue / Ward (Female)** | Lyrical soprano, sweet, innocent, melodic delivery | Young princesses, gentle wards, maidens |
+| `alien-emissary-x` | **Alien Emissary (Neutral)** | Spacious ethereal cadence, ancient, enigmatic | Cosmic entities, telepaths, emissaries |
 
 #### ePubs — what the app does by itself
 
@@ -693,7 +666,42 @@ An ePub cannot be edited, so it has no instructions of yours:
 - Several similar words move a voice more than one: `whispers, speaks very quietly, softly, low pitched and very slowly`.
 - Keep describing words simple — *she said quietly* — and leave Emotion cues ticked.
 
-## Architecture & Tech Stack
+## Keyboard shortcuts
+| Action | Shortcut |
+| --- | --- |
+| Sidebar (Outline/Search) | `Alt+\` |
+| Find | `Ctrl+F` |
+| New | `Ctrl+N` |
+| Open | `Ctrl+O` |
+| Save | `Ctrl+S` |
+| Save As | `Ctrl+Shift+S` |
+| Print / Export PDF | `Ctrl+P` |
+| Fullscreen | `F11` |
+| Go to page (paginated document or PDF; a book has none) | `Ctrl+G` |
+| Search sidebar | `Alt+S` |
+| Previous / next search result (when matches exist) | `Up` / `Down`, or `F3` / `Shift+F3` |
+| Turn the page (any paginated mode) | `PageUp` / `PageDown`, or the wheel |
+| Turn the page while search has matches | `Left` / `Right` (paginated); also `PageUp` / `PageDown`. In Reader or a book, `Space` / `Shift+Space` too |
+| Turn the page (Reader / book, no search hits) | Arrows, or `Space` / `Shift+Space` |
+| Find & Replace | `Ctrl+H` |
+| Bookmark this paragraph (toggle) | `Ctrl+Shift+M` |
+| Show bookmarks | `Ctrl+Shift+P` |
+| Return from jump (search/outline/goto) | `Ctrl+Shift+J` |
+| Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
+| Strikethrough | `Ctrl+Shift+X` |
+| Close tab | `Ctrl+W` |
+| Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Open File / Edit / View / Themes / Help menu | `Alt+F` / `Alt+E` / `Alt+V` / `Alt+T` / `Alt+H` |
+| Help (syntax & shortcuts) | `F1` |
+| Reveal Markdown | `F7` |
+| Focus mode | `F8` |
+| Typewriter scroll | `F9` |
+
+**Menus (no default shortcut):** Themes → Customise Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → ZenMode (autohide UI), Side Panel Auto-hide · File → Privacy
+
+Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
+
+## Architecture & tech stack
 TypoZen is a hybrid native-web application designed for speed, local-first privacy, and an ultra-lightweight footprint.
 
 - **Frontend & Engine:** A vanilla web stack running inside a Microsoft Edge **WebView2** control.
@@ -712,24 +720,6 @@ TypoZen is a hybrid native-web application designed for speed, local-first priva
   - **Smart Cast:** optional, with your own Google Gemini key: maps a passage's dialogue to characters and delivery cues for the narrators.
   - **Whisper:** Optional speech-to-text for Clone voice, via whisper.cpp on the processor. Not in the installer.
   - **Compromise.js:** A lightweight, offline Part-Of-Speech tagger used to resolve grammatical homographs for the speech engine.
-
-### Supported Formats & Behaviors
-TypoZen opens files intelligently based on their type. View settings are saved per document type and can be customized by the user.
-
-| Media Type | Extensions | Default Mode | Default Layout (User Editable?) | Default Theme | Font Size / Spacing |
-|---|---|---|---|---|---|
-| **Code / Scripts** | .html, .css, .js, .cs, .json, .bat, .ps1, .log, .csv | Source | Scroll (Fixed) | Tokyo Night | Small / Tight |
-| **Documents** | .md, .txt, untitled | Preview | Scroll (Yes) | Gruvbox | Normal / Normal |
-| **E-books** | .epub | Reader | Pagination 2-Col (Yes) | Rosé Pine Dawn | Large / Relaxed |
-| **PDFs** | .pdf | PDF View | Scroll 1-Col (Yes) | Catppuccin Latte | N/A |
-| **Native Media** | .png, .jpg, .mp4, .mp3 | Read-only | N/A | N/A | N/A |
-
-*Note: If you toggle a tab to Source or Preview mode, or change its column layout, TypoZen remembers that preference for that specific tab via session memory. Click the Mode buttons to reset it!*
-
-- **Saving and Exporting:** Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF. When installed, TypoZen appears under **Open with** in Explorer for Markdown, text, epub, code files and PDFs.
-- **Smart linking:** Hover links for Open, Show in Folder, and Edit. Local files open in a tab, http links open in your browser, and #heading jumps seamlessly within the document.
-
----
 
 ## Licence
 TypoZen is **MIT** (`LICENSE`). The bundled components carry their own terms, and all
