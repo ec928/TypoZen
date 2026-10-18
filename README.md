@@ -10,6 +10,7 @@ Whether you're drafting a new note or settling in with a good book, TypoZen give
 *(For the technically curious: Under the hood, TypoZen is a lightweight, native Windows app built with WPF and WebView2, offering both a live block-based preview and a Source mode built on CodeMirror 6 for Markdown and code.)*
 
 ---
+
 ## Get TypoZen
 **[Install from the Microsoft Store](https://apps.microsoft.com/detail/9NGKCK27GTS1)** (Recommended)  
 The easiest way. It installs cleanly, updates automatically, and gives no security warnings.
@@ -24,29 +25,6 @@ Just unzip and run. Nothing is installed, and it leaves no trace outside your us
 
 *Requirements: Windows 10 version 1809 or later, 64-bit. Requires the WebView2 runtime, which is already present on current Windows.*
 
-### Where TypoZen is installed & stores data
-
-TypoZen keeps program binaries and user data strictly separated:
-
-| Component | Path | Notes |
-| --- | --- | --- |
-| **Installed app** | `%LocalAppData%\Programs\TypoZen\` | Per-user executable (`TypoZen.exe`), DLLs, and bundled assets. |
-| **Portable app** | *Folder of your choice* | Anywhere you unpack the zip; no files are created beside the executable. |
-| **Store app** | `%ProgramFiles%\WindowsApps\` | Sandboxed Windows package directory. |
-
-#### Data, settings and audio storage
-
-All user data for both the installer and portable builds lives in a single folder:  
-`%LocalAppData%\TypoZen_Cache_Portable\` *(Press `Win + R` and paste to open)*
-
-- **Recordings (`\recordings\`):** Microphone and PC audio recordings captured for voice cloning (`.wav`).
-- **Narration audio (`\extensions\<Engine>\narration\`):** Speech rendered by Breeze or Qwen. Saved as `.wav` chunks for instant, replayable reading without re-running the GPU. Automatically capped at 1 GB per engine (oldest recordings are automatically evicted when new speech is rendered).
-- **Voice profiles (`\extensions\<Engine>\voices\`):** Cloned and custom voice profiles, metadata, and reference audio. Kept safe even if an extension is uninstalled.
-- **AI Extensions (`\extensions\`):** Python runtimes, model weights, and inference sidecars for Breeze, Qwen, or Kokoro.
-- **Settings & books:** `settings.json` (preferences), `TypoZen_Themes.json` (custom themes), `book_positions.txt` (reading progress), and unzipped ePub caches.
-- **Privacy Mode (`%TEMP%\TypoZen_Private_*`):** When Privacy Mode is active, all narration, logs, and temporary document traces are routed to an ephemeral directory deleted immediately upon closing the window.
-
----
 ## Highlights
 
 ### Writing
@@ -74,38 +52,7 @@ All user data for both the installer and portable builds lives in a single folde
 - **Offline & Portable:** Zero telemetry, and nothing on the network unless you enable an extension yourself. For complete peace of mind, **Privacy Mode** stops writing document history, positions, and recent files entirely.
 - **Extensions, if you want them:** **File > Extensions** offers **Microsoft Natural Voices** (opt-in streaming natural voices directly from Microsoft Edge speech services), **Kokoro neural voices** for high-quality local read-aloud, a dictionary of 1.3 million words, **Whisper** to transcribe a voice recording, and **Breeze TTS / Qwen narration** — AI narrators that read books with distinct character voices, voice cloning, and AI casting (experimental; needs an NVIDIA graphics card). All are optional and strictly user-controlled. Removing or disabling an extension instantly takes away what it added. Whisper adds no menu of its own.
 ---
-## Architecture & Tech Stack
-TypoZen is a hybrid native-web application designed for speed, local-first privacy, and an ultra-lightweight footprint.
 
-- **Frontend & Engine:** A vanilla web stack running inside a Microsoft Edge **WebView2** control.
-  - Markdown/Code editing is powered by **CodeMirror 6** for virtualized, massive-file performance.
-  - The ePub reader is a bespoke, paginated HTML engine using native browser multi-column layouts.
-  - PDF rendering is driven entirely client-side by Mozilla's **PDF.js**.
-- **Backend (Host):** A monolithic **C# WPF** application (TypoZen_App.cs) that handles window management, deep OS integration, native file I/O, and fast inter-process communication (IPC) with the WebView2 control.
-- **Data & Extraction (C#):** **PdfPig** is used natively for lightning-fast image extraction and offline document parsing without relying on the browser.
-- **Extensions & AI:**
-  - **Kokoro-JS:** Provides high-quality on-device neural Text-to-Speech (TTS) using ONNX models without internet connectivity.
-  - **Whisper:** Optional speech-to-text for Clone voice, via whisper.cpp on the processor. Not in the installer.
-  - **Qwen Narrator:** Uses local LLM integration for contextual, character-based story narration (requires NVIDIA GPU).
-  - **Compromise.js:** A lightweight, offline Part-Of-Speech tagger used to resolve grammatical homographs for the speech engine.
-
-### Supported Formats & Behaviors
-TypoZen opens files intelligently based on their type. View settings are saved per document type and can be customized by the user.
-
-| Media Type | Extensions | Default Mode | Default Layout (User Editable?) | Default Theme | Font Size / Spacing |
-|---|---|---|---|---|---|
-| **Code / Scripts** | .html, .css, .js, .cs, .json, .bat, .ps1, .log, .csv | Source | Scroll (Fixed) | Tokyo Night | Small / Tight |
-| **Documents** | .md, .txt, untitled | Preview | Scroll (Yes) | Gruvbox | Normal / Normal |
-| **E-books** | .epub | Reader | Pagination 2-Col (Yes) | Rosé Pine Dawn | Large / Relaxed |
-| **PDFs** | .pdf | PDF View | Scroll 1-Col (Yes) | Catppuccin Latte | N/A |
-| **Native Media** | .png, .jpg, .mp4, .mp3 | Read-only | N/A | N/A | N/A |
-
-*Note: If you toggle a tab to Source or Preview mode, or change its column layout, TypoZen remembers that preference for that specific tab via session memory. Click the Mode buttons to reset it!*
-
-- **Saving and Exporting:** Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF. When installed, TypoZen appears under **Open with** in Explorer for Markdown, text, epub, code files and PDFs.
-- **Smart linking:** Hover links for Open, Show in Folder, and Edit. Local files open in a tab, http links open in your browser, and #heading jumps seamlessly within the document.
-
----
 ## Writing & Editing
 
 ### Dual-mode editing
@@ -301,9 +248,7 @@ Select text and the Mark button becomes **Highlight selection**. A highlight is 
 
 > **Set Place Marker / Go to Place Marker are gone.** They were a one-item bookmark list that forgot itself on exit. Note that neither was your _reading position_, which is automatic, written atomically as you read, and unaffected by any of this.
 
-## Extensions & Local AI
-
-### Looking a word up
+## Looking a word up
 Select text and a popover appears beside it — **Highlight** and **Find in document**, and for a single word the lookup itself. Beside the sentence rather than in a panel you have to look away to, which is the point of it; it is also what makes highlighting discoverable without the Marks pane open.
 
 **A dictionary and thesaurus are included, and nothing is downloaded.** `dictionary.tsv` and `thesaurus.tsv` ship beside `TypoZen.exe` — about 152,000 definitions and 114,000 synonym entries from the **Open English WordNet** (2025+ edition), the maintained successor to Princeton WordNet, freely licensed under CC BY 4.0. Lookups and synonyms work on first launch, with no setup and no network access. See [WORDNET-LICENSE.txt](WORDNET-LICENSE.txt) for the attribution both require.
@@ -334,7 +279,7 @@ TSV first, because that is what a WordNet or Wiktionary export converts to in on
 - **"ran → run"** — when there is no entry for the selected word and the answer is for a shorter or base form, the title says so, so a nearby word's meaning is not read as this one's. Synonyms always belong to the word that was defined
 - **Pronunciations** show under the word when the dictionary has them: a third column in `dictionary.tsv` (word, tab, senses, tab, pronunciation). The bundled WordNet has none, so this appears only with a dictionary of your own that includes them
 
-### Reading aloud
+## Reading aloud
 **Read aloud** is the **A)))** button at the right of the toolbar, and **Read aloud** in the selection popover. With text selected it reads the selection. With nothing selected it starts at the **text cursor** — from the start of the word it is in — when the cursor is on the page you are looking at, and reads on from there: to the end of the page in a book in Pages, to the end of the document otherwise (in Source mode, the raw text). With no cursor on screen — a book just opened, or a cursor left on a page since turned away from — it starts at the top of what is on screen, or of the document. While it reads, the popover's control becomes **Stop**. The toolbar button shows a stop square on the highlight. **Stop** ends the reading. Both return to Read aloud by themselves when the speech ends.
 
 While a reading is underway, including while it is paused, the **reading bar** floats at the bottom of the page, centred under the text. It comes up as soon as you press Read Aloud -- with the Qwen or Breeze narrator, while it is still starting -- stays up through a change of voice or a jump to another paragraph, and goes when you stop, when the text runs out, or if the narrator cannot start. It floats rather than taking a strip of the window, so a book's pages do not change while you listen. From the left:
@@ -359,7 +304,163 @@ The list is **grouped by what each voice actually is**, read from the voice's ow
 
 **Neural voices, if you install them.** **File → Extensions** offers Kokoro, a voice model that runs on your graphics card and reads far more naturally than the Windows voices. It is a 186 MB download — the model, the runtime and fourteen voices — and once it is there, everything happens on your computer: the engine is loaded from the data folder, not a CDN, and the model is read from disk. Measured on a WebGPU card it generates about eleven seconds of speech per second of work, so it keeps well ahead of itself; without WebGPU it is slower than speech and TypoZen says so and stays with the Windows voices. The **Kokoro Voices** menu exists only while the extension is installed. The two narrators are separate: [the Qwen narrator](#the-qwen-narrator) and [the Breeze narrator](#the-breeze-narrator); [Characters, voices and directing a line](#characters-voices-and-directing-a-line) covers both.
 
-### Extensions
+## Files & Export
+- New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
+- **Atomic document save** — write to a temp file, flush, then replace the target
+- **Reload when the file changes on disk** — engine documents only (not books or PDF/images). A stamp of write-time, size and a cheap fingerprint is taken on load and after Save. Coming back to the window, switching to the tab, a watcher on the file's folder, or Save / Autosave, compares that stamp. If the tab is **clean**, it reloads quietly. If it is **dirty**, a prompt offers Reload (discard edits), Keep editing (the next Save overwrites disk), or Save As. Autosave will not overwrite an external edit: it shows the same prompt instead. OneDrive touching mtime without changing bytes is ignored; TypoZen's own atomic save is ignored for two seconds so the temp/`Replace` dance does not look like someone else's write. Untitled buffers have no path and are not watched.
+- **Standalone HTML export** — self-contained, with the active theme's styles embedded
+- **Select All copies the whole document**, not the part of it currently laid out. On a long file only a window of paragraphs exists in the page at a time, and copying what was on screen put one per cent of a 205,842-character document on the clipboard with nothing to say so
+- Print / Export PDF (`Ctrl+P`) — Chromium print UI; a long document or book prints whole, from a complete copy built for the print (see [Reading PDFs, web, images, and media](#reading-pdfs))
+- CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path` (Phase 6 — done)
+
+### Tabs
+Full multi-document editing, with the tab strip living in the title bar.
+
+- **New** with the `+` button or `Ctrl+N`; close with the tab's own button or `Ctrl+W`
+- Cycle with `Ctrl+Tab` / `Ctrl+Shift+Tab`
+- **Drag a tab** sideways to move it; a line shows where it will land. Dragging past either end of a full strip scrolls it. Dragging only reorders — the tab you are reading stays on screen — and the order is kept with the session
+- **Scroll arrows** appear only when the strip overflows, and the active tab is always scrolled into view
+- **Per-tab unsaved indicator**, tracked independently of every other tab
+- **Per-tab file fidelity** — each tab remembers its file's line-ending style (LF / CRLF) and whether it ended with a trailing newline, so saving one document never quietly rewrites the whole file's line endings
+- **Per-tab view** — 1-Col / 2-Col **and** Source / Preview belong to the document, not the window: a novel wants a two-column spread and the notes file in the next tab does not. Both are recorded per tab and restored with the session. Only a deliberate choice is written down — the toolbar column button, the Mode buttons, or the session file. What the page happens to be painting mid-load never is, because a book's first paint is one column until its layout arrives and storing that would forget the spread. Switching between them keeps the window's top-left corner where you put it and only widens or narrows the window to the right; each layout remembers its own size, and one that would run off the screen moves in only as far as it has to
+- **Fail-closed switching** — if the editor's content cannot be synced back to the tab, the switch or new-tab operation is _refused_ rather than proceeding and risking unsaved edits
+- **Session restore** reopens your tabs on next launch (bodies only if you've enabled unsaved-document restore under File → Privacy)
+
+## Themes & typography
+**25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customise Theme…** option lives).
+
+| Column | Themes |
+| --- | --- |
+| **Dark** | Ayu Mirage, Catppuccin Mocha, Everforest, GitHub Dark Classic, Gruvbox, Gruvbox Serif, Kanagawa, Material Oceanic, Material Palenight, One Dark, Rosé Pine, Solarized Dark, Tomorrow Night, VSCode Dark+ |
+| **Light** | Ayu Light, Catppuccin Latte, Gruvbox Light, One Light, Rosé Pine Dawn, Solarized Light, VSCode Light+ |
+| **Mono** | Dracula, Monokai, Nord, Tokyo Night |
+| **Custom Themes** | Custom saved themes, plus **Customise Theme…** |
+
+**All set `FS` to 16** (base size for document and book normalisation). Palettes are reduced to four colours for the shell + page -- background, text, accent (`Hi`) and highlighter (`Hi2`, marks and highlights) -- and are not full syntax-highlight schemes. The highlighter is chosen from each palette and kept clear of its accent; on dark themes it is never a yellow, which reads as brown as a see-through wash over a dark page.
+
+Font stacks are TypoZen’s pairing: reading-oriented entries lean **Literata** / **Merriweather** (Gruvbox Light leads with Literata, Merriweather fallback); UI-oriented entries lean **Inter** / **Source Sans 3**; Mono uses **JetBrains Mono** (on Windows).
+
+**For epub / long reading** prefer serif + soft paper or low-glare dark over Mono/IDE themes:
+| Situation | Themes |
+| --- | --- |
+| Daytime novel | **Rosé Pine Dawn**, **Solarized Light**, **Gruvbox Light** |
+| Night, still bookish | **Rosé Pine**, **Gruvbox Serif** |
+| Night, soft green | **Everforest** |
+
+Avoid the Mono column (Dracula, Nord, Tokyo Night, Monokai) for immersion; fine for code.
+
+- **Fonts ship with the app** in `fonts/` (except system mono). No network font fetch. `local()` first so an installed copy wins. (WebView2 itself still does Microsoft traffic — see [Network behaviour](#network-behaviour).)
+- **Deep recursive theming** — menus, toolbar, sidebar and status bar take the same brushes as the page.
+- **Themes → Customise Theme…** — background, text, accent and highlighter colours, font and size; live preview, **Save as New** (built-ins never overwritten), Reset, Cancel.
+
+Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that ships is openly licensed, so there is nothing to strip before handing a build to anyone.
+
+> **Merriweather ships as two variable faces**, regular and italic, 662 KB and 667 KB (`fonts/Merriweather.woff2`, `fonts/Merriweather-Italic.woff2`). Each declares weights 300 to 900, so a bold weight is the font's own rather than one the browser synthesises. `tests/fonts-selftest.mjs` checks that a variable family declares its weight range.
+
+> Earlier versions pulled these from Google Fonts via a `<link>` in `<head>`. That was a render-blocking network round trip on every cold start of a local editor, and because Google's CSS omits `local()`, it shadowed already-installed copies and re-downloaded them. Bundling removed both problems.
+
+## Session, privacy & network
+
+### Session & privacy
+Preferences live under `%LocalAppData%\TypoZen_Cache_Portable\` (the Store version keeps a folder of its own), and so does everything else the app
+writes: extracted books, staged payloads, `debug.log`, and any themes you save. **Nothing is
+written beside the executable**, so TypoZen runs correctly from a read-only or protected location.
+
+Themes are shipped and saved separately. `TypoZen_Themes.json` beside the app is the read-only
+set that ships; **Save as New** writes your copy to `%LocalAppData%\TypoZen_Cache_Portable\`, which is
+preferred on load once it exists. An update replaces the shipped file and cannot touch yours.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| **Privacy Mode** | **Off** | One switch: while on, **nothing that names a document, its contents, its position or its history is written**. Suppresses the tab session, reading positions, bookmarks and annotations, recent files, autosave, `debug.log`, and the document-identifying half of `settings.json` (last file, last content, search history, last query). Narration, with either narrator, renders into a temporary folder deleted when the window closes, a narrator cast saved meanwhile is kept only until then, and nothing is written to `narration.log`. A voice-clone recording started while Privacy Mode is on goes into that same temporary folder and goes with it when the window closes. The three switches it subsumes are **disabled** in the menu rather than silently overridden. **Not** suppressed: window size, theme, margins, spacing — those describe the app, not the reader, and losing them every launch would cost you something for no privacy in return. **Forward-looking**: it stops new writes, it does not delete what is already stored — bookmarks and annotations are your work, and a toggle that destroyed them silently would be indefensible. Use **Clear Stored Data** for that |
+| **Privacy Mode — books** | — | A book must be unzipped to be read, and extraction is keyed by a _readable_ name (`Matter_-_Iain_M_Banks_68aa4804`), so the folder's existence alone says what you opened. Privacy Mode therefore **changes the destination** rather than sweeping afterwards: extraction goes to an opaquely-named directory under `%TEMP%`, deleted when the window closes and swept on a later launch if a crash prevented that. Large document and book *payloads* staged for the page (`localload`) follow the same rule. Books are served from their own virtual host (`localbooks`) so image URLs resolve from either root. The cost is re-extraction each session; within a session reopening stays fast |
+| **Autosave** (File menu) | **Off** | Saves a dirty document ~2s after typing stops. Only for a tab that **already has a file** — an unattended save must never raise a Save As dialog, so an untitled buffer stays untitled and is covered by session restore instead. A book is never written. Goes through the same save path as `Ctrl+S`, so the atomic write, per-tab line-ending fidelity and the overwrite-loss guard all apply. If the file changed on disk, Autosave does **not** overwrite it — it shows the disk-changed prompt instead |
+| **Remember unsaved documents between sessions** | **Off** | When on, dirty/untitled tab bodies are stored for restore. When off, nothing document-like is kept in the cache beyond what you explicitly save. |
+| **Keep recent files list** | On | At the foot of **File → Open Recent**. Off stops listing the files you open and forgets the list. Privacy Mode turns it off too |
+| **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents. One box per kind of data: unsaved session text, open tabs, recent files (with the last file and folder), recent Search queries (with match-case/whole-word), pasted images, text read from scanned PDFs, saved web storage and browsing history (on next launch), reading positions, extracted books, bookmarks, added words, custom themes, view settings, diagnostic logs, and, once a narrator is installed or a voice recording is stored, narration audio, logs, casts and voice-clone recordings. Voices are kept. Each box remembers how you left it the last time you cleared; **Select all** and **Select none** set them all. Search history can also be cleared from the foot of the Search box's history list |
+
+Also restored: window size and position, theme, margins, mode, line and paragraph spacing, justification, F7/F8/F9, zoom, scrubber/status-bar visibility, chrome auto-hide, side-panel auto-hide, open tab paths **and each tab's column layout** (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
+
+### Network behaviour
+**TypoZen itself requests nothing over the network**, with one exception you control: installing an extension (**File → Extensions**) downloads it while you watch, and nothing is fetched before or after. Fonts are bundled, the editor page is served from disk through a virtual host, and the page issues no outbound requests — an installed extension is served the same way, from the data folder through a virtual host, so the speech engine and its model are read from disk rather than a CDN. A document that references a remote image (`![](https://…)`) will still load it — that is the document's request, not the app's.
+
+**Read aloud uses the voices installed in Windows**, which run locally. A voice added to Windows by third-party software may itself go online — some adapters register web-based voices that send the text being read to a server. That is the voice's request, not TypoZen's, and choosing a local voice avoids it.
+
+**The WebView2 runtime is a different matter, and it is not fully silent.** The environment is created with Chromium's background services disabled:
+
+```
+--disable-background-networking  --disable-component-update
+--disable-sync  --no-first-run  --no-default-browser-check
+```
+
+Even so, the browser process holds **two TLS connections to Microsoft-owned addresses** from startup, with no page having requested anything. Measured, not assumed — and several further flag combinations (`--disable-domain-reliability`, `--no-pings`, `--no-service-autorun`, `--disable-breakpad`, various `--disable-features`) did **not** remove them.
+
+The endpoint is **not identified**. It does not appear in the Windows DNS cache (Chromium resolves independently) nor in `--log-net-log` output, so no claim is made here about which service it is. No document content is involved either way.
+
+Removing it entirely requires something outside the app — a firewall rule on `msedgewebview2.exe`, which is the shared runtime binary and would also block remote images, or machine-level Edge policy. Neither is applied.
+
+### Where TypoZen is installed & stores data
+
+TypoZen keeps program binaries and user data strictly separated:
+
+| Component | Path | Notes |
+| --- | --- | --- |
+| **Installed app** | `%LocalAppData%\Programs\TypoZen\` | Per-user executable (`TypoZen.exe`), DLLs, and bundled assets. |
+| **Portable app** | *Folder of your choice* | Anywhere you unpack the zip; no files are created beside the executable. |
+| **Store app** | `%ProgramFiles%\WindowsApps\` | Sandboxed Windows package directory. |
+
+#### Data, settings and audio storage
+
+All user data for both the installer and portable builds lives in a single folder:  
+`%LocalAppData%\TypoZen_Cache_Portable\` *(Press `Win + R` and paste to open)*
+
+- **Recordings (`\recordings\`):** Microphone and PC audio recordings captured for voice cloning (`.wav`).
+- **Narration audio (`\extensions\<Engine>\narration\`):** Speech rendered by Breeze or Qwen. Saved as `.wav` chunks for instant, replayable reading without re-running the GPU. Automatically capped at 1 GB per engine (oldest recordings are automatically evicted when new speech is rendered).
+- **Voice profiles (`\extensions\<Engine>\voices\`):** Cloned and custom voice profiles, metadata, and reference audio. Kept safe even if an extension is uninstalled.
+- **AI Extensions (`\extensions\`):** Python runtimes, model weights, and inference sidecars for Breeze, Qwen, or Kokoro.
+- **Settings & books:** `settings.json` (preferences), `TypoZen_Themes.json` (custom themes), `book_positions.txt` (reading progress), and unzipped ePub caches.
+- **Privacy Mode (`%TEMP%\TypoZen_Private_*`):** When Privacy Mode is active, all narration, logs, and temporary document traces are routed to an ephemeral directory deleted immediately upon closing the window.
+
+---
+
+## Keyboard shortcuts
+| Action | Shortcut |
+| --- | --- |
+| Sidebar (Outline/Search) | `Alt+\` |
+| Find | `Ctrl+F` |
+| New | `Ctrl+N` |
+| Open | `Ctrl+O` |
+| Save | `Ctrl+S` |
+| Save As | `Ctrl+Shift+S` |
+| Print / Export PDF | `Ctrl+P` |
+| Fullscreen | `F11` |
+| Go to page (paginated document or PDF; a book has none) | `Ctrl+G` |
+| Search sidebar | `Alt+S` |
+| Previous / next search result (when matches exist) | `Up` / `Down`, or `F3` / `Shift+F3` |
+| Turn the page (any paginated mode) | `PageUp` / `PageDown`, or the wheel |
+| Turn the page while search has matches | `Left` / `Right` (paginated); also `PageUp` / `PageDown`. In Reader or a book, `Space` / `Shift+Space` too |
+| Turn the page (Reader / book, no search hits) | Arrows, or `Space` / `Shift+Space` |
+| Find & Replace | `Ctrl+H` |
+| Bookmark this page (toggle) | `Ctrl+Shift+M` |
+| Show bookmarks | `Ctrl+Shift+P` |
+| Return from jump (search/outline/goto) | `Ctrl+Shift+J` |
+| Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
+| Strikethrough | `Ctrl+Shift+X` |
+| Close tab | `Ctrl+W` |
+| Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Open File / Edit / View / Themes / Help menu | `Alt+F` / `Alt+E` / `Alt+V` / `Alt+T` / `Alt+H` |
+| Help (syntax & shortcuts) | `F1` |
+| Reveal Markdown | `F7` |
+| Focus mode | `F8` |
+| Typewriter scroll | `F9` |
+
+**Menus (no default shortcut):** Themes → Customise Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → ZenMode (autohide UI), Side Panel Auto-hide · File → Privacy
+
+Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
+
+---
+
+## Extensions
 **File → Extensions** is the one place TypoZen uses the network, and only while an install is running. Nothing is downloaded unless you ask for it, nothing is contacted at launch, and an extension you have not installed leaves no menu behind.
 
 | | Download | Where it goes |
@@ -380,6 +481,10 @@ The list is **grouped by what each voice actually is**, read from the voice's ow
 - **All are optional in the real sense.** The built-in dictionary and the Windows voices are unaffected, and **File → Dictionary** switches between dictionaries once there is more than one
 
 **More voices.** Any voice installed into Windows appears in Configure Voice with no change to TypoZen — commercial SAPI 5 voice packs, for example. Windows' Narrator "natural" voices are a special case: Windows makes them available to Narrator only, not to other apps. Third-party adapters exist that register them as ordinary SAPI 5 voices, and TypoZen lists whatever such an adapter registers; they are not part of TypoZen, depend on details of Windows that can change with an update, and some also offer online voices that send the text being read to a web service.
+
+## Narration with Qwen and Breeze
+
+The two optional narrators, Qwen and Breeze, install from **File → Extensions** and read with expressive, local neural voices; everything here applies only once one of them is installed.
 
 ### The Qwen narrator
 
@@ -591,138 +696,36 @@ An ePub cannot be edited, so it has no instructions of yours:
 - Several similar words move a voice more than one: `whispers, speaks very quietly, softly, low pitched and very slowly`.
 - Keep describing words simple — *she said quietly* — and leave Emotion cues ticked.
 
-## Files & Export
-- New / Open / Save / Save As — UTF-8 (BOM detected on load; saved without BOM)
-- **Atomic document save** — write to a temp file, flush, then replace the target
-- **Reload when the file changes on disk** — engine documents only (not books or PDF/images). A stamp of write-time, size and a cheap fingerprint is taken on load and after Save. Coming back to the window, switching to the tab, a watcher on the file's folder, or Save / Autosave, compares that stamp. If the tab is **clean**, it reloads quietly. If it is **dirty**, a prompt offers Reload (discard edits), Keep editing (the next Save overwrites disk), or Save As. Autosave will not overwrite an external edit: it shows the same prompt instead. OneDrive touching mtime without changing bytes is ignored; TypoZen's own atomic save is ignored for two seconds so the temp/`Replace` dance does not look like someone else's write. Untitled buffers have no path and are not watched.
-- **Standalone HTML export** — self-contained, with the active theme's styles embedded
-- **Select All copies the whole document**, not the part of it currently laid out. On a long file only a window of paragraphs exists in the page at a time, and copying what was on screen put one per cent of a 205,842-character document on the clipboard with nothing to say so
-- Print / Export PDF (`Ctrl+P`) — Chromium print UI; a long document or book prints whole, from a complete copy built for the print (see [Reading PDFs, web, images, and media](#reading-pdfs-web-images-and-media))
-- CLI and Explorer: `TypoZen.exe "C:\path\doc.md"`; ZenSeek uses `--reader --search "q" --match-index N path` (Phase 6 — done)
+## Architecture & Tech Stack
+TypoZen is a hybrid native-web application designed for speed, local-first privacy, and an ultra-lightweight footprint.
 
-### Tabs
-Full multi-document editing, with the tab strip living in the title bar.
+- **Frontend & Engine:** A vanilla web stack running inside a Microsoft Edge **WebView2** control.
+  - Markdown/Code editing is powered by **CodeMirror 6** for virtualized, massive-file performance.
+  - The ePub reader is a bespoke, paginated HTML engine using native browser multi-column layouts.
+  - PDF rendering is driven entirely client-side by Mozilla's **PDF.js**.
+- **Backend (Host):** A monolithic **C# WPF** application (TypoZen_App.cs) that handles window management, deep OS integration, native file I/O, and fast inter-process communication (IPC) with the WebView2 control.
+- **Data & Extraction (C#):** **PdfPig** is used natively for lightning-fast image extraction and offline document parsing without relying on the browser.
+- **Extensions & AI:**
+  - **Kokoro-JS:** Provides high-quality on-device neural Text-to-Speech (TTS) using ONNX models without internet connectivity.
+  - **Whisper:** Optional speech-to-text for Clone voice, via whisper.cpp on the processor. Not in the installer.
+  - **Qwen Narrator:** Uses local LLM integration for contextual, character-based story narration (requires NVIDIA GPU).
+  - **Compromise.js:** A lightweight, offline Part-Of-Speech tagger used to resolve grammatical homographs for the speech engine.
 
-- **New** with the `+` button or `Ctrl+N`; close with the tab's own button or `Ctrl+W`
-- Cycle with `Ctrl+Tab` / `Ctrl+Shift+Tab`
-- **Drag a tab** sideways to move it; a line shows where it will land. Dragging past either end of a full strip scrolls it. Dragging only reorders — the tab you are reading stays on screen — and the order is kept with the session
-- **Scroll arrows** appear only when the strip overflows, and the active tab is always scrolled into view
-- **Per-tab unsaved indicator**, tracked independently of every other tab
-- **Per-tab file fidelity** — each tab remembers its file's line-ending style (LF / CRLF) and whether it ended with a trailing newline, so saving one document never quietly rewrites the whole file's line endings
-- **Per-tab view** — 1-Col / 2-Col **and** Source / Preview belong to the document, not the window: a novel wants a two-column spread and the notes file in the next tab does not. Both are recorded per tab and restored with the session. Only a deliberate choice is written down — the toolbar column button, the Mode buttons, or the session file. What the page happens to be painting mid-load never is, because a book's first paint is one column until its layout arrives and storing that would forget the spread. Switching between them keeps the window's top-left corner where you put it and only widens or narrows the window to the right; each layout remembers its own size, and one that would run off the screen moves in only as far as it has to
-- **Fail-closed switching** — if the editor's content cannot be synced back to the tab, the switch or new-tab operation is _refused_ rather than proceeding and risking unsaved edits
-- **Session restore** reopens your tabs on next launch (bodies only if you've enabled unsaved-document restore under File → Privacy)
+### Supported Formats & Behaviors
+TypoZen opens files intelligently based on their type. View settings are saved per document type and can be customized by the user.
 
+| Media Type | Extensions | Default Mode | Default Layout (User Editable?) | Default Theme | Font Size / Spacing |
+|---|---|---|---|---|---|
+| **Code / Scripts** | .html, .css, .js, .cs, .json, .bat, .ps1, .log, .csv | Source | Scroll (Fixed) | Tokyo Night | Small / Tight |
+| **Documents** | .md, .txt, untitled | Preview | Scroll (Yes) | Gruvbox | Normal / Normal |
+| **E-books** | .epub | Reader | Pagination 2-Col (Yes) | Rosé Pine Dawn | Large / Relaxed |
+| **PDFs** | .pdf | PDF View | Scroll 1-Col (Yes) | Catppuccin Latte | N/A |
+| **Native Media** | .png, .jpg, .mp4, .mp3 | Read-only | N/A | N/A | N/A |
 
+*Note: If you toggle a tab to Source or Preview mode, or change its column layout, TypoZen remembers that preference for that specific tab via session memory. Click the Mode buttons to reset it!*
 
-
-## Customization, Session & Privacy
-
-### Themes & typography
-**25 built-in themes** in `TypoZen_Themes.json`. Each entry is a **named, established palette** (Bg / text / accent) plus a font stack and base size. **Save as New** writes back into the same file with a `Custom` flag, so the count on disk is 25 plus whatever has been saved — worth knowing before sharing the file, since a personal theme travels with it. The Themes menu lays them out in four columns at runtime: **Dark**, **Light**, **Mono** (font stack ends in `monospace`), and **Custom Themes** (where the **Customise Theme…** option lives).
-
-| Column | Themes |
-| --- | --- |
-| **Dark** | Ayu Mirage, Catppuccin Mocha, Everforest, GitHub Dark Classic, Gruvbox, Gruvbox Serif, Kanagawa, Material Oceanic, Material Palenight, One Dark, Rosé Pine, Solarized Dark, Tomorrow Night, VSCode Dark+ |
-| **Light** | Ayu Light, Catppuccin Latte, Gruvbox Light, One Light, Rosé Pine Dawn, Solarized Light, VSCode Light+ |
-| **Mono** | Dracula, Monokai, Nord, Tokyo Night |
-| **Custom Themes** | Custom saved themes, plus **Customise Theme…** |
-
-**All set `FS` to 16** (base size for document and book normalisation). Palettes are reduced to four colours for the shell + page -- background, text, accent (`Hi`) and highlighter (`Hi2`, marks and highlights) -- and are not full syntax-highlight schemes. The highlighter is chosen from each palette and kept clear of its accent; on dark themes it is never a yellow, which reads as brown as a see-through wash over a dark page.
-
-Font stacks are TypoZen’s pairing: reading-oriented entries lean **Literata** / **Merriweather** (Gruvbox Light leads with Literata, Merriweather fallback); UI-oriented entries lean **Inter** / **Source Sans 3**; Mono uses **JetBrains Mono** (on Windows).
-
-**For epub / long reading** prefer serif + soft paper or low-glare dark over Mono/IDE themes:
-| Situation | Themes |
-| --- | --- |
-| Daytime novel | **Rosé Pine Dawn**, **Solarized Light**, **Gruvbox Light** |
-| Night, still bookish | **Rosé Pine**, **Gruvbox Serif** |
-| Night, soft green | **Everforest** |
-
-Avoid the Mono column (Dracula, Nord, Tokyo Night, Monokai) for immersion; fine for code.
-
-- **Fonts ship with the app** in `fonts/` (except system mono). No network font fetch. `local()` first so an installed copy wins. (WebView2 itself still does Microsoft traffic — see [Network behaviour](#network-behaviour).)
-- **Deep recursive theming** — menus, toolbar, sidebar and status bar take the same brushes as the page.
-- **Themes → Customise Theme…** — background, text, accent and highlighter colours, font and size; live preview, **Save as New** (built-ins never overwritten), Reset, Cancel.
-
-Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that ships is openly licensed, so there is nothing to strip before handing a build to anyone.
-
-> **Merriweather ships as two variable faces**, regular and italic, 662 KB and 667 KB (`fonts/Merriweather.woff2`, `fonts/Merriweather-Italic.woff2`). Each declares weights 300 to 900, so a bold weight is the font's own rather than one the browser synthesises. `tests/fonts-selftest.mjs` checks that a variable family declares its weight range.
-
-> Earlier versions pulled these from Google Fonts via a `<link>` in `<head>`. That was a render-blocking network round trip on every cold start of a local editor, and because Google's CSS omits `local()`, it shadowed already-installed copies and re-downloaded them. Bundling removed both problems.
-
-### Session & privacy
-Preferences live under `%LocalAppData%\TypoZen_Cache_Portable\` (the Store version keeps a folder of its own), and so does everything else the app
-writes: extracted books, staged payloads, `debug.log`, and any themes you save. **Nothing is
-written beside the executable**, so TypoZen runs correctly from a read-only or protected location.
-
-Themes are shipped and saved separately. `TypoZen_Themes.json` beside the app is the read-only
-set that ships; **Save as New** writes your copy to `%LocalAppData%\TypoZen_Cache_Portable\`, which is
-preferred on load once it exists. An update replaces the shipped file and cannot touch yours.
-
-| Setting | Default | Meaning |
-| --- | --- | --- |
-| **Privacy Mode** | **Off** | One switch: while on, **nothing that names a document, its contents, its position or its history is written**. Suppresses the tab session, reading positions, bookmarks and annotations, recent files, autosave, `debug.log`, and the document-identifying half of `settings.json` (last file, last content, search history, last query). Narration, with either narrator, renders into a temporary folder deleted when the window closes, a narrator cast saved meanwhile is kept only until then, and nothing is written to `narration.log`. A voice-clone recording started while Privacy Mode is on goes into that same temporary folder and goes with it when the window closes. The three switches it subsumes are **disabled** in the menu rather than silently overridden. **Not** suppressed: window size, theme, margins, spacing — those describe the app, not the reader, and losing them every launch would cost you something for no privacy in return. **Forward-looking**: it stops new writes, it does not delete what is already stored — bookmarks and annotations are your work, and a toggle that destroyed them silently would be indefensible. Use **Clear Stored Data** for that |
-| **Privacy Mode — books** | — | A book must be unzipped to be read, and extraction is keyed by a _readable_ name (`Matter_-_Iain_M_Banks_68aa4804`), so the folder's existence alone says what you opened. Privacy Mode therefore **changes the destination** rather than sweeping afterwards: extraction goes to an opaquely-named directory under `%TEMP%`, deleted when the window closes and swept on a later launch if a crash prevented that. Large document and book *payloads* staged for the page (`localload`) follow the same rule. Books are served from their own virtual host (`localbooks`) so image URLs resolve from either root. The cost is re-extraction each session; within a session reopening stays fast |
-| **Autosave** (File menu) | **Off** | Saves a dirty document ~2s after typing stops. Only for a tab that **already has a file** — an unattended save must never raise a Save As dialog, so an untitled buffer stays untitled and is covered by session restore instead. A book is never written. Goes through the same save path as `Ctrl+S`, so the atomic write, per-tab line-ending fidelity and the overwrite-loss guard all apply. If the file changed on disk, Autosave does **not** overwrite it — it shows the disk-changed prompt instead |
-| **Remember unsaved documents between sessions** | **Off** | When on, dirty/untitled tab bodies are stored for restore. When off, nothing document-like is kept in the cache beyond what you explicitly save. |
-| **Keep recent files list** | On | At the foot of **File → Open Recent**. Off stops listing the files you open and forgets the list. Privacy Mode turns it off too |
-| **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents. One box per kind of data: unsaved session text, open tabs, recent files (with the last file and folder), recent Search queries (with match-case/whole-word), pasted images, text read from scanned PDFs, saved web storage and browsing history (on next launch), reading positions, extracted books, bookmarks, added words, custom themes, view settings, diagnostic logs, and, once a narrator is installed or a voice recording is stored, narration audio, logs, casts and voice-clone recordings. Voices are kept. Each box remembers how you left it the last time you cleared; **Select all** and **Select none** set them all. Search history can also be cleared from the foot of the Search box's history list |
-
-Also restored: window size and position, theme, margins, mode, line and paragraph spacing, justification, F7/F8/F9, zoom, scrubber/status-bar visibility, chrome auto-hide, side-panel auto-hide, open tab paths **and each tab's column layout** (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
-
-### Network behaviour
-**TypoZen itself requests nothing over the network**, with one exception you control: installing an extension (**File → Extensions**) downloads it while you watch, and nothing is fetched before or after. Fonts are bundled, the editor page is served from disk through a virtual host, and the page issues no outbound requests — an installed extension is served the same way, from the data folder through a virtual host, so the speech engine and its model are read from disk rather than a CDN. A document that references a remote image (`![](https://…)`) will still load it — that is the document's request, not the app's.
-
-**Read aloud uses the voices installed in Windows**, which run locally. A voice added to Windows by third-party software may itself go online — some adapters register web-based voices that send the text being read to a server. That is the voice's request, not TypoZen's, and choosing a local voice avoids it.
-
-**The WebView2 runtime is a different matter, and it is not fully silent.** The environment is created with Chromium's background services disabled:
-
-```
---disable-background-networking  --disable-component-update
---disable-sync  --no-first-run  --no-default-browser-check
-```
-
-Even so, the browser process holds **two TLS connections to Microsoft-owned addresses** from startup, with no page having requested anything. Measured, not assumed — and several further flag combinations (`--disable-domain-reliability`, `--no-pings`, `--no-service-autorun`, `--disable-breakpad`, various `--disable-features`) did **not** remove them.
-
-The endpoint is **not identified**. It does not appear in the Windows DNS cache (Chromium resolves independently) nor in `--log-net-log` output, so no claim is made here about which service it is. No document content is involved either way.
-
-Removing it entirely requires something outside the app — a firewall rule on `msedgewebview2.exe`, which is the shared runtime binary and would also block remote images, or machine-level Edge policy. Neither is applied.
-
-## Keyboard shortcuts
-| Action | Shortcut |
-| --- | --- |
-| Sidebar (Outline/Search) | `Alt+\` |
-| Find | `Ctrl+F` |
-| New | `Ctrl+N` |
-| Open | `Ctrl+O` |
-| Save | `Ctrl+S` |
-| Save As | `Ctrl+Shift+S` |
-| Print / Export PDF | `Ctrl+P` |
-| Fullscreen | `F11` |
-| Go to page (paginated document or PDF; a book has none) | `Ctrl+G` |
-| Search sidebar | `Alt+S` |
-| Previous / next search result (when matches exist) | `Up` / `Down`, or `F3` / `Shift+F3` |
-| Turn the page (any paginated mode) | `PageUp` / `PageDown`, or the wheel |
-| Turn the page while search has matches | `Left` / `Right` (paginated); also `PageUp` / `PageDown`. In Reader or a book, `Space` / `Shift+Space` too |
-| Turn the page (Reader / book, no search hits) | Arrows, or `Space` / `Shift+Space` |
-| Find & Replace | `Ctrl+H` |
-| Bookmark this page (toggle) | `Ctrl+Shift+M` |
-| Show bookmarks | `Ctrl+Shift+P` |
-| Return from jump (search/outline/goto) | `Ctrl+Shift+J` |
-| Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
-| Strikethrough | `Ctrl+Shift+X` |
-| Close tab | `Ctrl+W` |
-| Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
-| Open File / Edit / View / Themes / Help menu | `Alt+F` / `Alt+E` / `Alt+V` / `Alt+T` / `Alt+H` |
-| Help (syntax & shortcuts) | `F1` |
-| Reveal Markdown | `F7` |
-| Focus mode | `F8` |
-| Typewriter scroll | `F9` |
-
-**Menus (no default shortcut):** Themes → Customise Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → ZenMode (autohide UI), Side Panel Auto-hide · File → Privacy
-
-Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
+- **Saving and Exporting:** Save text as UTF-8 (atomic write), export as standalone HTML, or Print / PDF. When installed, TypoZen appears under **Open with** in Explorer for Markdown, text, epub, code files and PDFs.
+- **Smart linking:** Hover links for Open, Show in Folder, and Edit. Local files open in a tab, http links open in your browser, and #heading jumps seamlessly within the document.
 
 ---
 
