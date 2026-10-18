@@ -463,13 +463,13 @@
                                      all use it. Filled in code with the saved narrator voices
                                      (QwenNarrator.SavedVoices); the one reading is ticked and named in
                                      the header. Hidden unless the narration environment is installed. -->
-                                <MenuItem x:Name="mQwenVoice" Header="_Qwen Narrator" Visibility="Collapsed"
-                                          ToolTip="Audiobook narration rendered on this PC's graphics card. Text not yet rendered takes about a minute to start; anything rendered before plays at once."/>
+                                <!-- No tooltips on the voice submenus: a tooltip on a submenu header opens over the
+                                     open submenu and hides an entry (2026-10-18). -->
+                                <MenuItem x:Name="mQwenVoice" Header="_Qwen Narrator" Visibility="Collapsed"/>
                                 <!-- The second, optional narrator (BreezeNarrator): the same Read Aloud,
                                      its own voices, including voices cloned from a recording. Hidden
                                      unless the Breeze extension is installed. -->
-                                <MenuItem x:Name="mBreezeVoice" Header="_Breeze Narrator" Visibility="Collapsed"
-                                          ToolTip="Audiobook narration by Breeze, rendered on this PC's graphics card. It reads in voices made from a description or cloned from a recording, and performs sounds such as [laughing] and [sighing]."/>
+                                <MenuItem x:Name="mBreezeVoice" Header="_Breeze Narrator" Visibility="Collapsed"/>
                                 <!-- The narrators' own tool, Narrator Manager. Help is in Help > Narration, once. -->
                                 <MenuItem x:Name="mNarratorSettings" Header="_Narrator Manager..." Visibility="Collapsed"
                                           ToolTip="The narrator's voice and how it reads, new voices, and voices for this book's characters."/>
@@ -480,8 +480,7 @@
                                      are on disk. Hidden until the extension is installed. -->
                                 <MenuItem x:Name="mKokoroMenu" Header="_Kokoro Voices" Visibility="Collapsed"/>
                                 <MenuItem x:Name="mWindowsVoices" Header="Windows _Installed Voices"/>
-                                <MenuItem x:Name="mOnlineVoices" Header="Microsoft _Online Voices" Visibility="Collapsed"
-                                          ToolTip="High-quality neural natural voices streamed from Microsoft's speech service. Requires an internet connection."/>
+                                <MenuItem x:Name="mOnlineVoices" Header="Microsoft _Online Voices" Visibility="Collapsed"/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
                                 <!-- What applies whatever the voice: Speed, Stop at end of chapter and Narration Monitor
                                      (every voice reports to it). Speed's steps are built in code (RebuildSpeedMenu). -->

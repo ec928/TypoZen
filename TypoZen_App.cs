@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.18.7";
+        internal const string AppVersion = "0.18.8";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -2733,8 +2733,9 @@ namespace TypoZen
 
         /// <summary>
         /// A narrator's voice submenu, kept short however many voices there are: the voice in use,
-        /// the favourites (starred), the last few chosen, then "All voices..." for the rest, in
-        /// the picker (VoicePicker). Breeze can make dozens; the menu listed them all (Ed, 2026-10-18).
+        /// the favourites (starred), the last few chosen, grouped by gender, then "All voices..."
+        /// for the rest, in the picker (VoicePicker). Breeze can make dozens; the menu listed them
+        /// all (Ed, 2026-10-18).
         /// </summary>
         private void FillNarratorVoiceMenu(MenuItem menu, bool breeze, string current, bool reading, Action<string, string> choose)
         {
@@ -2756,15 +2757,34 @@ namespace TypoZen
                 mi.Click += (s, a) => choose(id, name);
                 menu.Items.Add(mi);
             };
-            VoiceEntry cur;
-            if (byId.TryGetValue(current ?? "", out cur)) add(cur);
-            foreach (var e in entries) if (e.Favourite) add(e);
-            int recent = 0;
+            // Which voices: the favourites, the last few chosen that are not favourites, and the
+            // voice in use if it is neither.
+            var picked = new List<VoiceEntry>();
+            foreach (var e in entries) if (e.Favourite) picked.Add(e);
+            var recentOnes = new List<VoiceEntry>();
             foreach (string id in VoiceList.Recent(cache))
             {
-                if (recent >= VoiceList.RecentKept) break;
+                if (recentOnes.Count >= VoiceList.RecentKept) break;
                 VoiceEntry e;
-                if (byId.TryGetValue(id, out e) && !shown.Contains(id)) { add(e); recent++; }
+                if (byId.TryGetValue(id, out e) && !e.Favourite) recentOnes.Add(e);
+            }
+            VoiceEntry cur;
+            bool curListed = byId.TryGetValue(current ?? "", out cur) && (cur.Favourite || recentOnes.Contains(cur));
+            // Grouped by gender, a divider between groups, so a favourite is found by eye (Ed,
+            // 2026-10-18): female, male, then neutral or not known. In each, the voice in use if
+            // it is not otherwise listed, the favourites, then the recent ones.
+            bool first = true;
+            foreach (string g in new[] { "female", "male", "" })
+            {
+                Func<VoiceEntry, bool> inGroup = e => g.Length > 0 ? e.Gender == g : (e.Gender != "female" && e.Gender != "male");
+                var group = new List<VoiceEntry>();
+                if (cur != null && !curListed && inGroup(cur)) group.Add(cur);
+                foreach (var e in picked) if (inGroup(e)) group.Add(e);
+                foreach (var e in recentOnes) if (inGroup(e)) group.Add(e);
+                if (group.Count == 0) continue;
+                if (!first) menu.Items.Add(new Separator());
+                first = false;
+                foreach (var e in group) add(e);
             }
             menu.Items.Add(new Separator());
             var allVoices = new MenuItem { Header = "_All voices (" + entries.Count + ")..." };
