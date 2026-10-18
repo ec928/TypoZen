@@ -126,9 +126,8 @@ tier). A host-side key filter does **not** fix this; that was tried and measured
 
 On a book or in Reader, Undo/Redo/Cut/Paste/Spelling were live and Insert Table stayed bright
 (the lock list named `tableMenu`, which does not exist; the button is `btnTable`). On a book,
-Save and Save As led to an export that wrote an empty file; both are greyed. On a PDF, image or
-media tab, Save, Save As and Export as HTML are greyed. **Book export to Markdown is broken**
-and is only hidden, not fixed.
+PDF, image or media tab, Save and Save As are disabled by design (books and media tabs are
+read-only in TypoZen; Export as HTML is also disabled on PDF, image and media tabs).
 
 ### Book links unreadable on dark themes — **fixed** (0.5.6)
 

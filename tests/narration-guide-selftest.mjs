@@ -22,7 +22,7 @@ const root = path.join(here, '..');
 const src = fs.readFileSync(path.join(root, 'js', 'modules', '09-speech.js'), 'utf8');
 const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
 const template = fs.readFileSync(path.join(root, 'TypoZen_Template.html'), 'utf8').replace(/\r\n/g, '\n');
-const guide = readme.slice(readme.indexOf('### Characters, voices and directing a line'), readme.indexOf('## Files & Export'));
+const guide = readme.slice(readme.indexOf('### Characters, voices and directing a line'), readme.indexOf('## Keyboard shortcuts'));
 const help = template.slice(template.indexOf('id="narrHelpModal"'), template.indexOf('id="narrHelpOk"'));
 if (guide.length < 1000 || help.length < 1000) throw new Error('guide or help section not found');
 

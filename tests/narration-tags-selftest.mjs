@@ -47,6 +47,10 @@ const api = new Function('document', 'window', 'box', [
     'let _narrCastScript = {};',
     'let _narrCastCues = {};',
     'let _narrCastAliases = {};',
+    'let _narrAutoSmartCast = false;',
+    'let _narrPrivate = false;',
+    'let _autoScriptedRanges = {};',
+    'let _bookUnits = null;',
     'const NARRATION_BATCH = 8;',
     'function narrLog() {}',
     src.slice(start, end + 1),
@@ -60,11 +64,14 @@ const api = new Function('document', 'window', 'box', [
     '  narrationBatches: narrationBatches,',
     '  narrationCastScan: window.narrationCastScan,',
     '  narrationGeminiPayload: window.narrationGeminiPayload,',
+    '  maybeAutoScriptChapterAt: window.maybeAutoScriptChapterAt,',
     '  setCast: function (c) { _narrCast = c; },',
     '  setCastSay: function (c) { _narrCastSay = c || {}; },',
     '  setCastScript: function (s) { _narrCastScript = s || {}; },',
     '  setCastCues: function (c) { _narrCastCues = c || {}; },',
     '  setCastAliases: function (a) { _narrCastAliases = a || {}; },',
+    '  setAutoSmartCast: function (on) { _narrAutoSmartCast = !!on; _autoScriptedRanges = {}; },',
+    '  setBookUnits: function (u) { _bookUnits = u; },',
     '  setModel: function (m) { DocumentModel = m; },',
     '  tagsFor: function (m) { narrTagsFor(m); }',
     '};'
@@ -932,7 +939,40 @@ console.log('--- AI Script Director / Gemini Smart Cast dialogue attribution');
         ch2Dialogue,
         ['hero-youth-m', 'ruler-commander-m', 'crone-inquisitor-f', 'tyrant-overlord-m', 'hero-youth-m']);
 
+    // 7. Punctuation-normalized quote matching (curly vs straight apostrophes, em-dashes vs hyphens):
+    api.setCastScript({
+        "@12:i don't know - wait...": 'paul'
+    });
+    eq('punctuation-normalized @block:quote matches curly apostrophes, em-dash, and ellipsis',
+        dialogueVoices([blockEl('“I don’t know — wait…”', 12)]),
+        ['hero-youth-m']);
+
+    // 8. Opt-in background chapter scripting (off by default; scripts current + imminent next chapter when enabled):
+    const autoBlocks = [];
+    for (let k = 0; k < 60; k++) {
+        autoBlocks.push({ raw: k % 2 === 0 ? '“Line ' + k + ',” someone murmured.' : 'The wind blew.' });
+    }
+    api.setModel({
+        kind: 'epub',
+        blocks: autoBlocks,
+        blockText: function (idx) { return this.blocks[idx] ? this.blocks[idx].raw : ''; }
+    });
+    api.setBookUnits([{ start: 0, end: 30 }, { start: 30, end: 60 }]);
+    api.setCastScript({});
+    api.setAutoSmartCast(false);
+    eq('background auto-scripting is off by default', api.maybeAutoScriptChapterAt(25, true), false);
+    api.setAutoSmartCast(true);
+    eq('background auto-scripting triggers for current and imminent next chapter when enabled',
+        api.maybeAutoScriptChapterAt(25, true), true);
+    const autoMsgs = posted.filter(m => m.startsWith('host_narrator_gemini_auto:')).map(m => JSON.parse(m.slice(26)));
+    eq('two chapters dispatched (current + imminent next)', autoMsgs.length, 2);
+    eq('first chapter auto-script starts at block 0', autoMsgs[0].paras[0], 0);
+    eq('next chapter auto-script starts at block 30', autoMsgs[1].paras[0], 30);
+    eq('already-dispatched chapters do not re-trigger', api.maybeAutoScriptChapterAt(26, true), false);
+
     // Cleanup
+    api.setAutoSmartCast(false);
+    api.setBookUnits(null);
     api.setCastScript({});
     api.setCastCues({});
     api.setCastAliases({});

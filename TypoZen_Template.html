@@ -454,12 +454,12 @@
                     <table class="tz-help-table">
                         <tbody>
                             <tr><td>Books</td><td><code>.epub</code> — Reader, scrubber, TOC</td></tr>
-                            <tr><td>PDF</td><td>Chromium PDF viewer</td></tr>
+                            <tr><td>PDF</td><td>Pages / 2-Col, scrubber, TOC, OCR, annotate &amp; save</td></tr>
                             <tr><td>HTML</td><td><strong>Source</strong> edit · <strong>Reader</strong> page · Preview off</td></tr>
                             <tr><td>CSS · XML · XAML</td><td>Editor Source (editable text)</td></tr>
                             <tr><td>Images</td><td>Fit-to-pane; right‑click → Magnify</td></tr>
                             <tr><td>Video · audio</td><td>Browser controls; codecs = Edge/OS</td></tr>
-                            <tr><td colspan="2" class="tz-help-note">These tabs never dirty and never save over the file. Mode and format tools stay locked while you read them.</td></tr>
+                            <tr><td colspan="2" class="tz-help-note">Books, HTML, images and media never dirty and never save over the file. Annotated PDFs save to a copy unless you choose otherwise.</td></tr>
                         </tbody>
                     </table>
                 </section>
@@ -495,8 +495,8 @@
                     <ul class="tz-about-list">
                         <li><strong>Preview or Source, your choice:</strong> write in a live, formatted Preview, or in Source, a real code editor built on CodeMirror 6. The two lay text out alike, so the line you are on stays where it is.</li>
                         <li><strong>Markdown without the fuss:</strong> headings, lists, tasks, tables, emphasis and fenced code, formatted as you type.</li>
-                        <li><strong>Room to think:</strong> Focus mode, Typewriter scroll and ZenMode, which hides everything until you reach for it.</li>
-                        <li><strong>Big files, no waiting:</strong> a 200,000-character manuscript scrolls like a short note, and Find still searches every word. Source opens multi-megabyte files and code too: HTML, CSS, JSON, JavaScript, C# and more, in your theme's colours.</li>
+                        <li><strong>Room to think:</strong> Focus mode dims everything except the paragraph you are on, Typewriter scroll keeps your line centred, and ZenMode hides the interface until you reach for it.</li>
+                        <li><strong>Big files, no waiting:</strong> a novel-length manuscript (200,000+ characters) scrolls like a short note, and Find still searches every word. Source opens multi-megabyte files and code too: HTML, CSS, JSON, JavaScript, C# and more, in your theme's colours.</li>
                         <li><strong>Spelling as you type:</strong> misspellings are underlined in Preview and Source; select a word for replacements.</li>
                         <li><strong>Save, export, print:</strong> saves that never leave a half-written file, standalone HTML export, and Print / PDF.</li>
                     </ul>
@@ -505,7 +505,7 @@
                     <h3>Reading</h3>
                     <ul class="tz-about-list">
                         <li><strong>A proper ePub reader:</strong> turning pages or a true two-page spread, with the book's own styling and contents, and your place remembered.</li>
-                        <li><strong>A full PDF reader:</strong> spreads, selectable text, Find and Search, forms, highlights and notes, and the text of scanned pages read on your own computer.</li>
+                        <li><strong>A full PDF reader:</strong> spreads, selectable text, Find and Search, forms, highlights and notes, plus local text recognition (OCR) that makes scanned pages selectable and searchable on your own computer.</li>
                         <li><strong>Dictionary and thesaurus, offline:</strong> over 150,000 definitions and 110,000 synonym sets. Select a word to look it up and hear it said.</li>
                         <li><strong>Search, marks and notes:</strong> a search sidebar (<kbd>Alt+S</kbd>), plus highlights, notes and bookmarks that stay in place when the document changes.</li>
                         <li><strong>Everything else, safely:</strong> HTML, images and media open read-only and are never saved over.</li>
@@ -514,8 +514,9 @@
                 <section class="tz-help-sec">
                     <h3>Listening</h3>
                     <ul class="tz-about-list">
-                        <li><strong>Read aloud:</strong> select a passage, or just press Read aloud to hear the page, in any voice installed in Windows. A reading bar gives you pause, previous and next, the voice and the speed.</li>
-                        <li><strong>More voices, if you want them:</strong> Microsoft's online natural voices, Kokoro voices that run on your PC, or the experimental Breeze and Qwen narrators, which can give every character a voice of their own (they need an NVIDIA graphics card).</li>
+                        <li><strong>Read aloud anywhere:</strong> select a passage, or just press Read aloud to hear any document, ePub or PDF in any voice installed in Windows. A floating reading bar gives you pause, previous and next paragraph, the voice and the speed.</li>
+                        <li><strong>Natural neural voices, offline or online:</strong> install Kokoro for 28 natural US and British voices that run locally on your PC, or switch on Microsoft's online natural voices.</li>
+                        <li><strong>Full-cast audiobook narration (experimental):</strong> with an NVIDIA graphics card, the local Breeze and Qwen narrators let you design or clone voices, give every character in a book a voice of their own, and direct delivery with emotion cues.</li>
                     </ul>
                 </section>
                 <section class="tz-help-sec">
@@ -528,12 +529,14 @@
                 </section>
                 <p class="tz-about-foot-note">Everything optional (more voices, the narrators, a 1.3-million-word dictionary, voice transcription) installs from <strong>File → Extensions</strong>.</p>
                 <p class="tz-about-foot-note">
-                    <kbd>F1</kbd> opens Syntax &amp; Shortcuts. Full detail lives in <code>README.md</code> beside the app.
+                    <kbd>F1</kbd> opens Syntax &amp; Shortcuts; <strong>Help → User Guide</strong> opens the full guide in a tab.
                 </p>
             </div>
             <footer class="tz-help-foot">
                 <!-- Group links on the left -->
                 <div style="display: flex; gap: 16px; align-items: center;">
+                    <button type="button" id="aboutGuide" class="tz-help-link"
+                            title="Opens the full guide (README) in a tab">Open the User Guide</button>
                     <!-- In the pinned footer, not the body: the About body scrolls, and a
                          feedback route nobody scrolls to is a feedback route nobody uses.
                          Posts a fixed command; the host owns the URL. -->

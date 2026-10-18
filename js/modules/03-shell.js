@@ -1150,6 +1150,10 @@
                     // Narrator Manager asks for dialogue excerpts for Gemini Script Director.
                     try { if (typeof window.narrationGeminiPayload === 'function') window.narrationGeminiPayload(); } catch (eG) {}
                 }
+                else if (msg.startsWith("cmd:narrator_script_merge:")) {
+                    // Background chapter script arrived; merge into _narrCastScript without interrupting playback.
+                    try { if (typeof window.mergeNarratorScript === 'function') window.mergeNarratorScript(msg.substring(26)); } catch (eM) {}
+                }
                 else if (msg.startsWith("cmd:narrator_trial:")) {
                     // Narrator Manager' Try it; answers come back as host_narrator_trial.
                     try { window.narrationTrial(msg.substring(19)); } catch (eT) {}
@@ -2871,17 +2875,19 @@
             wire('helpModal', 'helpClose', 'helpOk');
             wire('aboutModal', 'aboutClose', 'aboutOk');
             wire('narrHelpModal', 'narrHelpClose', 'narrHelpOk');
-            // Help > Narration -> the User Guide (README) in a tab. The panel closes, as the guide
-            // opens behind it in the editor.
-            (function () {
-                const g = document.getElementById('narrHelpGuide');
+            // Help > Narration and Help > About -> the User Guide (README) in a tab. The panel
+            // closes, as the guide opens behind it in the editor.
+            function wireGuide(btnId, modalId) {
+                const g = document.getElementById(btnId);
                 if (!g || g.__tzBound) return;
                 g.__tzBound = true;
                 g.addEventListener('click', function () {
-                    closeTzOverlay('narrHelpModal');
+                    closeTzOverlay(modalId);
                     try { postMsg('open_user_guide'); } catch (e) {}
                 });
-            })();
+            }
+            wireGuide('narrHelpGuide', 'narrHelpModal');
+            wireGuide('aboutGuide', 'aboutModal');
 
             // About -> "Report a problem or suggest a feature".
             //

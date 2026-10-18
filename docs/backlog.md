@@ -11,54 +11,42 @@ Repertory Ensemble" describes what users get; `GeminiDirector.cs` is the code.
 | Proposal | As built |
 |---|---|
 | `HttpClient` over TLS 1.3, in `TypoZen_App.cs` | `HttpWebRequest` with TLS 1.2 enabled, in `GeminiDirector.cs`; the key goes in the `x-goog-api-key` header only |
-| The whole novel, or a chapter, in one request | Two phases: the cast from the title and 12 sampled excerpts, then up to 75 dialogue paragraphs of the loaded chapter or document, 25 per request |
+| The whole novel, or a chapter, in one request | Two phases: the cast from the title and 12 sampled excerpts, then up to 200 dialogue paragraphs of the loaded chapter or document, 40 per request (preserving partial progress if a later batch fails). An optional **Auto-script new chapters in the background with Gemini** checkbox (off by default) scripts unscripted chapters in the background during reading and when the next chapter is imminent |
 | Schema-enforced JSON | JSON response mode (`responseMimeType`); the schema is in the prompt, not enforced |
 | A script cached next to the book | Saved with the book's cast under the profile folder (`extensions\QwenTTS\cast\<BookHash>.json`) |
-| The script annotates every quote | It covers the paragraphs sent. A quote matched to its paragraph overrides the page's speaker rules; the same words elsewhere in the book give way to a speaking word that names someone (`"What?" said Paul.`). README, "Who reads a line of dialogue" |
+| The script annotates every quote | It covers the paragraphs sent (with both exact and punctuation-normalized quote matching). A quote matched to its paragraph overrides the page's speaker rules; the same words elsewhere in the book give way to a speaking word that names someone (`"What?" said Paul.`). README, "Who reads a line of dialogue" |
 
-Smart Cast can be stopped while it runs (the button reads **Stop Smart Cast**), and it is off while Privacy Mode is on.
+Smart Cast can be stopped while it runs (the button reads **Stop Smart Cast**), and both on-demand and background Smart Cast are off while Privacy Mode is on.
 
 The proposal as agreed follows.
 
 In complex literary fiction (such as *Dune*, *A Song of Ice and Fire*, classic Russian literature), character dialogue attribution using pure regex/heuristic rules hits an unavoidable ceiling. Characters are continually referred to by shifting aliases, epithets, and relational descriptions (*"Paul's mother"*, *"the Duke's concubine"*, *"the Bene Gesserit lady"*, *"the boy"*, *"the old woman"*), and multi-turn banter often carries no speech tags. While TypoZen's conservative narrator fallback prevents jarring misattribution, users who take time to assign custom cast voices miss having those voices utilized across the novel.
 
 **Proposed Solution:**
-An optional **"AI Script Director"** pre-pass integrated into Narrator Manager, powered by Google Gemini (Gemini 1.5 Pro / 2.0 Flash) via a user-supplied API key.
+An optional **"AI Script Director"** pre-pass integrated into Narrator Manager, powered by Google Gemini (`gemini-3.8-flash` default) via a user-supplied API key.
 
 - **Pipeline & Security:**
-  - The C# host (`TypoZen_App.cs`) communicates directly via native `.NET` `HttpClient` (HTTPS TLS 1.3) with Google's REST API endpoint (`https://generativelanguage.googleapis.com/v1beta/models/...`). No middleman server.
+  - The C# host (`GeminiDirector.cs`) communicates directly over HTTPS with Google's REST API endpoint (`https://generativelanguage.googleapis.com/v1beta/models/...`). No middleman server.
   - The API key is stored securely in the user's Windows profile via the Windows Data Protection API (`ProtectedData.Protect`).
 - **Context Window Advantage:**
-  - Gemini's 1M–2M token context window allows an entire full-length novel (~150k–250k tokens) or individual chapters to be analyzed in a single request.
+  - Gemini's token context window allows full chapters (up to 200 dialogue paragraphs per pass) to be analyzed in batches.
 - **Output & Integration:**
-  - Gemini returns schema-enforced structured JSON mapping:
+  - Gemini returns structured JSON mapping:
     1. **Character Entity & Alias Map:** Discovers all characters and resolves aliases (*Jessica* ➔ *Lady Jessica*, *Paul's mother*, *the Duke's concubine*).
     2. **Vocal Profiles:** Extracts gender, age, and timbre to auto-suggest best-fit voices from installed engines.
-    3. **Dialogue Script Index (`book.script.json`):** Annotates every dialogue quote with the resolved speaker ID and delivery cue.
-  - The script is cached locally next to the book; subsequent playback is **100% offline** with zero regex guesswork and zero extra VRAM required during TTS audio generation.
+    3. **Dialogue Script Index:** Annotates dialogue quotes with the resolved speaker ID and delivery cue.
+  - The script is cached locally in the book's cast file; subsequent playback is **100% offline** with zero extra VRAM required during TTS audio generation.
 
-## Voice capture and the host-pin list (2026-10-11)
+## Voice capture and the host-pin list (2026-10-11) — **done** (verified and closed)
 
-Audit of the tree at 0.16.10. The internal install is 0.16.14, which includes that work, Whisper transcription, and the 20-second clone take. The reader and the editor were left as they are: book
-export to Markdown stays hidden, the cold-start caches stay declined, `TypoZen_App.cs`
-stays one file, and the Qwen narrator stays the narrator. Nothing here is a GitHub release.
-
-What was found, and where it stands:
+Audit of the tree at 0.16.10 (shipped in 0.16.14+, including 16-bit 44.1 kHz microphone capture, Privacy Mode recording isolation, Clear Stored Data cleanup, WebView2 virtual-host pins, Whisper CPU transcription via `whisper-cli.exe`, and the 20.05s clone-take tolerance). Book export to Markdown is permanently out of scope (books are read-only in Reader).
 
 | Item | What was wrong | Plan | Status |
 |---|---|---|---|
-| Microphone capture | `NarratorDialog` opened the wave device and set only the channel count. Windows then records 8-bit, 11 kHz. Three takes that morning (`recording_20261011_031404.wav`, `031459`, `031513`) are that format, and the samples sit within a few counts of silence. The 95% boost reads the file as 16-bit, so it does not lift an 8-bit take. | Record 16-bit, 44.1 kHz, mono, and leave the file alone unless it really is 16-bit PCM. 44.1 kHz is the rate the old wave mapper accepts; 48 kHz is not. | **Done.** Format commands checked with a short capture (see below). A full take through Narrator Manager was not recorded. |
-| Where recordings go | Files land in `TypoZen_Cache_Portable\recordings`. Privacy Mode still wrote them there. Clear Stored Data's narration box removes rendered audio, logs and casts, and does not mention this folder, so a PC-audio take survives the clear. | While Privacy Mode is on, write new recordings under the private temp folder, which already goes away when the window closes. Add the cache folder to the narration clear, and say so. Voices stay. | **Done.** Not clicked through in the Clear Stored Data window. |
-| Virtual-host pins | `BuildWebView2Options` pinned the book and load hosts and not `localnarration`, `localnarrationp`, `localbreeze`, `localbreezep`, or `localextensions`. The comment beside the list says an omitted host pays a DNS lookup before the folder mapping. | Add those five, taken from the same constants the mapping uses. | **Done.** Not measured against a remote DNS. |
-| Merriweather in the README | The README said the face is 4.4 MB, with 3.3 MB of layout tables, and that pinning two axes would shrink it. The files in `fonts\` are 662 KB and 667 KB. The face is still variable, weights 300 to 900. | Say the size that is on disk. | **Done.** |
-
-The PC-audio path was already 48 kHz, 16-bit, and the two later takes that day peak at 31129, the 95% boost. It was not changed.
-
-Whisper transcription is an optional extension in 0.16.13, not part of the installer. **File → Extensions** offers Base English (161.8 MB), Small English (485.7 MB, selected, marked recommended) and Medium English (1.4 GB). Those figures are the model plus the whisper.cpp program. The program is the Windows CPU build b5454 (whisper.cpp 1.9.5), which unpacks to `Release\whisper-cli.exe`. Once that program and the chosen model are on disk, Clone voice Transcribe uses Whisper and does not call Windows speech recognition. A synthesized sentence ("The rain had not stopped for three days.") run through that program with the tiny English model, which is not one of the three offered, came back as that sentence. Small was not downloaded. Transcribe was not clicked in Narrator Manager. The Start Menu shortcut opens `%LOCALAPPDATA%\Programs\TypoZen\TypoZen.exe`. For 0.16.14 that file matches the project exe, and so does `tools\breeze-narrator\sidecar.py`.
-
-Make a candidate rejected a PC take the recorder had stopped at 20 seconds. `recording_pc_20261011_132312.wav` is 20.01 seconds (48 kHz, one extra buffer). The note shows that as 20.0 and allows it, within 0.05 seconds. The sidecar refused anything over 20.0 and printed it as "20 seconds". A stretch that is over 20 by at most that 0.05 is sent as 20 seconds, and the sidecar drops the same tail. A longer file is still refused. Make a candidate was not clicked after the change.
-
-Microphone check: the same format command the dialog now sends, captured for under a second and then deleted. Header was 44100 Hz, 16-bit, mono. The open and the record both returned 0.
+| Microphone capture | `NarratorDialog` opened the wave device and set only the channel count. Windows then records 8-bit, 11 kHz. | Record 16-bit, 44.1 kHz, mono, and leave the file alone unless it really is 16-bit PCM. | **Done & verified.** |
+| Where recordings go | Files land in `TypoZen_Cache_Portable\recordings`. Privacy Mode still wrote them there, and Clear Stored Data's narration box did not remove them. | While Privacy Mode is on, write new recordings under the private temp folder. Add the cache folder to the narration clear. | **Done & verified.** |
+| Virtual-host pins | `BuildWebView2Options` pinned the book and load hosts and not `localnarration`, `localnarrationp`, `localbreeze`, `localbreezep`, or `localextensions`. | Add those five, taken from the same constants the mapping uses. | **Done & verified.** |
+| Merriweather in the README | The README stated outdated font sizes. | Say the size that is on disk (`662 KB` and `667 KB`). | **Done & verified.** |
 
 ## 0. File associations (added 2026-09-28) — **done**, see Done
 

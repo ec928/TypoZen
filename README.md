@@ -21,40 +21,31 @@ Download `TypoZen-Setup-<version>.exe`. A standard Windows installer that doesn'
 **[Download the portable zip](https://github.com/ec928/TypoZen/releases/latest)**  
 Just unzip and run. Nothing is installed, and it leaves no trace outside your user profile. Great for running straight from a USB stick.
 
-*Note on versions:* The installer and portable versions are unsigned, so Windows may show a "Windows protected your PC" warning on the first run (click "More info" → "Run anyway"). They also won't update automatically. The Store copy can sit alongside either of the others and keeps its own settings, themes, bookmarks and reading positions; the installer and the portable zip are the same build, so those two share one set of settings and only one of them runs at a time.
+*Note on versions:* The installer and portable versions are unsigned, so Windows may show a "Windows protected your PC" warning on the first run (click "More info" → "Run anyway"). They also won't update automatically. The Store copy can sit alongside either of the others and keeps its own settings, themes, bookmarks and reading positions; the installer and the portable zip are the same build, so those two share one set of settings and only one of them runs at a time. See [Where it installs](#where-it-installs) and [Where your data is kept](#where-your-data-is-kept).
 
 *Requirements: Windows 10 version 1809 or later, 64-bit. Requires the WebView2 runtime, which is already present on current Windows.*
-
-### Where it installs
-
-The program and your data are kept apart: the program goes here, and your data goes in one folder of its own (see [Where your data is kept](#where-your-data-is-kept)).
-
-| Component | Path | Notes |
-| --- | --- | --- |
-| **Installed app** | `%LocalAppData%\Programs\TypoZen\` | Per-user executable (`TypoZen.exe`), DLLs, and bundled assets. |
-| **Portable app** | *Folder of your choice* | Anywhere you unpack the zip; no files are created beside the executable. |
-| **Store app** | `%ProgramFiles%\WindowsApps\` | Sandboxed Windows package directory. |
 
 ## Highlights
 
 ### Writing
 - **Preview or Source, your choice:** write in a live, formatted Preview, or in Source, a real code editor built on CodeMirror 6. The two lay text out alike, so the line you are on stays where it is.
 - **Markdown without the fuss:** headings, lists, tasks, tables, emphasis and fenced code, formatted as you type.
-- **Room to think:** Focus mode, Typewriter scroll and ZenMode, which hides everything until you reach for it.
-- **Big files, no waiting:** a 200,000-character manuscript scrolls like a short note, and Find still searches every word. Source opens multi-megabyte files and code too: HTML, CSS, JSON, JavaScript, C# and more, in your theme's colours.
+- **Room to think:** Focus mode dims everything except the paragraph you are on, Typewriter scroll keeps your line centred, and ZenMode hides the interface until you reach for it.
+- **Big files, no waiting:** a novel-length manuscript (200,000+ characters) scrolls like a short note, and Find still searches every word. Source opens multi-megabyte files and code too: HTML, CSS, JSON, JavaScript, C# and more, in your theme's colours.
 - **Spelling as you type:** misspellings are underlined in Preview and Source; select a word for replacements.
 - **Save, export, print:** saves that never leave a half-written file, standalone HTML export, and Print / PDF.
 
 ### Reading
 - **A proper ePub reader:** turning pages or a true two-page spread, with the book's own styling and contents, and your place remembered.
-- **A full PDF reader:** spreads, selectable text, Find and Search, forms, highlights and notes, and the text of scanned pages read on your own computer.
+- **A full PDF reader:** spreads, selectable text, Find and Search, forms, highlights and notes, plus local text recognition (OCR) that makes scanned pages selectable and searchable on your own computer.
 - **Dictionary and thesaurus, offline:** over 150,000 definitions and 110,000 synonym sets. Select a word to look it up and hear it said.
 - **Search, marks and notes:** a search sidebar (`Alt+S`), plus highlights, notes and bookmarks that stay in place when the document changes.
 - **Everything else, safely:** HTML, images and media open read-only and are never saved over.
 
 ### Listening
-- **Read aloud:** select a passage, or just press Read aloud to hear the page, in any voice installed in Windows. A reading bar gives you pause, previous and next, the voice and the speed.
-- **More voices, if you want them:** Microsoft's online natural voices, Kokoro voices that run on your PC, or the experimental Breeze and Qwen narrators, which can give every character a voice of their own (they need an NVIDIA graphics card).
+- **Read aloud anywhere:** select a passage, or just press Read aloud to hear any document, ePub or PDF in any voice installed in Windows. A floating reading bar gives you pause, previous and next paragraph, the voice and the speed.
+- **Natural neural voices, offline or online:** install Kokoro for 28 natural US and British voices that run locally on your PC, or switch on Microsoft's online natural voices.
+- **Full-cast audiobook narration (experimental):** with an NVIDIA graphics card, the local Breeze and Qwen narrators let you design or clone voices, give every character in a book a voice of their own, and direct delivery with emotion cues.
 
 ### Make it yours
 - **25 themes and five bundled typefaces:** Inter, Literata, Merriweather, Source Sans 3 and JetBrains Mono, or build your own palette with Customise Theme…
@@ -63,16 +54,20 @@ The program and your data are kept apart: the program goes here, and your data g
 
 Everything optional (more voices, the narrators, a 1.3-million-word dictionary, voice transcription) installs from **File → Extensions**, and removing one takes away everything it added.
 
+**Contents:** [Writing & editing](#writing--editing) · [Reading & research](#reading--research) · [Looking a word up](#looking-a-word-up) · [Reading aloud](#reading-aloud) · [Files & export](#files--export) · [Themes & typography](#themes--typography) · [Data, privacy & network](#your-data-privacy--network) · [Extensions](#extensions) · [Narration with Qwen & Breeze](#narration-with-qwen-and-breeze) · [Keyboard shortcuts](#keyboard-shortcuts) · [Architecture & tech stack](#architecture--tech-stack) · [Licence](#licence)
+
+---
+
 ## Writing & editing
 
 ### Dual-mode editing
 - **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, emphasis)
-- **Source Mode** - the raw Markdown/text, highlighted in your theme's colors. Code blocks and markup files (CSS, HTML, JSON, C#) are automatically syntax-highlighted. Built on CodeMirror 6 for massive-file performance.
+- **Source Mode** — the raw Markdown/text, highlighted in your theme's colours. Code blocks and markup files (CSS, HTML, JSON, C#) are automatically syntax-highlighted. Built on CodeMirror 6 for massive-file performance.
 - Switch with the **Mode** control on the toolbar (Source / Preview / Reader); the lit segment is the **current** mode
 - **Sticky mode switching** — the line at the top of the screen stays at the top when you toggle, for both the status readout _and_ the scroll position. Source and Preview lay a line out alike (same margins, width and spacing), so text does not shift between them
 - **Large code files** — a 2.2 MB HTML file with a 356 KB line opens in Source and reaches that line in a fraction of a second; code is not spell-checked
 - Source uses the **active theme font** (pick a **(Mono)** theme if you want monospaced source and preview)
-- **Reveal markdown on focus** can be enabled to automatically show markdown details while still in preview WYSIWYG mode
+- **Reveal markdown on focus** (`F7`) can be enabled to automatically show markdown details while still in preview WYSIWYG mode
 
 ### Large documents
 TypoZen opens Markdown of any size in Live Preview.
@@ -80,39 +75,42 @@ TypoZen opens Markdown of any size in Live Preview.
 - **Raw Performance:** `.txt`, `.log`, and `.csv` files open natively in Source mode for raw Notepad-class performance.
 
 ### Writing tools
-- **Spelling:** The Windows spell checker underlines misspellings in both Preview and Source (not in code, inline code or fenced code blocks). Select a word for replacements; see **Spelling** below.
+
+#### Find & search
 - **Find & Replace (`Ctrl+F` / `Ctrl+H`):** Searches the entire document model instantly, even virtualized off-screen sections.
 - **Live Match Highlighting:** All search matches are highlighted concurrently in both Source and Preview modes.
 - **Search Sidebar (`Alt+S`):** Dedicated sidebar with match-case and whole-word toggles. Remembers your last 8 searches across all sessions.
-- **Search mode** (a live result list — sidebar need not stay open): **Up / Down** step previous / next match with eyes on the text; **Left / Right** turn the page when the layout is paginated. Without results, Up/Down are normal (caret in Preview, page turn in Reader). **F3** / **Shift+F3** also step next/prev. Same Up/Down behaviour the results list has always used
+- **Search mode** (a live result list — sidebar need not stay open): **Up / Down** step previous / next match with eyes on the text; **Left / Right** turn the page when the layout is paginated. Without results, Up/Down are normal (caret in Preview, page turn in Reader). **F3** / **Shift+F3** also step next/prev.
+
+#### Links, tables & editing
+- **Spelling:** The Windows spell checker underlines misspellings in both Preview and Source (not in code, inline code or fenced code blocks). Select a word for replacements; see [Spelling](#spelling) below.
 - **Links** — hover a link for **Open Link**, **Show in Folder** and **Edit Link**; select text and use **Add Link** in the selection popover to make one. Both open a dialog with the visible text and the target.
-  - A link to a file, relative to the document that contains it (`[notes](other-file.md)`) opens as a tab. Resolution happens in the host, because only the host knows where the document lives.
-  - `http`, `https` and `mailto` open in the default browser and carry a `↗`. **Only** those three schemes are handed to the shell: a link's address comes out of document content, and without that restriction a `file:` or custom-scheme link would be a way to make opening a note launch a program. Everything path-shaped is opened as a *document*, which reads a file and cannot run one.
+  - A link to a file, relative to the document that contains it (`[notes](other-file.md)`) opens as a tab.
+  - `http`, `https` and `mailto` open in the default browser and carry a `↗`. **Only** those three schemes are handed to the shell; anything path-shaped is opened safely as a document rather than executed.
   - `#heading` jumps within the document, through the same path an outline click uses. Slugs follow the usual Markdown convention — lower-cased, punctuation dropped, each remaining space becoming its own hyphen, so `## Look & feel` is `#look--feel` — and letters in any script are kept, so `## 日本語` is `#日本語`. An anchor that matches no heading does nothing rather than guessing.
   - A plain click still places the caret — this is an editor, and link text has to stay editable. `Ctrl+click` opens directly.
-- **Tables** — the toolbar's table button inserts one; inside a table, `Tab` moves between cells and grows the table at the end
-- **Tab types a tab**, in Preview and Source, as in Notepad; `Shift+Tab` takes one back. On a list item Tab nests the list instead, and in a table it moves between cells. A run of tabs wraps onto the next line like any other space, and a tab is saved as a tab
-- **Spaces are kept as typed** in Preview as in Source — a double space, a space at the start of a line, a space or tab at the end of one — and each is its own step for Undo
-- **A clicked picture is removed only by a deliberate `Delete`, `Backspace` or Cut.** Typing, Space, Tab, paste and bold/italic do nothing to it; `Enter` adds a line after it
-- **Undo** puts the caret back where the change was and leaves the view (Source or Preview) as it is
-- **Insert** switches between inserting and overwriting, in both views; the caret turns into a block while overwriting, and overwriting stops at the end of the line rather than running into the next
-- Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`)
-- Editor margins: Narrow / Regular / Wide — real side padding, not column-width caps. Grouped in View with Line Spacing and Paragraph Spacing, because all three set the shape of the text block
-- **Block Hover** (View) — whether hovering a paragraph previews its bookmark in the gutter. **On** by default. Turning it off removes the preview only: bookmarks you have set are always drawn. There is deliberately no wash or edge under the pointer — hovering a paragraph does one thing, which is arm the gutter, so the gutter is the only thing that answers
-- **Justified** (View) — **off by default, including for books.** Every test book asks for it — _Xeelee_ on 96 rules, _Matter_ on 7 — and those declarations are rewritten to read this switch rather than dropped, so they keep their selectors and the publisher's _centred_ and _right-aligned_ rules are untouched
-- **Hyphenation follows justification**, because on a screen they are one decision. A browser justifies by stretching word spaces and nothing else, so justified-without-hyphens is what opens rivers of white down a narrow column; ragged-right-with-hyphens breaks words to close a gap that isn't there. Limits are `6 3 3` — six characters in the word, three either side of the break — against Chromium's default `5 2 2`, which will leave `a-` hanging at a column edge. `hyphens: auto` is **inert without a language**, so a book's own `<html lang>` is carried onto `#editor` and cleared when the book closes; hyphenating French by English rules is worse than not hyphenating, so a book that declares nothing inherits the page rather than being guessed at
-- **Word Wrap** (View) — applies in **Source** and **scroll Preview** only. On **Pages**, **Reader**, or an **epub**, the menu item is **disabled** (no fake tick); the stored preference returns when wrap can apply again
-- Sidebar (`Alt+\`): live outline (headings, or a book's own TOC) and the Search pane
-- Zoom: `Ctrl++` / `Ctrl+-` / `Ctrl+0` or Ctrl+scroll
-- **Notepad-style chrome** — document tabs in the **title bar** with min/max/close; File/Edit/View and format icons on the command row below
-- **ZenMode** (View → ZenMode (autohide UI)) — hides everything but the page: the command row, the tabs, the window buttons and the status bar. Pointer to the **top** (or bare Alt) brings it all back, window buttons and dragging included; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back
-- The menu is **always discoverable** — there is no hide-the-menu toggle. When auto-hide is off it stays put; when on, reach the top of the window
-- **Left-edge sidebar hover** (View → Side Panel Auto-hide) — **off by default**, and separate from chrome auto-hide: wanting a bare reading window is not the same as wanting the outline to follow the mouse. Switched on, and with the sidebar unpinned (closed by the toggle), moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it (stay band covers the full bar so Match case / Whole word stay usable). Opening with the toolbar, `Alt+\`, or Alt+S **pins** it until you close it again
-- **Alt+F / E / V / T / H** open the matching top-level menu from the keyboard (including while the editor has focus); **Alt+S** is Search, not a menu letter
-- **Enter keeps your indentation in Source.** A textarea drops the caret to column zero, so every indented structure — a fence, a YAML block, a nested list — had to be re-indented by hand on every line. A list carries its marker too (`3.` becomes `4.`), and Enter on an empty bullet ends the list and removes the stray marker. Brackets and quotes are deliberately left alone: auto-closing them turns hostile the moment it guesses wrong, and prose is full of apostrophes
-- **Headings are separated by space, not rules.** One hairline under `h1` only, mixed from the theme's own text colour rather than `--border` (which draws the sidebar edge and the scrollbar thumb — chrome furniture, and this lives inside the document). `h2` has none: solid-under-h1 plus dashed-under-h2 is the GitHub-markdown idiom, not a book one. Headings sit 1.25em from what precedes them and 0.3em from their own text, so a section reads as a section. No rule at all in Pages — `break-after: avoid` routinely puts a heading at the top of a column, which made the rule the second thing on the page and, across a two-column spread, two lines at different heights
-- **Fenced code is syntax highlighted** — `json`, `xml`/`xaml`, and a C-family lexer covering `cs`, `js`, `ts`, Java, Go, Rust and similar. A fence with no language, or one that is not recognised, is left plain rather than guessed at. Painted with the **CSS Custom Highlight API**, not by wrapping tokens in elements. That is not an implementation detail: a `<span>` inside a `.block` round-trips into `data-raw`, and Markdown's own DOM repair splits such spans into separate lines — which corrupted a real file when a whole-document code mode was attempted (see `docs/developer-editor-analysis.md`). Ranges are not DOM, so nothing can serialise, repair or split them. The trade is the API's property ceiling: colour only, no bold keywords or italic comments
-- Formatting controls grey themselves out whenever the document cannot take an edit — Reader mode, and every epub. They were live-looking and inert there; Word Wrap had greyed itself and said why for a long time, and the nine controls beside it had not. Greyed rather than hidden, so switching modes never shuffles buttons under the pointer
+- **Tables** — the toolbar's table button inserts one; inside a table, `Tab` moves between cells and grows the table at the end.
+- **Tab types a tab**, in Preview and Source, as in Notepad; `Shift+Tab` takes one back. On a list item Tab nests the list instead, and in a table it moves between cells. A run of tabs wraps onto the next line like any other space, and a tab is saved as a tab.
+- **Spaces are kept as typed** in Preview as in Source — a double space, a space at the start of a line, a space or tab at the end of one — and each is its own step for Undo.
+- **Enter keeps your indentation in Source** — indented blocks (fences, YAML, nested lists) keep their indent, ordered lists advance their marker (`3.` becomes `4.`), and Enter on an empty bullet ends the list. Brackets and quotes are deliberately not auto-closed.
+- **Fenced code is syntax highlighted** — `json`, `xml`/`xaml`, and a C-family lexer covering `cs`, `js`, `ts`, Java, Go, Rust and similar. A fence with no language, or one that is not recognised, is left plain rather than guessed at.
+- **A clicked picture is removed only by a deliberate `Delete`, `Backspace` or Cut.** Typing, Space, Tab, paste and bold/italic do nothing to it; `Enter` adds a line after it.
+- **Undo** puts the caret back where the change was and leaves the view (Source or Preview) as it is.
+- **Insert** switches between inserting and overwriting, in both views; the caret turns into a block while overwriting, and overwriting stops at the end of the line rather than running into the next.
+- Formatting controls grey themselves out whenever the document cannot take an edit (Reader mode and every epub) rather than hiding, so switching modes never shuffles buttons under the pointer.
+
+#### View, focus & layout
+- **Focus & immersion:** Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`).
+- **ZenMode** (**View → ZenMode (autohide UI)**) — hides everything but the page: the command row, the tabs, the window buttons and the status bar. Pointer to the **top** (or bare `Alt`) brings it all back, window buttons and dragging included; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back. The menu is always discoverable by reaching the top of the window.
+- **Left-edge sidebar hover** (**View → Side Panel Auto-hide**) — **off by default**, and separate from ZenMode. When switched on and with the sidebar unpinned, moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it. Opening with the toolbar, `Alt+\`, or `Alt+S` **pins** it until you close it again.
+- **Sidebar (`Alt+\`):** live outline (headings, or a book's own TOC), Marks, and the Search pane.
+- **Notepad-style chrome** — document tabs in the **title bar** with min/max/close; File/Edit/View/Themes/Help (`Alt+F` / `E` / `V` / `T` / `H`) and format icons on the command row below.
+- **Editor margins:** Narrow / Regular / Wide — real side padding, grouped in **View** with Line Spacing and Paragraph Spacing.
+- **Headings** are separated by generous vertical space (1.25em above, 0.3em below) rather than horizontal rules, with a subtle hairline under `h1` in scroll view only.
+- **Justified & hyphenation** (**View → Justified**) — **off by default, including for books.** When enabled, automatic hyphenation (`6 3 3` break limits using the document or book's declared language) turns on with it so narrow columns do not open rivers of white space.
+- **Word Wrap** (**View**) — applies in **Source** and **scroll Preview** only. On **Pages**, **Reader**, or an **epub**, the menu item is **disabled** (no fake tick); the stored preference returns when wrap can apply again.
+- **Block Hover** (**View**) — whether hovering a paragraph previews its bookmark in the gutter. **On** by default. Turning it off removes the preview only; bookmarks you have set are always drawn.
+- **Zoom:** `Ctrl++` / `Ctrl+-` / `Ctrl+0` or `Ctrl`+scroll.
 
 ### Lists
 Bullet, ordered and task lists, with real nesting.
@@ -150,16 +148,11 @@ The status bar updates continuously with word count, character count (both group
 ### Reading ePubs
 Open a `.epub` and TypoZen becomes a reader: **Reader mode, paginated, read-only**, with the book's own table of contents in the outline.
 
-- A book's blocks carry the **publisher's own HTML**, not a Markdown conversion. Converting _Blindsight_ to Markdown dropped 6/6 images, 162/162 links, 170/170 list items and 210/210 footnote references, and broke 16 of 17 headings. Carrying the HTML has no conversion step and therefore nothing to lose.
-- **The book's stylesheets are applied through an allowlist**, as its HTML is: parsed by the browser, and only what is named gets through. The page itself takes the book's typography and nothing that sizes or places it, so **View → Margins**, the theme's paper and the pagination are always yours; elements inside the book take typography plus bounded layout (indents, spacing, borders, image sizes), and nothing that can take them out of their column. The same applies to inline `style=""`. On the way, `rem` becomes `em` (a book sized in `rem` is rooted at the application and the reader's font-size control cannot touch it), `page-break-before: always` becomes `break-before: column`, `text-align: justify` becomes `text-align: var(--tz-align, left)` so **View → Justified** owns it (see Writing tools), and `preserveAspectRatio="none"` is stripped from cover wrappers. Checked against a 148-book library with `tools/library-sweep.mjs`: nothing outside the page.
-- **Each top-level element sits in its own block**, so rules the book wrote about neighbours are translated to match across blocks: _Blindsight_'s `p + p` indent and a heading's `h2 + p` apply, and a leading `:first-child` means a chapter's first element rather than every paragraph.
-- **Embedded fonts load**, including fonts the book obfuscates (`META-INF/encryption.xml`, IDPF and Adobe schemes), and a book's tables fit their column.
-- **Body text renders at the size the theme asks for.** Publishers size against a device default they cannot see — _Xeelee_ asks for `0.88em` on its body classes, _Matter_ for `1.33333em`. The correction divides the **declarations in the book's own stylesheet** by the measured factor and leaves `#editor` at exactly `--fs`, so text the publisher left unstyled is right without anything being done to it, `0.88em ÷ 0.88` is `1em` and right too, and a `1.5em` heading becomes `1.7em` — still half again the body, which is the proportion the publisher was expressing. Scaling the _container_ instead, which is what this did first, is exact only for text wearing the class and wrong in the other direction for everything else: about one _Xeelee_ paragraph in ten. Now 96.9% of its characters and 99.2% of _Matter_'s land on the theme size exactly.
-- The factor is measured from the element that **directly owns each text node**, weighted by characters, and refined as more of the book mounts. Each of those was a bug in turn: measuring the block's first child read a container that inherits the theme size and hands it back, so _Matter_ was declared correct while 99.2% of its text painted a third too large; counting elements rather than characters lets a drop cap outvote a chapter; and locking the factor on first sight took it from whatever range happened to be mounted, which on a resumed book is usually front matter — two launches of the same book measured 0.66 and 0.74 for a factor that should be 0.75.
-- **A plate gets the page it sits on.** A cover, frontispiece or part title — a picture with no text beside it — is sized to the page box, not to `vh`. `vh` is the _window_, which includes the tab strip, toolbar and status bar, so the old bound stopped a cover a quarter of a page short and shrank _Matter_'s below its own resolution (a 510×680 file painted at 391×521). Covers are small files (294×500 to 510×739), so filling the page upscales the smaller ones — presence over sharpness, chosen deliberately, because a cover is furniture you glance at rather than text you read. A picture under 400px natural is not a plate: the _Matter_ "About the Author" portrait is 230×233 and alone in its block, and filling a page with it at 3× was not an improvement.
-- Chapters start a new page, images and internal links work, and the reading position is remembered per book across sessions.
-- **Where you are is the chapter, not a page of the whole book.** The foot shows the chapter ("Chapter 4 of 48") and the page inside it ("Page 2 of 23"). That count is the pages of this chapter, taken from the layout, and it is exact: a chapter is laid out whole and starts on a new page. There is no whole-book total and no Go to page. The scrubber is how far through the text you are, by words, with a mark at each chapter and, in an omnibus, a taller mark where each novel starts. The status percentage is that same position. Click the chapter name in the status bar to jump to its start.
-- A book is never dirty, never saved over, and Save As refuses any path ending `.epub`.
+- **Native publisher HTML & styling:** A book's blocks carry the publisher's own HTML and stylesheets (applied through a safe allowlist), preserving every image, footnote link, list item, heading, paragraph indent and embedded font (including IDPF and Adobe obfuscated fonts).
+- **Your page, your margins, your font size:** While the book's internal typography and proportions are kept, **View → Margins**, **View → Justified**, the theme's colours, and the base font size are always yours. TypoZen automatically normalises books that hardcode unusually small or large body sizes in their CSS so body text matches your chosen theme size while headings keep their relative scale.
+- **Full-page plates:** Covers, frontispieces and part-title illustrations stand on their own page box, while smaller inline portraits and figures stay at their natural proportions.
+- **Chapter pagination & word scrubber:** Chapters start on a new page, and the footer shows your exact place in the chapter ("Chapter 4 of 48 · Page 2 of 23"). The scrubber at the foot tracks your position across the whole book by word count, with tick marks at each chapter (and taller marks where each novel starts in an omnibus). Click the chapter name in the status bar to jump to its start.
+- **Safe & read-only:** Your reading position is remembered per book across sessions. A book is never marked dirty, never saved over, and Save As refuses any path ending `.epub`.
 
 ### Reading PDFs
 A PDF opens in the reader itself, drawn by **PDF.js** (bundled, nothing downloaded). Its text is never edited; annotations and form entries can be added and saved (below).
@@ -385,6 +378,16 @@ Bundled OFL faces: Inter, Source Sans 3, Merriweather, Literata. Every face that
 
 ## Your data, privacy & network
 
+### Where it installs
+
+The program and your data are kept apart: the program goes here, and your data goes in one folder of its own (see [Where your data is kept](#where-your-data-is-kept)).
+
+| Component | Path | Notes |
+| --- | --- | --- |
+| **Installed app** | `%LocalAppData%\Programs\TypoZen\` | Per-user executable (`TypoZen.exe`), DLLs, and bundled assets. |
+| **Portable app** | *Folder of your choice* | Anywhere you unpack the zip; no files are created beside the executable. |
+| **Store app** | `%ProgramFiles%\WindowsApps\` | Sandboxed Windows package directory. |
+
 ### Where your data is kept
 Everything the installer and portable builds write lives in one folder,
 `%LocalAppData%\TypoZen_Cache_Portable\` (press `Win + R` and paste to open it); the Store version
@@ -605,16 +608,17 @@ Under **Narrator Manager > Cast for this book**, TypoZen provides automated cast
 - **Find characters**: Scans the book locally and extracts every named speaker, counting their spoken lines.
 - **Smart Cast** (Google Gemini): Runs a two-phase AI Script Director pass with live batch progress:
   1. *Dramatis Personae:* Uses the book's title and up to 12 dialogue excerpts sampled across the chapter/document to identify the work's speaking cast (or, for unrecognized texts, only the speakers present in the excerpts), canonicalizing names and aliases/honorifics, estimating novel dialogue prominence, and matching each character to the best voice in your library or the 19 universal vocal archetypes.
-  2. *Dialogue Attribution:* Attributes up to 75 dialogue paragraphs from the current chapter/document in 25-block batches to resolve multi-turn banter, unlabelled quotes, and emotional delivery cues without gateway timeouts; later chapters and remaining dialogue use the local speaker rules above together with the saved character alias map (`aliases`).
-  - Smart Cast is switched off while Privacy Mode is on, because it sends the book's dialogue to Google.
-  - While it runs, the button reads **Stop Smart Cast**. Stopping leaves the cast as it was.
+  2. *Dialogue Attribution:* Attributes up to 200 dialogue paragraphs from the current chapter/document in 40-block batches (preserving partial progress if a later batch fails) to resolve multi-turn banter, unlabelled quotes, and emotional delivery cues without gateway timeouts; later chapters and remaining dialogue use the local speaker rules above together with the saved character alias map (`aliases`).
+  - **Auto-script new chapters in the background with Gemini** *(off by default)*: Optional checkbox right below **Smart Cast**. When ticked on a book that has a cast and a configured Gemini API key, TypoZen automatically scripts unscripted chapters in the background when narration begins on a new chapter or when the next chapter is imminent during reading, merging the new dialogue attributions seamlessly without interrupting playback.
+  - Both on-demand and background Smart Cast are switched off while Privacy Mode is on, because they send the chapter's dialogue to Google.
+  - While an on-demand pass runs, the button reads **Stop Smart Cast**. Stopping leaves the cast as it was.
 - **Clear cast & Row Removal (`✕`)**: **Clear cast** resets all character assignments, line instructions, and AI script overrides for the current book in one click, while the **`✕`** button on each row removes an individual character.
 - **Readable Cast Storage**: Per-book casts, character alias maps, and Smart Cast quote mappings are saved as clean, multiline formatted JSON in `%LocalAppData%\TypoZen_Cache_Portable\extensions\QwenTTS\cast\<BookHash>.json` (`book`, `cast`, `names`, `say`, `strength`, `script`, `cues`, and `aliases`).
 - **API Key & Model Settings**: Configure your Google AI Studio API key and choose Gemini models:
   - *Storage:* The API key is stored on your PC, encrypted with Windows DPAPI, in `gemini\gemini.key` inside TypoZen's own data folder (`%LOCALAPPDATA%\TypoZen_Cache_Portable` for the installer build; the Store build has its own). A key saved by 0.16.25 or earlier in `%LOCALAPPDATA%\TypoZen\` is moved there the first time it is used.
-  - *Model Configuration (`gemini.json`):* Stored beside the key, in `gemini\gemini.json`. You can inspect or update the primary model, the automated fallback model chain, and the REST endpoint URL whenever Google releases new models (e.g. `gemini-3.6-flash`, `gemini-4.0-flash`).
+  - *Model Configuration (`gemini.json`):* Stored beside the key, in `gemini\gemini.json`. You can inspect or update the primary model (`gemini-3.8-flash` by default), the automated fallback model chain, and the REST endpoint URL whenever Google releases new models.
   - *Direct In-App Access:* In the **API Key...** dialog in Narrator Manager, click **Find gemini.json 📁** to reveal and highlight the configuration file in Windows File Explorer, or click **Open File ✎** to open it directly in your text editor. You can also adjust the primary model directly in the dialog.
-  - *Automatic Fallback Protection:* If the primary model hits a quota limit (HTTP 429/503) or is retired (HTTP 404), TypoZen automatically cycles through the configured fallback chain (`gemini-flash-lite-latest`, `gemini-3.5-flash-lite`, `gemini-3.6-flash`, etc.). If `gemini.json` is missing or corrupted, TypoZen safely falls back to built-in defaults.
+  - *Automatic Fallback Protection:* If the primary model hits a quota limit (HTTP 429/503) or is retired (HTTP 404), TypoZen automatically cycles through the configured fallback chain (`gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, `gemini-3.1-flash-lite`, `gemini-3.6-flash`, etc.). If `gemini.json` is missing or corrupted, TypoZen safely falls back to built-in defaults.
   - *Developer Overrides:* `GEMINI_MODEL`, `GEMINI_API_KEY`, and `GEMINI_API_ENDPOINT` environment variables take precedence if specified.
   - *Quota Note:* Developer API keys from [Google AI Studio](https://aistudio.google.com/app/apikey) use their own platform quotas. A consumer Google One / Gemini Advanced ($20/month) subscription applies only to consumer chat (`gemini.google.com`) and does not increase AI Studio API limits. For higher API rate limits, link pay-as-you-go billing in Google AI Studio / Google Cloud.
 
@@ -701,24 +705,53 @@ An ePub cannot be edited, so it has no instructions of yours:
 Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
 
 ## Architecture & tech stack
-TypoZen is a hybrid native-web application designed for speed, local-first privacy, and an ultra-lightweight footprint.
+TypoZen is a hybrid native-web application: a **C# WPF host shell** wrapping a **Microsoft Edge WebView2** document engine, designed for instant startup, local-first privacy, and a small footprint. Because `TypoZen.xaml`, `TypoZen_Template.html`, the JavaScript modules, and `TypoZen_Themes.json` are loaded from disk at runtime, the UI, editor engine, and themes can be modified without recompiling C#.
 
-- **Frontend & Engine:** A vanilla web stack running inside a Microsoft Edge **WebView2** control.
-  - Markdown/Code editing is powered by **CodeMirror 6** for virtualized, massive-file performance.
-  - The ePub reader is a bespoke, paginated HTML engine using native browser multi-column layouts.
-  - PDF rendering is driven entirely client-side by Mozilla's **PDF.js**.
-- **Backend (Host):** A monolithic **C# WPF** application (TypoZen_App.cs) that handles window management, deep OS integration, native file I/O, and fast inter-process communication (IPC) with the WebView2 control.
-- **Data & Extraction (C#):** **PdfPig** is used natively for lightning-fast image extraction and offline document parsing without relying on the browser.
-- **Speech & AI:**
-  - **Windows voices:** the host speaks through Windows' own SAPI 5 engine (`System.Speech`), so any voice installed in Windows works.
-  - **Microsoft Online Voices** (opt-in extension): streamed from Microsoft's Edge speech service; the only voices that send text off the machine.
-  - **Kokoro-JS:** Provides high-quality on-device neural Text-to-Speech (TTS) using ONNX models without internet connectivity.
-  - **Breeze narrator** (extension): Breeze TTS 2, a 3-billion-parameter speech model that clones a voice from a short reference recording. It runs in its own Python sidecar on an NVIDIA graphics card (about 10 GB of its memory while reading), which the host talks to over HTTP on the loopback only.
-  - **Qwen narrator** (extension): Qwen3-TTS, 1.7 billion parameters, in a sidecar of its own built the same way. Only one narrator is loaded at a time.
-  - **Narration pipeline:** each narrator gets the text as Preview shows it, with numbers spelled out as words and character casts and delivery cues applied per paragraph; the Narration Monitor shows exactly what was sent.
-  - **Smart Cast:** optional, with your own Google Gemini key: maps a passage's dialogue to characters and delivery cues for the narrators.
-  - **Whisper:** Optional speech-to-text for Clone voice, via whisper.cpp on the processor. Not in the installer.
-  - **Compromise.js:** A lightweight, offline Part-Of-Speech tagger used to resolve grammatical homographs for the speech engine.
+### System overview & source layout
+
+| Layer | Files | Responsibility |
+| --- | --- | --- |
+| **WPF Host & Window Shell** | `TypoZen_App.cs`, `TypoZen.xaml`, `TypoZen_Launch.cs` | Single-instance IPC pipe, title-bar tab strip, recursive theme tree walker, atomic file I/O, session & per-type view profiles, `FileSystemWatcher` disk-conflict guard, and the `WebMessageReceived` host↔page bridge. |
+| **Books, PDFs & Lexicon (C#)** | `EpubReader.cs`, `PdfPictures.cs`, `SpellCheck.cs`, `Lexicon.cs` | Zip/OPF/spine ePub extraction (`localbooks` virtual host), **PdfPig** raw stream image extraction and Windows OCR, background STA thread WPF spellchecker (`SpellCheck.cs`), and stride-indexed on-disk WordNet lookup (~200 KB RAM, ~0.15 ms/lookup). |
+| **Speech, AI & Extensions (C#)** | `TypoZen_TTS.cs`, `EdgeSpeechClient.cs`, `Extensions.cs`, `NarratorEngine.cs`, `BreezeNarrator.cs`, `QwenNarrator.cs`, `QwenInstaller.cs`, `GeminiDirector.cs`, `NarratorDialog.cs`, `VoicePicker.cs`, `NarrationMonitor.cs` | SAPI 5 and `Windows.Media` speech, opt-in Microsoft Edge online voices, SHA-256 verified extension installer, loopback HTTP management for the local Python CUDA sidecars (Breeze TTS 2 & Qwen3-TTS), and DPAPI-encrypted Google Gemini Smart Cast director. |
+| **Document Engine (WebView2)** | `TypoZen_Template.html`, `css/typozen.css`, `js/modules/load-order.json` | Hosted via `WindowsFormsHost` (`Microsoft.Web.WebView2.WinForms`). Nine classic scripts sharing global scope plus PDF.js (`10-pdf.js`), loaded in deterministic order. |
+| **Editor & Layout Modules (JS)** | `01-core.js`, `01a-source.js`, `02-layout.js`, `03-shell.js`, `04-lists.js`, `04b-format.js`, `05-model.js`, `06-render-epub.js`, `07-stats-host.js`, `08-code.js`, `08b-compromise.js`, `09-speech.js`, `10-pdf.js` | **Live Preview** is a bespoke vanilla-JS block engine (`DocumentModel` + viewport virtualization and 800-block `PageChunks` windowing). **Source Mode** wraps **CodeMirror 6** (`01a-source.js`). **PDF View** wraps **PDF.js** (`10-pdf.js`) with layout-inferred paragraph extraction for Read Aloud and in-place PDF annotation saving. |
+
+### Speech & AI engines
+- **Windows voices:** The host speaks through Windows' own SAPI 5 (`System.Speech`) and `Windows.Media` engines, with 1 second of leading silence so sleeping HDMI/Bluetooth outputs do not clip the first word.
+- **Microsoft Online Voices** (opt-in extension): Streamed from Microsoft's Edge speech service; the only voices that send text off the machine.
+- **Kokoro-JS** (extension): On-device neural TTS using `fp16` ONNX models over WebGPU (`localextensions` virtual host, rewritten on install so zero external URLs remain).
+- **Breeze narrator** (extension): Breeze TTS 2 (3B parameters) in an isolated local Python/CUDA sidecar (~10 GB VRAM while active), supporting zero-shot voice cloning, emotion strength (`1`–`10`), and performative audio cues (`(giggles)`, `(sigh)`).
+- **Qwen narrator** (extension): Qwen3-TTS (1.7B parameters) in its own local Python/CUDA sidecar (~4.3–6 GB VRAM), supporting natural-language voice design. Only one GPU narrator runs at a time, releasing VRAM after 15 minutes idle or immediately when switching to Kokoro.
+- **Narration pipeline & homograph resolution:** Text is normalised with British-style number expansion (`speakNumbers` in `09-speech.js`), grammatical homographs (*lives*, *read*) are resolved offline via **Compromise.js** (`08b-compromise.js`), and character casts/cues are dispatched per paragraph and inspected live in `NarrationMonitor.cs`.
+- **Smart Cast & Whisper:** `GeminiDirector.cs` maps novel dramatis personae and chapter dialogue batches via the Gemini REST API (`gemini.json` fallback chain); `whisper-cli.exe` (CPU OpenBLAS build) transcribes reference audio for voice cloning without contending for GPU memory.
+
+### Key engineering invariants
+- **`DocumentModel` is the single source of truth:** Under scroll virtualization (≥ 2,000 blocks or ≥ 120 KB) or page windowing (`PageChunks.size = 800` blocks), the DOM holds only a sliding window. Every save, copy, export, print, and search operates on `DocumentModel`, never by scraping mounted DOM nodes.
+- **Non-destructive highlights via the CSS Custom Highlight API:** Search hits, user annotations, spellcheck squiggles, and fenced code syntax tokens (`08-code.js`) are painted with `CSS.highlights` ranges rather than injecting `<span>` or `<mark>` elements into `.block` nodes, preventing DOM mutations from corrupting `data-raw` during Markdown round-trips.
+- **ePub stylesheet allowlisting & character-weighted font normalisation:** `EpubReader.cs` extracts raw spine HTML without lossy Markdown conversion. In `06-render-epub.js`, publisher CSS is parsed and filtered through a safe property allowlist (`rem` → `em`, `page-break-before` → `break-before: column`, `text-align: justify` → `var(--tz-align, left)`). Because publishers size body text against arbitrary baselines (e.g. `0.88em` in *Xeelee*, `1.33333em` in *Matter*), TypoZen measures the character-weighted computed font factor across text-owning elements and divides the stylesheet declarations so body text lands on the user's `--fs` while headings keep their relative proportion. Cover plates (standalone images ≥ 400 px) are sized to the page box rather than `vh`.
+- **Dual WebView2 surface isolation:** Native read-only tabs (HTML Reader, images, video/audio) render on a secondary WebView2 (`_nativeWebView`) while the primary editor WebView stays alive behind it; `SendMsg` gates editor commands while the native surface is visible, and overlays (`#helpModal`, `#aboutModal`) temporarily raise the host page when invoked over a native tab.
+
+### Building, testing & diagnostics
+
+```powershell
+# Validate TypoZen.xaml, run self-tests, and compile TypoZen.exe
+.\Build_TypoZen.ps1
+
+# Run the default verification gate (jsdom *-selftest.mjs + headless Chrome *-browser.mjs)
+.\tests\run-tests.ps1
+
+# Run full application E2E suites (drives TypoZen.exe via CDP + UI Automation in throwaway profiles)
+$env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1
+```
+
+- **Diagnostics:** Press `Ctrl+Shift+D` (`Help → Toggle Debug HUD`) for a zero-overhead live overlay of focus, pagination geometry, and search state. Launch via `.\TypoZen_Debug.bat` (`--debug`) to write detailed telemetry to `debug.log`, or set `$env:TYPOZEN_PERF = '1'` to profile cold-start milestones in `perf.log`.
+- **Developer documentation:**
+  - [docs/architecture.md](docs/architecture.md) — Document model invariants, page windowing benchmarks, virtualization thresholds, and file/cache layout.
+  - [docs/for-agents.md](docs/for-agents.md) — Keyboard matrix, WebView2 virtual-host navigation rules, test harness conventions, and non-goals.
+  - [docs/narrator-cues.md](docs/narrator-cues.md) — Complete specification of bracket tags, speech-tag cues, and Qwen/Breeze prompt assembly.
+  - [docs/releasing.md](docs/releasing.md) — Portable zip, Inno Setup installer, MSIX packaging, and install-identity rules.
+  - [docs/known-issues.md](docs/known-issues.md) — Characterised product limits and platform edge cases.
 
 ## Licence
 TypoZen is **MIT** (`LICENSE`). The bundled components carry their own terms, and all

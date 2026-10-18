@@ -137,6 +137,7 @@ namespace TypoZen
             public string Instruction = "";
             public string Cue = DefaultCue;
             public bool Direct = true;
+            public bool AutoSmartCast = false;
         }
 
         public sealed class Cast
@@ -284,6 +285,8 @@ namespace TypoZen
             object v, s, c, i, q;
             var r = new Settings { Voice = d.TryGetValue("voice", out v) ? (v as string ?? "") : "" };
             if (d.TryGetValue("direct", out c) && c is bool) r.Direct = (bool)c;
+            object asc;
+            if (d.TryGetValue("autoSmartCast", out asc) && asc is bool) r.AutoSmartCast = (bool)asc;
             object bv;
             if (d.TryGetValue("breezeVoice", out bv) && bv is string) r.BreezeVoice = (string)bv;
             object st, si;
@@ -310,7 +313,7 @@ namespace TypoZen
         {
             var d = new Dictionary<string, object>
             {
-                { "voice", s.Voice ?? "" }, { "breezeVoice", s.BreezeVoice ?? "" }, { "breezeStrength", s.BreezeStrength }, { "monitor", s.Monitor }, { "sampleText", s.SampleText ?? "" }, { "sampleInstruction", s.SampleInstruction ?? "" }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }
+                { "voice", s.Voice ?? "" }, { "breezeVoice", s.BreezeVoice ?? "" }, { "breezeStrength", s.BreezeStrength }, { "monitor", s.Monitor }, { "sampleText", s.SampleText ?? "" }, { "sampleInstruction", s.SampleInstruction ?? "" }, { "instruction", s.Instruction ?? "" }, { "cue", s.Cue ?? "" }, { "direct", s.Direct }, { "autoSmartCast", s.AutoSmartCast }
             };
             File.WriteAllText(SettingsPath(cacheDir), FormatJson(new JavaScriptSerializer().Serialize(d)), Encoding.UTF8);
         }
@@ -512,7 +515,7 @@ namespace TypoZen
             var d = new Dictionary<string, object>
             {
                 { "voice", s.Voice }, { "voiceName", name }, { "instruction", s.Instruction }, { "cue", s.Cue },
-                { "direct", s.Direct }, { "speed", speed },
+                { "direct", s.Direct }, { "autoSmartCast", s.AutoSmartCast }, { "speed", speed },
                 { "cast", cast.Voices },
                 { "castSay", cast.Instructions },
                 { "castStrength", cast.Strengths },

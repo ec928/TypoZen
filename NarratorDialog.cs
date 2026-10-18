@@ -1215,6 +1215,7 @@ namespace TypoZen
             StackPanel castPage = null;
             ProgressBar smartCastProgress = null;
             TextBlock smartCastStatus = null;
+            CheckBox autoSmartCastBox = null;
             if (!string.IsNullOrEmpty(book))
             {
                 castPage = new StackPanel();
@@ -1266,11 +1267,20 @@ namespace TypoZen
                 filterCell.Children.Add(filterBox);
                 filterCell.Children.Add(filterHint);
 
-                var castActionRow = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+                var castActionRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
                 DockPanel.SetDock(filterCell, Dock.Right);
                 castActionRow.Children.Add(filterCell);
                 castActionRow.Children.Add(castButtons);
                 castPage.Children.Add(castActionRow);
+
+                autoSmartCastBox = new CheckBox
+                {
+                    Content = "Auto-script new chapters in the background with Gemini",
+                    IsChecked = settings.AutoSmartCast,
+                    Margin = new Thickness(0, 0, 0, 8),
+                    ToolTip = "When on, TypoZen automatically attributes dialogue in the background when narration enters an unscripted chapter or approaches the next chapter.\r\nOff by default. Requires a Gemini API key and an existing cast for this book; off while Privacy Mode is on."
+                };
+                castPage.Children.Add(autoSmartCastBox);
 
                 smartCastStatus = new TextBlock
                 {
@@ -3396,22 +3406,7 @@ namespace TypoZen
                                             cast.Aliases[kv.Key] = kv.Value;
                                         }
                                     }
-                                    foreach (var q in result.Quotes)
-                                    {
-                                        if (string.IsNullOrEmpty(q.Quote) || string.IsNullOrEmpty(q.Speaker)) continue;
-                                        string norm = q.Quote.Trim().ToLowerInvariant();
-                                        // "@<block>:<quote>" is this paragraph's own answer and overrides the
-                                        // page's rules; "<quote>" alone gives way to a speaking word in the text.
-                                        int quoteBlock = q.Para >= 0 && q.Para < parasList.Count ? parasList[q.Para] : -1;
-                                        string quoteHere = quoteBlock >= 0 ? "@" + quoteBlock + ":" + norm : null;
-                                        if (quoteHere != null) cast.QuoteScript[quoteHere] = q.Speaker;
-                                        cast.QuoteScript[norm] = q.Speaker;
-                                        if (!string.IsNullOrEmpty(q.Cue))
-                                        {
-                                            if (quoteHere != null) cast.QuoteCues[quoteHere] = q.Cue;
-                                            cast.QuoteCues[norm] = q.Cue;
-                                        }
-                                    }
+                                    GeminiDirector.StoreAttributedQuotesIntoCast(cast, result.Quotes, parasList);
 
                                     say(string.Format("AI Cast complete via {0}: {1} novel characters cast ({2} in this chapter), {3} quotes mapped. Click Save to apply.",
                                         result.ModelUsed ?? "Gemini", result.Characters.Count, speakingCount, result.Quotes.Count));
@@ -3444,6 +3439,7 @@ namespace TypoZen
                     settings.Instruction = instructionBox.Text.Trim();
                     settings.Cue = cueBox.Text.Trim().Length > 0 ? cueBox.Text.Trim() : QwenNarrator.DefaultCue;
                     settings.Direct = directBox.IsChecked == true;
+                    if (autoSmartCastBox != null) settings.AutoSmartCast = autoSmartCastBox.IsChecked == true;
                     settings.BreezeStrength = strengthSlider.Value;
                     QwenNarrator.SaveSettings(cacheDir, settings);
                     foreach (var r in castRows)
@@ -3485,6 +3481,7 @@ namespace TypoZen
                 if (side.Breeze != openedBreeze
                     || (v != null && v.Id != savedVoice()) || instructionBox.Text.Trim() != (settings.Instruction ?? "").Trim()
                     || cue != (settings.Cue ?? "").Trim() || (directBox.IsChecked == true) != settings.Direct
+                    || (autoSmartCastBox != null && (autoSmartCastBox.IsChecked == true) != settings.AutoSmartCast)
                     || Math.Abs(strengthSlider.Value - settings.BreezeStrength) > 0.01) return true;
                 foreach (var r in castRows)
                 {

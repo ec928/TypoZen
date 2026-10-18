@@ -867,6 +867,8 @@ function playNextChunk() {
     _ttsCurrent = chunk;
     _ttsChunkStarted = false;
     _currentTTSChunkIdx = chunk.idx;
+    const cBi = ttsBlockOf(chunk);
+    if (cBi != null) { try { maybeAutoScriptChapterAt(cBi, true); } catch (e) {} }
 
     const editor = document.getElementById('editor');
     let targetEl = chunk.el;
@@ -1014,6 +1016,8 @@ let _narrCastStrength = {};
 let _narrCastScript = {};
 let _narrCastCues = {};
 let _narrCastAliases = {};
+let _narrAutoSmartCast = false;
+let _autoScriptedRanges = {};
 // The settings the narration monitor shows beside each piece: what shapes every line.
 let _narrShown = {};
 // The narration monitor is open (cmd:narr_monitor:on): each piece reports itself as it plays.
@@ -1030,6 +1034,18 @@ function tellMonitor(chunk) {
 function narrAudioUrl(item) {
     return 'https://' + (item.private ? _narrAudioHostPrivate : _narrAudioHost) + '/' + item.file;
 }
+window.mergeNarratorScript = function (json) {
+    try {
+        const s = typeof json === 'string' ? JSON.parse(json) : json;
+        if (s && s.castScript && typeof s.castScript === 'object') {
+            Object.assign(_narrCastScript, s.castScript);
+        }
+        if (s && s.castCues && typeof s.castCues === 'object') {
+            Object.assign(_narrCastCues, s.castCues);
+        }
+        narrLog('smart-cast background script merged: ' + (s && s.castScript ? Object.keys(s.castScript).length : 0) + ' entries');
+    } catch (e) {}
+};
 window.setNarratorSettings = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
@@ -1040,6 +1056,7 @@ window.setNarratorSettings = function (json) {
         _narrInstruction = typeof s.instruction === 'string' ? s.instruction : null;
         _narrCue = s.cue || '';
         _narrDirect = s.direct === true;
+        _narrAutoSmartCast = s.autoSmartCast === true;
         _narrSpeed = Math.max(0.5, Math.min(2, parseFloat(s.speed) || 1));
         _narrCast = s.cast || {};
         _narrCastSay = (s.castSay && typeof s.castSay === 'object') ? s.castSay : {};
@@ -1072,6 +1089,7 @@ window.setNarratorSettings = function (json) {
                                            : ', style ' + (_narrStyle ? _narrStyle.length + ' chars' : 'standard')) +
                 ', speed ' + _narrSpeed + ', cast ' + Object.keys(_narrCast).length +
                 (_narrDirect ? ', emotion cues' : '') +
+                (_narrAutoSmartCast ? ', auto-smart-cast' : '') +
                 (_narrPrivate ? ', private' : ''));
     } catch (e) { narrLog('settings unreadable: ' + (e && e.message || e)); }
 };
@@ -2119,10 +2137,11 @@ function narrationQuotes(text) {
         // '"What?" said Paul.' stays Paul's, whoever Gemini heard say "What?" elsewhere.
         if (!(key && pick && pick.verb) && typeof _narrCastScript !== 'undefined' && _narrCastScript && Object.keys(_narrCastScript).length) {
             const norm = inner.trim().toLowerCase();
-            const matchedKey = _narrCastScript[norm];
+            const nKey = normQuoteKey(inner);
+            const matchedKey = _narrCastScript[norm] || _narrCastScript[nKey];
             if (matchedKey && typeof _narrCast !== 'undefined' && _narrCast && _narrCast[matchedKey]) {
                 key = matchedKey;
-                const matchedCue = typeof _narrCastCues !== 'undefined' && _narrCastCues && _narrCastCues[norm];
+                const matchedCue = typeof _narrCastCues !== 'undefined' && _narrCastCues && (_narrCastCues[norm] || _narrCastCues[nKey]);
                 if (matchedCue && !tag) tag = matchedCue;
             }
         }
@@ -2135,6 +2154,16 @@ function narrationQuotes(text) {
         out.push(q);
     }
     return out;
+}
+
+function normQuoteKey(s) {
+    return String(s || '').trim().toLowerCase()
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2014\u2013]|--/g, '-')
+        .replace(/\u2026/g, '...')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 /**
@@ -2207,11 +2236,14 @@ function attributeParagraphs(texts, known, at) {
         const block = at && at[textIdx] >= 0 ? at[textIdx] : -1;
         if (block >= 0 && typeof _narrCastScript !== 'undefined' && _narrCastScript && Object.keys(_narrCastScript).length) {
             for (const q of qs) {
-                const k = '@' + block + ':' + (q.inner || '').trim().toLowerCase();
-                const matched = _narrCastScript[k];
+                const rawNorm = (q.inner || '').trim().toLowerCase();
+                const nKey = normQuoteKey(q.inner);
+                const k = '@' + block + ':' + rawNorm;
+                const kNorm = '@' + block + ':' + nKey;
+                const matched = _narrCastScript[k] || _narrCastScript[kNorm];
                 if (matched && typeof _narrCast !== 'undefined' && _narrCast && _narrCast[matched]) {
                     q.key = matched;
-                    const cue = (typeof _narrCastCues !== 'undefined' && _narrCastCues) ? _narrCastCues[k] : '';
+                    const cue = (typeof _narrCastCues !== 'undefined' && _narrCastCues) ? (_narrCastCues[k] || _narrCastCues[kNorm]) : '';
                     if (cue && !q.tag) q.tag = cue;
                 }
             }
@@ -2373,7 +2405,7 @@ window.narrationGeminiPayload = function () {
             }
             blocks.push(combined);
             paras.push(src.at[i]);
-            if (blocks.length >= 75) break;
+            if (blocks.length >= 200) break;
         }
     }
     if (!blocks.length) {
@@ -2400,6 +2432,125 @@ window.narrationGeminiPayload = function () {
     } catch (e) {}
     return blocks;
 };
+
+function chapterBoundsAt(bi) {
+    const total = (typeof DocumentModel !== 'undefined' && DocumentModel && Array.isArray(DocumentModel.blocks))
+        ? DocumentModel.blocks.length : 0;
+    try {
+        if (typeof _bookUnits !== 'undefined' && _bookUnits && _bookUnits.length) {
+            for (let i = 0; i < _bookUnits.length; i++) {
+                const u = _bookUnits[i];
+                if (u && bi >= u.start && bi < u.end) return { start: u.start, end: u.end, total: total || u.end };
+            }
+        }
+    } catch (e) {}
+    try {
+        if (typeof _chapterEntries !== 'undefined' && _chapterEntries && _chapterEntries.length) {
+            let start = 0, end = total;
+            for (let i = 0; i < _chapterEntries.length; i++) {
+                const at = _chapterEntries[i].bi | 0;
+                if (at <= bi) start = at;
+                else { end = at; break; }
+            }
+            if (end > start) return { start: start, end: end, total: total || end };
+        }
+    } catch (e) {}
+    const all = (typeof document !== 'undefined' && document.querySelectorAll)
+        ? Array.from(document.querySelectorAll('#editor .block')) : [];
+    if (all.length) {
+        const s = scriptBlockIndex(all[0]);
+        const e = scriptBlockIndex(all[all.length - 1]);
+        if (s >= 0 && e >= s) return { start: s, end: e + 1, total: Math.max(total, e + 1) };
+    }
+    return { start: 0, end: total, total: total };
+}
+
+function hasScriptInRange(uStart, uEnd) {
+    if (!_narrCastScript) return false;
+    const keys = Object.keys(_narrCastScript);
+    for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (k.charCodeAt(0) !== 64) continue; // '@'
+        const colon = k.indexOf(':');
+        if (colon <= 1) continue;
+        const idx = parseInt(k.slice(1, colon), 10);
+        if (idx >= uStart && idx < uEnd) return true;
+    }
+    return false;
+}
+
+function blockPlainAtModelIndex(bi) {
+    if (typeof DocumentModel !== 'undefined' && DocumentModel && Array.isArray(DocumentModel.blocks) && DocumentModel.blocks[bi]) {
+        if (typeof DocumentModel.blockText === 'function') return oneNotation(String(DocumentModel.blockText(bi) || '').trim());
+        return oneNotation(String(DocumentModel.blocks[bi].raw || '').trim());
+    }
+    if (typeof document !== 'undefined' && document.querySelector) {
+        const el = document.querySelector('#editor .block[data-model-index="' + bi + '"]');
+        if (el) return oneNotation((el.innerText || '').trim());
+    }
+    return '';
+}
+
+function scriptChapterRange(uStart, uEnd) {
+    if (!(uEnd > uStart)) return false;
+    const rangeKey = uStart + ':' + uEnd;
+    if (_autoScriptedRanges[rangeKey]) return false;
+    if (hasScriptInRange(uStart, uEnd)) {
+        _autoScriptedRanges[rangeKey] = true;
+        return false;
+    }
+    const blocks = [];
+    const paras = [];
+    for (let i = uStart; i < uEnd; i++) {
+        const t = blockPlainAtModelIndex(i);
+        if (/[“"‘]/.test(t)) {
+            let combined = t;
+            if (i + 1 < uEnd) {
+                const nextT = blockPlainAtModelIndex(i + 1);
+                if (/^\s*the\s+voice\s+(?:was|belonged\s+to)\b/i.test(nextT)) {
+                    combined = combined + ' ' + nextT;
+                }
+            }
+            if (i > uStart && /^\s*["'“‘]/.test(t) && /\b(he|she|they)\s+said\b/i.test(t)) {
+                const prevT = blockPlainAtModelIndex(i - 1);
+                if (prevT && !/[“"‘]/.test(prevT) && prevT.length < 200 && /\b[A-Z][\w’'-]+/.test(prevT)) {
+                    combined = prevT + ' ' + combined;
+                }
+            }
+            blocks.push(combined);
+            paras.push(i);
+            if (blocks.length >= 200) break;
+        }
+    }
+    _autoScriptedRanges[rangeKey] = true;
+    if (!blocks.length) return false;
+    narrLog('auto-script: requesting background Gemini script for blocks ' + uStart + '..' + uEnd + ' (' + blocks.length + ' dialogue blocks)');
+    try {
+        window.chrome.webview.postMessage('host_narrator_gemini_auto:' + JSON.stringify({
+            blocks: blocks,
+            paras: paras
+        }));
+    } catch (e) {}
+    return true;
+}
+
+function maybeAutoScriptChapterAt(bi, checkImminentNext) {
+    if (!_narrAutoSmartCast || _narrPrivate || !_narrCast || !Object.keys(_narrCast).length || !(bi >= 0)) return false;
+    const bounds = chapterBoundsAt(bi);
+    let triggered = scriptChapterRange(bounds.start, bounds.end);
+    if (checkImminentNext && bounds.end > bounds.start && bounds.end < bounds.total) {
+        const span = bounds.end - bounds.start;
+        const threshold = bounds.end - Math.max(20, Math.floor(span * 0.35));
+        if (bi >= threshold) {
+            const nextBounds = chapterBoundsAt(bounds.end);
+            if (nextBounds.end > nextBounds.start && nextBounds.start >= bounds.end) {
+                if (scriptChapterRange(nextBounds.start, nextBounds.end)) triggered = true;
+            }
+        }
+    }
+    return triggered;
+}
+window.maybeAutoScriptChapterAt = maybeAutoScriptChapterAt;
 
 /** A cast line's own direction: the speech tag's words, else its punctuation. */
 function quoteDirection(q) {
@@ -2783,6 +2934,7 @@ async function startQwenNarration(base) {
     if (at < 0) { at = 0; why = 'nothing on screen, top'; }
 
     const startAt = narrationDocIndex(all[at], at);
+    try { maybeAutoScriptChapterAt(startAt, true); } catch (e) {}
     // 120 pieces, however many batches that takes: counted in batches, Breeze's one-piece
     // batches cut a reading off after 15 pieces, about eight lines (2026-10-10).
     const batches = narrationBatches(all, at, Math.ceil(120 / NARRATION_BATCH), true, fromCaret);
@@ -2867,6 +3019,9 @@ async function startQwenNarration(base) {
                 if (_stopChapterAt != null && queue[n] && queue[n].length && queue[n][0].at >= _stopChapterAt) {
                     narrLog('stop at chapter: not rendering past block ' + _stopChapterAt);
                     break;
+                }
+                if (queue[n] && queue[n].length) {
+                    try { maybeAutoScriptChapterAt(queue[n][0].at, true); } catch (e) {}
                 }
                 // About ninety seconds ahead is plenty; beyond that is work nobody may hear.
                 // Except before a batch that will take longer than that to render -- one long

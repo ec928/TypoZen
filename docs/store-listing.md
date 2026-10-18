@@ -39,12 +39,12 @@ Reading worth sitting down for
 Open an ePub and TypoZen transforms into a premium reader with a genuine two-page spread. It respects the publisher's original typography while smoothly scaling to your preferred font size. PDFs open with their native outlines, text search, and full annotation support. You can even fill out forms, extract images, or read scanned pages using local text recognition.
 
 Listen and research, completely offline
-Select any text to look up its definition and synonyms using the built-in, completely offline dictionary featuring over 150,000 definitions. Sit back and use Read Aloud to hear your books or PDFs spoken in your local Windows voices. Every word, search, and definition stays strictly on your hard drive.
+Select any text to look up its definition and synonyms using the built-in, completely offline dictionary featuring over 150,000 definitions. Sit back and use Read Aloud with a floating transport bar: listen in your local Windows voices, download the optional 86 MB Kokoro offline neural voices, or install the optional Breeze and Qwen local GPU narrators for studio-grade narration, voice cloning, and multi-voice character casting across novels.
 
 Private by construction, not by promise
 TypoZen works offline. It has no accounts, no telemetry, no forced sync, and makes no background network requests. It connects to the internet only when you download an optional extension, read aloud in one of Microsoft's optional online voices (the text read is sent to Microsoft), or run Smart Cast with your own Google Gemini key (the book's dialogue is sent to Google). Both online features are off until you turn them on, and Privacy Mode switches them off.
 
-Choose from 25 hand-crafted themes—from low-glare dark modes to warm, paper-like light modes. TypoZen bundles premium typefaces including Inter, Literata, Merriweather, and Source Sans 3, JetBrains Mono so your documents look perfect on any machine.
+Choose from 25 hand-crafted themes—from low-glare dark modes to warm, paper-like light modes. TypoZen bundles premium typefaces including Inter, Literata, Merriweather, Source Sans 3, and JetBrains Mono so your documents look perfect on any machine.
 
 Free, open-source, and yours to keep.
 
@@ -56,6 +56,7 @@ _Limit 1,500 characters. For the 0.18.0 package (2026-10-18). The 0.17.0 text it
 
 - New reading bar: while reading aloud, the controls float under the text: pause, previous and next paragraph, stop, the voice and its menu, speed, stop at end of chapter, and Narration Monitor. It says what it is doing (starting, preparing, paused) and stays put through voice changes and jumps.
 - Reading speed for the Qwen and Breeze narrators, on the bar or in Narrator Manager.
+- Smart Cast (optional Google Gemini Script Director): expanded to 200 dialogue paragraphs per chapter, punctuation-tolerant quote matching, and an optional toggle to auto-script upcoming chapters in the background.
 - Narration Monitor works with every voice and shows the exact text each voice is given.
 - Changing voice mid-reading carries on from the same paragraph. Previous and Next reach paragraphs before the start, or not yet prepared.
 - Windows and Kokoro voices no longer read Markdown symbols aloud.
@@ -96,7 +97,7 @@ _Up to 20 bullets, 200 characters each._
 5. Books keep the publisher's typography, embedded fonts and footnotes; the page, its margins and colours stay yours
 6. A PDF reader: single pages or two-page spreads, Find, bookmarks and highlights
 7. Annotate PDFs, fill in forms and save; the text of scanned pages is read on your computer
-8. Read aloud in any Windows voice or optional neural voices, the passage highlighted, with a floating player for pause, skip, voice and speed
+8. Read aloud in Windows, Kokoro offline neural, Microsoft online, or local GPU narrator voices (Breeze & Qwen) with multi-voice character casting and a floating player
 9. Spelling: every misspelling on screen underlined in Preview and Source (not in code); select any word for corrections
 10. Offline dictionary and thesaurus — over 150,000 definitions; no lookup ever leaves your computer
 11. Search the whole document from a sidebar, with every match highlighted — even in very long files

@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.18.9";
+        internal const string AppVersion = "0.18.10";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -7757,6 +7757,27 @@ namespace TypoZen
                 // The page's dialogue excerpts for Gemini Script Director.
                 var cb = NarratorDialog.GeminiPayloadArrived;
                 if (cb != null) cb(msg.Substring(29));
+                return;
+            }
+            else if (msg.StartsWith("host_narrator_gemini_auto:", StringComparison.Ordinal))
+            {
+                // Background chapter scripting when AutoSmartCast is enabled.
+                if (SuppressDocumentTraces()) return;
+                string book = _currentFilePath;
+                string cache = CacheDir();
+                string payload = msg.Substring(26);
+                GeminiDirector.ScriptChapterInBackground(cache, book, payload, mergedJson =>
+                {
+                    try
+                    {
+                        Dispatcher.BeginInvoke((Action)(() =>
+                        {
+                            if (_currentFilePath == book && !SuppressDocumentTraces())
+                                SendMsg("cmd:narrator_script_merge:" + mergedJson);
+                        }));
+                    }
+                    catch { }
+                });
                 return;
             }
             else if (msg.StartsWith("host_narrator_trial:", StringComparison.Ordinal))

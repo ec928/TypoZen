@@ -17,8 +17,8 @@ namespace TypoZen
     /// </summary>
     public static class GeminiDirector
     {
-        public const string DefaultModel = "gemini-3.5-flash";
-        public const string FallbackModel = "gemini-flash-lite-latest";
+        public const string DefaultModel = "gemini-3.8-flash";
+        public const string FallbackModel = "gemini-3.5-flash-lite";
 
         public sealed class VoiceOption
         {
@@ -204,11 +204,11 @@ namespace TypoZen
                 model = DefaultModel;
                 fallbackModels = new List<string>
                 {
-                    "gemini-flash-lite-latest",
                     "gemini-3.5-flash-lite",
-                    "gemini-3.6-flash",
+                    "gemini-flash-lite-latest",
                     "gemini-3.1-flash-lite",
-                    "gemini-3.8-flash"
+                    "gemini-3.6-flash",
+                    "gemini-3.5-flash"
                 };
                 endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{0}:generateContent";
             }
@@ -229,13 +229,13 @@ namespace TypoZen
                     Directory.CreateDirectory(Path.GetDirectoryName(path));
                     string defaultJson =
 @"{
-  ""model"": ""gemini-3.5-flash"",
+  ""model"": ""gemini-3.8-flash"",
   ""fallbackModels"": [
-    ""gemini-flash-lite-latest"",
     ""gemini-3.5-flash-lite"",
-    ""gemini-3.6-flash"",
+    ""gemini-flash-lite-latest"",
     ""gemini-3.1-flash-lite"",
-    ""gemini-3.8-flash""
+    ""gemini-3.6-flash"",
+    ""gemini-3.5-flash""
   ],
   ""endpoint"": ""https://generativelanguage.googleapis.com/v1beta/models/{0}:generateContent""
 }
@@ -895,8 +895,8 @@ Remember to return ONLY the JSON object.",
                 model = !string.IsNullOrEmpty(config.model) ? config.model : DefaultModel;
             }
 
-            const int chunkSize = 25;
-            int totalToAnalyze = Math.Min(dialogueBlocks.Count, 75);
+            const int chunkSize = 40;
+            int totalToAnalyze = Math.Min(dialogueBlocks.Count, 200);
             int totalQuoteBatches = (totalToAnalyze + chunkSize - 1) / chunkSize;
             int totalSteps = 1 + totalQuoteBatches;
 
@@ -931,6 +931,7 @@ Remember to return ONLY the JSON object.",
 
             for (int b = 0; b < totalQuoteBatches; b++)
             {
+                cancel.ThrowIfCancellationRequested();
                 int startIdx = b * chunkSize;
                 int count = Math.Min(chunkSize, totalToAnalyze - startIdx);
                 var chunkBlocks = dialogueBlocks.GetRange(startIdx, count);
@@ -939,8 +940,19 @@ Remember to return ONLY the JSON object.",
                 if (onProgress != null)
                     onProgress(stepNumber, totalSteps, string.Format("Attributing chapter dialogue quotes (Part {0} of {1})...", stepNumber, totalSteps));
 
-                var knownList = new List<CharacterCast>(charsDict.Values);
-                var chunkResult = AttributeDialogueChunk(apiKey, chunkBlocks, startIdx, knownList, catalog, ref modelUsed, model, cancel);
+                GeminiCastResult chunkResult;
+                try
+                {
+                    var knownList = new List<CharacterCast>(charsDict.Values);
+                    chunkResult = AttributeDialogueChunk(apiKey, chunkBlocks, startIdx, knownList, catalog, ref modelUsed, model, cancel);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception)
+                {
+                    // If Phase 1 or an earlier batch already succeeded, keep what was gathered rather than losing the whole run.
+                    if (charsDict.Count > 0 || aggregatedResult.Quotes.Count > 0) break;
+                    throw;
+                }
 
                 // Merge quotes and increment lines count for speakers via canonical resolver
                 foreach (var q in chunkResult.Quotes)
@@ -1025,6 +1037,222 @@ Remember to return ONLY the JSON object.",
             return aggregatedResult;
         }
 
+        /// <summary>
+        /// Punctuation-tolerant quote key so curly/straight apostrophes, dashes, and spacing differences
+        /// between the book and Gemini's echoed quote text still match the paragraph's quote.
+        /// </summary>
+        public static string NormalizeQuoteKey(string quote)
+        {
+            if (string.IsNullOrWhiteSpace(quote)) return "";
+            string s = quote.Trim().ToLowerInvariant()
+                .Replace('\u2018', '\'').Replace('\u2019', '\'')
+                .Replace('\u201C', '"').Replace('\u201D', '"')
+                .Replace("\u2014", "-").Replace("\u2013", "-").Replace("--", "-")
+                .Replace("\u2026", "...");
+            s = Regex.Replace(s, @"\s+", " ").Trim();
+            return s;
+        }
+
+        internal static void StoreAttributedQuotesIntoCast(
+            QwenNarrator.Cast cast,
+            IEnumerable<QuoteAttribution> quotes,
+            IList<int> parasList,
+            IDictionary<string, string> deltaScript = null,
+            IDictionary<string, string> deltaCues = null)
+        {
+            if (cast == null || quotes == null) return;
+            foreach (var q in quotes)
+            {
+                if (q == null || string.IsNullOrEmpty(q.Quote) || string.IsNullOrEmpty(q.Speaker)) continue;
+                string norm = q.Quote.Trim().ToLowerInvariant();
+                string pnorm = NormalizeQuoteKey(q.Quote);
+                int quoteBlock = (parasList != null && q.Para >= 0 && q.Para < parasList.Count) ? parasList[q.Para] : -1;
+
+                foreach (string keyText in (!string.IsNullOrEmpty(pnorm) && pnorm != norm) ? new[] { norm, pnorm } : new[] { norm })
+                {
+                    string quoteHere = quoteBlock >= 0 ? "@" + quoteBlock + ":" + keyText : null;
+                    if (quoteHere != null)
+                    {
+                        cast.QuoteScript[quoteHere] = q.Speaker;
+                        if (deltaScript != null) deltaScript[quoteHere] = q.Speaker;
+                    }
+                    cast.QuoteScript[keyText] = q.Speaker;
+                    if (deltaScript != null) deltaScript[keyText] = q.Speaker;
+                    if (!string.IsNullOrEmpty(q.Cue))
+                    {
+                        if (quoteHere != null)
+                        {
+                            cast.QuoteCues[quoteHere] = q.Cue;
+                            if (deltaCues != null) deltaCues[quoteHere] = q.Cue;
+                        }
+                        cast.QuoteCues[keyText] = q.Cue;
+                        if (deltaCues != null) deltaCues[keyText] = q.Cue;
+                    }
+                }
+            }
+        }
+
+        private static readonly object _bgGate = new object();
+        private static CancellationTokenSource _bgRun;
+
+        public static void CancelBackgroundScripting()
+        {
+            lock (_bgGate)
+            {
+                try { if (_bgRun != null) _bgRun.Cancel(); } catch { }
+                _bgRun = null;
+            }
+        }
+
+        /// <summary>
+        /// Background Phase-2 chapter scripting for an existing book cast when AutoSmartCast is enabled.
+        /// Runs silently in the background, saves the new quote attributions to the book's cast file,
+        /// and hands the delta JSON back to the page so ongoing narration picks it up without restarting.
+        /// </summary>
+        internal static void ScriptChapterInBackground(string cacheDir, string bookPath, string jsonPayload, Action<string> onMergedJson)
+        {
+            if (string.IsNullOrEmpty(cacheDir) || string.IsNullOrEmpty(bookPath) || string.IsNullOrEmpty(jsonPayload)) return;
+            if (QwenNarrator.PrivateMode || !HasApiKey()) return;
+            var settings = QwenNarrator.LoadSettings(cacheDir);
+            if (!settings.AutoSmartCast) return;
+
+            CancellationToken token;
+            CancellationTokenSource myCts;
+            lock (_bgGate)
+            {
+                if (_bgRun != null) return; // one background chapter script at a time
+                myCts = new CancellationTokenSource();
+                _bgRun = myCts;
+                token = myCts.Token;
+            }
+
+            new Thread(() =>
+            {
+                try
+                {
+                    var cast = QwenNarrator.LoadCast(cacheDir, bookPath);
+                    if (cast == null || cast.Voices == null || cast.Voices.Count == 0) return;
+
+                    var ser = new JavaScriptSerializer { MaxJsonLength = 20 * 1024 * 1024 };
+                    var data = ser.Deserialize<Dictionary<string, object>>(jsonPayload);
+                    var blocksList = new List<string>();
+                    object bObj;
+                    if (data != null && data.TryGetValue("blocks", out bObj) && bObj is System.Collections.IEnumerable bEnum)
+                    {
+                        foreach (var o in bEnum) if (o != null) blocksList.Add(o.ToString());
+                    }
+                    var parasList = new List<int>();
+                    object pObj;
+                    if (data != null && data.TryGetValue("paras", out pObj) && pObj is System.Collections.IEnumerable pEnum)
+                    {
+                        foreach (var o in pEnum)
+                        {
+                            int pn;
+                            parasList.Add(o != null && int.TryParse(o.ToString(), out pn) ? pn : -1);
+                        }
+                    }
+                    if (parasList.Count != blocksList.Count || blocksList.Count == 0) return;
+
+                    // Reconstruct known CharacterCast entries from saved Cast
+                    var charsDict = new Dictionary<string, CharacterCast>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var kv in cast.Voices)
+                    {
+                        if (string.IsNullOrEmpty(kv.Key)) continue;
+                        string name;
+                        if (!cast.Names.TryGetValue(kv.Key, out name) || string.IsNullOrEmpty(name)) name = kv.Key;
+                        // Strip "(N lines)" display suffix if present
+                        int paren = name.IndexOf("  (", StringComparison.Ordinal);
+                        if (paren > 0) name = name.Substring(0, paren).Trim();
+                        var cc = new CharacterCast
+                        {
+                            Key = kv.Key,
+                            Name = name,
+                            Voice = kv.Value
+                        };
+                        charsDict[kv.Key] = cc;
+                    }
+                    if (cast.Aliases != null)
+                    {
+                        foreach (var akv in cast.Aliases)
+                        {
+                            CharacterCast owner;
+                            if (!string.IsNullOrEmpty(akv.Key) && !string.IsNullOrEmpty(akv.Value) && charsDict.TryGetValue(akv.Value, out owner))
+                            {
+                                if (!owner.Aliases.Contains(akv.Key)) owner.Aliases.Add(akv.Key);
+                            }
+                        }
+                    }
+
+                    var aliasMap = BuildAliasMap(charsDict.Values);
+                    var knownList = new List<CharacterCast>(charsDict.Values);
+                    var catalog = GetConsolidatedVoiceCatalog(null);
+                    string apiKey = GetApiKey();
+                    if (string.IsNullOrEmpty(apiKey)) return;
+
+                    const int chunkSize = 40;
+                    int totalToAnalyze = Math.Min(blocksList.Count, 200);
+                    int totalBatches = (totalToAnalyze + chunkSize - 1) / chunkSize;
+                    string modelUsed = DefaultModel;
+                    var allQuotes = new List<QuoteAttribution>();
+
+                    for (int b = 0; b < totalBatches; b++)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (QwenNarrator.PrivateMode) return;
+                        int startIdx = b * chunkSize;
+                        int count = Math.Min(chunkSize, totalToAnalyze - startIdx);
+                        var chunkBlocks = blocksList.GetRange(startIdx, count);
+                        try
+                        {
+                            var chunkRes = AttributeDialogueChunk(apiKey, chunkBlocks, startIdx, knownList, catalog, ref modelUsed, DefaultModel, token);
+                            foreach (var q in chunkRes.Quotes)
+                            {
+                                if (!string.IsNullOrEmpty(q.Speaker))
+                                {
+                                    var canonical = ResolveSpeaker(q.Speaker, aliasMap, charsDict);
+                                    if (canonical != null) q.Speaker = canonical.Key;
+                                    else if (!charsDict.ContainsKey(q.Speaker)) continue;
+                                    allQuotes.Add(q);
+                                }
+                            }
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (allQuotes.Count == 0 || QwenNarrator.PrivateMode) return;
+
+                    // Re-load latest cast before merging in case user saved changes meanwhile
+                    var latestCast = QwenNarrator.LoadCast(cacheDir, bookPath);
+                    var deltaScript = new Dictionary<string, string>();
+                    var deltaCues = new Dictionary<string, string>();
+                    StoreAttributedQuotesIntoCast(latestCast, allQuotes, parasList, deltaScript, deltaCues);
+                    QwenNarrator.SaveCast(cacheDir, bookPath, latestCast);
+
+                    if (onMergedJson != null && deltaScript.Count > 0)
+                    {
+                        string mergePayload = ser.Serialize(new Dictionary<string, object>
+                        {
+                            { "castScript", deltaScript },
+                            { "castCues", deltaCues }
+                        });
+                        onMergedJson(mergePayload);
+                    }
+                }
+                catch { }
+                finally
+                {
+                    lock (_bgGate)
+                    {
+                        if (ReferenceEquals(_bgRun, myCts)) _bgRun = null;
+                    }
+                }
+            }) { IsBackground = true }.Start();
+        }
+
         private static GeminiCastResult ExecuteWithFallback(string apiKey, string preferredModel, string systemPrompt, string userPrompt, CancellationToken cancel)
         {
             var config = LoadConfig();
@@ -1048,7 +1276,7 @@ Remember to return ONLY the JSON object.",
                     if (!string.IsNullOrEmpty(m) && !modelsToTry.Contains(m)) modelsToTry.Add(m);
                 }
             }
-            foreach (var m in new[] { "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash" })
+            foreach (var m in new[] { "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash" })
             {
                 if (!modelsToTry.Contains(m)) modelsToTry.Add(m);
             }
