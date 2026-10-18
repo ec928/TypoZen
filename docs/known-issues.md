@@ -11,11 +11,15 @@ Baseline inventory of **user-visible** residual risk for the current tree.
 
 ## Product limits (not defects — do not “fix” by inventing precision)
 
-### The page TOTAL is an estimate until the document has been laid out — and says so
+### A windowed Markdown file's page total is an estimate until it has been laid out — and says so
+
+This limit is a paginated Markdown document under page windowing. A book does not use it.
+A book's footer is the unit on screen and the page within that unit, counted from the
+layout: "Chapter 4 of 48" and "Page 2 of 23". There is no `~` and no Go to page.
 
 `PageChunks` measures only the ranges the reader has visited and infers the rest from
-pages-per-block. So the total moves as a long book is read. Three rules keep that honest
-rather than misleading:
+pages-per-block. So the total on a long Markdown file moves as it is read. Three rules
+keep that honest rather than misleading:
 
 - **It is marked.** The indicator reads `43 / ~264` and the Go To prompt says the total is
   an estimate, until every range has been measured. The page you are *on* is always exact.
@@ -29,9 +33,9 @@ rather than misleading:
 - **The end is exact.** Dragging the scrubber fully right seeks the last *block*, not the
   last estimated page — the end of a document is knowable without any estimate.
 
-**User expectation:** the page you are on is right; the total is marked `~` while it is
-still being learned, and is exact once the document has been read through. Mark sidebar
-**p N** uses the same map and can lag until its range is real.
+**User expectation:** on that Markdown file, the page you are on is right; the total is
+marked `~` while it is still being learned, and is exact once the file has been read
+through. Mark sidebar **p N** uses the same map and can lag until its range is real.
 
 ---
 

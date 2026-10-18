@@ -115,6 +115,25 @@ async function main() {
         md = await page.evaluate(() => getMarkdownContent(false));
         assert((md.match(/^\|/gm) || []).length === 4, 'its "row below" adds a row (' + JSON.stringify(md) + ')');
 
+        await page.evaluate(() => {
+            const pop = document.getElementById('tablePop');
+            if (pop) pop.style.display = 'none';
+            loadMarkdownContent('| Name | Qty |\n| --- | --- |\n| Apple | 3 |\n');
+        });
+        await settled(page);
+        await (await page.$('#editor .block')).click();
+        await page.click('#editor th');
+        await settled(page);
+        await new Promise(r => setTimeout(r, 200));
+        await page.click('#tblPopRowAbove');
+        await settled(page);
+        md = await page.evaluate(() => getMarkdownContent(false));
+        {
+            const lines = md.split(/\n/).map(s => s.trim()).filter(s => s.startsWith('|'));
+            assert(lines[0] === '|  |  |', 'insert row above the header makes a blank header (' + lines[0] + ')');
+            assert(lines[2] === '| Name | Qty |', 'the old header becomes the first body row (' + lines[2] + ')');
+        }
+
         console.log('\n=== search results ===');
         const many = Array.from({ length: 400 }, (_, i) => 'Line ' + i + ' has the needle in it.').join('\n\n');
         await page.evaluate((m) => loadMarkdownContent(m), many);

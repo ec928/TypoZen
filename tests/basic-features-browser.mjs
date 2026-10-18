@@ -143,6 +143,40 @@ try {
     const focusClass = await page.evaluate(() => { window.__host('cmd:toggle_focus'); const on = editor.classList.contains('focus-mode'); window.__host('cmd:toggle_focus'); return on; });
     check(focusClass, 'focus mode dims the page (focus-mode class)');
 
+    console.log('\n=== reveal markdown restores preview when turned off ===');
+    await page.evaluate(() => {
+        handleCommand('view_set:mode:preview');
+        loadMarkdownContent('*italics* here\n\nSecond line.');
+        if (state.revealOnFocus) handleCommand('toggle_reveal');
+    });
+    await settled(page);
+    const blocks = await page.$$('#editor .block');
+    await blocks[1].click();
+    await page.keyboard.press('F7');
+    await blocks[0].click();
+    await settled(page);
+    const revealed = await page.evaluate(() => {
+        const b = document.querySelectorAll('#editor .block')[0];
+        return { text: b.innerText, em: !!b.querySelector('em'), on: !!state.revealOnFocus };
+    });
+    check(revealed.on && revealed.em === false && revealed.text.indexOf('*italics*') >= 0,
+        'F7 then focusing the line shows its markdown', revealed);
+    await page.keyboard.press('F7');
+    await settled(page);
+    const restored = await page.evaluate(() => {
+        const b = document.querySelectorAll('#editor .block')[0];
+        return { text: b.innerText, em: !!b.querySelector('em'), on: !!state.revealOnFocus };
+    });
+    check(restored.on === false && restored.em && restored.text.indexOf('*') < 0,
+        'F7 again puts the preview back', restored);
+    await blocks[1].click();
+    await settled(page);
+    const stayed = await page.evaluate(() => {
+        const b = document.querySelectorAll('#editor .block')[0];
+        return { em: !!b.querySelector('em'), star: b.innerText.indexOf('*') >= 0 };
+    });
+    check(stayed.em && !stayed.star, 'leaving the line keeps the preview', stayed);
+
     console.log('\n=== choosing a theme applies its colours ===');
     // The host sends the shipped themes at start-up (init_themes:), then a choice (set_theme:).
     const themes = JSON.parse(fs.readFileSync(path.join(appDir, 'TypoZen_Themes.json'), 'utf8'));

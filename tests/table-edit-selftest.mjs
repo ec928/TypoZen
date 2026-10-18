@@ -101,8 +101,14 @@ console.log('--- rows ---');
     eq(JSON.stringify(above.rows[2]), JSON.stringify(['Pear', '5', '2.40']), 'current row moves down');
 
     const fromHeader = api.tableOp(m, 'row_above', -1, 0, null);
-    eq(fromHeader.rows.length, 3, 'insert above from the header adds a body row');
-    eq(JSON.stringify(fromHeader.header), JSON.stringify(['Name', 'Qty', 'Price']), 'header is untouched');
+    eq(fromHeader.rows.length, 3, 'insert above the header keeps the old header as a body row');
+    eq(JSON.stringify(fromHeader.header), JSON.stringify(['', '', '']), 'the new row is a blank header');
+    eq(JSON.stringify(fromHeader.rows[0]), JSON.stringify(['Name', 'Qty', 'Price']), 'the old header is the first body row');
+    eq(JSON.stringify(fromHeader.rows[1]), JSON.stringify(['Apple', '3', '1.20']), 'the old body follows it');
+
+    const belowHeader = api.tableOp(m, 'row_below', -1, 0, null);
+    eq(JSON.stringify(belowHeader.header), JSON.stringify(['Name', 'Qty', 'Price']), 'insert below the header leaves the header');
+    eq(JSON.stringify(belowHeader.rows[0]), JSON.stringify(['', '', '']), 'that new row is the first body row');
 
     const del = api.tableOp(m, 'row_delete', 0, 0, null);
     eq(del.rows.length, 1, 'delete row removes one');

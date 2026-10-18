@@ -205,6 +205,51 @@ async function main() {
         assert(opts.wwBoxFollowed, 'whole word reaches the find bar too');
         assert(opts.buttonFollowedBox === 'false',
             'and changing it in the find bar shows in the sidebar');
+
+        console.log('\n=== Space turns the page in Reader while hits are showing ===');
+        // Same key path as a book: Reader sets contenteditable false, and Pages is on.
+        // The mode change remounts the document, so the search has to be run after it settles.
+        await page.evaluate(() => handleCommand('view_set:mode:reader'));
+        await settled(page);
+        await page.waitForFunction(() => typeof PageMap !== 'undefined' && PageMap.count() > 1, { timeout: 8000 });
+        const beforeTurn = await page.evaluate(() => {
+            const mc = document.getElementById('findMatchCase');
+            const ww = document.getElementById('findWholeWord');
+            if (mc && mc.checked) { mc.checked = false; mc.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (ww && ww.checked) { ww.checked = false; ww.dispatchEvent(new Event('change', { bubbles: true })); }
+            const sb = document.getElementById('sidebar');
+            if (sb) sb.classList.add('collapsed');
+            runFind('row', false, { navigate: false });
+            document.getElementById('editor').focus({ preventScroll: true });
+            return {
+                page: PageMap.current(), hit: findState.index, hits: findState.matches.length,
+                editable: document.getElementById('editor').isContentEditable
+            };
+        });
+        assert(beforeTurn.hits > 0 && beforeTurn.editable === false,
+            'Reader, Pages, with hits (' + beforeTurn.hits + ', editable ' + beforeTurn.editable + ')');
+        await page.keyboard.press('Space');
+        await settled(page);
+        const afterSpace = await page.evaluate(() => ({ page: PageMap.current(), hit: findState.index }));
+        assert(afterSpace.page === beforeTurn.page + 1 && afterSpace.hit === beforeTurn.hit,
+            'Space turns one page and stays on the same hit (' + beforeTurn.page + ' -> ' + afterSpace.page + ', hit ' + afterSpace.hit + ')');
+        await new Promise(r => setTimeout(r, 120));
+        await page.keyboard.down('Shift');
+        await page.keyboard.press('Space');
+        await page.keyboard.up('Shift');
+        await settled(page);
+        const afterBack = await page.evaluate(() => PageMap.current());
+        assert(afterBack === beforeTurn.page,
+            'Shift+Space turns back (' + afterBack + ')');
+
+        await page.evaluate(() => handleCommand('view_set:mode:preview'));
+        await settled(page);
+        const previewBefore = await page.evaluate(() => PageMap.current());
+        await page.keyboard.press('Space');
+        await settled(page);
+        const previewAfter = await page.evaluate(() => PageMap.current());
+        assert(previewAfter === previewBefore,
+            'in Preview, Space with hits does not turn the page (' + previewBefore + ' -> ' + previewAfter + ')');
     } finally {
         await browser.close();
     }

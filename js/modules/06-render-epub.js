@@ -2373,8 +2373,14 @@
             };
 
             if (op === 'row_above' || op === 'row_below') {
-                // Above the header inserts at the top of the body (the header stays a
-                // header — markdown tables cannot have two).
+                // A markdown table has one header. "Above" on that row means the new
+                // blank row becomes the header and the old header becomes the first
+                // body row. "Below" on the header still inserts the first body row.
+                if (op === 'row_above' && rowIndex < 0) {
+                    m.rows.unshift(m.header);
+                    m.header = blankRow();
+                    return m;
+                }
                 let at = rowIndex < 0 ? 0 : (op === 'row_below' ? rowIndex + 1 : rowIndex);
                 if (at < 0) at = 0;
                 if (at > m.rows.length) at = m.rows.length;
@@ -2490,8 +2496,8 @@
             // Land the caret where the edit happened, so you can keep typing
             let r = ctx.rowIndex;
             let c = ctx.colIndex;
-            if (op === 'row_above') r = ctx.rowIndex < 0 ? 0 : ctx.rowIndex;
-            if (op === 'row_below') r = ctx.rowIndex + 1;
+            if (op === 'row_above') r = ctx.rowIndex;
+            if (op === 'row_below') r = ctx.rowIndex < 0 ? 0 : ctx.rowIndex + 1;
             if (op === 'col_right') c = ctx.colIndex + 1;
             if (op === 'col_delete') c = Math.max(0, ctx.colIndex - 1);
 

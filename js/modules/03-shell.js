@@ -2584,15 +2584,37 @@
                 } catch (eFo) {}
             }
             else if (cmd === "toggle_reveal") {
-                state.revealOnFocus = !state.revealOnFocus;
-                const active = document.activeElement;
-                if (active && active.classList && active.classList.contains('block')) {
-                    const raw = active.getAttribute('data-raw') || '';
-                    if (state.revealOnFocus) {
-                        active.innerText = raw;
-                    } else {
-                        renderBlockPreview(active, raw);
+                const wasOn = !!state.revealOnFocus;
+                state.revealOnFocus = !wasOn;
+                // The caret lives in #editor, not in the .block, so document.activeElement
+                // is never the line. Turning Reveal off used to flip the flag and leave
+                // that line showing its markdown. Repaint the line the caret is in.
+                let block = null;
+                try {
+                    const sel = window.getSelection();
+                    if (sel && sel.anchorNode && editor && editor.contains(sel.anchorNode)
+                        && typeof getAncestorBlock === 'function') {
+                        block = getAncestorBlock(sel.anchorNode);
                     }
+                } catch (eRb) {}
+                if ((!block || !block.classList || !block.classList.contains('block'))
+                    && typeof currentActiveBlock !== 'undefined' && currentActiveBlock
+                    && editor && editor.contains(currentActiveBlock)) {
+                    block = currentActiveBlock;
+                }
+                if (block && block.classList && block.classList.contains('block')) {
+                    let raw = block.getAttribute('data-raw') || '';
+                    // A revealed line is plain text (its markdown). A line still drawn as
+                    // Preview has elements, and its innerText is not the markdown.
+                    if (wasOn && !block.querySelector('*')) {
+                        raw = String(block.innerText || raw).replace(/\u00a0/g, ' ');
+                        block.setAttribute('data-raw', raw);
+                        try {
+                            if (typeof DocumentModel !== 'undefined') DocumentModel.syncElToModel(block);
+                        } catch (eSy) {}
+                    }
+                    if (state.revealOnFocus) block.innerText = raw;
+                    else if (typeof renderBlockPreview === 'function') renderBlockPreview(block, raw);
                 }
             }
             else if (cmd === "toggle_focus") {

@@ -2818,7 +2818,8 @@
          *
          *   Preview (caret real): arrows edit; PageUp/PageDown (and wheel) turn pages.
          *   Search mode (live matches): Up/Down = hits (bindReaderFindKeys); Left/Right
-         *     and PageUp/PageDown turn pages when paginated.
+         *     and PageUp/PageDown turn pages when paginated. In Reader / book,
+         *     Space and Shift+Space still turn the page.
          *   Reader / book (no caret): Left/Up/PageUp and Right/Down/PageDown turn pages;
          *     Space / Shift+Space too.
          *
@@ -2849,8 +2850,11 @@
                 else if (e.key === 'PageUp') dir = -1;
                 else if (hasSearchHits) {
                     // Search mode: Left/Right page; Up/Down already returned above.
+                    // Reader / book: Space still turns the page (for-agents.md). Preview
+                    // types the space, so it falls through the return below.
                     if (e.key === 'ArrowRight') dir = 1;
                     else if (e.key === 'ArrowLeft') dir = -1;
+                    else if (readerLike && e.key === ' ') dir = e.shiftKey ? -1 : 1;
                     else return;
                 } else if (readerLike) {
                     // Reader / book: all arrows + Space page.
