@@ -594,11 +594,9 @@ namespace TypoZen
         /// when the reader picked the other narrator at the top (true for Breeze).
         /// </summary>
         public static void Show(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved,
-                                bool breezeReading, Action<bool> narratorChosen, Func<string> recordingsDir,
-                                double speed = 1, Action<double> speedSaved = null)
+                                bool breezeReading, Action<bool> narratorChosen, Func<string> recordingsDir)
         {
-            Build(owner, cacheDir, appDir, book, sendToPage, saved, true, breezeReading, narratorChosen, recordingsDir,
-                  speed, speedSaved).ShowDialog();
+            Build(owner, cacheDir, appDir, book, sendToPage, saved, true, breezeReading, narratorChosen, recordingsDir).ShowDialog();
         }
 
         /// <summary>
@@ -606,8 +604,7 @@ namespace TypoZen
         /// layout without showing it (checking the design by eye before a release).
         /// </summary>
         internal static Window Build(Window owner, string cacheDir, string appDir, string book, Action<string> sendToPage, Action saved, bool start,
-                                     bool breezeReading = false, Action<bool> narratorChosen = null, Func<string> recordingsDir = null,
-                                     double speed = 1, Action<double> speedSaved = null)
+                                     bool breezeReading = false, Action<bool> narratorChosen = null, Func<string> recordingsDir = null)
         {
             var settings = QwenNarrator.LoadSettings(cacheDir);
             bool haveQwen = QwenNarrator.Installed(cacheDir, appDir), haveBreeze = BreezeNarrator.Installed(cacheDir, appDir);
@@ -771,32 +768,6 @@ namespace TypoZen
             var savePreset = button("Save as preset...");
             var deletePreset = button("Delete preset");
             left.Children.Add(row(new UIElement[] { savePreset, deletePreset }));
-
-            // Reading speed: the one setting Read Aloud has, also under Voice Sampler and Speed for
-            // the other voices. Both narrators play their audio at it; nothing is rendered again.
-            left.Children.Add(heading("Reading speed"));
-            var speedSlider = new Slider
-            {
-                Minimum = 0.5, Maximum = 2.0, TickFrequency = 0.1, IsSnapToTickEnabled = true, Width = 220,
-                Value = Math.Max(0.5, Math.Min(2.0, speed)), VerticalAlignment = VerticalAlignment.Center
-            };
-            var speedValue = new TextBlock
-            {
-                Width = 36, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center,
-                FontWeight = FontWeights.SemiBold
-            };
-            var speedBadge = new Border
-            {
-                Child = speedValue, CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(8, 0, 0, 0),
-                Background = new SolidColorBrush(Color.FromArgb(0x24, 0x80, 0x80, 0x80)),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            Action showSpeed = () => speedValue.Text = speedSlider.Value.ToString("0.0") + "x";
-            showSpeed();
-            speedSlider.ValueChanged += (s, e) => showSpeed();
-            var speedLabel = new TextBlock { Text = "Speed", Width = 120, VerticalAlignment = VerticalAlignment.Center };
-            left.Children.Add(row(new UIElement[] { speedLabel, speedSlider, speedBadge }));
 
             left.Children.Add(heading("Emotion cues"));
             var directBox = check("Add a cue to lines tagged with how they are said");
@@ -2113,8 +2084,7 @@ namespace TypoZen
                 {
                     { "base", side.Engine.BaseUrl }, { "audioHost", side.AudioHost }, { "audioHostPrivate", side.AudioHostPrivate },
                     { "text", text }, { "voice", t.Voice },
-                    { "instruction", t.Instruction }, { "cue", t.Cue }, { "direct", t.Direct }, { "seed", t.Seed }, { "strength", t.Strength },
-                    { "speed", speedSlider.Value }
+                    { "instruction", t.Instruction }, { "cue", t.Cue }, { "direct", t.Direct }, { "seed", t.Seed }, { "strength", t.Strength }
                 });
                 // Nothing will play after all: that row's Stop goes back to Play.
                 Action notPlaying = () => win.Dispatcher.BeginInvoke((Action)(() => { playing = null; applyPlay(); }));
@@ -3461,8 +3431,6 @@ namespace TypoZen
                     settings.Direct = directBox.IsChecked == true;
                     settings.BreezeStrength = strengthSlider.Value;
                     QwenNarrator.SaveSettings(cacheDir, settings);
-                    if (speedSaved != null) speedSaved(speedSlider.Value);
-                    speed = speedSlider.Value;
                     foreach (var r in castRows)
                     {
                         string id = castRowVoice(r.Item3);
@@ -3502,8 +3470,7 @@ namespace TypoZen
                 if (side.Breeze != openedBreeze
                     || (v != null && v.Id != savedVoice()) || instructionBox.Text.Trim() != (settings.Instruction ?? "").Trim()
                     || cue != (settings.Cue ?? "").Trim() || (directBox.IsChecked == true) != settings.Direct
-                    || Math.Abs(strengthSlider.Value - settings.BreezeStrength) > 0.01
-                    || Math.Abs(speedSlider.Value - speed) > 0.01) return true;
+                    || Math.Abs(strengthSlider.Value - settings.BreezeStrength) > 0.01) return true;
                 foreach (var r in castRows)
                 {
                     string now = castRowVoice(r.Item3), was;

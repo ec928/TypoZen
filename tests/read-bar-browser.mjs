@@ -67,8 +67,8 @@ try {
     await click('menu'); await click('chapter');
     await click('faster');
     let posts = await page.evaluate(() => window.__posts.filter(p => p.startsWith('host_read_bar:')));
-    assert(JSON.stringify(posts) === '["host_read_bar:menu","host_read_bar:chapter","host_read_bar:speed:1.25"]', 'menu, chapter and speed go to the host (' + JSON.stringify(posts) + ')');
-    assert((await bar()).speed === '×1.25', 'the speed shows at once');
+    assert(JSON.stringify(posts) === '["host_read_bar:menu","host_read_bar:chapter","host_read_bar:speed:1.1"]', 'menu, chapter and speed go to the host (' + JSON.stringify(posts) + ')');
+    assert((await bar()).speed === '×1.1', 'the speed shows at once');
 
     await page.evaluate(() => window.setReadBar('{"show":true,"paused":true,"speed":0.5,"chapter":true}'));
     b = await bar();
@@ -86,16 +86,26 @@ try {
     });
     assert(keepCaret, 'pressing the bar does not take the caret');
 
-    const mon = () => page.evaluate(() => {
-        const m = document.querySelector('#tzReadBar .rb-monitor');
-        return { shown: getComputedStyle(m).display !== 'none', on: m.classList.contains('on') };
+    // Settings have one home, the File > Read Aloud menu the voice button opens: no Monitor
+    // button of its own (2026-10-18).
+    assert(await page.evaluate(() => !document.querySelector('#tzReadBar [data-a="monitor"]')), 'no Narration Monitor button on the bar');
+    // Speed steps by 0.1, the same list as File > Read Aloud > Speed.
+    const steps = await page.evaluate(async () => {
+        window.setReadBar('{"speed":1.9}');
+        const b = document.querySelector('#tzReadBar [data-a="faster"]');
+        b.click(); const a = document.querySelector('#tzReadBar .rb-speed').textContent;
+        return { after: a, faster: !document.querySelector('#tzReadBar [data-a="faster"]').disabled };
     });
-    assert((await mon()).shown && !(await mon()).on, 'the Narration Monitor button shows, whatever the voice');
-    await page.evaluate(() => { window.__posts = []; });
-    await click('monitor');
-    assert(JSON.stringify(await page.evaluate(() => window.__posts)) === '["host_read_bar:monitor"]', 'it asks the host to open the monitor');
-    await page.evaluate(() => window.setReadBar('{"monitorOpen":true}'));
-    assert((await mon()).on, 'shaded while the monitor is open');
+    assert(steps.after === '×2' && !steps.faster, 'x1.9 + is x2, and + stops there (' + JSON.stringify(steps) + ')');
+    // The voice button's tooltip is not left to open behind its menu.
+    const tip = await page.evaluate(() => {
+        const vb = document.querySelector('#tzReadBar .rb-voice');
+        vb.click();
+        const during = vb.getAttribute('title');
+        vb.dispatchEvent(new MouseEvent('mouseleave'));
+        return { during, after: vb.getAttribute('title') };
+    });
+    assert(tip.during === null && !!tip.after, 'the voice button drops its tooltip while its menu is open (' + JSON.stringify(tip) + ')');
 
     await page.evaluate(() => window.setReadBar('{"show":false}'));
     assert((await bar()).hidden, 'it goes when the reading stops');

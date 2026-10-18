@@ -450,7 +450,8 @@ function ttsSkipParagraph(played, current, queue, dir) {
 // state and sends all of it whenever any of it changes (cmd:read_bar:, PushReadBar).
 // Floating, not a strip: a strip would change the page's height and repaginate a book
 // mid-reading.
-const READ_BAR_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+// x0.5 to x2 in steps of 0.1: the same list as File > Read Aloud > Speed.
+const READ_BAR_SPEEDS = Array.from({ length: 16 }, (_, i) => Math.round((0.5 + i * 0.1) * 10) / 10);
 let _readBarEl = null;
 let _readBarState = { show: false, paused: false, voice: '', speed: 1, chapter: false };
 window._tzReadSpeed = 1;
@@ -524,7 +525,6 @@ function readBarBuild() {
         '<span class="rb-sep"></span>' +
         '<button type="button" class="rb-text rb-voice" data-a="menu" title="Voice and Read Aloud settings">' +
             '<span class="rb-voice-name"></span><span class="rb-caret">\uE70D</span></button>' +
-        '<button type="button" class="rb-icon rb-monitor" data-a="monitor" title="Narration Monitor">\uE8BD</button>' +
         '<span class="rb-sep"></span>' +
         '<button type="button" class="rb-icon rb-small" data-a="slower" title="Slower">\uE738</button>' +
         '<span class="rb-speed" title="Reading speed"></span>' +
@@ -561,9 +561,18 @@ function readBarAct(a) {
     else if (a === 'next') readAloudSkip(1);
     else if (a === 'pause') readAloudPause();
     else if (a === 'stop') stopReading();
-    else if (a === 'menu') readBarPost('menu');
+    else if (a === 'menu') {
+        // Its tooltip would open behind the menu and show as an empty square at its edge:
+        // gone while the menu is up, back when the pointer leaves.
+        const vb = _readBarEl && _readBarEl.querySelector('.rb-voice');
+        if (vb && vb.title) {
+            const t = vb.title;
+            vb.removeAttribute('title');
+            vb.addEventListener('mouseleave', function () { vb.title = t; }, { once: true });
+        }
+        readBarPost('menu');
+    }
     else if (a === 'chapter') readBarPost('chapter');
-    else if (a === 'monitor') readBarPost('monitor');
     else if (a === 'retry') { readCaption('fail', null); _narrStarting = false; try { speakSelection(); } catch (e) {} }
     else if (a === 'close') { readCaption('fail', null); stopReading(); }
     else if (a === 'slower' || a === 'faster') {
@@ -593,9 +602,6 @@ function readBarPaint() {
     el.querySelector('.rb-speed').textContent = '\u00d7' + (Math.round(sp * 100) / 100);
     el.querySelector('[data-a="slower"]').disabled = sp <= READ_BAR_SPEEDS[0] + 0.001;
     el.querySelector('[data-a="faster"]').disabled = sp >= READ_BAR_SPEEDS[READ_BAR_SPEEDS.length - 1] - 0.001;
-    const mon = el.querySelector('.rb-monitor');
-    mon.classList.toggle('on', !!s.monitorOpen);
-    mon.setAttribute('aria-pressed', s.monitorOpen ? 'true' : 'false');
     const ch = el.querySelector('.rb-chapter');
     ch.setAttribute('aria-pressed', s.chapter ? 'true' : 'false');
     ch.classList.toggle('on', !!s.chapter);
@@ -930,7 +936,7 @@ function playRenderedChunk(url, chunk) {
         window.__lastChunkUrl = url;          // what is actually playing, for tests and debug.log
         if (_renderedAudio) { _renderedAudio.pause(); _renderedAudio = null; }
         const a = new Audio(url);
-        // The reading speed (Narrator Manager, or Voice Sampler and Speed). Chromium keeps the pitch while changing
+        // The reading speed (File > Read Aloud > Speed, or the reading bar). Chromium keeps the pitch while changing
         // the rate, so faster is brisker, not squeakier.
         a.playbackRate = _narrSpeed;
         _renderedAudio = a;

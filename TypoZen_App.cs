@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.18.2";
+        internal const string AppVersion = "0.18.3";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1761,7 +1761,12 @@ namespace TypoZen
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
-            var mSpeed = FindElement("mConfigureSpeed") as MenuItem; if (mSpeed != null) mSpeed.Header = "Voice Sampler and Speed..."; BindClick("mConfigureSpeed", (s, e) => ShowConfigureVoiceDialog());
+            var mSpeed = FindElement("mConfigureSpeed") as MenuItem; if (mSpeed != null) mSpeed.Header = "Voice _Sampler..."; BindClick("mConfigureSpeed", (s, e) => ShowConfigureVoiceDialog());
+            // Speed's one home: built from the setting each time Read Aloud opens, so its tick and
+            // its header always show the speed in use (the reading bar steps the same list).
+            var readAloudMenu = FindElement("mReadAloudMenu") as MenuItem;
+            if (readAloudMenu != null) readAloudMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == readAloudMenu) RebuildSpeedMenu(); };
+            RebuildSpeedMenu();
             BindClick("mStopAtChapter", (s, e) => SetStopAtChapter(!_stopAtChapter));
             var initialPrefs = LoadHostPrefs();
             _stopAtChapter = initialPrefs.StopAtChapter;
@@ -1793,10 +1798,7 @@ namespace TypoZen
                                         },
                                         // Chosen when a recording starts, so Privacy Mode turning on
                                         // while the window is open still keeps the take out of the cache.
-                                        () => Path.Combine(SuppressDocumentTraces() ? PrivateLoadDir() : CacheDir(), "recordings"),
-                                        _ttsSpeed,
-                                        // The same speed as Voice Sampler and Speed; saved() then sends it to the page.
-                                        sp => { _ttsSpeed = sp; var prefs = LoadHostPrefs(); prefs.TtsSpeed = sp; WriteHostPrefs(prefs); });
+                                        () => Path.Combine(SuppressDocumentTraces() ? PrivateLoadDir() : CacheDir(), "recordings"));
                 }
                 catch (Exception ex) { LogFault("narrator settings", ex); }
             });
@@ -11402,8 +11404,7 @@ namespace TypoZen
                 var state = new Dictionary<string, object>
                 {
                     { "show", _readBarLive }, { "paused", _readAloudHold }, { "voice", voice },
-                    { "speed", _ttsSpeed }, { "chapter", _stopAtChapter },
-                    { "monitorOpen", NarrationMonitor.IsOpen }
+                    { "speed", _ttsSpeed }, { "chapter", _stopAtChapter }
                 };
                 SendMsg("cmd:read_bar:" + new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(state));
             }
@@ -11415,20 +11416,55 @@ namespace TypoZen
         {
             if (what == "menu") { ShowReadAloudMenuAtCursor(); return; }
             if (what == "chapter") { SetStopAtChapter(!_stopAtChapter); PushReadBar(); return; }
-            if (what == "monitor") { SetNarrationMonitor(!NarrationMonitor.IsOpen); return; }
             if (what.StartsWith("speed:", StringComparison.Ordinal))
             {
                 double sp;
                 if (!double.TryParse(what.Substring(6), System.Globalization.NumberStyles.Float,
                                      System.Globalization.CultureInfo.InvariantCulture, out sp)) return;
-                _ttsSpeed = Math.Max(0.5, Math.Min(2.0, Math.Round(sp, 2)));
-                try { var prefs = LoadHostPrefs(); prefs.TtsSpeed = _ttsSpeed; WriteHostPrefs(prefs); }
-                catch (Exception ex) { LogFault("read bar speed", ex); }
-                // The narrator changes the rate of what is playing now; a Windows voice takes it
-                // from the next paragraph; Kokoro from the next piece it prepares (setReadBar).
-                if (ChosenNarrator() != null) SendNarratorSettings();
-                PushReadBar();
+                SetReadingSpeed(sp);
             }
+        }
+
+        /// <summary>Read Aloud's speed: ×0.5 to ×2 in steps of 0.1.</summary>
+        private static string SpeedLabel(double v)
+        {
+            return "\u00d7" + v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// The one place the reading speed is set, from the Speed submenu or the reading bar.
+        /// The narrator changes the rate of what is playing now; a Windows voice takes it from the
+        /// next paragraph; Kokoro from the next piece it prepares (setReadBar).
+        /// </summary>
+        private void SetReadingSpeed(double v)
+        {
+            _ttsSpeed = Math.Max(0.5, Math.Min(2.0, Math.Round(v, 1, MidpointRounding.AwayFromZero)));
+            try { var prefs = LoadHostPrefs(); prefs.TtsSpeed = _ttsSpeed; WriteHostPrefs(prefs); }
+            catch (Exception ex) { LogFault("reading speed", ex); }
+            if (ChosenNarrator() != null) SendNarratorSettings();
+            RebuildSpeedMenu();
+            PushReadBar();
+        }
+
+        /// <summary>File > Read Aloud > Speed: every step, the one in use ticked and named in the header.</summary>
+        private void RebuildSpeedMenu()
+        {
+            var menu = FindElement("mSpeedMenu") as MenuItem;
+            if (menu == null) return;
+            try
+            {
+                double now = Math.Round(_ttsSpeed, 1, MidpointRounding.AwayFromZero);
+                menu.Items.Clear();
+                for (int i = 5; i <= 20; i++)
+                {
+                    double v = i / 10.0;
+                    var mi = new MenuItem { Header = SpeedLabel(v), IsCheckable = true, IsChecked = Math.Abs(v - now) < 0.001 };
+                    mi.Click += (s, e) => SetReadingSpeed(v);
+                    menu.Items.Add(mi);
+                }
+                menu.Header = "_Speed: " + SpeedLabel(now);
+            }
+            catch (Exception ex) { LogFault("speed menu", ex); }
         }
 
         /// <summary>
@@ -11441,6 +11477,7 @@ namespace TypoZen
             if (src == null) return;
             try { RebuildQwenVoiceMenu(); } catch { }
             try { RebuildBreezeVoiceMenu(); } catch { }
+            RebuildSpeedMenu();
             var cm = new ContextMenu();
             // The theme lives in the window's resources (menu brushes, item templates); a
             // context menu is not in the window's tree, so it gets a copy.
@@ -11756,7 +11793,7 @@ namespace TypoZen
             rightPane.Children.Add(currentVoiceLbl);
 
             var sampleBox = new TextBox {
-                Text = "This is a quick sample of how the selected voice will sound when reading your text out loud. You can adjust the speed below.",
+                Text = "This is a quick sample of how the selected voice will sound when reading your text out loud.",
                 TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, Padding = new Thickness(12), FontSize = 14,
                 Background = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.02f : -0.15f)),
                 Foreground = txBrush,
@@ -11779,14 +11816,11 @@ namespace TypoZen
             speedRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             speedRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             
+            // Samples play at the reading speed; it is set in one place, File > Read Aloud > Speed.
             var speedPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            var lblSpeed = new TextBlock { Text = "Speed: " + _ttsSpeed.ToString("0.0") + "x", Margin = new Thickness(0, 0, 0, 10), Foreground = subtleTxBrush, FontSize = 13 };
-            var speedSlider = new Slider {
-                Minimum = 0.5, Maximum = 2.0, Value = _ttsSpeed, TickFrequency = 0.1, IsSnapToTickEnabled = true,
-                Margin = new Thickness(0, 0, 20, 0)
-            };
+            var lblSpeed = new TextBlock { Text = "Plays at the reading speed, " + SpeedLabel(_ttsSpeed) + ". Change it in File > Read Aloud > Speed.",
+                                           TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 20, 0), Foreground = subtleTxBrush, FontSize = 13 };
             speedPanel.Children.Add(lblSpeed);
-            speedPanel.Children.Add(speedSlider);
             Grid.SetColumn(speedPanel, 0);
             speedRow.Children.Add(speedPanel);
 
@@ -11839,14 +11873,14 @@ namespace TypoZen
 
                 if (tag[1] == "1") {
                     currentVoiceLbl.Text = "Starting Kokoro AI engine for " + tag[2] + "...";
-                    string spdStr = speedSlider.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    string spdStr = _ttsSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     SendMsg("cmd:kokoro_sample:" + spdStr + ":" + tag[0] + ":" + text.Replace("\n", " ").Replace("\r", ""));
                 } else {
                     currentVoiceLbl.Text = "Currently testing: " + tag[2];
                     string escapedText = new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(text);
                     string res = await _webView.CoreWebView2.ExecuteScriptAsync("typeof applyTTSOverrides === 'function' ? applyTTSOverrides(" + escapedText + ") : " + escapedText);
                     string overridden = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<string>(res) ?? text;
-                    await TypoZen_TTS.PlayAsync(overridden, tag[0], speedSlider.Value);
+                    await TypoZen_TTS.PlayAsync(overridden, tag[0], _ttsSpeed);
                 }
             };
 
@@ -11866,7 +11900,7 @@ namespace TypoZen
                 _webView.CoreWebView2.WebMessageReceived += msgHandler;
 
             string defaultPrefix = "Hi, I am ";
-            string defaultSuffix = ". This is a quick sample of how I will sound when reading your text out loud. You can adjust the speed below.";
+            string defaultSuffix = ". This is a quick sample of how I will sound when reading your text out loud.";
 
             bool isLoaded = false;
             win.Loaded += (s, e) => { 
@@ -11874,7 +11908,7 @@ namespace TypoZen
                 var sel = listBox.SelectedItem as ListBoxItem;
                 if (sel != null && sel.Tag != null) {
                     var tag = sel.Tag as string[];
-                    if (sampleBox.Text == "This is a quick sample of how the selected voice will sound when reading your text out loud. You can adjust the speed below." || 
+                    if (sampleBox.Text == "This is a quick sample of how the selected voice will sound when reading your text out loud." || 
                         (sampleBox.Text.StartsWith(defaultPrefix) && sampleBox.Text.EndsWith(defaultSuffix))) {
                         sampleBox.Text = defaultPrefix + tag[2] + defaultSuffix;
                     }
@@ -11882,15 +11916,13 @@ namespace TypoZen
                 playSample();
             };
 
-            speedSlider.ValueChanged += (s, e) => { lblSpeed.Text = "Speed: " + speedSlider.Value.ToString("0.0") + "x"; };
-            speedSlider.PreviewMouseUp += (s, e) => { if (isLoaded) playSample(); };
             btnPlay.Click += (s, e) => { playSample(); };
             
             listBox.SelectionChanged += (s, e) => {
                 var sel = listBox.SelectedItem as ListBoxItem;
                 if (sel != null && sel.Tag != null) {
                     var tag = sel.Tag as string[];
-                    if (sampleBox.Text == "This is a quick sample of how the selected voice will sound when reading your text out loud. You can adjust the speed below." || 
+                    if (sampleBox.Text == "This is a quick sample of how the selected voice will sound when reading your text out loud." || 
                         (sampleBox.Text.StartsWith(defaultPrefix) && sampleBox.Text.EndsWith(defaultSuffix))) {
                         sampleBox.Text = defaultPrefix + tag[2] + defaultSuffix;
                     }
@@ -11912,12 +11944,9 @@ namespace TypoZen
                     if (tag[1] == "1") SetKokoroVoice(tag[0], tag[2]);
                     else { _ttsVoiceId = tag[0]; SetKokoroVoice("windows_voice", tag[2]); }
                 }
-                _ttsSpeed = speedSlider.Value;
                 var prefs = LoadHostPrefs();
                 prefs.TtsVoiceId = _ttsVoiceId;
-                prefs.TtsSpeed = _ttsSpeed;
                 WriteHostPrefs(prefs);
-                SendNarratorSettings();         // the narrator reads at this speed too
 
                 UpdateWindowsVoicesCheckmark();
                 TypoZen_TTS.Stop();

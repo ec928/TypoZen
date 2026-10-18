@@ -486,8 +486,10 @@
                                 <MenuItem x:Name="mOnlineVoices" Header="Microsoft _Online Voices" Visibility="Collapsed"
                                           ToolTip="High-quality neural natural voices streamed from Microsoft's speech service. Requires an internet connection."/>
                                 <MenuItem x:Name="mConfigureSpeed" Header="_Configure Speed..."/>
-                                <!-- Stop at end of chapter applies whatever the voice: its own group. -->
+                                <!-- Speed and Stop at end of chapter apply whatever the voice: their own group.
+                                     Speed's steps are built in code (RebuildSpeedMenu). -->
                                 <Separator/>
+                                <MenuItem x:Name="mSpeedMenu" Header="_Speed"/>
                                 <MenuItem x:Name="mStopAtChapter" Header="Stop at end of _chapter" IsCheckable="True"
                                           ToolTip="Finish this chapter and stop. In a book, the chapter named in the status bar. In a text or Markdown file, the section under the current heading. Remembered."/>
                             </MenuItem>
