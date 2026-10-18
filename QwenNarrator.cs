@@ -161,31 +161,61 @@ namespace TypoZen
 
         private static string SettingsPath(string cacheDir) { return Path.Combine(RootDir(cacheDir), "narrator.json"); }
 
+        /// <summary>
+        /// True when <paramref name="known"/> is another copy of the book at
+        /// <paramref name="wanted"/>: both ePub or PDF, the same file name, and -- when both
+        /// files are still there -- the same size. Used only to FIND what a moved or copied
+        /// book had; nothing is ever written under the other path. Documents are excluded:
+        /// two notes.md or CLAUDE.md files in different folders are different documents, and
+        /// matching them by name overwrote one's bookmarks with the other's (0.18.14).
+        /// </summary>
+        internal static bool SameBookElsewhere(string known, string wanted)
+        {
+            if (string.IsNullOrEmpty(known) || string.IsNullOrEmpty(wanted)) return false;
+            try
+            {
+                if (string.Equals(known, wanted, StringComparison.OrdinalIgnoreCase)) return false;
+                string ext = Path.GetExtension(wanted).ToLowerInvariant();
+                if (ext != ".epub" && ext != ".pdf") return false;
+                if (!string.Equals(Path.GetFileName(known), Path.GetFileName(wanted), StringComparison.OrdinalIgnoreCase)) return false;
+                if (File.Exists(known) && File.Exists(wanted) && new FileInfo(known).Length != new FileInfo(wanted).Length) return false;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Where this book's cast is saved. Always its own file.</summary>
         private static string CastPath(string cacheDir, string book)
         {
-            string castDir = Path.Combine(RootDir(cacheDir), "cast");
-            string direct;
             using (var sha = SHA1.Create())
             {
                 byte[] h = sha.ComputeHash(Encoding.UTF8.GetBytes((book ?? "").ToLowerInvariant()));
-                direct = Path.Combine(castDir, BitConverter.ToString(h).Replace("-", "").Substring(0, 16) + ".json");
+                return Path.Combine(RootDir(cacheDir), "cast", BitConverter.ToString(h).Replace("-", "").Substring(0, 16) + ".json");
             }
+        }
+
+        /// <summary>
+        /// Where to read this book's cast from: its own file, or, when it has none yet, the
+        /// cast of another copy of the same book (<see cref="SameBookElsewhere"/>). The next
+        /// save goes to the book's own file, so the other copy's cast is never touched.
+        /// </summary>
+        private static string CastReadPath(string cacheDir, string book)
+        {
+            string direct = CastPath(cacheDir, book);
             try
             {
                 lock (SessionCasts)
                     if (SessionCasts.ContainsKey(direct)) return direct;
                 if (File.Exists(direct)) return direct;
-
-                string fileName = Path.GetFileName(book ?? "");
-                if (!string.IsNullOrEmpty(fileName) && !string.Equals(fileName, "README.md", StringComparison.OrdinalIgnoreCase) && Directory.Exists(castDir))
+                string castDir = Path.GetDirectoryName(direct);
+                if (Directory.Exists(castDir))
                 {
                     foreach (string f in Directory.GetFiles(castDir, "*.json"))
                     {
                         var d = ReadJson(f);
                         object bObj;
                         string savedBook = d.TryGetValue("book", out bObj) ? (bObj as string ?? "") : "";
-                        if (!string.IsNullOrEmpty(savedBook) && string.Equals(Path.GetFileName(savedBook), fileName, StringComparison.OrdinalIgnoreCase))
-                            return f;
+                        if (SameBookElsewhere(savedBook, book)) return f;
                     }
                 }
             }
@@ -407,7 +437,7 @@ namespace TypoZen
             Cast held;
             lock (SessionCasts)
                 if (SessionCasts.TryGetValue(CastPath(cacheDir, book), out held)) return Copy(held);
-            var d = ReadJson(CastPath(cacheDir, book));
+            var d = ReadJson(CastReadPath(cacheDir, book));
             return new Cast
             {
                 Voices = StringMap(d, "cast"),
