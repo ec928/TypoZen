@@ -965,6 +965,20 @@ namespace TypoZen
             libButtons.Children.Add(new Separator { Margin = new Thickness(0, 0, 0, 8), Opacity = 0.4 });
             libButtons.Children.Add(importVoice);
             libButtons.Children.Add(openVoiceFolder);
+            // Back to the voice list that decides the Read Aloud menu: favourites and narrator or
+            // character, for this narrator. Only those here -- the reading voice is this window's
+            // own choice, saved with Save, so the list offers no "Use voice" (Ed, 2026-10-18).
+            var favouritesBtn = button("Favourites...");
+            favouritesBtn.HorizontalContentAlignment = HorizontalAlignment.Left;
+            favouritesBtn.Margin = new Thickness(0, 0, 0, 8);
+            favouritesBtn.ToolTip = "Star the voices to keep in the Read Aloud menu, and mark each one a narrator or a character voice.";
+            favouritesBtn.Click += (s, e) =>
+            {
+                string inUse = savedVoice();
+                VoicePicker.Show(win, cacheDir, side.Breeze, string.IsNullOrEmpty(inUse) ? QwenNarrator.DefaultVoiceId : inUse, null, null);
+            };
+            libButtons.Children.Add(new Separator { Margin = new Thickness(0, 0, 0, 8), Opacity = 0.4 });
+            libButtons.Children.Add(favouritesBtn);
 
             var libRow = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
             DockPanel.SetDock(libButtons, Dock.Right);

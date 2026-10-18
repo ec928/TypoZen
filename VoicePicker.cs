@@ -163,6 +163,10 @@ namespace TypoZen
     /// </summary>
     internal static class VoicePicker
     {
+        /// <summary>
+        /// `choose` null: favourites and roles only, no "Use voice" (from Narrator Manager).
+        /// `manage` null: no "Manage voices...".
+        /// </summary>
         public static void Show(Window owner, string cacheDir, bool breeze, string currentId,
                                 Action<string, string> choose, Action manage)
         {
@@ -256,9 +260,13 @@ namespace TypoZen
             // What to do once the window has gone: choosing or managing runs after it, not
             // inside it, so Narrator Manager is never opened on top of a closing dialog.
             Action after = null;
+            // Opened from Narrator Manager there is nothing to choose or manage: the list is for
+            // favourites and roles only (that window chooses its voice itself, saved with Save).
+            if (choose == null) useBtn.Visibility = Visibility.Collapsed;
+            if (manage == null) manageBtn.Visibility = Visibility.Collapsed;
             Action<VoiceEntry> pick = e =>
             {
-                if (e == null) return;
+                if (e == null || choose == null) return;
                 stop();
                 after = () => choose(e.Id, e.Name);
                 w.Close();
@@ -320,7 +328,8 @@ namespace TypoZen
                     list.Items.Add(item);
                     if (isCurrent) current = item;
                 }
-                count.Text = list.Items.Count + " of " + all.Count + " voices";
+                count.Text = list.Items.Count + " of " + all.Count + " voices" +
+                             (choose == null ? "  ·  ★ keeps a voice in the Read Aloud menu" : "");
                 if (current != null) list.SelectedItem = current;
                 else if (list.Items.Count > 0) list.SelectedIndex = 0;
                 if (list.SelectedItem != null) list.ScrollIntoView(list.SelectedItem);
