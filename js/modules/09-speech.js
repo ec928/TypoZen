@@ -1044,6 +1044,7 @@ let _narrCastCues = {};
 let _narrCastAliases = {};
 let _narrAutoSmartCast = false;
 let _autoScriptedRanges = {};
+let _autoScriptedDoc = null;
 let _bgScriptingChapter = false;
 // The settings the narration monitor shows beside each piece: what shapes every line.
 let _narrShown = {};
@@ -1061,6 +1062,10 @@ function tellMonitor(chunk) {
 function narrAudioUrl(item) {
     return 'https://' + (item.private ? _narrAudioHostPrivate : _narrAudioHost) + '/' + item.file;
 }
+window.narratorScriptDone = function () {
+    _bgScriptingChapter = false;
+    readBarPaint();
+};
 window.mergeNarratorScript = function (json) {
     try {
         const s = typeof json === 'string' ? JSON.parse(json) : json;
@@ -2566,6 +2571,14 @@ function scriptChapterRange(uStart, uEnd) {
 }
 
 function maybeAutoScriptChapterAt(bi, checkImminentNext) {
+    // Block ranges mean nothing in another document: what was asked for in the last one, and
+    // its "Scripting..." status, do not carry over.
+    const doc = (typeof DocumentModel !== 'undefined' && DocumentModel) ? DocumentModel.blocks : null;
+    if (doc !== _autoScriptedDoc) {
+        _autoScriptedDoc = doc;
+        _autoScriptedRanges = {};
+        _bgScriptingChapter = false;
+    }
     readBarPaint();
     if (!_narrAutoSmartCast || _narrPrivate || !_narrCast || !Object.keys(_narrCast).length || !(bi >= 0)) return false;
     const bounds = chapterBoundsAt(bi);

@@ -1443,12 +1443,13 @@ Remember to return ONLY the JSON object.",
         /// Runs silently in the background, saves the new quote attributions to the book's cast file,
         /// and hands the delta JSON back to the page so ongoing narration picks it up without restarting.
         /// </summary>
-        internal static void ScriptChapterInBackground(string cacheDir, string bookPath, string jsonPayload, Action<string> onMergedJson)
+        internal static void ScriptChapterInBackground(string cacheDir, string bookPath, string jsonPayload, Action<string> onMergedJson, Action onDone = null)
         {
-            if (string.IsNullOrEmpty(cacheDir) || string.IsNullOrEmpty(bookPath) || string.IsNullOrEmpty(jsonPayload)) return;
-            if (QwenNarrator.PrivateMode || !HasApiKey()) return;
+            Action done = () => { if (onDone != null) onDone(); };
+            if (string.IsNullOrEmpty(cacheDir) || string.IsNullOrEmpty(bookPath) || string.IsNullOrEmpty(jsonPayload)) { done(); return; }
+            if (QwenNarrator.PrivateMode || !HasApiKey()) { done(); return; }
             var settings = QwenNarrator.LoadSettings(cacheDir);
-            if (!settings.AutoSmartCast) return;
+            if (!settings.AutoSmartCast) { done(); return; }
 
             CancellationToken token;
             CancellationTokenSource myCts;
@@ -1497,6 +1498,7 @@ Remember to return ONLY the JSON object.",
                     {
                         if (ReferenceEquals(_bgRun, myCts)) _bgRun = null;
                     }
+                    done();
                 }
             }) { IsBackground = true }.Start();
         }

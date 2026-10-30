@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.19.3";
+        internal const string AppVersion = "0.19.4";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -7785,7 +7785,7 @@ namespace TypoZen
             else if (msg.StartsWith("host_narrator_gemini_auto:", StringComparison.Ordinal))
             {
                 // Background chapter scripting when AutoSmartCast is enabled.
-                if (SuppressDocumentTraces()) return;
+                if (SuppressDocumentTraces()) { SendMsg("cmd:narrator_script_done"); return; }
                 string book = _currentFilePath;
                 string cache = CacheDir();
                 string payload = msg.Substring(26);
@@ -7799,6 +7799,12 @@ namespace TypoZen
                                 SendMsg("cmd:narrator_script_merge:" + mergedJson);
                         }));
                     }
+                    catch { }
+                }, () =>
+                {
+                    // Every way out, so the read bar does not keep saying "Scripting..." after
+                    // a failure, a missing key, or a chapter with nothing to script.
+                    try { Dispatcher.BeginInvoke((Action)(() => SendMsg("cmd:narrator_script_done"))); }
                     catch { }
                 });
                 return;

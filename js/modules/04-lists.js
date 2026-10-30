@@ -50,13 +50,15 @@
                     raw: raw
                 };
             }
-            // Optional space after period: "1. hello" or "1.hello"
-            m = rest.match(/^(\d+)\.\s*(.*)$/);
+            // Optional space after period: "1. hello" or "1.hello". Not a digit, though: "0.48s"
+            // and "3.14" are numbers in a sentence, and an edit saved them as "1. 48s".
+            m = rest.match(/^(\d+)\.(?!\d)\s*(.*)$/);
             if (m) {
+                const olNum = parseInt(m[1], 10);
                 return {
                     indent: indent,
                     kind: 'ol',
-                    num: parseInt(m[1], 10) || 1,
+                    num: isNaN(olNum) ? 1 : olNum,
                     body: m[2] == null ? '' : m[2],
                     raw: raw
                 };
@@ -1081,6 +1083,16 @@
             if (lines.length > 1 && lines.some(function (l) { return /^\s*\|/.test(l); })) return true;
             if (/^\s*\|/.test(raw) && raw.indexOf('\n') >= 0) return true;
             return false;
+        }
+
+        /**
+         * Joining text onto a code block or table flattens it onto one line, or sticks text
+         * to its closing fence. Backspace and Delete stop at one instead; a blank line next
+         * to it still goes.
+         */
+        function wouldBreakMultilineBlock(firstRaw, secondRaw) {
+            return firstRaw !== '' && secondRaw !== ''
+                && (isMultilineBlockRaw(firstRaw) || isMultilineBlockRaw(secondRaw));
         }
 
         /**

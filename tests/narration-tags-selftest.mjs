@@ -50,6 +50,7 @@ const api = new Function('document', 'window', 'box', [
     'let _narrAutoSmartCast = false;',
     'let _narrPrivate = false;',
     'let _autoScriptedRanges = {};',
+    'let _autoScriptedDoc = null;',
     'let _bookUnits = null;',
     'const NARRATION_BATCH = 8;',
     'function narrLog() {}',
@@ -970,6 +971,13 @@ console.log('--- AI Script Director / Gemini Smart Cast dialogue attribution');
     eq('first chapter auto-script starts at block 0', autoMsgs[0].paras[0], 0);
     eq('next chapter auto-script starts at block 30', autoMsgs[1].paras[0], 30);
     eq('already-dispatched chapters do not re-trigger', api.maybeAutoScriptChapterAt(26, true), false);
+    // The same block range in another document is another chapter.
+    api.setModel({
+        kind: 'epub',
+        blocks: autoBlocks.slice(),
+        blockText: function (idx) { return this.blocks[idx] ? this.blocks[idx].raw : ''; }
+    });
+    eq('another document is scripted afresh', api.maybeAutoScriptChapterAt(26, true), true);
 
     // Cleanup
     api.setAutoSmartCast(false);

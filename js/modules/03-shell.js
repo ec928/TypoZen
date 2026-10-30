@@ -1154,6 +1154,9 @@
                     // Narrator Manager asks for the current chapter's block range and dialogue count.
                     try { if (typeof window.narrationChapterInfo === 'function') window.narrationChapterInfo(); } catch (eI) {}
                 }
+                else if (msg === "cmd:narrator_script_done") {
+                    try { if (typeof window.narratorScriptDone === 'function') window.narratorScriptDone(); } catch (eD) {}
+                }
                 else if (msg.startsWith("cmd:narrator_script_merge:")) {
                     // Background chapter script arrived; merge into _narrCastScript without interrupting playback.
                     try { if (typeof window.mergeNarratorScript === 'function') window.mergeNarratorScript(msg.substring(26)); } catch (eM) {}

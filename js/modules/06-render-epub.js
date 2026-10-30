@@ -2313,7 +2313,10 @@
                     }
                 }
                 const code = lines.slice(1, end).join('\n');
-                block.innerHTML = `<pre><code class="lang-${escapeHtml(lang)}">${escapeHtml(code)}</code></pre>`;
+                // A last empty line has no height of its own; the <br> gives the caret somewhere
+                // to be, and textContent, which the serializer reads, does not see it.
+                const lastLineBox = /\n$/.test(code) ? '<br>' : '';
+                block.innerHTML = `<pre><code class="lang-${escapeHtml(lang)}">${escapeHtml(code)}${lastLineBox}</code></pre>`;
                 return;
             }
 
@@ -2413,8 +2416,10 @@
         function splitTableRow(line) {
             let s = String(line == null ? '' : line).trim();
             if (s.indexOf('|') === 0) s = s.slice(1);
-            if (s.length && s.lastIndexOf('|') === s.length - 1) s = s.slice(0, -1);
-            return s.split('|').map(function (c) { return c.trim(); });
+            if (/(^|[^\\])\|$/.test(s)) s = s.slice(0, -1);
+            // "\|" is a pipe in the cell, not a new column. The model holds the plain pipe;
+            // formatTableMarkdown and the serializer escape it again.
+            return s.split(/(?<!\\)\|/).map(function (c) { return c.trim().replace(/\\\|/g, '|'); });
         }
 
         /** Markdown table -> { header, align, rows, cols }, or null if it isn't one. */
@@ -2466,7 +2471,9 @@
         /** { header, align, rows } -> markdown. */
         function formatTableMarkdown(model) {
             if (!model) return '';
-            const line = function (cells) { return '| ' + cells.join(' | ') + ' |'; };
+            const line = function (cells) {
+                return '| ' + cells.map(function (c) { return String(c).replace(/\|/g, '\\|'); }).join(' | ') + ' |';
+            };
             const out = [line(model.header), line(model.align.map(tableAlignToSep))];
             model.rows.forEach(function (r) { out.push(line(r)); });
             return out.join('\n');
@@ -2716,6 +2723,20 @@
             return raw;
         }
 
+        /** url "title" (already HTML-escaped) as its two parts, so a titled link still works. */
+        function splitLinkTitle(dest) {
+            const m = String(dest).match(/^(\S+)(\s+(?:&quot;.*&quot;|&#39;.*&#39;))\s*$/);
+            return m ? { url: m[1], title: m[2] } : { url: String(dest), title: '' };
+        }
+
+        /** Source text the DOM cannot otherwise hold, as an attribute the serializer reads back. */
+        function keptSourceAttr(name, escapedText) {
+            if (!escapedText) return '';
+            const text = String(escapedText).replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+                .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+            try { return ' ' + name + '="' + encodeURIComponent(text) + '"'; } catch (e) { return ''; }
+        }
+
         function parseInline(text) {
             // 1. Code spans first — body must stay literal (no emphasis, no links inside).
             //    Serializing back through blockHtmlToMarkdown then round-trips exactly.
@@ -2738,9 +2759,14 @@
 
             // 3. Images BEFORE links: ![alt](src) also matches the link pattern, and the
             //    link rule used to win, so images rendered as "!" + hyperlink.
-            res = res.replace(/!\[(.*?)\]\((.*?)\)/g, function (m, alt, src) {
+            res = res.replace(/!\[(.*?)\]\((.*?)\)/g, function (m, alt, dest) {
+                const parts = splitLinkTitle(dest);
+                const src = parts.url;
+                const titleAttr = keptSourceAttr('data-md-title', parts.title);
                 const u = safeUrl(src, true);
-                if (!u) return alt;
+                // Shown as its alt text, but the source is kept: every edit re-saves the line
+                // from what is on screen, and it used to save the alt text in its place.
+                if (!u) return '<a' + keptSourceAttr('data-md-img', dest) + '>' + alt + '</a>';
                 // Relative paths are relative to the DOCUMENT, but the page is served from
                 // https://localapp/ (the app folder), so they would 404. The host maps the
                 // document's folder to https://docfolder/ — display through that, and keep
@@ -2755,13 +2781,13 @@
                 if (!isAbsolute) {
                     const cached = _tzImageData[u];
                     if (cached) {
-                        return '<img src="' + cached + '" data-src="' + u + '" alt="' + alt +
+                        return '<img src="' + cached + '" data-src="' + u + '"' + titleAttr + ' alt="' + alt +
                             '" contenteditable="false" draggable="true" class="zen-img"' +
                             ' style="max-width:100%;border-radius:6px;margin:8px 0;" />';
                     }
                     // 1x1 transparent placeholder: no network request, no broken-image flash
                     return '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"' +
-                        ' data-src="' + u + '" data-pending="1" alt="' + alt +
+                        ' data-src="' + u + '"' + titleAttr + ' data-pending="1" alt="' + alt +
                         '" contenteditable="false" draggable="true" class="zen-img"' +
                         ' style="max-width:100%;border-radius:6px;margin:8px 0;" />';
                 }
@@ -2779,14 +2805,16 @@
                 // toggleTask -- no inline onerror, the page's CSP refuses it): if the mapped
                 // host does not serve the file, ask the host for the bytes instead. An <img> that fails with alt="" collapses to nothing, so
                 // without this a missing mapping looks exactly like "no image was inserted".
-                return '<img src="' + display + '" data-src="' + u + '" alt="' + alt +
+                return '<img src="' + display + '" data-src="' + u + '"' + titleAttr + ' alt="' + alt +
                     '" contenteditable="false" draggable="true" class="zen-img"' +
                     ' style="max-width:100%;border-radius:6px;margin:8px 0;" />';
             });
-            res = res.replace(/\[(.*?)\]\((.*?)\)/g, function (m, label, href) {
-                const u = safeUrl(href, false);
-                if (!u) return label;
-                return '<a href="' + u + '" target="_blank">' + label + '</a>';
+            res = res.replace(/\[(.*?)\]\((.*?)\)/g, function (m, label, dest) {
+                const parts = splitLinkTitle(dest);
+                const u = safeUrl(parts.url, false);
+                // Not clickable, but the source is kept (see images above).
+                if (!u) return '<a' + keptSourceAttr('data-md-dest', dest) + '>' + label + '</a>';
+                return '<a href="' + u + '" target="_blank"' + keptSourceAttr('data-md-title', parts.title) + '>' + label + '</a>';
             });
 
             // The tags just made are set aside while emphasis runs, as code spans are, so the
@@ -2824,6 +2852,10 @@
             res = res.replace(/\t/g, '<span class="tz-tab">\t</span>');
 
             res = res.replace(/@@TZTAG(\d+)@@/g, function (m, i) { return tagSpans[Number(i)] || ''; });
+            // A space right before an inline image: typing at the end of the word before it
+            // made the browser drop an ordinary one. A no-break space survives, and saves as
+            // a space (keepTypedSpaces).
+            res = res.replace(/ (<img )/g, '&nbsp;$1');
 
             // 5. Restore code spans as literal text.
             res = res.replace(/@@TZCODE(\d+)@@/g, function (m, i) {

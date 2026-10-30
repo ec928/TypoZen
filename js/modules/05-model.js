@@ -3489,6 +3489,10 @@
                 e.stopPropagation();
                 if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
 
+                const prevPeek = normalizeBlockRaw(prevMounted ? readBlockRawSafe(prev)
+                    : ((DocumentModel.blocks[mi - 1] && DocumentModel.blocks[mi - 1].raw) || ''));
+                if (wouldBreakMultilineBlock(prevPeek, curRaw)) return;
+
                 HistoryManager.beginEdit();
                 let joinAt = 0;
                 let focusEl = prevMounted ? prev : null;
@@ -3579,6 +3583,10 @@
                 e.preventDefault();
                 e.stopPropagation();
                 if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+
+                const nextPeek = normalizeBlockRaw(nextMounted ? readBlockRawSafe(next)
+                    : ((DocumentModel.blocks[mi + 1] && DocumentModel.blocks[mi + 1].raw) || ''));
+                if (wouldBreakMultilineBlock(normalizeBlockRaw(readBlockRawSafe(block)), nextPeek)) return;
 
                 HistoryManager.beginEdit();
                 // readBlockRawSafe, NOT a bare data-raw read. data-raw is transiently blank
@@ -3753,19 +3761,130 @@
             } catch (e) {}
         }
 
+        /**
+         * What Enter carries down to the new line, as Markdown. It was the range's plain text,
+         * so everything after the caret lost its bold, italics and code, a link lost its
+         * address, and an image was deleted. Plain text stays exactly as it was: the
+         * serializer is only for a tail that has marks to keep.
+         */
+        function tailRangeToMarkdown(tailRange) {
+            const text = tailRange.toString();
+            const box = document.createElement('div');
+            box.appendChild(tailRange.cloneContents());
+            if (!box.querySelector('strong,b,em,i,del,s,strike,code,a,img')) return text;
+            // The clone keeps the block's own wrappers (<h1>, <ul><li>, <blockquote>...), and
+            // the tail is a plain new line: take what is inside them.
+            let inner = box;
+            for (;;) {
+                const kids = Array.prototype.filter.call(inner.childNodes, function (k) {
+                    return !(k.nodeType === 3 && !k.nodeValue);
+                });
+                const only = kids.length === 1 && kids[0].nodeType === 1 ? kids[0] : null;
+                if (!only || !/^(P|H[1-6]|BLOCKQUOTE|UL|OL|LI|DIV)$/.test(only.tagName)
+                    && !(only.classList && only.classList.contains('task-text'))) break;
+                inner = only;
+            }
+            const holder = document.createElement('div');
+            const p = document.createElement('p');
+            p.innerHTML = inner.innerHTML;
+            holder.appendChild(p);
+            const md = blockHtmlToMarkdown(holder);
+            // The serializer drops a line's own leading space; here it is typed text. Read from
+            // the first text node only: the range's text runs straight past an image.
+            const firstText = inner.firstChild && inner.firstChild.nodeType === 3 ? inner.firstChild.nodeValue : '';
+            const lead = (firstText.match(/^[ \t ]*/) || [''])[0].replace(/ /g, ' ');
+            return lead + String(md == null ? '' : md).replace(/^[ \t]+/, '');
+        }
+
+        /**
+         * Enter inside a code block is a new line of code. It used to split the block, close
+         * the fence at the caret and carry the rest out as one line of plain text. Enter on an
+         * empty last line leaves the block, which is the keyboard's way out of it.
+         */
+        function enterInCodeBlock(block, range) {
+            const code = block.querySelector('pre code') || block.querySelector('pre');
+            if (!code || !code.contains(range.startContainer) || !code.contains(range.endContainer)) return false;
+            const before = document.createRange();
+            before.selectNodeContents(code);
+            before.setEnd(range.startContainer, range.startOffset);
+            const start = before.toString().length;
+            const end = start + range.toString().length;
+            const text = code.textContent || '';
+            const lines = normalizeBlockRaw(readBlockRawSafe(block)).split('\n');
+            const open = lines[0];
+            const last = lines[lines.length - 1];
+            const close = lines.length > 1 && /^\s*`{3,}\s*$/.test(last) ? last : '```';
+            const rawOf = function (t) { return open + '\n' + t + '\n' + close; };
+            const leaving = range.collapsed && start === text.length && /\n$/.test(text);
+
+            HistoryManager.beginEdit();
+            let caret = start + 1;
+            if (leaving) {
+                writeBlockRaw(block, rawOf(text.slice(0, -1)));
+                const below = createBlock('', block);
+                window.isProgrammaticFocus = true;
+                focusBlock(below);
+                // A Range, as in handleEnterAtBlock: an empty block has no text node to offset into.
+                const r = document.createRange();
+                r.selectNodeContents(below);
+                r.collapse(true);
+                const s = window.getSelection();
+                s.removeAllRanges();
+                s.addRange(r);
+                ensureCaretVisible(below);
+            } else {
+                writeBlockRaw(block, rawOf(text.slice(0, start) + '\n' + text.slice(end)));
+                window.isProgrammaticFocus = true;
+                focusBlock(block);
+                const place = function () {
+                    const c = block.querySelector('pre code') || block.querySelector('pre');
+                    const t = c && c.firstChild;
+                    if (!t || t.nodeType !== 3) return;
+                    const r = document.createRange();
+                    r.setStart(t, Math.min(caret, t.nodeValue.length));
+                    r.collapse(true);
+                    const s = window.getSelection();
+                    s.removeAllRanges();
+                    s.addRange(r);
+                };
+                place();
+                setTimeout(function () { try { place(); ensureCaretVisible(block); } catch (e) {} }, 0);
+            }
+            try { refreshLastGoodDocRaws(); } catch (e2) {}
+            HistoryManager.commitEdit();
+            updateStats();
+            return true;
+        }
+
         function handleEnterAtBlock(block, shiftKey) {
             if (!block) return;
+            const sel = window.getSelection();
+            const selInBlock = !!(sel && sel.rangeCount > 0 && block.contains(sel.getRangeAt(0).startContainer)
+                && block.contains(sel.getRangeAt(0).endContainer));
+            // A table is one block, and splitting it destroyed it. Tab moves between cells.
+            if (selInBlock && block.querySelector('table')) return;
+            if (selInBlock && block.querySelector('pre') && enterInCodeBlock(block, sel.getRangeAt(0))) return;
+
+            // At the start of a line the whole line moves down, marker and all. It used to
+            // leave "# " or "> " behind and carry the words down as a plain paragraph.
+            let wholeLine = null;
+            if (selInBlock && sel.isCollapsed && isCaretAtStartOfBlock(block)) {
+                const whole = normalizeBlockRaw(readBlockRawSafe(block));
+                if (whole.trim() && !isMultilineBlockRaw(whole)) wholeLine = whole;
+            }
+
             HistoryManager.beginEdit();
             let afterText = '';
-            const sel = window.getSelection();
-            if (sel && sel.rangeCount > 0) {
+            if (wholeLine !== null) {
+                afterText = wholeLine;
+            } else if (sel && sel.rangeCount > 0) {
                 try {
                     const range = sel.getRangeAt(0);
                     if (block.contains(range.endContainer)) {
                         const tailRange = range.cloneRange();
                         tailRange.selectNodeContents(block);
                         tailRange.setStart(range.endContainer, range.endOffset);
-                        afterText = tailRange.toString();
+                        afterText = tailRangeToMarkdown(tailRange);
                         tailRange.deleteContents();
                     }
                 } catch (err) {}
@@ -3773,7 +3892,10 @@
 
             // Sync current block raw from DOM after split
             let raw = block.getAttribute('data-raw');
-            if (raw == null || raw === '') {
+            if (wholeLine !== null) {
+                const wl = parseListLine(wholeLine);
+                raw = wl ? formatListLine(Object.assign({}, wl, { body: '', checked: false })) : '';
+            } else if (raw == null || raw === '') {
                 raw = state.revealOnFocus ? (block.innerText || '') : blockHtmlToMarkdown(block);
             } else if (state.revealOnFocus) {
                 // Prefer remaining text after deleteContents
@@ -3925,12 +4047,24 @@
                 const prevP = parseListLine(prevRaw);
                 if (prevP) indentLevel = prevP.indent;
             }
-            const pad = listIndentPad(indentLevel);
+            // The line's own marker and indent, unless its level changed: an edit must not turn
+            // "   * item" into "  - item", and 3 spaces under "1." is what nests it there.
+            const rawForList = block ? block.getAttribute('data-raw') : null;
+            const parsedForList = parseListLine(rawForList);
+            const pad = parsedForList && parsedForList.indent === indentLevel
+                ? String(rawForList).match(/^[ \t]*/)[0] : listIndentPad(indentLevel);
+            const bulletMatch = parsedForList ? String(rawForList).match(/^[ \t]*([-*+])\s/) : null;
+            const bullet = bulletMatch ? bulletMatch[1] : '-';
 
             let clone = block.cloneNode(true);
             // Tree walk preserves nested marks. The old order (em → strong → del) used
             // innerText on outer tags, so <strong><del>x</del></strong> became **x** and
             // strikethrough vanished when Preview → Source / flush. Walk children first.
+            function keptSource(node, name) {
+                const v = node.getAttribute(name);
+                if (!v) return '';
+                try { return decodeURIComponent(v); } catch (e) { return ''; }
+            }
             function inlineNodeToMarkdown(node, keepBr) {
                 if (!node) return '';
                 if (node.nodeType === 3) {
@@ -3967,11 +4101,15 @@
                     return '`' + inner + '`';
                 }
                 if (tag === 'a') {
-                    return '[' + inner + '](' + (node.getAttribute('href') || '') + ')';
+                    // A destination safeUrl refused: shown as text, its source kept here.
+                    if (node.hasAttribute('data-md-img')) return '![' + inner + '](' + keptSource(node, 'data-md-img') + ')';
+                    if (node.hasAttribute('data-md-dest')) return '[' + inner + '](' + keptSource(node, 'data-md-dest') + ')';
+                    return '[' + inner + '](' + (node.getAttribute('href') || '') + keptSource(node, 'data-md-title') + ')';
                 }
                 if (tag === 'img') {
                     return '![' + (node.getAttribute('alt') || '') + ']('
-                        + (node.getAttribute('data-src') || node.getAttribute('src') || '') + ')';
+                        + (node.getAttribute('data-src') || node.getAttribute('src') || '')
+                        + keptSource(node, 'data-md-title') + ')';
                 }
                 if (tag === 'input' && (node.getAttribute('type') || '').toLowerCase() === 'checkbox') {
                     return node.checked ? '[x] ' : '[ ] ';
@@ -4016,7 +4154,8 @@
                 const table = clone.querySelector('table');
                 let md = [];
                 const headerCells = Array.from(table.querySelectorAll('thead th'));
-                const headers = headerCells.map(th => childInlineMd(th) || (th.innerText || '').trim());
+                const cellMd = (c) => (childInlineMd(c) || (c.innerText || '').trim()).replace(/\|/g, '\\|');
+                const headers = headerCells.map(cellMd);
                 if (headers.length > 0) {
                     md.push('| ' + headers.join(' | ') + ' |');
                     // Read alignment back off the cells. This used to emit '---' for every
@@ -4028,8 +4167,7 @@
                     }).join(' | ') + ' |');
                 }
                 table.querySelectorAll('tbody tr').forEach(tr => {
-                    const cells = Array.from(tr.querySelectorAll('td')).map(td =>
-                        childInlineMd(td) || (td.innerText || '').trim());
+                    const cells = Array.from(tr.querySelectorAll('td')).map(cellMd);
                     md.push('| ' + cells.join(' | ') + ' |');
                 });
                 return md.join('\n');
@@ -4041,7 +4179,13 @@
                 const langClass = codeEl.className || '';
                 const match = langClass.match(/lang-(\w+)/);
                 const lang = match ? match[1] : '';
-                return '```' + lang + '\n' + (codeEl.textContent || codeEl.innerText || '') + '\n```';
+                // The fence lines stay as written: a ```` block holding ``` lines, or a tag
+                // like c++, must not change because a letter was typed in the code.
+                const was = String(block.getAttribute('data-raw') || '').split('\n');
+                const lastWas = was[was.length - 1];
+                const open = /^\s*```/.test(was[0]) ? was[0] : '```' + lang;
+                const close = was.length > 1 && /^\s*`{3,}\s*$/.test(lastWas) ? lastWas : '```';
+                return open + '\n' + (codeEl.textContent || codeEl.innerText || '') + '\n' + close;
             }
 
             // Callout header line ("> [!NOTE] Optional title"). Its body lines are ordinary
@@ -4105,11 +4249,11 @@
                     let body = bodyEl
                         ? (childInlineMd(bodyEl) || childText(bodyEl))
                         : plain.replace(/^\[[ xX]?\]\s*/, '');
-                    return coerceBlockRaw(pad + '- [' + mark + '] ' + body);
+                    return coerceBlockRaw(pad + bullet + ' [' + mark + '] ' + body);
                 }
                 if (tag === 'ul') {
                     const li = first.querySelector('li') || first;
-                    return coerceBlockRaw(pad + '- ' + (childInlineMd(li) || childText(li)));
+                    return coerceBlockRaw(pad + bullet + ' ' + (childInlineMd(li) || childText(li)));
                 }
                 if (tag === 'ol') {
                     const start = first.getAttribute('start') || '1';
@@ -4133,6 +4277,8 @@
             if (prev && /^>\s+/.test(prev)) {
                 return coerceBlockRaw('> ' + plain.replace(/^>\s+/, ''));
             }
+            // A bare ">" (the blank line inside a quote) has no text to rebuild it from.
+            if (prev && /^>\s*$/.test(prev) && !plain) return prev;
 
             return coerceBlockRaw(plain);
         }
