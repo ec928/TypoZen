@@ -1,0 +1,2 @@
+# Git Bash cannot run a hook with Windows line endings.
+tools/hooks/* text eol=lf

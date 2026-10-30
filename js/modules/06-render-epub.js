@@ -2321,7 +2321,9 @@
             }
 
             // Tables (must parse into a valid table, otherwise falls through)
-            if (/^\|.*\|/m.test(html) && /\|[\s-:]+\|/.test(html)) {
+            // Leading spaces too: a table under a list item is indented, and drawn as a paragraph
+            // it was flattened onto one line by the next edit.
+            if (/^\s*\|.*\|/m.test(html) && /\|[\s-:]+\|/.test(html)) {
                 const tableHtml = renderMarkdownTable(html);
                 if (tableHtml) {
                     clearListIndentClasses(block);
@@ -2480,6 +2482,48 @@
         }
 
         /**
+         * The model as Markdown, with every row that did not change exactly as it was written
+         * in `prevRaw`, and the separator too. An edit to one cell changes that cell's row.
+         */
+        function formatTableKeeping(model, prevRaw) {
+            const prev = parseTableMarkdown(prevRaw);
+            if (!prev || !model) return formatTableMarkdown(model);
+            const rowsWere = String(prevRaw).split('\n').filter(function (l) { return l.trim().indexOf('|') === 0; });
+            const fresh = formatTableMarkdown(model).split('\n');
+            const eq = function (a, b) { return JSON.stringify(a) === JSON.stringify(b); };
+            // A changed row keeps each cell's own padding: only the cell that changed is rewritten.
+            const rowKeeping = function (line, was, now, built) {
+                if (was.length !== now.length) return built;
+                const parts = line.split(/(?<!\\)\|/);
+                const first = line.trim().indexOf('|') === 0 ? 1 : 0;
+                for (let c = 0; c < now.length; c++) {
+                    if (was[c] === now[c]) continue;
+                    if (first + c >= parts.length) return built;
+                    const m = parts[first + c].match(/^(\s*)([\s\S]*?)(\s*)$/);
+                    // An empty cell has no padding of its own to keep, so it gets the usual.
+                    const pad = was[c] === '' ? ' ' : '';
+                    parts[first + c] = (m[1] || pad) + String(now[c]).replace(/\|/g, '\\|') + (m[3] || pad);
+                }
+                return parts.join('|');
+            };
+            const out = [rowKeeping(rowsWere[0], prev.header, model.header, fresh[0]),
+                eq(model.align, prev.align) ? rowsWere[1] : fresh[1]];
+            if (model.rows.length === prev.rows.length) {
+                model.rows.forEach(function (row, i) { out.push(rowKeeping(rowsWere[i + 2], prev.rows[i], row, fresh[i + 2])); });
+                return out.join('\n');
+            }
+            // A row added or removed: match each with the next one like it.
+            let next = 0;
+            model.rows.forEach(function (row, i) {
+                let at = -1;
+                for (let j = next; j < prev.rows.length; j++) { if (eq(row, prev.rows[j])) { at = j; break; } }
+                if (at >= 0) { out.push(rowsWere[at + 2]); next = at + 1; }
+                else out.push(fresh[i + 2]);
+            });
+            return out.join('\n');
+        }
+
+        /**
          * Table operations. rowIndex is -1 for the header row, 0..n-1 for body rows.
          * Every one returns a NEW model so callers can compare or discard.
          */
@@ -2616,7 +2660,7 @@
             const next = tableOp(ctx.model, op, ctx.rowIndex, ctx.colIndex, value);
             // writeBlockRaw is the storage truth; no edit-flag needed for serialize
             // (data-raw already matches). Flag only for contenteditable input paths.
-            writeBlockRaw(ctx.block, formatTableMarkdown(next));
+            writeBlockRaw(ctx.block, formatTableKeeping(next, ctx.block.getAttribute('data-raw')));
 
             // Land the caret where the edit happened, so you can keep typing
             let r = ctx.rowIndex;
@@ -2657,7 +2701,7 @@
                 // Past the end: grow the table rather than losing the keystroke
                 HistoryManager.beginEdit();
                 const grown = tableOp(ctx.model, 'row_below', lastRow, 0, null);
-                writeBlockRaw(ctx.block, formatTableMarkdown(grown));
+                writeBlockRaw(ctx.block, formatTableKeeping(grown, ctx.block.getAttribute('data-raw')));
                 updateStats();
                 HistoryManager.commitEdit();
                 r = lastRow + 1;

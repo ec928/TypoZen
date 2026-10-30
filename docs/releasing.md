@@ -203,6 +203,16 @@ twenty minutes and tells you nothing.
 
 ---
 
+## 3a. What changed in editing since the last release
+
+    node tests/compare-release.mjs
+
+The same keys at every kind of block, on this tree and on the last GitHub release, about two
+and a half minutes. It lists every case where the saved text differs. **Read each one**: a
+difference is not a failure, some are the point of the release, but each has to be something
+you meant. It exits 1 only for a broken invariant the release did not have. 0.19.2 changed how
+quotes behave under Enter and Backspace and nothing said so; this would have.
+
 ## 3b. The sixty seconds before a submission
 
 Run this by hand, in the build that is about to go out. Not because automation could not

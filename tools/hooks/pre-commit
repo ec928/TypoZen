@@ -1,0 +1,22 @@
+#!/bin/sh
+# Runs for whoever commits, person or agent. When editor code is staged, the two checks that
+# an edit changes only what was edited must pass first. About 40 seconds, editor code only.
+#
+# Set up once per clone:  git config core.hooksPath tools/hooks
+# They test the working tree, not only what is staged.
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(js/modules/|css/|TypoZen_Template\.html$)')
+[ -z "$staged" ] && exit 0
+
+echo "pre-commit: editor code staged, checking that edits keep the source..."
+if ! node tests/real-files-roundtrip-browser.mjs; then
+    echo "pre-commit: REFUSED. A line does not come back as it was written. See above." >&2
+    exit 1
+fi
+if ! node tests/edit-keeps-source-browser.mjs; then
+    echo "pre-commit: REFUSED. An edit changed more than it should. See above." >&2
+    exit 1
+fi
+exit 0

@@ -77,11 +77,13 @@ try {
     await edit('alpha [text](https://e.com/p) omega', 'alpha', true, ['Enter'], 'alpha\n [text](https://e.com/p) omega', 'a link keeps its address');
     await edit('alpha ![pic](a.png) omega', 'alpha', true, ['Enter'], 'alpha\n ![pic](a.png) omega', 'an image is not deleted');
     await edit('alpha plain omega', 'alpha', true, ['Enter'], 'alpha\n plain omega', 'plain text and its leading space, as before');
+    await edit('x **alpha bold** y', 'alpha', true, ['Enter'], 'x **alpha**\n **bold** y', 'a split bold word keeps the space after the caret');
 
     console.log('\n=== Enter at the start of a line moves the line, marker and all ===');
     await edit('Top.\n\n# Head one', 'Head', false, ['Enter'], 'Top.\n\n\n# Head one', 'heading');
     await edit('Top.\n\n> Quote', 'Quote', false, ['Enter'], 'Top.\n\n\n> Quote', 'quote');
     await edit('Top.\n\n- Item', 'Item', false, ['Enter'], 'Top.\n\n- \n- Item', 'bullet');
+    await edit('Top.\n\n- [x] Item', 'Item', false, ['Enter', 'Y'], 'Top.\n\n- [ ] \n- [x] YItem', 'task item, and the next letter typed lands in it');
 
     console.log('\n=== code blocks ===');
     const CODE = 'A\n\n```js\nline1\nline2\n```\n\nZ';
@@ -95,14 +97,14 @@ try {
     console.log('\n=== tables ===');
     const TABLE = 'A\n\n| h1 | h2 |\n|---|---|\n| c1 | c2 |\n\nZ';
     await edit(TABLE, 'c1', true, ['Enter'], TABLE, 'Enter in a cell leaves the table alone');
-    await edit('A\n\n| h |\n|---|\n| a \\| b |\n\nZ', 'a', true, ['x'], 'A\n\n| h |\n| --- |\n| ax \\| b |\n\nZ', 'an escaped pipe stays in its cell');
+    await edit('A\n\n| h |\n|---|\n| a \\| b |\n\nZ', 'a', true, ['x'], 'A\n\n| h |\n|---|\n| ax \\| b |\n\nZ', 'an escaped pipe stays in its cell');
     await load('A\n\n| h |\n|---|\n| a \\| b |');
     same(await page.evaluate(() => document.querySelectorAll('#editor td').length), 1, 'and is not a second column');
 
     console.log('\n=== numbers, titles, refused links, markers ===');
     await edit('Top.\n\n0.48s of spread', 'spread', true, ['x'], 'Top.\n\n0.48s of spreadx', 'a line starting with a decimal is not a list');
     await edit('Top.\n\n3.14 is pi', 'pi', true, ['x'], 'Top.\n\n3.14 is pix', 'nor is 3.14');
-    await edit('Top.\n\n1.hello', 'hello', true, ['x'], 'Top.\n\n1. hellox', '"1.hello" still is');
+    await edit('Top.\n\n1.hello', 'hello', true, ['x'], 'Top.\n\n1.hellox', '"1.hello" still is, as written');
     await edit('Top.\n\n0. zero', 'zero', true, ['x'], 'Top.\n\n0. zerox', 'a list from 0 keeps its number');
     await edit('Top.\n\n   * item', 'item', true, ['x'], 'Top.\n\n   * itemx', 'a bullet keeps its marker and indent');
     await edit('alpha [t](https://e.com "T") omega', 'alpha', true, ['Q'], 'alphaQ [t](https://e.com "T") omega', 'a titled link survives an edit');
@@ -113,6 +115,27 @@ try {
     await load(refused);
     same(await md(), refused, 'a titled image and a refused link load unchanged');
     same(await page.evaluate(() => document.querySelector('#editor a').hasAttribute('href')), false, 'and a refused link is not clickable');
+    // What is shown, which a save check cannot see.
+    await load('0.48s of spread\n\n3.14 is pi\n\nalpha [t](https://e.com "T") omega\n\n![p](a.png "T")');
+    same(await page.evaluate(() => document.querySelectorAll('#editor ol').length), 0, 'a decimal is not shown as a numbered item');
+    same(await page.evaluate(() => (document.querySelector('#editor a') || {}).href), 'https://e.com/', 'a titled link is clickable');
+    same(await page.evaluate(() => document.querySelectorAll('#editor img').length), 1, 'a titled image is shown');
+
+    console.log('\n=== numbered lists ===');
+    const OL = 'Top.\n\n1. one\n2. two\n3. three';
+    await edit(OL, 'one', true, ['Enter', 'Y'], 'Top.\n\n1. one\n2. Y\n3. two\n4. three', 'Enter at the end of an item moves the ones below down');
+    await edit(OL, 'one', false, ['Enter'], 'Top.\n\n1. \n2. one\n3. two\n4. three', 'Enter at the start of an item does too');
+    await edit(OL, 'three', true, ['Enter', 'Y'], 'Top.\n\n1. one\n2. two\n3. three\n4. Y', 'at the end of the list there is nothing to move');
+    await edit('Top.\n\n1. one\n5. two\n6. three', 'one', true, ['Enter'], 'Top.\n\n1. one\n2. \n5. two\n6. three', 'a list that skips numbers keeps its gap');
+    await edit('Top.\n\n1. one\n   - sub\n2. two\n\nAfter 1. text', 'one', true, ['Enter'], 'Top.\n\n1. one\n2. \n   - sub\n3. two\n\nAfter 1. text', 'nested items and text after the list are left alone');
+    await edit('Top.\n\n1. one\n2. two', 'one', true, ['Enter', 'UNDO'], 'Top.\n\n1. one\n2. two', 'Undo puts the numbers back');
+    await edit('Top.\n\n1. one\n\n1. other', 'one', true, ['Enter'], 'Top.\n\n1. one\n2. \n\n1. other', 'a blank line ends the list');
+
+    console.log('\n=== a table edit changes that cell ===');
+    await edit('Top.\n\n|a|b|\n|-|:-:|\n|1|2|', '1', true, ['x'], 'Top.\n\n|a|b|\n|-|:-:|\n|1x|2|', 'tight spacing and the separator stay');
+    await edit('Top.\n\n| long   | b |\n|---|---|\n| 1      | 2 |\n| 3      | 4 |', '3', true, ['x'], 'Top.\n\n| long   | b |\n|---|---|\n| 1      | 2 |\n| 3x      | 4 |', 'so do aligned rows, and the other rows');
+    await edit('Top.\n\n  | a | b |\n  |---|---|\n  | 1 | 2 |', '1', true, ['x'], 'Top.\n\n  | a | b |\n  |---|---|\n  | 1x | 2 |', 'an indented table is a table');
+
     await load('Top.\n\n> one\n>\n> two');
     same(await page.evaluate(() => {
         const b = [...document.querySelectorAll('#editor .block')].find(x => x.getAttribute('data-raw') === '>');

@@ -41,7 +41,8 @@ global.Node = window.Node;
 
 const names = [
     'parseListLine', 'formatListLine', 'normalizeBlockRaw', 'isMultilineBlockRaw',
-    'coerceBlockRaw', 'listIndentPad', 'stripListMarkerKeepBody', 'stripBlockPrefix'
+    'coerceBlockRaw', 'listIndentPad', 'stripListMarkerKeepBody', 'stripBlockPrefix',
+    'blockDomToMarkdown', 'applyEditToRaw', 'parseTableMarkdown', 'splitTableRow', 'formatTableKeeping', 'formatTableMarkdown', 'tableAlignToSep'
 ];
 let src = 'const LIST_MAX_INDENT=6; const LIST_INDENT_SPACES=2;\n';
 for (const n of names) src += extractFunction(n) + '\n';

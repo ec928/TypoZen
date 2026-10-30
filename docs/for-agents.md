@@ -253,3 +253,12 @@ runs, never at launch, on a lookup or while reading. `Extensions.cs` owns all of
 1. Update the handlers and any suite that asserts the old rule.
 2. Update **README** (user-facing) and **this file** (agent-facing) in the same change.
 3. Only add to `known-issues.md` after reproduce + characterisation (or a deliberate tolerated limitation with a short why).
+
+## An edit changes what was edited
+
+Opening and saving changes nothing. An edit changes only what was edited: other text, markers, spacing and link addresses stay byte for byte. Every Preview edit is saved through `blockHtmlToMarkdown` in `05-model.js`, which applies only the change to the line as written (`applyEditToRaw`); `blockDomToMarkdown` underneath it rebuilds a line from the screen and should round-trip too.
+
+- **One quote line is one block**, callouts included. Enter, Backspace, the quote toggle and Read Aloud all work line by line. 0.19.2 merged them and Backspace deleted a callout's body.
+- **Changing how lines become blocks, or how a block is saved, needs Ed's approval first**, as a table of what people write, what they see and what each key does. Then a test that presses the keys.
+- `tests/real-files-roundtrip-browser.mjs` puts every line of every real Markdown file on the machine through the save logic, with no exceptions, in the gate. If it fails, the code is wrong: never add an exception for a "harmless" difference.
+- `tools/hooks/pre-commit` runs it and `edit-keeps-source-browser` when editor code is staged, for whoever commits. Set up once per clone: `git config core.hooksPath tools/hooks`. Do not use `--no-verify`.

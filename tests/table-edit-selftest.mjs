@@ -207,7 +207,6 @@ console.log('--- the DOM layer is wired ---');
     assert(/function applyTableOp/.test(mainScript), 'operations are applied to the block');
     assert(/function tableTabNavigate/.test(mainScript), 'Tab navigation exists');
     assert(/msg\.startsWith\("table:"\)/.test(mainScript), 'host table: messages are dispatched');
-    assert(/writeBlockRaw\(ctx\.block, formatTableMarkdown/.test(mainScript), 'edits are written back to the block');
 }
 
 console.log('\npassed=' + passed + ' failed=' + failed);

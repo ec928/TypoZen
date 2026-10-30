@@ -427,7 +427,7 @@
 
             /** Full DOM is mounted: rebuild model from data-raw attributes. */
             rebuildFromFullDom: function () {
-                if (!editor) return;
+                if (!editor || window.__tzBuildingBlocks) return;
                 const nodes = editor.querySelectorAll('.block');
                 this.blocks = [];
                 this._nextId = 1;
@@ -1371,6 +1371,7 @@
             try { normaliseBookTextSize(); } catch (eF) {}
             window.__tzPaintGen = (window.__tzPaintGen || 0) + 1;
             const paintGen = window.__tzPaintGen;
+            window.__tzBuildingBlocks = false;
             // A print copy belongs to the document it was made from (tzPreparePrint).
             try { if (typeof tzEndPrintCopy === 'function') tzEndPrintCopy(); } catch (ePc) {}
 
@@ -1604,10 +1605,15 @@
                 if (createIdx < blockRaws.length) {
                     requestAnimationFrame(createStep);
                 } else {
+                    window.__tzBuildingBlocks = false;
                     finishLoadUi();
                     startPaint();
                 }
             }
+            // Until the last batch is in, the page holds part of the document. The model is
+            // whole, and rebuildFromFullDom must not cut it down to what is mounted so far:
+            // Ctrl+S right after switching to Preview wrote 1,500 of 1,600 lines to disk.
+            window.__tzBuildingBlocks = true;
             requestAnimationFrame(createStep);
         }
 
@@ -3791,9 +3797,37 @@
             const md = blockHtmlToMarkdown(holder);
             // The serializer drops a line's own leading space; here it is typed text. Read from
             // the first text node only: the range's text runs straight past an image.
-            const firstText = inner.firstChild && inner.firstChild.nodeType === 3 ? inner.firstChild.nodeValue : '';
+            // A space at the start of a bold word's rest counts too; one inside code stays in the code.
+            let firstLeaf = inner.firstChild;
+            while (firstLeaf && firstLeaf.nodeType === 1 && firstLeaf.tagName !== 'CODE' && firstLeaf.firstChild) firstLeaf = firstLeaf.firstChild;
+            const firstText = firstLeaf && firstLeaf.nodeType === 3 ? firstLeaf.nodeValue : '';
             const lead = (firstText.match(/^[ \t ]*/) || [''])[0].replace(/ /g, ' ');
             return lead + String(md == null ? '' : md).replace(/^[ \t]+/, '');
+        }
+
+        /**
+         * After a new numbered item: the items below it at its level move up one, until the
+         * numbers no longer collide. A list that skips numbers keeps its gaps, and nested items
+         * and the file beyond the list are not touched.
+         */
+        function renumberOrderedListAfter(block) {
+            const at = parseListLine(block.getAttribute('data-raw'));
+            if (!at || at.kind !== 'ol') return;
+            const mi = DocumentModel.modelIndexOfEl(block);
+            if (mi < 0) return;
+            let prevNum = at.num;
+            for (let i = mi + 1; i < DocumentModel.blocks.length; i++) {
+                const r = DocumentModel.blocks[i].raw;
+                const p = parseListLine(r);
+                if (!p || p.indent < at.indent) break;
+                if (p.indent > at.indent) continue;
+                if (p.kind !== 'ol' || p.num > prevNum) break;
+                prevNum = prevNum + 1;
+                const numbered = r.replace(/^([ \t]*)\d+/, '$1' + prevNum);
+                const el = editor && editor.querySelector('.block[data-model-index="' + i + '"]');
+                if (el) writeBlockRaw(el, numbered);
+                else DocumentModel.setBlockRaw(i, numbered);
+            }
         }
 
         /**
@@ -3813,8 +3847,8 @@
             const lines = normalizeBlockRaw(readBlockRawSafe(block)).split('\n');
             const open = lines[0];
             const last = lines[lines.length - 1];
-            const close = lines.length > 1 && /^\s*`{3,}\s*$/.test(last) ? last : '```';
-            const rawOf = function (t) { return open + '\n' + t + '\n' + close; };
+            const closed = lines.length > 1 && /^\s*`{3,}\s*$/.test(last);
+            const rawOf = function (t) { return open + '\n' + t + (closed ? '\n' + last : ''); };
             const leaving = range.collapsed && start === text.length && /\n$/.test(text);
 
             HistoryManager.beginEdit();
@@ -3895,6 +3929,8 @@
             if (wholeLine !== null) {
                 const wl = parseListLine(wholeLine);
                 raw = wl ? formatListLine(Object.assign({}, wl, { body: '', checked: false })) : '';
+                // The line it pushes down is the next number.
+                if (wl && wl.kind === 'ol') wholeLine = wholeLine.replace(/^([ \t]*)\d+/, '$1' + (wl.num + 1));
             } else if (raw == null || raw === '') {
                 raw = state.revealOnFocus ? (block.innerText || '') : blockHtmlToMarkdown(block);
             } else if (state.revealOnFocus) {
@@ -3944,7 +3980,8 @@
                 nextRaw = coerceBlockRaw(afterText);
             }
 
-            const newBlock = createBlock(nextRaw, block);
+            const newBlock = createBlock(wholeLine !== null ? wholeLine : nextRaw, block);
+            try { renumberOrderedListAfter(newBlock); } catch (eNum) {}
             // Caret goes to the START of text carried down by the split — that is where the
             // split point now is. It used to always land at the END, so pressing Enter at
             // the beginning of a line pushed the line down and dumped the caret after it;
@@ -3962,7 +3999,8 @@
             // synthesised list marker.
             try {
                 const caretRange = document.createRange();
-                caretRange.selectNodeContents(newBlock);
+                // In a task item, after the checkbox: before it, what you type next is lost.
+                caretRange.selectNodeContents(newBlock.querySelector('.task-text') || newBlock);
                 caretRange.collapse(carriedText);
                 const caretSel = window.getSelection();
                 caretSel.removeAllRanges();
@@ -4036,7 +4074,58 @@
             return block;
         }
 
+        /**
+         * The Markdown for a block after an edit: what was edited, and the rest of the line as
+         * it was written.
+         *
+         * blockDomToMarkdown rebuilds a line from what is on screen, and the screen does not
+         * hold everything the line says (a run of spaces, a marker's spacing, a form nobody
+         * has thought of yet). So this works out what the edit actually changed, by comparing
+         * with what the same line gives before the edit, and applies only that to the original.
+         * If the screen did not change, neither does the line. This is what kept the next
+         * "lost on any edit" bug from needing its own fix (2026-10-30).
+         */
         function blockHtmlToMarkdown(block) {
+            const out = blockDomToMarkdown(block);
+            try {
+                const raw = block.getAttribute('data-raw');
+                if (!raw || raw === out) return out;
+                if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') return out;
+                const before = blockDomToMarkdown(createPreviewBlockEl(raw, false));
+                if (before === raw) return out;     // the screen holds the whole line: nothing to keep
+                if (before === out) return raw;     // the screen did not change
+                return applyEditToRaw(raw, before, out);
+            } catch (e) { return out; }
+        }
+
+        /**
+         * Apply the change from `before` to `after` onto `raw`, where `before` is what the
+         * serializer makes of `raw`. Only where the two agree can a position in one be read as
+         * a position in the other; an edit inside the part they disagree on takes `after`.
+         */
+        function applyEditToRaw(raw, before, after) {
+            let same = 0;
+            while (same < raw.length && same < before.length && raw[same] === before[same]) same++;
+            let sameEnd = 0;
+            while (sameEnd < raw.length - same && sameEnd < before.length - same
+                && raw[raw.length - 1 - sameEnd] === before[before.length - 1 - sameEnd]) sameEnd++;
+            let from = 0;
+            while (from < before.length && from < after.length && before[from] === after[from]) from++;
+            let tail = 0;
+            while (tail < before.length - from && tail < after.length - from
+                && before[before.length - 1 - tail] === after[after.length - 1 - tail]) tail++;
+            const to = before.length - tail;
+            const typed = after.slice(from, after.length - tail);
+            if (to <= same) return raw.slice(0, from) + typed + raw.slice(to);
+            if (from >= before.length - sameEnd) {
+                const shift = raw.length - before.length;
+                return raw.slice(0, from + shift) + typed + raw.slice(to + shift);
+            }
+            try { console.warn('[TypoZen] edit inside text the screen does not show; saved as shown'); } catch (e) {}
+            return after;
+        }
+
+        function blockDomToMarkdown(block) {
             // Nest level is not in the DOM list structure — keep it from the block attribute / prior data-raw
             let indentLevel = 0;
             const attr = block && block.getAttribute('data-list-indent');
@@ -4053,8 +4142,18 @@
             const parsedForList = parseListLine(rawForList);
             const pad = parsedForList && parsedForList.indent === indentLevel
                 ? String(rawForList).match(/^[ \t]*/)[0] : listIndentPad(indentLevel);
-            const bulletMatch = parsedForList ? String(rawForList).match(/^[ \t]*([-*+])\s/) : null;
+            const bulletMatch = parsedForList ? String(rawForList).match(/^[ \t]*([-*+])(\s+)/) : null;
             const bullet = bulletMatch ? bulletMatch[1] : '-';
+            const bulletGap = bulletMatch ? bulletMatch[2] : ' ';
+            const olGapMatch = parsedForList ? String(rawForList).match(/^[ \t]*\d+\.(\s*)/) : null;
+            const olGap = olGapMatch ? olGapMatch[1] : ' ';
+            // Headings and quotes keep their own marker spacing, and "## closed ##" its close.
+            const wasRaw = String(rawForList == null ? '' : rawForList);
+            const headingAs = function (level, body) {
+                const m = wasRaw.match(new RegExp('^#{' + level + '}(\\s+)'));
+                const closeM = m ? wasRaw.match(/\s+#+\s*$/) : null;
+                return coerceBlockRaw('#'.repeat(level) + (m ? m[1] : ' ') + body + (closeM ? closeM[0] : ''));
+            };
 
             let clone = block.cloneNode(true);
             // Tree walk preserves nested marks. The old order (em → strong → del) used
@@ -4098,7 +4197,8 @@
                     if (node.parentElement && (node.parentElement.tagName || '').toLowerCase() === 'pre') {
                         return inner;
                     }
-                    return '`' + inner + '`';
+                    // Spaces in code are literal, so they go through keepTypedSpaces as typed ones.
+                    return '`' + inner.replace(/ /g, ' ') + '`';
                 }
                 if (tag === 'a') {
                     // A destination safeUrl refused: shown as text, its source kept here.
@@ -4170,7 +4270,8 @@
                     const cells = Array.from(tr.querySelectorAll('td')).map(cellMd);
                     md.push('| ' + cells.join(' | ') + ' |');
                 });
-                return md.join('\n');
+                const built = parseTableMarkdown(md.join('\n'));
+                return built ? formatTableKeeping(built, block.getAttribute('data-raw')) : md.join('\n');
             }
 
             // Fenced code: allow multi-line
@@ -4184,8 +4285,11 @@
                 const was = String(block.getAttribute('data-raw') || '').split('\n');
                 const lastWas = was[was.length - 1];
                 const open = /^\s*```/.test(was[0]) ? was[0] : '```' + lang;
+                const code = codeEl.textContent || codeEl.innerText || '';
+                // A fence the author never closed stays open: it runs to the end of the file.
+                if (/^\s*```/.test(was[0]) && !(was.length > 1 && /^\s*`{3,}\s*$/.test(lastWas))) return open + '\n' + code;
                 const close = was.length > 1 && /^\s*`{3,}\s*$/.test(lastWas) ? lastWas : '```';
-                return open + '\n' + (codeEl.textContent || codeEl.innerText || '') + '\n' + close;
+                return open + '\n' + code + '\n' + close;
             }
 
             // Callout header line ("> [!NOTE] Optional title"). Its body lines are ordinary
@@ -4235,13 +4339,11 @@
 
             if (first) {
                 const tag = first.tagName.toLowerCase();
-                if (tag === 'h1') return coerceBlockRaw('# ' + plain);
-                if (tag === 'h2') return coerceBlockRaw('## ' + plain);
-                if (tag === 'h3') return coerceBlockRaw('### ' + plain);
-                if (tag === 'h4') return coerceBlockRaw('#### ' + plain);
-                if (tag === 'h5') return coerceBlockRaw('##### ' + plain);
-                if (tag === 'h6') return coerceBlockRaw('###### ' + plain);
-                if (tag === 'blockquote') return coerceBlockRaw('> ' + plain);
+                if (/^h[1-6]$/.test(tag)) return headingAs(Number(tag.charAt(1)), plain);
+                if (tag === 'blockquote') {
+                    const q = wasRaw.match(/^>\s*/);
+                    return coerceBlockRaw((q ? q[0] : '> ') + plain);
+                }
                 if (tag === 'ul' && clone.querySelector('.task-list-item')) {
                     const cb = clone.querySelector('input[type="checkbox"]');
                     const mark = cb && cb.checked ? 'x' : ' ';
@@ -4249,18 +4351,21 @@
                     let body = bodyEl
                         ? (childInlineMd(bodyEl) || childText(bodyEl))
                         : plain.replace(/^\[[ xX]?\]\s*/, '');
-                    return coerceBlockRaw(pad + bullet + ' [' + mark + '] ' + body);
+                    const t = wasRaw.match(/\[([ xX])\](\s?)/);
+                    const boxMark = t && (t[1] !== ' ') === (mark === 'x') ? t[1] : mark;
+                    return coerceBlockRaw(pad + bullet + bulletGap + '[' + boxMark + ']' + (t ? t[2] : ' ') + body);
                 }
                 if (tag === 'ul') {
                     const li = first.querySelector('li') || first;
-                    return coerceBlockRaw(pad + bullet + ' ' + (childInlineMd(li) || childText(li)));
+                    return coerceBlockRaw(pad + bullet + bulletGap + (childInlineMd(li) || childText(li)));
                 }
                 if (tag === 'ol') {
                     const start = first.getAttribute('start') || '1';
                     const li = first.querySelector('li') || first;
-                    return coerceBlockRaw(pad + start + '. ' + (childInlineMd(li) || childText(li)));
+                    const olBody = childInlineMd(li) || childText(li);
+                    return coerceBlockRaw(pad + start + '.' + olGap + olBody);
                 }
-                if (tag === 'hr') return '---';
+                if (tag === 'hr') return (typeof isThematicBreakLine === 'function' && isThematicBreakLine(wasRaw)) ? wasRaw : '---';
             }
 
             // Prefer preserving list/heading markers from data-raw when DOM is ambiguous
