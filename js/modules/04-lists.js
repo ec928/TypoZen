@@ -1075,13 +1075,11 @@
         /** True if this block is allowed to contain internal newlines (fence / table). */
         function isMultilineBlockRaw(raw) {
             raw = String(raw == null ? '' : raw);
-            if (/^\s*(`{3,}|~{3,})/.test(raw)) return true;
+            if (/^\s*```/.test(raw)) return true;
             // GFM table: header row with pipes (and usually a separator line)
             const lines = raw.split('\n');
             if (lines.length > 1 && lines.some(function (l) { return /^\s*\|/.test(l); })) return true;
             if (/^\s*\|/.test(raw) && raw.indexOf('\n') >= 0) return true;
-            // Blockquotes & GFM callouts (lines starting with >)
-            if (/^\s*>/.test(raw) && raw.indexOf('\n') >= 0) return true;
             return false;
         }
 

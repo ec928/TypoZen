@@ -2190,6 +2190,80 @@
             caution: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" class="tz-alert-icon" style="width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;display:inline-block!important;margin:0!important;vertical-align:middle!important;flex-shrink:0!important;"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16" r="1" fill="currentColor"/></svg>'
         };
 
+        const CALLOUT_RE = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i;
+        function calloutTypeOfRaw(raw) {
+            const m = String(raw == null ? '' : raw).match(CALLOUT_RE);
+            return m ? m[1].toLowerCase() : null;
+        }
+        function isQuoteBlock(b) {
+            return !!(b && b.classList && b.classList.contains('block') && /^>/.test(b.getAttribute('data-raw') || ''));
+        }
+        function setCalloutBodyType(b, type) {
+            const cl = b.classList;
+            const was = Array.prototype.filter.call(cl, function (c) { return /^tz-alert-/.test(c); });
+            was.forEach(function (c) { cl.remove(c); });
+            cl.toggle('tz-callout-body', !!type);
+            if (type) cl.add('tz-alert-' + type);
+        }
+
+        /**
+         * Style the quote lines after a callout header as its body. Each quote line is its own
+         * block, so this is presentation only: data-raw and every editing path stay as they
+         * are for any other quote. Runs from the start of the quote run the block is in.
+         */
+        function restyleCalloutRun(from, seen) {
+            let b = from;
+            while (isQuoteBlock(b.previousElementSibling)) b = b.previousElementSibling;
+            if (seen.has(b)) return;
+            seen.add(b);
+            let type = null;
+            for (; isQuoteBlock(b); b = b.nextElementSibling) {
+                const t = calloutTypeOfRaw(b.getAttribute('data-raw'));
+                if (t) { type = t; setCalloutBodyType(b, null); }
+                else setCalloutBodyType(b, type);
+            }
+            if (b && b.classList && b.classList.contains('tz-callout-body')) setCalloutBodyType(b, null);
+        }
+
+        // Rendering one block can change how its neighbours look (a header added, removed or
+        // retyped), so restyle after the current batch of renders has finished.
+        let calloutRestyleQueue = null;
+        function queueCalloutRestyle(block) {
+            if (!calloutRestyleQueue) {
+                calloutRestyleQueue = new Set();
+                Promise.resolve().then(function () {
+                    const q = calloutRestyleQueue;
+                    calloutRestyleQueue = null;
+                    const seen = new Set();
+                    q.forEach(function (b) {
+                        if (!b.isConnected) return;
+                        // Paragraph indent needs the block above, which a block rendered
+                        // before it is inserted cannot see.
+                        if (b.firstElementChild && b.firstElementChild.tagName === 'P') {
+                            const ind = parseInt(b.getAttribute('data-list-indent') || '0', 10);
+                            clearListIndentClasses(b);
+                            if (ind > 0 && followsListItem(b)) b.classList.add('list-indent-' + ind);
+                        }
+                        if (isQuoteBlock(b)) restyleCalloutRun(b, seen);
+                        else {
+                            if (b.classList.contains('tz-callout-body')) setCalloutBodyType(b, null);
+                            if (isQuoteBlock(b.nextElementSibling)) restyleCalloutRun(b.nextElementSibling, seen);
+                        }
+                    });
+                });
+            }
+            calloutRestyleQueue.add(block);
+        }
+
+        /** True if the nearest non-blank block before this one is a list item or its continuation. */
+        function followsListItem(block) {
+            let p = block.previousElementSibling;
+            while (p && p.classList && p.classList.contains('block') && !(p.getAttribute('data-raw') || '').trim()) p = p.previousElementSibling;
+            if (!p || !p.classList || !p.classList.contains('block')) return false;
+            if (parseListLine(p.getAttribute('data-raw') || '')) return true;
+            return /\blist-indent-\d\b/.test(p.className) && /^[ \t]{2,}/.test(p.getAttribute('data-raw') || '');
+        }
+
         function renderBlockPreview(block, rawInput = null) {
             const raw = rawInput !== null ? rawInput : (block.getAttribute('data-raw') || '');
             clearListIndentClasses(block);
@@ -2219,22 +2293,22 @@
             const cleanRaw = String(raw).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             let html = cleanRaw;
             const lines = cleanRaw.split('\n');
-            const firstLine = (lines[0] || '').trim();
+            queueCalloutRestyle(block);
 
             // Code Blocks (fenced). Fences must take precedence over tables so ASCII art and diagrams with pipes survive.
-            const fenceMatch = firstLine.match(/^(`{3,}|~{3,})(.*)$/);
+            // Backticks only, as splitMarkdownToBlockRaws: "~~~" is a scene break in prose.
+            const fenceMatch = (lines[0] || '').match(/^(`{3,})(.*)$/);
             if (fenceMatch) {
                 clearListIndentClasses(block);
                 block.classList.remove('list-block');
                 block.removeAttribute('data-list-indent');
-                const fenceChar = fenceMatch[1][0];
                 const fenceLen = fenceMatch[1].length;
                 const lang = fenceMatch[2].trim();
                 let end = lines.length;
                 if (lines.length > 1) {
                     const last = (lines[lines.length - 1] || '').trim();
-                    const lastMatch = last.match(/^(`{3,}|~{3,})$/);
-                    if (lastMatch && lastMatch[1][0] === fenceChar && lastMatch[1].length >= fenceLen) {
+                    const lastMatch = last.match(/^(`{3,})$/);
+                    if (lastMatch && lastMatch[1].length >= fenceLen) {
                         end = lines.length - 1;
                     }
                 }
@@ -2266,38 +2340,22 @@
                 return;
             }
 
-            // Blockquotes & GFM Alerts (callouts)
-            if (firstLine.startsWith('>')) {
-                clearListIndentClasses(block);
-                block.classList.remove('list-block');
-                block.removeAttribute('data-list-indent');
-                const quoteLines = cleanRaw.split('\n').map(function (l) { return l.replace(/^\s*>\s?/, ''); });
-                const alertMatch = (quoteLines[0] || '').trim().match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i);
-
-                if (alertMatch) {
-                    const alertType = alertMatch[1].toLowerCase();
+            // Blockquotes, one line per block. A "> [!NOTE]" line is a callout header; the
+            // quote lines after it are styled as its body by restyleCalloutRun.
+            if (html.startsWith('>')) {
+                const alertType = calloutTypeOfRaw(html);
+                if (alertType) {
                     const defaultTitle = alertType.charAt(0).toUpperCase() + alertType.slice(1);
-                    const restOfFirstLine = (quoteLines[0] || '').trim().slice(alertMatch[0].length).trim();
-                    const hasCustomTitle = !!restOfFirstLine;
-                    const titleText = restOfFirstLine || defaultTitle;
-                    const bodyLines = quoteLines.slice(1);
-                    const bodyHtml = bodyLines.map(function (l) { return parseInline(l); }).join('<br/>');
-
+                    const titleText = html.replace(/^>\s*\[![A-Za-z]+\]\s*/, '').trim() || defaultTitle;
                     const iconSvg = ALERT_ICONS[alertType] || ALERT_ICONS.note;
-
-                    block.innerHTML = `<div class="tz-alert tz-alert-${alertType}" data-alert-type="${alertType}"` +
-                        (hasCustomTitle ? ' data-has-custom-title="1"' : '') + `>` +
+                    block.innerHTML = `<div class="tz-alert tz-alert-${alertType}">` +
                         `<div class="tz-alert-header">` +
                         iconSvg +
                         `<span class="tz-alert-title">${escapeHtml(titleText)}</span>` +
-                        `</div>` +
-                        (bodyHtml ? `<div class="tz-alert-body">${bodyHtml}</div>` : '') +
-                        `</div>`;
+                        `</div></div>`;
                     return;
                 }
-
-                // Standard blockquote (multi-line aware)
-                const text = quoteLines.map(function (l) { return parseInline(l); }).join('<br/>');
+                const text = parseInline(html.replace(/^>\s*/, ''));
                 block.innerHTML = `<blockquote>${text}</blockquote>`;
                 return;
             }
@@ -2336,8 +2394,9 @@
                 }
             } else {
                 block.classList.remove('list-block');
-                const pIndent = parseInt(block.getAttribute('data-list-indent') || '0', 10);
-                if (pIndent > 0) block.classList.add('list-indent-' + pIndent);
+                // An indented paragraph under a list item lines up with it (set after render,
+                // in queueCalloutRestyle). Only there: a prose paragraph indented with spaces
+                // is not a list continuation.
             }
 
             // Standard Paragraph

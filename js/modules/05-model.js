@@ -197,14 +197,15 @@
             const out = [];
             let currentCodeBlock = null;
             let currentTableBlock = null;
-            let currentQuoteBlock = null;
             let codeFence = null;
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
-                const fenceMatch = line.trimStart().match(/^(`{3,}|~{3,})/);
+                // Backtick fences only. A "~~~" line is a scene break in prose, and taking it
+                // as a fence turned everything up to the next one into code (0.19.2).
+                const fenceMatch = line.match(/^(`{3,})/);
                 if (fenceMatch) {
                     if (currentCodeBlock !== null) {
-                        if (codeFence && fenceMatch[1][0] === codeFence[0] && fenceMatch[1].length >= codeFence.length) {
+                        if (codeFence && fenceMatch[1].length >= codeFence.length) {
                             currentCodeBlock.push(line);
                             out.push(currentCodeBlock.join('\n'));
                             currentCodeBlock = null;
@@ -216,10 +217,6 @@
                             out.push(currentTableBlock.join('\n'));
                             currentTableBlock = null;
                         }
-                        if (currentQuoteBlock !== null) {
-                            out.push(currentQuoteBlock.join('\n'));
-                            currentQuoteBlock = null;
-                        }
                         currentCodeBlock = [line];
                         codeFence = fenceMatch[1];
                         continue;
@@ -230,10 +227,6 @@
                     continue;
                 }
                 if (line.trim().startsWith('|')) {
-                    if (currentQuoteBlock !== null) {
-                        out.push(currentQuoteBlock.join('\n'));
-                        currentQuoteBlock = null;
-                    }
                     if (currentTableBlock !== null) currentTableBlock.push(line);
                     else currentTableBlock = [line];
                     continue;
@@ -241,19 +234,13 @@
                     out.push(currentTableBlock.join('\n'));
                     currentTableBlock = null;
                 }
-                if (line.trimStart().startsWith('>')) {
-                    if (currentQuoteBlock !== null) currentQuoteBlock.push(line);
-                    else currentQuoteBlock = [line];
-                    continue;
-                } else if (currentQuoteBlock !== null) {
-                    out.push(currentQuoteBlock.join('\n'));
-                    currentQuoteBlock = null;
-                }
+                // Quote lines stay one block each, callouts included: Enter, Backspace, the
+                // quote toggle and Read Aloud all work line by line. 0.19.2 grouped them, and
+                // Backspace at the start of a callout body deleted the body.
                 out.push(line);
             }
             if (currentCodeBlock !== null) out.push(currentCodeBlock.join('\n'));
             if (currentTableBlock !== null) out.push(currentTableBlock.join('\n'));
-            if (currentQuoteBlock !== null) out.push(currentQuoteBlock.join('\n'));
             if (out.length === 0) out.push('');
             return out;
         }
@@ -4057,32 +4044,19 @@
                 return '```' + lang + '\n' + (codeEl.textContent || codeEl.innerText || '') + '\n```';
             }
 
-            // Alerts (GFM callouts)
+            // Callout header line ("> [!NOTE] Optional title"). Its body lines are ordinary
+            // quote blocks after it. The marker keeps the case it was written in; the title
+            // is whatever the header shows, unless that is just the type's own name.
             if (clone.querySelector('.tz-alert')) {
                 const alertEl = clone.querySelector('.tz-alert');
                 const m = (alertEl.className || '').match(/tz-alert-(\w+)/);
-                const kind = m ? m[1].toUpperCase() : 'NOTE';
-                const hasCustomTitle = alertEl.getAttribute('data-has-custom-title') === '1';
-                const customTitle = hasCustomTitle && alertEl.querySelector('.tz-alert-title')
-                    ? alertEl.querySelector('.tz-alert-title').textContent.trim()
-                    : '';
-                const header = '> [!' + kind + ']' + (customTitle ? (' ' + customTitle) : '');
-                const bodyEl = alertEl.querySelector('.tz-alert-body');
-                if (!bodyEl) return coerceBlockRaw(header);
-                const bodyText = childInlineMd(bodyEl, true);
-                const bodyLines = bodyText ? bodyText.split('\n') : [];
-                if (bodyLines.length > 0) {
-                    return coerceBlockRaw(header + '\n' + bodyLines.map(function (l) { return '> ' + l; }).join('\n'));
-                }
-                return coerceBlockRaw(header);
-            }
-
-            // Blockquotes (multi-line aware)
-            if (clone.querySelector('blockquote')) {
-                const bq = clone.querySelector('blockquote');
-                const text = childInlineMd(bq, true);
-                const lines = text ? text.split('\n') : [''];
-                return coerceBlockRaw(lines.map(function (l) { return '> ' + l; }).join('\n'));
+                const type = m ? m[1] : 'note';
+                const was = String(block.getAttribute('data-raw') || '').match(/\[!(\w+)\]/);
+                const kind = was && was[1].toLowerCase() === type ? was[1] : type.toUpperCase();
+                const titleEl = alertEl.querySelector('.tz-alert-title');
+                const title = titleEl ? keepTypedSpaces(childInlineMd(titleEl)).trim() : '';
+                const custom = title && title.toLowerCase() !== type ? ' ' + title : '';
+                return coerceBlockRaw('> [!' + kind + ']' + custom);
             }
 
             /**

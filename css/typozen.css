@@ -2271,7 +2271,9 @@
             color: var(--tx, #F4F4F5);
         }
 
-        pre code {
+        /* Markdown code blocks only (renderBlockPreview gives them a lang- class): a book's
+           own pre/code styling is the publisher's, and is left alone. */
+        #editor pre > code[class^="lang-"] {
             font-family: inherit;
             background: transparent !important;
             padding: 0 !important;
@@ -2338,14 +2340,31 @@
         #editor .tz-alert-title {
             line-height: 1;
         }
-        #editor .tz-alert-body {
-            color: var(--tx, inherit);
-            line-height: 1.55;
-            font-size: 1em;
+        /* Each line of a callout is its own block: the header block, then quote blocks
+           that restyleCalloutRun marks as its body. They join into one box. */
+        #editor .block.tz-callout-body blockquote {
+            border-left-color: var(--alert-border) !important;
+            background-color: var(--alert-bg) !important;
+            color: var(--tx, inherit) !important;
             font-style: normal !important;
+            border-radius: 0 !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
         }
-        #editor .tz-alert-body code {
-            font-size: 0.9em;
+        #editor .block.tz-callout-body,
+        #editor .block:has(+ .block.tz-callout-body) {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        #editor .block:has(+ .block.tz-callout-body) > .tz-alert {
+            margin-bottom: 0 !important;
+            border-radius: 0 6px 0 0 !important;
+            padding-bottom: 2px !important;
+        }
+        #editor .block:has(+ .block.tz-callout-body) > .tz-alert .tz-alert-header {
+            margin-bottom: 0;
         }
 
         /* Alert Themes: Note, Tip, Important, Warning, Caution */
