@@ -152,7 +152,7 @@ try {
                 n++;
                 const said = chunkSpeechText({ md: true, text: raw });
                 // An indented # is not a heading, so only a line's own marker counts.
-                if (/\*\*\S|\S\*\*/.test(said) || /\]\(|\[![A-Za-z]+\]/.test(said) || /^(#{1,6}\s|>\s)/.test(raw) && /^(#{1,6}\s|>\s)/.test(said)) out.push([raw, said]);
+                if (/\*\*\S|\S\*\*/.test(said) || /\]\(|^\[![A-Za-z]+\]/.test(said) || /^(#{1,6}\s|>\s)/.test(raw) && /^(#{1,6}\s|>\s)/.test(said)) out.push([raw, said]);
             }
             return { n, out };
         }, text);

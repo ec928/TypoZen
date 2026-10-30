@@ -298,18 +298,46 @@
          * Bold/italic/strike: decode → toggle per-character marks → emit clean markdown
          * (no marker-soup surgery). Prefixes (# / > / - / 1.) preserved; offsets are plain.
          */
-        function applyInlineFormatToRaw(raw, plainStart, plainEnd, type) {
+        function applyInlineFormatToRaw(raw, plainStart, plainEnd, type, opts) {
             raw = String(raw || '');
             if (plainStart > plainEnd) {
                 const t = plainStart; plainStart = plainEnd; plainEnd = t;
             }
-            const pref = raw.match(/^(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/);
+            const pref = raw.match(/^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/);
             const prefix = pref ? pref[0] : '';
             const body = raw.slice(prefix.length);
 
             function withPrefix(newBody) { return prefix + newBody; }
 
             if (type === 'bold' || type === 'italic' || type === 'strike') {
+                // The marks model below holds text and bold/italic/strike, nothing else. Written
+                // back, it deleted link addresses, images and code marks from the whole line. So
+                // its answer is used only if nothing but those marks changed; otherwise only the
+                // selection is touched. A multi-line block is a table or fence: never modelled.
+                const multiLine = raw.indexOf('\n') >= 0;
+                if (!multiLine) {
+                    // Underscores count as text: the model writes __b__ back as **b**.
+                    const marksOnly = function (s) { return String(s).replace(/[*~​]/g, ''); };
+                    const modelled = applyMarksModelToBody(body, plainStart, plainEnd, type);
+                    if (marksOnly(modelled) === marksOnly(body)) return withPrefix(modelled);
+                }
+                if (opts && opts.refuseIfLossy) return null;
+                if (multiLine) return null;
+                const m0 = type === 'bold' ? '**' : type === 'italic' ? '*' : '~~';
+                const o = plainRangeToRawOffsets(body, plainStart, plainEnd);
+                const sel = body.slice(o.r0, o.r1);
+                const around = body.slice(Math.max(0, o.r0 - m0.length), o.r0) === m0 && body.slice(o.r1, o.r1 + m0.length) === m0;
+                if (around) return withPrefix(body.slice(0, o.r0 - m0.length) + sel + body.slice(o.r1 + m0.length));
+                const sp = sel.match(/^(\s*)([\s\S]*?)(\s*)$/);
+                return withPrefix(body.slice(0, o.r0) + sp[1] + m0 + sp[2] + m0 + sp[3] + body.slice(o.r1));
+            }
+            return applyInlineFormatRest(body, plainStart, plainEnd, type, withPrefix);
+        }
+
+        /** The marks model: bold, italic and strike toggled over a plain-text range of a line. */
+        function applyMarksModelToBody(body, plainStart, plainEnd, type) {
+            const withPrefix = function (x) { return x; };
+            {
                 const pm = plainAndMarksFromMarkdown(body);
                 const n = pm.plain.length;
                 let a = Math.max(0, plainStart | 0);
@@ -349,7 +377,9 @@
                 }
                 return withPrefix(emitInlineMarkdownFromMarks(pm.plain, pm.marks));
             }
+        }
 
+        function applyInlineFormatRest(body, plainStart, plainEnd, type, withPrefix) {
             const offs = plainRangeToRawOffsets(body, plainStart, plainEnd);
             const r0 = offs.r0, r1 = offs.r1;
 
@@ -488,7 +518,14 @@
                     let lineEnd = start;
                     while (lineEnd < full.length && full.charAt(lineEnd) !== '\n') lineEnd++;
                     const line = full.slice(lineStart, lineEnd);
-                    const rawNext = applyInlineFormatToRaw(line, start - lineStart, end - lineStart, type);
+                    // These are positions in the raw line, and the model counts visible text:
+                    // take off the line's marker and any emphasis marks before each position.
+                    const prefixLen = (line.match(/^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/) || [''])[0].length;
+                    const plainAt = function (rawAt) {
+                        const before = line.slice(prefixLen, Math.max(prefixLen, rawAt));
+                        return before.replace(/[*~]/g, '').length;
+                    };
+                    const rawNext = applyInlineFormatToRaw(line, plainAt(start - lineStart), plainAt(end - lineStart), type, { refuseIfLossy: true });
                     if (rawNext != null) {
                         HistoryManager.beginEdit();
                         sourceSetRangeTextPreserveScroll(rawNext, lineStart, lineEnd, 'select');
@@ -540,13 +577,37 @@
             // Source in sync.
             if (type === 'bold' || type === 'italic' || type === 'strike') {
                 const prevRaw = block.getAttribute('data-raw') || getBlockRaw(block) || '';
+                // Looked at before the selection is rebuilt from offsets, which count across
+                // a table's cells and may not land back in the same one.
+                const wholeDel = function () {
+                    if (type !== 'strike') return null;
+                    try {
+                        const sr = window.getSelection().getRangeAt(0);
+                        const n = sr.startContainer.nodeType === 3 ? sr.startContainer.parentElement : sr.startContainer;
+                        const del = n && n.closest ? n.closest('del,s,strike') : null;
+                        return del && block.contains(del) && del.contains(sr.endContainer) && sr.toString() === del.textContent ? del : null;
+                    } catch (eU) { return null; }
+                };
+                const delBefore = wholeDel();
                 focusEditorNoScroll();
-                selectPlainRangeInBlock(block, offsets.start, offsets.end);
+                if (!delBefore) selectPlainRangeInBlock(block, offsets.start, offsets.end);
                 const cmd = type === 'bold' ? 'bold'
                     : type === 'italic' ? 'italic'
                     : 'strikeThrough';
                 let domOk = false;
-                try { domOk = document.execCommand(cmd, false, null); } catch (eC) { domOk = false; }
+                // The browser's strikeThrough cannot take off the <del> this app draws, and the
+                // no-op sent it to the raw fallback. A selection that is the whole <del> is
+                // unwrapped here, which also works in a table cell.
+                let unwrappedStrike = false;
+                const del = delBefore || wholeDel();
+                if (del) {
+                    while (del.firstChild) del.parentNode.insertBefore(del.firstChild, del);
+                    del.parentNode.removeChild(del);
+                    unwrappedStrike = true;
+                }
+                if (!unwrappedStrike) {
+                    try { domOk = document.execCommand(cmd, false, null); } catch (eC) { domOk = false; }
+                }
 
                 let next = null;
                 try { next = serializeBlockDomToRaw(block); } catch (eS) { next = null; }
@@ -561,7 +622,9 @@
                         applied = rawNext;
                     } else {
                         // Interior of a wider ** / *** / ~~ span: split outer marks
-                        const split = splitInteriorInlineFormat(prevRaw, offsets.start, offsets.end, type);
+                        // Not on a table or fence: it counts offsets through the whole block, and
+                        // wrote ~~ into a table's separator row.
+                        const split = prevRaw.indexOf('\n') >= 0 ? null : splitInteriorInlineFormat(prevRaw, offsets.start, offsets.end, type);
                         if (split != null && split !== prevRaw) applied = split;
                     }
                 }

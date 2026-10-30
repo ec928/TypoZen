@@ -24,6 +24,10 @@ if ! node tests/real-files-roundtrip-browser.mjs; then
     echo "pre-commit: REFUSED. A line does not come back as it was written. See above." >&2
     exit 1
 fi
+if ! node tests/format-keeps-source-browser.mjs; then
+    echo "pre-commit: REFUSED. A format command changed more than the selection. See above." >&2
+    exit 1
+fi
 if ! node tests/edit-keeps-source-browser.mjs; then
     echo "pre-commit: REFUSED. An edit changed more than it should. See above." >&2
     exit 1
