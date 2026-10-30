@@ -48,7 +48,7 @@ function extractFunction(name) {
 
 const names = [
     'escapeHtml', 'safeUrl', 'parseInline',
-    'plainAndMarksFromMarkdown', 'emitInlineMarkdownFromMarks', 'applyInlineFormatToRaw',
+    'plainAndMarksFromMarkdown', 'emitInlineMarkdownFromMarks', 'applyInlineFormatToRaw', 'applyMarksModelToBody', 'applyInlineFormatRest',
     'plainRangeToRawOffsets'
 ];
 let src = 'const _tzImageData = {}; function tzRequestPendingImages() {}\n';

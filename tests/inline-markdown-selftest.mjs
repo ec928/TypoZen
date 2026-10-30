@@ -59,7 +59,7 @@ const names = [
     'listIndentPad', 'coerceBlockRaw', 'normalizeBlockRaw', 'isMultilineBlockRaw',
     'blockHtmlToMarkdown', 'isListLine', 'getListIndentLevel',
     'plainRangeToRawOffsets', 'plainAndMarksFromMarkdown',
-    'emitInlineMarkdownFromMarks', 'applyInlineFormatToRaw',
+    'emitInlineMarkdownFromMarks', 'applyInlineFormatToRaw', 'applyMarksModelToBody', 'applyInlineFormatRest',
     'boldAcrossLines', 'boldMarkersIn', 'withBoldAcross', 'splitLinkTitle', 'keptSourceAttr', 'blockDomToMarkdown', 'blockDomRebuild', 'applyEditToRaw', 'calloutTypeOfRaw',
     'parseTableMarkdown', 'splitTableRow', 'formatTableKeeping', 'formatTableMarkdown', 'tableAlignToSep'
 ];
