@@ -2182,6 +2182,14 @@
             }
         }
 
+        const ALERT_ICONS = {
+            note: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" class="tz-alert-icon" style="width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;display:inline-block!important;margin:0!important;vertical-align:middle!important;flex-shrink:0!important;"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><line x1="12" y1="16" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="8" r="1" fill="currentColor"/></svg>',
+            tip: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" class="tz-alert-icon" style="width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;display:inline-block!important;margin:0!important;vertical-align:middle!important;flex-shrink:0!important;"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-7 7c0 2.5 1.5 4.5 3 6h8c1.5-1.5 3-3.5 3-6a7 7 0 0 0-7-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+            important: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" class="tz-alert-icon" style="width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;display:inline-block!important;margin:0!important;vertical-align:middle!important;flex-shrink:0!important;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="15" r="1" fill="currentColor"/></svg>',
+            warning: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" class="tz-alert-icon" style="width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;display:inline-block!important;margin:0!important;vertical-align:middle!important;flex-shrink:0!important;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>',
+            caution: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" class="tz-alert-icon" style="width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;display:inline-block!important;margin:0!important;vertical-align:middle!important;flex-shrink:0!important;"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16" r="1" fill="currentColor"/></svg>'
+        };
+
         function renderBlockPreview(block, rawInput = null) {
             const raw = rawInput !== null ? rawInput : (block.getAttribute('data-raw') || '');
             clearListIndentClasses(block);
@@ -2208,39 +2216,88 @@
                 return;
             }
 
-            let html = raw;
+            const cleanRaw = String(raw).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            let html = cleanRaw;
+            const lines = cleanRaw.split('\n');
+            const firstLine = (lines[0] || '').trim();
 
-            // Tables
-            if (/^\|.*\|/m.test(html) && /\|[\s-:]+\|/.test(html)) {
-                block.innerHTML = renderMarkdownTable(html);
-                return;
-            }
-
-            // Code Blocks (fenced). Note: lines is an Array — never call string methods like endsWith on it.
-            if (html.startsWith('```')) {
-                const lines = html.split('\n');
-                const lang = (lines[0] || '').replace(/^\s*```/, '').trim();
+            // Code Blocks (fenced). Fences must take precedence over tables so ASCII art and diagrams with pipes survive.
+            const fenceMatch = firstLine.match(/^(`{3,}|~{3,})(.*)$/);
+            if (fenceMatch) {
+                clearListIndentClasses(block);
+                block.classList.remove('list-block');
+                block.removeAttribute('data-list-indent');
+                const fenceChar = fenceMatch[1][0];
+                const fenceLen = fenceMatch[1].length;
+                const lang = fenceMatch[2].trim();
                 let end = lines.length;
                 if (lines.length > 1) {
                     const last = (lines[lines.length - 1] || '').trim();
-                    if (last === '```' || /^```/.test(last)) end = lines.length - 1;
+                    const lastMatch = last.match(/^(`{3,}|~{3,})$/);
+                    if (lastMatch && lastMatch[1][0] === fenceChar && lastMatch[1].length >= fenceLen) {
+                        end = lines.length - 1;
+                    }
                 }
                 const code = lines.slice(1, end).join('\n');
                 block.innerHTML = `<pre><code class="lang-${escapeHtml(lang)}">${escapeHtml(code)}</code></pre>`;
                 return;
             }
 
+            // Tables (must parse into a valid table, otherwise falls through)
+            if (/^\|.*\|/m.test(html) && /\|[\s-:]+\|/.test(html)) {
+                const tableHtml = renderMarkdownTable(html);
+                if (tableHtml) {
+                    clearListIndentClasses(block);
+                    block.classList.remove('list-block');
+                    block.removeAttribute('data-list-indent');
+                    block.innerHTML = tableHtml;
+                    return;
+                }
+            }
+
             // Headings (no leading indent)
             if (/^#{1,6}\s/.test(html)) {
+                clearListIndentClasses(block);
+                block.classList.remove('list-block');
+                block.removeAttribute('data-list-indent');
                 const level = html.match(/^#+/)[0].length;
-                const text = parseInline(html.replace(/^#+\s*/, ''));
+                const text = parseInline(html.replace(/^#+\s*/, '').replace(/\s+#+\s*$/, ''));
                 block.innerHTML = `<h${level} id="heading-${Math.random().toString(36).substr(2, 6)}">${text}</h${level}>`;
                 return;
             }
 
-            // Blockquotes
-            if (html.startsWith('>')) {
-                const text = parseInline(html.replace(/^>\s*/, ''));
+            // Blockquotes & GFM Alerts (callouts)
+            if (firstLine.startsWith('>')) {
+                clearListIndentClasses(block);
+                block.classList.remove('list-block');
+                block.removeAttribute('data-list-indent');
+                const quoteLines = cleanRaw.split('\n').map(function (l) { return l.replace(/^\s*>\s?/, ''); });
+                const alertMatch = (quoteLines[0] || '').trim().match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i);
+
+                if (alertMatch) {
+                    const alertType = alertMatch[1].toLowerCase();
+                    const defaultTitle = alertType.charAt(0).toUpperCase() + alertType.slice(1);
+                    const restOfFirstLine = (quoteLines[0] || '').trim().slice(alertMatch[0].length).trim();
+                    const hasCustomTitle = !!restOfFirstLine;
+                    const titleText = restOfFirstLine || defaultTitle;
+                    const bodyLines = quoteLines.slice(1);
+                    const bodyHtml = bodyLines.map(function (l) { return parseInline(l); }).join('<br/>');
+
+                    const iconSvg = ALERT_ICONS[alertType] || ALERT_ICONS.note;
+
+                    block.innerHTML = `<div class="tz-alert tz-alert-${alertType}" data-alert-type="${alertType}"` +
+                        (hasCustomTitle ? ' data-has-custom-title="1"' : '') + `>` +
+                        `<div class="tz-alert-header">` +
+                        iconSvg +
+                        `<span class="tz-alert-title">${escapeHtml(titleText)}</span>` +
+                        `</div>` +
+                        (bodyHtml ? `<div class="tz-alert-body">${bodyHtml}</div>` : '') +
+                        `</div>`;
+                    return;
+                }
+
+                // Standard blockquote (multi-line aware)
+                const text = quoteLines.map(function (l) { return parseInline(l); }).join('<br/>');
                 block.innerHTML = `<blockquote>${text}</blockquote>`;
                 return;
             }
@@ -2279,6 +2336,8 @@
                 }
             } else {
                 block.classList.remove('list-block');
+                const pIndent = parseInt(block.getAttribute('data-list-indent') || '0', 10);
+                if (pIndent > 0) block.classList.add('list-indent-' + pIndent);
             }
 
             // Standard Paragraph
@@ -2556,7 +2615,7 @@
          */
         function renderMarkdownTable(markdown) {
             const model = parseTableMarkdown(markdown);
-            if (!model) return escapeHtml(markdown);
+            if (!model) return null;
 
             const alignStyle = function (a) {
                 return a ? ' style="text-align:' + a + '"' : '';

@@ -197,23 +197,43 @@
             const out = [];
             let currentCodeBlock = null;
             let currentTableBlock = null;
+            let currentQuoteBlock = null;
+            let codeFence = null;
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
-                if (line.startsWith('```')) {
+                const fenceMatch = line.trimStart().match(/^(`{3,}|~{3,})/);
+                if (fenceMatch) {
                     if (currentCodeBlock !== null) {
-                        currentCodeBlock.push(line);
-                        out.push(currentCodeBlock.join('\n'));
-                        currentCodeBlock = null;
+                        if (codeFence && fenceMatch[1][0] === codeFence[0] && fenceMatch[1].length >= codeFence.length) {
+                            currentCodeBlock.push(line);
+                            out.push(currentCodeBlock.join('\n'));
+                            currentCodeBlock = null;
+                            codeFence = null;
+                            continue;
+                        }
                     } else {
+                        if (currentTableBlock !== null) {
+                            out.push(currentTableBlock.join('\n'));
+                            currentTableBlock = null;
+                        }
+                        if (currentQuoteBlock !== null) {
+                            out.push(currentQuoteBlock.join('\n'));
+                            currentQuoteBlock = null;
+                        }
                         currentCodeBlock = [line];
+                        codeFence = fenceMatch[1];
+                        continue;
                     }
-                    continue;
                 }
                 if (currentCodeBlock !== null) {
                     currentCodeBlock.push(line);
                     continue;
                 }
                 if (line.trim().startsWith('|')) {
+                    if (currentQuoteBlock !== null) {
+                        out.push(currentQuoteBlock.join('\n'));
+                        currentQuoteBlock = null;
+                    }
                     if (currentTableBlock !== null) currentTableBlock.push(line);
                     else currentTableBlock = [line];
                     continue;
@@ -221,10 +241,19 @@
                     out.push(currentTableBlock.join('\n'));
                     currentTableBlock = null;
                 }
+                if (line.trimStart().startsWith('>')) {
+                    if (currentQuoteBlock !== null) currentQuoteBlock.push(line);
+                    else currentQuoteBlock = [line];
+                    continue;
+                } else if (currentQuoteBlock !== null) {
+                    out.push(currentQuoteBlock.join('\n'));
+                    currentQuoteBlock = null;
+                }
                 out.push(line);
             }
             if (currentCodeBlock !== null) out.push(currentCodeBlock.join('\n'));
             if (currentTableBlock !== null) out.push(currentTableBlock.join('\n'));
+            if (currentQuoteBlock !== null) out.push(currentQuoteBlock.join('\n'));
             if (out.length === 0) out.push('');
             return out;
         }
@@ -3915,7 +3944,7 @@
             // Tree walk preserves nested marks. The old order (em → strong → del) used
             // innerText on outer tags, so <strong><del>x</del></strong> became **x** and
             // strikethrough vanished when Preview → Source / flush. Walk children first.
-            function inlineNodeToMarkdown(node) {
+            function inlineNodeToMarkdown(node, keepBr) {
                 if (!node) return '';
                 if (node.nodeType === 3) {
                     // No-break spaces are kept here and become spaces in keepTypedSpaces,
@@ -3924,11 +3953,11 @@
                 }
                 if (node.nodeType !== 1) return '';
                 const tag = (node.tagName || '').toLowerCase();
-                if (tag === 'br') return ' ';
+                if (tag === 'br') return keepBr ? '\n' : ' ';
                 let inner = '';
                 const kids = node.childNodes;
                 for (let k = 0; k < kids.length; k++) {
-                    inner += inlineNodeToMarkdown(kids[k]);
+                    inner += inlineNodeToMarkdown(kids[k], keepBr);
                 }
                 if (tag === 'del' || tag === 's' || tag === 'strike') {
                     const match = inner.match(/^(\s*)([\s\S]*?)(\s*)$/);
@@ -3975,23 +4004,23 @@
              * after: Enter just before a space lost the space ("X" + " brown" saved as
              * "Xbrown", Ed, 2026-09-30), and a double space typed in Preview saved as one.
              */
-            function keepTypedSpaces(text) {
-                return String(text || '')
-                    .replace(/\r\n/g, '\n')
-                    .replace(/\n+/g, ' ')
+            function keepTypedSpaces(text, keepBreaks) {
+                let s = String(text || '').replace(/\r\n/g, '\n');
+                if (!keepBreaks) s = s.replace(/\n+/g, ' ');
+                return s
                     .replace(/ +/g, ' ')
-                    .replace(/^ +/, '')
+                    .replace(keepBreaks ? /^ +/gm : /^ +/, '')
                     .replace(/ /g, ' ');
             }
             // Serialize an element's content with nested marks intact (not innerText).
-            function childInlineMd(el) {
+            function childInlineMd(el, keepBr) {
                 if (!el) return '';
                 let out = '';
                 const kids = el.childNodes;
                 for (let k = 0; k < kids.length; k++) {
-                    out += inlineNodeToMarkdown(kids[k]);
+                    out += inlineNodeToMarkdown(kids[k], keepBr);
                 }
-                return keepTypedSpaces(out);
+                return keepTypedSpaces(out, keepBr);
             }
             // data-src holds the path the author wrote; src may have been rewritten onto
             // the https://docfolder/ virtual host purely for display.
@@ -4025,7 +4054,35 @@
                 const langClass = codeEl.className || '';
                 const match = langClass.match(/lang-(\w+)/);
                 const lang = match ? match[1] : '';
-                return '```' + lang + '\n' + codeEl.innerText + '\n```';
+                return '```' + lang + '\n' + (codeEl.textContent || codeEl.innerText || '') + '\n```';
+            }
+
+            // Alerts (GFM callouts)
+            if (clone.querySelector('.tz-alert')) {
+                const alertEl = clone.querySelector('.tz-alert');
+                const m = (alertEl.className || '').match(/tz-alert-(\w+)/);
+                const kind = m ? m[1].toUpperCase() : 'NOTE';
+                const hasCustomTitle = alertEl.getAttribute('data-has-custom-title') === '1';
+                const customTitle = hasCustomTitle && alertEl.querySelector('.tz-alert-title')
+                    ? alertEl.querySelector('.tz-alert-title').textContent.trim()
+                    : '';
+                const header = '> [!' + kind + ']' + (customTitle ? (' ' + customTitle) : '');
+                const bodyEl = alertEl.querySelector('.tz-alert-body');
+                if (!bodyEl) return coerceBlockRaw(header);
+                const bodyText = childInlineMd(bodyEl, true);
+                const bodyLines = bodyText ? bodyText.split('\n') : [];
+                if (bodyLines.length > 0) {
+                    return coerceBlockRaw(header + '\n' + bodyLines.map(function (l) { return '> ' + l; }).join('\n'));
+                }
+                return coerceBlockRaw(header);
+            }
+
+            // Blockquotes (multi-line aware)
+            if (clone.querySelector('blockquote')) {
+                const bq = clone.querySelector('blockquote');
+                const text = childInlineMd(bq, true);
+                const lines = text ? text.split('\n') : [''];
+                return coerceBlockRaw(lines.map(function (l) { return '> ' + l; }).join('\n'));
             }
 
             /**

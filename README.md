@@ -61,7 +61,7 @@ Everything optional (more voices, the narrators, a 1.3-million-word dictionary, 
 ## Writing & editing
 
 ### Dual-mode editing
-- **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, emphasis)
+- **Live Preview** — block-based WYSIWYG (headings, lists, tasks, tables, code fences, GFM callouts / alerts, emphasis)
 - **Source Mode** — the raw Markdown/text, highlighted in your theme's colours. Code blocks and markup files (CSS, HTML, JSON, C#) are automatically syntax-highlighted. Built on CodeMirror 6 for massive-file performance.
 - Switch with the **Mode** control on the toolbar (Source / Preview / Reader); the lit segment is the **current** mode
 - **Sticky mode switching** — the line at the top of the screen stays at the top when you toggle, for both the status readout _and_ the scroll position. Source and Preview lay a line out alike (same margins, width and spacing), so text does not shift between them
@@ -139,7 +139,7 @@ The checker uses **WPF’s built-in dictionaries** — English, French, German a
 The status bar updates continuously with word count, character count (both grouped — `40,772 words` is read, `40772` is counted; line numbers stay ungrouped, being coordinates the search gutter prints raw), estimated reading time (~200 wpm), total lines, **current line** (caret in Source/Preview — same document-line coordinate as Search result gutters after a jump), **current chapter** (click to jump to its start), zoom, and — when text is selected — **selected** word and character counts. Serialization is debounced so counters stay responsive on very large documents.
 
 ### Supported Markdown (practical)
-**Yes:** headings, bold/italic/strike, inline code, fenced code, links, images (stored beside the document after save), blockquotes, bullet/ordered/task lists with basic indent, tables, thematic breaks (`---`, `- - -`, and friends).
+**Yes:** headings, bold/italic/strike, inline code, fenced code (with strict monospace alignment for ASCII art), links, images (stored beside the document after save), blockquotes, GFM callouts / alerts (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`), bullet/ordered/task lists with basic indent, tables, thematic breaks (`---`, `- - -`, and friends).
 
 **Limits — not full CommonMark or Typora:** advanced nested-list edge cases, math, Mermaid and similar extensions are not first-class features.
 

@@ -676,8 +676,20 @@
         function setBlockListIndentAttr(block, raw) {
             if (!block) return;
             const p = parseListLine(raw);
-            if (p) block.setAttribute('data-list-indent', String(p.indent));
-            else block.removeAttribute('data-list-indent');
+            if (p) {
+                block.setAttribute('data-list-indent', String(p.indent));
+            } else {
+                const mLead = String(raw == null ? '' : raw).match(/^([ \t]+)/);
+                if (mLead && mLead[1].length >= 2) {
+                    const lead = mLead[1].replace(/\t/g, '  ');
+                    const indent = Math.min(LIST_MAX_INDENT, Math.floor(lead.length / LIST_INDENT_SPACES));
+                    if (indent > 0) {
+                        block.setAttribute('data-list-indent', String(indent));
+                        return;
+                    }
+                }
+                block.removeAttribute('data-list-indent');
+            }
         }
 
         /** Drop blank lines that sit between two list lines (causes huge gaps in preview). */
@@ -1063,11 +1075,13 @@
         /** True if this block is allowed to contain internal newlines (fence / table). */
         function isMultilineBlockRaw(raw) {
             raw = String(raw == null ? '' : raw);
-            if (/^\s*```/.test(raw)) return true;
+            if (/^\s*(`{3,}|~{3,})/.test(raw)) return true;
             // GFM table: header row with pipes (and usually a separator line)
             const lines = raw.split('\n');
             if (lines.length > 1 && lines.some(function (l) { return /^\s*\|/.test(l); })) return true;
             if (/^\s*\|/.test(raw) && raw.indexOf('\n') >= 0) return true;
+            // Blockquotes & GFM callouts (lines starting with >)
+            if (/^\s*>/.test(raw) && raw.indexOf('\n') >= 0) return true;
             return false;
         }
 

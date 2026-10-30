@@ -883,7 +883,7 @@
         /* A cover is an SVG wrapper carrying width:100% height:100%, so without a bound it
            takes the whole column and scales a small cover image into a full-width blur --
            which is exactly what the first page of both test books looked like. */
-        #editor .block svg {
+        #editor .block svg:not(.tz-alert-icon) {
             max-width: 100% !important;
             max-height: 68vh !important;
             /* Both auto, so the viewBox ratio drives the size and the max-height clamp takes
@@ -894,7 +894,7 @@
             display: block !important;
             margin: 0 auto !important;
         }
-        #editor.page-mode .block svg {
+        #editor.page-mode .block svg:not(.tz-alert-icon) {
             max-height: 66vh !important;
         }
 
@@ -2271,6 +2271,21 @@
             color: var(--tx, #F4F4F5);
         }
 
+        pre code {
+            font-family: inherit;
+            background: transparent !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-width: 0 !important;
+            border-style: none !important;
+            border-radius: 0 !important;
+            font-size: inherit !important;
+            color: inherit !important;
+            font-weight: normal !important;
+            white-space: pre !important;
+            display: block !important;
+        }
+
         #editor blockquote {
             border-left: 4px solid var(--accent, #3B82F6) !important;
             background-color: var(--quote-bg, rgba(128, 128, 128, 0.08)) !important;
@@ -2286,6 +2301,86 @@
             text-align: var(--tz-align, left) !important;
             line-height: inherit !important;
         }
+        /* --- GFM Callouts / Alerts --------------------------------------------- */
+        #editor .tz-alert {
+            border-left: 4px solid var(--alert-border, var(--accent, #3B82F6)) !important;
+            background-color: var(--alert-bg, rgba(128, 128, 128, 0.08)) !important;
+            padding: 10px 14px !important;
+            border-radius: 0 6px 6px 0 !important;
+            margin: 6px 0 !important;
+            text-align: var(--tz-align, left) !important;
+        }
+        #editor .tz-alert-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 0.95em;
+            color: var(--alert-color, var(--accent, #3B82F6));
+            margin-bottom: 6px;
+            user-select: none;
+        }
+        #editor .block svg.tz-alert-icon,
+        #editor .tz-alert-header svg,
+        #editor .tz-alert svg,
+        #editor .tz-alert-icon {
+            width: 16px !important;
+            height: 16px !important;
+            min-width: 16px !important;
+            min-height: 16px !important;
+            max-width: 16px !important;
+            max-height: 16px !important;
+            display: inline-block !important;
+            margin: 0 !important;
+            vertical-align: middle !important;
+            flex-shrink: 0 !important;
+        }
+        #editor .tz-alert-title {
+            line-height: 1;
+        }
+        #editor .tz-alert-body {
+            color: var(--tx, inherit);
+            line-height: 1.55;
+            font-size: 1em;
+            font-style: normal !important;
+        }
+        #editor .tz-alert-body code {
+            font-size: 0.9em;
+        }
+
+        /* Alert Themes: Note, Tip, Important, Warning, Caution */
+        #editor .tz-alert-note {
+            --alert-color: #60A5FA;
+            --alert-border: #3B82F6;
+            --alert-bg: rgba(59, 130, 246, 0.1);
+        }
+        #editor .tz-alert-tip {
+            --alert-color: #34D399;
+            --alert-border: #10B981;
+            --alert-bg: rgba(16, 185, 129, 0.1);
+        }
+        #editor .tz-alert-important {
+            --alert-color: #C084FC;
+            --alert-border: #A855F7;
+            --alert-bg: rgba(168, 85, 247, 0.1);
+        }
+        #editor .tz-alert-warning {
+            --alert-color: #FBBF24;
+            --alert-border: #F59E0B;
+            --alert-bg: rgba(245, 158, 11, 0.1);
+        }
+        #editor .tz-alert-caution {
+            --alert-color: #F87171;
+            --alert-border: #EF4444;
+            --alert-bg: rgba(239, 68, 68, 0.1);
+        }
+
+        /* List indentation for continuation paragraphs */
+        .block.list-indent-1 > p { margin-left: 1.25em; }
+        .block.list-indent-2 > p { margin-left: 2.5em; }
+        .block.list-indent-3 > p { margin-left: 3.75em; }
+        .block.list-indent-4 > p { margin-left: 5em; }
+
 
         /* Quote decoration stops after three levels.
          *
