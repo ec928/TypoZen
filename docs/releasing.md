@@ -28,6 +28,8 @@ One version number, one gate, one deploy target. In order:
 | Zip | `Compress-Archive -Path dist\* …` | archive it; shipped zips are never deleted |
 | Release | `gh release create vX.Y.Z <zip> <setup.exe> --notes-file …` | |
 
+**Every build also runs `tests/version-smoke.mjs`:** `Build_TypoZen_NoTest.ps1` after compiling, `tools/hooks/pre-commit` when `AppVersion` changes, and `Build-Installer.ps1` before it packages. The exe's version, the real-files checks, the worst keys pressed for real, and the real app on a hidden desktop, all at once. 20 seconds, and going over is a failure: make it faster rather than raise the number.
+
 **Do not skip the gate to save time.** It is 100 headless suites run four at a time by
 `tests/run-gate.mjs`; for 0.19.0 (2026-10-18) it took 294 s, about five minutes.
 
@@ -202,6 +204,13 @@ twenty minutes and tells you nothing.
   the two faults above were introduced.
 
 ---
+
+## 3a0. Favourites and the native menu
+
+    RUN_APP_E2E=1 node tests/favourites-app.mjs
+    RUN_APP_E2E=1 FAV_REAL_MOUSE=1 node tests/favourites-app.mjs
+
+A WPF menu cannot open on a hidden desktop (it needs mouse capture), so this shows a window and takes focus for about two minutes: run it when no one is using the machine. The second form moves the real pointer, and refuses if anyone has touched the machine in the last 20 seconds. It is worth the trouble: automation pressing the star's button passed while a real click closed the menu every time.
 
 ## 3a. What changed in editing since the last release
 

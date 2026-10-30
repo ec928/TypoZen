@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.19.6";
+        internal const string AppVersion = "0.20.0";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -441,7 +441,7 @@ namespace TypoZen
 
                 Directory.CreateDirectory(mine);
                 string[] carry = {
-                    "settings.json", "recent_files.json", "tabs_session.txt",
+                    "settings.json", "recent_files.json", "favourite_files.json", "tabs_session.txt",
                     "bookmarks.txt", "book_positions.txt", "user_words.txt",
                     "window_state.json", "TypoZen_Themes.json", "typozen_user.lex"
                 };
@@ -778,6 +778,11 @@ namespace TypoZen
         // File → Open Recent (persisted separately from prefs JSON regex patches)
         private const int MaxRecentFiles = 12;
         private readonly List<string> _recentFiles = new List<string>();
+        // Files starred in Open Recent. They stay until removed, drive unplugged or not, and are
+        // not counted in the recent cap: a favourite stays in the history as well (hidden there),
+        // so removing the star puts it back where it was.
+        private readonly List<string> _favouriteFiles = new List<string>();
+        private const int MaxFavouriteFiles = 10;
 
         // Privacy switches. Both default to the choice that writes least: session bodies
         // are the only place TypoZen puts document text anywhere other than the file you
@@ -5601,12 +5606,23 @@ namespace TypoZen
             return sb.ToString();
         }
 
+        private string FavouriteFilesPath()
+        {
+            return Path.Combine(CacheDir(), "favourite_files.json");
+        }
+
         private void LoadRecentFiles()
         {
-            _recentFiles.Clear();
+            LoadPathList(FavouriteFilesPath(), _favouriteFiles, MaxFavouriteFiles);
+            // Favourites stay in the history without counting towards its cap.
+            LoadPathList(RecentFilesPath(), _recentFiles, MaxRecentFiles + MaxFavouriteFiles);
+        }
+
+        private static void LoadPathList(string path, List<string> into, int max)
+        {
+            into.Clear();
             try
             {
-                string path = RecentFilesPath();
                 if (!File.Exists(path)) return;
                 string json = File.ReadAllText(path, Encoding.UTF8);
                 // Simple ["path1","path2"] parser — no nested objects
@@ -5615,20 +5631,28 @@ namespace TypoZen
                     string p = JsonUnescape(m.Groups[1].Value);
                     if (string.IsNullOrWhiteSpace(p)) continue;
                     try { p = Path.GetFullPath(p); } catch { }
-                    bool dup = false;
-                    for (int i = 0; i < _recentFiles.Count; i++)
-                    {
-                        if (string.Equals(_recentFiles[i], p, StringComparison.OrdinalIgnoreCase))
-                        { dup = true; break; }
-                    }
-                    if (!dup) _recentFiles.Add(p);
-                    if (_recentFiles.Count >= MaxRecentFiles) break;
+                    if (!ContainsPath(into, p)) into.Add(p);
+                    if (into.Count >= max) break;
                 }
             }
             catch { }
         }
 
+        private static bool ContainsPath(List<string> list, string path)
+        {
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (string.Equals(list[i], path, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
         private void SaveRecentFiles()
+        {
+            SavePathList(RecentFilesPath(), _recentFiles);
+        }
+
+        private void SavePathList(string path, List<string> list)
         {
             try
             {
@@ -5636,17 +5660,76 @@ namespace TypoZen
                 if (!Directory.Exists(cacheDir)) Directory.CreateDirectory(cacheDir);
                 var sb = new StringBuilder();
                 sb.Append('[');
-                for (int i = 0; i < _recentFiles.Count; i++)
+                for (int i = 0; i < list.Count; i++)
                 {
                     if (i > 0) sb.Append(',');
-                    string p = _recentFiles[i] ?? "";
+                    string p = list[i] ?? "";
                     p = p.Replace("\\", "\\\\").Replace("\"", "\\\"");
                     sb.Append('"').Append(p).Append('"');
                 }
                 sb.Append(']');
-                WriteStateFileAtomic(RecentFilesPath(), sb.ToString());
+                WriteStateFileAtomic(path, sb.ToString());
             }
             catch { }
+        }
+
+        /// <summary>Oldest recents go first, but a favourite in the history does not count.</summary>
+        private void TrimRecentFiles()
+        {
+            int shown = 0;
+            for (int i = 0; i < _recentFiles.Count; i++)
+            {
+                if (ContainsPath(_favouriteFiles, _recentFiles[i])) continue;
+                if (++shown > MaxRecentFiles) { _recentFiles.RemoveAt(i); i--; }
+            }
+        }
+
+        /// <summary>
+        /// Star or unstar a file in Open Recent. Adding names a document, so not in Privacy Mode;
+        /// removing is always allowed. keyboard: put the highlight back on the row afterwards.
+        /// </summary>
+        private void ToggleFavouriteFile(string path, bool keyboard)
+        {
+            if (ContainsPath(_favouriteFiles, path))
+            {
+                _favouriteFiles.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+                TrimRecentFiles();
+                SaveRecentFiles();
+            }
+            else
+            {
+                if (SuppressDocumentTraces() || _favouriteFiles.Count >= MaxFavouriteFiles) return;
+                _favouriteFiles.Add(path);
+            }
+            SavePathList(FavouriteFilesPath(), _favouriteFiles);
+            // Not from inside the click that is running on one of the rows being replaced.
+            Dispatcher.BeginInvoke((Action)(() =>
+            {
+                if (_mRecentMenu == null) { RebuildRecentFilesMenu(); return; }
+                // Removing the row a menu has selected closes the menu, and a mouse on a star
+                // has selected its row. So the selection goes to the parent first. The star's
+                // promise is that the menu stays open, so it is reopened if that was not enough.
+                bool wasOpen = _mRecentMenu.IsSubmenuOpen;
+                if (wasOpen) _mRecentMenu.Focus();
+                RebuildRecentFilesMenu();
+                if (wasOpen && !_mRecentMenu.IsSubmenuOpen)
+                {
+                    var parent = _mRecentMenu.Parent as MenuItem;
+                    if (parent != null) parent.IsSubmenuOpen = true;
+                    _mRecentMenu.Focus();
+                    _mRecentMenu.IsSubmenuOpen = true;
+                }
+                if (!keyboard) return;
+                foreach (object o in _mRecentMenu.Items)
+                {
+                    var row = o as MenuItem;
+                    if (row != null && string.Equals(row.Tag as string, path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        row.Focus();
+                        break;
+                    }
+                }
+            }), System.Windows.Threading.DispatcherPriority.Input);
         }
 
         /// <summary>
@@ -5919,7 +6002,7 @@ namespace TypoZen
 
             var cbSession  = add("session", "Unsaved text kept for session restore", HumanSize(SizeOfDir(TabSessionBodiesDir())), true);
             var cbTabs     = add("tabs", "The list of open tabs", null, true);
-            var cbRecent   = add("recent", "Recent files list", CountLines(RecentFilesPath()) > 0 ? "" : "empty", true);
+            var cbRecent   = add("recent", "Recent files and favourites", CountLines(RecentFilesPath()) + CountLines(FavouriteFilesPath()) > 0 ? "" : "empty", true);
             var cbSearch   = add("search", "Recent search queries", null, true);
             var cbImages   = add("images", "Pasted images held in the cache", HumanSize(SizeOfDir(Path.Combine(cache, "assets"))), true);
             // The words read from scanned PDF pages: document text, so it is offered here.
@@ -6074,7 +6157,9 @@ namespace TypoZen
             if (want.RecentFiles)
             {
                 try { File.Delete(RecentFilesPath()); } catch { }
+                try { File.Delete(FavouriteFilesPath()); } catch { }
                 _recentFiles.Clear();
+                _favouriteFiles.Clear();
                 RebuildRecentFilesMenu();
                 // The last file and the Open dialog's folder name files too. They were cleared
                 // only with recent searches, so Recent files alone left them (2026-10-10).
@@ -6299,8 +6384,7 @@ namespace TypoZen
                     _recentFiles.RemoveAt(i);
             }
             _recentFiles.Insert(0, path);
-            while (_recentFiles.Count > MaxRecentFiles)
-                _recentFiles.RemoveAt(_recentFiles.Count - 1);
+            TrimRecentFiles();
             SaveRecentFiles();
             RebuildRecentFilesMenu();
         }
@@ -6315,72 +6399,176 @@ namespace TypoZen
             // its name, binding and Privacy Mode's disabling still find it, and shown when the
             // list is empty too: that is when it is needed to turn the list back on.
             if (_mRecentEnabled == null) _mRecentEnabled = FindElement("mRecentEnabled") as MenuItem;
+            if (!_recentMenuKeysBound)
+            {
+                _recentMenuKeysBound = true;
+                _mRecentMenu.PreviewKeyDown += RecentMenu_PreviewKeyDown;
+            }
             _mRecentMenu.Items.Clear();
-            if (_recentFiles.Count == 0)
+            var recents = new List<string>();
+            foreach (string p in _recentFiles)
+                if (!ContainsPath(_favouriteFiles, p)) recents.Add(p);
+
+            // With no favourites the menu is just the recent list, as it always was.
+            int number = 0;
+            if (_favouriteFiles.Count > 0)
+            {
+                _mRecentMenu.Items.Add(RecentMenuCaption(_favouriteFiles.Count >= MaxFavouriteFiles
+                    ? "Favourites (" + MaxFavouriteFiles + " of " + MaxFavouriteFiles + ")" : "Favourites"));
+                foreach (string f in _favouriteFiles)
+                    _mRecentMenu.Items.Add(RecentMenuRow(f, ++number, true));
+                _mRecentMenu.Items.Add(new Separator());
+                if (recents.Count > 0) _mRecentMenu.Items.Add(RecentMenuCaption("Recent"));
+            }
+            else if (recents.Count == 0)
             {
                 _mRecentMenu.Items.Add(new MenuItem { Header = "(none)", IsEnabled = false });
-                if (_mRecentEnabled != null) { _mRecentMenu.Items.Add(new Separator()); _mRecentMenu.Items.Add(_mRecentEnabled); }
+                _mRecentMenu.Items.Add(new Separator());
+            }
+            foreach (string r in recents)
+                _mRecentMenu.Items.Add(RecentMenuRow(r, ++number, false));
+            if (recents.Count > 0)
+            {
+                _mRecentMenu.Items.Add(new Separator());
+                var clearItem = new MenuItem { Header = "_Clear recent list" };
+                clearItem.Click += (s, e) =>
+                {
+                    // Favourites are kept, and stay in the history they are hidden in.
+                    _recentFiles.RemoveAll(p => !ContainsPath(_favouriteFiles, p));
+                    SaveRecentFiles();
+                    RebuildRecentFilesMenu();
+                };
+                _mRecentMenu.Items.Add(clearItem);
+            }
+            if (_mRecentEnabled != null) _mRecentMenu.Items.Add(_mRecentEnabled);
+        }
+
+        private bool _recentMenuKeysBound;
+
+        /// <summary>F on the highlighted row stars or unstars it, for the keyboard.</summary>
+        private void RecentMenu_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key != System.Windows.Input.Key.F || System.Windows.Input.Keyboard.Modifiers != System.Windows.Input.ModifierKeys.None) return;
+            foreach (object o in _mRecentMenu.Items)
+            {
+                var row = o as MenuItem;
+                string path = row != null ? row.Tag as string : null;
+                if (path == null || !row.IsHighlighted) continue;
+                e.Handled = true;
+                ToggleFavouriteFile(path, true);
                 return;
             }
-            for (int i = 0; i < _recentFiles.Count; i++)
-            {
-                string full = _recentFiles[i];
-                string header = full;
-                try
-                {
-                    // Prefer "folder\file.md" so near-identical names are distinguishable
-                    string dir = Path.GetDirectoryName(full);
-                    string name = Path.GetFileName(full);
-                    if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(name))
-                    {
-                        string leaf = Path.GetFileName(dir);
-                        header = string.IsNullOrEmpty(leaf) ? name : (leaf + "\\" + name);
-                    }
-                }
-                catch { }
-                if (i < 9) header = "_" + (i + 1) + "  " + header;
-                else header = "   " + header;
+        }
 
-                var item = new MenuItem
-                {
-                    Header = header,
-                    ToolTip = full,
-                    Tag = full
-                };
-                string openPath = full;
-                item.Click += (s, e) =>
-                {
-                    if (!File.Exists(openPath))
-                    {
-                        WinForms.MessageBox.Show(
-                            "This file no longer exists:\n" + openPath,
-                            "Open Recent",
-                            WinForms.MessageBoxButtons.OK,
-                            WinForms.MessageBoxIcon.Information);
-                        // Drop missing entry
-                        for (int j = _recentFiles.Count - 1; j >= 0; j--)
-                        {
-                            if (string.Equals(_recentFiles[j], openPath, StringComparison.OrdinalIgnoreCase))
-                                _recentFiles.RemoveAt(j);
-                        }
-                        SaveRecentFiles();
-                        RebuildRecentFilesMenu();
-                        return;
-                    }
-                    LoadFileFromPath(openPath);
-                };
-                _mRecentMenu.Items.Add(item);
-            }
-            _mRecentMenu.Items.Add(new Separator());
-            var clearItem = new MenuItem { Header = "_Clear recent list" };
-            clearItem.Click += (s, e) =>
+        private static MenuItem RecentMenuCaption(string text)
+        {
+            return new MenuItem
             {
-                _recentFiles.Clear();
-                SaveRecentFiles();
-                RebuildRecentFilesMenu();
+                Header = new TextBlock { Text = text, FontWeight = FontWeights.SemiBold, FontSize = 12 },
+                Focusable = false,
+                IsHitTestVisible = false,
+                Opacity = 0.65,
+                StaysOpenOnClick = true
             };
-            _mRecentMenu.Items.Add(clearItem);
-            if (_mRecentEnabled != null) _mRecentMenu.Items.Add(_mRecentEnabled);
+        }
+
+        private MenuItem RecentMenuRow(string full, int number, bool favourite)
+        {
+            string label = full;
+            try
+            {
+                // Prefer "folder\file.md" so near-identical names are distinguishable
+                string dir = Path.GetDirectoryName(full);
+                string name = Path.GetFileName(full);
+                if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(name))
+                {
+                    string leaf = Path.GetFileName(dir);
+                    label = string.IsNullOrEmpty(leaf) ? name : (leaf + "\\" + name);
+                }
+            }
+            catch { }
+            // Doubled, or an underscore in a file name is taken for an access key.
+            label = label.Replace("_", "__");
+            // A figure space is as wide as a digit, so a row with no number lines up with those above.
+            label = number <= 9 ? "_" + number + "  " + label : "   " + label;
+
+            var text = new AccessText
+            {
+                Text = label,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = 460,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            bool full10 = !favourite && _favouriteFiles.Count >= MaxFavouriteFiles;
+            bool privateNow = !favourite && SuppressDocumentTraces();
+            var star = new Button
+            {
+                Content = favourite ? "" : "",
+                Tag = favourite ? "on" : "off",
+                IsEnabled = !full10 && !privateNow,
+                ToolTip = favourite ? "Remove from favourites (F)"
+                    : full10 ? "Favourites limit reached (" + MaxFavouriteFiles + " of " + MaxFavouriteFiles + ")"
+                    : privateNow ? "Not while Privacy Mode is on"
+                    : "Add to favourites (F)"
+            };
+            var starStyle = _mRecentMenu.TryFindResource("RecentStarButton") as Style;
+            if (starStyle != null) star.Style = starStyle;
+            ToolTipService.SetShowOnDisabled(star, true);
+            System.Windows.Automation.AutomationProperties.SetName(star,
+                // Doubled: a button's automation name loses its first underscore as an access key.
+                (favourite ? "Remove from favourites: " : "Add to favourites: ") + full.Replace("_", "__"));
+            // The button's Click is for keyboards and screen readers. The mouse is taken here,
+            // before the button sees it: a button holds the mouse while pressed, and letting go
+            // of it made the menu think it had lost the mouse and close. This also stops a click
+            // on a disabled star falling through to the row, which would open the file.
+            var starHit = new Border { Background = Brushes.Transparent, Child = star };
+            // On release, as any button does: acting on the press rebuilt the menu with the button
+            // still held, so the release landed on whatever had moved under the pointer.
+            starHit.PreviewMouseLeftButtonDown += (s, e) => { e.Handled = true; };
+            starHit.PreviewMouseLeftButtonUp += (s, e) =>
+            {
+                e.Handled = true;
+                if (star.IsEnabled) ToggleFavouriteFile(full, false);
+            };
+            star.Click += (s, e) =>
+            {
+                e.Handled = true;
+                ToggleFavouriteFile(full, false);
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(starHit, 1);
+            grid.Children.Add(text);
+            grid.Children.Add(starHit);
+
+            var item = new MenuItem { Header = grid, ToolTip = full, Tag = full };
+            // The header is a grid, so a screen reader has nothing to read without this.
+            System.Windows.Automation.AutomationProperties.SetName(item, label.TrimStart('_', ' ', ' ').Replace("__", "_"));
+            string openPath = full;
+            item.Click += (s, e) =>
+            {
+                if (!File.Exists(openPath))
+                {
+                    bool kept = ContainsPath(_favouriteFiles, openPath);
+                    WinForms.MessageBox.Show(
+                        kept ? "This file is not available right now:\n" + openPath +
+                               "\n\nIt stays in your favourites, in case its drive is unplugged. Click its star to remove it."
+                             : "This file no longer exists:\n" + openPath,
+                        "Open Recent",
+                        WinForms.MessageBoxButtons.OK,
+                        WinForms.MessageBoxIcon.Information);
+                    if (kept) return;
+                    // Drop missing entry
+                    _recentFiles.RemoveAll(p => string.Equals(p, openPath, StringComparison.OrdinalIgnoreCase));
+                    SaveRecentFiles();
+                    RebuildRecentFilesMenu();
+                    return;
+                }
+                LoadFileFromPath(openPath);
+            };
+            return item;
         }
 
         private void SaveWindowState()

@@ -230,7 +230,7 @@ export async function evalPatiently(app, fn, arg, opts) {
  *
  * Returns a { pid, kill } shim so killOwn() and close() work unchanged.
  */
-function spawnOnHiddenDesktop(args, env, exe) {
+export function spawnOnHiddenDesktop(args, env, exe) {
     const script = path.join(appDir, 'tools', 'Start-OnHiddenDesktop.ps1');
     if (!fs.existsSync(script)) throw new Error('Start-OnHiddenDesktop.ps1 not found at ' + script);
 
@@ -332,6 +332,8 @@ export async function launchApp(options) {
             stdio: 'ignore',
             env: Object.assign({}, process.env, childEnv)
         });
+    // A hidden app is outside this process's tree: whoever kills this run reads this to end it too.
+    try { fs.writeFileSync(path.join(profileDir, 'app.pid'), String(child.pid)); } catch (e) { }
     _launched.add(child);
     await waitForDevTools(45000);
 
@@ -397,6 +399,7 @@ export async function launchApp(options) {
     }
 
     return {
+        pid: child.pid,
         page: page,
         browser: browser,
         /** Run a function inside the real app. */

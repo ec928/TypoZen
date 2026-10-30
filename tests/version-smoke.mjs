@@ -17,6 +17,7 @@
  */
 import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -50,7 +51,15 @@ async function attempt() {
     let hit = false;
     const deadline = setTimeout(() => {
         hit = true;
-        children.forEach(p => { try { spawnSync('taskkill', ['/PID', String(p.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) {} });
+        children.forEach(p => {
+            try { spawnSync('taskkill', ['/PID', String(p.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) {}
+            // The app it started is on a hidden desktop, outside that tree. Only that one pid: a
+            // TypoZen someone has open is never touched.
+            try {
+                const app = fs.readFileSync(path.join(os.tmpdir(), 'typozen-e2e-' + p.pid, 'app.pid'), 'utf8').trim();
+                if (app) spawnSync('taskkill', ['/PID', app, '/T', '/F'], { stdio: 'ignore' });
+            } catch (e) {}
+        });
     }, BUDGET_MS);
     const results = await Promise.all(jobs.map(([name, env]) => new Promise(res => {
         const j0 = Date.now();
@@ -73,6 +82,11 @@ if (run.hit && run.results.every(r => r.ok || r.killed)) {
     run = await attempt();
 }
 for (const r of run.results) {
+    // Someone opened TypoZen after the check above: the same as finding it open.
+    if (!r.ok && !r.killed && /TypoZen\.exe is already running/.test(r.out)) {
+        console.log('  SKIP core-smoke-app: a TypoZen is open. THE REAL APP WAS NOT TESTED.');
+        continue;
+    }
     if (r.ok) console.log(`  OK   ${secs(r.ms)}  ${r.name}`);
     else {
         failed.push(r.killed ? r.name + ' did not finish in time' : r.name);

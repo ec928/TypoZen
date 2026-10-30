@@ -52,17 +52,17 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.19.0 package (2026-10-18). The 0.18.0 text it replaces is in git history._
+_Limit 1,500 characters. For the 0.20.0 package (2026-10-30). Written against the 0.18.0 package, the last one known to have been submitted; the earlier text is in git history._
 
-- One reading speed for every voice: File > Read Aloud > Speed, from ×0.5 to ×2 in steps of 0.1.
-- A voice picker for large narrator libraries: favourites and recent voices in the menu, plus All voices to search, filter by narrator or character and by gender, and hear samples. Voice menus are grouped female, male and other.
-- Narrator Manager has Favourites... on its Manage voices tab.
-- Smart Cast scripts up to 200 dialogue paragraphs a chapter, matches quotes despite punctuation differences, and can script upcoming chapters in the background (off by default). Script chapter scripts the current chapter with your existing cast.
-- Narrator Manager and the reading bar show whether the current chapter is scripted.
+- Favourite files: star a file in File > Open Recent to keep it at the top, up to 10. Favourites stay until you remove them.
+- One reading speed for every voice, from x0.5 to x2, and a voice picker for large narrator libraries: favourites, recent voices, search and samples.
+- Smart Cast scripts up to 200 dialogue paragraphs a chapter, and can script upcoming chapters in the background (off by default).
 - A moved or copied ePub or PDF keeps its reading position, bookmarks and cast.
-- A clearer About, with a link to the full User Guide.
-- Fixed: pressing End beside an image could move the cursor into the next paragraph.
-- Fixed: turning off Reveal Markdown on Focus now restores the formatted line; Insert Row Above on a table's header row works; Space turns the page in a book while search results are showing.
+- GitHub-style callouts in Markdown (> [!NOTE], [!TIP], [!WARNING] and others). A bold that wraps onto the next line is shown bold.
+- Fixed, and worth having: saving straight after switching a long file from Source to Preview could cut the end off the file.
+- Fixed: Enter before a link, a picture or bold text lost it; Enter in a code block or table damaged it; Backspace and Delete beside one flattened it.
+- Fixed: a line starting with a number such as 0.48s was treated as a list; links and pictures with titles were lost; an edit now changes only what you edited.
+- Fixed: new numbered items renumber the list below them; a click just after startup no longer loses the cursor.
 
 ---
 

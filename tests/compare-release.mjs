@@ -22,7 +22,7 @@ const git = (...a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' });
 
 let tag = process.argv[2];
 if (!tag) {
-    const r = spawnSync('gh', ['release', 'view', '--json', 'tagName', '-q', '.tagName'], { cwd: repo, encoding: 'utf8' });
+    const r = spawnSync('gh', ['release', 'list', '--limit', '1', '--json', 'tagName', '-q', '.[0].tagName'], { cwd: repo, encoding: 'utf8' });
     tag = (r.stdout || '').trim();
     if (!tag) { console.error('Could not ask GitHub for the latest release; name a tag.'); process.exit(2); }
 }

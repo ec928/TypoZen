@@ -109,6 +109,52 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <!-- The star on a row of File > Open Recent. Tag "on" is a favourite: always shown, in the
+             accent colour, which every theme keeps readable against the menu. A recent file's
+             outline star shows only on the highlighted row, where the row's own text colour is
+             the one that reads against the accent. -->
+        <Style x:Key="RecentStarButton" TargetType="Button">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Margin" Value="10,-3,-12,-3"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="back" Background="{TemplateBinding Background}" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="back" Property="Background" Value="#33808080"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsHighlighted, RelativeSource={RelativeSource AncestorType=MenuItem}}" Value="True">
+                    <Setter Property="Opacity" Value="1"/>
+                </DataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="on"/>
+                        <Condition Binding="{Binding IsHighlighted, RelativeSource={RelativeSource AncestorType=MenuItem}}" Value="False"/>
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Opacity" Value="1"/>
+                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
+                </MultiDataTrigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Cursor" Value="Arrow"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
         <Style TargetType="Separator">
             <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
             <Setter Property="Margin" Value="32,5,12,5"/>
