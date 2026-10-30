@@ -820,6 +820,11 @@
                 try {
                     if (state.mode === 'wysiwyg' || state.mode === 'preview') {
                         if (editor) {
+                            // Already put somewhere (a click in the first moments, on a slow
+                            // machine): this took the caret to the top, and the next letter
+                            // typed landed there.
+                            const placed = window.getSelection();
+                            if (placed && placed.anchorNode && editor.contains(placed.anchorNode)) return;
                             const first = editor.querySelector('.block');
                             if (first && typeof focusBlock === 'function') {
                                 focusBlock(first, 0);

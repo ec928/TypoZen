@@ -59,68 +59,8 @@ if (-not (Test-ExeWritable -Path $exePath)) {
     exit 1
 }
 
-# [0] Regression self-tests (serialize + list Backspace)
-Write-Host "Skipping JS self-tests" -ForegroundColor Yellow
-$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-if (-not $nodeCmd) {
-    Write-Host "  [WARN] node not found - skipping JS self-tests" -ForegroundColor Yellow
-}
-else {
-    # Gate on every suite, not just regression-selftest.mjs -- the others (undo,
-    # backspace, multiselect, inline markdown, tabs) were never actually running.
-    # Keep the jsdom fixture equal to the shipping code before anything runs, otherwise
-    # the suites pin themselves to whatever TypoZen_Template_Test.html last contained.
-    $LASTEXITCODE=0
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[ERROR] Could not regenerate TypoZen_Template_Test.html" -ForegroundColor Red
-        exit 1
-    }
-
-    # Naming convention:
-    #   *-pending.mjs  assert behaviour that is genuinely not built yet (Phase 4 column
-    #                  anchoring). Opt in with RUN_PENDING_E2E=1. Never gate on these.
-    #   everything else, including *-browser.mjs, gates the build.
-    #
-    # The browser suites are slow (they drive headless Chrome) but they are not optional.
-    # 2-column mode shipped broken behind a fully green jsdom suite: the class was applied
-    # and the resolver logic was right, but the CSS gated columns on .reader-mode so the
-    # computed column-count stayed 'auto'. jsdom has no layout engine and cannot tell those
-    # apart. Excluding the one suite that could see it is what let the bug through.
-    # *-app.mjs launch TypoZen.exe itself and need a desktop session, so they are not part
-    # of the build gate; run them with RUN_APP_E2E=1 .\tests\run-tests.ps1. app-harness.mjs
-    # is their helper, not a suite.
-    $helpers = @('app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
-                 'fonts-ab.mjs', 'scripts-ab.mjs', 'cm-ab.mjs', 'narrator-sidecar.mjs')
-    $suites = @(Get-ChildItem (Join-Path $appDir "tests\*.mjs") -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -notlike "*-pending.mjs" -and $_.Name -notlike "*-app.mjs" `
-                               -and ($helpers -notcontains $_.Name) } | Sort-Object Name)
-    if ($suites.Count -eq 0) {
-        Write-Host "  [WARN] no tests\*.mjs found - skip" -ForegroundColor Yellow
-    }
-    else {
-        # stderr goes to a temp file, never to the success stream. Merging it with 2>&1
-        # makes PowerShell 5.1 wrap each line in a NativeCommandError and trip
-        # $ErrorActionPreference, which reported phantom build failures for suites that
-        # merely printed a diagnostic to stderr and exited 0. Gate on exit code alone.
-        $failedSuites = @()
-        $errFile = [System.IO.Path]::GetTempFileName()
-        foreach ($suite in $suites) {
-            $LASTEXITCODE=0
-            if ($LASTEXITCODE -ne 0) {
-                $failedSuites += $suite.Name
-                Write-Host ("  --- " + $suite.Name + " ---") -ForegroundColor Red
-                Get-Content $errFile -ErrorAction SilentlyContinue | ForEach-Object { Write-Host ("      " + $_) }
-            }
-        }
-        Remove-Item $errFile -Force -ErrorAction SilentlyContinue
-        if ($failedSuites.Count -gt 0) {
-            Write-Host ("[ERROR] Self-tests failed: " + ($failedSuites -join ", ")) -ForegroundColor Red
-            Write-Host "        Run .\tests\run-tests.ps1 for details." -ForegroundColor Yellow
-            exit 1
-        }
-        Write-Host ("  Self-tests passed (" + $suites.Count + " suites).") -ForegroundColor Green
-    }
-}
+# [0] Tests: see [3/4] below.
+# The full gate is Build_TypoZen.ps1. This build runs the short checks after compiling.
 
 # TypoZen.xaml is parsed at runtime by XamlReader, so markup errors are invisible to the
 # compiler and surface as a crash on launch instead. Parse it here and fail the build.
@@ -291,6 +231,22 @@ if (-not $compiled) {
         Write-Host $_.Exception.Message -ForegroundColor Yellow
         exit 1
     }
+}
+
+# Short, real checks on every build: 20 seconds, going over is a failure, no window appears.
+# tests\version-smoke.mjs has what they are and why. If one fails the exe is there but the
+# build is not good: fix the code, do not skip it.
+Write-Host "[3/4] Quick checks (20-second budget)..." -ForegroundColor Yellow
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if (-not $nodeCmd) {
+    Write-Host "[ERROR] node not found - the quick checks did not run." -ForegroundColor Red
+    exit 1
+}
+& node (Join-Path $appDir "tests\build-test-template.mjs") | Out-Null
+& node (Join-Path $appDir "tests\version-smoke.mjs")
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Quick checks failed. TypoZen.exe was built but is not good." -ForegroundColor Red
+    exit 1
 }
 
 Write-Host "`n[4/4] Build Complete! TypoZen.exe is ready." -ForegroundColor Green

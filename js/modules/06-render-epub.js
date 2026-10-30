@@ -2264,6 +2264,56 @@
             return /\blist-indent-\d\b/.test(p.className) && /^[ \t]{2,}/.test(p.getAttribute('data-raw') || '');
         }
 
+        const BOLD_LOOK_LINES = 12;
+        /** How many ** a line has outside code spans. */
+        function boldMarkersIn(raw) {
+            return (String(raw).replace(/`[^`]*`/g, '').match(/\*\*/g) || []).length;
+        }
+        /**
+         * A bold that opens on one line and closes on a later one in the same paragraph (a
+         * hard-wrapped file). One line is one block, so neither line alone has a pair and the
+         * asterisks showed as text. Returns what to draw this line as if it had: display only,
+         * the line itself does not change (blockDomToMarkdown takes them back off).
+         * Looks a bounded way each side, so the cost per line is fixed.
+         */
+        function boldAcrossLines(block, raw) {
+            const none = { pre: false, post: false };
+            const mi = parseInt(block.getAttribute('data-model-index'), 10);
+            if (!(mi >= 0) || typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return none;
+            const all = DocumentModel.blocks;
+            if (!all[mi] || all[mi].raw !== raw) return none;
+            // This runs for every line drawn, and nearly always there is no ** anywhere near.
+            let near = false;
+            const nearEnd = Math.min(all.length - 1, mi + BOLD_LOOK_LINES);
+            for (let i = Math.max(0, mi - BOLD_LOOK_LINES); i <= nearEnd && !near; i++) near = all[i].raw.indexOf('**') >= 0;
+            if (!near) return none;
+            const stops = function (r) { return !String(r).trim() || r.indexOf('\n') >= 0 || /^#{1,6}\s/.test(r) || isThematicBreakLine(r); };
+            if (stops(raw)) return none;
+            let from = mi;
+            while (from > 0 && mi - from < BOLD_LOOK_LINES && !parseListLine(all[from].raw) && !stops(all[from - 1].raw)) from--;
+            let to = mi;
+            while (to + 1 < all.length && to - mi < BOLD_LOOK_LINES && !stops(all[to + 1].raw) && !parseListLine(all[to + 1].raw)) to++;
+            let open = -1;
+            for (let i = from; i <= to; i++) {
+                if (boldMarkersIn(all[i].raw) % 2 === 0) continue;
+                if (open < 0) { open = i; continue; }
+                if (mi >= open && mi <= i) {
+                    if (mi === open) return { pre: false, post: true };
+                    if (mi === i) return { pre: true, post: false };
+                    return boldMarkersIn(raw) ? none : { pre: true, post: true };
+                }
+                open = -1;
+            }
+            return none;
+        }
+        /** The line's text with the markers boldAcrossLines asked for, inside its own spacing. */
+        function withBoldAcross(text, wrap) {
+            let t = String(text);
+            if (wrap.pre) t = t.replace(/^\s*/, function (m) { return m + '**'; });
+            if (wrap.post) t = t.replace(/\s*$/, function (m) { return '**' + m; });
+            return t;
+        }
+
         function renderBlockPreview(block, rawInput = null) {
             const raw = rawInput !== null ? rawInput : (block.getAttribute('data-raw') || '');
             clearListIndentClasses(block);
@@ -2345,6 +2395,12 @@
                 return;
             }
 
+            const boldWrap = html.indexOf('\n') < 0 ? boldAcrossLines(block, html) : { pre: false, post: false };
+            block.removeAttribute('data-md-bold-pre');
+            block.removeAttribute('data-md-bold-post');
+            if (boldWrap.pre) block.setAttribute('data-md-bold-pre', '1');
+            if (boldWrap.post) block.setAttribute('data-md-bold-post', '1');
+
             // Blockquotes, one line per block. A "> [!NOTE]" line is a callout header; the
             // quote lines after it are styled as its body by restyleCalloutRun.
             if (html.startsWith('>')) {
@@ -2360,7 +2416,7 @@
                         `</div></div>`;
                     return;
                 }
-                const text = parseInline(html.replace(/^>\s*/, ''));
+                const text = parseInline(withBoldAcross(html.replace(/^>\s*/, ''), boldWrap));
                 block.innerHTML = `<blockquote>${text}</blockquote>`;
                 return;
             }
@@ -2378,7 +2434,7 @@
             if (list) {
                 block.classList.add('list-block');
                 if (list.indent > 0) block.classList.add('list-indent-' + list.indent);
-                const text = parseInline(list.body);
+                const text = parseInline(withBoldAcross(list.body, boldWrap));
                 if (list.kind === 'task') {
                     block.innerHTML =
                         `<ul class="task-list"><li class="task-list-item">` +
@@ -2405,7 +2461,7 @@
             }
 
             // Standard Paragraph
-            block.innerHTML = `<p>${parseInline(html)}</p>`;
+            block.innerHTML = `<p>${parseInline(withBoldAcross(html, boldWrap))}</p>`;
             tzRequestPendingImages(block);
         }
 

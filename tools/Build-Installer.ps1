@@ -15,6 +15,10 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
+# --- the build's own check, on what is about to be packaged: 20 seconds, over is a failure ---
+& node (Join-Path $root 'tests\version-smoke.mjs')
+if ($LASTEXITCODE -ne 0) { throw "Version smoke failed: no installer built." }
+
 # --- the compiler -----------------------------------------------------------------
 $candidates = @(
     (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),

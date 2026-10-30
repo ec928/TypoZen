@@ -3347,7 +3347,9 @@ function chunkSpeechText(chunk) {
     try {
         if (typeof createPreviewBlockEl === 'function' && !(typeof isCodeDocument === 'function' && isCodeDocument())) {
             const el = createPreviewBlockEl(String(chunk.text || ''), false, chunk.idx);
-            const shown = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            let shown = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            // A lone ** left on a line (a bold from a line this chunk cannot see) is not words.
+            if ((shown.match(/\*\*/g) || []).length % 2) shown = shown.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
             // A picture alone shows no text: its alt text, if it has one, rather than its source.
             const alts = (String(chunk.text || '').match(/!\[([^\]]*)\]/g) || [])
                 .map(m => m.slice(2, -1).trim()).filter(Boolean).join('. ');

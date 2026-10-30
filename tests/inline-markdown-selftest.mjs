@@ -60,7 +60,7 @@ const names = [
     'blockHtmlToMarkdown', 'isListLine', 'getListIndentLevel',
     'plainRangeToRawOffsets', 'plainAndMarksFromMarkdown',
     'emitInlineMarkdownFromMarks', 'applyInlineFormatToRaw',
-    'splitLinkTitle', 'keptSourceAttr', 'blockDomToMarkdown', 'applyEditToRaw', 'calloutTypeOfRaw',
+    'boldAcrossLines', 'boldMarkersIn', 'withBoldAcross', 'splitLinkTitle', 'keptSourceAttr', 'blockDomToMarkdown', 'blockDomRebuild', 'applyEditToRaw', 'calloutTypeOfRaw',
     'parseTableMarkdown', 'splitTableRow', 'formatTableKeeping', 'formatTableMarkdown', 'tableAlignToSep'
 ];
 // parseInline consults the image cache and kicks off byte requests; provide both so the
@@ -70,6 +70,7 @@ let src = 'const LIST_MAX_INDENT = 6; const LIST_INDENT_SPACES = 2;\n'
     + 'function tzRequestPendingImages() {}\n'
     + 'function queueCalloutRestyle() {}\n'
     + 'const ALERT_ICONS = {};\n'
+    + 'const BOLD_LOOK_LINES = 12;\n'
     + 'const CALLOUT_RE = /^>\\s*\\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\\]/i;\n';
 for (const n of names) src += extractFunction(n) + '\n';
 src += 'return {' + names.join(',') + '};';

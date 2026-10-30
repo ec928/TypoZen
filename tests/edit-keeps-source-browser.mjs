@@ -131,6 +131,29 @@ try {
     await edit('Top.\n\n1. one\n2. two', 'one', true, ['Enter', 'UNDO'], 'Top.\n\n1. one\n2. two', 'Undo puts the numbers back');
     await edit('Top.\n\n1. one\n\n1. other', 'one', true, ['Enter'], 'Top.\n\n1. one\n2. \n\n1. other', 'a blank line ends the list');
 
+    console.log('\n=== a bold that wraps onto the next line ===');
+    const WRAP = 'Top.\n\nThis is **very important\nand it goes on\nand continues here** in it.\n\nEnd.';
+    await edit(WRAP, 'important', true, ['x'], 'Top.\n\nThis is **very importantx\nand it goes on\nand continues here** in it.\n\nEnd.', 'typing on the line it opens on');
+    await edit(WRAP, 'goes', true, ['x'], 'Top.\n\nThis is **very important\nand it goesx on\nand continues here** in it.\n\nEnd.', 'on a line in the middle');
+    await edit(WRAP, 'continues', true, ['x'], 'Top.\n\nThis is **very important\nand it goes on\nand continuesx here** in it.\n\nEnd.', 'on the line it closes on');
+    await load(WRAP);
+    same(await page.evaluate(() => document.querySelectorAll('#editor strong').length), 3, 'all three lines are shown bold');
+    same(await page.evaluate(() => document.getElementById('editor').textContent.indexOf('**')), -1, 'with no asterisks on screen');
+    const wrapSaid = await page.evaluate(async (d) => {
+        const posts = [];
+        window.chrome.webview.postMessage = (m) => posts.push(String(m));
+        loadMarkdownContent(d);
+        await new Promise(r => setTimeout(r, 300));
+        try { window.getSelection().removeAllRanges(); } catch (e) {}
+        speakSelection();
+        await new Promise(r => setTimeout(r, 300));
+        const first = posts.filter(p => p.startsWith('host_tts_play:')).map(p => JSON.parse(p.substring(14)).text);
+        const rest = (_ttsChunks || []).map(c => chunkSpeechText(c));
+        try { handleCommand('tts_stop'); } catch (e) {}
+        return first.concat(rest).join(' | ');
+    }, WRAP);
+    same(wrapSaid.indexOf('**'), -1, 'Read Aloud says no asterisks: ' + wrapSaid.slice(0, 60));
+
     console.log('\n=== a table edit changes that cell ===');
     await edit('Top.\n\n|a|b|\n|-|:-:|\n|1|2|', '1', true, ['x'], 'Top.\n\n|a|b|\n|-|:-:|\n|1x|2|', 'tight spacing and the separator stay');
     await edit('Top.\n\n| long   | b |\n|---|---|\n| 1      | 2 |\n| 3      | 4 |', '3', true, ['x'], 'Top.\n\n| long   | b |\n|---|---|\n| 1      | 2 |\n| 3x      | 4 |', 'so do aligned rows, and the other rows');

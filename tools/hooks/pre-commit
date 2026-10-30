@@ -7,6 +7,15 @@
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
+# A new version gets the smoke, with its hard 20-second budget.
+if git diff --cached -U0 -- TypoZen_App.cs | grep -q '^+.*AppVersion = "'; then
+    echo "pre-commit: new version, running the version smoke..."
+    if ! node tests/version-smoke.mjs; then
+        echo "pre-commit: REFUSED. The version smoke failed. See above." >&2
+        exit 1
+    fi
+fi
+
 staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(js/modules/|css/|TypoZen_Template\.html$)')
 [ -z "$staged" ] && exit 0
 

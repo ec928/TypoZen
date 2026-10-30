@@ -54,7 +54,8 @@ const files = [];
         if (e.isDirectory()) walk(p, depth + 1);
         else if (/\.(md|markdown)$/i.test(e.name)) { try { if (fs.statSync(p).size < 400000) files.push(p); } catch (x) {} }
     }
-})(fs.existsSync(path.join(repo, '..', 'MediaSuite.slnx')) ? path.join(repo, '..') : repo, 0);
+})(process.env.PROPERTIES_QUICK !== '1' && fs.existsSync(path.join(repo, '..', 'MediaSuite.slnx')) ? path.join(repo, '..') : path.join(repo, 'tests'), 0);
+if (process.env.PROPERTIES_QUICK === '1') { files.push(path.join(repo, 'README.md'), path.join(repo, 'CLAUDE.md')); }
 
 const failures = [];
 const fail = (check, where, detail) => failures.push({ check, where, detail });
@@ -84,8 +85,12 @@ try {
         const loaded = await page.evaluate((t) => { handleCommand('view_set:mode:preview'); loadMarkdownContent(t); return getMarkdownContent(false); }, text);
         if (trimEnd(loaded) !== text) { const i = firstDiff(trimEnd(loaded), text); fail('load then save', rel, JSON.stringify(text.slice(Math.max(0, i - 40), i + 40)) + ' became ' + JSON.stringify(trimEnd(loaded).slice(Math.max(0, i - 40), i + 40))); }
     }
-    // Toggling is slow per file, so the ten largest, which have the most in them.
-    const largest = files.slice().sort((a, b) => fs.statSync(b).size - fs.statSync(a).size).slice(0, 10);
+    // Toggling is slow per file, so the ten largest, which have the most in them. In the
+    // version smoke (PROPERTIES_QUICK: this repo's test files and README) only the long file
+    // that builds in batches, which is where a toggle cut the file.
+    const quick = process.env.PROPERTIES_QUICK === '1';
+    const largest = quick ? files.filter(f => path.basename(f) === 'band-1600.md').slice(0, 1)
+        : files.slice().sort((a, b) => fs.statSync(b).size - fs.statSync(a).size).slice(0, 10);
     for (const f of largest) {
         const text = trimEnd(norm(fs.readFileSync(f, 'utf8'))).replace(/\0/g, '');
         await page.evaluate((t) => { handleCommand('view_set:mode:preview'); loadMarkdownContent(t); }, text);
@@ -108,6 +113,29 @@ try {
         if (wrong >= 0) { const back = trimEnd(reads[wrong]); const i = firstDiff(back, text); fail('Source and back', path.relative(repo, f), 'read ' + wrong + ': ' + back.split('\n').length + ' lines of ' + text.split('\n').length + ' near ' + JSON.stringify(text.slice(Math.max(0, i - 40), i + 40))); }
     }
 
+    // 1b. Hard-wrapped bold: shown bold with no asterisks, and every line still saves as written.
+    const WRAPPED = 'Top.\n\nThis is **very important\nand it goes on\nand continues here** in the sentence.\n\n- **a list item\n  that wraps** here\n\nA lone ** stays as written.\n\nAnd 2 ** 3\nis ** not bold? it is.';
+    const wrapped = await page.evaluate(async (t) => {
+        handleCommand('view_set:mode:preview');
+        loadMarkdownContent(t);
+        await new Promise(r => setTimeout(r, 150));
+        const bs = [...document.querySelectorAll('#editor .block')];
+        return {
+            saved: getMarkdownContent(false),
+            lines: bs.map(b => [b.getAttribute('data-raw'), b.textContent, !!b.querySelector('strong'), blockHtmlToMarkdown(b), blockDomToMarkdown(b)]),
+        };
+    }, WRAPPED);
+    if (wrapped.saved !== WRAPPED) fail('hard-wrapped bold', 'save', JSON.stringify(wrapped.saved));
+    for (const [raw, shown, strong, viaSave, viaDom] of wrapped.lines) {
+        if (viaSave !== raw) fail('hard-wrapped bold', 'save logic', JSON.stringify(raw) + ' became ' + JSON.stringify(viaSave));
+        if (viaDom !== raw) fail('hard-wrapped bold', 'rebuild', JSON.stringify(raw) + ' became ' + JSON.stringify(viaDom));
+        if (/very important|it goes on|continues here|a list item|that wraps/.test(raw)) {
+            if (!strong) fail('hard-wrapped bold', 'shown', JSON.stringify(raw) + ' is not bold');
+            if (shown.indexOf('**') >= 0) fail('hard-wrapped bold', 'shown', JSON.stringify(shown) + ' shows asterisks');
+        }
+        if (/A lone/.test(raw) && (strong || shown.indexOf('**') < 0)) fail('hard-wrapped bold', 'lone', 'a lone ** must stay as written: ' + JSON.stringify(shown));
+    }
+
     // 2. Read Aloud: known lines exactly, then every real line for leftover markup.
     await page.evaluate(() => { handleCommand('view_set:mode:preview'); loadMarkdownContent('x'); });
     for (const [line, want] of SPEECH) {
@@ -123,10 +151,8 @@ try {
                 if (!raw.trim() || raw.indexOf('\n') >= 0 || /`|\\/.test(raw)) continue;
                 n++;
                 const said = chunkSpeechText({ md: true, text: raw });
-                // A bold that opens on one line and closes on the next has a lone ** (one line is
-                // one paragraph here, so it shows as written). An indented # is not a heading.
-                const pairs = (said.match(/\*\*/g) || []).length;
-                if (pairs >= 2 && pairs % 2 === 0 || /\]\(|\[![A-Za-z]+\]/.test(said) || /^(#{1,6}\s|>\s)/.test(raw) && /^(#{1,6}\s|>\s)/.test(said)) out.push([raw, said]);
+                // An indented # is not a heading, so only a line's own marker counts.
+                if (/\*\*\S|\S\*\*/.test(said) || /\]\(|\[![A-Za-z]+\]/.test(said) || /^(#{1,6}\s|>\s)/.test(raw) && /^(#{1,6}\s|>\s)/.test(said)) out.push([raw, said]);
             }
             return { n, out };
         }, text);

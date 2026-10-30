@@ -200,16 +200,24 @@ try {
     assert((await isDirty(app)) !== true, 'a freshly opened document is not dirty');
 
     const EDIT = 'EDITED-' + Date.now();
-    await app.eval(async (marker) => {
-        const wait = (ms) => new Promise(r => setTimeout(r, ms));
-        handleCommand('view_set:mode:source');
-        await wait(1200);
+    // Waits for the thing itself, not a fixed time: this is in the version smoke, on a budget.
+    const until = async (fn, arg, ms) => {
+        const end = Date.now() + ms;
+        while (Date.now() < end) {
+            if (await app.eval(fn, arg)) return true;
+            await sleep(50);
+        }
+        return false;
+    };
+    await app.eval(() => handleCommand('view_set:mode:source'));
+    await until(() => state.mode === 'source' && !!sourceEditor && typeof sourceEditor.setRangeText === 'function'
+        && sourceEditor.value.length > 0, undefined, 6000);
+    await app.eval((marker) => {
         const se = sourceEditor;
         se.setRangeText('\n\n' + marker + '\n', se.value.length, se.value.length, 'end');
         se.dispatchEvent(new Event('input', { bubbles: true }));
-        await wait(900);
     }, EDIT);
-    await waitIdle(app, 8000);
+    await until(() => getMarkdownContent(false) !== state.lastSavedContent, undefined, 6000);
 
     assert((await isDirty(app)) === true, 'editing the document marked it edited');
 
@@ -217,8 +225,8 @@ try {
     // anywhere in the C# and does nothing -- epub-open-app.mjs asserts on it, which makes
     // that assertion vacuous.
     await app.eval(() => { try { postMsg('debug_save'); } catch (e) {} });
-    await sleep(2000);
-    await waitIdle(app, 8000);
+    for (const end = Date.now() + 6000; Date.now() < end && fs.readFileSync(docPath, 'utf8').indexOf(EDIT) < 0;) await sleep(50);
+    await until(() => getMarkdownContent(false) === state.lastSavedContent, undefined, 3000);
 
     assert((await isDirty(app)) !== true, 'saving cleared the edited state');
     const onDisk = fs.readFileSync(docPath, 'utf8');

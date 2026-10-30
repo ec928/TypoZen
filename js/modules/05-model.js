@@ -4125,7 +4125,22 @@
             return after;
         }
 
+        /** The line from the screen, without the markers boldAcrossLines drew it with. */
         function blockDomToMarkdown(block) {
+            let out = blockDomRebuild(block);
+            if (!block || !block.hasAttribute || typeof out !== 'string') return out;
+            if (block.hasAttribute('data-md-bold-pre')) {
+                const at = out.indexOf('**');
+                if (at >= 0) out = out.slice(0, at) + out.slice(at + 2);
+            }
+            if (block.hasAttribute('data-md-bold-post')) {
+                const at = out.lastIndexOf('**');
+                if (at >= 0) out = out.slice(0, at) + out.slice(at + 2);
+            }
+            return out;
+        }
+
+        function blockDomRebuild(block) {
             // Nest level is not in the DOM list structure — keep it from the block attribute / prior data-raw
             let indentLevel = 0;
             const attr = block && block.getAttribute('data-list-indent');

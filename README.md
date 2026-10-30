@@ -142,7 +142,7 @@ The status bar updates continuously with word count, character count (both group
 ### Supported Markdown (practical)
 **Yes:** headings, bold/italic/strike, inline code, fenced code (with strict monospace alignment for ASCII art), links, images (stored beside the document after save), blockquotes, GFM callouts / alerts (`[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`), bullet/ordered/task lists with basic indent, tables, thematic breaks (`---`, `- - -`, and friends).
 
-**Limits — not full CommonMark or Typora:** advanced nested-list edge cases, math, Mermaid and similar extensions are not first-class features.
+**Limits — not full CommonMark or Typora:** advanced nested-list edge cases, math, Mermaid and similar extensions are not first-class features. Each line is its own paragraph, as in Notepad, so a file wrapped by hand shows its lines separately. A `**bold**` that wraps onto a later line of the same paragraph is still shown bold; `*italic*` and `` `code` `` that wrap show their markers as written.
 
 ## Reading & research
 
