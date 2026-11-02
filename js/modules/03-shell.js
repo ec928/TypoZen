@@ -847,6 +847,45 @@
             }
         }
 
+        // File > Save and Ctrl+S. Not autosave: the host only sends this from an explicit
+        // save. The status chip stays Saved / Unsaved; this is the confirmation that the
+        // keypress wrote the file, including when Zen Mode has hidden that chip.
+        // Does not focus anything — the caret was just put back after the menu closed.
+        let _saveNoteTimer = null;
+        function showSaveConfirmation(name) {
+            let el = document.getElementById('saveNote');
+            const label = name ? String(name).trim() : '';
+            const text = label ? ('Saved \u00b7 ' + label) : 'Saved';
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'saveNote';
+                el.hidden = true;
+                el.setAttribute('role', 'status');
+                el.setAttribute('aria-live', 'polite');
+                el.textContent = text;
+                document.body.appendChild(el);
+            } else {
+                el.textContent = text;
+            }
+            el.hidden = false;
+            if (_saveNoteTimer) clearTimeout(_saveNoteTimer);
+            _saveNoteTimer = setTimeout(function () {
+                _saveNoteTimer = null;
+                const n = document.getElementById('saveNote');
+                if (n) n.hidden = true;
+            }, 2500);
+        }
+        window.showSaveConfirmation = showSaveConfirmation;
+
+        function handleSaveNoted(msg) {
+            if (!msg || msg.indexOf('save_noted:') !== 0) return false;
+            let name = msg.substring(11);
+            try { name = decodeURIComponent(name); } catch (eN) {}
+            showSaveConfirmation(name);
+            return true;
+        }
+        window.handleSaveNoted = handleSaveNoted;
+
         if (window.chrome && window.chrome.webview) {
             window.chrome.webview.addEventListener('message', (event) => {
                 const msg = event.data;
@@ -1347,6 +1386,9 @@
                 else if (msg == "save_success") {
                     state.lastSavedContent = getMarkdownContent(false);
                     updateStatsNow();
+                }
+                else if (msg.startsWith("save_noted:")) {
+                    handleSaveNoted(msg);
                 }
                 else if (msg == "export_html") {
                     const html = generateExportHtml();
@@ -1907,6 +1949,12 @@
         window.addEventListener('afterprint', tzEndPrintCopy);
 
         function handleCommand(cmd) {
+            // The host sends this when a menu closes. Alt+F, S (File, Save) leaves keyboard
+            // focus on the menu bar and the Preview caret gone; this puts both back.
+            if (cmd === "restore_editor_focus") {
+                if (typeof restoreEditorFocusAfterChrome === 'function') restoreEditorFocusAfterChrome();
+                return;
+            }
             if (cmd.startsWith("word_voice:")) { window.__tzWordVoice = cmd.substring(11); return; }   // tests
             if (cmd.startsWith("speak_word_kokoro:")) {
                 // Look up's speaker, when the closest quick voice is a Kokoro one (09-speech.js).

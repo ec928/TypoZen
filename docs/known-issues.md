@@ -69,6 +69,22 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### File > Save took the caret — **fixed** (0.20.1)
+
+Alt+F, S (and any menu) moved keyboard focus to the menu. Chromium then dropped the
+selection, so after Save the caret was gone until a click. Closing the menu puts focus
+back on the editor and restores the caret, in Preview and Source. A paste with no live
+caret uses that same memory. Find keeps the cursor when it was the thing opened. A live
+caret is not moved. Guarded by `focus-return-browser.mjs`.
+
+### File > Save gave no sign the file was written — **fixed** (0.20.1)
+
+Saving a document that was already clean left the status chip on Saved, so the keypress
+looked like it had done nothing. File > Save and Ctrl+S now say so: "Saved just now" on
+the status bar for a couple of seconds, or "Saved · filename" on the page when that bar
+is hidden (Zen Mode, or the status bar switched off). The Saved / Unsaved chip is left
+alone. Autosave does not say it. Guarded by `save-note-browser.mjs` for the page note.
+
 ### A book's stylesheet could move the page — **fixed** (0.7.10–0.7.11)
 
 Zones of Thought's `body { margin: 0 1.5em 0 1em }` landed on `#editor`, the element that

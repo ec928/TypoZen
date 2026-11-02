@@ -2891,6 +2891,34 @@
                 color: #666;
             }
         }
+        /* File > Save, when the status bar is hidden (Zen Mode). Not a control:
+           pointer-events stay off so it cannot take the caret the menu just returned. */
+        #saveNote {
+            position: fixed;
+            left: 16px;
+            bottom: 36px;
+            z-index: 40;
+            display: inline-block;
+            width: max-content;
+            max-width: min(360px, 70vw);
+            padding: 4px 12px;
+            border-radius: 999px;
+            background: var(--bg, #18181B);
+            color: var(--tx, #F4F4F5);
+            border: 1px solid #10B981;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+            font-family: var(--ui-font, 'Segoe UI', sans-serif);
+            font-size: 12px;
+            line-height: 1.35;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            pointer-events: none;
+            user-select: none;
+            zoom: calc(1 / var(--host-zoom, 1));
+        }
+        #saveNote[hidden] { display: none !important; }
+
         @media print {
             html, body {
                 height: auto !important;
@@ -2899,7 +2927,8 @@
                 background: #fff !important;
             }
             #sidebar, #page-indicator, #page-scrubber, #selPop, #tablePop, #linkPop,
-            #findBar, #tableSizePicker, #tableModal, .tz-help-overlay, .tz-spread-pad {
+            #findBar, #tableSizePicker, #tableModal, .tz-help-overlay, .tz-spread-pad,
+            #saveNote {
                 display: none !important;
             }
             html body #main-container, html body.tz-pages #main-container,

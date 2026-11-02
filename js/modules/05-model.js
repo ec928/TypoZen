@@ -2079,6 +2079,7 @@
 
             if (state.mode === 'source') {
                 if (!sourceEditor) return;
+                if (typeof recoverCaretForPaste === 'function') recoverCaretForPaste();
                 HistoryManager.beginEdit();
                 try {
                     const s = sourceEditor.selectionStart;
@@ -2087,11 +2088,16 @@
                     resizeSourceEditor();
                     updateStats();
                     scheduleSavePreferences();
+                    try { sourceEditor.focus(); } catch (eF) {}
                 } finally {
                     HistoryManager.commitEdit();
                 }
                 return;
             }
+
+            // A menu (or any blur) clears the selection before Paste runs. Without a caret
+            // the insert below no-ops and the caret is left at the start of a line.
+            if (typeof recoverCaretForPaste === 'function') recoverCaretForPaste();
 
             // One undo step per paste (not debounced with typing). Capture pre-paste first.
             HistoryManager.beginEdit();
@@ -2185,11 +2191,15 @@
                     // Render the block immediately so WYSIWYG users don't see raw markdown
                     renderBlockPreview(active, raw0);
 
-                    // Restore the caret by adding the length of the *rendered* pasted text
+                    // Restore the caret by adding the length of the *rendered* pasted text.
+                    // renderBlockPreview just replaced the nodes the caret was in. Focusing
+                    // first: a selection set while the editor is blurred draws no caret, and
+                    // the next key goes nowhere (the "focus lost after pasting" report).
                     try {
                         const temp = document.createElement('div');
                         renderBlockPreview(temp, blockTexts[0]);
                         const addedLength = (temp.innerText || '').length;
+                        if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
                         if (typeof setCaretAtOffset === 'function') {
                             setCaretAtOffset(active, startOff + addedLength);
                         }
@@ -2639,6 +2649,9 @@
             // but never sees the key while the editor has focus, so forward it. AltGr
             // sets ctrlKey too and is excluded, or accented input would trigger menus.
             if (e.altKey && !e.ctrlKey && !e.metaKey && e.key && e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
+                // Snapshot the caret before the host menu takes focus. Blur clears the
+                // selection, and by then there is nothing left to remember.
+                if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 // Alt+S is the search sidebar, handled here. It must be claimed before the
                 // menu_access forward below, or the host would hunt for a top-level menu
                 // with S as its access key. No menu uses S (they are F/E/V/T/H).

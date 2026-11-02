@@ -1699,8 +1699,150 @@
             updateActiveBlock();
         }
 
+        // Where the caret was the last time the editor actually had it.
+        //
+        // Opening a menu (Alt+F, then S for Save) moves keyboard focus to the WPF menu
+        // bar. WebView2 then reports an empty selection, and nothing puts the caret back
+        // when the menu closes, so the next key does nothing until a click. The same empty
+        // selection is why a paste after that lands nowhere. Remembered here, while the
+        // selection is still inside the document, and not updated from the empty one blur
+        // reports.
+        let _editorCaretMemory = null;
+
+        function rememberEditorCaret() {
+            try {
+                if (state.mode === 'source' && typeof isSourceFocused === 'function' && isSourceFocused()
+                    && typeof sourceEditor !== 'undefined' && sourceEditor) {
+                    _editorCaretMemory = {
+                        kind: 'source',
+                        start: sourceEditor.selectionStart | 0,
+                        end: sourceEditor.selectionEnd | 0
+                    };
+                    return;
+                }
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount || !sel.anchorNode || !editor || !editor.contains(sel.anchorNode)) return;
+                const block = typeof getAncestorBlock === 'function' ? getAncestorBlock(sel.anchorNode) : null;
+                if (!block) return;
+                let index = -1;
+                try {
+                    if (typeof DocumentModel !== 'undefined') index = DocumentModel.modelIndexOfEl(block);
+                } catch (eMi) {}
+                if (!(index >= 0) && typeof formatBlockIndex === 'function') index = formatBlockIndex(block);
+                if (!(index >= 0)) return;
+                let start = 0, end = 0;
+                const off = typeof getPlainOffsetsInBlock === 'function' ? getPlainOffsetsInBlock(block) : null;
+                if (off && off.start != null) {
+                    start = off.start | 0;
+                    end = off.end != null ? (off.end | 0) : start;
+                } else if (sel.isCollapsed) {
+                    const pre = document.createRange();
+                    pre.selectNodeContents(block);
+                    pre.setEnd(sel.anchorNode, sel.anchorOffset);
+                    start = end = pre.toString().length;
+                } else {
+                    return;
+                }
+                _editorCaretMemory = { kind: 'preview', index: index, start: start, end: end };
+            } catch (e) {}
+        }
+        window.rememberEditorCaret = rememberEditorCaret;
+
+        function pageFocusBelongsElsewhere() {
+            const a = document.activeElement;
+            if (!a || a === document.body || a === document.documentElement) return false;
+            if (editor && (a === editor || editor.contains(a))) return false;
+            if (typeof isSourceNode === 'function' && isSourceNode(a)) return false;
+            return true;
+        }
+
+        function placePreviewCaretMemory(mem) {
+            if (!mem || mem.kind !== 'preview' || !editor) return false;
+            let block = null;
+            try {
+                if (typeof elementForModelIndex === 'function') block = elementForModelIndex(mem.index);
+            } catch (eEl) {}
+            if (!block && typeof mountedBlockAtFormatIndex === 'function') block = mountedBlockAtFormatIndex(mem.index);
+            if (!block && typeof ensureModelBlockVisible === 'function') {
+                try { block = ensureModelBlockVisible(mem.index, { topPad: 48 }); } catch (eVis) {}
+            }
+            if (!block || !editor.contains(block)) return false;
+            focusEditorNoScroll();
+            if (typeof setCaretAtOffset !== 'function') return true;
+            const start = mem.start | 0;
+            const end = mem.end != null ? (mem.end | 0) : start;
+            setCaretAtOffset(block, start);
+            if (end > start) {
+                const sel = window.getSelection();
+                const aNode = sel.anchorNode, aOff = sel.anchorOffset;
+                setCaretAtOffset(block, end);
+                try {
+                    const range = document.createRange();
+                    range.setStart(aNode, aOff);
+                    range.setEnd(sel.anchorNode, sel.anchorOffset);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                } catch (eR) {
+                    setCaretAtOffset(block, end);
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Put the keyboard back in the editor, on the caret the menu (or a blur) took.
+         * A control that already has focus — Find, the sidebar, Help — keeps it.
+         * A caret the user has already placed again is left where they put it.
+         */
+        function restoreEditorFocusAfterChrome() {
+            if (pageFocusBelongsElsewhere()) return false;
+            if (state.mode === 'source') {
+                if (typeof isSourceFocused === 'function' && isSourceFocused()) return true;
+                const mem = _editorCaretMemory;
+                if (typeof sourceEditor !== 'undefined' && sourceEditor) {
+                    try { sourceEditor.focus(); } catch (eF) {}
+                    if (mem && mem.kind === 'source') {
+                        try { sourceEditor.setSelectionRange(mem.start | 0, mem.end | 0); } catch (eS) {}
+                    }
+                    return true;
+                }
+                return false;
+            }
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount && sel.anchorNode && editor && editor.contains(sel.anchorNode)) {
+                const a = document.activeElement;
+                if (a !== editor && !(editor && editor.contains(a))) focusEditorNoScroll();
+                return true;
+            }
+            if (_editorCaretMemory && _editorCaretMemory.kind === 'preview')
+                return placePreviewCaretMemory(_editorCaretMemory);
+            focusEditorNoScroll();
+            return false;
+        }
+        window.restoreEditorFocusAfterChrome = restoreEditorFocusAfterChrome;
+
+        /** Paste with no live caret: go back to the one the menu cleared, then insert there. */
+        function recoverCaretForPaste() {
+            try {
+                if (state.mode === 'source') {
+                    if (typeof isSourceFocused === 'function' && isSourceFocused()) return;
+                    const mem = _editorCaretMemory;
+                    if (!mem || mem.kind !== 'source' || typeof sourceEditor === 'undefined' || !sourceEditor) return;
+                    try { sourceEditor.focus(); } catch (eF) {}
+                    try { sourceEditor.setSelectionRange(mem.start | 0, mem.end | 0); } catch (eS) {}
+                    return;
+                }
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && sel.anchorNode && editor && editor.contains(sel.anchorNode)) return;
+                if (_editorCaretMemory && _editorCaretMemory.kind === 'preview')
+                    placePreviewCaretMemory(_editorCaretMemory);
+            } catch (e) {}
+        }
+        window.recoverCaretForPaste = recoverCaretForPaste;
+
         document.addEventListener('selectionchange', () => {
             if (state.mode === 'source' && isSourceFocused()) {
+                rememberEditorCaret();
                 rememberStickyFromSourceIfFocused();
                 updateCaretLineStatus();
                 // Selection size can change without line change — refresh sel word count
@@ -1719,6 +1861,7 @@
                 return;
             }
             if (state.mode !== 'source' && (document.activeElement === editor || editor.contains(document.activeElement) || inEditor)) {
+                rememberEditorCaret();
                 if (!_formatSelectionFrozen) {
                     cacheSelectedBlocks();
                     cacheInlineSelection();

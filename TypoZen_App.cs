@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.20.0";
+        internal const string AppVersion = "0.20.1";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -806,6 +806,8 @@ namespace TypoZen
 
         // UI Controls
         private TextBlock _lblStatus;
+        private TextBlock _lblSaveNote;
+        private DispatcherTimer _saveNoteTimer;
         private TextBlock _lblChapter;
         /// <summary>Model block index for the chapter shown in the status bar (-1 = none).</summary>
         private int _chapterBlockIndex = -1;
@@ -1625,6 +1627,7 @@ namespace TypoZen
 
             // Bind Status bar
             _lblStatus = (TextBlock)FindElement("lblStatus");
+            _lblSaveNote = FindElement("lblSaveNote") as TextBlock;
             _lblChapter = FindElement("lblChapter") as TextBlock;
             _lblFilePath = (TextBlock)FindElement("lblFilePath");
             _lblWordCount = (TextBlock)FindElement("lblWordCount");
@@ -1912,6 +1915,7 @@ namespace TypoZen
 
             this.KeyDown += TypoZenWindow_KeyDown;
             InstallEditorKeyFilter();
+            HookChromeMenuFocusReturn();
             this.Closing += TypoZenWindow_Closing;
             this.Closed += (s, e) =>
             {
@@ -4878,6 +4882,9 @@ namespace TypoZen
 
         private void Window_Activated(object sender, EventArgs e)
         {
+            // A menu closed while a dialog had the window. The caret return waited.
+            if (_returnEditorFocusPending)
+                Dispatcher.BeginInvoke(new Action(TryReturnEditorFocus), DispatcherPriority.ContextIdle);
             if (!_editorReady || _tabOpInProgress || _diskCheckBusy) return;
             CheckAllEngineTabsDisk();
         }
@@ -10981,6 +10988,54 @@ namespace TypoZen
         /// identically — auto-hide already retracted on the first keystroke as well as on
         /// pointer-away, so the second option earned nothing.
         /// </summary>
+        /// <summary>
+        /// A menu took the keyboard off the editor. Closing it does not give the caret back.
+        /// </summary>
+        private bool _returnEditorFocusPending;
+
+        private void HookChromeMenuFocusReturn()
+        {
+            foreach (string name in new[] { "topMenu", "headingMenu", "listMenu", "tableMenu" })
+            {
+                var menu = FindElement(name) as Menu;
+                if (menu == null) continue;
+                foreach (object item in menu.Items)
+                {
+                    var mi = item as MenuItem;
+                    if (mi == null) continue;
+                    mi.SubmenuClosed += OnChromeMenuClosed;
+                }
+            }
+        }
+
+        private void OnChromeMenuClosed(object sender, RoutedEventArgs e)
+        {
+            // A nested item (Open Recent) bubbles this. Only the menu that just closed
+            // should hand the caret back; doing it while that menu is still open steals
+            // the access key the user is about to press.
+            var mi = sender as MenuItem;
+            if (mi == null || !ReferenceEquals(e.OriginalSource, mi)) return;
+            if (_nativeSurfaceVisible) return;
+            _returnEditorFocusPending = true;
+            Dispatcher.BeginInvoke(new Action(TryReturnEditorFocus), DispatcherPriority.ContextIdle);
+        }
+
+        /// <summary>
+        /// Alt+F, S saves, then the caret is gone: the menu took keyboard focus from the
+        /// WebView and closing it leaves focus on the menu bar. Hand focus back and tell
+        /// the page to put the caret where it was. While a dialog has the window (Save As,
+        /// Open), wait until it is active again.
+        /// </summary>
+        private void TryReturnEditorFocus()
+        {
+            if (!_returnEditorFocusPending) return;
+            if (!IsActive) return;
+            _returnEditorFocusPending = false;
+            if (_nativeSurfaceVisible) return;
+            try { if (_webView != null) _webView.Focus(); } catch { }
+            SendMsg("cmd:restore_editor_focus");
+        }
+
         /// <summary>
         /// Open the top-level menu whose access key matches, and move keyboard focus to it.
         /// Focus matters: without it the menu opens but the arrow keys keep going to the
@@ -19049,9 +19104,57 @@ namespace TypoZen
                 return;
             }
             if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count) return;
-            if (SaveTabNow(_tabs[_activeTabIndex], saveAs))
+            var tab = _tabs[_activeTabIndex];
+            if (SaveTabNow(tab, saveAs))
+                AnnounceExplicitSave(tab);
+        }
+
+        /// <summary>
+        /// File &gt; Save and Ctrl+S, after the write succeeded. Autosave calls SaveTabNow
+        /// directly and does not come through here, so a pause in typing stays quiet.
+        /// The status chip already says Saved whenever the document is clean, which is
+        /// why saving an unchanged file used to look like nothing happened. The chip is
+        /// left alone: it is the dirty flag, and Zen Mode hides that whole bar.
+        /// </summary>
+        private void AnnounceExplicitSave(DocTab tab)
+        {
+            if (tab == null) return;
+            if (_activeTabIndex < 0 || _activeTabIndex >= _tabs.Count || _tabs[_activeTabIndex] != tab)
+                return;
+            // The bar is on screen and stays there. Zen Mode hides it a moment after the
+            // menu closes, which is too soon to read, so that case uses the page instead.
+            bool barStays = _statusBarVisible && !_chromeHidden && !_chromeAutoHide;
+            if (barStays || _nativeSurfaceVisible)
             {
+                ShowStatusSaveNote();
+                return;
             }
+            string name = "";
+            try
+            {
+                if (!string.IsNullOrEmpty(tab.FilePath))
+                    name = Path.GetFileName(tab.FilePath);
+            }
+            catch { }
+            SendMsg("save_noted:" + Uri.EscapeDataString(name ?? ""));
+        }
+
+        private void ShowStatusSaveNote()
+        {
+            if (_lblSaveNote == null) return;
+            _lblSaveNote.Text = "Saved just now";
+            _lblSaveNote.Visibility = Visibility.Visible;
+            if (_saveNoteTimer == null)
+            {
+                _saveNoteTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
+                _saveNoteTimer.Tick += (s, e) =>
+                {
+                    _saveNoteTimer.Stop();
+                    if (_lblSaveNote != null) _lblSaveNote.Visibility = Visibility.Collapsed;
+                };
+            }
+            _saveNoteTimer.Stop();
+            _saveNoteTimer.Start();
         }
 
         private void ExecuteExportHtml(string html)
