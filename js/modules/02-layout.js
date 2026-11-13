@@ -135,6 +135,8 @@
                 const ae = document.activeElement;
                 if (ae && bar.contains(ae) && typeof ae.blur === 'function') ae.blur();
             } catch (e) {}
+            // The bar going away is when the notice has to stand on its own.
+            try { syncSearchModeNotice(); } catch (eN) {}
         }
 
         function closeFindBar() {
@@ -183,7 +185,67 @@
             } catch (e) {}
         }
 
+        /**
+         * Search mode is findState.matches.length > 0, including after the sidebar
+         * and the Find bar have both been closed. The notice is the thing that says
+         * so. Source keeps ordinary arrows, so it must not claim they step matches.
+         * The Left/Right sentence uses the same condition as the page-key handler.
+         */
+        function syncSearchModeNotice() {
+            const el = document.getElementById('searchModeNotice');
+            if (!el) return;
+            const n = (findState.matches && findState.matches.length) || 0;
+            if (!n) {
+                el.hidden = true;
+                return;
+            }
+            el.hidden = false;
+            try {
+                el.classList.toggle('below-find', isFindBarOpen());
+            } catch (eBar) {}
+            const text = document.getElementById('searchModeNoticeText');
+            if (!text) return;
+            const shown = (findState.index >= 0 ? findState.index + 1 : 0) + '/' + n;
+            if (typeof state !== 'undefined' && state.mode === 'source') {
+                text.textContent = 'Search mode ' + shown;
+                return;
+            }
+            let msg = 'Search mode ' + shown + ' - Up and Down step through matches';
+            try {
+                if (state.pageAdvance && typeof isPaginatedLayout === 'function' && isPaginatedLayout()) {
+                    msg += '. Left and Right turn the page';
+                }
+            } catch (ePage) {}
+            text.textContent = msg;
+        }
+
+        /**
+         * Leave search mode from the notice. Same end state as clearing the sidebar
+         * field: both query boxes empty, no matches, no highlights. Also hides the
+         * Find bar, because a closed bar used to keep the query and the mode.
+         */
+        function exitSearchMode() {
+            try { clearSidebarSearch(); } catch (eC) {}
+            const findIn = document.getElementById('findInput');
+            if (findIn && findIn.value) {
+                findIn.value = '';
+                try { runFind('', false, { navigate: false }); } catch (eF) {}
+            }
+            try { hideFindBarChrome(); } catch (eH) {}
+            try { syncSearchModeNotice(); } catch (eN) {}
+            try {
+                if (typeof state !== 'undefined' && state.mode === 'source'
+                    && typeof sourceEditor !== 'undefined' && sourceEditor
+                    && typeof sourceEditor.focus === 'function') {
+                    sourceEditor.focus();
+                } else if (typeof focusEditorNoScroll === 'function') {
+                    focusEditorNoScroll();
+                }
+            } catch (eE) {}
+        }
+
         function updateFindCount() {
+            try { syncSearchModeNotice(); } catch (eN) {}
             const el = document.getElementById('findCount');
             if (!el) return;
             const n = findState.matches.length;
@@ -705,9 +767,11 @@
         /** Update the "3/17" counter beside the sidebar search box. */
         function updateSidebarSearchCount() {
             const el = document.getElementById('sidebarSearchCount');
-            if (!el) return;
-            const n = findState.matches.length;
-            el.textContent = (n === 0 ? 0 : findState.index + 1) + '/' + n;
+            if (el) {
+                const n = findState.matches.length;
+                el.textContent = (n === 0 ? 0 : findState.index + 1) + '/' + n;
+            }
+            try { syncSearchModeNotice(); } catch (eN) {}
         }
 
         /**
@@ -3637,14 +3701,17 @@
          */
         function clearSidebarSearch() {
             const input = document.getElementById('sidebarSearchInput');
-            if (!input) return;
+            const findIn = document.getElementById('findInput');
             try { cancelSidebarSearchIdle(); } catch (eC) {}
             try { closeSearchHistoryMenu(); } catch (eM) {}
-            input.value = '';
-            rememberLastSearchText('');
-            runFind('', false, { navigate: false });
-            updateSidebarSearchCount();
-            updateSearchSidebar();
+            if (input) input.value = '';
+            // The Find bar shares findState. Leaving its field filled brings the
+            // same search back on the next document change.
+            if (findIn) findIn.value = '';
+            try { rememberLastSearchText(''); } catch (eR) {}
+            try { runFind('', false, { navigate: false }); } catch (eF) {}
+            try { updateSidebarSearchCount(); } catch (eU) {}
+            try { updateSearchSidebar(); } catch (eS) {}
             if (typeof commitSearchFocus === 'function') commitSearchFocus();
         }
 
@@ -7477,6 +7544,18 @@
             if (prev) prev.addEventListener('click', (e) => { e.preventDefault(); findStep(-1); });
             if (next) next.addEventListener('click', (e) => { e.preventDefault(); findStep(1); });
             if (close) close.addEventListener('click', (e) => { e.preventDefault(); closeFindBar(); });
+            const searchModeClear = document.getElementById('searchModeNoticeClear');
+            if (searchModeClear && !searchModeClear.__tzWired) {
+                searchModeClear.__tzWired = true;
+                // preventDefault on mousedown so the click does not drop the caret
+                // before exitSearchMode puts focus back on the document.
+                searchModeClear.addEventListener('mousedown', function (e) { e.preventDefault(); });
+                searchModeClear.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    exitSearchMode();
+                });
+            }
             if (repOne) repOne.addEventListener('click', (e) => { e.preventDefault(); replaceCurrentMatch(); });
             if (repAll) repAll.addEventListener('click', (e) => { e.preventDefault(); replaceAllMatches(); });
 

@@ -270,6 +270,24 @@
 
         function clearMultiBlockSelFreeze() { _mbSelFreeze = null; }
 
+        /**
+         * The reader has a caret in the editor, so a multi-block range remembered from
+         * an earlier drag is not the selection any more. Cut, paste and Delete must
+         * use the caret. Leaving the freeze in place made a paste at the new caret
+         * delete that old range and write the clipboard back over it: the document
+         * looked unchanged and the caret jumped to the end of what had been selected.
+         * Returns true when it cleared one.
+         */
+        function caretSupersedesMultiBlockFreeze() {
+            try {
+                const sel = window.getSelection();
+                if (!sel || !sel.isCollapsed || !sel.rangeCount) return false;
+                if (!sel.anchorNode || !editor || !editor.contains(sel.anchorNode)) return false;
+                clearMultiBlockSelFreeze();
+                return true;
+            } catch (e) { return false; }
+        }
+
         function snapshotMultiBlockSelectionFromLive() {
             if (state.mode === 'source' || !editor) return;
             try {
@@ -424,6 +442,7 @@
          * Returns { block, offset } or null when the selection sits inside one block.
          */
         function removeCrossBlockSelection() {
+            if (caretSupersedesMultiBlockFreeze()) return null;
             const sel = window.getSelection();
             let fromIdx = -1, toIdx = -1, prefix = '', suffix = '';
             let liveOk = false;
@@ -508,6 +527,11 @@
                     }
                 } catch (eWhole) {}
             }
+
+            // A caret in the editor is not the old range. A synthetic or real Delete
+            // here must remove one character, not the paragraphs that were selected
+            // before the click.
+            if (caretSupersedesMultiBlockFreeze()) return false;
 
             // Refresh freeze from live selection if still multi-block
             try { snapshotMultiBlockSelectionFromLive(); } catch (eSnap) {}

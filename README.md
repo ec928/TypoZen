@@ -80,7 +80,7 @@ TypoZen opens Markdown of any size in Live Preview.
 - **Find & Replace (`Ctrl+F` / `Ctrl+H`):** Searches the entire document model instantly, even virtualized off-screen sections.
 - **Live Match Highlighting:** All search matches are highlighted concurrently in both Source and Preview modes.
 - **Search Sidebar (`Alt+S`):** Dedicated sidebar with match-case and whole-word toggles. Remembers your last 8 searches across all sessions.
-- **Search mode** (a live result list — sidebar need not stay open): **Up / Down** step previous / next match with eyes on the text; **Left / Right** turn the page when the layout is paginated. Without results, Up/Down are normal (caret in Preview, page turn in Reader). **F3** / **Shift+F3** also step next/prev.
+- **Search mode** (a live result list — sidebar need not stay open): **Up / Down** step previous / next match with eyes on the text; **Left / Right** turn the page when the layout is paginated. A notice on the page says search mode is on until you use **Clear search** on it. Without results, Up/Down are normal (caret in Preview, page turn in Reader). **F3** / **Shift+F3** also step next/prev. In Source, arrows stay with the caret and the notice does not say otherwise.
 
 #### Links, tables & editing
 - **Spelling:** The Windows spell checker underlines misspellings in both Preview and Source (not in code, inline code or fenced code blocks). Select a word for replacements; see [Spelling](#spelling) below.

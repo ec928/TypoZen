@@ -69,6 +69,34 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Copy, then a click, then paste wrote nothing — **fixed** (0.20.2)
+
+Selecting several lines and copying, then clicking somewhere else, left that selection
+stored. Paste treated the click as a dead selection, deleted those lines, and wrote the
+copy back over them, so the page looked unchanged and the caret jumped to the end of the
+old selection. A caret in the editor drops that stored selection. The paste lands at the
+caret, and the caret sits just after the pasted text. A whole-block copy still has no
+extra blank line. Guarded by `clipboard-roundtrip-browser.mjs`.
+
+### Cut with only a caret deleted the character before it — **fixed** (0.20.2)
+
+Ctrl+X with nothing selected deleted the previous character and copied nothing. A caret
+cut now does nothing. A real selection still cuts. Same test.
+
+### A paste at the start of a heading, quote, or list ate the marker — **fixed** (0.20.2)
+
+A multi-line paste at the start of `## Heading`, `> Quote`, `- item`, or `- [ ] task`
+glued the marker onto the first pasted line. The marker stays on the original line.
+Pasting into the middle of a list item still keeps the first half. Same test.
+
+### Search mode gave no sign it was on — **fixed** (0.20.2)
+
+Once a search has matches, Up and Down step through them even when the sidebar and the
+Find bar are both closed. A notice stays at the top of the page until **Clear search**.
+On a paginated layout it also says Left and Right turn the page. In Source it only says
+search mode is on, because the arrows still move the caret. Escape in the document does
+not clear it. Guarded by `search-mode-notice-browser.mjs`.
+
 ### File > Save took the caret — **fixed** (0.20.1)
 
 Alt+F, S (and any menu) moved keyboard focus to the menu. Chromium then dropped the

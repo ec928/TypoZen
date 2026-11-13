@@ -349,6 +349,14 @@
         </div>
     </div>
 
+    <!-- Search mode keeps Up/Down (and, on pages, Left/Right) after this bar and the
+         sidebar are both gone. The highlights do not say that. This stays until the
+         search is cleared; it is not a toast you can dismiss and keep searching. -->
+    <div id="searchModeNotice" hidden role="status" aria-live="polite">
+        <span id="searchModeNoticeText"></span>
+        <button type="button" id="searchModeNoticeClear">Clear search</button>
+    </div>
+
     <!-- Notepad-style table size picker (hover grid) -->
     <div id="tableSizePicker" class="tz-table-picker" style="display:none;" role="dialog" aria-label="Insert table">
         <div class="tz-table-picker-inner">

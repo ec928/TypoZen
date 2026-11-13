@@ -478,6 +478,9 @@
                     sourceEditor.style.paddingRight = '';
                 }
             }
+            // Mode and page layout change which keys search mode takes. The notice
+            // is refreshed here because a column or mode switch does not always re-run find.
+            try { if (typeof syncSearchModeNotice === 'function') syncSearchModeNotice(); } catch (eN) {}
         }
 
         function setMargin(marginType) {

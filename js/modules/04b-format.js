@@ -1891,10 +1891,26 @@
         }, true);
         editor.addEventListener('mouseup', function () {
             try {
+                const sel = window.getSelection();
+                // A click leaves a caret. The drag's range is over; remember it and a
+                // later paste writes the old paragraphs back on top of themselves.
+                if (sel && sel.isCollapsed) {
+                    if (typeof clearMultiBlockSelFreeze === 'function') clearMultiBlockSelFreeze();
+                    return;
+                }
                 if (typeof snapshotMultiBlockSelectionFromLive === 'function')
                     snapshotMultiBlockSelectionFromLive();
             } catch (eMu) {}
         }, true);
+        editor.addEventListener('keyup', function (e) {
+            if (e.shiftKey || state.mode === 'source') return;
+            try {
+                const sel = window.getSelection();
+                if (sel && sel.isCollapsed && sel.anchorNode && editor.contains(sel.anchorNode)
+                    && typeof clearMultiBlockSelFreeze === 'function')
+                    clearMultiBlockSelFreeze();
+            } catch (eKu) {}
+        });
         // Keyboard multi-select (Shift+Arrow): snapshot while still collapsed / first extend
         editor.addEventListener('keydown', function (e) {
             if (!e.shiftKey) return;

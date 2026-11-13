@@ -143,6 +143,214 @@ async function main() {
         // a window onto the document, not the document. Walking the mounted blocks put 2,797
         // characters of a 205,842-character file on the clipboard -- 1% -- with nothing to
         // say so. Copy is no more allowed to be a projection of the document than saving is.
+        // The failure Ed hit in amazon.md: select several paragraphs, copy, click a
+        // caret somewhere else, paste. The old range was still remembered, so the paste
+        // deleted it and wrote the clipboard back over the same lines. Nothing appeared
+        // at the caret, and the cursor jumped to the end of the old selection.
+        console.log('\n=== paste at a moved caret inserts there ===');
+        await page.evaluate(() => loadMarkdownContent([
+            '### Scenario',
+            '',
+            '**The Focus:** Scaling governance.',
+            '',
+            '- **Situation:** Sit one.',
+            '- **Task:** Task two.',
+            '- **Action:** Action three.',
+            '- **Result:** Result four.',
+            '',
+            'After.'
+        ].join('\n')));
+        await settled(page);
+        const moved = await page.evaluate(async () => {
+            const blocks = () => Array.from(document.querySelectorAll('#editor .block'));
+            const sit = blocks().find(b => (b.getAttribute('data-raw') || '').includes('Sit one'));
+            const res = blocks().find(b => (b.getAttribute('data-raw') || '').includes('Result four'));
+            const focus = blocks().find(b => (b.getAttribute('data-raw') || '').startsWith('**The Focus:**'));
+            const rg = document.createRange();
+            rg.setStart(sit, 0);
+            rg.setEnd(res, res.childNodes.length);
+            const sel = getSelection();
+            sel.removeAllRanges();
+            sel.addRange(rg);
+            await new Promise(r => setTimeout(r, 60));
+            const dt = new DataTransfer();
+            const copyEv = new Event('copy', { bubbles: true, cancelable: true });
+            Object.defineProperty(copyEv, 'clipboardData', { value: dt });
+            document.getElementById('editor').dispatchEvent(copyEv);
+            focusBlock(focus, (focus.innerText || '').length);
+            await new Promise(r => setTimeout(r, 60));
+            const pasteEv = new Event('paste', { bubbles: true, cancelable: true });
+            Object.defineProperty(pasteEv, 'clipboardData', { value: dt });
+            document.getElementById('editor').dispatchEvent(pasteEv);
+            const raws = DocumentModel.blocks.map(b => b.raw);
+            const s = getSelection();
+            let caret = { where: 'none' };
+            if (s && s.rangeCount && s.anchorNode) {
+                const el = s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement;
+                const b = el && el.closest ? el.closest('#editor .block') : null;
+                if (b) {
+                    const pre = document.createRange();
+                    pre.selectNodeContents(b);
+                    pre.setEnd(s.anchorNode, s.anchorOffset);
+                    const off = pre.toString().length;
+                    const vis = b.innerText || '';
+                    caret = {
+                        raw: b.getAttribute('data-raw'),
+                        off: off,
+                        atEnd: off === vis.length,
+                        before: vis.slice(Math.max(0, off - 24), off)
+                    };
+                }
+            }
+            return { raws: raws, caret: caret };
+        });
+        info('after moved paste: ' + JSON.stringify(moved.raws));
+        info('caret: ' + JSON.stringify(moved.caret));
+        const sitCount = moved.raws.filter(x => String(x).includes('Sit one')).length;
+        assert(sitCount === 2,
+            'the copied paragraphs stay, and a second copy is inserted (' + sitCount + ')');
+        assert(String(moved.raws[2] || '').indexOf('**The Focus:**') === 0
+            && String(moved.raws[2]).includes('Sit one'),
+            'the paste starts at the caret, on the Focus line (' + JSON.stringify(moved.raws[2]) + ')');
+        const resultBlocks = moved.raws.filter(x => String(x).includes('Result four'));
+        assert(resultBlocks.length === 2, 'both Result lines are present');
+        assert(moved.caret && moved.caret.atEnd && String(moved.caret.raw).includes('Result four')
+            && String(moved.caret.before).indexOf('Result four') >= 0,
+            'the caret is after the pasted block, as in Notepad (' + JSON.stringify(moved.caret) + ')');
+        // The original four lines are still below the insert, not replaced by it.
+        assert(moved.raws.filter(x => String(x) === '- **Task:** Task two.').length === 2,
+            'the original Task line was not overwritten');
+
+        console.log('\n=== paste at the start of a line keeps order and caret ===');
+        const atStart = await page.evaluate(() => {
+            loadMarkdownContent('**The Focus:** Scaling governance.\n\nKeep me.\n');
+            const block = Array.from(document.querySelectorAll('#editor .block'))
+                .find(b => (b.innerText || '').includes('Keep me'));
+            const tw = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+            let n;
+            while ((n = tw.nextNode())) {
+                const i = n.data.indexOf('Keep');
+                if (i < 0) continue;
+                const r = document.createRange();
+                r.setStart(n, i);
+                r.collapse(true);
+                const s = getSelection();
+                s.removeAllRanges();
+                s.addRange(r);
+                break;
+            }
+            const dt = new DataTransfer();
+            dt.setData('text/plain', 'AAA\nBBB\n');
+            const ev = new Event('paste', { bubbles: true, cancelable: true });
+            Object.defineProperty(ev, 'clipboardData', { value: dt });
+            document.getElementById('editor').dispatchEvent(ev);
+            const raws = DocumentModel.blocks.map(b => b.raw);
+            const s = getSelection();
+            let caret = null;
+            if (s && s.rangeCount && s.anchorNode) {
+                const el = s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement;
+                const b = el && el.closest ? el.closest('#editor .block') : null;
+                if (b) {
+                    const pre = document.createRange();
+                    pre.selectNodeContents(b);
+                    pre.setEnd(s.anchorNode, s.anchorOffset);
+                    caret = { raw: b.getAttribute('data-raw'), off: pre.toString().length };
+                }
+            }
+            return { raws: raws, caret: caret };
+        });
+        info('start-of-line paste: ' + JSON.stringify(atStart));
+        const keepAt = atStart.raws.findIndex(x => String(x).includes('Keep me'));
+        const aaaAt = atStart.raws.findIndex(x => String(x) === 'AAA');
+        const bbbAt = atStart.raws.findIndex(x => String(x) === 'BBB');
+        assert(aaaAt >= 0 && bbbAt === aaaAt + 1 && keepAt === bbbAt + 1,
+            'AAA, BBB, then Keep me, in that order (' + JSON.stringify(atStart.raws) + ')');
+        assert(atStart.caret && String(atStart.caret.raw).includes('Keep me') && atStart.caret.off === 0,
+            'the caret is after the pasted lines, before the text that was there (' +
+            JSON.stringify(atStart.caret) + ')');
+
+        console.log('\n=== delete after moving the caret does not remove the old selection ===');
+        const del = await page.evaluate(async () => {
+            loadMarkdownContent([
+                'Alpha line.',
+                '- **Situation:** Sit one.',
+                '- **Task:** Task two.',
+                'Omega line.'
+            ].join('\n'));
+            const blocks = () => Array.from(document.querySelectorAll('#editor .block'));
+            const sit = blocks().find(b => (b.getAttribute('data-raw') || '').includes('Sit one'));
+            const task = blocks().find(b => (b.getAttribute('data-raw') || '').includes('Task two'));
+            const omega = blocks().find(b => (b.getAttribute('data-raw') || '').startsWith('Omega'));
+            const rg = document.createRange();
+            rg.setStart(sit, 0);
+            rg.setEnd(task, task.childNodes.length);
+            const sel = getSelection();
+            sel.removeAllRanges();
+            sel.addRange(rg);
+            await new Promise(r => setTimeout(r, 60));
+            focusBlock(omega, 0);
+            await new Promise(r => setTimeout(r, 60));
+            const ev = new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true });
+            document.getElementById('editor').dispatchEvent(ev);
+            return DocumentModel.blocks.map(b => b.raw);
+        });
+        info('after delete at caret: ' + JSON.stringify(del));
+        assert(del.some(x => String(x).includes('Sit one')) && del.some(x => String(x).includes('Task two')),
+            'the paragraphs that were selected earlier are still there (' + JSON.stringify(del) + ')');
+
+        console.log('\n=== cut with only a caret deletes nothing ===');
+        const caretCut = await page.evaluate(() => {
+            loadMarkdownContent('Alpha line.\nBeta line.\n');
+            const b = document.querySelector('#editor .block');
+            focusBlock(b, (b.innerText || '').length);
+            const dt = new DataTransfer();
+            const ev = new Event('cut', { bubbles: true, cancelable: true });
+            Object.defineProperty(ev, 'clipboardData', { value: dt });
+            document.getElementById('editor').dispatchEvent(ev);
+            return { raws: DocumentModel.blocks.map(x => x.raw), plain: dt.getData('text/plain') };
+        });
+        assert(caretCut.raws[0] === 'Alpha line.' && caretCut.raws[1] === 'Beta line.' && caretCut.plain === '',
+            'a cut with no selection leaves the line and the clipboard (' + JSON.stringify(caretCut) + ')');
+
+        console.log('\n=== paste at the start of a marked line keeps the marker ===');
+        const marked = await page.evaluate(() => {
+            loadMarkdownContent('## Heading line\n> Quote line\n- List one\n- [ ] Task one\n');
+            function atStart(needle) {
+                const block = Array.from(document.querySelectorAll('#editor .block'))
+                    .find(b => (b.getAttribute('data-raw') || '').indexOf(needle) >= 0);
+                focusBlock(block, 0);
+                const dt = new DataTransfer();
+                dt.setData('text/plain', 'AAA\nBBB\n');
+                const ev = new Event('paste', { bubbles: true, cancelable: true });
+                Object.defineProperty(ev, 'clipboardData', { value: dt });
+                document.getElementById('editor').dispatchEvent(ev);
+                return DocumentModel.blocks.map(x => x.raw);
+            }
+            const heading = atStart('Heading line');
+            loadMarkdownContent('## Heading line\n> Quote line\n- List one\n- [ ] Task one\n');
+            const quote = atStart('Quote line');
+            loadMarkdownContent('## Heading line\n> Quote line\n- List one\n- [ ] Task one\n');
+            const list = atStart('List one');
+            loadMarkdownContent('## Heading line\n> Quote line\n- List one\n- [ ] Task one\n');
+            const task = atStart('Task one');
+            return { heading: heading, quote: quote, list: list, task: task };
+        });
+        info('marked pastes: ' + JSON.stringify(marked));
+        function markerKept(raws, original) {
+            const aaa = raws.indexOf('AAA');
+            const bbb = raws.indexOf('BBB');
+            const line = raws.indexOf(original);
+            return aaa >= 0 && bbb === aaa + 1 && line === bbb + 1;
+        }
+        assert(markerKept(marked.heading, '## Heading line'),
+            'a heading keeps its marker (' + JSON.stringify(marked.heading) + ')');
+        assert(markerKept(marked.quote, '> Quote line'),
+            'a quote keeps its marker (' + JSON.stringify(marked.quote) + ')');
+        assert(markerKept(marked.list, '- List one'),
+            'a list item keeps its marker (' + JSON.stringify(marked.list) + ')');
+        assert(markerKept(marked.task, '- [ ] Task one'),
+            'a task keeps its marker (' + JSON.stringify(marked.task) + ')');
+
         console.log('\n=== select all copies the document, not the window ===');
         // A BIG document, loaded here on purpose.
         //

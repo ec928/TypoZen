@@ -2061,6 +2061,21 @@
             return md;
         }
 
+        /** A heading, quote, or list marker with no body. The words live in the other half. */
+        function structuralMarkerOnly(md) {
+            const s = String(md == null ? '' : md);
+            if (!s.length) return false;
+            try {
+                if (typeof parseListLine === 'function') {
+                    const p = parseListLine(s);
+                    if (p && String(p.body || '') === '') return true;
+                }
+            } catch (e) {}
+            if (/^#{1,6}[ \t]*$/.test(s)) return true;
+            if (/^>[ \t]*$/.test(s)) return true;
+            return false;
+        }
+
         function insertPastedPlainText(text, fromHtml) {
             if (text == null || text === '') return;
             // A paste into the middle of a line keeps its own spaces: " Pasted" after a word
@@ -2215,35 +2230,42 @@
             // caret moves to the end of the last pasted line. It used to stay where it was, so
             // a whole line pasted at the start of another ran into it ("unoalpha"), and one
             // pasted mid-line came out in the wrong order ("alunopha" / "dos").
+            let cutTail = '';
             if (blockTexts.length > 1 && active && active.classList && active.classList.contains('block')) {
-                const tail = cutTextAfterCaret(active);
-                if (tail) {
-                    const last = blockTexts.length - 1;
-                    if (/^\s*(```|\|)/.test(blockTexts[last])) blockTexts.push(tail);   // never into a fence or table
-                    else blockTexts[last] += tail;
-                    pasteCaretBeforeTail = tail;
-                }
+                cutTail = cutTextAfterCaret(active) || '';
             }
 
             if (active && active.classList && active.classList.contains('block')) {
-                const currentRaw = active.getAttribute('data-raw') || active.innerText || '';
-                if (!currentRaw.trim()) {
-                    active.setAttribute('data-raw', blockTexts[0]);
-                    renderBlockPreview(active, blockTexts[0]);
-                } else {
-                    const sel2 = window.getSelection();
-                    if (sel2 && sel2.rangeCount > 0 && sel2.anchorNode && active.contains(sel2.anchorNode)) {
-                        document.execCommand('insertText', false, withKeptEdgeSpaces(blockTexts[0]));
-                        const raw0 = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
-                        active.setAttribute('data-raw', raw0);
-                        renderBlockPreview(active, raw0);
-                    } else {
-                        active.innerText = (active.innerText || '') + blockTexts[0];
-                        const raw0 = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
-                        active.setAttribute('data-raw', raw0);
-                        renderBlockPreview(active, raw0);
-                    }
+                // What is left of this line, then the first pasted line. execCommand('insertText')
+                // is not used here: during a real paste it inserts at whatever selection survived
+                // the tail cut, which is often not this block, so the first line landed at the
+                // end of the document and the caret sat in the middle of the paste.
+                let headMd = '';
+                try {
+                    headMd = state.revealOnFocus ? (active.innerText || '') : blockHtmlToMarkdown(active);
+                } catch (eH) {
+                    try { headMd = active.innerText || ''; } catch (eI) { headMd = ''; }
                 }
+                // The caret at the start of a heading, quote, or list item is in front of
+                // the words. The marker is not text before the caret. Left on the head, a
+                // paste there becomes "## AAA" and the original line loses its marker.
+                if (cutTail && structuralMarkerOnly(headMd)) {
+                    cutTail = headMd + cutTail;
+                    headMd = '';
+                }
+                if (cutTail) {
+                    const last = blockTexts.length - 1;
+                    if (/^\s*(```|\|)/.test(blockTexts[last])) blockTexts.push(cutTail);
+                    else blockTexts[last] += cutTail;
+                    pasteCaretBeforeTail = cutTail;
+                }
+                const joined = String(headMd || '') + blockTexts[0];
+                active.setAttribute('data-raw', joined);
+                renderBlockPreview(active, joined);
+                try {
+                    const idx = (typeof DocumentModel !== 'undefined') ? DocumentModel.modelIndexOfEl(active) : -1;
+                    if (idx >= 0) DocumentModel.setBlockRaw(idx, joined);
+                } catch (eSync) {}
 
                 // Under virtualisation createBlock remounts the window, which replaces
                 // every mounted element -- including the one it just handed back. Chaining
@@ -3398,9 +3420,16 @@
                     const endBlock = getAncestorBlock(range.endContainer);
                     if (startBlock && endBlock && startBlock !== endBlock) multi = true;
                 }
+                // A caret the reader just placed is not the range they selected earlier.
+                if (typeof caretSupersedesMultiBlockFreeze === 'function')
+                    caretSupersedesMultiBlockFreeze();
                 if (!multi && typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze
                     && _mbSelFreeze.toIdx > _mbSelFreeze.fromIdx) multi = true;
                 if (!multi) {
+                    // A caret is not a selection. Cutting it used to preventDefault and
+                    // execCommand('delete'), which removed the character before the caret
+                    // and put nothing on the clipboard.
+                    if (!sel || !sel.rangeCount || sel.isCollapsed) return;
                     // One block: the clipboard is written as Copy writes it -- the plain text
                     // plus the HTML marked as TypoZen's own. Left to the browser, the HTML was
                     // unmarked, so pasting it back went through the external-HTML converter,
