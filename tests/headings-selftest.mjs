@@ -30,7 +30,7 @@ function extractFunction(name) {
 }
 
 const pureNames = [
-    'parseListLine', 'formatListLine', 'normalizeBlockRaw', 'isMultilineBlockRaw',
+    'parseListLine', 'formatListLine', 'normalizeBlockRaw', 'isMultilineBlockRaw', 'isInlineUnmarkableRaw',
     'coerceBlockRaw', 'stripListMarkerKeepBody', 'stripBlockPrefix', 'listIndentPad',
     'getListIndentLevel', 'transformRawForFormat'
 ];

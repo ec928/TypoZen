@@ -69,6 +69,88 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Bold across lines, Ctrl+B in a code block or table, Enter and paste across table cells — **fixed** (0.20.16)
+
+Found by `selection-attack.mjs` on seeds the gate had not run, and by reading its saved text
+(it counted words, which none of these lose):
+
+- **Bold / italic / strike over several lines** wrote `****Focus:** rest**` on a line that
+  starts bold, `> **[!WARNING] Title**` on a callout with a title (no longer a callout),
+  `- **bold text**` into an empty list item, `**![alt](pic)**` round a picture, and in Source
+  put `**` into the code inside a fence. Each line is now toggled as text: every word marked
+  takes the mark off, otherwise it goes on, and a result is used only if it shows the same
+  words (`wholeLineInlineFormat` in `04-lists.js`). Lines with no words, callout marker
+  lines, picture lines and code are left alone.
+- **Ctrl+B / Ctrl+I with the caret or a selection in a code block or table** changed nothing
+  but left the whole block selected, so the next letter typed replaced the code block or the
+  table. The selection is now left as it was.
+- **Enter, or a paste, over a selection that crosses table cells** removed the cells
+  themselves: what was left of the row moved a column to the left, and a paste of several
+  lines cut the table in two. Cells are now emptied and stay in their columns, as Delete
+  already did.
+- **A paste straight after a cut that ran out of a table's last cell** went after the row's
+  closing `|` and broke the table. It goes into a cell.
+
+- **Text typed or pasted after a selection that began at a code block's first character was
+  lost.** With the code emptied the caret sat beside the empty `<code>`, the text went into
+  the `<pre>` next to it, and the save read `<code>` alone. Typing over, Delete then typing,
+  and paste all did it. The caret now goes inside the code and the save reads the whole
+  `<pre>`. The text lands on a line after the emptied block.
+- **Delete or typing from one list item into the next** joined the second item's marker in as
+  words (`1. one 2. three`, `- a - [ ] b`). The marker of the joined line is dropped. A cut
+  that ended inside a list item, or took its first word, and was pasted straight back doubled
+  the marker the same way (`- [x] one - [x] two`); the paste keeps one.
+- **After a cut that began at the start of a table cell** the caret, and so the next paste,
+  went to the end of the cell before it. The cell the selection began in is remembered
+  (`startCell` on the remembered selection).
+
+- **Heading, quote, bullet, numbered and task formats destroyed code blocks and tables.** Over
+  a selection that included one, or with only the caret in one, the block was run into a
+  single line with a marker on each piece (`- ```js - code - ``` `, `## | a | b |`); rules,
+  pictures and a callout's marker line got markers too. Those lines are now left exactly as
+  they are and take no part in deciding on or off (`isInlineUnmarkableRaw` in `04-lists.js`);
+  in Source, code inside a fence is skipped as well.
+- **Quote or a heading on part of a list item, quote or heading cut a word in two**
+  (`1. T021 T022` gave `> T0` / `21 T022`): the split counted the marker as text. A line with
+  a marker takes the format whole. Part of a plain paragraph still splits into three lines.
+
+**Changed (Ed, 2026-11-14): bold marks what is selected.** Over several lines, bold, italic,
+strike and code used to take the whole of the first and last lines. They now start where the
+selection starts and end where it ends (`inlineMarksForSelectedLines`, `markRangeInLine` in
+`04-lists.js`). One decision for the whole selection, as in Word: every selected word already
+marked takes it off, otherwise it goes on everywhere. A selection inside one line that starts
+in a link's text and runs past it no longer writes `****` onto the page.
+
+**Changed (Ed, 2026-11-14): several lines pasted into a list item or quote are items of the
+same kind**, as in Word. They used to leave the marker as words after the last pasted line
+(`A` / `B- [x] item`). With `A`, `B` pasted:
+
+| Caret | Before | Now |
+|---|---|---|
+| `- \|item` | `A` / `B- item` | `- A` / `- Bitem` |
+| `- [x] \|item` | `A` / `B- [x] item` | `- [ ] A` / `- [x] Bitem` (the tick stays with its words) |
+| `1. \|item` | `A` / `B1. item` | `1. A` / `2. Bitem`, the numbers below counting on |
+| `> \|quote` | `A` / `B> quote` | `> A` / `> Bquote` |
+| `- one\|two` | `- oneA` / `Btwo` | `- oneA` / `- Btwo` (as Enter splits an item) |
+| `## \|Head` | `A` / `B## Head` | `A` / `## BHead` (Word would make `A` a heading too; not followed) |
+
+Whole lines pasted at the very start of a table (caret in front of its first cell) go above
+the table as lines. They used to be joined into that cell as one line, so a cut that ran from
+the lines above into the table, pasted straight back, became one long cell. Anywhere else in
+a table several lines still go into the cell as one line. Shown by `selection-attack.mjs`
+(cut and paste back, "order changed"); no case of its own.
+
+A pasted line that has its own marker keeps it. Whole lines -- a paste that ends in a line
+break -- in front of an item still go above it as they are (`A` / `B` / `- item`). Guarded by
+`keyboard-editing-cases.mjs` (preview), five cases that fail without the change.
+
+Guarded by `selection-attack.mjs`: "table cell moved", "changed the words shown", "marked
+words outside the selection", "a list marker became words", and for the list, quote and
+heading formats "a code block, table, rule or callout line was changed" and "a word was cut
+in two", each checked to fail with its fix taken out. Not guarded by a kept test: the lost text after an emptied code block (the
+attack's typing check covers it only when a random selection starts at a block's first word)
+and the cell the caret returns to.
+
 ### Duplicate `splitTableRow` shadowing across modules — **fixed** (0.20.15)
 
 `04-lists.js` and `06-render-epub.js` both defined a top-level `splitTableRow`, causing `06-render-epub.js`’s pipe-unescaping version to silently shadow `04-lists.js`’s raw-preserving version during multi-block table splices. Renamed the `04-lists.js` helper to `splitRawTableRow` (`modules-selftest.mjs` `49/49` passing, `selection-attack.mjs` `88/88` passing).

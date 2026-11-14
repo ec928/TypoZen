@@ -683,11 +683,23 @@
                     } catch (eSwap) {}
                 }
 
+                // Which table cell the selection starts in. The words before it cannot say:
+                // "after the last word of cell 1" and "at the start of an empty cell 2" are
+                // the same count, and the caret after a cut went to cell 1.
+                let startCell = -1;
+                try {
+                    const sn = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+                    const cell = sn && sn.closest ? sn.closest('td, th') : null;
+                    if (cell && startBlock.contains(cell)) {
+                        startCell = Array.prototype.indexOf.call(startBlock.querySelectorAll('td, th'), cell);
+                    }
+                } catch (eCell) {}
                 _mbSelFreeze = {
                     fromIdx: fromIdx,
                     toIdx: toIdx,
                     prefix: prefix,
-                    suffix: suffix
+                    suffix: suffix,
+                    startCell: startCell
                 };
             } catch (e) {}
         }
@@ -1260,6 +1272,12 @@
                         const vis = visibleTextOfModelLine(toIdx);
                         const m2 = partialLineMarkdown(allRaws[toIdx], vis.length - sf.length, vis.length);
                         if (m2 != null) tail = m2;
+                        // The last line's own marker stays behind when it joins another line:
+                        // "1. one |two" + "2. three" gave "1. one 2. three", the "2. " as words.
+                        if (head) {
+                            const mk = splitInlineFormatPrefix(allRaws[toIdx]).prefix;
+                            if (mk && mk.trim() && tail.indexOf(mk) === 0 && sf.indexOf(mk.trim()) !== 0) tail = tail.slice(mk.length);
+                        }
                     }
                 } catch (eF) {}
                 // A table's or block's words: its line breaks become spaces, none left trailing.
@@ -1351,6 +1369,8 @@
                 liveOk = true;
             }
             if (!liveOk || fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return null;
+            const startCell = (_mbSelFreeze && _mbSelFreeze.fromIdx === fromIdx && _mbSelFreeze.startCell >= 0)
+                ? _mbSelFreeze.startCell : -1;
 
             const result = applyModelMultiBlockDelete({
                 fromIdx: fromIdx,
@@ -1372,7 +1392,7 @@
                         '.block[data-model-index="' + result.focusIndex + '"]');
                 }
             } catch (eB) {}
-            return { block: block, offset: result.offset | 0, focusIndex: result.focusIndex };
+            return { block: block, offset: result.offset | 0, focusIndex: result.focusIndex, startCell: startCell };
         }
 
         /**
@@ -1396,6 +1416,43 @@
                 }
                 focusBlock(b);
                 setCaretAtOffset(b, cutAt.offset | 0);
+                // A code block whose code is now empty has no text to put the caret in, and it
+                // was left beside the <code>, outside it. Put it inside.
+                try {
+                    const codeEl = b.querySelector('pre code');
+                    const s = window.getSelection();
+                    if (codeEl && s && !(s.anchorNode && codeEl.contains(s.anchorNode))) {
+                        const r = document.createRange();
+                        r.selectNodeContents(codeEl);
+                        r.collapse((cutAt.offset | 0) <= 0);
+                        s.removeAllRanges();
+                        s.addRange(r);
+                    }
+                } catch (eCode) {}
+                // In a table: the cell the selection started in (see startCell).
+                try {
+                    const cells = cutAt.startCell >= 0 ? b.querySelectorAll('td, th') : null;
+                    const cell = cells && cells[cutAt.startCell];
+                    if (cell) {
+                        const lead = document.createRange();
+                        lead.selectNodeContents(b);
+                        lead.setEnd(cell, 0);
+                        let left = Math.max(0, (cutAt.offset | 0) - lead.toString().length);
+                        const r = document.createRange();
+                        r.selectNodeContents(cell);
+                        r.collapse(true);
+                        const tw = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+                        let t;
+                        while ((t = tw.nextNode())) {
+                            if (left <= t.nodeValue.length) { r.setStart(t, left); r.collapse(true); left = -1; break; }
+                            left -= t.nodeValue.length;
+                        }
+                        if (left > 0) { r.selectNodeContents(cell); r.collapse(false); }
+                        const s = window.getSelection();
+                        s.removeAllRanges();
+                        s.addRange(r);
+                    }
+                } catch (eCellCaret) {}
                 return b;
             } catch (err) { return null; }
         }
@@ -2428,6 +2485,160 @@
          * Transform pure strings → loadMarkdownContent(KNOWN GOOD post). Reload is safe
          * when content is correct; the wipe was reloading EMPTY content.
          */
+        /** A line a mark never goes on: a table, a fenced block or its fence, a rule, a
+         *  callout's marker line, a line that is only a picture. */
+        function isInlineUnmarkableRaw(raw) {
+            raw = String(raw == null ? '' : raw);
+            return isMultilineBlockRaw(raw)
+                || /^\s*(?:```|~~~|\||(?:---+|\*\*\*+|___+)\s*$|>\s*\[![A-Za-z]+\]|!\[[^\]]*\]\([^)]*\)\s*$)/i.test(raw);
+        }
+
+        /**
+         * Put bold, italic or strike on (or take it off) characters a..b of one line's text
+         * (no marker), counted in the words shown. Returns the new text, or null when no
+         * way of writing it shows the same words with exactly that range changed.
+         *
+         * Turning on, the range first grows over neighbouring words that already have the
+         * mark, so the result is one run ("**a** b" -> "**a b**") and never a mark inside a
+         * mark. Each candidate is rendered and checked: same words, the range all on (or all
+         * off), every other word's bold, italic and strike as they were.
+         */
+        function markRangeInLine(body, a, b, type, turnOn) {
+            body = String(body == null ? '' : body);
+            const m = type === 'bold' ? '**' : type === 'italic' ? '*' : '~~';
+            const before = plainAndMarksFromMarkdown(body);
+            const n = before.plain.length;
+            const sp = function (c) { return /\s/.test(before.plain.charAt(c)); };
+            const on = function (pm, c, t) { return !!(pm.marks[c] && pm.marks[c][t || type]); };
+            a = Math.max(0, Math.min(a | 0, n)); b = Math.max(a, Math.min(b | 0, n));
+            if (turnOn) {
+                for (let p = a - 1; p >= 0; p--) { if (sp(p)) continue; if (on(before, p)) a = p; else break; }
+                for (let p = b; p < n; p++) { if (sp(p)) continue; if (on(before, p)) b = p + 1; else break; }
+            }
+            while (a < b && sp(a)) a++;
+            while (b > a && sp(b - 1)) b--;
+            if (a >= b) return null;
+            const ok = function (cand) {
+                const pm = plainAndMarksFromMarkdown(cand);
+                if (pm.plain !== before.plain) return false;
+                for (let c = 0; c < n; c++) {
+                    if (sp(c)) continue;
+                    if (on(pm, c) !== ((c >= a && c < b) ? turnOn : on(before, c))) return false;
+                    if (type !== 'bold' && on(pm, c, 'bold') !== on(before, c, 'bold')) return false;
+                    if (type !== 'italic' && on(pm, c, 'italic') !== on(before, c, 'italic')) return false;
+                    if (type !== 'strike' && on(pm, c, 'strike') !== on(before, c, 'strike')) return false;
+                }
+                return true;
+            };
+            const strip = function (s) {
+                if (type === 'bold') return s.replace(/\*\*/g, '');
+                if (type === 'strike') return s.replace(/~~/g, '');
+                return s.replace(/(^|[^*\\])\*(?!\*)/g, '$1');
+            };
+            const o = plainRangeToRawOffsets(body, a, b);
+            // The range's ends in the Markdown, and the same ends moved outside any marks,
+            // code span or link they touch.
+            const starts = [o.r0];
+            let s = o.r0; while (s > 0 && /[*_~]/.test(body.charAt(s - 1))) s--;
+            if (s !== o.r0) starts.push(s);
+            [o.r0, s].forEach(function (x) { if (x > 0 && /[`\[]/.test(body.charAt(x - 1)) && starts.indexOf(x - 1) < 0) starts.push(x - 1); });
+            const ends = [o.r1];
+            let e = o.r1; while (e < body.length && /[*_~]/.test(body.charAt(e))) e++;
+            if (e !== o.r1) ends.push(e);
+            [o.r1, e].forEach(function (x) {
+                if (body.charAt(x) === '`' && ends.indexOf(x + 1) < 0) ends.push(x + 1);
+                if (body.charAt(x) === ']' && body.charAt(x + 1) === '(') {
+                    const close = body.indexOf(')', x);
+                    if (close > 0 && ends.indexOf(close + 1) < 0) ends.push(close + 1);
+                }
+            });
+            const cands = [];
+            for (let i = 0; i < starts.length; i++) for (let j = 0; j < ends.length; j++) {
+                const s0 = starts[i], e0 = ends[j];
+                if (s0 >= e0) continue;
+                const mid = body.slice(s0, e0);
+                if (turnOn) { cands.push(body.slice(0, s0) + m + strip(mid) + m + body.slice(e0)); cands.push(body.slice(0, s0) + m + mid + m + body.slice(e0)); }
+                else cands.push(body.slice(0, s0) + strip(mid) + body.slice(e0));
+            }
+            // Last: the marks model. Right, but it writes a mark round each word.
+            try {
+                const viaModel = applyInlineFormatToRaw(body, a, b, type, { refuseIfLossy: true });
+                if (viaModel != null) cands.push(viaModel);
+            } catch (eM) {}
+            for (let c = 0; c < cands.length; c++) if (cands[c] !== body && ok(cands[c])) return cands[c];
+            return null;
+        }
+
+        /**
+         * Bold / italic / strike / code over a selection across lines: the new Markdown for
+         * each selected line, keyed by line index. The first line is marked from where the
+         * selection starts, the last up to where it ends, the lines between whole. One
+         * decision for the whole selection, as in Word: if every selected word already has
+         * the mark it comes off, otherwise it goes on everywhere (a line that already has it
+         * is left alone). Returns null for other formats.
+         *
+         * Where the selection starts and ends comes from the remembered selection
+         * (_mbSelFreeze: the words before it on the first line, after it on the last). If
+         * those do not match the line as written, that line is marked whole, as before.
+         */
+        function inlineMarksForSelectedLines(preLines, focusIndices, type) {
+            if (type !== 'bold' && type !== 'italic' && type !== 'strike' && type !== 'code') return null;
+            const keys = Object.keys(focusIndices).map(Number).filter(function (n) { return n >= 0 && n < preLines.length; })
+                .sort(function (a, b) { return a - b; });
+            if (!keys.length) return {};
+            const first = keys[0], last = keys[keys.length - 1];
+            const fz = (typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze
+                && _mbSelFreeze.fromIdx === first && _mbSelFreeze.toIdx === last) ? _mbSelFreeze : null;
+            const norm = function (s) { return String(s == null ? '' : s).replace(/[​﻿]/g, '').replace(/ /g, ' '); };
+            const prefixRe = /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/;
+            const lines = [];
+            for (let k = 0; k < keys.length; k++) {
+                const i = keys[k];
+                const raw = String(preLines[i] == null ? '' : preLines[i]);
+                if (!raw.trim() || isInlineUnmarkableRaw(raw)) continue;
+                const pre = (raw.match(prefixRe) || [''])[0];
+                const pm = plainAndMarksFromMarkdown(raw.slice(pre.length));
+                const len = pm.plain.length;
+                let a = 0, b = len;
+                if (fz && i === first) {
+                    const p = norm(fz.prefix);
+                    if (p.length <= len && norm(pm.plain.slice(0, p.length)) === p) a = p.length;
+                }
+                if (fz && i === last) {
+                    const s = norm(fz.suffix);
+                    if (s.length <= len && norm(pm.plain.slice(len - s.length)) === s) b = Math.max(a, len - s.length);
+                }
+                const ix = [];
+                for (let c = a; c < b; c++) if (!/\s/.test(pm.plain.charAt(c))) ix.push(c);
+                if (!ix.length) continue;
+                const allOn = type !== 'code' && ix.every(function (c) { return pm.marks[c] && pm.marks[c][type]; });
+                lines.push({ i: i, raw: raw, pre: pre, pm: pm, a: a, b: b, whole: a === 0 && b === len, allOn: allOn });
+            }
+            const turnOff = type !== 'code' && lines.length > 0 && lines.every(function (l) { return l.allOn; });
+            const out = {};
+            lines.forEach(function (l) {
+                if (type !== 'code' && !turnOff && l.allOn) return;
+                let next = null;
+                if (type === 'code') {
+                    if (l.whole) next = transformRawForFormat(l.raw, type, { wholeLines: true });
+                    else {
+                        next = applyInlineFormatToRaw(l.raw, l.a, l.b, type);
+                        // Only the marks may change, never the words.
+                        if (next != null) {
+                            const pre2 = (String(next).match(prefixRe) || [''])[0];
+                            if (pre2 !== l.pre || plainAndMarksFromMarkdown(String(next).slice(pre2.length)).plain.replace(/\s+/g, ' ') !== l.pm.plain.replace(/\s+/g, ' ')) next = null;
+                        }
+                    }
+                } else {
+                    const body2 = markRangeInLine(l.raw.slice(l.pre.length), l.a, l.b, type, !turnOff);
+                    if (body2 != null) next = l.pre + body2;
+                    else if (l.whole) next = transformRawForFormat(l.raw, type, { wholeLines: true });
+                }
+                if (next != null && next !== l.raw) out[l.i] = next;
+            });
+            return out;
+        }
+
         function applyFormatInPlaceToSelection(type, forceOff, forceOn) {
             if (!editor) return false;
 
@@ -2512,15 +2723,22 @@
 
             let olNum = 1;
             const postLines = [];
+            // Bold, italic, strike and code mark what is selected, not the whole of the
+            // first and last lines (Ed, 2026-11-14).
+            let inlinePlan = null;
+            try { inlinePlan = inlineMarksForSelectedLines(preLines, focusIndices, type); } catch (ePlan) { inlinePlan = null; }
             for (let i = 0; i < preLines.length; i++) {
                 let raw = preLines[i];
-                if (focusIndices[i] && String(raw || '').trim()) {
+                if (inlinePlan) {
+                    if (Object.prototype.hasOwnProperty.call(inlinePlan, i)) raw = inlinePlan[i];
+                } else if (focusIndices[i] && String(raw || '').trim() && !isInlineUnmarkableRaw(raw)) {
                     const n = olNum;
                     if ((type === 'ol' || type === 'ordered') && forceOn) olNum++;
                     raw = transformRawForFormat(raw, type, {
                         forceOff: forceOff,
                         forceOn: forceOn,
-                        olNum: n
+                        olNum: n,
+                        wholeLines: true
                     });
                 }
                 if (String(preLines[i] || '').trim() && !String(raw || '').trim()) {
@@ -2755,6 +2973,57 @@
             return { prefix: lead, body: s.slice(lead.length) };
         }
 
+        /**
+         * Bold, italic or strike over the whole of one line's text (no marker), for a
+         * selection across lines. Returns the new text; the same text when marking it would
+         * change its words; null for `code`, which the caller wraps as before.
+         *
+         * It toggles: every word marked -> off, otherwise on. Each candidate is rendered and
+         * used only if it shows the same words with the mark on all of them (or none): so a
+         * line that is partly marked never ends up as "****Focus:** rest**".
+         */
+        function wholeLineInlineFormat(body, type) {
+            if (type !== 'bold' && type !== 'italic' && type !== 'strike') return null;
+            try {
+                const lead = (body.match(/^\s*/) || [''])[0];
+                const trail = (body.slice(lead.length).match(/\s*$/) || [''])[0];
+                const core = body.slice(lead.length, body.length - trail.length);
+                if (!core) return body;
+                const before = plainAndMarksFromMarkdown(core);
+                const nonSpace = function (pm) {
+                    const ix = [];
+                    for (let i = 0; i < pm.plain.length; i++) if (!/\s/.test(pm.plain.charAt(i))) ix.push(i);
+                    return ix;
+                };
+                const allOn = function (pm) {
+                    const ix = nonSpace(pm);
+                    return ix.length > 0 && ix.every(function (i) { return pm.marks[i] && pm.marks[i][type]; });
+                };
+                const noneOn = function (pm) {
+                    return !nonSpace(pm).some(function (i) { return pm.marks[i] && pm.marks[i][type]; });
+                };
+                const m = type === 'bold' ? '**' : type === 'italic' ? '*' : '~~';
+                const inner = type === 'bold' ? core.replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '$1')
+                    : type === 'strike' ? core.replace(/~~(?=\S)([\s\S]*?\S)~~/g, '$1') : null;
+                // Every word already marked: the mark comes off. Otherwise it goes on, round
+                // the line as written, or round the line with the same mark inside it taken off.
+                const off = allOn(before);
+                const candidates = [];
+                if (off) {
+                    if (core.slice(0, m.length) === m && core.slice(-m.length) === m) candidates.push(core.slice(m.length, -m.length));
+                    if (inner != null) candidates.push(inner);
+                } else {
+                    candidates.push(m + core + m);
+                    if (inner != null) candidates.push(m + inner + m);
+                }
+                for (let c = 0; c < candidates.length; c++) {
+                    const pm = plainAndMarksFromMarkdown(candidates[c]);
+                    if (pm.plain === before.plain && (off ? noneOn(pm) : allOn(pm))) return lead + candidates[c] + trail;
+                }
+                return body;
+            } catch (e) { return body; }
+        }
+
         function transformRawForFormat(raw, type, opts) {
             opts = opts || {};
             const forceOff = !!opts.forceOff;
@@ -2770,14 +3039,24 @@
             if (type === 'bold' || type === 'italic' || type === 'code' || type === 'strike') {
                 // Never wrap raw structural blocks (fences, tables, horizontal rules, callout headers)
                 // in inline markers; doing so corrupts their markdown syntax across the whole block.
-                if (isMultilineBlockRaw(raw)
-                    || /^\s*(?:```|~~~|\||(?:---+|\*\*\*+|___+)\s*$|>\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$)/i.test(raw)) {
-                    return raw;
-                }
+                // A callout's marker line is structure with or without a title after it
+                // ("> [!WARNING] Title" became "> **[!WARNING] Title**", no longer a callout),
+                // and a line that is only a picture has no words to mark.
+                if (isInlineUnmarkableRaw(raw)) return raw;
                 const split = splitInlineFormatPrefix(raw);
                 const prefix = split.prefix;
                 const t = split.body.trim();
                 let out;
+
+                // Whole lines of a selection across lines (opts.wholeLines): a line with no words
+                // stays as it is ("- " became "- **bold text**"), and a line that already has
+                // marks is toggled as text with marks, not wrapped as a string
+                // ("**Focus:** rest" became "****Focus:** rest**").
+                if (opts.wholeLines) {
+                    if (!t) return raw;
+                    const whole = wholeLineInlineFormat(split.body, type);
+                    if (whole != null) return prefix + whole;
+                }
 
                 if (type === 'bold') {
                     out = /^\*\*[\s\S]*\*\*$/.test(t)
@@ -2800,6 +3079,9 @@
                 }
                 return prefix + out;
             }
+            // No heading, quote or list marker on a table, a fence, a rule, a callout's marker
+            // line or a picture (in Source these arrive one line at a time).
+            if (/^(h[1-6]|quote|list|ol|ordered|checklist)$/.test(type) && isInlineUnmarkableRaw(raw)) return raw;
             if (type === 'h1') {
                 const isH1 = /^#\s+/.test(raw) && !/^##/.test(raw);
                 // forceOff / toggle-off when already H1; forceOn always applies
@@ -2933,6 +3215,17 @@
                         && s0 && !String(s0.toString() || '').trim()) return;
                 } catch (ePic) {}
                 if (tryApplyInlineFormat(type)) return;
+                // A code block, table or rule takes no whole-block mark. Falling through
+                // changed nothing but left the WHOLE block selected, so the next letter
+                // typed replaced the code block or the table (0.20.15).
+                if (state.mode !== 'source' && type !== 'link') {
+                    try {
+                        const sA = window.getSelection();
+                        const bA = sA && sA.rangeCount && sA.anchorNode && editor.contains(sA.anchorNode)
+                            ? getAncestorBlock(sA.anchorNode) : null;
+                        if (bA && bA === getAncestorBlock(sA.focusNode) && bA.querySelector('pre, table, hr')) return;
+                    } catch (eStruct) {}
+                }
                 // Fall through to whole-block wrap only if no usable selection
             }
 
@@ -2982,10 +3275,15 @@
                 }
 
                 let olNum = 1;
+                // Code inside a fence is left alone, as are the fence lines themselves.
+                let inFence = false;
+                full.substring(0, s).split('\n').forEach(l => { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; });
                 const out = lines.map(line => {
+                    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
+                    if (inFence) return line;
                     if (!line.trim() && lines.length > 1) return line; // keep blank separators
                     const next = transformRawForFormat(line, type, { forceOff, forceOn, olNum });
-                    if ((type === 'ol' || type === 'ordered') && forceOn && line.trim()) olNum++;
+                    if ((type === 'ol' || type === 'ordered') && forceOn && line.trim() && next !== line) olNum++;
                     return next;
                 }).join('\n');
 
@@ -3026,6 +3324,16 @@
                     return '';
                 })
                 : targets.map(function (b) { return readBlockRawSafe(b); });
+            // A heading, list or quote format never goes on a code block, a table, a rule, a
+            // callout's marker line or a picture: it destroyed them ("- ```js - code - ```",
+            // "## | a | b |"), even with only the caret in one. Those lines take no part in
+            // deciding on/off, and with nothing else selected nothing happens.
+            const formattableRaws = raws.filter(function (r) { return String(r || '').trim() && !isInlineUnmarkableRaw(r); });
+            if (raws.some(function (r) { return isInlineUnmarkableRaw(r); })) {
+                if (!formattableRaws.length) return;
+                raws.length = 0;
+                formattableRaws.forEach(function (r) { raws.push(r); });
+            }
             let forceOff = false, forceOn = false;
             if (type === 'list') {
                 forceOff = raws.every(r => {
@@ -3227,6 +3535,11 @@
             if (String(raw).indexOf('\n') >= 0) {
                 return formatLinesInBlock(block, type, opts);
             }
+
+            // A list item, quote or heading is one line with one marker: the format goes on the
+            // whole line. Splitting it at the selection counted the marker as text and cut
+            // words in two ("1. T021 T022" + quote gave "> T0" / "21 T022").
+            if (splitInlineFormatPrefix(raw).prefix.trim()) return null;
 
             const off = resolveBlockPlainOffsets(block);
             if (!off || off.start === off.end) return null;

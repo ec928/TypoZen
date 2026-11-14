@@ -56,7 +56,7 @@ const names = [
     'escapeHtml', 'safeUrl', 'parseInline', 'renderMarkdownTable', 'renderBlockPreview',
     'isThematicBreakLine',
     'clearListIndentClasses', 'setBlockListIndentAttr', 'parseListLine', 'formatListLine',
-    'listIndentPad', 'coerceBlockRaw', 'normalizeBlockRaw', 'isMultilineBlockRaw',
+    'listIndentPad', 'coerceBlockRaw', 'normalizeBlockRaw', 'isMultilineBlockRaw', 'isInlineUnmarkableRaw',
     'blockHtmlToMarkdown', 'isListLine', 'getListIndentLevel',
     'plainRangeToRawOffsets', 'plainAndMarksFromMarkdown',
     'emitInlineMarkdownFromMarks', 'applyInlineFormatToRaw', 'applyMarksModelToBody', 'applyInlineFormatRest',
@@ -154,7 +154,7 @@ console.log('--- formatting a list line keeps the list line ---');
     // nesting lost, numbering restarted, body destroyed by the next re-parse.
     const names2 = ['parseListLine', 'formatListLine', 'listIndentPad', 'isListLine', 'getListIndentLevel',
         'stripListMarkerKeepBody', 'stripBlockPrefix', 'normalizeBlockRaw', 'coerceBlockRaw',
-        'isMultilineBlockRaw', 'splitInlineFormatPrefix', 'transformRawForFormat'];
+        'isMultilineBlockRaw', 'isInlineUnmarkableRaw', 'splitInlineFormatPrefix', 'transformRawForFormat'];
     let s2 = 'const LIST_MAX_INDENT = 6; const LIST_INDENT_SPACES = 2;\n';
     for (const n of names2) s2 += extractFunction(n) + '\n';
     s2 += 'return {' + names2.join(',') + '};';

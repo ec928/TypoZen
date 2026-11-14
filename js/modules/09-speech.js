@@ -3350,6 +3350,11 @@ function chunkSpeechText(chunk) {
             let shown = (el.textContent || '').replace(/\s+/g, ' ').trim();
             // A lone ** left on a line (a bold from a line this chunk cannot see) is not words.
             if ((shown.match(/\*\*/g) || []).length % 2) shown = shown.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+            // A callout marker of a kind Preview does not draw ("> [!CRITICAL]", from Obsidian
+            // and others) is shown as written; it is said as its name, not as brackets.
+            shown = shown.replace(/^\[!([A-Za-z]+)\]\s*/, function (m, w) {
+                return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() + (shown.length > m.length ? '. ' : '');
+            });
             // A picture alone shows no text: its alt text, if it has one, rather than its source.
             const alts = (String(chunk.text || '').match(/!\[([^\]]*)\]/g) || [])
                 .map(m => m.slice(2, -1).trim()).filter(Boolean).join('. ');

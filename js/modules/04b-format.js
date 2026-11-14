@@ -453,9 +453,13 @@
                     while (s > 0 && full.charAt(s - 1) !== '\n') s--;
                     while (e < full.length && full.charAt(e) !== '\n') e++;
                     const lines = full.substring(s, e).split('\n');
+                    // Code inside a fence is not marked: its lines got "**" written into them.
+                    let inFence = false;
+                    full.substring(0, s).split('\n').forEach(function (l) { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; });
                     const out = lines.map(function (line) {
-                        if (!String(line).trim()) return line;
-                        return transformRawForFormat(line, type, {});
+                        if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
+                        if (inFence || !String(line).trim()) return line;
+                        return transformRawForFormat(line, type, { wholeLines: true });
                     }).join('\n');
                     HistoryManager.beginEdit();
                     // Keep scroll pin: setRangeText('select') otherwise jumps ~1–2 lines
@@ -569,6 +573,13 @@
             }
             if (!block || !offsets || (offsets.start === offsets.end && type !== 'link')) return false;
             if (block.querySelector && (block.querySelector('pre') || block.querySelector('hr'))) return false;
+            // Across table cells there is no one run of text to mark; leave the selection
+            // alone (rebuilding it from offsets below dropped it, and the caret with it).
+            try {
+                const sT = window.getSelection();
+                if (block.querySelector('table') && sT && sT.rangeCount && typeof rangeCrossesTableCells === 'function'
+                    && rangeCrossesTableCells(sT.getRangeAt(0))) return false;
+            } catch (eT) {}
 
             // Bold / italic / strike: apply on the live DOM first, then serialize → raw.
             // Raw-only applyInlineFormatToRaw fails when the selection sits *inside* a wider
@@ -634,6 +645,40 @@
                     // restore from the pre-click raw so Preview and data-raw stay aligned.
                     try { renderBlockPreview(block, prevRaw); } catch (eR) {}
                     return false;
+                }
+
+                // The mark may change; the words shown may not. A selection that starts inside a
+                // link's text and runs past it came back as "[a **b**](u) ****c": stars on the
+                // page. If the result does not read as the line did, mark the range the
+                // checked way, or leave the line as it was.
+                if (prevRaw.indexOf('\n') < 0 && typeof markRangeInLine === 'function') {
+                    try {
+                        const preRe = /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/;
+                        const words = function (raw) {
+                            const p = (String(raw).match(preRe) || [''])[0];
+                            return p + '\n' + plainAndMarksFromMarkdown(String(raw).slice(p.length)).plain.replace(/\s+/g, ' ').trim();
+                        };
+                        if (words(applied) !== words(prevRaw)) {
+                            const p0 = (prevRaw.match(preRe) || [''])[0];
+                            const body0 = prevRaw.slice(p0.length);
+                            const pm0 = plainAndMarksFromMarkdown(body0);
+                            let allOn = true, any = false;
+                            for (let c = offsets.start; c < offsets.end && c < pm0.plain.length; c++) {
+                                if (/\s/.test(pm0.plain.charAt(c))) continue;
+                                any = true;
+                                if (!(pm0.marks[c] && pm0.marks[c][type])) { allOn = false; break; }
+                            }
+                            const alt = any ? markRangeInLine(body0, offsets.start, offsets.end, type, !allOn) : null;
+                            if (alt == null) {
+                                try { renderBlockPreview(block, prevRaw); } catch (eR2) {}
+                                return true;
+                            }
+                            applied = p0 + alt;
+                            // Back to the line as it was before the attempt above, so the
+                            // change is one undo step from there.
+                            try { renderBlockPreview(block, prevRaw); } catch (eR3) {}
+                        }
+                    } catch (eW) {}
                 }
 
                 return commitInlineFormatToBlock(block, applied, offsets);

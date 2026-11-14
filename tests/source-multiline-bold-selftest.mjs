@@ -48,7 +48,7 @@ assert(mainScript.includes('withSourceScrollPreserved')
 console.log('=== pure: per-line bold on 3 rows ===');
 {
     const pureNames = [
-        'parseListLine', 'formatListLine', 'normalizeBlockRaw', 'isMultilineBlockRaw',
+        'parseListLine', 'formatListLine', 'normalizeBlockRaw', 'isMultilineBlockRaw', 'isInlineUnmarkableRaw',
         'coerceBlockRaw', 'stripListMarkerKeepBody', 'stripBlockPrefix', 'listIndentPad',
         'getListIndentLevel', 'splitInlineFormatPrefix', 'transformRawForFormat'
     ];

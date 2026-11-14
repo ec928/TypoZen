@@ -279,6 +279,15 @@ try {
             await run(mode, 'Ctrl+V of two lines at the start of a **bold** list item', 'Intro\n\n- **Task:** two\n\nEnd', ['Task', 0],
                 async () => { await page.evaluate(() => navigator.clipboard.writeText('A\nB\n')); await chord(['Control'], 'v'); await sleep(300); },
                 'Intro\n\nA\nB\n- **Task:** two\n\nEnd');
+            // Several lines pasted into a list item or quote are items of the same kind, as in
+            // Word (Ed, 2026-11-14). The marker used to move down as words: "A" / "B- item".
+            // Whole lines (the case above, ending in a line break) still go above as they are.
+            const pasteAB = (clip) => async () => { await page.evaluate((c) => navigator.clipboard.writeText(c), clip); await chord(['Control'], 'v'); await sleep(300); await kb.type('Z'); };
+            await run(mode, 'Ctrl+V of two lines before the words of a list item: both are items', 'Intro\n\n- item\n\nEnd', ['item', 0], pasteAB('A\nB'), 'Intro\n\n- A\n- BZitem\n\nEnd');
+            await run(mode, 'Ctrl+V of two lines before the words of a ticked task: the tick stays with its words', 'Intro\n\n- [x] item\n\nEnd', ['item', 0], pasteAB('A\nB'), 'Intro\n\n- [ ] A\n- [x] BZitem\n\nEnd');
+            await run(mode, 'Ctrl+V of three lines in a numbered item counts on', 'Intro\n\n1. item\n2. next\n\nEnd', ['item', 0], pasteAB('A\nB\nC'), 'Intro\n\n1. A\n2. B\n3. CZitem\n4. next\n\nEnd');
+            await run(mode, 'Ctrl+V of two lines mid list item: the second half is an item', 'Intro\n\n- onetwo\n\nEnd', ['onetwo', 3], pasteAB('A\nB'), 'Intro\n\n- oneA\n- BZtwo\n\nEnd');
+            await run(mode, 'Ctrl+V of two lines before the words of a heading: the heading keeps its marker', 'Intro\n\n## Head\n\nEnd', ['Head', 0], pasteAB('A\nB'), 'Intro\n\nA\n## BZHead\n\nEnd');
             // Splitting a fence into blocks closed it at the caret and left "``` line ```".
             await run(mode, 'Ctrl+V of two lines inside a code block stays code', 'Intro\n\n```\ncode line\n```\n\nEnd', ['code line', 4],
                 async () => { await page.evaluate(() => navigator.clipboard.writeText('X\nY')); await chord(['Control'], 'v'); await sleep(300); await kb.type('Z'); },

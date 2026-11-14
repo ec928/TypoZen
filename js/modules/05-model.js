@@ -2243,7 +2243,12 @@
             if (sel && !sel.isCollapsed && sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
                 try {
                     active = getAncestorBlock(sel.anchorNode);
-                    sel.deleteFromDocument();
+                    // Across table cells the Delete key's own delete: cells are emptied and
+                    // keep their columns. deleteFromDocument removed the cells, which moved
+                    // the rest of the row a column left and, with several lines pasted, cut
+                    // the table in two.
+                    if (rangeCrossesTableCells(sel.getRangeAt(0))) document.execCommand('delete');
+                    else sel.deleteFromDocument();
                     if (active && !editor.contains(active)) active = null;
                 } catch(err) {}
             }
@@ -2258,6 +2263,7 @@
                 if (blocks.length > 0) active = blocks[blocks.length - 1];
             }
 
+            let pasteAboveTable = null;
             // A table cell holds one line. Several lines pasted into one were split into
             // blocks, which cut the table at the caret and left broken rows behind. They go
             // into the cell as one line instead, separated by spaces.
@@ -2265,8 +2271,46 @@
                 const selC = window.getSelection();
                 const anchorEl = selC && selC.anchorNode
                     ? (selC.anchorNode.nodeType === 1 ? selC.anchorNode : selC.anchorNode.parentElement) : null;
-                const inCell = anchorEl && anchorEl.closest && anchorEl.closest('td, th');
-                if (inCell && active && active.contains(inCell) && /[\r\n]/.test(String(text))) {
+                let inCell = anchorEl && anchorEl.closest && anchorEl.closest('td, th');
+                // A caret in a table but in no cell (where a cut that ran out of the table's
+                // last cell leaves it): the paste belongs to the cell just before it. Left
+                // there, the text went after the row's closing "|" and broke the table.
+                if (!inCell && active && active.querySelector && active.querySelector('table')
+                    && selC && selC.rangeCount && selC.isCollapsed && active.contains(selC.anchorNode)) {
+                    const cr = selC.getRangeAt(0);
+                    const cells = active.querySelectorAll('td, th');
+                    let before = null;
+                    for (let ci = 0; ci < cells.length; ci++) {
+                        const r = document.createRange();
+                        r.selectNodeContents(cells[ci]);
+                        if (r.compareBoundaryPoints(Range.START_TO_START, cr) <= 0) before = cells[ci];
+                    }
+                    const cell = before || cells[0];
+                    if (cell) {
+                        const r2 = document.createRange();
+                        r2.selectNodeContents(cell);
+                        // In front of every cell: the start of the first one, not its end.
+                        r2.collapse(!before);
+                        selC.removeAllRanges();
+                        selC.addRange(r2);
+                        inCell = cell;
+                    }
+                }
+                // Whole lines (the paste ends in a line break) at the very start of a table go
+                // above the table, as lines. Joined into the first cell, a cut that ran from the
+                // lines above into the table came back as one long line inside that cell.
+                if (inCell && active && active.contains(inCell) && /\n[ \t]*$/.test(String(text))
+                    && selC && selC.rangeCount && selC.isCollapsed) {
+                    const lead = document.createRange();
+                    lead.selectNodeContents(active);
+                    lead.setEnd(selC.anchorNode, selC.anchorOffset);
+                    const prevEl = active.previousElementSibling;
+                    if (!lead.toString().trim().length
+                        && prevEl && prevEl.classList && prevEl.classList.contains('block')) {
+                        pasteAboveTable = prevEl;
+                    }
+                }
+                if (!pasteAboveTable && inCell && active && active.contains(inCell) && /[\r\n]/.test(String(text))) {
                     text = String(text).split(/\r?\n/).map(function (l) { return l.trim(); })
                         .filter(function (l) { return l.length; }).join(' ');
                     if (!text) { HistoryManager.commitEdit(); return; }
@@ -2313,6 +2357,35 @@
                 return;
             }
 
+            if (pasteAboveTable) {
+                const linesAbove = blockTexts.slice();
+                // The break the paste ends with ends its last line; it is not a line of its own.
+                if (linesAbove.length && linesAbove[linesAbove.length - 1] === '') linesAbove.pop();
+                let prevBlock = pasteAboveTable;
+                for (let i = 0; i < linesAbove.length; i++) {
+                    const nb = createBlock(linesAbove[i], prevBlock);
+                    const nbIdx = DocumentModel.modelIndexOfEl(nb);
+                    prevBlock = editor.contains(nb) ? nb : (elementForModelIndex(nbIdx) || nb);
+                }
+                try {
+                    const tableBlock = prevBlock && prevBlock.nextElementSibling;
+                    const firstCell = tableBlock && tableBlock.querySelector ? tableBlock.querySelector('th, td') : null;
+                    if (firstCell) {
+                        const rc = document.createRange();
+                        rc.selectNodeContents(firstCell);
+                        rc.collapse(true);
+                        const sc = window.getSelection();
+                        sc.removeAllRanges();
+                        sc.addRange(rc);
+                    }
+                } catch (eTc) {}
+                updateStats();
+                updateOutline();
+                scheduleSavePreferences();
+                HistoryManager.commitEdit();
+                return;
+            }
+
             // Several lines pasted inside a fenced code block are code. Splitting them into
             // blocks closed the fence at the caret and left "``` line ```" behind.
             if (String(text).indexOf('\n') >= 0 && !state.revealOnFocus
@@ -2330,6 +2403,20 @@
                         if (off && off.start != null) startOff = off.start | 0;
                     }
                 } catch (eOff) {}
+
+                // A line has one marker. Text copied from the start of a list item, heading
+                // or quote carries that line's marker; pasted in front of the words of a line
+                // that has a marker of its own, the pasted one is dropped. Cutting the first
+                // word of "- [ ] one two" and pasting it back gave "- [ ] - [ ] one two".
+                try {
+                    const mkRe = /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/;
+                    const lineRaw = active && active.getAttribute ? (active.getAttribute('data-raw') || '') : '';
+                    if (startOff === 0 && sel && sel.isCollapsed && lineRaw.indexOf('\n') < 0
+                        && mkRe.test(lineRaw) && mkRe.test(blockTexts[0])) {
+                        const rest = blockTexts[0].replace(mkRe, '');
+                        if (rest) { blockTexts[0] = rest; text = rest; }
+                    }
+                } catch (eMk) {}
 
                 // Markdown pasted into a line keeps its own marks rather than taking the
                 // caret's: a cut from inside **bold** pasted back made everything after it
@@ -2425,10 +2512,66 @@
                 // paste there becomes "## AAA" and the original line loses its marker.
                 let markerMoved = false;
                 if (cutTail && structuralMarkerOnly(headMd)) {
-                    cutTail = headMd + cutTail;
-                    headMd = '';
-                    markerMoved = true;
+                    // Unless the last pasted line brings a marker of its own: then the words
+                    // join it and this line's marker is dropped. A cut that ended inside a
+                    // list item, pasted straight back, gave "- [x] one - [x] two" -- the
+                    // second marker as words.
+                    let lastHasMarker = false;
+                    try {
+                        const lp = String(blockTexts[blockTexts.length - 1] || '');
+                        lastHasMarker = !/^\s*(```|\|)/.test(lp)
+                            && /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/.test(lp);
+                    } catch (eLm) {}
+                    const lastPasted = String(blockTexts[blockTexts.length - 1] || '');
+                    if (lastHasMarker) {
+                        headMd = '';
+                    } else if (!lastPasted.trim()) {
+                        // Whole lines (the paste ends in a line break) go above this line as
+                        // they are, and the line stays whole below them.
+                        cutTail = headMd + cutTail;
+                        markerMoved = true;
+                        headMd = '';
+                    } else if (parseListLine(headMd) || /^\s*>\s*$/.test(headMd)) {
+                        // In a list item or a quote line the pasted lines are items of the
+                        // same kind, as in Word: "- |item" + A,B is "- A" / "- Bitem". The
+                        // marker stays with the first pasted line (headMd) and
+                        // markersForPastedLines gives the others theirs. It used to move down
+                        // as words: "A" / "B- item".
+                    } else {
+                        // A heading: the pasted lines go above as plain lines and the last one
+                        // joins the heading's words -- "A" / "## BHead", not "A" / "B## Head".
+                        blockTexts[blockTexts.length - 1] = headMd + lastPasted;
+                        headMd = '';
+                    }
                 }
+                // The list or quote marker this line has, for the pasted lines after the first.
+                const pasteLineMarker = (function () {
+                    try {
+                        if (blockTexts.length < 2) return null;
+                        const lp = parseListLine(headMd);
+                        if (lp) {
+                            const atItemStart = !String(lp.body || '').trim();
+                            const itemMarker = function (k, last) {
+                                return formatListLine(Object.assign({}, lp, {
+                                    body: '',
+                                    // The tick travels with the words it was on: all of them
+                                    // when the caret was in front of them. Split mid-item, the
+                                    // second half is a new item, unticked, as Enter makes it.
+                                    checked: (last && atItemStart) ? !!lp.checked : false,
+                                    num: lp.kind === 'ol' ? (lp.num || 1) + k : lp.num
+                                }));
+                            };
+                            // The first pasted line is a new item: not ticked.
+                            if (lp.kind === 'task' && lp.checked && !String(lp.body || '').trim() && cutTail) {
+                                headMd = formatListLine(Object.assign({}, lp, { body: '', checked: false }));
+                            }
+                            return { at: itemMarker, ordered: lp.kind === 'ol' };
+                        }
+                        const q = /^(\s*>\s?)/.exec(headMd);
+                        if (q && !/^\s*>\s*\[!/.test(headMd)) return { at: function () { return /\s$/.test(q[1]) ? q[1] : q[1] + ' '; }, ordered: false };
+                    } catch (ePm) {}
+                    return null;
+                })();
                 if (cutTail) {
                     const last = blockTexts.length - 1;
                     if (/^\s*(```|\|)/.test(blockTexts[last])) blockTexts.push(cutTail);
@@ -2442,6 +2585,14 @@
                             : (typeof concatMarkdown === 'function' ? concatMarkdown(blockTexts[last], cutTail) : blockTexts[last] + cutTail);
                     }
                     pasteCaretBeforeTail = cutTail;
+                }
+                if (pasteLineMarker && !markerMoved) {
+                    const mkRe = /^[ \t]*(#{1,6}\s+|>\s*|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+|```|~~~|\|)/;
+                    for (let k = 1; k < blockTexts.length; k++) {
+                        const line = String(blockTexts[k] || '');
+                        if (!line.trim() || line.indexOf('\n') >= 0 || mkRe.test(line)) continue;
+                        blockTexts[k] = pasteLineMarker.at(k, k === blockTexts.length - 1 && !!cutTail) + line;
+                    }
                 }
                 const joined = typeof concatMarkdown === 'function'
                     ? concatMarkdown(String(headMd || ''), blockTexts[0]) : String(headMd || '') + blockTexts[0];
@@ -2470,6 +2621,9 @@
                 if (lastIdx >= 0 && (!currentBlock || !editor.contains(currentBlock))) {
                     currentBlock = ensureModelBlockVisible(lastIdx, { topPad: 48 })
                         || elementForModelIndex(lastIdx);
+                }
+                if (pasteLineMarker && pasteLineMarker.ordered && !markerMoved && currentBlock && editor.contains(currentBlock)) {
+                    try { renumberOrderedListAfter(currentBlock); } catch (eNum) {}
                 }
                 if (currentBlock && editor.contains(currentBlock)) {
                     // The caret goes where the paste ended: before the line's moved tail.
@@ -4182,6 +4336,18 @@
             return true;
         }
 
+        /** Does the range start in one table cell and end in another? */
+        function rangeCrossesTableCells(range) {
+            try {
+                const cellOf = function (n) {
+                    const el = n && (n.nodeType === 1 ? n : n.parentElement);
+                    return el && el.closest ? el.closest('td, th') : null;
+                };
+                const a = cellOf(range.startContainer), b = cellOf(range.endContainer);
+                return !!((a || b) && a !== b);
+            } catch (e) { return false; }
+        }
+
         function handleEnterAtBlock(block, shiftKey, opts) {
             if (!block) return;
             const skipHistory = !!(opts && opts.skipHistory);
@@ -4197,10 +4363,17 @@
                 if (!skipHistory) HistoryManager.beginEdit();
                 try {
                     const rt = sel.getRangeAt(0);
-                    rt.deleteContents();
-                    rt.collapse(true);
-                    sel.removeAllRanges();
-                    sel.addRange(rt);
+                    if (rangeCrossesTableCells(rt)) {
+                        // As the Delete key does: cells are emptied and stay in their columns.
+                        // deleteContents removed the cells themselves, so what was left of
+                        // the row moved one column to the left.
+                        document.execCommand('delete');
+                    } else {
+                        rt.deleteContents();
+                        rt.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(rt);
+                    }
                 } catch (eT) {}
                 try {
                     const tRaw = state.revealOnFocus ? (block.innerText || '') : blockHtmlToMarkdown(block);
@@ -4672,7 +4845,12 @@
                 const was = String(block.getAttribute('data-raw') || '').split('\n');
                 const lastWas = was[was.length - 1];
                 const open = /^\s*```/.test(was[0]) ? was[0] : '```' + lang;
-                const code = codeEl.textContent || codeEl.innerText || '';
+                // The whole <pre>, not only the <code> in it. With the code emptied (a delete or
+                // a typed letter over a selection that began at the block's first character)
+                // the caret sits beside the empty <code>, what is typed or pasted next goes
+                // into the <pre> next to it, and reading <code> alone saved none of it.
+                const preEl = clone.querySelector('pre');
+                const code = (preEl && preEl.contains(codeEl) ? preEl.textContent : '') || codeEl.textContent || codeEl.innerText || '';
                 // A fence the author never closed stays open: it runs to the end of the file.
                 if (/^\s*```/.test(was[0]) && !(was.length > 1 && /^\s*`{3,}\s*$/.test(lastWas))) return open + '\n' + code;
                 const close = was.length > 1 && /^\s*`{3,}\s*$/.test(lastWas) ? lastWas : '```';

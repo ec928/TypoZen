@@ -56,7 +56,7 @@ console.log('=== pure: multi-select bullet keeps off-window rows ===');
     // Simulate 2500-line virt doc; only "mounted" window is indices 100..140 in DOM ordinals
     // User selects model rows 120..124 (data-model-index). Format must not use DOM 0..4.
     const pureNames = [
-        'parseListLine', 'formatListLine', 'normalizeBlockRaw', 'isMultilineBlockRaw',
+        'parseListLine', 'formatListLine', 'normalizeBlockRaw', 'isMultilineBlockRaw', 'isInlineUnmarkableRaw',
         'coerceBlockRaw', 'stripListMarkerKeepBody', 'stripBlockPrefix', 'listIndentPad',
         'getListIndentLevel', 'transformRawForFormat'
     ];

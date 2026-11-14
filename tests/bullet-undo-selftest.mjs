@@ -43,7 +43,7 @@ const pureNames = [
     'indentListLine',
     'isListLine',
     'normalizeBlockRaw',
-    'isMultilineBlockRaw',
+    'isMultilineBlockRaw', 'isInlineUnmarkableRaw',
     'coerceBlockRaw',
     'stripListMarkerKeepBody',
     'stripBlockPrefix',
