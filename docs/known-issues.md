@@ -69,6 +69,14 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Enter, paste, and bold over selections across blocks — **fixed** (0.20.14)
+
+Found by `tests/selection-attack.mjs` across 1-column, 2-column, and paginated Preview:
+- **Enter over a selection** left the selected text in place on cross-block and single-block selections (including inside table cells). `onEditorEnterCapture` and `handleEnterAtBlock` now delete the selected range first and record one undo step.
+- **Ctrl+B / inline formatting across raw blocks** wrapped fenced code blocks, tables, horizontal rules, and callout headers in `**…**`. `transformRawForFormat` and `applyFormatting` now leave structural blocks untouched.
+- **Paste / typing across a callout** was silently refused because `selectionHoldsPicture` matched the callout’s `<svg class="tz-alert-icon">` icon, and pasting over a selection took 2–3 `Ctrl+Z` steps. Decorative UI icons are excluded, `paste` shares one undo step with its cross-block delete, and `HistoryManager.beginEdit` refreshes caret-only top frames instead of pushing duplicates.
+- **Multi-line paste over a selection in a code fence** saw a stale `data-raw` mismatch after `sel.deleteFromDocument()` and shattered the fence; `pasteIntoCodeFence` now reads the live `<code>` text.
+
 ### Enter before a space in a list item hid the space; typing over lines took two undos — **fixed** (0.20.11)
 
 Enter at `W06| bullet` made `-  bullet`: the carried space sat after the marker, where

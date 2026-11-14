@@ -1284,7 +1284,7 @@
                 if (!whole && !(spec && spec.allowWipe)) return null;
             }
 
-            if (typeof HistoryManager !== 'undefined') {
+            if (!spec.skipHistory && typeof HistoryManager !== 'undefined') {
                 HistoryManager.recordEditPair(preContent, postContent);
             }
             const hm = typeof HistoryManager !== 'undefined' ? HistoryManager : null;
@@ -1316,7 +1316,7 @@
          * selections that cross the virtual window still delete every middle block.
          * Returns { block, offset } or null when the selection sits inside one block.
          */
-        function removeCrossBlockSelection() {
+        function removeCrossBlockSelection(opts) {
             if (caretSupersedesMultiBlockFreeze()) return null;
             const sel = window.getSelection();
             let fromIdx = -1, toIdx = -1, prefix = '', suffix = '';
@@ -1356,7 +1356,8 @@
                 fromIdx: fromIdx,
                 toIdx: toIdx,
                 prefix: prefix,
-                suffix: suffix
+                suffix: suffix,
+                skipHistory: !!(opts && opts.skipHistory)
             });
             if (!result) return null;
 
@@ -2767,6 +2768,12 @@
             // all — nesting lost, numbering restarted, and the text was destroyed by the
             // next re-parse. Split the prefix off, wrap what follows, put it back.
             if (type === 'bold' || type === 'italic' || type === 'code' || type === 'strike') {
+                // Never wrap raw structural blocks (fences, tables, horizontal rules, callout headers)
+                // in inline markers; doing so corrupts their markdown syntax across the whole block.
+                if (isMultilineBlockRaw(raw)
+                    || /^\s*(?:```|~~~|\||(?:---+|\*\*\*+|___+)\s*$|>\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$)/i.test(raw)) {
+                    return raw;
+                }
                 const split = splitInlineFormatPrefix(raw);
                 const prefix = split.prefix;
                 const t = split.body.trim();
@@ -3710,10 +3717,15 @@
                 this._flushTimer();
                 const cap = this._capture();
                 const capContent = this._contentOf(cap);
-                // Refuse empty snapshot when stack already has real content
-                if (!String(capContent).trim() && this.undoStack.length) {
+                // Refuse empty snapshot when stack already has real content, and avoid
+                // pushing a caret-only duplicate when top already has the same content.
+                if (this.undoStack.length) {
                     const topContent = this._contentOf(this.undoStack[this.undoStack.length - 1]);
-                    if (String(topContent).trim()) return;
+                    if (!String(capContent).trim() && String(topContent).trim()) return;
+                    if (this._sameContent(capContent, topContent)) {
+                        this.undoStack[this.undoStack.length - 1] = cap;
+                        return;
+                    }
                 }
                 this._push(cap, false);
             },

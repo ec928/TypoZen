@@ -2133,8 +2133,9 @@
                 const lines = raw.split('\n');
                 const open = lines[0];
                 const closed = lines.length > 1 && /^\s*(```|~~~)\s*$/.test(lines[lines.length - 1]);
-                const body = lines.slice(1, closed ? -1 : undefined).join('\n');
-                if ((code.textContent || '').replace(/\n$/, '') !== body) return false;
+                // Use live code.textContent: sel.deleteFromDocument() may have just removed a
+                // selection inside <code> before pasteIntoCodeFence ran, making data-raw stale.
+                const body = (code.textContent || '').replace(/\r\n?/g, '\n').replace(/\n$/, '');
                 const pre = document.createRange();
                 pre.selectNodeContents(code);
                 pre.setEnd(sel.anchorNode, sel.anchorOffset);
@@ -2186,7 +2187,7 @@
             } catch (e) {}
         }
 
-        function insertPastedPlainText(text, fromHtml) {
+        function insertPastedPlainText(text, fromHtml, opts) {
             if (text == null || text === '') return;
             // A paste into the middle of a line keeps its own spaces: " Pasted" after a word
             // arrived as "wordPasted", because the clean-up trims every paste.
@@ -2235,7 +2236,7 @@
             if (typeof recoverCaretForPaste === 'function') recoverCaretForPaste();
 
             // One undo step per paste (not debounced with typing). Capture pre-paste first.
-            HistoryManager.beginEdit();
+            if (!(opts && opts.skipBeginEdit)) HistoryManager.beginEdit();
 
             const sel = window.getSelection();
             let active = null;
@@ -2683,7 +2684,9 @@
             try { if (typeof selectionHoldsPicture === 'function' && selectionHoldsPicture()) return; } catch (eKp) {}
             // Pasting over a selection that spans lines: collapse it ourselves first, or
             // the insert lands in a leftover block and the lines never rejoin.
-            const over = removeCrossBlockSelection();
+            // Keep the delete + insert in a single undo step.
+            HistoryManager.beginEdit();
+            const over = removeCrossBlockSelection({ skipHistory: true });
             if (over) {
                 try { if (!placeCaretAtCut(over)) throw new Error('not placed'); }
                 catch (err) {
@@ -2697,7 +2700,7 @@
                     } catch (err2) {}
                 }
             }
-            insertPastedPlainText(text, fromHtml);
+            insertPastedPlainText(text, fromHtml, { skipBeginEdit: true });
         });
 
         // Drag & drop an image file straight into the document
@@ -2806,7 +2809,8 @@
                 const sel = window.getSelection();
                 if (!sel || sel.isCollapsed || !sel.rangeCount || !editor.contains(sel.anchorNode)) return false;
                 const inSel = sel.getRangeAt(0).cloneContents();
-                return !!(inSel.querySelector && inSel.querySelector('img, svg, video, audio, iframe, object, embed'));
+                // Exclude decorative UI icons (e.g. callout alert icons) so selecting across a callout doesn't block typing/paste.
+                return !!(inSel.querySelector && inSel.querySelector('img, svg:not(.tz-alert-icon):not([aria-hidden="true"]), video, audio, iframe, object, embed'));
             } catch (e) {}
             return false;
         }
@@ -3353,6 +3357,45 @@
                 if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
 
                 const sel = window.getSelection();
+                if (sel && !sel.isCollapsed && sel.rangeCount) {
+                    try {
+                        if (typeof selectionIsWholeEditor === 'function' && selectionIsWholeEditor(sel.getRangeAt(0))) {
+                            replaceWholeDocumentFromModel('');
+                            if (typeof updateStats === 'function') updateStats();
+                            if (typeof updateOutline === 'function') setTimeout(function () { try { updateOutline(); } catch (e2) {} }, 0);
+                            return;
+                        }
+                    } catch (eWhole) {}
+                    let isMultiBlock = false;
+                    if (typeof caretSupersedesMultiBlockFreeze !== 'function' || !caretSupersedesMultiBlockFreeze()) {
+                        try { if (typeof snapshotMultiBlockSelectionFromLive === 'function') snapshotMultiBlockSelectionFromLive(); } catch (eSnap) {}
+                        if (typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze && _mbSelFreeze.toIdx > _mbSelFreeze.fromIdx) isMultiBlock = true;
+                        if (sel.anchorNode && editor.contains(sel.anchorNode)) {
+                            const r0 = sel.getRangeAt(0);
+                            const sb = getAncestorBlock(r0.startContainer);
+                            const eb = getAncestorBlock(r0.endContainer);
+                            if (sb && eb && sb !== eb) isMultiBlock = true;
+                        }
+                    }
+                    if (isMultiBlock && typeof removeCrossBlockSelection === 'function') {
+                        const preContent = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks && DocumentModel.blocks.length)
+                            ? getMarkdownContent(false) : null;
+                        const cutAt = removeCrossBlockSelection({ skipHistory: true });
+                        if (cutAt) {
+                            const cutBlock = placeCaretAtCut(cutAt);
+                            if (cutBlock && !cutBlock.querySelector('table')) {
+                                handleEnterAtBlock(cutBlock, !!e.shiftKey, { skipHistory: true });
+                            }
+                            if (preContent != null && typeof HistoryManager !== 'undefined') {
+                                HistoryManager.recordEditPair(preContent, getMarkdownContent(false));
+                            }
+                            if (typeof updateStats === 'function') updateStats();
+                            if (typeof updateOutline === 'function') setTimeout(function () { try { updateOutline(); } catch (e2) {} }, 0);
+                            return;
+                        }
+                    }
+                }
+
                 let block = null;
                 if (sel && sel.anchorNode && editor.contains(sel.anchorNode)) {
                     block = getAncestorBlock(sel.anchorNode);
@@ -4083,7 +4126,8 @@
          * the fence at the caret and carry the rest out as one line of plain text. Enter on an
          * empty last line leaves the block, which is the keyboard's way out of it.
          */
-        function enterInCodeBlock(block, range) {
+        function enterInCodeBlock(block, range, opts) {
+            const skipHistory = !!(opts && opts.skipHistory);
             const code = block.querySelector('pre code') || block.querySelector('pre');
             if (!code || !code.contains(range.startContainer) || !code.contains(range.endContainer)) return false;
             const before = document.createRange();
@@ -4099,7 +4143,7 @@
             const rawOf = function (t) { return open + '\n' + t + (closed ? '\n' + last : ''); };
             const leaving = range.collapsed && start === text.length && /\n$/.test(text);
 
-            HistoryManager.beginEdit();
+            if (!skipHistory) HistoryManager.beginEdit();
             let caret = start + 1;
             if (leaving) {
                 writeBlockRaw(block, rawOf(text.slice(0, -1)));
@@ -4133,28 +4177,54 @@
                 setTimeout(function () { try { place(); ensureCaretVisible(block); } catch (e) {} }, 0);
             }
             try { refreshLastGoodDocRaws(); } catch (e2) {}
-            HistoryManager.commitEdit();
+            if (!skipHistory) HistoryManager.commitEdit();
             updateStats();
             return true;
         }
 
-        function handleEnterAtBlock(block, shiftKey) {
+        function handleEnterAtBlock(block, shiftKey, opts) {
             if (!block) return;
+            const skipHistory = !!(opts && opts.skipHistory);
             const sel = window.getSelection();
             const selInBlock = !!(sel && sel.rangeCount > 0 && block.contains(sel.getRangeAt(0).startContainer)
                 && block.contains(sel.getRangeAt(0).endContainer));
-            // A table is one block, and splitting it destroyed it. Tab moves between cells.
-            if (selInBlock && block.querySelector('table')) return;
-            if (selInBlock && block.querySelector('pre') && enterInCodeBlock(block, sel.getRangeAt(0))) return;
+            const wasCollapsed = !!(sel && sel.isCollapsed);
+            if (selInBlock && block.querySelector('pre') && enterInCodeBlock(block, sel.getRangeAt(0), opts)) return;
+            // A table is one block, and splitting it destroyed it. Tab moves between cells;
+            // Enter with a selection deletes the selected range inside the cell without splitting.
+            if (selInBlock && block.querySelector('table')) {
+                if (wasCollapsed) return;
+                if (!skipHistory) HistoryManager.beginEdit();
+                try {
+                    const rt = sel.getRangeAt(0);
+                    rt.deleteContents();
+                    rt.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(rt);
+                } catch (eT) {}
+                try {
+                    const tRaw = state.revealOnFocus ? (block.innerText || '') : blockHtmlToMarkdown(block);
+                    if (tRaw != null) {
+                        block.setAttribute('data-raw', tRaw);
+                        if (typeof DocumentModel !== 'undefined') {
+                            const ti = DocumentModel.modelIndexOfEl(block);
+                            if (ti >= 0) DocumentModel.setBlockRaw(ti, tRaw);
+                        }
+                    }
+                } catch (eTm) {}
+                if (!skipHistory) HistoryManager.commitEdit();
+                updateStats();
+                return;
+            }
 
             // Enter on a list item with nothing in it ends the list, as in Source: the empty
             // marker goes and the caret moves to a new line below. It used to push the empty
             // bullet down and add another ("- " / "- "), so a list could not be left by Enter.
-            if (selInBlock && sel.isCollapsed && !shiftKey) {
+            if (selInBlock && wasCollapsed && !shiftKey) {
                 const whole0 = normalizeBlockRaw(readBlockRawSafe(block));
                 const lp0 = parseListLine(whole0);
                 if (lp0 && !String(lp0.body || '').trim()) {
-                    HistoryManager.beginEdit();
+                    if (!skipHistory) HistoryManager.beginEdit();
                     writeBlockRaw(block, '');
                     const after = createBlock('', block);
                     window.isProgrammaticFocus = true;
@@ -4169,7 +4239,7 @@
                     } catch (eC0) {}
                     ensureCaretVisible(after);
                     try { refreshLastGoodDocRaws(); } catch (eR0) {}
-                    HistoryManager.commitEdit();
+                    if (!skipHistory) HistoryManager.commitEdit();
                     updateStats();
                     return;
                 }
@@ -4178,12 +4248,21 @@
             // At the start of a line the whole line moves down, marker and all. It used to
             // leave "# " or "> " behind and carry the words down as a plain paragraph.
             let wholeLine = null;
-            if (selInBlock && sel.isCollapsed && isCaretAtStartOfBlock(block)) {
+            if (selInBlock && wasCollapsed && isCaretAtStartOfBlock(block)) {
                 const whole = normalizeBlockRaw(readBlockRawSafe(block));
                 if (whole.trim() && !isMultilineBlockRaw(whole)) wholeLine = whole;
             }
 
-            HistoryManager.beginEdit();
+            if (!skipHistory) HistoryManager.beginEdit();
+            if (selInBlock && !wasCollapsed) {
+                try {
+                    const rd = sel.getRangeAt(0);
+                    rd.deleteContents();
+                    rd.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(rd);
+                } catch (eDel) {}
+            }
             let afterText = '';
             if (wholeLine !== null) {
                 afterText = wholeLine;
@@ -4303,7 +4382,7 @@
             }
             ensureCaretVisible(newBlock);
             try { refreshLastGoodDocRaws(); } catch (e2) {}
-            HistoryManager.commitEdit();
+            if (!skipHistory) HistoryManager.commitEdit();
             // updateStats schedules the outline (and with it the chapter label) 250 ms on.
             // Calling updateOutline here as well rebuilt the outline and re-measured every
             // laid-out block for the chapter label on every Enter: ~19 ms of a 64 ms Enter in

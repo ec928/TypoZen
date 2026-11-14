@@ -568,6 +568,7 @@
                 }
             }
             if (!block || !offsets || (offsets.start === offsets.end && type !== 'link')) return false;
+            if (block.querySelector && (block.querySelector('pre') || block.querySelector('hr'))) return false;
 
             // Bold / italic / strike: apply on the live DOM first, then serialize → raw.
             // Raw-only applyInlineFormatToRaw fails when the selection sits *inside* a wider
