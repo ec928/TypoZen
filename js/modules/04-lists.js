@@ -249,14 +249,23 @@
 
                 // A whole block copies as its markdown, not as its rendered text, so
                 // **bold** and `code` survive the round trip instead of arriving as plain
-                // words. A partial selection has no markdown to give -- the marks are not in
-                // the rendered text it covers -- so it copies what is visibly selected.
+                // words. Part of a line copies as the Markdown of that part (0.20.7): it
+                // went as the words shown, so a cut from inside **bold** pasted back plain.
                 const raw = b.getAttribute('data-raw');
                 if (raw != null && inter.toString() === blockRange.toString()) {
                     lines.push(raw);
                 } else {
                     // Any newline inside one block is browser filler, never a real line
-                    lines.push(String(inter.toString()).replace(/[\r\n]+/g, ' '));
+                    const shown = String(inter.toString()).replace(/[\r\n]+/g, ' ');
+                    let md = null;
+                    try {
+                        const pre = document.createRange();
+                        pre.selectNodeContents(b);
+                        pre.setEnd(inter.startContainer, inter.startOffset);
+                        const s0 = pre.toString().length;
+                        md = partialLineMarkdown(raw, s0, s0 + inter.toString().length);
+                    } catch (eP) { md = null; }
+                    lines.push(md != null ? md : shown);
                 }
             }
             if (!lines.length) return String(sel.toString());
@@ -582,10 +591,14 @@
             for (let i = f.fromIdx; i <= f.toIdx; i++) {
                 const raw = DocumentModel.blocks[i] ? String(DocumentModel.blocks[i].raw || '') : '';
                 if (i === f.fromIdx && f.prefix) {
-                    lines.push(visibleTextOfModelLine(i).slice(f.prefix.length).replace(/[\r\n]+/g, ' '));
+                    const v = visibleTextOfModelLine(i);
+                    const md = partialLineMarkdown(raw, f.prefix.length, v.length);
+                    lines.push(md != null ? md : v.slice(f.prefix.length).replace(/[\r\n]+/g, ' '));
                 } else if (i === f.toIdx && f.suffix) {
                     const v = visibleTextOfModelLine(i);
-                    lines.push(v.slice(0, Math.max(0, v.length - f.suffix.length)).replace(/[\r\n]+/g, ' '));
+                    const end = Math.max(0, v.length - f.suffix.length);
+                    const md = partialLineMarkdown(raw, 0, end);
+                    lines.push(md != null ? md : v.slice(0, end).replace(/[\r\n]+/g, ' '));
                 } else {
                     lines.push(raw);
                 }
@@ -677,6 +690,247 @@
                     suffix: suffix
                 };
             } catch (e) {}
+        }
+
+        /**
+         * Shift+PageDown / Shift+PageUp in Preview: scroll a page, as PageDown does, and move
+         * the selection's focus to whatever is now under the point it was at -- one page on,
+         * as in Notepad and Source. PageDown alone still only scrolls. (0.20.7; Shift was
+         * ignored and the key selected nothing.)
+         */
+        let _pageSelectBusy = false;
+        function extendSelectionByPage(dir) {
+            if (_pageSelectBusy || !editor) return;
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount) return;
+            try {
+                if (typeof caretIsDisplaced === 'function' && caretIsDisplaced()
+                    && typeof placePreviewCaretMemory === 'function' && typeof _editorCaretMemory !== 'undefined') {
+                    placePreviewCaretMemory(_editorCaretMemory);
+                }
+            } catch (eD) {}
+            const main = document.getElementById('main-container');
+            const box = (main || editor).getBoundingClientRect();
+            let x = box.left + 40, y = box.top + 40;
+            try {
+                const r = document.createRange();
+                r.setStart(sel.focusNode, sel.focusOffset);
+                r.collapse(true);
+                let q = r.getClientRects()[0] || r.getBoundingClientRect();
+                if (!q || (!q.width && !q.height)) {
+                    const fb = getAncestorBlock(sel.focusNode);
+                    if (fb) q = fb.getBoundingClientRect();
+                }
+                if (q && (q.width || q.height)) { x = q.left + 1; y = q.top + q.height / 2; }
+            } catch (eR) {}
+            // Off screen: the point a page on is measured from the edge of the view.
+            x = Math.max(box.left + 2, Math.min(x, box.right - 2));
+            y = Math.max(box.top + 4, Math.min(y, box.bottom - 4));
+            const paged = typeof isPaginatedLayout === 'function' && isPaginatedLayout()
+                && typeof PageMap !== 'undefined' && PageMap.step && state.pageAdvance;
+            const before = main ? main.scrollTop : 0, beforeL = editor.scrollLeft;
+            _pageSelectBusy = true;
+            try {
+                if (paged) PageMap.step(dir);
+                else if (main) main.scrollBy(0, dir * Math.max(120, (main.clientHeight || 400) - 48));
+                try { if (typeof rememberStickyFromPreviewScroll === 'function') rememberStickyFromPreviewScroll(); } catch (eSt) {}
+            } catch (eS) { _pageSelectBusy = false; return; }
+            // The window remounts and the page settles over a few frames; then take the point.
+            let frames = 0, still = 0, lastKey = '';
+            const settle = function () {
+                frames++;
+                const key = (main ? main.scrollTop : 0) + ':' + editor.scrollLeft;
+                still = key === lastKey ? still + 1 : 0;
+                lastKey = key;
+                if (still < 3 && frames < 40) { requestAnimationFrame(settle); return; }
+                _pageSelectBusy = false;
+                try {
+                    const s = window.getSelection();
+                    let node = null, off = 0;
+                    const moved = (main ? main.scrollTop : 0) !== before || editor.scrollLeft !== beforeL;
+                    const cr = moved && document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
+                    if (cr && editor.contains(cr.startContainer) && getAncestorBlock(cr.startContainer)) {
+                        node = cr.startContainer; off = cr.startOffset;
+                    } else {
+                        // At the end (or start) of the document: select to it.
+                        const mounted = editor.querySelectorAll('.block[data-model-index]');
+                        if (!mounted.length) return;
+                        const edge = dir > 0 ? mounted[mounted.length - 1] : mounted[0];
+                        const last = typeof DocumentModel !== 'undefined' ? DocumentModel.blocks.length - 1 : -1;
+                        const ei = parseInt(edge.getAttribute('data-model-index'), 10);
+                        if (dir > 0 && ei !== last) return;
+                        if (dir < 0 && ei !== 0) return;
+                        const p = pointForOffset(edge, dir > 0 ? -1 : 0);
+                        if (!p) return;
+                        node = p.node; off = p.offset;
+                    }
+                    if (s.rangeCount && s.anchorNode) s.extend(node, off);
+                    else { s.removeAllRanges(); const r = document.createRange(); r.setStart(node, off); s.addRange(r); }
+                } catch (eX) {}
+            };
+            requestAnimationFrame(settle);
+        }
+
+        /** Merge neighbouring inline elements that mean the same (bold next to bold, a link
+         *  next to the same link), so a line put back together does not save as **a****b**. */
+        function mergeAdjacentInline(root) {
+            const same = function (a, b) {
+                if (!a || !b || a.nodeType !== 1 || b.nodeType !== 1 || a.tagName !== b.tagName) return false;
+                if (!/^(STRONG|B|EM|I|CODE|DEL|S|STRIKE|MARK|U|A)$/.test(a.tagName)) return false;
+                if (a.tagName === 'A' && a.getAttribute('href') !== b.getAttribute('href')) return false;
+                return true;
+            };
+            const walk = function (el) {
+                let n = el.firstChild;
+                while (n) {
+                    const next = n.nextSibling;
+                    if (same(n, next)) {
+                        while (next.firstChild) n.appendChild(next.firstChild);
+                        next.remove();
+                        continue;   // compare n with its new neighbour
+                    }
+                    if (n.nodeType === 1) walk(n);
+                    n = n.nextSibling;
+                }
+            };
+            walk(root);
+        }
+
+        /**
+         * Two pieces of one line's Markdown joined, each keeping its marks: "**os**" and
+         * "**car**" make "**oscar**", not "**os****car**" (a multi-line paste joined the
+         * kept head and the first pasted line as strings). Falls back to a + b when the
+         * result does not read as the two pieces.
+         */
+        function concatMarkdown(a, b) {
+            a = String(a == null ? '' : a);
+            b = String(b == null ? '' : b);
+            if (!a) return b;
+            if (!b) return a;
+            if (a.indexOf('\n') >= 0 || b.indexOf('\n') >= 0) return a + b;
+            // b starting with a block marker ("- item", "## x"): rendered alone its marker is
+            // not text and would be dropped; joined as text it stays, as it always did.
+            if (/^[ \t]*(#{1,6}[ \t]|>|[-*+][ \t]|\d+[.)][ \t]|\|)/.test(b)) return a + b;
+            try {
+                const r = insertMarkdownIntoLine(a, 1e9, b);   // the end of a (| 0 safe, unlike MAX_SAFE_INTEGER)
+                return r ? r.raw : a + b;
+            } catch (e) { return a + b; }
+        }
+
+        /**
+         * Line `raw` with Markdown `pasted` inserted at visible offset `off`, each part keeping
+         * its own marks. Returns { raw, addedLength } or null (a table or fence line, or a
+         * result that does not read as the line with the paste in it).
+         */
+        function insertMarkdownIntoLine(raw, off, pasted) {
+            raw = String(raw == null ? '' : raw);
+            pasted = String(pasted == null ? '' : pasted);
+            if (raw.indexOf('\n') >= 0 || pasted.indexOf('\n') >= 0) return null;
+            if (typeof renderBlockPreview !== 'function' || typeof blockHtmlToMarkdown !== 'function') return null;
+            const make = function (r) {
+                const el = document.createElement('div');
+                el.className = 'block';
+                el.setAttribute('data-raw', r);
+                renderBlockPreview(el, r);
+                return el;
+            };
+            const unwrap = function (nodes) {
+                while (nodes.length === 1 && nodes[0].nodeType === 1
+                       && /^(P|H[1-6]|BLOCKQUOTE|LI|UL|OL|DIV)$/.test(nodes[0].tagName)) {
+                    nodes = Array.from(nodes[0].childNodes);
+                }
+                return nodes;
+            };
+            const el = make(raw);
+            const vis = el.textContent || '';
+            off = Math.max(0, Math.min(off | 0, vis.length));
+            const p = make(pasted);
+            const pastedVis = p.textContent || '';
+            if (!pastedVis) return null;
+            const pc = pointForOffset(el, off);
+            if (!pc) return null;
+            const tailRange = document.createRange();
+            tailRange.setStart(pc.node, pc.offset);
+            tailRange.setEnd(el, el.childNodes.length);
+            const tailNodes = unwrap(Array.from(tailRange.extractContents().childNodes));
+            let host = el;
+            while (host.children.length === 1 && host.firstElementChild
+                   && /^(P|H[1-6]|BLOCKQUOTE|LI|DIV)$/.test(host.firstElementChild.tagName)) {
+                host = host.firstElementChild;
+            }
+            const textHost = host.querySelector('.task-text') || host;
+            unwrap(Array.from(p.childNodes)).forEach(function (n) { textHost.appendChild(n); });
+            tailNodes.forEach(function (n) { textHost.appendChild(n); });
+            try {
+                const marks = el.querySelectorAll('strong, b, em, i, del, s, strike, code, mark, u, a');
+                for (let i = marks.length - 1; i >= 0; i--) {
+                    if ((marks[i].textContent || '') === '' && !marks[i].querySelector('img, br')) marks[i].remove();
+                }
+            } catch (eE) {}
+            mergeAdjacentInline(el);
+            let md = null;
+            try { md = blockHtmlToMarkdown(el); } catch (eMd) { return null; }
+            if (md == null) return null;
+            const check = make(String(md));
+            if ((check.textContent || '') !== vis.slice(0, off) + pastedVis + vis.slice(off)) return null;
+            return { raw: String(md), addedLength: pastedVis.length };
+        }
+
+        /**
+         * The Markdown of the part of one line shown between visible offsets start..end.
+         *
+         * The line is rendered, everything outside the part is removed, and the rest is
+         * serialised against the line's own Markdown, so a part that starts inside **bold**
+         * comes out as **...** and a link keeps its address. A part that does not start at
+         * the line's start leaves the heading / list / quote marker behind (it was not
+         * selected). Null for a table or a fence, or when the result does not read exactly
+         * as the part -- the caller then copies the words shown.
+         */
+        function partialLineMarkdown(raw, start, end) {
+            raw = String(raw == null ? '' : raw);
+            if (raw.indexOf('\n') >= 0) return null;
+            if (typeof renderBlockPreview !== 'function' || typeof blockHtmlToMarkdown !== 'function') return null;
+            const make = function (r) {
+                const el = document.createElement('div');
+                el.className = 'block';
+                el.setAttribute('data-raw', r);
+                renderBlockPreview(el, r);
+                return el;
+            };
+            const el = make(raw);
+            const vis = el.textContent || '';
+            start = Math.max(0, Math.min(start | 0, vis.length));
+            end = Math.max(start, Math.min(end | 0, vis.length));
+            const want = vis.slice(start, end);
+            if (!want) return '';
+            const pe = pointForOffset(el, end);
+            if (!pe) return null;
+            const tail = document.createRange();
+            tail.setStart(pe.node, pe.offset);
+            tail.setEnd(el, el.childNodes.length);
+            tail.deleteContents();
+            if (start > 0) {
+                const ps = pointForOffset(el, start);
+                const first = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+                if (!ps || !first) return null;
+                const head = document.createRange();
+                head.setStart(first, 0);
+                head.setEnd(ps.node, ps.offset);
+                head.deleteContents();
+            }
+            try {
+                const marks = el.querySelectorAll('strong, b, em, i, del, s, strike, code, mark, u, a');
+                for (let i = marks.length - 1; i >= 0; i--) {
+                    if ((marks[i].textContent || '') === '' && !marks[i].querySelector('img, br')) marks[i].remove();
+                }
+            } catch (eE) {}
+            let md = null;
+            try { md = blockHtmlToMarkdown(el); } catch (eMd) { return null; }
+            if (md == null) return null;
+            md = String(md);
+            if (start > 0) md = md.replace(/^[ \t]*(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]?\][ \t]+)?|\d+[.)][ \t]+)/, '');
+            const check = make(md);
+            return (check.textContent || '') === want ? md : null;
         }
 
         /**

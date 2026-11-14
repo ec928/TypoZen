@@ -64,6 +64,7 @@ Implemented in:
 
 ### Critical implementation rules
 
+1. **Shift+PageUp / Shift+PageDown in Preview select** (0.20.7, Ed): the page handler scrolls a page as PageDown does and `extendSelectionByPage` moves the selection's focus to what is then under the point it was at. PageDown without Shift still only scrolls and leaves the caret.
 1. **Never** early-return the page handler solely because `#editor` is `contenteditable`. That made PageUp/PageDown dead in Preview. Bail only for real fields: `INPUT`, `TEXTAREA`, Source's surface (`isSourceNode(t)` -- CodeMirror's editable element is a contenteditable `div`, so a tag check alone lets Preview's page keys fire inside Source), and chrome (`#sidebar`, `#findBar`, `#tableModal`).
 2. **Reader** sets `#editor` `contenteditable="false"`. That is the reliable signal for “no caret to move” (not a mode-name guess alone).
 3. **Wheel** always turns pages when `state.pageAdvance` (outside the sidebar).

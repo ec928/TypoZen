@@ -101,18 +101,35 @@ reproduced it in 0.20.5, so none guards it.
 Pasting text that ended in two line breaks kept one: whole lines cut with the blank line
 under them came back without it.
 
-### Still open: a cut from the middle of a line keeps only the words of the partial lines
+### Part of a line copied as plain words, so a cut pasted back lost its marks — **changed** (0.20.7)
 
-Copy and cut put the first and last line of a selection that starts or ends mid-line on
-the clipboard as the words shown, not as Markdown, so pasting a mid-line cut back loses the
-bold or link of those two partial lines (the document itself keeps them; whole lines copy
-as Markdown). By design so far: "a partial selection has no markdown to give". Open
-question for Ed.
+Copy and cut put a line that is only partly selected on the clipboard as the words shown,
+while whole lines went as Markdown. Pasting a mid-line cut back lost the bold or link at
+its ends; a cut from inside bold pasted back made the rest of the line bold. Ed's decision
+(2026-11-14): part of a line copies as the Markdown of that part (`**ld words** and
+[a link](…) he`), one rule for whole and partial lines. Pasted into another app, a partial
+line now shows its `**` as whole lines always did. A one-line paste keeps its own marks
+instead of taking the caret's, and marks either side of a join merge (`**os**` +
+`**car**` is `**oscar**`). Tables and code blocks still copy their words. Guarded by
+`keyboard-editing-cases.mjs` (preview).
 
-### Not supported: Shift+PageDown does not select
+### Shift+PageDown and Shift+PageUp did not select — **changed** (0.20.7)
 
-In Preview PageUp/PageDown scroll and leave the caret; Shift is ignored, so Shift+PageDown
-scrolls and selects nothing. Open question for Ed.
+PageUp/PageDown scroll and leave the caret; Shift was ignored. Ed's decision (2026-11-14):
+they select a page, as in Notepad. The view scrolls a page and the selection's end moves
+to what is then under the point it was at; at the end of the document it selects to the
+end. PageDown alone still only scrolls. Guarded by `keyboard-editing-cases.mjs` (preview,
+large).
+
+### Still open: Shift+click inside one paragraph does not extend the selection (headless)
+
+In headless Chrome a Shift+click in the same paragraph as the caret moves the caret instead
+of selecting (0.20.5 too; across lines it works). Not yet checked in the real app.
+
+### Not supported: Shift+click on a link
+
+Chromium handles a Shift+click on a link itself (open in a new window) rather than
+extending the selection. Not changed.
 
 ### Shift+click after scrolling a long file selected only the lines on screen — **fixed** (0.20.5)
 

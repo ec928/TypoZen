@@ -306,6 +306,23 @@ try {
                     await kb.press('Delete');
                 },
                 'Intro\n\nStart **bo**nd [a link](https://e.com/x) two\n\nTail');
+            // Part of a line copies as Markdown, and pastes back as it was (0.20.7). It copied
+            // the words shown, so a cut from inside bold came back plain -- or all bold.
+            await run(mode, 'Ctrl+X inside a line, Ctrl+V back: the line is unchanged',
+                'Intro\n\nSee **bold words** and [a link](https://e.com/x) here\n\nTail', ['See', 6],
+                async () => {
+                    await kb.down('Shift'); for (let i = 0; i < 22; i++) await kb.press('ArrowRight'); await kb.up('Shift');
+                    await chord(['Control'], 'x'); await sleep(300);
+                    const c = await page.evaluate(() => navigator.clipboard.readText());
+                    check(c === '**ld words** and [a link](https://e.com/x) he', mode + ': Ctrl+X inside a line puts its Markdown on the clipboard', c);
+                    await chord(['Control'], 'v'); await sleep(300);
+                },
+                'Intro\n\nSee **bold words** and [a link](https://e.com/x) here\n\nTail');
+            // Shift+PageDown selects (0.20.7); it only scrolled.
+            await run(mode, 'Shift+PageDown selects to the end of a short document',
+                'Intro\n\nStart **bold** one\nMiddle line\n\nTail', ['Start', 2],
+                async () => { await chord(['Shift'], 'PageDown'); await sleep(500); await kb.type('Z'); },
+                'Intro\n\nStZ');
             // A cell holds one line: several pasted lines cut the table at the caret.
             await run(mode, 'Ctrl+V of two lines into a table cell keeps the table', 'Intro\n\n| Name | Value |\n|---|---|\n| apple | red |\n\nEnd', ['Name', 2],
                 // clickPreview counts from the start of the table's text, so offset 2 lands in "N|ame".
@@ -415,6 +432,22 @@ try {
             await page.mouse.click(p.x, p.y); await sleep(150);
         };
         const modelRaws = () => page.evaluate(() => { try { DocumentModel.syncMountedToModel(); } catch (e) {} return DocumentModel.blocks.map(b => b.raw); });
+        // Shift+PageDown in a long file selects from the caret, a page at a time (0.20.7).
+        try {
+            await page.evaluate(() => { handleCommand('view_set:mode:preview'); handleCommand('view_set:scroll:scroll'); handleCommand('view_set:columns:1'); });
+            await sleep(2000);
+            await page.evaluate((m) => loadMarkdownContent(m), PDOC);
+            await sleep(900);
+            await clickLine(26, 3);
+            for (let i = 0; i < 20; i++) { await chord(['Shift'], 'PageDown'); await sleep(250); }
+            await sleep(300);
+            await chord(['Control'], 'c'); await sleep(200);
+            const clip = await page.evaluate(() => navigator.clipboard.readText());
+            const cl = clip.split('\n');
+            check(cl[0] === PL[26].slice(3) && cl.length > 60,
+                '1-Col, Shift+PageDown x20: the selection starts at the caret on line 26 and runs pages down',
+                cl.length + ' lines from ' + JSON.stringify(cl[0].slice(0, 30)));
+        } catch (e) { check(false, '1-Col Shift+PageDown (threw ' + e.message + ')'); }
         for (const [label, cols] of [['1-Col', 1], ['2-Col', 2]]) {
             try {
                 await page.evaluate((c) => { handleCommand('view_set:mode:preview'); handleCommand('view_set:scroll:scroll'); handleCommand('view_set:columns:' + c); }, cols);

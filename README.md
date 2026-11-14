@@ -688,6 +688,7 @@ An ePub cannot be edited, so it has no instructions of yours:
 | Search sidebar | `Alt+S` |
 | Previous / next search result (when matches exist) | `Up` / `Down`, or `F3` / `Shift+F3` |
 | Turn the page (any paginated mode) | `PageUp` / `PageDown`, or the wheel |
+| Select a page up / down from the caret (Preview and Source) | `Shift+PageUp` / `Shift+PageDown` |
 | Turn the page while search has matches | `Left` / `Right` (paginated); also `PageUp` / `PageDown`. In Reader or a book, `Space` / `Shift+Space` too |
 | Turn the page (Reader / book, no search hits) | Arrows, or `Space` / `Shift+Space` |
 | Find & Replace | `Ctrl+H` |

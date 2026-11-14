@@ -2330,6 +2330,33 @@
                     }
                 } catch (eOff) {}
 
+                // Markdown pasted into a line keeps its own marks rather than taking the
+                // caret's: a cut from inside **bold** pasted back made everything after it
+                // bold (0.20.7). Done on the rendered line and checked; else the path below.
+                try {
+                    const curRaw = active && active.classList && active.classList.contains('block')
+                        ? (active.getAttribute('data-raw') || '') : null;
+                    const collapsed = sel && sel.rangeCount && sel.isCollapsed;
+                    if (curRaw != null && collapsed && !state.revealOnFocus && /[*_`~\[]/.test(blockTexts[0])
+                        && typeof insertMarkdownIntoLine === 'function') {
+                        const next = insertMarkdownIntoLine(curRaw, startOff, blockTexts[0]);
+                        if (next) {
+                            active.setAttribute('data-raw', next.raw);
+                            renderBlockPreview(active, next.raw);
+                            try {
+                                const idx = DocumentModel.modelIndexOfEl(active);
+                                if (idx >= 0) DocumentModel.setBlockRaw(idx, next.raw);
+                            } catch (eSync) {}
+                            if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
+                            if (typeof setCaretAtOffset === 'function') setCaretAtOffset(active, startOff + next.addedLength);
+                            updateStats();
+                            updateOutline();
+                            HistoryManager.commitEdit();
+                            return;
+                        }
+                    }
+                } catch (eMd) {}
+
                 // Bold pasted into bold text is just bold. Left in, the block saved as
                 // "**... **bold** ...**", which Markdown cannot nest, and the reader saw
                 // stray asterisks.
@@ -2409,11 +2436,14 @@
                         // a marker ("B## Head"). Rendered on its own it shows no "## ", so
                         // counting back from the end put the caret after "## ", not after B.
                         if (markerMoved) pasteCaretAfterHead = blockTexts[last];
-                        blockTexts[last] += cutTail;
+                        // Marks either side of the join merge ("*ita*" + "*lic*" is "*italic*").
+                        blockTexts[last] = markerMoved ? blockTexts[last] + cutTail
+                            : (typeof concatMarkdown === 'function' ? concatMarkdown(blockTexts[last], cutTail) : blockTexts[last] + cutTail);
                     }
                     pasteCaretBeforeTail = cutTail;
                 }
-                const joined = String(headMd || '') + blockTexts[0];
+                const joined = typeof concatMarkdown === 'function'
+                    ? concatMarkdown(String(headMd || ''), blockTexts[0]) : String(headMd || '') + blockTexts[0];
                 active.setAttribute('data-raw', joined);
                 renderBlockPreview(active, joined);
                 try {
@@ -3056,6 +3086,15 @@
                 && findState.matches && findState.matches.length);
             // Reader sets contenteditable=false; Preview keeps a real caret.
             const readerLike = !(t && t.isContentEditable);
+
+            // Shift+PageUp/PageDown in Preview select a page, as in Notepad and Source.
+            if ((e.key === 'PageDown' || e.key === 'PageUp') && e.shiftKey && !readerLike
+                && state.mode !== 'source' && typeof extendSelectionByPage === 'function') {
+                e.preventDefault();
+                e.stopPropagation();
+                extendSelectionByPage(e.key === 'PageDown' ? 1 : -1);
+                return;
+            }
 
             // --- Paginated: PageMap owns page turns ---
             if (state.pageAdvance && typeof isPaginatedLayout === 'function' && isPaginatedLayout()
