@@ -64,7 +64,7 @@ _Limit 1,500 characters. For the 0.20.15 package (2026-11-14). Written against t
 - Fixed: deleting into or out of a table or code block keeps it as a block, as in Word.
 - Fixed in long files: Shift+click or a held Shift+Down after scrolling selected the wrong lines, and a key pressed after Page Down was lost.
 - Fixed: saving from the menu took the cursor away; File > Save now confirms the file was written.
-- PDFs share one reader worker and free each closed PDF, cutting memory growth when switching large PDFs. (Microsoft Online voices are disabled; local Windows, Kokoro, Breeze and Qwen voices remain.)
+- PDFs share one reader worker and free closed PDFs, cutting memory growth. (Microsoft Online voices are disabled; local Windows, Kokoro, Breeze and Qwen voices remain.)
 
 _The 0.20.0 package text, written against 0.18.0:_
 
