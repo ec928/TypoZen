@@ -2036,7 +2036,15 @@
                 }
                 if (!across) return;
                 if (!handleMultiBlockSelectionDelete(e)) return;
+                // One undo step for the whole replacement, as in any editor: the delete pushed
+                // its "after" state, and the letter would push another, so Ctrl+Z stopped
+                // with the selection deleted and only the letter gone. Drop the in-between
+                // state; record the state with the letter in.
+                try {
+                    if (typeof HistoryManager !== 'undefined' && HistoryManager.undoStack.length > 1) HistoryManager.undoStack.pop();
+                } catch (eH) {}
                 document.execCommand('insertText', false, e.key);
+                try { if (typeof HistoryManager !== 'undefined') HistoryManager.commitEdit(); } catch (eC) {}
             } catch (eTy) {}
         }, true);
         // Keyboard multi-select (Shift+Arrow): snapshot while still collapsed / first extend

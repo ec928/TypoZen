@@ -69,6 +69,23 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Enter before a space in a list item hid the space; typing over lines took two undos — **fixed** (0.20.11)
+
+Enter at `W06| bullet` made `-  bullet`: the carried space sat after the marker, where
+Markdown does not show it, and a letter typed next ran into the word (`-  Ybullet`, seen as
+"Ybullet"). The marker brings its own space, so the carried text's leading spaces go
+(`- bullet`). Found by `compare-release.mjs` against v0.20.0. And typing over a selection
+across lines (0.20.9) needed two Ctrl+Z -- one for the letter, one for the deleted lines;
+it is one step again. Guarded by `keyboard-editing-cases.mjs` (preview).
+
+### Still open: pdf.js errors when switching PDFs mid-render
+
+Opening another PDF while one is still drawing throws `Cannot read properties of undefined
+(reading 'pdfPage')` / `Cannot set properties of null` from the vendored pdf.js viewer (one
+switch: 1 error; eight PDFs in quick succession: about 220). The PDF shown afterwards is
+complete and correct (checked 2026-11-14). Likely its render tasks are not cancelled before
+the viewer is torn down. Low priority.
+
 ### Microsoft Online voices stopped working — **removed** (0.20.10)
 
 Every request to Microsoft's read-aloud service (`speech.platform.bing.com`) was refused with

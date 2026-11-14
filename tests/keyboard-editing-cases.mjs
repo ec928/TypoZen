@@ -341,6 +341,10 @@ try {
             await run(mode, 'Typing over lines into a table is Delete, then the letter', TBL, ['Intro', 0],
                 async () => { await fromCell('b1', 1, 'End', 5); await kb.type('Z'); },
                 'Intro\n\n| H1 | H2 |\n|---|---|\n| a1 | **bZ** |\n\n*ine* here');
+            // ...and one Ctrl+Z gives back what was typed over (0.20.10; it took two).
+            await run(mode, 'Typing over lines, then one Ctrl+Z restores them', TBL, ['Intro', 0],
+                async () => { await fromCell('b1', 1, 'End', 5); await kb.type('Z'); await sleep(700); await chord(['Control'], 'z'); await sleep(400); },
+                TBL);
             // Part of a line copies as Markdown, and pastes back as it was (0.20.7). It copied
             // the words shown, so a cut from inside bold came back plain -- or all bold.
             await run(mode, 'Ctrl+X inside a line, Ctrl+V back: the line is unchanged',

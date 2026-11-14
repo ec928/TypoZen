@@ -4260,10 +4260,14 @@
                 if (!shiftKey && wholeLine === null) {
                     const lpH = parseListLine(raw);
                     if (lpH && !parseListLine(nextRaw)) {
+                        // The marker brings its own space. The carried text's leading spaces
+                        // are not shown after a marker, so "- " + " bullet" looked like
+                        // "bullet" while the caret sat after the hidden space: a letter typed
+                        // next ran into the word ("Ybullet").
                         nextRaw = formatListLine(Object.assign({}, lpH, {
                             num: lpH.kind === 'ol' ? (lpH.num || 1) + 1 : lpH.num,
                             checked: false,
-                            body: nextRaw
+                            body: String(nextRaw).replace(/^[ \t]+/, '')
                         }));
                     }
                 }
