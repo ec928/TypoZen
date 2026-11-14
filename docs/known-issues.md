@@ -86,14 +86,16 @@ and over 1 GB after four round trips to a 536-page scanned PDF, even with a forc
 collection. The viewer, export and OCR now share one worker (`sharedWorker` in
 `10-pdf.js`). Guarded by `pdf-worker-app.mjs` (1 worker after seven PDFs; 7 on 0.20.11).
 
-### Still open: memory still grows with each large scanned PDF opened
+### Memory still grew after the worker was shared — **fixed** (0.20.13)
 
-With one worker, the page's renderer process still grows about 75–85 MB per round trip to
-the 536-page Dune Encyclopedia (98 → 711 MB over eight; was about 120 MB per round). It is
-not the JavaScript heap of the page or the worker (both stay under 25 MB), not the DOM
-(nodes stable), and not PDF.js's ImageDecoder, OffscreenCanvas or WebAssembly decoding
-(switching each off changed nothing). Native memory inside PDF.js or Chromium; not found
-(2026-11-14).
+PDF.js 6 has no `PDFDocumentProxy.destroy`. The viewer's teardown called it, the throw was
+swallowed, and each document stayed in the shared worker for the session. That is the growth
+left after the worker fix: about 75–85 MB per round trip to the 536-page Dune Encyclopedia
+(98 → 711 MB over eight), with both JavaScript heaps under 25 MB. Export and OCR already
+destroy the loading task `getDocument` returns. That sends `Terminate` for the one document,
+which is what frees it in the worker, and does not end the shared worker, because a task
+that was given a worker does not own it. The viewer now does the same (`dropTask` in
+`10-pdf.js`), and waits for it before opening the next PDF. Not opened again on the encyclopedia.
 
 ### Not a problem: pdf.js errors when switching PDFs mid-render
 

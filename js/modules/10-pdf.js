@@ -56,11 +56,26 @@
      * end it: each PDF opened left a worker behind for the rest of the session, holding its
      * memory -- nine workers and over 1 GB after four round trips to a 536-page PDF, with a
      * forced garbage collection (2026-11-14). A document given a worker frees its data in
-     * that worker when it is destroyed, and the worker itself stays one.
+     * that worker when its loading task is destroyed (dropTask), and the worker itself stays
+     * one: the task does not own a worker it was given, so destroying the task does not end it.
+     * PDF.js 6 has no PDFDocumentProxy.destroy; calling it throws and frees nothing.
      */
     function sharedWorker() {
         if (!S.worker || S.worker.destroyed) S.worker = new S.lib.PDFWorker({ name: 'typozen-pdf' });
         return S.worker;
+    }
+
+    /**
+     * Free one document in the shared worker. Destroy calls are awaited in order: the next
+     * open waits its turn, and a second destroy of the same task (a cancelled open, then
+     * teardown) is safe.
+     */
+    function dropTask(task) {
+        if (task && S.task === task) S.task = null;
+        if (!task) return Promise.resolve(S.destroying);
+        const done = task.destroy().catch(() => { });
+        S.destroying = Promise.resolve(S.destroying).then(() => done, () => done);
+        return S.destroying;
     }
 
     async function ensureLib() {
@@ -116,21 +131,28 @@
                 && _currentTTSBlockEl && _currentTTSBlockEl.dataset && _currentTTSBlockEl.dataset.pdfPage != null
                 && typeof stopReading === 'function') stopReading();
         } catch (e) { }
+        // The viewer is released first, then its document. Abort drops the scroll listener
+        // and resize observer PDF.js put on #pdfView, which would otherwise pin the viewer
+        // for the rest of the session. The document goes by its loading task (dropTask).
+        const task = S.task || (S.doc && S.doc.loadingTask) || null;
+        S.task = null;
         try { if (S.viewer) S.viewer.setDocument(null); } catch (e) { }
         try { if (S.linkService) S.linkService.setDocument(null); } catch (e) { }
-        try { if (S.doc) S.doc.destroy(); } catch (e) { }
+        try { if (S.viewerAbort) S.viewerAbort.abort(); } catch (e) { }
         S.viewer = S.eventBus = S.linkService = S.findController = S.doc = null;
+        S.viewerAbort = null;
         S.pageTexts = S.pageItems = S.pageStarts = S.outline = S.outlinePages = null;
         S.haystack = '';
         S.findMatches = [];
         S.pendingReveal = false;
-        S.blocks = null; S.blocksKey = ''; S.readEl = null; S.flashEl = null; S.textReady = false; S.password = null;
+        S.blocks = null; S.blocksKey = ''; S.readEl = null; S.flashEl = null; S.textReady = false;
         S.ocrRun++; S.ocrPages = {}; S.ocrBoxes = {}; S.ocrSize = {}; S.ocrStats = null;
         S.editMode = 'none'; window.tzPdfEditing = false; S.modified = false;
         try { const h1=CSS.highlights.get('typozen-find'); if(h1)h1.clear(); const h2=CSS.highlights.get('typozen-find-current'); if(h2)h2.clear(); CSS.highlights.delete('typozen-find'); CSS.highlights.delete('typozen-find-current'); } catch(e){}
         clearBand('read'); clearBand('arrive');
         const host = document.getElementById('pdfView');
         if (host) host.innerHTML = '';
+        return dropTask(task);
     }
 
     /**
@@ -272,7 +294,10 @@
                     keepBytes = await S.doc.saveDocument();
             } catch (e) { keepBytes = null; }
             if (seq !== S.seq) return;
-            teardown();
+            // The previous document is freed before the next one is opened, so a large PDF
+            // does not sit in the worker beside its replacement.
+            await teardown();
+            if (seq !== S.seq) return;
             // The PDF look held for this PDF (view_profile, 03-shell.js), in force before
             // the viewer draws, as a book's is.
             try { if (typeof takePendingViewProfile === 'function') takePendingViewProfile(); } catch (eVp) {}
@@ -297,10 +322,12 @@
             const eventBus = new ui.EventBus();
             const linkService = new ui.PDFLinkService({ eventBus });
             const findController = new ui.PDFFindController({ eventBus, linkService });
+            const viewerAbort = new AbortController();
             const viewer = new ui.PDFViewer({
                 container: host,
                 viewer: host.firstElementChild,
                 eventBus, linkService, findController,
+                abortSignal: viewerAbort.signal,
                 pageColors: themePageColors(),
                 // One selection painter, the theme's (typozen.css #pdfView .textLayer). PDF.js
                 // otherwise draws its own with a backdrop-filter over the page image, and the
@@ -313,7 +340,7 @@
                 removePageBorders: false
             });
             linkService.setViewer(viewer);
-            Object.assign(S, { eventBus, linkService, findController, viewer, url });
+            Object.assign(S, { eventBus, linkService, findController, viewer, viewerAbort, url });
 
             eventBus.on('scalechanging', (ev) => { if (seq === S.seq) { postZoom(ev && ev.scale, ev && ev.presetValue); syncPdfScrollbar(); } });
             // PDF.js's editor asks for a change of tool itself (highlighting a selection from
@@ -354,21 +381,23 @@
                 isEvalSupported: false,
                 enableXfa: false
             });
+            S.task = task;
             // A password-protected PDF: ask, and ask again if it was wrong. Cancelling leaves
             // a note in the view with a way to try again (see the catch below).
             let cancelled = false;
             task.onPassword = (update, reason) => {
-                if (seq !== S.seq) { task.destroy(); return; }
+                if (seq !== S.seq) { dropTask(task); return; }
                 const wrong = lib.PasswordResponses && reason === lib.PasswordResponses.INCORRECT_PASSWORD;
                 const pw = window.prompt((wrong ? 'That password is not right.\n\n' : '')
                     + 'This PDF is protected. Enter its password to open it:', '');
-                if (pw == null) { cancelled = true; task.destroy(); return; }
+                if (pw == null) { cancelled = true; dropTask(task); return; }
                 S.password = pw;              // kept in memory while open, for exports' own copy
                 update(pw);
             };
             let doc;
             try { doc = await task.promise; }
             catch (err) {
+                dropTask(task);
                 if (seq !== S.seq) return;
                 showProblem(cancelled || (err && err.name === 'PasswordException')
                     ? 'This PDF is protected by a password.' : 'This PDF could not be read.',
@@ -376,7 +405,7 @@
                     { retry: () => window.tzOpenPdf(url, page) });
                 return;
             }
-            if (seq !== S.seq) { try { doc.destroy(); } catch (e) { } return; }
+            if (seq !== S.seq) { dropTask(task); return; }
             S.doc = doc;
             watchEdits(doc);
             viewer.setDocument(doc);
@@ -434,6 +463,7 @@
         if (!S.active && !S.doc) return;
         S.seq++;
         teardown();
+        S.password = null;                    // kept only while a PDF is open
         show(false);
         // The sidebar goes back to describing the editor's document.
         try { if (typeof updateOutline === 'function') updateOutline(); } catch (e) { }
