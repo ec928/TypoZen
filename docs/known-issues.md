@@ -86,7 +86,7 @@ and over 1 GB after four round trips to a 536-page scanned PDF, even with a forc
 collection. The viewer, export and OCR now share one worker (`sharedWorker` in
 `10-pdf.js`). Guarded by `pdf-worker-app.mjs` (1 worker after seven PDFs; 7 on 0.20.11).
 
-### Memory still grew after the worker was shared — **fixed** (0.20.13)
+### Memory still grew after the worker was shared — **halved** (0.20.13), rest open in `backlog.md`
 
 PDF.js 6 has no `PDFDocumentProxy.destroy`. The viewer's teardown called it, the throw was
 swallowed, and each document stayed in the shared worker for the session. That is the growth
@@ -95,7 +95,12 @@ left after the worker fix: about 75–85 MB per round trip to the 536-page Dune 
 destroy the loading task `getDocument` returns. That sends `Terminate` for the one document,
 which is what frees it in the worker, and does not end the shared worker, because a task
 that was given a worker does not own it. The viewer now does the same (`dropTask` in
-`10-pdf.js`), and waits for it before opening the next PDF. Not opened again on the encyclopedia.
+`10-pdf.js`), and waits for it before opening the next PDF.
+
+Measured on 0.20.13 (2026-11-14), eight round trips to the encyclopedia: total 405 → 759 MB
+(0.20.12: 417 → 1,266 MB), the renderer about 37 MB per round (was 75–85), the worker heap
+flat at 6–7 MB, event listeners flat at 299, GPU flat at about 160 MB. The remaining growth
+is the open item in `backlog.md`.
 
 ### Not a problem: pdf.js errors when switching PDFs mid-render
 

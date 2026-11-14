@@ -110,6 +110,22 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
 
 Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 
+**PDF memory still grows per large PDF opened (recorded 2026-11-14, Ed: record for now).**
+On 0.20.13 each round trip to the 536-page scanned Dune Encyclopedia adds about 37 MB to the
+renderer (405 → 759 MB total over eight). Restarting the app gives it back; whether closing
+the PDF's tab does was not measured. The worker heap, event listeners and GPU memory stay flat, so it is not the worker or
+the viewer's listeners. Not known: whether it is a leak or memory the renderer keeps and would
+reuse (no run went far enough to see it level off), whether text PDFs grow the same way, and
+what holds it. History and earlier numbers: `known-issues.md`, "Memory still grew after the
+worker was shared".
+
+**Not yet tested after 0.20.10-0.20.13 (recorded 2026-11-14):**
+- Read Aloud with a local voice now that online voices are off (0.20.10). A saved online voice
+  should fall back to the default local voice; only the code path was read, nothing was played.
+- Narrator Manager, Kokoro and Breeze after the same change.
+- Nine or more rapid PDF switches: the probe for it ran out of time, so it gave no answer.
+  Switching mid-render was checked and is correct.
+
 
 **Checked, not reproduced (2026-09-29):** page numbers shifting by one at 2-Col range
 boundaries. Seen with 200-block ranges; at 400, stepping across a boundary and back gives the
