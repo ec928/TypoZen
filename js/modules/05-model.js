@@ -787,6 +787,10 @@
             try {
                 const sel = window.getSelection();
                 if (!sel || sel.rangeCount === 0) return null;
+                const remembered = (typeof rememberedPointsForRemount === 'function') ? rememberedPointsForRemount() : null;
+                if (remembered) return remembered;
+                const displaced = (typeof displacedCaretForRemount === 'function') ? displacedCaretForRemount() : null;
+                if (displaced) return displaced;
                 let a = describePoint(sel.anchorNode, sel.anchorOffset, false);
                 // The anchor is never invented. If the live one cannot be named, fall back
                 // to the point this drag actually started from, which is remembered from
@@ -808,13 +812,18 @@
                 const aEl = elementForModelIndex(saved.a.mi);
                 if (saved.collapsed) {
                     if (aEl) setCaretAtOffset(aEl, Math.max(0, saved.a.offset));
+                    if (typeof settleDisplacedCaret === 'function') settleDisplacedCaret(saved, !!aEl);
                     return;
                 }
-                // No anchor element means the anchor block is outside the mounted window,
-                // and a Range cannot name a node that is not there. Leave the selection
-                // alone rather than anchor it somewhere convenient.
-                if (!aEl) return;
+                // An end outside the mounted window cannot be named by a Range. It is drawn
+                // to the window edge and the whole range is remembered (the freeze), which
+                // copy, cut and Delete use -- never the drawn part alone.
                 const fEl = elementForModelIndex(saved.f.mi);
+                if ((!aEl || !fEl) && typeof restoreRangeAcrossWindow === 'function') {
+                    restoreRangeAcrossWindow(saved);
+                    return;
+                }
+                if (!aEl) return;
                 const ap = pointFor(aEl, saved.a.offset);
                 const fp = pointFor(fEl, saved.f.offset);
                 if (ap && fp) {
@@ -1203,7 +1212,12 @@
                 let savedSel = null;
                 try {
                     const sel = window.getSelection();
-                    if (sel && sel.rangeCount > 0) {
+                    // A remembered selection (one end outside the window) carries its true ends.
+                    const remembered = (typeof rememberedPointsForRemount === 'function') ? rememberedPointsForRemount() : null;
+                    const displaced = (typeof displacedCaretForRemount === 'function') ? displacedCaretForRemount() : null;
+                    if (remembered) savedSel = remembered;
+                    else if (displaced) savedSel = displaced;
+                    else if (sel && sel.rangeCount > 0) {
                         const a = describePoint(sel.anchorNode, sel.anchorOffset);
                         const f = sel.isCollapsed ? a : describePoint(sel.focusNode, sel.focusOffset);
                         if (a && f) savedSel = { a: a, f: f, collapsed: sel.isCollapsed };
@@ -1241,11 +1255,16 @@
                         const aEl = elementForModelIndex(savedSel.a.mi);
                         if (savedSel.collapsed) {
                             if (aEl) setCaretAtOffset(aEl, Math.max(0, savedSel.a.offset));
+                            if (typeof settleDisplacedCaret === 'function') settleDisplacedCaret(savedSel, !!aEl);
                         } else {
                             const fEl = elementForModelIndex(savedSel.f.mi);
                             const ap = pointFor(aEl, savedSel.a.offset);
                             const fp = pointFor(fEl, savedSel.f.offset);
-                            if (ap && fp) {
+                            if (!(ap && fp) && (ap || fp) && typeof restoreRangeAcrossWindow === 'function') {
+                                // One end left the window: draw to the edge, remember the whole
+                                // (restoreRangeAcrossWindow). Dropping it lost a held Shift+Down.
+                                restoreRangeAcrossWindow(savedSel);
+                            } else if (ap && fp) {
                                 // setBaseAndExtent, not addRange: a drag has a direction, and
                                 // anchor/focus carry it. Collapsing it to start/end would
                                 // reverse a backwards selection, and the next mousemove would
@@ -2178,6 +2197,11 @@
             // around everything.
             const breakBefore = !fromHtml && /^[ \t]*\r?\n/.test(String(text));
             const breakAfter = !fromHtml && /\r?\n[ \t]*$/.test(String(text));
+            // Every one of them, not just one: whole lines cut with the blank line after them
+            // end "...\n\n", and pasting them back lost that blank line.
+            const countBreaks = function (m) { return m ? (m[0].match(/\n/g) || []).length : 0; };
+            const leadBreaks = breakBefore ? countBreaks(/^(?:[ \t]*\r?\n)+/.exec(String(text))) : 0;
+            const trailBreaks = breakAfter ? countBreaks(/(?:\r?\n[ \t]*)+$/.exec(String(text))) : 0;
             const beforeStrip = String(text);
             text = stripClipboardLeadRepeat(text);
             // Several plain-text lines keep their edge spaces too: a cut that ended after
@@ -2186,7 +2210,7 @@
             const onlyTrimmed = text === beforeStrip.trim();
             if (text && (text.indexOf('\n') < 0 || (!fromHtml && onlyTrimmed)) && !breakBefore && !breakAfter)
                 text = (lead ? lead[0] : '') + text + (trail ? trail[0] : '');
-            if (text) text = (breakBefore ? '\n' : '') + text + (breakAfter ? '\n' : '');
+            if (text) text = '\n'.repeat(leadBreaks) + text + '\n'.repeat(trailBreaks);
 
             if (state.mode === 'source') {
                 if (!sourceEditor) return;

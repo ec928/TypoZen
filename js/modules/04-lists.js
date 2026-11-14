@@ -330,7 +330,9 @@
                 _shiftClickAnchor = { index: _mbSelFreeze.anchor.index, offset: _mbSelFreeze.anchor.offset };
                 return;
             }
-            if (liveAnchorIsInMountedLine()) return;
+            // Displaced: the browser parked the dropped caret in some line; it is not the anchor.
+            const displaced = typeof caretIsDisplaced === 'function' && caretIsDisplaced();
+            if (!displaced && liveAnchorIsInMountedLine()) return;
             try {
                 const mem = (typeof _editorCaretMemory !== 'undefined') ? _editorCaretMemory : null;
                 if (!mem || mem.kind !== 'preview' || !(mem.index >= 0)) return;
@@ -397,42 +399,105 @@
                 pre.selectNodeContents(clickBlock);
                 pre.setEnd(sel.focusNode, sel.focusOffset);
                 const clickOff = pre.toString().length;
-                const clickText = clickBlock.textContent || '';
                 if (clickIdx === a.index) {
                     // Same line after all: an ordinary selection inside it.
-                    setCaretAtOffset(clickBlock, Math.min(a.offset, clickOff));
-                    const s = window.getSelection();
-                    const n0 = s.anchorNode, o0 = s.anchorOffset;
-                    setCaretAtOffset(clickBlock, Math.max(a.offset, clickOff));
-                    const r = document.createRange();
-                    r.setStart(n0, o0);
-                    r.setEnd(s.anchorNode, s.anchorOffset);
-                    s.removeAllRanges();
-                    s.addRange(r);
+                    _mbSelFreeze = null;
+                    const ap = pointForOffset(clickBlock, a.offset), fp = pointForOffset(clickBlock, clickOff);
+                    if (ap && fp) sel.setBaseAndExtent(ap.node, ap.offset, fp.node, fp.offset);
                     return true;
                 }
-                const anchorText = visibleTextOfModelLine(a.index);
-                const off = Math.max(0, Math.min(a.offset, anchorText.length));
-                // anchor / focus are kept so the freeze is known to still be the selection:
-                // the browser later moves the live start into the first mounted line, and a
-                // snapshot from that would select only the mounted part again.
-                const keep = { fromMemory: true, anchor: { index: a.index, offset: off },
-                    focusNode: sel.focusNode, focusOffset: sel.focusOffset };
-                if (a.index < clickIdx) {
-                    _mbSelFreeze = Object.assign({ fromIdx: a.index, toIdx: clickIdx,
-                        prefix: anchorText.slice(0, off), suffix: clickText.slice(clickOff) }, keep);
-                } else {
-                    _mbSelFreeze = Object.assign({ fromIdx: clickIdx, toIdx: a.index,
-                        prefix: clickText.slice(0, clickOff), suffix: anchorText.slice(off) }, keep);
-                }
-                return true;
+                return setRememberedSelection({ index: a.index, offset: a.offset }, { index: clickIdx, offset: clickOff });
             } catch (e) { return false; }
         }
 
+        /** Live (node, offset) for a visible-character offset in a mounted line. */
+        function pointForOffset(el, offset) {
+            if (!el) return null;
+            if (typeof pointFor === 'function') return pointFor(el, offset);
+            const hit = (typeof locateOffsetInBlock === 'function') ? locateOffsetInBlock(el, offset) : null;
+            return hit ? { node: hit.node, offset: hit.offset } : { node: el, offset: el.childNodes.length };
+        }
+
         /**
-         * A remembered freeze is the selection while the live selection still ends where
-         * it was made (the click, or where Shift+arrows moved it). Ctrl+A, a drag or a
-         * click move the focus, and the remembered range no longer applies.
+         * A model point { index, offset } as a live point: in its line when that line is
+         * mounted, otherwise at the edge of the mounted window on its side. The edge is only
+         * what is drawn; the freeze keeps the true point.
+         */
+        function livePointOrEdge(p) {
+            const el = (typeof elementForModelIndex === 'function') ? elementForModelIndex(p.index) : null;
+            if (el && editor.contains(el)) {
+                const pt = pointForOffset(el, p.offset < 0 ? -1 : p.offset);
+                return pt ? { node: pt.node, offset: pt.offset, mounted: true } : null;
+            }
+            const mounted = editor.querySelectorAll('.block[data-model-index]');
+            if (!mounted.length) return null;
+            const first = mounted[0], last = mounted[mounted.length - 1];
+            const lo = parseInt(first.getAttribute('data-model-index'), 10);
+            if (p.index < lo) return { node: first, offset: 0, mounted: false };
+            return { node: last, offset: last.childNodes.length, mounted: false };
+        }
+
+        /** A live point as 'line:offset' (visible characters), or '' when it is in no line. */
+        function livePointKey(node, offset) {
+            try {
+                if (!node || !node.isConnected) return '';
+                const b = getAncestorBlock(node);
+                if (!b || !editor.contains(b)) return '';
+                const pre = document.createRange();
+                pre.selectNodeContents(b);
+                pre.setEnd(node, offset);
+                return b.getAttribute('data-model-index') + ':' + pre.toString().length;
+            } catch (e) { return ''; }
+        }
+
+        /**
+         * Select from model point a (anchor) to f (focus) when one of them is not mounted.
+         *
+         * A long file is only partly in the page, and a Range cannot name a line that is
+         * not there. So the part on screen is drawn -- from the window's edge -- and the
+         * whole range is kept in the freeze, which copy, cut, Delete, Backspace, typing and
+         * paste read instead of the live range. The drawn range never stands in for the
+         * selection on its own: rememberedFreezeStandsForSelection ties them together.
+         * Returns false when neither end is mounted (nothing can be drawn).
+         */
+        function setRememberedSelection(a, f) {
+            if (!editor || typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return false;
+            const n = DocumentModel.blocks.length;
+            if (!(a.index >= 0 && a.index < n && f.index >= 0 && f.index < n)) return false;
+            const la = livePointOrEdge(a), lf = livePointOrEdge(f);
+            if (!la || !lf || (!la.mounted && !lf.mounted)) return false;
+            const sel = window.getSelection();
+            sel.setBaseAndExtent(la.node, la.offset, lf.node, lf.offset);
+            if (a.index === f.index || (la.mounted && lf.mounted)) {
+                // Both ends drawable: an ordinary selection; the live snapshot takes it.
+                if (_mbSelFreeze && _mbSelFreeze.fromMemory) _mbSelFreeze = null;
+                return true;
+            }
+            const lo = a.index < f.index ? a : f, hi = lo === a ? f : a;
+            const loText = visibleTextOfModelLine(lo.index), hiText = visibleTextOfModelLine(hi.index);
+            const loOff = lo.offset < 0 ? loText.length : Math.min(lo.offset, loText.length);
+            const hiOff = hi.offset < 0 ? hiText.length : Math.min(hi.offset, hiText.length);
+            _mbSelFreeze = {
+                fromIdx: lo.index, toIdx: hi.index,
+                prefix: loText.slice(0, loOff), suffix: hiText.slice(hiOff),
+                fromMemory: true,
+                anchor: { index: a.index, offset: a === lo ? loOff : hiOff },
+                focus: { index: f.index, offset: f === lo ? loOff : hiOff },
+                // Where the drawn range starts and ends, by line and character: the browser
+                // re-expresses a point (element offset -> text offset) when it extends a
+                // selection, so comparing nodes lost the match and the next remount took the
+                // drawn edge as the anchor (held Shift+Down crept the start downwards).
+                liveAnchorPt: livePointKey(sel.anchorNode, sel.anchorOffset),
+                liveFocusPt: livePointKey(sel.focusNode, sel.focusOffset)
+            };
+            return true;
+        }
+
+        /**
+         * A remembered freeze is the selection while the live selection is still exactly
+         * the range drawn for it (or Shift+arrows moved only its focus, see
+         * _extendingRemembered). Ctrl+A, a drag or a click change it, and the remembered
+         * range no longer applies.
          */
         function rememberedFreezeStandsForSelection() {
             const f = _mbSelFreeze;
@@ -440,8 +505,71 @@
             try {
                 const sel = window.getSelection();
                 if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
-                return sel.focusNode === f.focusNode && sel.focusOffset === f.focusOffset
-                    && !!f.focusNode && f.focusNode.isConnected;
+                return !!f.liveFocusPt && livePointKey(sel.focusNode, sel.focusOffset) === f.liveFocusPt
+                    && livePointKey(sel.anchorNode, sel.anchorOffset) === f.liveAnchorPt;
+            } catch (e) { return false; }
+        }
+
+        /**
+         * The selection to carry across a remount, as model points. The drawn end of a
+         * remembered selection sits at a window edge; its true point is in the freeze.
+         * Returns null when there is no remembered selection to speak for the live one.
+         */
+        function rememberedPointsForRemount() {
+            const f = _mbSelFreeze;
+            if (!f || !f.fromMemory || !f.anchor || !f.focus) return null;
+            try {
+                const sel = window.getSelection();
+                if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+                if (livePointKey(sel.anchorNode, sel.anchorOffset) !== f.liveAnchorPt) return null;
+                const a = { mi: f.anchor.index, offset: f.anchor.offset };
+                let fp = null;
+                if (livePointKey(sel.focusNode, sel.focusOffset) === f.liveFocusPt) {
+                    fp = { mi: f.focus.index, offset: f.focus.offset };
+                } else if (typeof describePoint === 'function') {
+                    fp = describePoint(sel.focusNode, sel.focusOffset, true);   // Shift+arrows moved it
+                }
+                return fp ? { a: a, f: fp, collapsed: false } : null;
+            } catch (e) { return null; }
+        }
+
+        /**
+         * A caret that was displaced (its line left the window) is carried through a remount
+         * as the remembered caret, not as wherever the browser parked it. Null otherwise.
+         */
+        function displacedCaretForRemount() {
+            try {
+                if (typeof caretIsDisplaced !== 'function' || !caretIsDisplaced()) return null;
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && !sel.isCollapsed) return null;
+                const mem = (typeof _editorCaretMemory !== 'undefined') ? _editorCaretMemory : null;
+                if (!mem || mem.kind !== 'preview' || !(mem.index >= 0)) return null;
+                const p = { mi: mem.index, offset: mem.start | 0 };
+                return { a: p, f: p, collapsed: true, displaced: true };
+            } catch (e) { return null; }
+        }
+
+        /** After a remount: put a displaced caret back if its line is mounted, else keep it marked. */
+        function settleDisplacedCaret(saved, restored) {
+            if (!saved || !saved.collapsed) return;
+            try {
+                if (restored) { if (saved.displaced && typeof clearCaretDisplaced === 'function') clearCaretDisplaced(); }
+                else if (typeof markCaretDisplaced === 'function') markCaretDisplaced();
+            } catch (e) {}
+        }
+
+        /**
+         * Restore a selection after a remount. Both ends mounted: as it was. One end
+         * outside the new window: drawn to the edge and remembered whole (it used to be
+         * dropped, so holding Shift+Down past the window lost the selection). Returns
+         * false when nothing could be restored.
+         */
+        function restoreRangeAcrossWindow(saved) {
+            if (!saved || saved.collapsed) return false;
+            try {
+                const a = { index: saved.a.mi, offset: saved.a.offset };
+                const f = { index: saved.f.mi, offset: saved.f.offset };
+                return setRememberedSelection(a, f);
             } catch (e) { return false; }
         }
 
@@ -469,6 +597,16 @@
             if (state.mode === 'source' || !editor) return;
             // The live range of a remembered selection covers only the mounted lines.
             if (_extendingRemembered || rememberedFreezeStandsForSelection()) return;
+            // Its anchor is still the drawn edge but the focus moved (a drag, a key): the
+            // range now runs from the TRUE anchor to the new focus, never from the edge.
+            try {
+                const fz = _mbSelFreeze, s0 = window.getSelection();
+                if (fz && fz.fromMemory && fz.anchor && s0 && !s0.isCollapsed
+                    && livePointKey(s0.anchorNode, s0.anchorOffset) === fz.liveAnchorPt) {
+                    buildRememberedFreeze(fz.anchor);
+                    return;
+                }
+            } catch (eRf) {}
             try {
                 const sel = window.getSelection();
                 if (!sel || sel.isCollapsed || !sel.rangeCount) {
@@ -542,6 +680,114 @@
         }
 
         /**
+         * The Markdown of line A up to the cut joined to line F from the cut, marks kept.
+         *
+         * prefix / suffix are what the reader sees (visible text). Joining them as text
+         * stripped the formatting of both partial lines: a delete from inside **bold** to
+         * inside a [link](url) left plain words and lost the link's address. Here A and F
+         * are rendered, A is cut at the caret and F's tail -- with its bold, italic, code
+         * and links -- is appended, and the edit is serialised against A's own Markdown
+         * (blockHtmlToMarkdown changes only what was edited). A keeps its structure (a
+         * heading stays a heading), as a delete across lines does in Source.
+         *
+         * Returns null when the result's visible text is not exactly prefix + suffix, or for
+         * a table or a fence; the caller then joins the visible text as before.
+         */
+        function joinLinesKeepingMarks(rawA, prefix, rawF, suffix) {
+            rawA = String(rawA == null ? '' : rawA);
+            rawF = String(rawF == null ? '' : rawF);
+            prefix = String(prefix || '');
+            suffix = String(suffix || '');
+            if (rawA.indexOf('\n') >= 0 || rawF.indexOf('\n') >= 0) return null;
+            if (typeof renderBlockPreview !== 'function' || typeof blockHtmlToMarkdown !== 'function') return null;
+            const make = function (raw) {
+                const el = document.createElement('div');
+                el.className = 'block';
+                el.setAttribute('data-raw', raw);
+                renderBlockPreview(el, raw);
+                return el;
+            };
+            const a = make(rawA), f = make(rawF);
+            const visA = a.textContent || '', visF = f.textContent || '';
+            if (visA.slice(0, prefix.length) !== prefix) return null;
+            if (suffix && visF.slice(visF.length - suffix.length) !== suffix) return null;
+            if (suffix.length > visF.length) return null;
+            const fOff = visF.length - suffix.length;
+
+            // Nothing of A is kept (the selection started at the start of its line): line F
+            // keeps its own structure and marks, as deleting whole lines does in Source.
+            if (!prefix.length) {
+                if (fOff === 0) return rawF;
+                const pf0 = pointForOffset(f, fOff);
+                if (!pf0) return null;
+                const head = document.createRange();
+                const firstText = (function () {
+                    const tw = document.createTreeWalker(f, NodeFilter.SHOW_TEXT);
+                    return tw.nextNode();
+                })();
+                if (!firstText) return null;
+                head.setStart(firstText, 0);
+                head.setEnd(pf0.node, pf0.offset);
+                head.deleteContents();
+                let md0 = null;
+                try { md0 = blockHtmlToMarkdown(f); } catch (eMd0) { return null; }
+                if (md0 == null) return null;
+                const check0 = make(String(md0));
+                return (check0.textContent || '') === suffix ? String(md0) : null;
+            }
+
+            // A: keep what is before the caret.
+            const pa = pointForOffset(a, prefix.length);
+            if (!pa) return null;
+            const ra = document.createRange();
+            ra.setStart(pa.node, pa.offset);
+            ra.setEnd(a, a.childNodes.length);
+            ra.deleteContents();
+
+            // F: what is after the caret, marks and all; F's own structure stays behind.
+            let nodes = [];
+            if (suffix.length) {
+                const pf = pointForOffset(f, fOff);
+                if (!pf) return null;
+                const rf = document.createRange();
+                rf.setStart(pf.node, pf.offset);
+                rf.setEnd(f, f.childNodes.length);
+                const frag = rf.extractContents();
+                nodes = Array.from(frag.childNodes);
+                while (nodes.length === 1 && nodes[0].nodeType === 1
+                       && /^(P|H[1-6]|BLOCKQUOTE|LI|UL|OL|DIV|LABEL|SPAN)$/.test(nodes[0].tagName)
+                       && !nodes[0].getAttribute('href')
+                       && (nodes[0].tagName !== 'SPAN' || /task|list|quote|body/i.test(nodes[0].className || ''))) {
+                    nodes = Array.from(nodes[0].childNodes);
+                }
+                nodes = nodes.filter(function (nd) {
+                    return !(nd.nodeType === 1 && (nd.tagName === 'INPUT' || (nd.querySelector && nd.querySelector('input'))));
+                });
+            }
+            // Append inside A's line, after any inline mark the caret was in.
+            let host = a;
+            while (host.children.length === 1 && host.firstElementChild
+                   && /^(P|H[1-6]|BLOCKQUOTE|LI|DIV)$/.test(host.firstElementChild.tagName)) {
+                host = host.firstElementChild;
+            }
+            const textHost = host.querySelector('.task-text') || host;
+            nodes.forEach(function (nd) { textHost.appendChild(nd); });
+            try {
+                const marks = a.querySelectorAll('strong, b, em, i, del, s, strike, code, mark, u');
+                for (let i = marks.length - 1; i >= 0; i--) {
+                    if ((marks[i].textContent || '') === '' && !marks[i].querySelector('img, br')) marks[i].remove();
+                }
+            } catch (eE) {}
+            let md = null;
+            try { md = blockHtmlToMarkdown(a); } catch (eMd) { return null; }
+            if (md == null) return null;
+            // The words must be exactly what the reader kept; otherwise do not trust the marks.
+            const check = make(String(md));
+            if ((check.textContent || '') !== prefix + suffix) return null;
+            return String(md);
+        }
+
+        /**
          * Delete model blocks [fromIdx..toIdx], joining prefix+suffix into one block.
          * Reloads from full model markdown so virtualization cannot leave a half-deleted doc.
          * Returns { focusIndex, offset } or null.
@@ -576,7 +822,9 @@
             const preContent = allRaws.join('\n');
             const preNonEmpty = allRaws.filter(function (r) { return String(r || '').trim(); }).length;
 
-            const joined = coerceBlockRaw(String(spec.prefix || '') + String(spec.suffix || ''));
+            let joined = null;
+            try { joined = joinLinesKeepingMarks(allRaws[fromIdx], spec.prefix, allRaws[toIdx], spec.suffix); } catch (eJ) { joined = null; }
+            joined = coerceBlockRaw(joined != null ? joined : String(spec.prefix || '') + String(spec.suffix || ''));
             const out = allRaws.slice(0, fromIdx).concat([joined]).concat(allRaws.slice(toIdx + 1));
             if (!out.length) out.push('');
             const postContent = out.join('\n');

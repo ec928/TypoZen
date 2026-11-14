@@ -69,6 +69,51 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Delete across lines lost the formatting of the two partial lines — **fixed** (0.20.6)
+
+The joined line was built from what the reader sees, so bold, italic, code and links on
+the first line before the cut and the last line after it were dropped -- a link lost its
+address. `Start **bold words** one` … `End and [a link](…) two`, selected from inside
+the bold to before the link, saved as `Start bond a link two`. Every cross-line Delete,
+Backspace, cut and paste-over did it, in short files too. The lines are now joined as
+Markdown and checked: if the result does not read exactly as the two kept parts, the old
+join is used. The first line keeps its heading, list or quote marker, as in Source; a
+selection from the start of a line keeps the last line whole. Tables and code blocks still
+join as text. Guarded by `keyboard-editing-cases.mjs` (preview).
+
+### A key after PageDown or the wheel went nowhere in a long file — **fixed** (0.20.6)
+
+PageUp/PageDown scroll and leave the caret where it was. Once its line left the window
+the caret was lost: a letter, Delete or Enter did nothing, and in 2-Col the caret was put
+back into the wrong line (the 26th of the page window instead of line 26) by the restore
+0.20.1 added for menus. An editing or arrow key now puts the caret back on its line,
+bringing it into view, and then acts. Guarded by `keyboard-editing-cases.mjs` (large).
+
+### Holding Shift+Down past the window lost the selection — **fixed** (0.20.6)
+
+Rebuilding the window dropped a selection with one end outside it. It is now drawn to the
+window's edge and kept whole (copy, cut and Delete use the whole), and Shift+Down goes on
+extending it. Shown by a probe on a 3000-line file of mixed blocks; no suite case
+reproduced it in 0.20.5, so none guards it.
+
+### A paste ending in a blank line lost it — **fixed** (0.20.6)
+
+Pasting text that ended in two line breaks kept one: whole lines cut with the blank line
+under them came back without it.
+
+### Still open: a cut from the middle of a line keeps only the words of the partial lines
+
+Copy and cut put the first and last line of a selection that starts or ends mid-line on
+the clipboard as the words shown, not as Markdown, so pasting a mid-line cut back loses the
+bold or link of those two partial lines (the document itself keeps them; whole lines copy
+as Markdown). By design so far: "a partial selection has no markdown to give". Open
+question for Ed.
+
+### Not supported: Shift+PageDown does not select
+
+In Preview PageUp/PageDown scroll and leave the caret; Shift is ignored, so Shift+PageDown
+scrolls and selects nothing. Open question for Ed.
+
 ### Shift+click after scrolling a long file selected only the lines on screen — **fixed** (0.20.5)
 
 Only part of a long file is in the page. Once the caret's line scrolled (or paged) out of

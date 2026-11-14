@@ -290,6 +290,22 @@ try {
             await run(mode, 'Backspace over lines, wait, type: the letter goes at the cut', 'Alpha one\nBeta two\nGamma\n\nEnd', ['Alpha', 6],
                 async () => { await chord(['Shift'], 'ArrowDown'); await kb.press('Backspace'); await sleep(250); await kb.type('Q'); },
                 'Alpha Qwo\nGamma\n\nEnd');
+            // A Delete across lines joined the two partial lines as plain text: the bold before
+            // the cut and the link after it (address and all) were lost (0.20.6).
+            await run(mode, 'Delete across lines keeps the bold before the cut and the link after it',
+                'Intro\n\nStart **bold words** one\nMiddle line\nEnd and [a link](https://e.com/x) two\n\nTail', ['Start', 8],
+                async () => {
+                    const pt = await page.evaluate(() => {
+                        const b = Array.from(editor.querySelectorAll('.block')).find(x => (x.textContent || '').indexOf('End and') === 0);
+                        // In "and", just before the link (Shift+click ON a link is the browser's).
+                        const t = b.querySelector('p').firstChild;
+                        const r = document.createRange(); r.setStart(t, 5); r.collapse(true);
+                        const q = r.getBoundingClientRect(); return { x: q.left + 1, y: q.top + q.height / 2 };
+                    });
+                    await kb.down('Shift'); await page.mouse.click(pt.x, pt.y); await kb.up('Shift'); await sleep(150);
+                    await kb.press('Delete');
+                },
+                'Intro\n\nStart **bo**nd [a link](https://e.com/x) two\n\nTail');
             // A cell holds one line: several pasted lines cut the table at the caret.
             await run(mode, 'Ctrl+V of two lines into a table cell keeps the table', 'Intro\n\n| Name | Value |\n|---|---|\n| apple | red |\n\nEnd', ['Name', 2],
                 // clickPreview counts from the start of the table's text, so offset 2 lands in "N|ame".
@@ -366,6 +382,54 @@ try {
             } catch (e) {
                 check(false, label + ' (threw ' + e.message + ')');
             }
+        }
+        // After PageDown away from the caret, typing went nowhere (0.20.6). (Holding Shift+Down
+        // past the window lost the selection too; no case here reproduced that in 0.20.5, so
+        // there is none -- the evidence for that fix is a probe, not this suite.)
+        // Every kind of block, as a real file has: on paragraphs alone the selection survived
+        // in 0.20.5 and this check could not see the bug.
+        const PL = [];
+        for (let i = 0; PL.length < 2600; i++) {
+            const k = i % 12;
+            if (k === 0) PL.push('## Heading ' + i + ' with **bold**');
+            else if (k === 3) PL.push('- item ' + i + ' with *ital* and `code`');
+            else if (k === 4) PL.push('- [ ] task ' + i + ' **todo**');
+            else if (k === 5) PL.push('> quote ' + i + ' with a [link](https://example.com/q' + i + ')');
+            else if (k === 7) PL.push('![picture ' + i + '](img/pic' + i + '.png)');
+            else if (k === 9) PL.push('| col ' + i + ' | **b** |\n|---|---|\n| c' + i + ' | `d` |');
+            else if (k === 10) PL.push('```js\nconst x' + i + ' = ' + i + ';\n```');
+            else PL.push('P' + String(i).padStart(4, '0') + ' ' + 'word '.repeat(70) + '**end ' + i + '**');
+            PL.push('');
+        }
+        const PDOC = PL.join('\n');
+        const clickLine = async (idx, off) => {
+            const p = await page.evaluate((i, o) => {
+                const el = elementForModelIndex(i); if (!el) return null;
+                el.scrollIntoView({ block: 'center' });
+                const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+                const r = document.createRange(); r.setStart(t, o); r.collapse(true);
+                const q = r.getBoundingClientRect();
+                return (q.left < 0 || q.right > innerWidth) ? null : { x: q.left + 1, y: q.top + q.height / 2 };
+            }, idx, off);
+            if (!p) throw new Error('line ' + idx + ' not on screen');
+            await page.mouse.click(p.x, p.y); await sleep(150);
+        };
+        const modelRaws = () => page.evaluate(() => { try { DocumentModel.syncMountedToModel(); } catch (e) {} return DocumentModel.blocks.map(b => b.raw); });
+        for (const [label, cols] of [['1-Col', 1], ['2-Col', 2]]) {
+            try {
+                await page.evaluate((c) => { handleCommand('view_set:mode:preview'); handleCommand('view_set:scroll:scroll'); handleCommand('view_set:columns:' + c); }, cols);
+                await sleep(2000);
+                await page.evaluate((m) => loadMarkdownContent(m), PDOC);
+                await sleep(900);
+                await clickLine(2, 3);
+                for (let i = 0; i < 40; i++) { await kb.press('PageDown'); await sleep(110); }
+                await sleep(300);
+                await kb.type('Q'); await sleep(400);
+                const after = await modelRaws();
+                const changed = after.map((r, i) => r === PL[i] ? -1 : i).filter(i => i >= 0);
+                check(changed.length === 1 && changed[0] === 2 && after[2] === PL[2].slice(0, 3) + 'Q' + PL[2].slice(3),
+                    label + ': PageDown x40 away, then a letter goes in at the caret', 'changed lines ' + JSON.stringify(changed.slice(0, 3)) + (changed.length ? ' first ' + JSON.stringify(String(after[changed[0]]).slice(0, 30)) : ''));
+            } catch (e) { check(false, label + ' PageDown away (threw ' + e.message + ')'); }
         }
     }
     // ---- where TypoZen is not a plain text box -----------------------------------------

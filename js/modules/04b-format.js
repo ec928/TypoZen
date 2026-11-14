@@ -1720,6 +1720,25 @@
         // reports.
         let _editorCaretMemory = null;
 
+        // The caret's line left the mounted window (scroll, PageDown, page turn): the
+        // browser then holds a collapsed selection on the editor itself, in no line. That
+        // state, and only that, is a displaced caret; the memory above is where it was.
+        // (A sticky flag was tried and outlived carets that code placed afterwards.)
+        function caretIsDisplaced() {
+            try {
+                const s = window.getSelection();
+                if (!(s && s.rangeCount && s.isCollapsed && s.anchorNode && editor
+                    && editor.contains(s.anchorNode) && !caretIsInMountedLine(s)
+                    && _editorCaretMemory && _editorCaretMemory.kind === 'preview')) return false;
+                // And its line really has left the window. On a blank line the browser can
+                // hold the caret on the editor too; that line is mounted, and the caret is fine.
+                const el = (typeof elementForModelIndex === 'function') ? elementForModelIndex(_editorCaretMemory.index) : null;
+                return !(el && editor.contains(el));
+            } catch (e) { return false; }
+        }
+        function markCaretDisplaced() {}
+        function clearCaretDisplaced() {}
+
         function rememberEditorCaret() {
             try {
                 if (state.mode === 'source' && typeof isSourceFocused === 'function' && isSourceFocused()
@@ -1734,7 +1753,7 @@
                 const sel = window.getSelection();
                 if (!sel || !sel.rangeCount || !sel.anchorNode || !editor || !editor.contains(sel.anchorNode)) return;
                 const block = typeof getAncestorBlock === 'function' ? getAncestorBlock(sel.anchorNode) : null;
-                if (!block) return;
+                if (!block) return;   // on the editor itself: its line is gone; keep the memory
                 let index = -1;
                 try {
                     if (typeof DocumentModel !== 'undefined') index = DocumentModel.modelIndexOfEl(block);
@@ -1773,7 +1792,30 @@
             try {
                 if (typeof elementForModelIndex === 'function') block = elementForModelIndex(mem.index);
             } catch (eEl) {}
-            if (!block && typeof mountedBlockAtFormatIndex === 'function') block = mountedBlockAtFormatIndex(mem.index);
+            // mem.index is a line of the document. Counting mounted lines gives the same line
+            // only when the whole document is mounted; in a long file it picked the 26th line
+            // of the window (line 826) and the next key went there. Otherwise bring the line
+            // itself into view: turn to its page, or scroll to it.
+            let partial = false;
+            try {
+                partial = (typeof DocumentModel !== 'undefined' && DocumentModel.virtEnabled)
+                    || (typeof pageWindowingActive === 'function' && pageWindowingActive());
+            } catch (eP) { partial = true; }
+            if (!block && !partial && typeof mountedBlockAtFormatIndex === 'function') block = mountedBlockAtFormatIndex(mem.index);
+            if (!block && partial && typeof isPaginatedLayout === 'function' && isPaginatedLayout()) {
+                // Mount the line's page range now (synchronous), so the key that asked for the
+                // caret acts on it; then turn to its page, which settles over a few frames.
+                try {
+                    if (typeof pageWindowingActive === 'function' && pageWindowingActive()
+                        && typeof PageChunks !== 'undefined' && typeof mountPageChunk === 'function') {
+                        PageChunks.ensure(DocumentModel.blocks.length);
+                        const want = PageChunks.chunkOfBlock(mem.index);
+                        if (want !== PageChunks.mounted) mountPageChunk(want);
+                    }
+                } catch (eMc) {}
+                try { block = elementForModelIndex(mem.index); } catch (eEl2) {}
+                try { if (typeof goToPageHoldingBlock === 'function') goToPageHoldingBlock(mem.index); } catch (eGo) {}
+            }
             if (!block && typeof ensureModelBlockVisible === 'function') {
                 try { block = ensureModelBlockVisible(mem.index, { topPad: 48 }); } catch (eVis) {}
             }
@@ -1844,12 +1886,54 @@
                     return;
                 }
                 const sel = window.getSelection();
-                if (sel && sel.rangeCount && sel.anchorNode && editor && editor.contains(sel.anchorNode)) return;
+                // In a line, or a remembered selection drawn to the window edge: leave it.
+                // On the editor itself (its line scrolled out of the window) the caret is lost.
+                // A range (Select All included) is pasted over; a caret in a line is used.
+                if (sel && sel.rangeCount && sel.anchorNode && editor && editor.contains(sel.anchorNode)
+                    && (!sel.isCollapsed || caretIsInMountedLine(sel))) return;
                 if (_editorCaretMemory && _editorCaretMemory.kind === 'preview')
                     placePreviewCaretMemory(_editorCaretMemory);
             } catch (e) {}
         }
         window.recoverCaretForPaste = recoverCaretForPaste;
+
+        function caretIsInMountedLine(sel) {
+            try {
+                if (!sel || !sel.anchorNode || !sel.anchorNode.isConnected) return false;
+                const b = getAncestorBlock(sel.anchorNode);
+                return !!(b && editor.contains(b));
+            } catch (e) { return false; }
+        }
+
+        /**
+         * A key after the caret's line scrolled out of the window.
+         *
+         * PageUp/PageDown and the wheel move the view and leave the caret where it was. In
+         * a long file that line is then unmounted and the browser drops the selection onto
+         * the editor itself, so the next letter, Delete or Enter did nothing at all -- the
+         * keystroke was lost (and in 2-Col one Delete took the first letter of the file).
+         * The caret is remembered by line; an editing or arrow key puts it back there,
+         * bringing the line into view as other editors do, and then acts. PageUp/PageDown
+         * keep only scrolling.
+         */
+        window.addEventListener('keydown', function onKeyAfterCaretScrolledAway(e) {
+            try {
+                if (state.mode === 'source' || !editor || e.isComposing || e.keyCode === 229) return;
+                const ae = document.activeElement;
+                if (!ae || !(ae === editor || editor.contains(ae))) return;
+                const k = e.key || '';
+                const printable = k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+                const editKey = /^(Backspace|Delete|Enter|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End)$/.test(k)
+                    && !e.altKey;
+                if (!printable && !editKey) return;
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount) return;
+                // Only a caret that is in no line. A range (Select All, a remembered
+                // selection) is the reader's selection and the key acts on it.
+                if (!caretIsDisplaced()) return;
+                placePreviewCaretMemory(_editorCaretMemory);
+            } catch (eK) {}
+        }, true);
 
         document.addEventListener('selectionchange', () => {
             if (state.mode === 'source' && isSourceFocused()) {
