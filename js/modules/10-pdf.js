@@ -50,6 +50,19 @@
         return { background: bg, foreground: fg };
     }
 
+    /**
+     * The one PDF.js worker for the session, given to every document opened. Left to
+     * itself, getDocument made a worker per document and destroying the document did not
+     * end it: each PDF opened left a worker behind for the rest of the session, holding its
+     * memory -- nine workers and over 1 GB after four round trips to a 536-page PDF, with a
+     * forced garbage collection (2026-11-14). A document given a worker frees its data in
+     * that worker when it is destroyed, and the worker itself stays one.
+     */
+    function sharedWorker() {
+        if (!S.worker || S.worker.destroyed) S.worker = new S.lib.PDFWorker({ name: 'typozen-pdf' });
+        return S.worker;
+    }
+
     async function ensureLib() {
         if (S.lib) return;
         const lib = await import(BASE + 'pdf.min.mjs');
@@ -332,6 +345,7 @@
             const task = lib.getDocument({
                 url: keepBytes ? undefined : url,
                 data: keepBytes || undefined,
+                worker: sharedWorker(),
                 password: knownPassword || undefined,
                 cMapUrl: BASE + 'cmaps/', cMapPacked: true,
                 standardFontDataUrl: BASE + 'standard_fonts/',
@@ -1370,7 +1384,7 @@
                     else {
                         if (!doc) {
                             task = S.lib.getDocument({
-                                url, password: password || undefined,
+                                url, password: password || undefined, worker: sharedWorker(),
                                 cMapUrl: BASE + 'cmaps/', cMapPacked: true, standardFontDataUrl: BASE + 'standard_fonts/',
                                 wasmUrl: BASE + 'wasm/', iccUrl: BASE + 'iccs/', isEvalSupported: false, enableXfa: false
                             });
@@ -1785,7 +1799,7 @@
         try {
             if (!S.active || !url) throw new Error('the PDF is no longer open');
             task = S.lib.getDocument({
-                url, password: password || undefined,
+                url, password: password || undefined, worker: sharedWorker(),
                 cMapUrl: BASE + 'cmaps/', cMapPacked: true,
                 standardFontDataUrl: BASE + 'standard_fonts/',
                 wasmUrl: BASE + 'wasm/', iccUrl: BASE + 'iccs/',

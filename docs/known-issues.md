@@ -78,13 +78,28 @@ Markdown does not show it, and a letter typed next ran into the word (`-  Ybulle
 across lines (0.20.9) needed two Ctrl+Z -- one for the letter, one for the deleted lines;
 it is one step again. Guarded by `keyboard-editing-cases.mjs` (preview).
 
-### Still open: pdf.js errors when switching PDFs mid-render
+### Each PDF opened left a PDF.js worker behind — **fixed** (0.20.12)
+
+`getDocument` made a worker per document and destroying the document did not end it, so
+every PDF opened kept a worker, and its memory, for the rest of the session: nine workers
+and over 1 GB after four round trips to a 536-page scanned PDF, even with a forced garbage
+collection. The viewer, export and OCR now share one worker (`sharedWorker` in
+`10-pdf.js`). Guarded by `pdf-worker-app.mjs` (1 worker after seven PDFs; 7 on 0.20.11).
+
+### Still open: memory still grows with each large scanned PDF opened
+
+With one worker, the page's renderer process still grows about 75–85 MB per round trip to
+the 536-page Dune Encyclopedia (98 → 711 MB over eight; was about 120 MB per round). It is
+not the JavaScript heap of the page or the worker (both stay under 25 MB), not the DOM
+(nodes stable), and not PDF.js's ImageDecoder, OffscreenCanvas or WebAssembly decoding
+(switching each off changed nothing). Native memory inside PDF.js or Chromium; not found
+(2026-11-14).
+
+### Not a problem: pdf.js errors when switching PDFs mid-render
 
 Opening another PDF while one is still drawing throws `Cannot read properties of undefined
-(reading 'pdfPage')` / `Cannot set properties of null` from the vendored pdf.js viewer (one
-switch: 1 error; eight PDFs in quick succession: about 220). The PDF shown afterwards is
-complete and correct (checked 2026-11-14). Likely its render tasks are not cancelled before
-the viewer is torn down. Low priority.
+(reading 'pdfPage')` from the vendored viewer. The PDF shown afterwards is complete, and no
+work keeps running (CPU back to idle within 3 s, 2026-11-14).
 
 ### Microsoft Online voices stopped working — **removed** (0.20.10)
 
