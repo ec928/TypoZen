@@ -420,7 +420,7 @@
             try {
                 const focusLine = (typeof modelBlockStartLine === 'function')
                     ? modelBlockStartLine(fromIdx) : 1;
-                const loadOpts = { stickyLine: focusLine };
+                const loadOpts = { stickyLine: focusLine, stickyCaret: String(spec.prefix || '').length };
                 if (va) loadOpts.stickyPad = va.top;
                 loadMarkdownContent(postContent, loadOpts);
             } finally {

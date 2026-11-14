@@ -50,7 +50,7 @@ Implemented in:
 - `js/modules/05-model.js` — page / scroll keydown (capture)
 - `js/modules/02-layout.js` — `bindReaderFindKeys` (Up/Down → search hits)
 
-**Search mode** means: `findState.matches.length > 0` (a live result list), not “sidebar is open”. While that is true, `#searchModeNotice` is shown even if the sidebar and the Ctrl+F bar are both closed. **Clear search** on it (`exitSearchMode`) empties both query fields, drops the matches, and hides the Find bar. Source keeps normal arrows; the notice there does not claim they step matches.
+**Search mode** means: `findState.matches.length > 0` (a live result list), not “sidebar is open”. While that is true, `#searchModeNotice` is shown even if the sidebar and the Ctrl+F bar are both closed. **Clear search** on it (`exitSearchMode`) empties both query fields, drops the matches, hides the Find bar, and leaves the caret where it was. Source keeps normal arrows; the notice there does not claim they step matches.
 
 | Context | PageUp / PageDown | Arrow Left / Right | Arrow Up / Down | Space / Shift+Space |
 |---------|-------------------|--------------------|-----------------|---------------------|

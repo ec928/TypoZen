@@ -69,6 +69,38 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### A paste of several lines at the start of a bold-first line wrote "****" — **fixed** (0.20.3)
+
+`**The Focus:** text`, `## **Big** head`, `- **Task:** two`, `> **q** text`: the caret sat
+inside the bold, so cutting the rest of the line left an empty bold behind. It saved as
+`****`, and a heading, list or quote marker then went onto the pasted line instead of
+staying on its own. Wrong since at least 0.19.0. Empty formatting is dropped before the
+split. Guarded by `keyboard-editing-cases.mjs`.
+
+### A paste of several lines inside a code block broke the fence — **fixed** (0.20.3)
+
+The lines were split into blocks, closing the fence at the caret and leaving
+`` ``` line ``` `` behind. A multi-line paste in a fence now goes into the code at the caret.
+Wrong since at least 0.19.0. Same test.
+
+### After a cut or Backspace across lines the caret went to the start of the line — **fixed** (0.20.3)
+
+The text was right; the caret was then moved to the line's start 20 ms later by the reload's
+sticky-line restore, so the next letter or paste landed in the wrong place. The restore keeps
+a live caret, and otherwise uses the cut point. Wrong since at least 0.19.0. Same test.
+
+### Enter in the middle of a list item, or on an empty one — **fixed** (0.20.3)
+
+`- one|two` gave `- one` and a plain `two`; it now gives `- two` (ordered lists number on,
+a task starts unticked). Enter on an empty item kept adding bullets; it now ends the list,
+as Source already did. Shift+Enter still gives a line without a marker. Same test.
+
+### Clear search moved the caret to the start of the line — **fixed** (0.20.3)
+
+New in 0.20.2: the notice's **Clear search** went through the sidebar's clear, which puts the
+caret at the start of the reading line. It now goes back where it was. Guarded by
+`search-mode-notice-browser.mjs`.
+
 ### Copy, then a click, then paste wrote nothing — **fixed** (0.20.2)
 
 Selecting several lines and copying, then clicking somewhere else, left that selection

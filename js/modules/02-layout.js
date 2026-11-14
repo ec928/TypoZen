@@ -225,6 +225,15 @@
          * Find bar, because a closed bar used to keep the query and the mode.
          */
         function exitSearchMode() {
+            // Clearing goes through clearSidebarSearch, whose commitSearchFocus puts the
+            // caret at the start of the reading line. Clear search is not a jump: the
+            // caret goes back where the reader left it.
+            let mem = null;
+            try {
+                if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                if (typeof _editorCaretMemory !== 'undefined' && _editorCaretMemory)
+                    mem = Object.assign({}, _editorCaretMemory);
+            } catch (eM) {}
             try { clearSidebarSearch(); } catch (eC) {}
             const findIn = document.getElementById('findInput');
             if (findIn && findIn.value) {
@@ -238,6 +247,9 @@
                     && typeof sourceEditor !== 'undefined' && sourceEditor
                     && typeof sourceEditor.focus === 'function') {
                     sourceEditor.focus();
+                    if (mem && mem.kind === 'source') sourceEditor.setSelectionRange(mem.start | 0, mem.end | 0);
+                } else if (mem && mem.kind === 'preview' && typeof placePreviewCaretMemory === 'function') {
+                    placePreviewCaretMemory(mem);
                 } else if (typeof focusEditorNoScroll === 'function') {
                     focusEditorNoScroll();
                 }

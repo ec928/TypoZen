@@ -1385,6 +1385,10 @@
             const stickyPad = (opts && opts.stickyAtTop) ? 0
                 : ((opts && opts.stickyPad != null) ? Math.max(0, opts.stickyPad | 0) : undefined);
             const stickyExact = !!(opts && opts.stickyPad != null);
+            // An edit that reloads and has already put the caret mid-line passes its offset,
+            // so the deferred sticky restore below does not move it to the start of the line
+            // (a cut or Delete across lines left the caret before the line's first word).
+            const stickyCaret = (opts && opts.stickyCaret != null) ? Math.max(0, opts.stickyCaret | 0) : undefined;
 
             // Whether this load seeds a fresh history is decided now, when the load is
             // requested -- not later, when its deferred tail happens to finish.
@@ -1458,7 +1462,7 @@
                 
                 if (stickyWanted) {
                     if (typeof restoreStickyDocumentLine === 'function') {
-                        restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact);
+                        restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact, stickyCaret);
                     }
                 } else {
                     try { updateStatsNow(); } catch (eSt) {}
@@ -1495,7 +1499,7 @@
                     try { resolveMarksAfterDocumentLoad(); } catch (eRm) {}
                     try { tzRequestPendingImages(editor); tzScheduleImageRescan(); } catch (eI) {}
                     if (stickyWanted && typeof restoreStickyDocumentLine === 'function') {
-                        restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact);
+                        restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact, stickyCaret);
                     } else {
                         try { PageMap.gotoLocal(0); } catch (eG) {}
                         try { updateStatsNow(); } catch (eSt) {}
@@ -1555,7 +1559,7 @@
                     setTimeout(function() {
                         // Not if another document has loaded since (a tab switch).
                         if (window.__tzPaintGen !== paintGen) return;
-                        restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact);
+                        restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact, stickyCaret);
                     }, 20);
                 }
                 if (progressive) {
@@ -2076,6 +2080,75 @@
             return false;
         }
 
+        /**
+         * Insert `text` at the caret inside a rendered ```fence```, keeping the fence
+         * one block. Returns false (and changes nothing) when the caret is not inside a
+         * fence's code, or the code on screen does not match the block's Markdown.
+         */
+        function pasteIntoCodeFence(block, text) {
+            try {
+                if (!block || !block.classList || !block.classList.contains('block')) return false;
+                const raw = block.getAttribute('data-raw') || '';
+                if (!/^\s*(```|~~~)/.test(raw)) return false;
+                const code = block.querySelector('pre code') || block.querySelector('pre');
+                const sel = window.getSelection();
+                if (!code || !sel || !sel.rangeCount || !sel.isCollapsed || !code.contains(sel.anchorNode)) return false;
+                const lines = raw.split('\n');
+                const open = lines[0];
+                const closed = lines.length > 1 && /^\s*(```|~~~)\s*$/.test(lines[lines.length - 1]);
+                const body = lines.slice(1, closed ? -1 : undefined).join('\n');
+                if ((code.textContent || '').replace(/\n$/, '') !== body) return false;
+                const pre = document.createRange();
+                pre.selectNodeContents(code);
+                pre.setEnd(sel.anchorNode, sel.anchorOffset);
+                const off = pre.toString().length;
+                const nextBody = body.slice(0, off) + text + body.slice(off);
+                const next = open + '\n' + nextBody + (closed ? '\n' + lines[lines.length - 1] : '');
+                block.setAttribute('data-raw', next);
+                renderBlockPreview(block, next);
+                try {
+                    const idx = (typeof DocumentModel !== 'undefined') ? DocumentModel.modelIndexOfEl(block) : -1;
+                    if (idx >= 0) DocumentModel.setBlockRaw(idx, next);
+                } catch (eSync) {}
+                if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
+                const code2 = block.querySelector('pre code') || block.querySelector('pre');
+                const want = off + text.length;
+                const tw = document.createTreeWalker(code2 || block, NodeFilter.SHOW_TEXT);
+                let n, left = want, placed = false;
+                while ((n = tw.nextNode())) {
+                    if (left <= n.nodeValue.length) {
+                        const r = document.createRange();
+                        r.setStart(n, left);
+                        r.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(r);
+                        placed = true;
+                        break;
+                    }
+                    left -= n.nodeValue.length;
+                }
+                if (!placed && typeof setCaretAtOffset === 'function') setCaretAtOffset(block, want);
+                return true;
+            } catch (e) { return false; }
+        }
+
+        /**
+         * Formatting the caret sat at the start of, now with nothing in it. Cutting the
+         * words after a caret at the start of "**The Focus:** text" leaves an empty
+         * <strong>, which saved as "****" and hid a heading's or list's marker from
+         * structuralMarkerOnly.
+         */
+        function removeEmptyInlineMarks(block) {
+            try {
+                const marks = block.querySelectorAll('strong, b, em, i, del, s, strike, code, mark, u');
+                for (let i = marks.length - 1; i >= 0; i--) {
+                    const m = marks[i];
+                    if (m.closest('pre')) continue;
+                    if ((m.textContent || '') === '' && !m.querySelector('img, br, input')) m.remove();
+                }
+            } catch (e) {}
+        }
+
         function insertPastedPlainText(text, fromHtml) {
             if (text == null || text === '') return;
             // A paste into the middle of a line keeps its own spaces: " Pasted" after a word
@@ -2140,6 +2213,7 @@
             const rawLines = String(text).split(/\r?\n/);
             const blockTexts = [];
             let pasteCaretBeforeTail = '';
+            let pasteCaretAfterHead = null;
             let currentCode = null;
             let currentTable = null;
             for (let i = 0; i < rawLines.length; i++) {
@@ -2172,6 +2246,15 @@
             if (currentTable !== null) blockTexts.push(currentTable.join('\n'));
 
             if (blockTexts.length === 0) {
+                HistoryManager.commitEdit();
+                return;
+            }
+
+            // Several lines pasted inside a fenced code block are code. Splitting them into
+            // blocks closed the fence at the caret and left "``` line ```" behind.
+            if (String(text).indexOf('\n') >= 0 && !state.revealOnFocus
+                && pasteIntoCodeFence(active, String(text).replace(/\r\n?/g, '\n'))) {
+                updateStats();
                 HistoryManager.commitEdit();
                 return;
             }
@@ -2233,6 +2316,7 @@
             let cutTail = '';
             if (blockTexts.length > 1 && active && active.classList && active.classList.contains('block')) {
                 cutTail = cutTextAfterCaret(active) || '';
+                if (cutTail) removeEmptyInlineMarks(active);
             }
 
             if (active && active.classList && active.classList.contains('block')) {
@@ -2249,14 +2333,22 @@
                 // The caret at the start of a heading, quote, or list item is in front of
                 // the words. The marker is not text before the caret. Left on the head, a
                 // paste there becomes "## AAA" and the original line loses its marker.
+                let markerMoved = false;
                 if (cutTail && structuralMarkerOnly(headMd)) {
                     cutTail = headMd + cutTail;
                     headMd = '';
+                    markerMoved = true;
                 }
                 if (cutTail) {
                     const last = blockTexts.length - 1;
                     if (/^\s*(```|\|)/.test(blockTexts[last])) blockTexts.push(cutTail);
-                    else blockTexts[last] += cutTail;
+                    else {
+                        // A marker carried onto the end of a pasted line is text there, not
+                        // a marker ("B## Head"). Rendered on its own it shows no "## ", so
+                        // counting back from the end put the caret after "## ", not after B.
+                        if (markerMoved) pasteCaretAfterHead = blockTexts[last];
+                        blockTexts[last] += cutTail;
+                    }
                     pasteCaretBeforeTail = cutTail;
                 }
                 const joined = String(headMd || '') + blockTexts[0];
@@ -2296,6 +2388,15 @@
                             tailLen = (t.innerText || '').length;
                         } catch (eT) {}
                     }
+                    if (pasteCaretAfterHead != null) {
+                        let headLen = 0;
+                        try {
+                            const h = document.createElement('div');
+                            renderBlockPreview(h, pasteCaretAfterHead);
+                            headLen = (h.innerText || '').length;
+                        } catch (eHd) {}
+                        focusBlock(currentBlock, headLen);
+                    } else
                     focusBlock(currentBlock, Math.max(0, (currentBlock.innerText || '').length - tailLen));
                 }
             } else {
@@ -3457,13 +3558,28 @@
                 const cutAt = removeCrossBlockSelection();
                 if (cutAt) {
                     window.isProgrammaticFocus = true;
-                    if (cutAt.block) {
-                        focusBlock(cutAt.block);
-                        setTimeout(function () {
-                            try { setCaretAtOffset(cutAt.block, cutAt.offset); } catch (err2) {}
-                            try { ensureCaretVisible(cutAt.block); } catch (err3) {}
-                        }, 0);
-                    }
+                    // The caret goes where the cut was, now, as Delete does. Placing it on a
+                    // timer used the element from before the reload; by then that element
+                    // could be replaced, and the caret fell to the start of the line.
+                    const caretToCut = function () {
+                        let b = null;
+                        try {
+                            if (cutAt.focusIndex >= 0 && typeof elementForModelIndex === 'function')
+                                b = elementForModelIndex(cutAt.focusIndex);
+                        } catch (eEl) {}
+                        if (!b || !editor.contains(b)) b = cutAt.block;
+                        if (!b || !editor.contains(b)) return null;
+                        focusBlock(b);
+                        setCaretAtOffset(b, cutAt.offset | 0);
+                        return b;
+                    };
+                    try { caretToCut(); } catch (err2) {}
+                    setTimeout(function () {
+                        try {
+                            const b = caretToCut();
+                            if (b) ensureCaretVisible(b);
+                        } catch (err3) {}
+                    }, 0);
                 }
                 updateStats();
                 updateOutline();
@@ -3941,6 +4057,34 @@
             if (selInBlock && block.querySelector('table')) return;
             if (selInBlock && block.querySelector('pre') && enterInCodeBlock(block, sel.getRangeAt(0))) return;
 
+            // Enter on a list item with nothing in it ends the list, as in Source: the empty
+            // marker goes and the caret moves to a new line below. It used to push the empty
+            // bullet down and add another ("- " / "- "), so a list could not be left by Enter.
+            if (selInBlock && sel.isCollapsed && !shiftKey) {
+                const whole0 = normalizeBlockRaw(readBlockRawSafe(block));
+                const lp0 = parseListLine(whole0);
+                if (lp0 && !String(lp0.body || '').trim()) {
+                    HistoryManager.beginEdit();
+                    writeBlockRaw(block, '');
+                    const after = createBlock('', block);
+                    window.isProgrammaticFocus = true;
+                    focusBlock(after);
+                    try {
+                        const r0 = document.createRange();
+                        r0.selectNodeContents(after);
+                        r0.collapse(true);
+                        const s0 = window.getSelection();
+                        s0.removeAllRanges();
+                        s0.addRange(r0);
+                    } catch (eC0) {}
+                    ensureCaretVisible(after);
+                    try { refreshLastGoodDocRaws(); } catch (eR0) {}
+                    HistoryManager.commitEdit();
+                    updateStats();
+                    return;
+                }
+            }
+
             // At the start of a line the whole line moves down, marker and all. It used to
             // leave "# " or "> " behind and carry the words down as a plain paragraph.
             let wholeLine = null;
@@ -4020,6 +4164,19 @@
                 }
             } else {
                 nextRaw = coerceBlockRaw(afterText);
+                // Split inside a list item: the second half is the next item, with the same
+                // marker and indent ("- one|two" -> "- one" / "- two"). It used to come out
+                // as a plain paragraph. Shift+Enter still gives a line without a marker.
+                if (!shiftKey && wholeLine === null) {
+                    const lpH = parseListLine(raw);
+                    if (lpH && !parseListLine(nextRaw)) {
+                        nextRaw = formatListLine(Object.assign({}, lpH, {
+                            num: lpH.kind === 'ol' ? (lpH.num || 1) + 1 : lpH.num,
+                            checked: false,
+                            body: nextRaw
+                        }));
+                    }
+                }
             }
 
             const newBlock = createBlock(wholeLine !== null ? wholeLine : nextRaw, block);

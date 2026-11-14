@@ -119,7 +119,8 @@ Bullet, ordered and task lists, with real nesting.
 - **`Tab` / `Shift+Tab`** indent and outdent list lines — 2 spaces per level, maximum depth 6, spaces only (tabs are normalised on parse)
 - Inside a table, `Tab` moves between cells instead and grows the table at the end
 - **Backspace at column 0** walks a ladder: outdent one level → strip the marker (including ordered `1.` and task `- [ ]`) → merge with the previous block
-- `Enter` continues the list at the same indent and kind; ordered numbering follows the previous item _at that level_
+- `Enter` continues the list at the same indent and kind, at the end or in the middle of an item; ordered numbering follows the previous item _at that level_
+- `Enter` on an empty item ends the list, as in Source
 - Formatting and toolbar list toggles preserve indent; un-listing clears it to level 0
 - Indentation is a property of the raw Markdown (leading spaces), rendered with `margin-left` rather than nested `<ul>` DOM — so Source round-trips exactly
 

@@ -1437,7 +1437,7 @@
          * (default 48, so a search hit has context); a mode switch passes 0, so the line
          * lands at the top as in Source, where the next switch reads it back.
          */
-        function restoreStickyDocumentLine(line1Based, noFocus, topPad, exact) {
+        function restoreStickyDocumentLine(line1Based, noFocus, topPad, exact, caretOffset) {
             const pad = topPad == null ? 48 : Math.max(0, topPad | 0);
             let line = Math.max(1, line1Based | 0);
             if (window.markProgrammaticScroll) window.markProgrammaticScroll(800);
@@ -1475,7 +1475,18 @@
                     window.showDebugTelemetry('restoreSticky: ensureModelBlockVisible returned el, setting focus');
                     currentActiveBlock = el;
                     try {
-                        if (!noFocus) focusBlock(el, 0);
+                        // An edit's reload (caretOffset given) already placed the caret -- a
+                        // paste over the cut may have moved it lines on. Leave a live caret
+                        // where it is; put one at the edit only if the remount lost it.
+                        let keepLive = false;
+                        if (caretOffset != null) {
+                            try {
+                                const s = window.getSelection();
+                                keepLive = !!(s && s.rangeCount && s.anchorNode && s.anchorNode.isConnected
+                                    && editor.contains(s.anchorNode));
+                            } catch (eK) {}
+                        }
+                        if (!noFocus && !keepLive) focusBlock(el, caretOffset != null ? caretOffset : 0);
                     } catch (eF) {}
                     // Focus/caret can nudge scroll in WebView2 — re-snap once
                     try {

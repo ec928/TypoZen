@@ -101,8 +101,24 @@ async function main() {
 
         await page.evaluate(() => handleCommand('view_set:mode:preview'));
         await settled(page);
+        // A caret in "be|ta" before Clear search. In 0.20.2 Clear put it at the start of
+        // the reading line, so the next letter went somewhere the reader was not.
+        const betaPt = await page.evaluate(() => {
+            const b = Array.from(editor.querySelectorAll('.block')).find(x => x.textContent === 'beta');
+            const t = document.createTreeWalker(b, NodeFilter.SHOW_TEXT).nextNode();
+            const r = document.createRange(); r.setStart(t, 2); r.collapse(true);
+            const q = r.getBoundingClientRect();
+            return { x: q.left + 1, y: q.top + q.height / 2 };
+        });
+        await page.mouse.click(betaPt.x, betaPt.y);
+        await settled(page);
         await page.click('#searchModeNoticeClear');
         await settled(page);
+        await page.keyboard.type('Q');
+        const typed = await page.evaluate(() => getMarkdownContent(false));
+        assert(/^alpha one\nbeQta\nalpha two/.test(typed),
+            'Clear search keeps the caret where it was (' + JSON.stringify(typed) + ')');
+        await page.keyboard.press('Backspace');
         n = await notice(page);
         assert(n.matches === 0 && n.hidden, 'Clear search leaves search mode');
         assert(n.sideValue === '' && n.findValue === '',

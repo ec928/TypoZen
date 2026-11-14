@@ -273,6 +273,28 @@ try {
             await run(mode, 'Ctrl+I italicises the selection', DOC, at('quick', 4, 2),
                 async () => { for (let i = 0; i < 5; i++) await chord(['Shift'], 'ArrowRight'); await chord(['Control'], 'i'); await sleep(300); },
                 DOC.replace('quick', '*quick*'));
+            // 0.20.3: each of these was wrong in 0.19.0 through 0.20.2.
+            // A multi-line paste at the start of a line that opens with bold left an empty
+            // <strong> behind: "****", and a heading or list lost its marker to the paste.
+            await run(mode, 'Ctrl+V of two lines at the start of a **bold** list item', 'Intro\n\n- **Task:** two\n\nEnd', ['Task', 0],
+                async () => { await page.evaluate(() => navigator.clipboard.writeText('A\nB\n')); await chord(['Control'], 'v'); await sleep(300); },
+                'Intro\n\nA\nB\n- **Task:** two\n\nEnd');
+            // Splitting a fence into blocks closed it at the caret and left "``` line ```".
+            await run(mode, 'Ctrl+V of two lines inside a code block stays code', 'Intro\n\n```\ncode line\n```\n\nEnd', ['code line', 4],
+                async () => { await page.evaluate(() => navigator.clipboard.writeText('X\nY')); await chord(['Control'], 'v'); await sleep(300); await kb.type('Z'); },
+                'Intro\n\n```\ncodeX\nYZ line\n```\n\nEnd');
+            // The reload after a cut across lines put the caret at the start of the line 20 ms on.
+            await run(mode, 'Ctrl+X across lines, wait, type: the letter goes at the cut', 'Alpha one\nBeta two\nGamma\n\nEnd', ['Alpha', 6],
+                async () => { await chord(['Shift'], 'ArrowDown'); await chord(['Control'], 'x'); await sleep(250); await kb.type('Q'); },
+                'Alpha Qwo\nGamma\n\nEnd');
+            await run(mode, 'Backspace over lines, wait, type: the letter goes at the cut', 'Alpha one\nBeta two\nGamma\n\nEnd', ['Alpha', 6],
+                async () => { await chord(['Shift'], 'ArrowDown'); await kb.press('Backspace'); await sleep(250); await kb.type('Q'); },
+                'Alpha Qwo\nGamma\n\nEnd');
+            await run(mode, 'Enter in the middle of a list item makes the next item', 'Intro\n\n1. onetwo\n2. three\n\nEnd', ['onetwo', 3],
+                () => kb.press('Enter'), 'Intro\n\n1. one\n2. two\n3. three\n\nEnd');
+            await run(mode, 'Enter on an empty list item ends the list', 'Intro\n\n- one\n\nEnd', ['one', 3],
+                async () => { await kb.press('End'); await kb.press('Enter'); await kb.press('Enter'); await kb.type('P'); },
+                'Intro\n\n- one\n\nP\n\nEnd');
         }
         await run(mode, 'Enter on a list item starts the next item', LIST, SRC ? [3, 5] : ['two', 3],
             async () => { await kb.press('End'); await kb.press('Enter'); await kb.type('three'); },
