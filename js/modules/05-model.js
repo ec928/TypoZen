@@ -2210,6 +2210,21 @@
                 if (blocks.length > 0) active = blocks[blocks.length - 1];
             }
 
+            // A table cell holds one line. Several lines pasted into one were split into
+            // blocks, which cut the table at the caret and left broken rows behind. They go
+            // into the cell as one line instead, separated by spaces.
+            try {
+                const selC = window.getSelection();
+                const anchorEl = selC && selC.anchorNode
+                    ? (selC.anchorNode.nodeType === 1 ? selC.anchorNode : selC.anchorNode.parentElement) : null;
+                const inCell = anchorEl && anchorEl.closest && anchorEl.closest('td, th');
+                if (inCell && active && active.contains(inCell) && /[\r\n]/.test(String(text))) {
+                    text = String(text).split(/\r?\n/).map(function (l) { return l.trim(); })
+                        .filter(function (l) { return l.length; }).join(' ');
+                    if (!text) { HistoryManager.commitEdit(); return; }
+                }
+            } catch (eCell) {}
+
             const rawLines = String(text).split(/\r?\n/);
             const blockTexts = [];
             let pasteCaretBeforeTail = '';

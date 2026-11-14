@@ -69,6 +69,14 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### A paste of several lines into a table cell broke the table — **fixed** (0.20.4)
+
+The lines were split into blocks, cutting the table at the caret: `| ap |  |X` / `Y| ple |`,
+or extra header rows when the caret was in the header. A cell holds one line, so the pasted
+lines now go into the cell separated by spaces; a `|` in them is escaped, as in a one-line
+paste. Pasting rows as new table rows is not supported. Wrong since at least 0.19.0.
+Guarded by `keyboard-editing-cases.mjs`.
+
 ### A paste of several lines at the start of a bold-first line wrote "****" — **fixed** (0.20.3)
 
 `**The Focus:** text`, `## **Big** head`, `- **Task:** two`, `> **q** text`: the caret sat

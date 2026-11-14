@@ -290,6 +290,11 @@ try {
             await run(mode, 'Backspace over lines, wait, type: the letter goes at the cut', 'Alpha one\nBeta two\nGamma\n\nEnd', ['Alpha', 6],
                 async () => { await chord(['Shift'], 'ArrowDown'); await kb.press('Backspace'); await sleep(250); await kb.type('Q'); },
                 'Alpha Qwo\nGamma\n\nEnd');
+            // A cell holds one line: several pasted lines cut the table at the caret.
+            await run(mode, 'Ctrl+V of two lines into a table cell keeps the table', 'Intro\n\n| Name | Value |\n|---|---|\n| apple | red |\n\nEnd', ['Name', 2],
+                // clickPreview counts from the start of the table's text, so offset 2 lands in "N|ame".
+                async () => { await page.evaluate(() => navigator.clipboard.writeText('X\nY')); await chord(['Control'], 'v'); await sleep(300); await kb.type('Z'); },
+                'Intro\n\n| NX YZame | Value |\n|---|---|\n| apple | red |\n\nEnd');
             await run(mode, 'Enter in the middle of a list item makes the next item', 'Intro\n\n1. onetwo\n2. three\n\nEnd', ['onetwo', 3],
                 () => kb.press('Enter'), 'Intro\n\n1. one\n2. two\n3. three\n\nEnd');
             await run(mode, 'Enter on an empty list item ends the list', 'Intro\n\n- one\n\nEnd', ['one', 3],
