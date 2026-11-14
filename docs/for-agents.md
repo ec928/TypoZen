@@ -17,6 +17,7 @@ Product truth lives here and in the README; `docs/archive/` is history.
 | `README.md` | User-facing product behaviour (current) |
 | `docs/for-agents.md` | This file — constraints, keyboard matrix, non-goals |
 | `docs/known-issues.md` | Product limits + fixed/mitigated notes (not a dump of suite noise) |
+| `docs/testing-strategy.md` | 3-tier test structure (Fast Core, Attack/Gate, Scoped App/MSIX) |
 | `docs/developer-editor-analysis.md` | Parked code-editor attempt |
 | `docs/releasing.md` | Build, package, release, Store. Read section 5 before touching install identity |
 | `docs/store-listing.md` | Store listing copy and the certification answers, with field limits |

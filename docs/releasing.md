@@ -141,7 +141,7 @@ must not be shipped; a zip containing it is shipping a stale artefact.
 
 ## 3. Tests
 
-Two tiers, and the distinction matters more than the count.
+Two tiers (plus a fast `--tier fast` core mode — see [testing-strategy.md](testing-strategy.md)), and the distinction matters more than the count.
 
 **The gate** — 100 suites, headless, invisible, run by `tests/run-gate.mjs` four at a time
 (`TZ_GATE_JOBS` to change it): 294 s for 0.19.0 on 2026-10-18. With 83 suites it was about

@@ -12,7 +12,9 @@
  * in parallel: one at a time, after the rest, and only with RUN_APP_E2E=1.
  *
  *   node tests/run-gate.mjs              # the gate (template regenerated first)
+ *   node tests/run-gate.mjs --tier fast  # fast core (<45s): syntax, roundtrip, editing core
  *   node tests/run-gate.mjs --jobs 1     # one at a time, as before
+ *   node tests/run-gate.mjs --app-filter pdf   # with RUN_APP_E2E=1, run matching *-app.mjs only
  *   TZ_GATE_JOBS=6 node tests/run-gate.mjs
  *   node tests/run-gate.mjs --quiet      # PASS lines suppressed (the build uses this)
  *
@@ -28,11 +30,28 @@ import { fileURLToPath } from 'url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
 const args = process.argv.slice(2);
-const argJobs = args.indexOf('--jobs') >= 0 ? +args[args.indexOf('--jobs') + 1] : 0;
+const argVal = (flag) => { const i = args.indexOf(flag); return i >= 0 && i + 1 < args.length ? args[i + 1] : ''; };
+const argJobs = +argVal('--jobs') || 0;
+const tier = argVal('--tier') || process.env.TZ_TEST_TIER || 'full';
+const appFilter = argVal('--app-filter') || process.env.TZ_APP_FILTER || '';
 const jobs = Math.max(1, argJobs || +process.env.TZ_GATE_JOBS || 4);
 const quiet = args.includes('--quiet');
 const HEADLESS_LIMIT_MS = 300000, APP_LIMIT_MS = 600000;
 const timesFile = path.join(os.tmpdir(), 'typozen-gate-times.json');
+
+const FAST_CORE = new Set([
+    'parse-check.mjs',
+    'modules-selftest.mjs',
+    'real-files-roundtrip-browser.mjs',
+    'keyboard-editing-preview-browser.mjs',
+    'source-roundtrip-browser.mjs',
+    'keyboard-editing-large-browser.mjs',
+    'edit-keeps-source-browser.mjs',
+    'format-keeps-source-browser.mjs',
+    'clipboard-roundtrip-browser.mjs',
+    'callout-edit-browser.mjs',
+    'undo-selftest.mjs',
+]);
 
 // Helpers and generators, not suites; the same rule run-tests.ps1 and the build used.
 const helpers = new Set(['app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
@@ -40,9 +59,14 @@ const helpers = new Set(['app-harness.mjs', 'build-test-template.mjs', 'engine-s
 const all = fs.readdirSync(here).filter(f => f.endsWith('.mjs') && !helpers.has(f)
     && !f.startsWith('make-') && !f.startsWith('_')).sort();
 const pending = all.filter(f => f.endsWith('-pending.mjs'));
-const app = all.filter(f => f.endsWith('-app.mjs'));
+let app = all.filter(f => f.endsWith('-app.mjs'));
+if (appFilter) {
+    const re = new RegExp(appFilter, 'i');
+    app = app.filter(f => re.test(f));
+}
 let headless = all.filter(f => !f.endsWith('-pending.mjs') && !f.endsWith('-app.mjs'));
-if (process.env.RUN_PENDING_E2E === '1') headless = headless.concat(pending);
+if (tier === 'fast') headless = headless.filter(f => FAST_CORE.has(f));
+else if (process.env.RUN_PENDING_E2E === '1') headless = headless.concat(pending);
 
 let past = {};
 try { past = JSON.parse(fs.readFileSync(timesFile, 'utf8')); } catch (e) { }

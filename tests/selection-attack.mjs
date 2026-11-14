@@ -16,11 +16,14 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import puppeteer from 'puppeteer';
 
 const appDir = process.env.TZ_APPDIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const explicitBudget = !!process.argv[2];
 const budget = Number(process.argv[2] || 50) * 1000;
 let seed = Number(process.argv[3] || 1);
 const only = process.argv[4] && process.argv[4] !== '-' ? process.argv[4] : '';
 const outFile = process.argv[5];
-const LAYOUT = process.env.TZ_LAYOUT || 'scroll1';
+const LAYOUT_LIST = process.env.TZ_LAYOUT
+    ? [process.env.TZ_LAYOUT]
+    : (explicitBudget ? ['scroll1'] : ['scroll1', 'scroll2', 'pages']);
 const started = Date.now();
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
@@ -61,13 +64,12 @@ const kindOf = (t) => {
     return 'para';
 };
 
-const ACTIONS = ['Delete', 'Backspace', 'typeQ', 'Enter', 'cutPaste', 'paste1', 'paste2', 'bold', 'copyPasteEnd'];
+const ACTIONS = ['Delete', 'Backspace', 'typeQ', 'Enter', 'shiftEnter', 'cutPaste', 'paste1', 'paste2', 'bold', 'italic', 'copyPasteEnd'];
 
 const browser = await puppeteer.launch({ headless: 'new', protocolTimeout: 20000 });
 const fails = []; let cases = 0, premiseSkips = 0; const byAction = {};
 try {
     const page = await browser.newPage();
-    await page.setViewport({ width: 1200, height: LAYOUT === 'scroll1' ? 3000 : 900 });
     let pageErr = null;
     page.on('pageerror', e => { pageErr = e.message; });
     try { await browser.defaultBrowserContext().overridePermissions('file://', ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write']); } catch (e) {}
@@ -91,13 +93,14 @@ try {
         }
         return last;
     };
-    const load = async () => {
-        await page.evaluate((d, layout) => {
+    const load = async (layout) => {
+        await page.evaluate((d, l) => {
             localStorage.clear(); handleCommand('view_set:mode:preview');
-            if (layout === 'pages') { handleCommand('view_set:columns:2'); handleCommand('view_set:scroll:pagination'); }
-            else if (layout === 'scroll2') { handleCommand('view_set:columns:2'); handleCommand('view_set:scroll:scroll'); }
+            if (l === 'pages') { handleCommand('view_set:columns:2'); handleCommand('view_set:scroll:pagination'); }
+            else if (l === 'scroll2') { handleCommand('view_set:columns:2'); handleCommand('view_set:scroll:scroll'); }
+            else { handleCommand('view_set:columns:1'); handleCommand('view_set:scroll:scroll'); }
             loadMarkdownContent(d);
-        }, DOC, LAYOUT);
+        }, DOC, layout);
         await sleep(90);
     };
     const pointOf = (tok) => page.evaluate((w) => {
@@ -111,7 +114,12 @@ try {
     }, tok);
     const selToks = () => page.evaluate(() => String(window.getSelection()));
 
-    while (Date.now() - started < budget) {
+    const sliceMs = Math.floor(budget / LAYOUT_LIST.length);
+    for (let li = 0; li < LAYOUT_LIST.length; li++) {
+        const LAYOUT = LAYOUT_LIST[li];
+        const sliceEnd = li === LAYOUT_LIST.length - 1 ? started + budget : Date.now() + sliceMs;
+        await page.setViewport({ width: 1200, height: LAYOUT === 'scroll1' ? 3000 : 900 });
+        while (Date.now() < sliceEnd) {
         const ia = Math.floor(rnd() * (ALL.length - 1));
         const span = rnd() < 0.5 ? 1 + Math.floor(rnd() * 4) : 1 + Math.floor(rnd() * (ALL.length - ia - 1));
         const ib = Math.min(ALL.length - 1, ia + span);
@@ -119,11 +127,11 @@ try {
         const action = only || pick(ACTIONS);
         const gesture = lineOf[A] === lineOf[B] ? 'drag' : pick(['shiftclick', 'drag']);
         const after2 = rnd() < 0.5 ? 'undo' : 'caret';
-        const rec = { A, B, kinds: kindOf(A) + '>' + kindOf(B), action, gesture, after2 };
+        const rec = { layout: LAYOUT, A, B, kinds: kindOf(A) + '>' + kindOf(B), action, gesture, after2 };
         const issues = [];
         pageErr = null;
         try {
-            await load();
+            await load(LAYOUT);
             const pa = await pointOf(A), pb = await pointOf(B);
             if (!pa || !pb || !pa.on || !pb.on) { premiseSkips++; continue; }
             if (gesture === 'shiftclick') {
@@ -145,10 +153,12 @@ try {
                 case 'Backspace': await kb.press('Backspace'); want = before.concat(after); break;
                 case 'typeQ': await kb.type('Q'); want = before.concat(after); wantQ = before.concat(['Q'], after); break;
                 case 'Enter': await kb.press('Enter'); want = before.concat(after); break;
+                case 'shiftEnter': await chord(['Shift'], 'Enter'); want = before.concat(after); break;
                 case 'cutPaste': await chord(['Control'], 'x'); await stable(); await chord(['Control'], 'v'); want = ALL; undoSteps = 2; break;
                 case 'paste1': await page.evaluate(() => navigator.clipboard.writeText('Q1 Q2')); await chord(['Control'], 'v'); want = before.concat(after); wantQ = before.concat(['Q1', 'Q2'], after); break;
                 case 'paste2': await page.evaluate(() => navigator.clipboard.writeText('Q1\nQ2')); await chord(['Control'], 'v'); want = before.concat(after); wantQ = before.concat(['Q1', 'Q2'], after); break;
                 case 'bold': await chord(['Control'], 'b'); want = ALL; keepsSel = true; break;
+                case 'italic': await chord(['Control'], 'i'); want = ALL; keepsSel = true; break;
                 case 'copyPasteEnd': {
                     await chord(['Control'], 'c'); await sleep(60);
                     const pe = await page.evaluate(() => { const bl = editor.querySelectorAll('.block'); const b = bl[bl.length - 1].getBoundingClientRect(); return { x: b.right - 3, y: b.top + b.height / 2 }; });
@@ -173,13 +183,13 @@ try {
             for (let i = 0; i < la; i++) if (sl[i] !== LINES[i]) { issues.push('line before the selection changed: ' + JSON.stringify(LINES[i]) + ' -> ' + JSON.stringify(sl[i])); break; }
             if (checkTail) for (let k = 1; k < LINES.length - lb; k++) if (sl[sl.length - k] !== LINES[LINES.length - k]) { issues.push('line after the selection changed: ' + JSON.stringify(LINES[LINES.length - k]) + ' -> ' + JSON.stringify(sl[sl.length - k])); break; }
             if (action === 'cutPaste' && s1 !== DOC) rec.inexact = true;
-            if (action === 'bold') {
+            if (action === 'bold' || action === 'italic') {
                 const touchesFormattable = LINES.slice(lineOf[A], lineOf[B] + 1).some(l => {
                     const t = l.trim();
                     return t && !/^(```|~~~|\||---+$|>\s*\[!)/.test(t) && kindOf((toks(l)[0] || '')) !== 'code';
                 });
-                if (touchesFormattable && s1 === DOC) issues.push('bold changed nothing');
-                if (s1 === DOC) keepsSel = false; // no undo needed when bold intentionally skipped structural blocks
+                if (touchesFormattable && s1 === DOC) issues.push(action + ' changed nothing');
+                if (s1 === DOC) keepsSel = false; // no undo needed when inline format intentionally skipped structural blocks
             }
 
             if (after2 === 'undo' || keepsSel || action === 'copyPasteEnd' || action === 'cutPaste') {
@@ -199,9 +209,10 @@ try {
         } catch (err) { issues.push('harness: ' + err.message); }
         if (issues.length) { rec.issues = issues; fails.push(rec); }
     }
+    }
 } finally { await browser.close(); }
 
-console.log(`cases=${cases} failing=${fails.length} premiseSkips=${premiseSkips} seconds=${Math.round((Date.now() - started) / 1000)} layout=${LAYOUT}`);
+console.log(`cases=${cases} failing=${fails.length} premiseSkips=${premiseSkips} seconds=${Math.round((Date.now() - started) / 1000)} layouts=${LAYOUT_LIST.join(',')}`);
 console.log('per action: ' + JSON.stringify(byAction));
 const groups = {};
 for (const f of fails) for (const is of f.issues) {
