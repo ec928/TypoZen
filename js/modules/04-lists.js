@@ -941,7 +941,7 @@
         // selection ends keeps its shape with the selected cells emptied. Same here, and the
         // same for a code block (only its selected code goes). The two ends stay two blocks.
 
-        function splitTableRow(line) {
+        function splitRawTableRow(line) {
             let s = String(line).trim();
             if (s.charAt(0) === '|') s = s.slice(1);
             if (s.length && s.charAt(s.length - 1) === '|' && s.charAt(s.length - 2) !== '\\') s = s.slice(0, -1);
@@ -1005,7 +1005,7 @@
             const inCell = Math.max(0, Math.min(off - hit.start, hit.len));
             const rawLineOf = function (r) { return r === 0 ? 0 : r + 1; };
             const rows = [];
-            for (let r = 0; r < nRows; r++) rows.push(splitTableRow(lines[rawLineOf(r)]));
+            for (let r = 0; r < nRows; r++) rows.push(splitRawTableRow(lines[rawLineOf(r)]));
             const cellPart = function (cellRaw, a, b) {
                 const m = partialLineMarkdown(cellRaw, a, b);
                 if (m != null) return escapeCellPipes(m);

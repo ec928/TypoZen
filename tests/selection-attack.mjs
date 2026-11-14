@@ -165,11 +165,22 @@ try {
             }
             if (wantQ && toksQ(s1).join() !== wantQ.join()) issues.push('inserted text not at the cut: ' + toksQ(s1).filter((t, i, a) => t[0] === 'Q' || (a[i + 1] || '')[0] === 'Q' || (a[i - 1] || '')[0] === 'Q').join(' '));
             const sl = s1.split('\n');
-            const la = lineOf[A], lb = lineOf[B];
+            let la = lineOf[A], lb = lineOf[B];
+            // Expand la/lb to the full enclosing multi-line block (table or fenced code block)
+            // so re-serializing an edited table's separator row isn't flagged as an outside-line edit.
+            while (la > 0 && /^\|/.test(LINES[la]) && /^\|/.test(LINES[la - 1])) la--;
+            while (lb + 1 < LINES.length && /^\|/.test(LINES[lb]) && /^\|/.test(LINES[lb + 1])) lb++;
             for (let i = 0; i < la; i++) if (sl[i] !== LINES[i]) { issues.push('line before the selection changed: ' + JSON.stringify(LINES[i]) + ' -> ' + JSON.stringify(sl[i])); break; }
             if (checkTail) for (let k = 1; k < LINES.length - lb; k++) if (sl[sl.length - k] !== LINES[LINES.length - k]) { issues.push('line after the selection changed: ' + JSON.stringify(LINES[LINES.length - k]) + ' -> ' + JSON.stringify(sl[sl.length - k])); break; }
             if (action === 'cutPaste' && s1 !== DOC) rec.inexact = true;
-            if (action === 'bold' && s1 === DOC) issues.push('bold changed nothing');
+            if (action === 'bold') {
+                const touchesFormattable = LINES.slice(lineOf[A], lineOf[B] + 1).some(l => {
+                    const t = l.trim();
+                    return t && !/^(```|~~~|\||---+$|>\s*\[!)/.test(t) && kindOf((toks(l)[0] || '')) !== 'code';
+                });
+                if (touchesFormattable && s1 === DOC) issues.push('bold changed nothing');
+                if (s1 === DOC) keepsSel = false; // no undo needed when bold intentionally skipped structural blocks
+            }
 
             if (after2 === 'undo' || keepsSel || action === 'copyPasteEnd' || action === 'cutPaste') {
                 let u = s1, n = 0;

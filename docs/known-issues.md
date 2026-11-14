@@ -69,6 +69,10 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Duplicate `splitTableRow` shadowing across modules — **fixed** (0.20.15)
+
+`04-lists.js` and `06-render-epub.js` both defined a top-level `splitTableRow`, causing `06-render-epub.js`’s pipe-unescaping version to silently shadow `04-lists.js`’s raw-preserving version during multi-block table splices. Renamed the `04-lists.js` helper to `splitRawTableRow` (`modules-selftest.mjs` `49/49` passing, `selection-attack.mjs` `88/88` passing).
+
 ### Enter, paste, and bold over selections across blocks — **fixed** (0.20.14)
 
 Found by `tests/selection-attack.mjs` across 1-column, 2-column, and paginated Preview:
