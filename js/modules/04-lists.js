@@ -933,6 +933,172 @@
             return (check.textContent || '') === want ? md : null;
         }
 
+        // ---- Deleting across a table or code block edge (0.20.9, Ed: "like normal apps") ----
+        //
+        // A delete that started or ended inside a table joined the rest of the table into the
+        // first line as words. Word and Google Docs never merge across a table edge: the text
+        // outside is deleted, rows wholly inside the selection go, and the row where the
+        // selection ends keeps its shape with the selected cells emptied. Same here, and the
+        // same for a code block (only its selected code goes). The two ends stay two blocks.
+
+        function splitTableRow(line) {
+            let s = String(line).trim();
+            if (s.charAt(0) === '|') s = s.slice(1);
+            if (s.length && s.charAt(s.length - 1) === '|' && s.charAt(s.length - 2) !== '\\') s = s.slice(0, -1);
+            const cells = [];
+            let cur = '';
+            for (let i = 0; i < s.length; i++) {
+                const ch = s.charAt(i);
+                if (ch === '\\' && s.charAt(i + 1) === '|') { cur += '\\|'; i++; continue; }
+                if (ch === '|') { cells.push(cur.trim()); cur = ''; continue; }
+                cur += ch;
+            }
+            cells.push(cur.trim());
+            return cells;
+        }
+        function joinTableRow(cells) { return '| ' + cells.join(' | ') + ' |'; }
+        function escapeCellPipes(md) { return String(md).replace(/(^|[^\\])\|/g, '$1\\|'); }
+
+        /** Cells of a rendered table block, in order: { row, col, start, len, el }. Row 0 is the header. */
+        function tableCellMap(el) {
+            const out = [];
+            const rows = el.querySelectorAll('tr');
+            for (let r = 0; r < rows.length; r++) {
+                const cells = rows[r].querySelectorAll('th, td');
+                for (let c = 0; c < cells.length; c++) {
+                    const pre = document.createRange();
+                    pre.selectNodeContents(el);
+                    pre.setEnd(cells[c], 0);
+                    out.push({ row: r, col: c, start: pre.toString().length, len: (cells[c].textContent || '').length, el: cells[c] });
+                }
+            }
+            return out;
+        }
+
+        /**
+         * One end of a delete inside a table. side 'end': everything before visible offset
+         * `off` goes (rows before the end row; in the end row, cells before it emptied and
+         * the start of its cell). side 'start': everything after `off` goes. Returns the new
+         * table Markdown, or '' when nothing of it is left, or null if it cannot be read.
+         */
+        function trimTableAt(raw, off, side) {
+            const lines = String(raw).split('\n');
+            if (lines.length < 2 || !/^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/.test(lines[1])) return null;
+            const el = document.createElement('div');
+            el.className = 'block';
+            renderBlockPreview(el, raw);
+            const map = tableCellMap(el);
+            if (!map.length) return null;
+            const nRows = map[map.length - 1].row + 1;
+            if (nRows !== lines.length - 1) return null;            // header + body rows, separator not rendered
+            let hit = null;
+            if (side === 'end') {
+                hit = map.find(function (m) { return off >= m.start && off <= m.start + m.len; })
+                    || map.find(function (m) { return m.start >= off; });
+                if (!hit) return '';                                 // ends after the last cell: the table goes
+            } else {
+                for (let i = map.length - 1; i >= 0; i--) {
+                    if (off >= map[i].start) { hit = map[i]; break; }
+                }
+                if (!hit) return '';                                 // starts before the first cell: the table goes
+            }
+            const inCell = Math.max(0, Math.min(off - hit.start, hit.len));
+            const rawLineOf = function (r) { return r === 0 ? 0 : r + 1; };
+            const rows = [];
+            for (let r = 0; r < nRows; r++) rows.push(splitTableRow(lines[rawLineOf(r)]));
+            const cellPart = function (cellRaw, a, b) {
+                const m = partialLineMarkdown(cellRaw, a, b);
+                if (m != null) return escapeCellPipes(m);
+                const v = (function () { const d = document.createElement('div'); d.className = 'block'; renderBlockPreview(d, cellRaw); return d.textContent || ''; })();
+                return escapeCellPipes(v.slice(a, b));
+            };
+            const out = [];
+            if (side === 'end') {
+                for (let r = 0; r < nRows; r++) {
+                    if (r < hit.row) {
+                        if (r === 0) out.push(joinTableRow(rows[0].map(function () { return ''; })));   // the header stays, emptied
+                        continue;
+                    }
+                    if (r === hit.row) {
+                        const cells = rows[r].slice();
+                        for (let c = 0; c < cells.length; c++) {
+                            if (c < hit.col) cells[c] = '';
+                            else if (c === hit.col) cells[c] = cellPart(cells[c], inCell, hit.len);
+                        }
+                        out.push(joinTableRow(cells));
+                    } else {
+                        out.push(lines[rawLineOf(r)]);
+                    }
+                    if (r === 0) out.push(lines[1]);
+                }
+                if (hit.row > 0) out.splice(1, 0, lines[1]);
+            } else {
+                for (let r = 0; r <= hit.row; r++) {
+                    if (r < hit.row) { out.push(lines[rawLineOf(r)]); }
+                    else {
+                        const cells = rows[r].slice();
+                        for (let c = 0; c < cells.length; c++) {
+                            if (c > hit.col) cells[c] = '';
+                            else if (c === hit.col) cells[c] = cellPart(cells[c], 0, inCell);
+                        }
+                        out.push(joinTableRow(cells));
+                    }
+                    if (r === 0) out.push(lines[1]);
+                }
+            }
+            return out.join('\n');
+        }
+
+        /** One end of a delete inside a fenced code block: keep the fence, cut its code. */
+        function trimFenceAt(raw, off, side) {
+            const lines = String(raw).split('\n');
+            if (!/^\s*(```|~~~)/.test(lines[0])) return null;
+            const closed = lines.length > 1 && /^\s*(```|~~~)\s*$/.test(lines[lines.length - 1]);
+            const body = lines.slice(1, closed ? -1 : undefined).join('\n');
+            const el = document.createElement('div');
+            el.className = 'block';
+            renderBlockPreview(el, raw);
+            const code = el.querySelector('pre code') || el.querySelector('pre');
+            if (!code || (code.textContent || '').replace(/\n$/, '') !== body) return null;
+            const o = Math.max(0, Math.min(off, body.length));
+            const kept = side === 'end' ? body.slice(o) : body.slice(0, o);
+            return lines[0] + '\n' + kept + (closed ? '\n' + lines[lines.length - 1] : '');
+        }
+
+        function isTableRaw(raw) { const l = String(raw).split('\n'); return l.length >= 2 && /^\s*\|/.test(l[0]) && /^\s*\|?\s*:?-/.test(l[1]); }
+        function isFenceRaw(raw) { return /^\s*(```|~~~)/.test(String(raw)); }
+
+        /**
+         * The blocks that replace lines A..F when either end is in a table or code block, or
+         * null when neither is (the ordinary join then applies).
+         */
+        function piecesAcrossBlockEdge(rawA, prefix, rawF, suffix) {
+            rawA = String(rawA == null ? '' : rawA);
+            rawF = String(rawF == null ? '' : rawF);
+            const aBlock = isTableRaw(rawA) || isFenceRaw(rawA);
+            const fBlock = isTableRaw(rawF) || isFenceRaw(rawF);
+            if (!aBlock && !fBlock) return null;
+            const visOf = function (raw) { const d = document.createElement('div'); d.className = 'block'; renderBlockPreview(d, raw); return d.textContent || ''; };
+            const aOff = String(prefix || '').length;
+            const visF = visOf(rawF);
+            const fOff = Math.max(0, visF.length - String(suffix || '').length);
+            let head;
+            if (isTableRaw(rawA)) head = trimTableAt(rawA, aOff, 'start');
+            else if (isFenceRaw(rawA)) head = trimFenceAt(rawA, aOff, 'start');
+            else head = aOff ? partialLineMarkdown(rawA, 0, aOff) : '';
+            let tail;
+            if (isTableRaw(rawF)) tail = trimTableAt(rawF, fOff, 'end');
+            else if (isFenceRaw(rawF)) tail = trimFenceAt(rawF, fOff, 'end');
+            else tail = fOff === 0 ? rawF : partialLineMarkdown(rawF, fOff, visF.length);
+            if (head == null || tail == null) return null;
+            const pieces = [];
+            if (head !== '') pieces.push(head);
+            if (head !== '' && tail !== '') pieces.push('');          // a table needs a blank line from its neighbour
+            if (tail !== '') pieces.push(tail);
+            if (!pieces.length) pieces.push('');
+            return pieces;
+        }
+
         /**
          * The Markdown of line A up to the cut joined to line F from the cut, marks kept.
          *
@@ -1101,7 +1267,13 @@
                 joined = (typeof concatMarkdown === 'function') ? concatMarkdown(head, tail) : head + tail;
             }
             joined = coerceBlockRaw(joined);
-            const out = allRaws.slice(0, fromIdx).concat([joined]).concat(allRaws.slice(toIdx + 1));
+            // A table or code block at either end stays a block (piecesAcrossBlockEdge).
+            let middle = [joined];
+            try {
+                const pieces = piecesAcrossBlockEdge(allRaws[fromIdx], spec.prefix, allRaws[toIdx], spec.suffix);
+                if (pieces) middle = pieces.map(function (p) { return coerceBlockRaw(p); });
+            } catch (eEdge) {}
+            const out = allRaws.slice(0, fromIdx).concat(middle).concat(allRaws.slice(toIdx + 1));
             if (!out.length) out.push('');
             const postContent = out.join('\n');
             const postNonEmpty = out.filter(function (r) { return String(r || '').trim(); }).length;

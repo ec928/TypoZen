@@ -306,9 +306,10 @@ try {
                     await kb.press('Delete');
                 },
                 'Intro\n\nStart **bo**nd [a link](https://e.com/x) two\n\nTail');
-            // Delete from inside bold into a table: the table's part joins as its words (as
-            // always), but the kept "bo" stays bold (0.20.8; it was saved plain).
-            await run(mode, 'Delete from inside bold into a table keeps the bold',
+            // Delete from inside bold into a table: the kept "bo" stays bold (0.20.8; it was
+            // saved plain) and the table stays a table -- its rows before the end point go,
+            // its header stays, emptied (0.20.9; its words were joined into the line).
+            await run(mode, 'Delete from inside bold into a table keeps the bold and the table',
                 'Intro\n\nStart **bold words** one\n\n| col | **b** |\n|---|---|\n| c | `d` |\n\nEnd', ['Start', 8],
                 async () => {
                     const pt = await page.evaluate(() => {
@@ -320,7 +321,26 @@ try {
                     await kb.down('Shift'); await page.mouse.click(pt.x, pt.y); await kb.up('Shift'); await sleep(150);
                     await kb.press('Delete');
                 },
-                'Intro\n\nStart **bo**c d\n\nEnd');
+                'Intro\n\nStart **bo**\n\n|  |  |\n|---|---|\n| c | `d` |\n\nEnd');
+            // From inside a table out into text: the rows before the start point stay; the
+            // text after the end point keeps its marks (0.20.9).
+            const TBL = 'Intro\n\n| H1 | H2 |\n|---|---|\n| a1 | **b1** |\n| a2 | b2 |\n\nEnd *line* here';
+            const fromCell = async (cellText, off, toStarts, toOff) => {
+                const pts = await page.evaluate((ct, o, ts, to) => {
+                    const at = (el, k) => { const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let t, left = k; while ((t = tw.nextNode())) { if (left <= t.nodeValue.length) { const r = document.createRange(); r.setStart(t, left); r.collapse(true); const q = r.getBoundingClientRect(); return { x: q.left + 1, y: q.top + q.height / 2 }; } left -= t.nodeValue.length; } return null; };
+                    const cell = Array.from(editor.querySelectorAll('.block th, .block td')).find(c => c.textContent === ct);
+                    const blk = Array.from(editor.querySelectorAll('.block')).find(b => (b.textContent || '').indexOf(ts) === 0);
+                    return { a: at(cell, o), f: at(blk, to) };
+                }, cellText, off, toStarts, toOff);
+                await page.mouse.click(pts.a.x, pts.a.y); await sleep(150);
+                await kb.down('Shift'); await page.mouse.click(pts.f.x, pts.f.y); await kb.up('Shift'); await sleep(150);
+            };
+            await run(mode, 'Delete from inside a table out into text keeps the table and the marks after', TBL, ['Intro', 0],
+                async () => { await fromCell('b1', 1, 'End', 5); await kb.press('Delete'); },
+                'Intro\n\n| H1 | H2 |\n|---|---|\n| a1 | **b** |\n\n*ine* here');
+            await run(mode, 'Typing over lines into a table is Delete, then the letter', TBL, ['Intro', 0],
+                async () => { await fromCell('b1', 1, 'End', 5); await kb.type('Z'); },
+                'Intro\n\n| H1 | H2 |\n|---|---|\n| a1 | **bZ** |\n\n*ine* here');
             // Part of a line copies as Markdown, and pastes back as it was (0.20.7). It copied
             // the words shown, so a cut from inside bold came back plain -- or all bold.
             await run(mode, 'Ctrl+X inside a line, Ctrl+V back: the line is unchanged',

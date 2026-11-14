@@ -109,11 +109,17 @@ The fallback also stripped the ordinary line's bold, italic, code and links: `St
 ordinary end now keeps its Markdown (`Start **bo**c d`); the table's remaining words still
 join as text, as before. Guarded by `keyboard-editing-cases.mjs` (preview).
 
-### Still open: a delete that ends inside a table flattens the rest of the table
+### A delete into or out of a table flattened the table into the line — **changed** (0.20.9)
 
-Its remaining cells join the first line as words (`c d`), as in every version. A selection
-that ends mid-table has no clean Markdown answer; Word keeps table rows apart. Open
-question for Ed.
+A delete that ended (or started) inside a table joined the rest of the table into the line
+as words. Ed's decision (2026-11-14): "like normal apps" (Word, Google Docs) -- nothing is
+merged across a table edge. The line keeps its text up to the cut, with its marks; the
+table stays a table; rows wholly inside the selection go; the row where the selection ends
+keeps its shape with its selected cells emptied (the header stays, emptied, while the table
+survives); from inside a table out, the rows before the start stay. A code block the same:
+the block stays and only its selected code goes. Typing over such a selection is Delete,
+then the letter (it was left to the browser, which deleted the lines and left the table).
+Guarded by `keyboard-editing-cases.mjs` (preview).
 
 ### Part of a line copied as plain words, so a cut pasted back lost its marks — **changed** (0.20.7)
 

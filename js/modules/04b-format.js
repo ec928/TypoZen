@@ -2016,13 +2016,25 @@
                     clearMultiBlockSelFreeze();
             } catch (eKu) {}
         });
-        // Typing over a Shift+click selection whose start line is unmounted: the browser
-        // would replace only the mounted lines. Delete the remembered range, then type.
+        // Typing over a selection that spans lines is Delete, then the letter -- as in any
+        // editor, and so it follows the same rules as Delete: a remembered (scrolled-away)
+        // range is deleted whole, a table at either end stays a table, both ends keep their
+        // marks. Left to the browser, typing over lines into a table deleted the lines
+        // before it and left the table untouched (0.20.9).
         editor.addEventListener('keydown', function (e) {
             if (state.mode === 'source' || e.ctrlKey || e.metaKey || e.altKey) return;
             if (!e.key || e.key.length !== 1 || e.isComposing || e.keyCode === 229) return;
             try {
-                if (typeof rememberedFreezeStandsForSelection !== 'function' || !rememberedFreezeStandsForSelection()) return;
+                let across = typeof rememberedFreezeStandsForSelection === 'function' && rememberedFreezeStandsForSelection();
+                if (!across) {
+                    const s = window.getSelection();
+                    if (s && s.rangeCount && !s.isCollapsed && s.anchorNode && editor.contains(s.anchorNode)) {
+                        const r = s.getRangeAt(0);
+                        const a = getAncestorBlock(r.startContainer), b = getAncestorBlock(r.endContainer);
+                        across = !!(a && b && a !== b);
+                    }
+                }
+                if (!across) return;
                 if (!handleMultiBlockSelectionDelete(e)) return;
                 document.execCommand('insertText', false, e.key);
             } catch (eTy) {}
