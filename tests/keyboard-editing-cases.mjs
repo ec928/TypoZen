@@ -317,6 +317,57 @@ try {
             async () => { await kb.press('End'); await kb.type(' and more'); },
             DOC.replace('Last line', 'Last line and more'));
     }
+    // Shift+click after scrolling the caret's line out of the mounted window (0.20.5).
+    // Before, the browser had moved the selection out of the text, so the Shift+click
+    // selected only the mounted lines: Delete took "Line " from the clicked line, cut removed
+    // nothing, and in 2-Col it deleted from the first mounted line instead of line 10.
+    if (!only || only === 'large') {
+        console.log('\n=== Shift+click after scrolling away ===');
+        const N = 3000, O = Array.from({ length: N }, (_, i) => 'Line ' + i + ' text here.'), LONG = O.join('\n');
+        const ptLine = (line) => page.evaluate((tg) => {
+            const b = Array.from(editor.querySelectorAll('.block')).find(x => x.textContent.indexOf('Line ' + tg + ' ') === 0);
+            if (!b) return null; const r0 = b.getBoundingClientRect();
+            if (r0.top < 60 || r0.bottom > innerHeight - 60 || r0.left < 0 || r0.right > innerWidth) return null;
+            const n = document.createTreeWalker(b, NodeFilter.SHOW_TEXT).nextNode();
+            const r = document.createRange(); r.setStart(n, 5); r.collapse(true);
+            const q = r.getBoundingClientRect(); return { x: q.left + 1, y: q.top + q.height / 2 };
+        }, line);
+        for (const [label, cols, to] of [['1-Col, to line 2000', 1, 2000], ['2-Col, PageDown to line 1000', 2, 1000]]) {
+            try {
+                await page.evaluate((c) => { handleCommand('view_set:mode:preview'); handleCommand('view_set:scroll:scroll'); handleCommand('view_set:columns:' + c); }, cols);
+                await sleep(2000);   // a column switch settles over the host's resize, as above
+                await page.evaluate((m) => loadMarkdownContent(m), LONG);
+                await sleep(900);
+                let p = await ptLine(10);
+                await page.mouse.click(p.x, p.y); await sleep(150);
+                await page.mouse.move(500, 400);
+                // Paged when the layout is (2-Col always is); the earlier 2-Col section can
+                // leave 1-Col paged too, so ask the page rather than assume.
+                const pagedNow = await page.evaluate(() => editor.classList.contains('page-mode'));
+                for (let i = 0; i < 300 && !(p = await ptLine(to)); i++) {
+                    if (pagedNow) { await kb.press('PageDown'); await sleep(120); }
+                    else { await page.mouse.wheel({ deltaY: 400 }); await sleep(30); }
+                }
+                if (!p) throw new Error('never reached line ' + to + ' ' + JSON.stringify(await page.evaluate(() => {
+                    const idx = Array.from(editor.querySelectorAll('.block[data-model-index]')).map(b => +b.getAttribute('data-model-index'));
+                    const mc = document.getElementById('main-container');
+                    return { cls: editor.className, mounted: idx.length ? [Math.min(...idx), Math.max(...idx)] : null, mcTop: mc.scrollTop, mcH: mc.scrollHeight, blocks: DocumentModel.blocks.length };
+                })));
+                await kb.down('Shift'); await page.mouse.click(p.x, p.y); await kb.up('Shift'); await sleep(200);
+                await chord(['Control'], 'c'); await sleep(200);
+                const clip = await page.evaluate(() => navigator.clipboard.readText());
+                check(clip === ['10 text here.'].concat(O.slice(11, to)).concat(['Line ']).join('\n'),
+                    label + ': Ctrl+C copies line 10 to the click', clip.slice(0, 80) + ' ... (' + clip.split('\n').length + ' lines)');
+                await kb.press('Delete'); await sleep(500); await kb.type('Q'); await sleep(250);
+                const got = await saved();
+                const want = O.slice(0, 10).concat(['Line Q' + O[to].slice(5)]).concat(O.slice(to + 1)).join('\n');
+                check(got === want, label + ': Delete removes line 10 to the click, the caret stays at the cut',
+                    got.split('\n').length + ' lines; line 10 = ' + JSON.stringify(got.split('\n')[10]));
+            } catch (e) {
+                check(false, label + ' (threw ' + e.message + ')');
+            }
+        }
+    }
     // ---- where TypoZen is not a plain text box -----------------------------------------
     // A large document is virtualised (only the part on screen is in the page) and 2-Col
     // lays text out in columns; typing has to behave the same in both.

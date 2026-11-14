@@ -225,6 +225,8 @@
                 try { DocumentModel.syncMountedToModel(); } catch (eS) {}
                 return DocumentModel.toMarkdown();
             }
+            // Shift+click after scrolling: the live range holds only the mounted lines.
+            if (rememberedFreezeStandsForSelection()) return rememberedFreezePlainText();
             const blocks = Array.prototype.slice.call(editor.querySelectorAll('.block'));
             const lines = [];
             for (let i = 0; i < blocks.length; i++) {
@@ -288,8 +290,185 @@
             } catch (e) { return false; }
         }
 
+        /**
+         * Shift+click after scrolling a long document.
+         *
+         * Only a window of a long file is mounted. Scroll far enough and the line the caret
+         * was on is unmounted; Chromium then moves the selection out of the text, onto the
+         * editor itself. A Shift+click extended from there, so it selected only the mounted
+         * lines above the click: Delete removed the first few characters of the clicked
+         * line, and cut removed nothing (found 2026-11-14; same in 0.20.1).
+         *
+         * The caret is remembered by model index (_editorCaretMemory), which survives the
+         * unmount. At a Shift+mousedown whose live anchor is no longer in a mounted line,
+         * that memory is the anchor; at mouseup the freeze is built from it and the click,
+         * so Delete, Backspace, cut, copy, paste and typing act on what was selected. The
+         * live selection is left as the browser drew it (its start is not in a line), so
+         * snapshotMultiBlockSelectionFromLive leaves this freeze alone.
+         */
+        let _shiftClickAnchor = null; // { index, offset } from the remembered caret
+
+        function liveAnchorIsInMountedLine() {
+            try {
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount || !sel.anchorNode || !sel.anchorNode.isConnected) return false;
+                const b = getAncestorBlock(sel.anchorNode);
+                return !!(b && editor.contains(b));
+            } catch (e) { return false; }
+        }
+
+        function noteShiftClickAnchor(e) {
+            _shiftClickAnchor = null;
+            if (!e || e.button !== 0 || state.mode === 'source' || !editor) return;
+            // A plain click or drag starts a new selection; a remembered one is over.
+            if (!e.shiftKey) {
+                if (_mbSelFreeze && _mbSelFreeze.fromMemory) _mbSelFreeze = null;
+                return;
+            }
+            // Shift+click again on a remembered selection extends it from the same anchor.
+            if (_mbSelFreeze && _mbSelFreeze.fromMemory && rememberedFreezeStandsForSelection()) {
+                _shiftClickAnchor = { index: _mbSelFreeze.anchor.index, offset: _mbSelFreeze.anchor.offset };
+                return;
+            }
+            if (liveAnchorIsInMountedLine()) return;
+            try {
+                const mem = (typeof _editorCaretMemory !== 'undefined') ? _editorCaretMemory : null;
+                if (!mem || mem.kind !== 'preview' || !(mem.index >= 0)) return;
+                if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks
+                    || mem.index >= DocumentModel.blocks.length) return;
+                _shiftClickAnchor = { index: mem.index | 0, offset: mem.start | 0 };
+            } catch (eA) { _shiftClickAnchor = null; }
+        }
+
+        /** The text a model line shows, mounted or not (same measure as range.toString()). */
+        function visibleTextOfModelLine(idx) {
+            try {
+                const el = (typeof elementForModelIndex === 'function') ? elementForModelIndex(idx) : null;
+                if (el && editor.contains(el)) return el.textContent || '';
+            } catch (eEl) {}
+            try {
+                try { DocumentModel.syncMountedToModel(); } catch (eS) {}
+                const raw = DocumentModel.blocks[idx] ? DocumentModel.blocks[idx].raw : '';
+                const tmp = document.createElement('div');
+                tmp.className = 'block';
+                renderBlockPreview(tmp, raw);
+                return tmp.textContent || '';
+            } catch (e) { return ''; }
+        }
+
+        function applyShiftClickFromAnchor() {
+            const a = _shiftClickAnchor;
+            _shiftClickAnchor = null;
+            if (!a) return false;
+            return buildRememberedFreeze(a);
+        }
+
+        /** Set between a Shift+arrow keydown and its keyup on a remembered selection. */
+        let _extendingRemembered = false;
+
+        function beginExtendingRemembered() {
+            // A held Shift+Down repeats keydown with no keyup between: stay extending.
+            _extendingRemembered = _extendingRemembered || rememberedFreezeStandsForSelection();
+        }
+
+        /** Shift+arrows on a remembered selection move its focus end; the anchor stays. */
+        function refreshRememberedFreezeFromFocus() {
+            if (!_extendingRemembered) return false;
+            _extendingRemembered = false;
+            const f = _mbSelFreeze;
+            if (!f || !f.fromMemory || !f.anchor) return false;
+            try {
+                const sel = window.getSelection();
+                if (!sel || sel.isCollapsed) { _mbSelFreeze = null; return false; }
+            } catch (e) { return false; }
+            return buildRememberedFreeze(f.anchor);
+        }
+
+        /** The freeze from a remembered anchor { index, offset } to the live focus. */
+        function buildRememberedFreeze(a) {
+            try {
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount || !sel.focusNode) return false;
+                const clickBlock = getAncestorBlock(sel.focusNode);
+                if (!clickBlock || !editor.contains(clickBlock)) return false;
+                const clickIdx = formatBlockIndex(clickBlock);
+                if (!(clickIdx >= 0)) return false;
+                const pre = document.createRange();
+                pre.selectNodeContents(clickBlock);
+                pre.setEnd(sel.focusNode, sel.focusOffset);
+                const clickOff = pre.toString().length;
+                const clickText = clickBlock.textContent || '';
+                if (clickIdx === a.index) {
+                    // Same line after all: an ordinary selection inside it.
+                    setCaretAtOffset(clickBlock, Math.min(a.offset, clickOff));
+                    const s = window.getSelection();
+                    const n0 = s.anchorNode, o0 = s.anchorOffset;
+                    setCaretAtOffset(clickBlock, Math.max(a.offset, clickOff));
+                    const r = document.createRange();
+                    r.setStart(n0, o0);
+                    r.setEnd(s.anchorNode, s.anchorOffset);
+                    s.removeAllRanges();
+                    s.addRange(r);
+                    return true;
+                }
+                const anchorText = visibleTextOfModelLine(a.index);
+                const off = Math.max(0, Math.min(a.offset, anchorText.length));
+                // anchor / focus are kept so the freeze is known to still be the selection:
+                // the browser later moves the live start into the first mounted line, and a
+                // snapshot from that would select only the mounted part again.
+                const keep = { fromMemory: true, anchor: { index: a.index, offset: off },
+                    focusNode: sel.focusNode, focusOffset: sel.focusOffset };
+                if (a.index < clickIdx) {
+                    _mbSelFreeze = Object.assign({ fromIdx: a.index, toIdx: clickIdx,
+                        prefix: anchorText.slice(0, off), suffix: clickText.slice(clickOff) }, keep);
+                } else {
+                    _mbSelFreeze = Object.assign({ fromIdx: clickIdx, toIdx: a.index,
+                        prefix: clickText.slice(0, clickOff), suffix: anchorText.slice(off) }, keep);
+                }
+                return true;
+            } catch (e) { return false; }
+        }
+
+        /**
+         * A remembered freeze is the selection while the live selection still ends where
+         * it was made (the click, or where Shift+arrows moved it). Ctrl+A, a drag or a
+         * click move the focus, and the remembered range no longer applies.
+         */
+        function rememberedFreezeStandsForSelection() {
+            const f = _mbSelFreeze;
+            if (!f || !f.fromMemory) return false;
+            try {
+                const sel = window.getSelection();
+                if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
+                return sel.focusNode === f.focusNode && sel.focusOffset === f.focusOffset
+                    && !!f.focusNode && f.focusNode.isConnected;
+            } catch (e) { return false; }
+        }
+
+        /** What a remembered freeze selects, as copy writes it: whole lines as Markdown. */
+        function rememberedFreezePlainText() {
+            const f = _mbSelFreeze;
+            if (!f) return '';
+            try { DocumentModel.syncMountedToModel(); } catch (eS) {}
+            const lines = [];
+            for (let i = f.fromIdx; i <= f.toIdx; i++) {
+                const raw = DocumentModel.blocks[i] ? String(DocumentModel.blocks[i].raw || '') : '';
+                if (i === f.fromIdx && f.prefix) {
+                    lines.push(visibleTextOfModelLine(i).slice(f.prefix.length).replace(/[\r\n]+/g, ' '));
+                } else if (i === f.toIdx && f.suffix) {
+                    const v = visibleTextOfModelLine(i);
+                    lines.push(v.slice(0, Math.max(0, v.length - f.suffix.length)).replace(/[\r\n]+/g, ' '));
+                } else {
+                    lines.push(raw);
+                }
+            }
+            return lines.join('\n');
+        }
+
         function snapshotMultiBlockSelectionFromLive() {
             if (state.mode === 'source' || !editor) return;
+            // The live range of a remembered selection covers only the mounted lines.
+            if (_extendingRemembered || rememberedFreezeStandsForSelection()) return;
             try {
                 const sel = window.getSelection();
                 if (!sel || sel.isCollapsed || !sel.rangeCount) {
@@ -500,6 +679,31 @@
         }
 
         /**
+         * Put the caret where a cross-line delete joined the lines. The joined line may not
+         * be mounted (a Shift+click range that started far above the screen): mount it
+         * rather than fall back to the start of some line, which is where the next key or
+         * paste then went. Returns the line's element, or null.
+         */
+        function placeCaretAtCut(cutAt) {
+            if (!cutAt) return null;
+            try {
+                window.isProgrammaticFocus = true;
+                let b = null;
+                if (cutAt.focusIndex >= 0 && typeof elementForModelIndex === 'function') b = elementForModelIndex(cutAt.focusIndex);
+                if ((!b || !editor.contains(b)) && cutAt.block && editor.contains(cutAt.block)) b = cutAt.block;
+                if ((!b || !editor.contains(b)) && cutAt.focusIndex >= 0 && typeof ensureModelBlockVisible === 'function')
+                    b = ensureModelBlockVisible(cutAt.focusIndex, { topPad: 48 });
+                if (!b || !editor.contains(b)) {
+                    if (typeof goToModelBlock === 'function' && cutAt.focusIndex >= 0) goToModelBlock(cutAt.focusIndex);
+                    return null;
+                }
+                focusBlock(b);
+                setCaretAtOffset(b, cutAt.offset | 0);
+                return b;
+            } catch (err) { return null; }
+        }
+
+        /**
          * Backspace/Delete over a multi-block selection. Must not fall through to the
          * browser: contenteditable then rewrites thousands of nodes and we freeze.
          */
@@ -556,15 +760,7 @@
             const cutAt = removeCrossBlockSelection();
             if (!cutAt) return true;
 
-            try {
-                window.isProgrammaticFocus = true;
-                if (cutAt.block) {
-                    focusBlock(cutAt.block);
-                    setCaretAtOffset(cutAt.block, cutAt.offset | 0);
-                } else if (typeof goToModelBlock === 'function' && cutAt.focusIndex >= 0) {
-                    goToModelBlock(cutAt.focusIndex);
-                }
-            } catch (err) {}
+            placeCaretAtCut(cutAt);
 
             // History already recorded inside applyModelMultiBlockDelete
             try {

@@ -170,6 +170,23 @@
             function step() {
                 if (paintGen !== window.__tzPaintGen) return;
                 const end = Math.min(i + BATCH, blocks.length);
+                // A caret already placed in a line this batch repaints stays where it was.
+                // Repainting replaced its text nodes and dropped it to the line's start: an
+                // edit that reloads a long file (Delete over a Shift+click range) put the
+                // caret right, and the next key landed at the start of the line.
+                let caretBlock = null, caretOff = 0;
+                try {
+                    const s = window.getSelection();
+                    if (s && s.rangeCount && s.isCollapsed && s.anchorNode && editor.contains(s.anchorNode)) {
+                        caretBlock = getAncestorBlock(s.anchorNode);
+                        if (caretBlock) {
+                            const pre = document.createRange();
+                            pre.selectNodeContents(caretBlock);
+                            pre.setEnd(s.anchorNode, s.anchorOffset);
+                            caretOff = pre.toString().length;
+                        }
+                    }
+                } catch (eC) { caretBlock = null; }
                 for (; i < end; i++) {
                     const b = blocks[i];
                     if (b.getAttribute('data-tz-dirty') === '1') continue;
@@ -177,6 +194,7 @@
                     try {
                         renderBlockPreview(b, raw);
                         b.removeAttribute('data-tz-paint');
+                        if (b === caretBlock && typeof setCaretAtOffset === 'function') setCaretAtOffset(b, caretOff);
                     } catch (e) {}
                 }
                 if (i < blocks.length) {
@@ -2160,8 +2178,13 @@
             // around everything.
             const breakBefore = !fromHtml && /^[ \t]*\r?\n/.test(String(text));
             const breakAfter = !fromHtml && /\r?\n[ \t]*$/.test(String(text));
+            const beforeStrip = String(text);
             text = stripClipboardLeadRepeat(text);
-            if (text && text.indexOf('\n') < 0 && !breakBefore && !breakAfter)
+            // Several plain-text lines keep their edge spaces too: a cut that ended after
+            // "Line " came back from a paste as "Line" joined to the rest ("Line2000"). Only
+            // when the clean-up just trimmed -- not when it dropped a repeated lead block.
+            const onlyTrimmed = text === beforeStrip.trim();
+            if (text && (text.indexOf('\n') < 0 || (!fromHtml && onlyTrimmed)) && !breakBefore && !breakAfter)
                 text = (lead ? lead[0] : '') + text + (trail ? trail[0] : '');
             if (text) text = (breakBefore ? '\n' : '') + text + (breakAfter ? '\n' : '');
 
@@ -2608,7 +2631,7 @@
             // the insert lands in a leftover block and the lines never rejoin.
             const over = removeCrossBlockSelection();
             if (over) {
-                try { setCaretAtOffset(over.block, over.offset); }
+                try { if (!placeCaretAtCut(over)) throw new Error('not placed'); }
                 catch (err) {
                     try {
                         const r = document.createRange();
@@ -3576,18 +3599,7 @@
                     // The caret goes where the cut was, now, as Delete does. Placing it on a
                     // timer used the element from before the reload; by then that element
                     // could be replaced, and the caret fell to the start of the line.
-                    const caretToCut = function () {
-                        let b = null;
-                        try {
-                            if (cutAt.focusIndex >= 0 && typeof elementForModelIndex === 'function')
-                                b = elementForModelIndex(cutAt.focusIndex);
-                        } catch (eEl) {}
-                        if (!b || !editor.contains(b)) b = cutAt.block;
-                        if (!b || !editor.contains(b)) return null;
-                        focusBlock(b);
-                        setCaretAtOffset(b, cutAt.offset | 0);
-                        return b;
-                    };
+                    const caretToCut = function () { return placeCaretAtCut(cutAt); };
                     try { caretToCut(); } catch (err2) {}
                     setTimeout(function () {
                         try {

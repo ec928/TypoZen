@@ -69,6 +69,23 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Shift+click after scrolling a long file selected only the lines on screen — **fixed** (0.20.5)
+
+Only part of a long file is in the page. Once the caret's line scrolled (or paged) out of
+it, the browser moved the selection out of the text, and a Shift+click extended from there:
+Delete took "Line " from the clicked line and left the rest, cut removed nothing and pasting
+back added 52 lines, Ctrl+C copied the 50 lines above the click, and in 2-Col and Pages Delete
+removed from the first line in the page window instead of from the caret. The caret is
+remembered by line number, and a Shift+click whose anchor line is gone selects from there:
+Delete, Backspace, typing, cut, copy and paste act on the whole range, Shift+arrows extend
+it, and a click, a drag or Ctrl+A end it. Same in 0.20.1. Guarded by
+`keyboard-editing-cases.mjs` (large).
+
+Two fixes went with it. A long file's progressive repaint dropped a caret already placed in
+a line it redrew to the start of that line, so after Delete over such a range the next key
+landed there. A multi-line plain-text paste lost a space at either end (`Line ` pasted back
+as `Line2000`); it keeps them, as a one-line paste does.
+
 ### A paste of several lines into a table cell broke the table — **fixed** (0.20.4)
 
 The lines were split into blocks, cutting the table at the caret: `| ap |  |X` / `Y| ple |`,

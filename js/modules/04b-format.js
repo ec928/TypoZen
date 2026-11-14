@@ -1893,10 +1893,12 @@
             updateActiveBlock();
         });
         // Snapshot selection on real user gestures (before toolbar can steal focus)
-        editor.addEventListener('mousedown', function () {
+        editor.addEventListener('mousedown', function (ev) {
             // CRITICAL: capture full document HERE, before drag-select corrupts data-raw.
             // Without this, multi-select → bullet reloads from empty and wipes the doc.
             try { refreshLastGoodDocRaws(); } catch (e) {}
+            // Before the browser extends the selection: is the anchor's line still mounted?
+            try { if (typeof noteShiftClickAnchor === 'function') noteShiftClickAnchor(ev); } catch (eSa) {}
             _formatSelectionFrozen = false;
             _selectedFormatRaws = {};
         }, true);
@@ -1907,14 +1909,22 @@
                 // later paste writes the old paragraphs back on top of themselves.
                 if (sel && sel.isCollapsed) {
                     if (typeof clearMultiBlockSelFreeze === 'function') clearMultiBlockSelFreeze();
+                    if (typeof _shiftClickAnchor !== 'undefined') _shiftClickAnchor = null;
                     return;
                 }
+                // Shift+click whose anchor line was unmounted by scrolling.
+                if (typeof applyShiftClickFromAnchor === 'function' && applyShiftClickFromAnchor()) return;
                 if (typeof snapshotMultiBlockSelectionFromLive === 'function')
                     snapshotMultiBlockSelectionFromLive();
             } catch (eMu) {}
         }, true);
         editor.addEventListener('keyup', function (e) {
-            if (e.shiftKey || state.mode === 'source') return;
+            if (state.mode === 'source') return;
+            // Shift+arrows extended a remembered (scrolled-away) selection: move its end.
+            if (e.shiftKey || e.key === 'Shift') {
+                try { if (typeof refreshRememberedFreezeFromFocus === 'function') refreshRememberedFreezeFromFocus(); } catch (eRf) {}
+                return;
+            }
             try {
                 const sel = window.getSelection();
                 if (sel && sel.isCollapsed && sel.anchorNode && editor.contains(sel.anchorNode)
@@ -1922,6 +1932,17 @@
                     clearMultiBlockSelFreeze();
             } catch (eKu) {}
         });
+        // Typing over a Shift+click selection whose start line is unmounted: the browser
+        // would replace only the mounted lines. Delete the remembered range, then type.
+        editor.addEventListener('keydown', function (e) {
+            if (state.mode === 'source' || e.ctrlKey || e.metaKey || e.altKey) return;
+            if (!e.key || e.key.length !== 1 || e.isComposing || e.keyCode === 229) return;
+            try {
+                if (typeof rememberedFreezeStandsForSelection !== 'function' || !rememberedFreezeStandsForSelection()) return;
+                if (!handleMultiBlockSelectionDelete(e)) return;
+                document.execCommand('insertText', false, e.key);
+            } catch (eTy) {}
+        }, true);
         // Keyboard multi-select (Shift+Arrow): snapshot while still collapsed / first extend
         editor.addEventListener('keydown', function (e) {
             if (!e.shiftKey) return;
@@ -1932,6 +1953,7 @@
                 const sel = window.getSelection();
                 if (sel && sel.isCollapsed) refreshLastGoodDocRaws();
             } catch (err) {}
+            try { if (typeof beginExtendingRemembered === 'function') beginExtendingRemembered(); } catch (eBe) {}
         }, true);
         // Home / End stay in the paragraph. When a visual line ends at an image (it is
         // contenteditable=false), Chromium's End moves the caret into the NEXT block, and
