@@ -101,6 +101,20 @@ reproduced it in 0.20.5, so none guards it.
 Pasting text that ended in two line breaks kept one: whole lines cut with the blank line
 under them came back without it.
 
+### Delete from inside a line into a table lost the line's marks — **fixed** (0.20.8)
+
+When one end of a cross-line delete is a table or code block, the join falls back to text.
+The fallback also stripped the ordinary line's bold, italic, code and links: `Start
+**bold words** one` deleted from inside the bold into a table saved as `Start boc d`. The
+ordinary end now keeps its Markdown (`Start **bo**c d`); the table's remaining words still
+join as text, as before. Guarded by `keyboard-editing-cases.mjs` (preview).
+
+### Still open: a delete that ends inside a table flattens the rest of the table
+
+Its remaining cells join the first line as words (`c d`), as in every version. A selection
+that ends mid-table has no clean Markdown answer; Word keeps table rows apart. Open
+question for Ed.
+
 ### Part of a line copied as plain words, so a cut pasted back lost its marks — **changed** (0.20.7)
 
 Copy and cut put a line that is only partly selected on the clipboard as the words shown,

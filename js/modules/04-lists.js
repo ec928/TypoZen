@@ -1078,7 +1078,29 @@
 
             let joined = null;
             try { joined = joinLinesKeepingMarks(allRaws[fromIdx], spec.prefix, allRaws[toIdx], spec.suffix); } catch (eJ) { joined = null; }
-            joined = coerceBlockRaw(joined != null ? joined : String(spec.prefix || '') + String(spec.suffix || ''));
+            if (joined == null) {
+                // A table or code block at one end: that end joins as its words (as before),
+                // but the other end -- an ordinary line -- keeps its marks. A delete from
+                // inside **bold** into a table left the kept "os" plain.
+                let head = String(spec.prefix || ''), tail = String(spec.suffix || '');
+                try {
+                    const pa = String(spec.prefix || '');
+                    if (pa && String(allRaws[fromIdx] || '').indexOf('\n') < 0) {
+                        const m = partialLineMarkdown(allRaws[fromIdx], 0, pa.length);
+                        if (m != null) head = m;
+                    }
+                    const sf = String(spec.suffix || '');
+                    if (sf && String(allRaws[toIdx] || '').indexOf('\n') < 0) {
+                        const vis = visibleTextOfModelLine(toIdx);
+                        const m2 = partialLineMarkdown(allRaws[toIdx], vis.length - sf.length, vis.length);
+                        if (m2 != null) tail = m2;
+                    }
+                } catch (eF) {}
+                // A table's or block's words: its line breaks become spaces, none left trailing.
+                if (String(allRaws[toIdx] || '').indexOf('\n') >= 0) tail = tail.replace(/[\r\n\t]+/g, ' ').replace(/\s+$/, '');
+                joined = (typeof concatMarkdown === 'function') ? concatMarkdown(head, tail) : head + tail;
+            }
+            joined = coerceBlockRaw(joined);
             const out = allRaws.slice(0, fromIdx).concat([joined]).concat(allRaws.slice(toIdx + 1));
             if (!out.length) out.push('');
             const postContent = out.join('\n');

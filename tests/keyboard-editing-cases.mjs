@@ -306,6 +306,21 @@ try {
                     await kb.press('Delete');
                 },
                 'Intro\n\nStart **bo**nd [a link](https://e.com/x) two\n\nTail');
+            // Delete from inside bold into a table: the table's part joins as its words (as
+            // always), but the kept "bo" stays bold (0.20.8; it was saved plain).
+            await run(mode, 'Delete from inside bold into a table keeps the bold',
+                'Intro\n\nStart **bold words** one\n\n| col | **b** |\n|---|---|\n| c | `d` |\n\nEnd', ['Start', 8],
+                async () => {
+                    const pt = await page.evaluate(() => {
+                        const td = editor.querySelector('.block table td');
+                        const t = document.createTreeWalker(td, NodeFilter.SHOW_TEXT).nextNode();
+                        const r = document.createRange(); r.setStart(t, 0); r.collapse(true);
+                        const q = r.getBoundingClientRect(); return { x: q.left + 1, y: q.top + q.height / 2 };
+                    });
+                    await kb.down('Shift'); await page.mouse.click(pt.x, pt.y); await kb.up('Shift'); await sleep(150);
+                    await kb.press('Delete');
+                },
+                'Intro\n\nStart **bo**c d\n\nEnd');
             // Part of a line copies as Markdown, and pastes back as it was (0.20.7). It copied
             // the words shown, so a cut from inside bold came back plain -- or all bold.
             await run(mode, 'Ctrl+X inside a line, Ctrl+V back: the line is unchanged',
