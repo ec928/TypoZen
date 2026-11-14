@@ -42,7 +42,7 @@ Listen and research, completely offline
 Select any text to look up its definition and synonyms using the built-in, completely offline dictionary featuring over 150,000 definitions. Sit back and use Read Aloud with a floating transport bar: listen in your local Windows voices, download the optional 192.3 MB Kokoro offline neural voices, or install the optional Breeze and Qwen local GPU narrators for studio-grade narration, voice cloning, and multi-voice character casting across novels.
 
 Private by construction, not by promise
-TypoZen works offline. It has no accounts, no telemetry, no forced sync, and makes no background network requests. It connects to the internet only when you download an optional extension, read aloud in one of Microsoft's optional online voices (the text read is sent to Microsoft), or run Smart Cast with your own Google Gemini key (the book's dialogue is sent to Google). Both online features are off until you turn them on, and Privacy Mode switches them off.
+TypoZen works offline. It has no accounts, no telemetry, no forced sync, and makes no background network requests. It connects to the internet only when you download an optional extension or run Smart Cast with your own Google Gemini key (the book's dialogue is sent to Google). Smart Cast is off until you turn it on, and Privacy Mode switches it off.
 
 Choose from 25 hand-crafted themes—from low-glare dark modes to warm, paper-like light modes. TypoZen bundles premium typefaces including Inter, Literata, Merriweather, Source Sans 3, and JetBrains Mono so your documents look perfect on any machine.
 
@@ -107,7 +107,7 @@ _Up to 20 bullets, 200 characters each._
 5. Books keep the publisher's typography, embedded fonts and footnotes; the page, its margins and colours stay yours
 6. A PDF reader: single pages or two-page spreads, Find, bookmarks and highlights
 7. Annotate PDFs, fill in forms and save; the text of scanned pages is read on your computer
-8. Read aloud in Windows, Kokoro offline neural, Microsoft online, or local GPU narrator voices (Breeze & Qwen) with multi-voice character casting and a floating player
+8. Read aloud in Windows, Kokoro offline neural, or local GPU narrator voices (Breeze & Qwen) with multi-voice character casting and a floating player
 9. Spelling: every misspelling on screen underlined in Preview and Source (not in code); select any word for corrections
 10. Offline dictionary and thesaurus — over 150,000 definitions; no lookup ever leaves your computer
 11. Search the whole document from a sidebar, with every match highlighted — even in very long files
@@ -192,7 +192,7 @@ TypoZen is a Win32 desktop app packaged as MSIX (Desktop Bridge). It cannot run 
 
 Used for ordinary document editing: opening and saving files at paths the user picks in standard Windows dialogs, which AppContainer forbids, and reading bundled fonts and dictionary.
 
-The only capability declared. No data collection, no sign-in. Network use only when the user installs an optional extension, turns on online voices, or runs Smart Cast with their own Gemini key.
+The only capability declared. No data collection, no sign-in. Network use only when the user installs an optional extension or runs Smart Cast with their own Gemini key.
 
 ---
 
@@ -263,7 +263,7 @@ Verified against the shipping build on 6 September 2026:
 | "over 110,000 synonym sets" | `thesaurus.tsv` — 114,022 entries (was 110,543) |
 | "25 themes" | `TypoZen_Themes.json` — 25 entries |
 | "200,000-character manuscript" | `tests/large-scroll-mixed.md` — 214,626 bytes |
-| "no background network requests" | the host's only requests are extension downloads (`Extensions.cs`, `QwenInstaller.cs`), the local narrator (`NarratorEngine.cs`, this PC only), online voices (`EdgeSpeechClient.cs`) and Smart Cast (`GeminiDirector.cs`) -- each started by the user. The page's own fetch() calls go to URLs the host gives it: its local virtual hosts and the narrator on this PC; no XHR or sendBeacon (checked 2026-10-13). A document's own remote images are fetched when it is shown (PRIVACY.md) |
+| "no background network requests" | the host's only requests are extension downloads (`Extensions.cs`, `QwenInstaller.cs`), the local narrator (`NarratorEngine.cs`, this PC only) and Smart Cast (`GeminiDirector.cs`) -- each started by the user. Online voices (`EdgeSpeechClient.cs`) are switched off since 0.20.10 (`Offered = false`). The page's own fetch() calls go to URLs the host gives it: its local virtual hosts and the narrator on this PC; no XHR or sendBeacon (checked 2026-10-13). A document's own remote images are fetched when it is shown (PRIVACY.md) |
 
 The About dialog once said "Over 150,000 offline definitions" and "40,000+ block
 documents". The first overstated the dictionary by about 2,500 entries at the time (it is

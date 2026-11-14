@@ -233,7 +233,7 @@ namespace TypoZen
 
         public static List<VoiceInfo> GetVoices(bool? enableOnline = null)
         {
-            bool allowCloud = enableOnline ?? EnableOnlineVoices;
+            bool allowCloud = (enableOnline ?? EnableOnlineVoices) && EdgeSpeechClient.Offered;
             var voices = new List<VoiceInfo>();
             
             // 1. WinRT (OneCore) Voices
@@ -303,14 +303,16 @@ namespace TypoZen
 
             try
             {
+                // An online voice that is off (not offered, switched off, or Privacy Mode) --
+                // a saved choice or a character's cast from before -- is spoken with the default
+                // local voice. It used to finish silently, so reading just stopped.
+                if (voiceId != null && voiceId.StartsWith("edge:") && !(EnableOnlineVoices && EdgeSpeechClient.Offered))
+                {
+                    Note("play #" + gen + " online voice is off; spoken with the default local voice");
+                    voiceId = null;
+                }
                 if (voiceId != null && voiceId.StartsWith("edge:"))
                 {
-                    if (!EnableOnlineVoices)
-                    {
-                        Note("play #" + gen + " online voice requested while online voices disabled");
-                        Finish();
-                        return;
-                    }
 
                     string shortName = voiceId.Substring("edge:".Length);
                     string mp3 = NewAudioPath(gen, ".mp3");

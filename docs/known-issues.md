@@ -69,6 +69,17 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Microsoft Online voices stopped working — **removed** (0.20.10)
+
+Every request to Microsoft's read-aloud service (`speech.platform.bing.com`) was refused with
+`403 Forbidden` at the WebSocket handshake (Ed's debug.log, 2026-11-14), so a chosen online
+voice read nothing. The service now wants a different `Sec-MS-GEC` token; the only known
+implementation is in the edge-tts project, which is LGPLv3, and the endpoint is undocumented
+and changes. Ed's decision (2026-11-14): turn them off. `EdgeSpeechClient.Offered = false`:
+no online voice is listed, Extensions has no online-voices row, a saved online voice moves
+to a local one at startup, and any request for one (a narrator cast, say) is spoken with the
+default local voice instead of nothing. The client is kept, switched off.
+
 ### Delete across lines lost the formatting of the two partial lines — **fixed** (0.20.6)
 
 The joined line was built from what the reader sees, so bold, italic, code and links on

@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.20.9";
+        internal const string AppVersion = "0.20.10";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1780,7 +1780,7 @@ namespace TypoZen
             _stopAtChapter = initialPrefs.StopAtChapter;
             SetMenuChecked("mStopAtChapter", _stopAtChapter);
             _enableOnlineVoices = initialPrefs.EnableOnlineVoices;
-            TypoZen_TTS.EnableOnlineVoices = _enableOnlineVoices && !_privacyMode;
+            TypoZen_TTS.EnableOnlineVoices = OnlineVoicesUsable;
             PopulateWindowsVoicesMenu();
             PopulateOnlineVoicesMenu();
             BindClick("mExtensions", (s, e) => ShowExtensionsDialog());
@@ -4177,8 +4177,9 @@ namespace TypoZen
                 {
                     if (id == ExtensionCatalog.KokoroId) SetKokoroVoice(ExtensionCatalog.DefaultVoice, "Heart");
                 },
-                () => _enableOnlineVoices && !_privacyMode,
-                on => SetOnlineVoicesEnabled(on));
+                // Not offered: no row in Extensions at all (null hides it).
+                EdgeSpeechClient.Offered ? (Func<bool>)(() => OnlineVoicesUsable) : null,
+                EdgeSpeechClient.Offered ? (Action<bool>)(on => SetOnlineVoicesEnabled(on)) : null);
             }
             catch (Exception ex) { LogFault("extensions dialog", ex); }
         }
@@ -8322,7 +8323,7 @@ namespace TypoZen
                         if (prefs != null)
                         {
                             _enableOnlineVoices = prefs.EnableOnlineVoices;
-                            TypoZen_TTS.EnableOnlineVoices = _enableOnlineVoices && !_privacyMode;
+                            TypoZen_TTS.EnableOnlineVoices = OnlineVoicesUsable;
                             var tp = GetCurrentTypePrefs(prefs);
                             if (tp.ThemeIndex >= 0) SendMsg("set_theme:" + tp.ThemeIndex);
                             if (!string.IsNullOrEmpty(prefs.TtsVoiceId)) 
@@ -11929,10 +11930,14 @@ namespace TypoZen
         private double _ttsSpeed = 1.0;
         private bool _enableOnlineVoices;
 
+        /// <summary>Online voices can be listed and spoken: offered at all (EdgeSpeechClient.Offered),
+        /// switched on in Extensions, and Privacy Mode off. Every switch reads this one rule.</summary>
+        private bool OnlineVoicesUsable { get { return EdgeSpeechClient.Offered && _enableOnlineVoices && !_privacyMode; } }
+
         private void SetOnlineVoicesEnabled(bool on)
         {
             _enableOnlineVoices = on;
-            TypoZen_TTS.EnableOnlineVoices = on && !_privacyMode;
+            TypoZen_TTS.EnableOnlineVoices = OnlineVoicesUsable;
             var prefs = LoadHostPrefs();
             prefs.EnableOnlineVoices = on;
             WriteHostPrefs(prefs);
@@ -12386,7 +12391,7 @@ namespace TypoZen
             if (mOnlineVoices == null) return;
             mOnlineVoices.Items.Clear();
 
-            bool visible = _enableOnlineVoices && !_privacyMode;
+            bool visible = OnlineVoicesUsable;
             mOnlineVoices.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
             if (!visible) return;
 
@@ -12784,7 +12789,7 @@ namespace TypoZen
             SetMenuChecked("mPrivacyMode", on);
 
             // Privacy mode unconditionally suppresses online voices
-            TypoZen_TTS.EnableOnlineVoices = _enableOnlineVoices && !on;
+            TypoZen_TTS.EnableOnlineVoices = OnlineVoicesUsable;   // _privacyMode was set to `on` above
             if (on && _ttsVoiceId != null && _ttsVoiceId.StartsWith("edge:"))
             {
                 var localList = TypoZen_TTS.GetVoices(false);

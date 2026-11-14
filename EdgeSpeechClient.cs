@@ -17,6 +17,17 @@ namespace TypoZen
     /// </summary>
     public static class EdgeSpeechClient
     {
+        /// <summary>
+        /// Off since 0.20.10 (Ed, 2026-11-14). Microsoft's read-aloud service began refusing
+        /// this client with 403 Forbidden: it now wants a different Sec-MS-GEC token, and the
+        /// only known implementation of it (the edge-tts project) is LGPLv3, which TypoZen (MIT)
+        /// does not take on -- and the endpoint is undocumented, so it would break again.
+        /// While false, no online voice is listed, offered in Extensions or spoken, and a
+        /// saved online voice falls back to a local one at startup. The client stays so the
+        /// feature can return if a supported route appears.
+        /// </summary>
+        public static readonly bool Offered = false;
+
         private const string Host = "speech.platform.bing.com";
         private const int Port = 443;
         private const string TrustedClientToken = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";

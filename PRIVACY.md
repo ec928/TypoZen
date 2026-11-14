@@ -1,10 +1,9 @@
 # TypoZen Privacy Policy
 
-_Last updated: 13 October 2026._
+_Last updated: 14 November 2026._
 
-**Short version: TypoZen sends nothing anywhere unless you turn on one of its two optional
-online features: Microsoft's online voices, or Smart Cast with your own Google Gemini key
-(see [Network activity](#network-activity)). Everything it remembers stays on your
+**Short version: TypoZen sends nothing anywhere unless you turn on its one optional online
+feature: Smart Cast with your own Google Gemini key (see [Network activity](#network-activity)). Everything it remembers stays on your
 computer, and you can delete all of it from inside the app.**
 
 TypoZen is a Markdown editor and epub reader that runs entirely on your machine. There
@@ -62,7 +61,7 @@ they are.)
 Your documents themselves are saved wherever you choose to save them. TypoZen does not
 copy them anywhere else.
 
-Reading aloud with a Windows voice or a Microsoft online voice writes the audio of the
+Reading aloud with a Windows voice writes the audio of the
 passage being read to Windows' temporary folder (`typozen_tts_*` files). TypoZen deletes
 them when it closes. (Versions 0.16.34 and earlier left the last passage's audio there.)
 
@@ -78,8 +77,8 @@ Under **File → Privacy**:
 - **Privacy Mode** — stops TypoZen writing anything that names a document: no session, no
   reading positions, no bookmarks, no recent files, no autosave, no `debug.log`. Books are
   unpacked, and narration audio rendered, into a temporary folder deleted when TypoZen
-  closes; a narrator cast you save is kept only until then. It also switches off the two
-  online features: Microsoft's online voices and Smart Cast. It is forward-looking: it
+  closes; a narrator cast you save is kept only until then. It also switches off the
+  online feature, Smart Cast. It is forward-looking: it
   prevents new writes but does not delete what is already stored.
 - **Remember unsaved documents between sessions** — turn off to stop unsaved content being
   kept between runs.
@@ -101,17 +100,14 @@ You can also simply delete that folder.
 ## Network activity
 
 TypoZen makes no network requests of its own unless you install an extension or turn on
-one of the two online features below. Fonts are bundled with the app rather than
+the online feature below. (Microsoft's online voices, which sent the text being read
+to `speech.platform.bing.com`, were removed in version 0.20.10.) Fonts are bundled with the app rather than
 fetched, the editor page is served from local disk, and the dictionary and thesaurus are
 local files.
 
-Two optional features send text to an online service, and only while you use them. Both
-are off until you turn them on, and Privacy Mode switches both off:
+One optional feature sends text to an online service, and only while you use it. It is
+off until you turn it on, and Privacy Mode switches it off:
 
-- **Microsoft online voices** (turned on in **File → Extensions**, "Cloud · Edge Speech").
-  When you choose one of these voices to read aloud, the text being read is sent to
-  Microsoft's speech service (`speech.platform.bing.com`), which returns the audio. Local
-  voices send nothing.
 - **Smart Cast** (Narrator Manager → Cast for this book, with a Google Gemini API key you
   supply). When you click it, TypoZen sends Google's Gemini service
   (`generativelanguage.googleapis.com`) the title of the book or document that is open, up
