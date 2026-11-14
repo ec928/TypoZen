@@ -141,10 +141,11 @@ to what is then under the point it was at; at the end of the document it selects
 end. PageDown alone still only scrolls. Guarded by `keyboard-editing-cases.mjs` (preview,
 large).
 
-### Still open: Shift+click inside one paragraph does not extend the selection (headless)
+### Not a bug: Shift+click inside one paragraph in headless Chrome
 
 In headless Chrome a Shift+click in the same paragraph as the caret moves the caret instead
-of selecting (0.20.5 too; across lines it works). Not yet checked in the real app.
+of selecting. In the app it selects (checked on the installed 0.20.9, 2026-11-14). Tests
+that need a selection inside one paragraph use Shift+arrows.
 
 ### Not supported: Shift+click on a link
 

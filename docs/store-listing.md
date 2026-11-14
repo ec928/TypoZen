@@ -52,7 +52,19 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.20.0 package (2026-10-30). Written against the 0.18.0 package, the last one known to have been submitted; the earlier text is in git history._
+_Limit 1,500 characters. For the 0.20.9 package (2026-11-14). Written against the 0.20.0 package. If 0.20.0 was never submitted, the 0.20.0 text below still applies: merge the two and keep under the limit._
+
+- Shift+PageUp and Shift+PageDown select a page at a time.
+- Copying part of a line keeps its bold, italics, links and code, so a cut and paste puts it back exactly.
+- A notice shows when Up and Down are stepping through search matches, with Clear search.
+- Lists: Enter in the middle of an item starts the next one; Enter on an empty item ends the list.
+- Fixed: deleting across lines kept only plain words where the lines joined, losing bold and link addresses.
+- Fixed: deleting into or out of a table or code block flattened it into the line. It now stays a table, as in Word.
+- Fixed in long files: Shift+click or a held Shift+Down after scrolling selected the wrong lines, and a key pressed after Page Down was lost.
+- Fixed: pasting several lines at the start of a bold line, into a code block or into a table cell damaged it; paste after a click could write nothing.
+- Fixed: saving from the menu took the cursor away; File > Save now confirms the file was written.
+
+_The 0.20.0 package text, written against 0.18.0:_
 
 - Favourite files: star a file in File > Open Recent to keep it at the top, up to 10. Favourites stay until you remove them.
 - One reading speed for every voice, from x0.5 to x2, and a voice picker for large narrator libraries: favourites, recent voices, search and samples.
@@ -73,9 +85,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.19.0.0); every other package removed from the submission |
+| 2 | Packages | the newest MSIX (0.20.9.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.19.0 text above. Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.20.9 text above (merged with the 0.20.0 text if 0.20.0 was never submitted). Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |
