@@ -75,6 +75,29 @@ try {
         await sleep(80);
     }
 
+    console.log('\n=== a short table\'s frame sits on the last column ===');
+    await load(TABLE);
+    const edge = await page.evaluate(() => {
+        const w = document.querySelector('#editor .table-wrapper').getBoundingClientRect();
+        const cell = document.querySelector('#editor tbody tr:last-child td:last-child').getBoundingClientRect();
+        const ed = document.getElementById('editor').getBoundingClientRect();
+        return { gap: w.right - cell.right, wrap: w.width, ed: ed.width };
+    });
+    check(edge.gap < 3 && edge.wrap < edge.ed - 40, 'the frame closes on the last column instead of stretching across the page', edge);
+    await load([
+        '| Media Type | Extensions | Default Layout (User Editable?) |',
+        '|---|---|---|',
+        '| Code | .html, .css, .js, .cs, .json, .bat, .ps1, .log, .csv | Scroll (Fixed) |'
+    ].join('\n'));
+    const wide = await page.evaluate(() => {
+        const w = document.querySelector('#editor .table-wrapper');
+        const wr = w.getBoundingClientRect();
+        const cell = w.querySelector('td:last-child').getBoundingClientRect();
+        const ed = document.getElementById('editor').getBoundingClientRect();
+        return { gap: wr.right - cell.right, wrap: wr.width, ed: ed.width, scroll: w.scrollWidth > w.clientWidth + 2, h: cell.height };
+    });
+    check(wide.gap < 3 && wide.wrap <= wide.ed + 2 && !wide.scroll, 'a wider table stays inside the page, with the frame on the last column', wide);
+
     console.log('\n=== last row leaves downward, and the table stays ===');
     await load(TABLE);
     await clickCell('#editor tbody tr:last-child td:last-child');

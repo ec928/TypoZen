@@ -2984,6 +2984,11 @@
             margin: 8px 0;
             border-radius: 6px;
             border: 1px solid var(--border, #3F3F46);
+            /* The last column and the last row draw no outer line. This border
+               is that edge, so the frame has to sit on the grid. A block box
+               stretches across the page and a short table then ends in the margin. */
+            width: fit-content;
+            max-width: 100%;
         }
         .zen-table {
             border-collapse: collapse;

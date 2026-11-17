@@ -69,6 +69,10 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### A short table had no right edge — **fixed** (0.20.19)
+
+The last column and the last row draw no outer line, because the rounded frame is that edge. The frame stretched across the page, so a short table ended in the empty margin and looked open on the right. The frame now sits on the grid and stops at the page, so a wide table still wraps instead of scrolling. Same drawing for a table already in a file and one just inserted.
+
 ### The caret could not leave a table — **fixed** (0.20.18)
 
 Arrow Down on the last row, and a click on the table border or in the empty page under it, left the caret in the table block but outside every cell. Letters typed there were drawn on the border and dropped on the next save, because a table serializes only its cells. Arrow Down on the last line and Arrow Up on the header line now move to the paragraph after or before the table, creating one when it is missing. A click in that gap does the same. Enter inside a cell still does not split the table. Text that had already been typed in the gap is kept as that paragraph. Guarded by `tests/table-exit-browser.mjs` and one case in `tests/key-smoke-browser.mjs`.
