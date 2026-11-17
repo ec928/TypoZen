@@ -41,6 +41,26 @@ namespace TypoZen
             win.Resources.MergedDictionaries.Add(d);
             if (bg != null) win.Background = bg;
             if (fg != null) win.Foreground = fg;
+            ApplyDwmWindowChrome(win, dark);
+            win.SourceInitialized += (s, e) => ApplyDwmWindowChrome(win, dark);
+        }
+
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        internal static void ApplyDwmWindowChrome(Window win, bool dark)
+        {
+            if (win == null) return;
+            try
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
+                if (hwnd == IntPtr.Zero) return;
+                int round = 2; // DWMWCP_ROUND (Windows 11; safe no-op on Windows 10)
+                DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int));
+                int darkMode = dark ? 1 : 0;
+                DwmSetWindowAttribute(hwnd, 20, ref darkMode, sizeof(int));
+            }
+            catch { }
         }
 
         /// <summary>The theme's highlight: the accent TypoZen's buttons use, readable on this background.</summary>
@@ -70,13 +90,13 @@ namespace TypoZen
     <Setter Property='Background' Value='{DynamicResource TzButton}'/>
     <Setter Property='BorderBrush' Value='{DynamicResource TzBorder}'/>
     <Setter Property='BorderThickness' Value='1'/>
-    <Setter Property='Padding' Value='12,2'/>
+    <Setter Property='Padding' Value='12,4'/>
     <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Button'>
           <Border x:Name='b' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}'
-                  BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='3' Padding='{TemplateBinding Padding}'>
+                  BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='4' Padding='{TemplateBinding Padding}'>
             <ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='Center' RecognizesAccessKey='True'/>
           </Border>
           <ControlTemplate.Triggers>
@@ -97,12 +117,12 @@ namespace TypoZen
     <Setter Property='CaretBrush' Value='{DynamicResource TzText}'/>
     <Setter Property='SelectionBrush' Value='{DynamicResource TzAccent}'/>
     <Setter Property='BorderThickness' Value='1'/>
-    <Setter Property='Padding' Value='4,3'/>
+    <Setter Property='Padding' Value='6,4'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='TextBox'>
           <Border x:Name='b' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}'
-                  BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='3'>
+                  BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='4'>
             <ScrollViewer x:Name='PART_ContentHost' Margin='{TemplateBinding Padding}' Focusable='False'/>
           </Border>
           <ControlTemplate.Triggers>
@@ -116,11 +136,13 @@ namespace TypoZen
 
   <Style TargetType='ComboBoxItem'>
     <Setter Property='Foreground' Value='{DynamicResource TzText}'/>
-    <Setter Property='Padding' Value='8,4'/>
+    <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
+    <Setter Property='Padding' Value='8,5'/>
+    <Setter Property='Margin' Value='2,1'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='ComboBoxItem'>
-          <Border x:Name='b' Background='Transparent' Padding='{TemplateBinding Padding}'><ContentPresenter/></Border>
+          <Border x:Name='b' Background='Transparent' CornerRadius='4' Padding='{TemplateBinding Padding}'><ContentPresenter/></Border>
           <ControlTemplate.Triggers>
             <Trigger Property='IsSelected' Value='True'><Setter TargetName='b' Property='Background' Value='{DynamicResource TzSelected}'/></Trigger>
             <Trigger Property='IsHighlighted' Value='True'><Setter TargetName='b' Property='Background' Value='{DynamicResource TzHover}'/></Trigger>
@@ -141,7 +163,7 @@ namespace TypoZen
                           IsChecked='{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}'>
               <ToggleButton.Template>
                 <ControlTemplate TargetType='ToggleButton'>
-                  <Border x:Name='bd' Background='{DynamicResource TzField}' BorderBrush='{DynamicResource TzBorder}' BorderThickness='1' CornerRadius='3'>
+                  <Border x:Name='bd' Background='{DynamicResource TzField}' BorderBrush='{DynamicResource TzBorder}' BorderThickness='1' CornerRadius='4'>
                     <Path HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,9,0' Data='M0,0 L4,4 L8,0'
                           Stroke='{DynamicResource TzText}' StrokeThickness='1.5'/>
                   </Border>
@@ -155,7 +177,7 @@ namespace TypoZen
                               Content='{TemplateBinding SelectionBoxItem}' ContentTemplate='{TemplateBinding SelectionBoxItemTemplate}'/>
             <Popup x:Name='PART_Popup' Placement='Bottom' IsOpen='{TemplateBinding IsDropDownOpen}' AllowsTransparency='True'
                    Focusable='False' PopupAnimation='Fade'>
-              <Border Background='{DynamicResource TzField}' BorderBrush='{DynamicResource TzBorder}' BorderThickness='1'
+              <Border Background='{DynamicResource TzField}' BorderBrush='{DynamicResource TzBorder}' BorderThickness='1' CornerRadius='8' Padding='2'
                       MinWidth='{TemplateBinding ActualWidth}' MaxHeight='{TemplateBinding MaxDropDownHeight}'>
                 <ScrollViewer SnapsToDevicePixels='True'><ItemsPresenter KeyboardNavigation.DirectionalNavigation='Contained'/></ScrollViewer>
               </Border>
@@ -177,11 +199,13 @@ namespace TypoZen
   </Style>
   <Style TargetType='ListBoxItem'>
     <Setter Property='Foreground' Value='{DynamicResource TzText}'/>
-    <Setter Property='Padding' Value='6,3'/>
+    <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
+    <Setter Property='Padding' Value='8,4'/>
+    <Setter Property='Margin' Value='2,1'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='ListBoxItem'>
-          <Border x:Name='b' Background='Transparent' Padding='{TemplateBinding Padding}'>
+          <Border x:Name='b' Background='Transparent' CornerRadius='4' Padding='{TemplateBinding Padding}'>
             <ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}'/>
           </Border>
           <ControlTemplate.Triggers>
@@ -195,6 +219,7 @@ namespace TypoZen
 
   <Style TargetType='TabItem'>
     <Setter Property='Foreground' Value='{DynamicResource TzText}'/>
+    <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='TabItem'>
@@ -219,7 +244,7 @@ namespace TypoZen
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='ContextMenu'>
-          <Border Background='{DynamicResource TzField}' BorderBrush='{DynamicResource TzBorder}' BorderThickness='1' CornerRadius='3' Padding='2'>
+          <Border Background='{DynamicResource TzField}' BorderBrush='{DynamicResource TzBorder}' BorderThickness='1' CornerRadius='8' Padding='4'>
             <StackPanel IsItemsHost='True' KeyboardNavigation.DirectionalNavigation='Cycle'/>
           </Border>
         </ControlTemplate>
@@ -231,7 +256,7 @@ namespace TypoZen
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='MenuItem'>
-          <Border x:Name='b' Background='Transparent' Padding='12,5,24,5' CornerRadius='2'>
+          <Border x:Name='b' Background='Transparent' Padding='10,6,20,6' Margin='2,1' CornerRadius='4'>
             <ContentPresenter ContentSource='Header' RecognizesAccessKey='True'/>
           </Border>
           <ControlTemplate.Triggers>

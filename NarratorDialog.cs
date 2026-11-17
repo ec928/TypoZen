@@ -657,8 +657,8 @@ namespace TypoZen
                 var tpl = new ControlTemplate(typeof(Button));
                 var bd = new FrameworkElementFactory(typeof(Border), "bd");
                 bd.SetValue(Border.BackgroundProperty, accent);
-                bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
-                bd.SetValue(Border.PaddingProperty, new Thickness(12, 2, 12, 2));
+                bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+                bd.SetValue(Border.PaddingProperty, new Thickness(12, 4, 12, 4));
                 var cp = new FrameworkElementFactory(typeof(ContentPresenter));
                 cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
                 cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
@@ -1356,12 +1356,18 @@ namespace TypoZen
             DockPanel.SetDock(buttons, Dock.Right);
             footerRow.Children.Add(buttons);
             footerRow.Children.Add(status);
-            var footer = new StackPanel { Margin = new Thickness(16, 8, 16, 16) };
+            var footer = new StackPanel { Margin = new Thickness(16, 12, 16, 14) };
             footer.Children.Add(busyBar);
             footer.Children.Add(footerRow);
+            var footerBar = new Border
+            {
+                Child = footer,
+                BorderThickness = new Thickness(0, 1, 0, 0)
+            };
+            footerBar.SetResourceReference(Border.BorderBrushProperty, "TzBorder");
             var outer = new DockPanel();
-            DockPanel.SetDock(footer, Dock.Bottom);
-            outer.Children.Add(footer);
+            DockPanel.SetDock(footerBar, Dock.Bottom);
+            outer.Children.Add(footerBar);
             outer.Children.Add(tabs);
             if (win.Foreground != null) footer.SetValue(TextElement.ForegroundProperty, win.Foreground);
             win.Content = outer;
@@ -1690,7 +1696,7 @@ namespace TypoZen
 
                 var castLine = row(new UIElement[] { playLine, label, lines, cb, sayCell, strengthBox, removeBtn });
                 castLine.Margin = new Thickness(0);
-                var stripe = new Border { Child = castLine, Padding = new Thickness(0, 3, 4, 3), CornerRadius = new CornerRadius(3), Tag = shownName };
+                var stripe = new Border { Child = castLine, Padding = new Thickness(0, 3, 4, 3), CornerRadius = new CornerRadius(4), Tag = shownName };
 
                 removeBtn.Click += (s, e) =>
                 {

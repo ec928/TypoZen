@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.20.16";
+        internal const string AppVersion = "0.20.17";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -620,6 +620,7 @@ namespace TypoZen
             {
                 source.AddHook(WndProc);
             }
+            DialogTheme.ApplyDwmWindowChrome(this, true);
         }
 
         private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -7186,15 +7187,11 @@ namespace TypoZen
         private void SetToolbarActive(Button b, bool active)
         {
             if (b == null) return;
-            // Fill and weight only, deliberately leaving the outline alone.
-            //
-            // A selected pillbox segment is a fill and nothing else: SegmentButton draws
-            // with BorderThickness 0, so the brush SelectSegment assigns to BorderBrush
-            // never appears. ToolbarStateButton does draw a 1px border, so recolouring it
-            // to the accent gave these buttons an outline the pillbox never gets -- which
-            // is why 2-Col read as a stronger selection than Preview. The resting outline
-            // now stays put and only the fill changes, so both say "selected" the same way.
-            b.Background = active ? (_modeSourceBg ?? SystemColors.HighlightBrush) : Brushes.Transparent;
+            b.Tag = active ? "active" : null;
+            if (active)
+                b.Background = _modeSourceBg ?? SystemColors.HighlightBrush;
+            else
+                b.ClearValue(Button.BackgroundProperty);
             b.FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal;
         }
 
@@ -7221,6 +7218,7 @@ namespace TypoZen
         {
             Button b;
             if (!_segments.TryGetValue(name, out b) || b == null) return;
+            b.Tag = on ? "active" : null;
             if (on)
             {
                 b.Background = _modeSourceBg ?? SystemColors.HighlightBrush;
@@ -7229,8 +7227,8 @@ namespace TypoZen
             }
             else
             {
-                b.Background = Brushes.Transparent;
-                b.BorderBrush = Brushes.Transparent;
+                b.ClearValue(Button.BackgroundProperty);
+                b.ClearValue(Button.BorderBrushProperty);
                 b.FontWeight = FontWeights.Normal;
             }
         }
@@ -10125,7 +10123,8 @@ namespace TypoZen
                 var txBrush = (SolidColorBrush)conv.ConvertFromString(t.Tx); txBrush.Freeze();
                 var hiBrush = (SolidColorBrush)conv.ConvertFromString(t.Hi); hiBrush.Freeze();
 
-                bool isLight = IsColorLight(t.Bg);
+                var isLight = IsColorLight(t.Bg);
+                DialogTheme.ApplyDwmWindowChrome(this, !isLight);
                 var hoverBgBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.06f : 0.08f)); hoverBgBrush.Freeze();
                 var borderBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.15f : 0.15f)); borderBrush.Freeze();
                 var hoverTxBrush = (SolidColorBrush)conv.ConvertFromString(IsColorLight(t.Hi) ? "#000000" : "#FFFFFF"); hoverTxBrush.Freeze();
@@ -10202,6 +10201,35 @@ namespace TypoZen
                 this.Resources[SystemColors.WindowTextBrushKey] = txBrush;
                 this.Resources[SystemColors.ActiveBorderBrushKey] = borderBrush;
 
+                var tc = txBrush.Color;
+                Func<byte, SolidColorBrush> txAlpha = a =>
+                {
+                    var br = new SolidColorBrush(Color.FromArgb(a, tc.R, tc.G, tc.B));
+                    br.Freeze();
+                    return br;
+                };
+                var subtleHoverBrush = txAlpha(isLight ? (byte)0x10 : (byte)0x16);
+                var subtlePressedBrush = txAlpha(isLight ? (byte)0x1A : (byte)0x22);
+                var subtleFillBrush = txAlpha(isLight ? (byte)0x09 : (byte)0x0D);
+                var hairlineBorderBrush = txAlpha(isLight ? (byte)0x1C : (byte)0x24);
+                var popupBgBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? 0.03f : 0.06f)); popupBgBrush.Freeze();
+                this.Resources["TzSubtleHoverBrush"] = subtleHoverBrush;
+                this.Resources["TzSubtlePressedBrush"] = subtlePressedBrush;
+                this.Resources["TzSubtleFillBrush"] = subtleFillBrush;
+                this.Resources["TzHairlineBorderBrush"] = hairlineBorderBrush;
+                this.Resources["TzPopupBgBrush"] = popupBgBrush;
+                this.Resources["TzMutedTextBrush"] = mutedTxBrush;
+
+                var hc = hiBrush.Color;
+                Func<byte, SolidColorBrush> hiAlpha = a =>
+                {
+                    var br = new SolidColorBrush(Color.FromArgb(a, hc.R, hc.G, hc.B));
+                    br.Freeze();
+                    return br;
+                };
+                this.Resources["TzAccentHoverBrush"] = hiAlpha(isLight ? (byte)0x28 : (byte)0x34);
+                this.Resources["TzAccentPressedBrush"] = hiAlpha(isLight ? (byte)0x38 : (byte)0x46);
+
                 // Elevated command surface (menu + active tab); tab strip keeps base bg.
                 var chromeElevated = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.06f : 0.08f));
                 chromeElevated.Freeze();
@@ -10209,7 +10237,7 @@ namespace TypoZen
                 var topMenu = FindElement("topMenu") as Menu;
                 if (topMenu != null)
                 {
-                    topMenu.Background = chromeElevated;
+                    topMenu.Background = Brushes.Transparent;
                     topMenu.Foreground = txBrush;
                     foreach (object item in topMenu.Items)
                     {
@@ -10263,15 +10291,15 @@ namespace TypoZen
                 {
                     var cap = FindElement(capName) as Button;
                     if (cap == null) continue;
-                    cap.Foreground = txBrush;
-                    cap.Background = Brushes.Transparent;
-                    cap.BorderBrush = Brushes.Transparent;
+                    cap.ClearValue(Button.ForegroundProperty);
+                    cap.ClearValue(Button.BackgroundProperty);
+                    cap.ClearValue(Button.BorderBrushProperty);
                 }
                 var toolbar = FindElement("topToolbar") as Border;
                 if (toolbar != null)
                 {
                     toolbar.Background = chromeElevated;
-                    toolbar.BorderBrush = borderBrush;
+                    toolbar.BorderBrush = hairlineBorderBrush;
                 }
                 // Format dropdowns sit on the command bar
                 foreach (string menuName in new string[] { "headingMenu", "listMenu", "tableMenu" })
@@ -10301,10 +10329,14 @@ namespace TypoZen
                 if (statusBar != null)
                 {
                     statusBar.Background = bgBrush;
-                    statusBar.BorderBrush = borderBrush;
+                    statusBar.BorderBrush = hairlineBorderBrush;
                 }
                 var themeBorder = FindElement("themeIndicatorBorder") as Border;
-                if (themeBorder != null) themeBorder.Background = hoverBgBrush;
+                if (themeBorder != null)
+                {
+                    themeBorder.Background = hoverBgBrush;
+                    themeBorder.BorderThickness = new Thickness(0);
+                }
                 var lblThemeName = FindElement("lblThemeName") as TextBlock;
                 if (lblThemeName != null)
                 {
@@ -11731,6 +11763,7 @@ namespace TypoZen
             btn.FontFamily = new FontFamily(IconFont());
             if (reading)
             {
+                btn.Tag = "active";
                 btn.Content = "";                                   // StopSolid
                 btn.ToolTip = "Stop reading";
                 // The same soft fill every other "on" toolbar button gets (SetToolbarActive),
@@ -11740,6 +11773,7 @@ namespace TypoZen
             }
             else
             {
+                btn.Tag = null;
                 btn.Content = ReadAloudGlyph();
                 btn.ToolTip = "Read aloud (the selection, or the page)";
                 btn.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
@@ -15987,7 +16021,7 @@ namespace TypoZen
             //   Inactive: height 24 → bottom at 29, gap above seam.
             //   Active: same top, height 31 → covers through the seam line; open bottom,
             //   fill = command bar so it reads as continuous with the menu.
-            const double tabChipH = 22;
+            const double tabChipH = 26;
             const double activeExtra = 5; // gap + 1px seam
             double titleMax = ComputeTabTitleMaxWidth();
             _tabTitleWidthBuilt = titleMax;
@@ -16002,14 +16036,13 @@ namespace TypoZen
                 {
                     // Same top for every tab. Active only grows downward into the seam.
                     Height = active ? (tabChipH + activeExtra) : tabChipH,
-                    // Slightly rounder active tab (item 6); inactive stays flat/borderless.
                     CornerRadius = active
-                        ? new CornerRadius(8, 8, 0, 0)
-                        : new CornerRadius(0),
+                        ? new CornerRadius(7, 7, 0, 0)
+                        : new CornerRadius(6),
                     Padding = active
-                        ? new Thickness(10, 2, 6, 2)
-                        : new Thickness(8, 2, 4, 2),
-                    Margin = new Thickness(0, 0, 0, 0),
+                        ? new Thickness(10, 4, 6, 4)
+                        : new Thickness(8, 3, 4, 3),
+                    Margin = new Thickness(0, 0, 2, 0),
                     Cursor = Cursors.Hand,
                     Background = active ? _tabActiveBg : Brushes.Transparent,
                     BorderBrush = active ? _tabActiveBorder : Brushes.Transparent,
@@ -16055,20 +16088,21 @@ namespace TypoZen
 
                 var closeBtn = new Button
                 {
-                    Content = "×",
-                    FontSize = 13,
-                    FontWeight = FontWeights.Bold,
-                    Padding = new Thickness(6, 0, 2, 0),
+                    Style = TryFindResource("GhostToolbarButton") as Style,
+                    Content = "\uE711",
+                    FontFamily = TabIconFont,
+                    FontSize = 9,
+                    Padding = new Thickness(0),
                     // Inactive: drawn over the end of the title on hover rather than holding
                     // 30px of blank space on every tab (Ed, 2026-10-01). The negative margin
                     // cancels its own width, so the title does not jump when it appears.
-                    Margin = active ? new Thickness(6, 0, 0, 0) : new Thickness(-22, 0, 0, 0),
-                    MinWidth = 22,
-                    Width = active ? double.NaN : 22,
-                    Background = Brushes.Transparent,
-                    BorderThickness = new Thickness(0),
+                    Margin = active ? new Thickness(6, 0, 0, 0) : new Thickness(-20, 0, 0, 0),
+                    MinWidth = 20,
+                    Width = 20,
+                    MinHeight = 20,
+                    Height = 20,
                     Foreground = _tabTextMuted,
-                    Opacity = active ? 0.85 : 0,
+                    Opacity = active ? 0.8 : 0,
                     IsHitTestVisible = active,
                     Cursor = Cursors.Hand,
                     ToolTip = "Close tab"
@@ -16149,8 +16183,8 @@ namespace TypoZen
                         Height = 2,
                         Background = _modeSourceBorder, // Reusing the primary accent color brush
                         VerticalAlignment = VerticalAlignment.Top,
-                        CornerRadius = new CornerRadius(8, 8, 0, 0),
-                        Margin = new Thickness(-10, -4, -6, 0), // Negates Padding(10, 4, 6, 4)
+                        CornerRadius = new CornerRadius(1),
+                        Margin = new Thickness(0, -4, 0, 0),
                         IsHitTestVisible = false
                     };
                     innerGrid.Children.Add(topAccent);
@@ -16167,10 +16201,10 @@ namespace TypoZen
                     var div = new Border
                     {
                         Width = 1,
-                        Height = 12,
-                        Margin = new Thickness(4, 6, 4, 0),
+                        Height = 14,
+                        Margin = new Thickness(2, 6, 4, 0),
                         Background = _tabTextMuted,
-                        Opacity = 0.28,
+                        Opacity = 0.25,
                         VerticalAlignment = VerticalAlignment.Top,
                         IsHitTestVisible = false,
                         SnapsToDevicePixels = true
@@ -16181,15 +16215,16 @@ namespace TypoZen
 
             var addBtn = new Button
             {
-                Content = "+",
-                FontSize = 15,
-                FontWeight = FontWeights.Bold,
+                Style = TryFindResource("GhostToolbarButton") as Style,
+                Content = "\uE710",
+                FontFamily = TabIconFont,
+                FontSize = 11,
                 MinWidth = 26,
+                Width = 26,
+                MinHeight = tabChipH,
                 Height = tabChipH,
-                Padding = new Thickness(6, 1, 6, 1),
+                Padding = new Thickness(0),
                 Margin = new Thickness(2, 0, 0, 0),
-                Background = Brushes.Transparent,
-                BorderThickness = new Thickness(0),
                 Foreground = _tabTextMuted,
                 Cursor = Cursors.Hand,
                 VerticalAlignment = VerticalAlignment.Top,

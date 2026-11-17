@@ -3,20 +3,46 @@
         Title="TypoZen - WYSIWYG Markdown &amp; Text Editor" Height="780" Width="1200"
         WindowStartupLocation="CenterScreen" Background="#0F172A" FontFamily="Segoe UI">
     <Window.Resources>
+        <!-- Fluent surface tokens (overwritten per-theme by ApplyThemeChrome) -->
+        <SolidColorBrush x:Key="TzSubtleHoverBrush" Color="#14FFFFFF"/>
+        <SolidColorBrush x:Key="TzSubtlePressedBrush" Color="#1EFFFFFF"/>
+        <SolidColorBrush x:Key="TzSubtleFillBrush" Color="#0CFFFFFF"/>
+        <SolidColorBrush x:Key="TzHairlineBorderBrush" Color="#22FFFFFF"/>
+        <SolidColorBrush x:Key="TzPopupBgBrush" Color="#202024"/>
+        <SolidColorBrush x:Key="TzMutedTextBrush" Color="#A1A1AA"/>
+        <SolidColorBrush x:Key="TzAccentHoverBrush" Color="#343B82F6"/>
+        <SolidColorBrush x:Key="TzAccentPressedBrush" Color="#443B82F6"/>
+
         <Style TargetType="Menu">
             <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuBarBrushKey}}"/>
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
-            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Padding" Value="4,2"/>
         </Style>
         <Style TargetType="ContextMenu">
-            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuBrushKey}}"/>
+            <Setter Property="Background" Value="{DynamicResource TzPopupBgBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource TzHairlineBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="14" Opacity="0.35" ShadowDepth="4" Color="#000000"/>
+                            </Border.Effect>
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <!-- Submenu Item Template -->
         <ControlTemplate x:Key="SubmenuItemTemplate" TargetType="MenuItem">
-            <Border x:Name="templateRoot" Background="Transparent" CornerRadius="4" Padding="10,6" Margin="4,1" SnapsToDevicePixels="True">
+            <Border x:Name="templateRoot" Background="Transparent" CornerRadius="4" Padding="10,6" Margin="2,1" SnapsToDevicePixels="True">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="22"/>
@@ -25,17 +51,17 @@
                     </Grid.ColumnDefinitions>
                     
                     <ContentPresenter x:Name="iconPresenter" ContentSource="Icon" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="checkMark" Text="✓" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" FontWeight="Bold"/>
+                    <TextBlock x:Name="checkMark" Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
 
                     <ContentPresenter x:Name="headerPresenter" Grid.Column="1" ContentSource="Header" Margin="4,0,16,0" VerticalAlignment="Center" RecognizesAccessKey="True"/>
                     
                     <TextBlock x:Name="gestureText" Grid.Column="2" Text="{TemplateBinding InputGestureText}" Margin="16,0,4,0" VerticalAlignment="Center" Opacity="0.6"/>
-                    <TextBlock x:Name="subMenuArrow" Grid.Column="2" Text="▶" FontSize="10" Margin="16,0,4,0" VerticalAlignment="Center" Visibility="Collapsed" Opacity="0.6"/>
+                    <TextBlock x:Name="subMenuArrow" Grid.Column="2" Text="&#xE76C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="9" Margin="16,0,4,0" VerticalAlignment="Center" Visibility="Collapsed" Opacity="0.6"/>
 
                     <Popup x:Name="PART_Popup" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" Placement="Right" Focusable="False" AllowsTransparency="True" PopupAnimation="Fade">
-                        <Border x:Name="SubMenuBorder" Background="{DynamicResource {x:Static SystemColors.MenuBrushKey}}" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="1" CornerRadius="6" Padding="4" Margin="4,0,8,8" SnapsToDevicePixels="True">
+                        <Border x:Name="SubMenuBorder" Background="{DynamicResource TzPopupBgBrush}" BorderBrush="{DynamicResource TzHairlineBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="4,0,8,8" SnapsToDevicePixels="True">
                             <Border.Effect>
-                                <DropShadowEffect BlurRadius="8" Opacity="0.3" ShadowDepth="3" Color="#000000"/>
+                                <DropShadowEffect BlurRadius="14" Opacity="0.35" ShadowDepth="4" Color="#000000"/>
                             </Border.Effect>
                             <ItemsPresenter x:Name="ItemsPresenter" KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle"/>
                         </Border>
@@ -51,10 +77,9 @@
                     <Setter TargetName="subMenuArrow" Property="Visibility" Value="Visible"/>
                 </Trigger>
                 <Trigger Property="IsHighlighted" Value="True">
-                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
-                    <Setter TargetName="gestureText" Property="Opacity" Value="0.95"/>
-                    <Setter TargetName="subMenuArrow" Property="Opacity" Value="0.95"/>
+                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource TzAccentHoverBrush}"/>
+                    <Setter TargetName="gestureText" Property="Opacity" Value="0.85"/>
+                    <Setter TargetName="subMenuArrow" Property="Opacity" Value="0.85"/>
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
                     <Setter TargetName="templateRoot" Property="Opacity" Value="0.4"/>
@@ -65,13 +90,13 @@
         <!-- Top Level Header Template -->
         <ControlTemplate x:Key="TopLevelHeaderTemplate" TargetType="MenuItem">
             <Border x:Name="templateRoot" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
-                    CornerRadius="4" Padding="9,4" Margin="2,0" SnapsToDevicePixels="True">
+                    CornerRadius="4" Padding="9,4" Margin="1,0" SnapsToDevicePixels="True">
                 <Grid>
                     <ContentPresenter x:Name="headerPresenter" ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
                     <Popup x:Name="PART_Popup" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" Focusable="False" AllowsTransparency="True" PopupAnimation="Fade">
-                        <Border x:Name="SubMenuBorder" Background="{DynamicResource {x:Static SystemColors.MenuBrushKey}}" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" BorderThickness="1" CornerRadius="6" Padding="4" Margin="0,4,8,8" SnapsToDevicePixels="True">
+                        <Border x:Name="SubMenuBorder" Background="{DynamicResource TzPopupBgBrush}" BorderBrush="{DynamicResource TzHairlineBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,4,8,8" SnapsToDevicePixels="True">
                             <Border.Effect>
-                                <DropShadowEffect BlurRadius="8" Opacity="0.3" ShadowDepth="3" Color="#000000"/>
+                                <DropShadowEffect BlurRadius="14" Opacity="0.35" ShadowDepth="4" Color="#000000"/>
                             </Border.Effect>
                             <ItemsPresenter x:Name="ItemsPresenter" KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle"/>
                         </Border>
@@ -79,14 +104,11 @@
                 </Grid>
             </Border>
             <ControlTemplate.Triggers>
-                <!-- Theme accent hover (same key as GhostToolbarButton). -->
                 <Trigger Property="IsHighlighted" Value="True">
-                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource TzAccentHoverBrush}"/>
                 </Trigger>
                 <Trigger Property="IsSubmenuOpen" Value="True">
-                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource TzAccentPressedBrush}"/>
                 </Trigger>
             </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -118,21 +140,21 @@
             <Setter Property="Width" Value="26"/>
             <Setter Property="Height" Value="22"/>
             <Setter Property="Margin" Value="10,-3,-12,-3"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Opacity" Value="0"/>
-            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="back" Background="{TemplateBinding Background}" CornerRadius="3">
+                        <Border x:Name="back" Background="{TemplateBinding Background}" CornerRadius="4">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="back" Property="Background" Value="#33808080"/>
+                                <Setter TargetName="back" Property="Background" Value="{DynamicResource TzSubtleHoverBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -156,25 +178,26 @@
             </Style.Triggers>
         </Style>
         <Style TargetType="Separator">
-            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
-            <Setter Property="Margin" Value="32,5,12,5"/>
+            <Setter Property="Background" Value="{DynamicResource TzHairlineBorderBrush}"/>
+            <Setter Property="Margin" Value="10,4,10,4"/>
             <Setter Property="Height" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Separator">
-                        <Border Background="{TemplateBinding Background}" Height="{TemplateBinding Height}" Margin="{TemplateBinding Margin}" Opacity="0.3"/>
+                        <Border Background="{TemplateBinding Background}" Height="{TemplateBinding Height}" Margin="{TemplateBinding Margin}"/>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
         <Style TargetType="Button">
-            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Padding" Value="10,5"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Background" Value="{DynamicResource TzSubtleFillBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource TzHairlineBorderBrush}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -186,44 +209,96 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
-                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource TzSubtleHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Opacity" Value="0.8"/>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource TzSubtlePressedBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Quiet format tools. REVERT pack: GhostToolbarButton + ToolMenuHeaderTemplate + ToolbarMenuItem. -->
-        <!-- Segmented controls (Phase 3A).
-             A SegmentGroup is one rounded outline containing SegmentButtons separated by
-             hairline SegmentDividers, so a group reads as a single control rather than
-             three loose buttons. Selection and the locked (dimmed) state are painted from
-             C# in RenderViewSelectors, driven by the page's resolver, not by triggers
-             here: which segment is "on" is app state, not a visual state. -->
+        <Style x:Key="CaptionButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="capBorder" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="capBorder" Property="Background" Value="{DynamicResource TzSubtleHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="capBorder" Property="Background" Value="{DynamicResource TzSubtlePressedBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="CloseCaptionButtonStyle" TargetType="Button" BasedOn="{StaticResource CaptionButtonStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="capBorder" Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="capBorder" Property="Background" Value="#C42B1C"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="capBorder" Property="Background" Value="#B22215"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ToolbarDivider" TargetType="Border">
+            <Setter Property="Width" Value="1"/>
+            <Setter Property="Height" Value="16"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="6,0"/>
+            <Setter Property="Background" Value="{DynamicResource TzHairlineBorderBrush}"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
+        <!-- Quiet format tools & Fluent segmented pill controls. -->
         <Style x:Key="SegmentGroup" TargetType="Border">
-            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="Background" Value="{DynamicResource TzSubtleFillBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource TzHairlineBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="2"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
 
-        <!-- A single two-state toolbar button: shows the current value, flips on click.
-             Same outline and metrics as a SegmentGroup so it sits with the Mode control. -->
+        <!-- A single two-state toolbar button: shows the current value, flips on click. -->
         <Style x:Key="ToolbarStateButton" TargetType="Button">
-            <Setter Property="Padding" Value="6,1"/>
-            <Setter Property="MinHeight" Value="22"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="10,2"/>
+            <Setter Property="MinHeight" Value="26"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Background" Value="{DynamicResource TzSubtleFillBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource TzHairlineBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -231,7 +306,7 @@
                         <Border x:Name="stateBorder" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="4" Padding="{TemplateBinding Padding}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}"
                                 MinHeight="{TemplateBinding MinHeight}" SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
                                               TextElement.Foreground="{TemplateBinding Foreground}"/>
@@ -241,12 +316,12 @@
                                 <MultiTrigger.Conditions>
                                     <Condition Property="IsMouseOver" Value="True"/>
                                     <Condition Property="IsEnabled" Value="True"/>
+                                    <Condition Property="Tag" Value="{x:Null}"/>
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="stateBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                <Setter TargetName="stateBorder" Property="Background" Value="{DynamicResource TzSubtleHoverBrush}"/>
                             </MultiTrigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="stateBorder" Property="Opacity" Value="0.9"/>
+                                <Setter TargetName="stateBorder" Property="Opacity" Value="0.88"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -256,17 +331,20 @@
 
         <Style x:Key="SegmentDivider" TargetType="Border">
             <Setter Property="Width" Value="1"/>
-            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"/>
-            <Setter Property="Opacity" Value="0.5"/>
-            <Setter Property="VerticalAlignment" Value="Stretch"/>
-            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Height" Value="14"/>
+            <Setter Property="Background" Value="{DynamicResource TzHairlineBorderBrush}"/>
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="1,0"/>
         </Style>
 
         <Style x:Key="SegmentButton" TargetType="Button">
-            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="Padding" Value="7,2"/>
             <Setter Property="MinHeight" Value="22"/>
+            <Setter Property="MinWidth" Value="28"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
@@ -275,24 +353,23 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="segBorder" Background="{TemplateBinding Background}"
-                                CornerRadius="3" Padding="{TemplateBinding Padding}"
-                                Margin="1" MinHeight="{TemplateBinding MinHeight}">
+                                CornerRadius="4" Padding="{TemplateBinding Padding}"
+                                Margin="0" MinHeight="{TemplateBinding MinHeight}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
                                               TextElement.Foreground="{TemplateBinding Foreground}"/>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <!-- Hover only reads on segments the user can actually act on.
-                                 A locked group is IsEnabled=false so this never fires. -->
+                            <!-- Hover only reads on segments the user can actually act on. -->
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
                                     <Condition Property="IsMouseOver" Value="True"/>
                                     <Condition Property="IsEnabled" Value="True"/>
+                                    <Condition Property="Tag" Value="{x:Null}"/>
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="segBorder" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                <Setter TargetName="segBorder" Property="Background" Value="{DynamicResource TzSubtleHoverBrush}"/>
                             </MultiTrigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="segBorder" Property="Opacity" Value="0.9"/>
+                                <Setter TargetName="segBorder" Property="Opacity" Value="0.88"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -301,11 +378,12 @@
         </Style>
 
         <Style x:Key="GhostToolbarButton" TargetType="Button">
-            <Setter Property="Padding" Value="4,1"/>
-            <Setter Property="MinHeight" Value="22"/>
-            <Setter Property="MinWidth" Value="30"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="MinHeight" Value="26"/>
+            <Setter Property="MinWidth" Value="28"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
@@ -323,33 +401,35 @@
                                               TextElement.Foreground="{TemplateBinding Foreground}"/>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
-                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="Tag" Value="{x:Null}"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource TzSubtleHoverBrush}"/>
+                            </MultiTrigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Opacity" Value="0.9"/>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource TzSubtlePressedBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- H / list / table dropdowns: same hit box + accent hover as GhostToolbarButton -->
+        <!-- H / list dropdowns: same hit box + subtle hover as GhostToolbarButton -->
         <ControlTemplate x:Key="ToolMenuHeaderTemplate" TargetType="MenuItem">
             <Border x:Name="templateRoot" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
-                    CornerRadius="4" Padding="4,1" MinHeight="22" MinWidth="30" SnapsToDevicePixels="True">
+                    CornerRadius="4" Padding="6,2" MinHeight="26" MinWidth="28" SnapsToDevicePixels="True">
                 <Grid>
                     <ContentPresenter x:Name="headerPresenter" ContentSource="Header"
                                       HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
                     <Popup x:Name="PART_Popup" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
                            Placement="Bottom" Focusable="False" AllowsTransparency="True" PopupAnimation="Fade">
-                        <Border Background="{DynamicResource {x:Static SystemColors.MenuBrushKey}}"
-                                BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                                BorderThickness="1" CornerRadius="6" Padding="4" Margin="0,4,8,8" SnapsToDevicePixels="True">
+                        <Border Background="{DynamicResource TzPopupBgBrush}"
+                                BorderBrush="{DynamicResource TzHairlineBorderBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,4,8,8" SnapsToDevicePixels="True">
                             <Border.Effect>
-                                <DropShadowEffect BlurRadius="8" Opacity="0.3" ShadowDepth="3" Color="#000000"/>
+                                <DropShadowEffect BlurRadius="14" Opacity="0.35" ShadowDepth="4" Color="#000000"/>
                             </Border.Effect>
                             <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle"/>
                         </Border>
@@ -358,12 +438,10 @@
             </Border>
             <ControlTemplate.Triggers>
                 <Trigger Property="IsHighlighted" Value="True">
-                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource TzAccentHoverBrush}"/>
                 </Trigger>
                 <Trigger Property="IsSubmenuOpen" Value="True">
-                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource {x:Static SystemColors.MenuHighlightBrushKey}}"/>
-                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource TzAccentPressedBrush}"/>
                 </Trigger>
             </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -403,7 +481,7 @@
           active tab can paint over the line; a Border's stroke sits outside the child
           arrange rect and can never be covered.
         -->
-        <Border x:Name="tabBar" DockPanel.Dock="Top" Height="30" BorderThickness="0" Padding="8,0,0,0"
+        <Border x:Name="tabBar" DockPanel.Dock="Top" Height="36" BorderThickness="0" Padding="8,0,0,0"
                 ClipToBounds="False">
             <Grid ClipToBounds="False">
                 <Grid.ColumnDefinitions>
@@ -421,37 +499,33 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <Button x:Name="btnTabScrollLeft" Grid.Column="0" Content="‹" FontSize="14" FontWeight="Bold"
-                            Width="22" BorderThickness="0" Background="Transparent" Padding="0"
-                            VerticalAlignment="Top" Margin="0,3,0,0" Height="22"
+                    <Button x:Name="btnTabScrollLeft" Grid.Column="0" Style="{StaticResource GhostToolbarButton}"
+                            Content="&#xE76B;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
+                            Width="24" MinWidth="24" MinHeight="24" Height="24" Padding="0"
+                            VerticalAlignment="Top" Margin="0,5,2,0"
                             ToolTip="Scroll tabs left" Visibility="Collapsed"/>
                     <ScrollViewer x:Name="tabScroller" Grid.Column="1"
                                   HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
                                   Focusable="False" VerticalAlignment="Stretch"
                                   ClipToBounds="False" PanningMode="HorizontalOnly">
-                        <StackPanel x:Name="tabStrip" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,3,0,0"/>
+                        <StackPanel x:Name="tabStrip" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,5,0,0"/>
                     </ScrollViewer>
-                    <Button x:Name="btnTabScrollRight" Grid.Column="2" Content="›" FontSize="14" FontWeight="Bold"
-                            Width="22" BorderThickness="0" Background="Transparent" Padding="0"
-                            VerticalAlignment="Top" Margin="0,3,0,0" Height="22"
+                    <Button x:Name="btnTabScrollRight" Grid.Column="2" Style="{StaticResource GhostToolbarButton}"
+                            Content="&#xE76C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
+                            Width="24" MinWidth="24" MinHeight="24" Height="24" Padding="0"
+                            VerticalAlignment="Top" Margin="2,5,0,0"
                             ToolTip="Scroll tabs right" Visibility="Collapsed"/>
                 </Grid>
                 <StackPanel x:Name="captionButtons" Grid.Column="1" Orientation="Horizontal"
                             VerticalAlignment="Stretch">
-                    <Button x:Name="btnWinMin" Content="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"
-                            Width="46" BorderThickness="0" Background="Transparent" Padding="0"
-                            ToolTip="Minimize"/>
-                    <Button x:Name="btnWinMax" Content="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"
-                            Width="46" BorderThickness="0" Background="Transparent" Padding="0"
-                            ToolTip="Maximize"/>
-                    <Button x:Name="btnWinClose" Content="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"
-                            Width="46" BorderThickness="0" Background="Transparent" Padding="0"
-                            ToolTip="Close"/>
+                    <Button x:Name="btnWinMin" Style="{StaticResource CaptionButtonStyle}" Content="&#xE921;" ToolTip="Minimize"/>
+                    <Button x:Name="btnWinMax" Style="{StaticResource CaptionButtonStyle}" Content="&#xE922;" ToolTip="Maximize"/>
+                    <Button x:Name="btnWinClose" Style="{StaticResource CloseCaptionButtonStyle}" Content="&#xE8BB;" ToolTip="Close"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <Border x:Name="topToolbar" DockPanel.Dock="Top" BorderThickness="0,0,0,1" Padding="2,0,6,0">
+        <Border x:Name="topToolbar" DockPanel.Dock="Top" BorderThickness="0,0,0,1" Padding="6,4,8,4">
             <Grid>
                <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1*"/>
@@ -459,12 +533,13 @@
                     <ColumnDefinition Width="1*"/>
                 </Grid.ColumnDefinitions>
 
-<StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
                     <Button x:Name="btnToggleSidebar" Style="{StaticResource GhostToolbarButton}"
                             FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE8A0;" FontSize="14"
-                            MinWidth="32" Padding="6,2" Margin="0,0,4,0"
+                            MinWidth="30" Padding="6,2" Margin="0"
                             ToolTip="Toggle Outline and Search Sidebar (Alt+\)"/>
-                    <Menu x:Name="topMenu" Background="Transparent" Padding="2,0" VerticalAlignment="Center">
+                    <Border Style="{StaticResource ToolbarDivider}"/>
+                    <Menu x:Name="topMenu" Background="Transparent" Padding="0" VerticalAlignment="Center">
                         <MenuItem Header="_File">
                             <MenuItem x:Name="mNew" Header="_New" InputGestureText="Ctrl+N"/>
                             <MenuItem x:Name="mOpen" Header="_Open..." InputGestureText="Ctrl+O"/>
@@ -679,17 +754,17 @@
                     </Menu>
                 </StackPanel>
 
-                <!-- Format tools: even MinHeight 28 hit targets; REVERT pack tags above. -->
+                <!-- Format tools: Fluent Ghost buttons + hairline divider -->
                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
                     <!-- Inline Formatting moved to context popover -->
 
-                    <!-- Block – same hit box + accent hover as B/I -->
+                    <!-- Block -->
                     <Menu x:Name="headingMenu" Background="Transparent" Padding="0" Margin="0,0,2,0" VerticalAlignment="Center">
                         <MenuItem x:Name="miHeadings" Style="{StaticResource ToolbarMenuItem}" ToolTip="Headings (H1-H6)">
                             <MenuItem.Header>
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="H" FontFamily="Segoe UI" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
-                                    <TextBlock Text=" &#x25BE;" FontFamily="Segoe UI" FontSize="10" VerticalAlignment="Center" Opacity="0.7"/>
+                                    <TextBlock Text="H" FontFamily="Segoe UI Variable Text, Segoe UI" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
+                                    <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8" Margin="4,1,0,0" VerticalAlignment="Center" Opacity="0.65"/>
                                 </StackPanel>
                             </MenuItem.Header>
                             <MenuItem x:Name="btnH1" Header="Heading _1"/>
@@ -703,76 +778,70 @@
                     <Button x:Name="btnQuote" Style="{StaticResource GhostToolbarButton}" Content="&#x201C;"
                             FontFamily="Georgia, 'Times New Roman', serif" FontSize="15" FontWeight="SemiBold"
                             Margin="0,0,2,0" ToolTip="Blockquote"/>
-                    <Menu x:Name="listMenu" Background="Transparent" Padding="0" Margin="0,0,12,0" VerticalAlignment="Center">
+                    <Menu x:Name="listMenu" Background="Transparent" Padding="0" Margin="0" VerticalAlignment="Center">
                         <MenuItem x:Name="miLists" Style="{StaticResource ToolbarMenuItem}" ToolTip="Lists">
                             <MenuItem.Header>
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE8FD;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
-                                    <TextBlock Text=" &#x25BE;" FontFamily="Segoe UI" FontSize="10" VerticalAlignment="Center" Opacity="0.7"/>
+                                    <TextBlock Text="&#xE8FD;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                                    <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8" Margin="4,1,0,0" VerticalAlignment="Center" Opacity="0.65"/>
                                 </StackPanel>
                             </MenuItem.Header>
-                            <MenuItem x:Name="btnList" Header="_Bulleted list" FontFamily="Segoe UI"/>
-                            <MenuItem x:Name="btnOrderedList" Header="_Numbered list" FontFamily="Segoe UI"/>
-                            <MenuItem x:Name="btnChecklist" Header="_Task checklist" FontFamily="Segoe UI"/>
+                            <MenuItem x:Name="btnList" Header="_Bulleted list" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                            <MenuItem x:Name="btnOrderedList" Header="_Numbered list" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                            <MenuItem x:Name="btnChecklist" Header="_Task checklist" FontFamily="Segoe UI Variable Text, Segoe UI"/>
                         </MenuItem>
                     </Menu>
 
+                    <Border Style="{StaticResource ToolbarDivider}"/>
+
                     <!-- Inserts -->
                     <Button x:Name="btnTable" Style="{StaticResource GhostToolbarButton}" 
-                            Content="&#xE80A;" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                            Margin="0,0,4,0" ToolTip="Insert Table"/>
+                            Content="&#xE80A;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                            Margin="0" ToolTip="Insert Table"/>
                 </StackPanel>
 
                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                     <!-- One control: the speaker, Read Aloud, and Stop while reading. The other
                          controls of a reading are on the reading bar, at the bottom of the page
                          (09-speech.js, setReadBar). -->
-                    <Border x:Name="grpReadAloud" Style="{StaticResource SegmentGroup}" Margin="0,0,12,0">
+                    <Border x:Name="grpReadAloud" Style="{StaticResource SegmentGroup}" Margin="0">
                         <StackPanel Orientation="Horizontal">
                             <Button x:Name="btnReadAloud" Style="{StaticResource SegmentButton}"
-                                    Content="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                    Content="&#xE768;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
                                     ToolTip="Read Aloud"/>
                         </StackPanel>
                     </Border>
 
-                    <!-- Phase 3A: three segmented controls, Mode then Column then Scroll.
-                         Each group is a bordered strip of SegmentButtons; C# paints the
-                         selected segment and drops the whole group's opacity when the
-                         resolver reports it locked. -->
-                    <Border x:Name="grpMode" Style="{StaticResource SegmentGroup}" Margin="0,0,8,0"
+                    <Border Style="{StaticResource ToolbarDivider}"/>
+
+                    <!-- Phase 3A: Mode segmented control -->
+                    <Border x:Name="grpMode" Style="{StaticResource SegmentGroup}" Margin="0"
                             ToolTip="Editing mode — Source, Preview or Reader">
                         <StackPanel Orientation="Horizontal">
-                            <Button x:Name="btnModeSource"  Style="{StaticResource SegmentButton}" Content="&#xE943;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Source"/>
+                            <Button x:Name="btnModeSource"  Style="{StaticResource SegmentButton}" Content="&#xE943;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" ToolTip="Source"/>
                             <Border   Style="{StaticResource SegmentDivider}"/>
-                            <Button x:Name="btnModePreview" Style="{StaticResource SegmentButton}" Content="&#xE890;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Preview"/>
+                            <Button x:Name="btnModePreview" Style="{StaticResource SegmentButton}" Content="&#xE890;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" ToolTip="Preview"/>
                             <Border   Style="{StaticResource SegmentDivider}"/>
-                            <Button x:Name="btnModeReader"  Style="{StaticResource SegmentButton}" Content="&#xE736;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Reader"/>
+                            <Button x:Name="btnModeReader"  Style="{StaticResource SegmentButton}" Content="&#xE736;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" ToolTip="Reader"/>
                         </StackPanel>
                     </Border>
 
-                    <!-- Column and Scroll are two-state, so a single button showing the
-                         current value and flipping on click is smaller and reads faster
-                         than a segmented pair. Mode stays segmented: it has three states,
-                         and cycling through them by clicking would be worse. -->
-                    <!-- Labelled rather than glyphed. The previous icons said nothing about
-                         which layout was active, and no MDL2 glyph reads as "two columns"
-                         without a caption. Both buttons show the state they are IN, and C#
-                         shades them whenever that state is not the default (1-Col, Scroll),
-                         so "something is switched on here" is visible at a glance, the
-                         same signal the Mode pillbox gives. -->
+                    <Border Style="{StaticResource ToolbarDivider}"/>
+
+                    <!-- Two-state layout toggles -->
                     <Button x:Name="btnColumnToggle" Style="{StaticResource ToolbarStateButton}"
                             Content="1-Col" FontSize="12" MinWidth="52" Margin="0,0,6,0"
                             ToolTip="Column layout — click to switch. 2 columns require Pagination"/>
 
                     <Button x:Name="btnScrollToggle" Style="{StaticResource ToolbarStateButton}"
-                            Content="Scroll" FontSize="12" MinWidth="62"
+                            Content="Scroll" FontSize="12" MinWidth="60"
                             ToolTip="Continuous scrolling or discrete pages — click to switch"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Status bar: quieter type so the document stays primary. REVERT: restore Padding 12,6 + SemiBold. -->
-        <Border x:Name="statusBar" DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" Padding="10,4,10,2">
+        <!-- Status bar: quieter type with tabular numerals so the document stays primary. -->
+        <Border x:Name="statusBar" DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" Padding="12,4,12,4">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -818,12 +887,12 @@
                                TextTrimming="CharacterEllipsis" MaxWidth="220"
                                Cursor="Hand" VerticalAlignment="Center"
                                ToolTip="Current chapter — click to jump to its start"/>
-                    <TextBlock x:Name="lblProgress" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
+                    <TextBlock x:Name="lblProgress" Text="" FontSize="11" FontWeight="Normal" Typography.NumeralAlignment="Tabular" Margin="0,0,12,0"
                                Visibility="Collapsed" ToolTip="How far through the book, by words"/>
-                    <TextBlock x:Name="lblWordCount" Text="0 words" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Word count (selection / document when text is selected)"/>
-                    <TextBlock x:Name="lblLineCount" Text="Ln 1/1" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Current line / total lines"/>
-                    <TextBlock x:Name="lblCharCount" Text="0 chars" FontSize="11" FontWeight="Normal" Margin="0,0,12,0" ToolTip="Character count (selection / document when text is selected)"/>
-                    <TextBlock x:Name="lblReadingTime" Text="0 min read" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"/>
+                    <TextBlock x:Name="lblWordCount" Text="0 words" FontSize="11" FontWeight="Normal" Typography.NumeralAlignment="Tabular" Margin="0,0,12,0" ToolTip="Word count (selection / document when text is selected)"/>
+                    <TextBlock x:Name="lblLineCount" Text="Ln 1/1" FontSize="11" FontWeight="Normal" Typography.NumeralAlignment="Tabular" Margin="0,0,12,0" ToolTip="Current line / total lines"/>
+                    <TextBlock x:Name="lblCharCount" Text="0 chars" FontSize="11" FontWeight="Normal" Typography.NumeralAlignment="Tabular" Margin="0,0,12,0" ToolTip="Character count (selection / document when text is selected)"/>
+                    <TextBlock x:Name="lblReadingTime" Text="0 min read" FontSize="11" FontWeight="Normal" Typography.NumeralAlignment="Tabular" Margin="0,0,12,0"/>
                     <!-- Only shown when the file was not plain UTF-8. This used to be a
                          modal MessageBox on every such file opened, which interrupted a
                          read to announce a conversion that happens on save, offered no way
@@ -832,12 +901,13 @@
                     <TextBlock x:Name="lblEncoding" Text="" FontSize="11" FontWeight="Normal" Margin="0,0,12,0"
                                Visibility="Collapsed"
                                ToolTip="This file was not plain UTF-8. Saving rewrites it as UTF-8 without a BOM; your text is unchanged."/>
-                    <TextBlock x:Name="lblZoom" Text="100%" FontSize="11" FontWeight="Normal" ToolTip="Editor zoom (Ctrl++ / Ctrl+- / Ctrl+0, or Ctrl+scroll)"/>
+                    <TextBlock x:Name="lblZoom" Text="100%" FontSize="11" FontWeight="Normal" Typography.NumeralAlignment="Tabular" ToolTip="Editor zoom (Ctrl++ / Ctrl+- / Ctrl+0, or Ctrl+scroll)"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                    <Border x:Name="themeIndicatorBorder" CornerRadius="4" Padding="7,1" Background="#1E293B" Opacity="0.85">
-                        <TextBlock x:Name="lblThemeName" Text="Theme: Nord" FontSize="10" FontWeight="Normal" Opacity="0.9" Margin="0,1,0,0"/>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,2,0">
+                    <Border x:Name="themeIndicatorBorder" CornerRadius="5" Padding="8,2"
+                            Background="{DynamicResource TzSubtleFillBrush}">
+                        <TextBlock x:Name="lblThemeName" Text="Theme: Nord" FontSize="11" FontWeight="Medium" Opacity="0.95"/>
                     </Border>
                 </StackPanel>
 

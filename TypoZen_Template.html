@@ -147,10 +147,10 @@
                      usable if the sidebar shrinks; Aa/ab/count no longer steal field width. -->
                 <div class="sidebar-search-block">
                     <div class="sidebar-search-row sidebar-search-row-query">
-                        <!-- &#xE721; is Segoe MDL2 Assets "Search", the shell's own icon set -->
-                        <span class="sidebar-search-icon" aria-hidden="true">&#xE721;</span>
                         <!-- Editable combo: type a query, or open the last 8 (global) searches. -->
                         <div class="sidebar-search-combo">
+                            <!-- &#xE721; is Segoe Fluent Icons / MDL2 "Search", inside the pill like ZenMusic -->
+                            <span class="sidebar-search-icon" aria-hidden="true">&#xE721;</span>
                             <input id="sidebarSearchInput" type="text" placeholder="Search…"
                                    autocomplete="off" spellcheck="false" aria-label="Search document"
                                    aria-controls="search-results-list"
@@ -311,7 +311,7 @@
         <div class="tz-help-panel tz-link-panel" role="dialog" aria-modal="true" aria-labelledby="linkModalTitle" tabindex="-1">
             <header class="tz-help-head">
                 <h2 id="linkModalTitle">Add Link</h2>
-                <button type="button" id="linkModalClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">&#10005;</button>
+                <button type="button" id="linkModalClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">&#xE711;</button>
             </header>
             <div class="tz-help-body">
                 <label class="tz-link-label" for="linkModalText">Text</label>
@@ -320,8 +320,8 @@
                 <input type="text" id="linkModalHref" class="tz-link-input" autocomplete="off" spellcheck="false"
                        placeholder="https://example.com  or  notes/other-file.md">
             </div>
-            <footer class="tz-help-foot">
-                <span class="tz-help-hint">Esc to cancel</span>
+            <footer class="tz-help-foot tz-dialog-foot">
+                <button type="button" id="linkModalCancel" class="tz-foot-btn">Cancel</button>
                 <button type="button" id="linkModalOk" class="tz-help-ok">Save</button>
             </footer>
         </div>
@@ -334,7 +334,7 @@
             <span id="findCount">0/0</span>
             <button type="button" id="findPrev" title="Previous (Shift+Enter)">▲</button>
             <button type="button" id="findNext" title="Next (Enter)">▼</button>
-            <button type="button" id="findClose" title="Close (Esc)">✕</button>
+            <button type="button" id="findClose" class="find-close-btn" title="Close (Esc)" aria-label="Close">&#xE711;</button>
         </div>
         <div class="find-row">
             <label for="replaceInput">Replace</label>
@@ -367,21 +367,21 @@
     </div>
 
     <!-- Table Insert Modal (custom size) -->
-    <div id="tableModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.65); z-index:99999; align-items:center; justify-content:center; backdrop-filter:blur(4px);">
-        <div style="background:var(--bg, #1E293B); border:1px solid var(--border, #3F3F46); border-radius:10px; padding:22px; width:320px; box-shadow:0 20px 40px rgba(0,0,0,0.6); color:var(--tx, #F8FAFC); font-family:var(--font-sans, 'Inter', sans-serif);">
-            <h3 style="margin:0 0 16px 0; font-size:16px; font-weight:600; color:var(--hi, #60A5FA);">Insert Markdown Table</h3>
-            <div style="margin-bottom:14px;">
-                <label style="display:block; font-size:12px; opacity:0.85; margin-bottom:5px; font-weight:500;">Columns</label>
-                <input id="tblCols" type="number" min="1" max="20" value="3" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border, #3F3F46); background:var(--surface, rgba(255,255,255,0.05)); color:var(--tx, #F8FAFC); font-size:14px; box-sizing:border-box; outline:none;"/>
+    <div id="tableModal" class="tz-help-overlay" style="display:none;" role="presentation">
+        <div class="tz-help-panel tz-table-panel" role="dialog" aria-modal="true" aria-labelledby="tableModalTitle" tabindex="-1">
+            <header class="tz-help-head">
+                <h2 id="tableModalTitle">Insert Markdown Table</h2>
+            </header>
+            <div class="tz-help-body">
+                <label class="tz-link-label" for="tblCols">Columns</label>
+                <input id="tblCols" type="number" min="1" max="20" value="3" class="tz-link-input" />
+                <label class="tz-link-label" for="tblRows">Data rows (header is added automatically)</label>
+                <input id="tblRows" type="number" min="1" max="50" value="3" class="tz-link-input" />
             </div>
-            <div style="margin-bottom:22px;">
-                <label style="display:block; font-size:12px; opacity:0.85; margin-bottom:5px; font-weight:500;">Data rows (header is added automatically)</label>
-                <input id="tblRows" type="number" min="1" max="50" value="3" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border, #3F3F46); background:var(--surface, rgba(255,255,255,0.05)); color:var(--tx, #F8FAFC); font-size:14px; box-sizing:border-box; outline:none;"/>
-            </div>
-            <div style="display:flex; justify-content:flex-end; gap:10px;">
-                <button id="tblCancel" style="padding:7px 14px; border-radius:6px; border:1px solid var(--border, #3F3F46); background:transparent; color:var(--tx, #F8FAFC); cursor:pointer; font-size:13px; font-weight:500;">Cancel</button>
-                <button id="tblInsert" style="padding:7px 16px; border-radius:6px; border:none; background:var(--accent, #3B82F6); color:var(--accent-tx, #FFF); font-weight:600; cursor:pointer; font-size:13px; box-shadow:0 2px 6px rgba(59,130,246,0.35);">Insert Table</button>
-            </div>
+            <footer class="tz-help-foot tz-dialog-foot">
+                <button type="button" id="tblCancel" class="tz-foot-btn">Cancel</button>
+                <button type="button" id="tblInsert" class="tz-help-ok">Insert Table</button>
+            </footer>
         </div>
     </div>
 
@@ -390,7 +390,7 @@
         <div class="tz-help-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle" tabindex="-1">
             <header class="tz-help-head">
                 <h2 id="helpTitle">Syntax &amp; Shortcuts</h2>
-                <button type="button" id="helpClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">✕</button>
+                <button type="button" id="helpClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">&#xE711;</button>
             </header>
             <div class="tz-help-body">
                 <section class="tz-help-sec">
@@ -479,85 +479,84 @@
         </div>
     </div>
 
-    <!-- About (replaces WinForms MessageBox) -->
+    <!-- About (ZenMusic-inspired hero card + 2-col highlight grid + balanced button footer) -->
     <div id="aboutModal" class="tz-help-overlay" hidden role="presentation">
-        <div class="tz-help-panel tz-about-panel" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" tabindex="-1">
-            <header class="tz-help-head tz-about-head">
-                <div class="tz-about-brand">
-                    <div class="tz-about-head-top">
-                        <div id="aboutTitle" class="tz-about-name">TypoZen<span class="tz-about-sub">: ePub &amp; PDF Reader, Markdown Editor</span></div>
-                        <button type="button" id="aboutClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">✕</button>
-                    </div>
-                    <!-- Filled from Program.AppVersion when the template is stamped for
-                         navigation. Deliberately empty here: if the stamp cannot run the
-                         app falls back to this file, and a blank line is honest where a
-                         hardcoded number would be a lie. -->
-                    <div class="tz-about-version" id="aboutVersion"></div>
+        <div class="tz-help-panel tz-about-panel tz-about-v2" role="dialog" aria-modal="true" aria-labelledby="aboutTitle" tabindex="-1">
+            <div class="tz-about-hero">
+                <svg class="tz-about-icon" viewBox="0 0 64 64" width="60" height="60" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="tzIconBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#4F46E5"/>
+                            <stop offset="100%" stop-color="#0F172A"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="3" y="3" width="58" height="58" rx="14" fill="url(#tzIconBg)" stroke="rgba(255,255,255,0.28)" stroke-width="1.5"/>
+                    <path d="M 46.5 44 A 20 20 0 1 1 51.5 29" fill="none" stroke="rgba(56,189,248,0.8)" stroke-width="3" stroke-linecap="round"/>
+                    <text x="32" y="42" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-weight="700" font-size="31" fill="#FFFFFF">T</text>
+                </svg>
+                <div class="tz-about-hero-text">
+                    <div id="aboutTitle" class="tz-about-name">TypoZen</div>
                     <p class="tz-about-tag">Write in the morning, read in the evening, in the same quiet window.</p>
+                    <!-- Filled from Program.AppVersion when the template is stamped for navigation. -->
+                    <div class="tz-about-version" id="aboutVersion"></div>
                 </div>
-            </header>
-            <div class="tz-help-body tz-about-body">
-                <!-- The same highlights as README.md's Highlights section: change both together. -->
-                <section class="tz-help-sec">
-                    <h3>Writing</h3>
-                    <ul class="tz-about-list">
-                        <li><strong>Preview or Source, your choice:</strong> write in a live, formatted Preview, or in Source, a real code editor built on CodeMirror 6. The two lay text out alike, so the line you are on stays where it is.</li>
-                        <li><strong>Markdown without the fuss:</strong> headings, lists, tasks, tables, emphasis and fenced code, formatted as you type.</li>
-                        <li><strong>Room to think:</strong> Focus mode dims everything except the paragraph you are on, Typewriter scroll keeps your line centred, and ZenMode hides the interface until you reach for it.</li>
-                        <li><strong>Big files, no waiting:</strong> a novel-length manuscript (200,000+ characters) scrolls like a short note, and Find still searches every word. Source opens multi-megabyte files and code too: HTML, CSS, JSON, JavaScript, C# and more, in your theme's colours.</li>
-                        <li><strong>Spelling as you type:</strong> misspellings are underlined in Preview and Source; select a word for replacements.</li>
-                        <li><strong>Save, export, print:</strong> saves that never leave a half-written file, standalone HTML export, and Print / PDF.</li>
-                    </ul>
-                </section>
-                <section class="tz-help-sec">
-                    <h3>Reading</h3>
-                    <ul class="tz-about-list">
-                        <li><strong>A proper ePub reader:</strong> turning pages or a true two-page spread, with the book's own styling and contents, and your place remembered.</li>
-                        <li><strong>A full PDF reader:</strong> spreads, selectable text, Find and Search, forms, highlights and notes, plus local text recognition (OCR) that makes scanned pages selectable and searchable on your own computer.</li>
-                        <li><strong>Dictionary and thesaurus, offline:</strong> over 150,000 definitions and 110,000 synonym sets. Select a word to look it up and hear it said.</li>
-                        <li><strong>Search, marks and notes:</strong> a search sidebar (<kbd>Alt+S</kbd>), plus highlights, notes and bookmarks that stay in place when the document changes.</li>
-                        <li><strong>Everything else, safely:</strong> HTML, images and media open read-only and are never saved over.</li>
-                    </ul>
-                </section>
-                <section class="tz-help-sec">
-                    <h3>Listening</h3>
-                    <ul class="tz-about-list">
-                        <li><strong>Read aloud anywhere:</strong> select a passage, or just press Read aloud to hear any document, ePub or PDF in any voice installed in Windows. A floating reading bar gives you pause, previous and next paragraph, the voice and the speed.</li>
-                        <li><strong>Natural neural voices, offline or online:</strong> install Kokoro for 28 natural US and British voices that run locally on your PC, or switch on Microsoft's online natural voices.</li>
-                        <li><strong>Full-cast audiobook narration (experimental):</strong> with an NVIDIA graphics card, the local Breeze and Qwen narrators let you design or clone voices, give every character in a book a voice of their own, and direct delivery with emotion cues.</li>
-                    </ul>
-                </section>
-                <section class="tz-help-sec">
-                    <h3>Make it yours</h3>
-                    <ul class="tz-about-list">
-                        <li><strong>25 themes and five bundled typefaces:</strong> Inter, Literata, Merriweather, Source Sans 3 and JetBrains Mono, or build your own palette with Customise Theme…</li>
-                        <li><strong>Picks up where you left off:</strong> your window, tabs, theme and reading positions come back next time.</li>
-                        <li><strong>Private by design:</strong> no account, no telemetry, and nothing sent anywhere unless you turn on an online feature. Privacy Mode stops TypoZen remembering what you open.</li>
-                    </ul>
-                </section>
-                <p class="tz-about-foot-note">Everything optional (more voices, the narrators, a 1.3-million-word dictionary, voice transcription) installs from <strong>File → Extensions</strong>.</p>
-                <p class="tz-about-foot-note">
-                    <kbd>F1</kbd> opens Syntax &amp; Shortcuts; <strong>Help → User Guide</strong> opens the full guide in a tab.
-                </p>
+                <button type="button" id="aboutClose" class="tz-help-close tz-about-close" title="Close (Esc)" aria-label="Close">&#xE711;</button>
             </div>
-            <footer class="tz-help-foot">
-                <!-- Group links on the left -->
-                <div style="display: flex; gap: 16px; align-items: center;">
-                    <button type="button" id="aboutGuide" class="tz-help-link"
-                            title="Opens the full guide (README) in a tab">Open the User Guide</button>
-                    <!-- In the pinned footer, not the body: the About body scrolls, and a
-                         feedback route nobody scrolls to is a feedback route nobody uses.
-                         Posts a fixed command; the host owns the URL. -->
-                    <button type="button" id="aboutFeedback" class="tz-help-link"
-                            title="Opens the issue tracker in your browser">Feedback &amp; Issues on GitHub</button>
-                    <button type="button" id="aboutSupport" class="tz-help-link" hidden
-                            title="Opens a support page in your browser">☕ Buy me a coffee</button>
+            <div class="tz-help-body tz-about-body">
+                <div class="tz-about-features">
+                    <div class="tz-about-feat">
+                        <span class="tz-about-feat-icon" aria-hidden="true">&#xE70F;</span>
+                        <div>
+                            <div class="tz-about-feat-title">Preview or Source, your choice</div>
+                            <p class="tz-about-feat-desc">Live formatted Markdown in Preview, or CodeMirror 6 in Source—laid out alike so your line stays put, even in 200,000+ character manuscripts.</p>
+                        </div>
+                    </div>
+                    <div class="tz-about-feat">
+                        <span class="tz-about-feat-icon" aria-hidden="true">&#xE736;</span>
+                        <div>
+                            <div class="tz-about-feat-title">Proper ePub &amp; PDF reading</div>
+                            <p class="tz-about-feat-desc">Single pages or true two-page spreads with contents, bookmarks, highlights, notes, and local text recognition (OCR) for scanned PDFs.</p>
+                        </div>
+                    </div>
+                    <div class="tz-about-feat">
+                        <span class="tz-about-feat-icon" aria-hidden="true">&#xE767;</span>
+                        <div>
+                            <div class="tz-about-feat-title">Read aloud &amp; neural voices</div>
+                            <p class="tz-about-feat-desc">Listen with Windows voices, offline Kokoro voices, or full-cast Breeze and Qwen narration with character voices and emotion cues.</p>
+                        </div>
+                    </div>
+                    <div class="tz-about-feat">
+                        <span class="tz-about-feat-icon" aria-hidden="true">&#xE82D;</span>
+                        <div>
+                            <div class="tz-about-feat-title">Offline dictionary &amp; spellcheck</div>
+                            <p class="tz-about-feat-desc">Over 150,000 definitions and 110,000 synonym sets built in, plus live spellchecking as you type in both Preview and Source.</p>
+                        </div>
+                    </div>
+                    <div class="tz-about-feat">
+                        <span class="tz-about-feat-icon" aria-hidden="true">&#xE790;</span>
+                        <div>
+                            <div class="tz-about-feat-title">25 themes &amp; 5 bundled typefaces</div>
+                            <p class="tz-about-feat-desc">Inter, Literata, Merriweather, Source Sans 3, and JetBrains Mono—or craft your own palette. Tabs and reading places return next time.</p>
+                        </div>
+                    </div>
+                    <div class="tz-about-feat">
+                        <span class="tz-about-feat-icon" aria-hidden="true">&#xE72E;</span>
+                        <div>
+                            <div class="tz-about-feat-title">Private and self-contained</div>
+                            <p class="tz-about-feat-desc">No account, no ads, no tracking. Optional add-ons live in <strong>File → Extensions</strong>, and Privacy Mode keeps zero history on disk.</p>
+                        </div>
+                    </div>
                 </div>
-                <!-- Group dismissal on the right -->
-                <div style="display: flex; gap: 12px; align-items: center;">
-                    <span class="tz-help-hint">Esc to close</span>
-                    <button type="button" id="aboutOk" class="tz-help-ok">Close</button>
-                </div>
+                <p class="tz-about-foot-note">Free and open source under the MIT licence. &nbsp;·&nbsp; <kbd>F1</kbd> opens Syntax &amp; Shortcuts.</p>
+            </div>
+            <footer class="tz-help-foot tz-about-foot">
+                <button type="button" id="aboutGuide" class="tz-about-btn"
+                        title="Opens the full guide (README) in a tab">User Guide</button>
+                <button type="button" id="aboutFeedback" class="tz-about-btn"
+                        title="Opens the issue tracker in your browser">Report a problem</button>
+                <button type="button" id="aboutSupport" class="tz-about-btn" hidden
+                        title="Opens a support page in your browser">Buy me a coffee</button>
+                <button type="button" id="aboutOk" class="tz-help-ok tz-about-primary">Close</button>
             </footer>
         </div>
     </div>
@@ -569,7 +568,7 @@
                 <div class="tz-about-brand">
                     <div class="tz-about-head-top">
                         <div id="narrHelpTitle" class="tz-about-name">Narration</div>
-                        <button type="button" id="narrHelpClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">✕</button>
+                        <button type="button" id="narrHelpClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">&#xE711;</button>
                     </div>
                     <p class="tz-about-tag">Audiobook reading on this PC's graphics card: what to press, and what you can write in the text to direct it.</p>
                 </div>
@@ -646,11 +645,8 @@
                 </section>
             </div>
             <footer class="tz-help-foot">
-                <div>
-                    <!-- A fixed command; the host opens the guide (OpenUserGuide). -->
-                    <button type="button" id="narrHelpGuide" class="tz-help-link"
-                            title="Opens the full guide (README) in a tab">Open the User Guide</button>
-                </div>
+                <button type="button" id="narrHelpGuide" class="tz-foot-btn"
+                        title="Opens the full guide (README) in a tab">User Guide</button>
                 <div style="display: flex; gap: 12px; align-items: center;">
                     <span class="tz-help-hint">Esc to close</span>
                     <button type="button" id="narrHelpOk" class="tz-help-ok">Close</button>

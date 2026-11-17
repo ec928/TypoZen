@@ -34,11 +34,23 @@ $AE = [System.Windows.Automation.AutomationElement]
 $TS = [System.Windows.Automation.TreeScope]
 
 function Get-Root {
-    $p = Get-Process TypoZen -ErrorAction SilentlyContinue |
-         Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+    $p = Get-Process TypoZen -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $p) { throw 'TypoZen is not running' }
-    [void][Native.Win]::SetForegroundWindow($p.MainWindowHandle)
-    return $AE::FromHandle($p.MainWindowHandle)
+    $wins = $AE::RootElement.FindAll($TS::Children,
+        (New-Object System.Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $p.Id)))
+    $target = $null
+    foreach ($w in $wins) {
+        if ($w.Current.Name -like 'TypoZen*' -or $w.Current.ClassName -eq 'Window') {
+            $target = $w; break
+        }
+    }
+    if (-not $target) {
+        if ($p.MainWindowHandle -eq 0) { throw 'TypoZen window not found' }
+        $target = $AE::FromHandle($p.MainWindowHandle)
+    }
+    $hwnd = [IntPtr]$target.Current.NativeWindowHandle
+    if ($hwnd -ne [IntPtr]::Zero) { [void][Native.Win]::SetForegroundWindow($hwnd) }
+    return $target
 }
 
 function Find-ByType($root, $typeName) {
@@ -55,7 +67,11 @@ function Out-Json($obj) { $obj | ConvertTo-Json -Depth 5 -Compress }
 # switch that did not work.
 function Get-TabElements($root) {
     $win = $root.Current.BoundingRectangle
-    $texts = Find-ByType $root 'Text'
+    $scroller = $root.FindFirst($TS::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, 'tabScroller')))
+    $scope = if ($scroller) { $scroller } else { $root }
+    $scopeRect = $scope.Current.BoundingRectangle
+    $texts = Find-ByType $scope 'Text'
     $out = @()
     foreach ($t in $texts) {
         if ($t.Current.IsOffscreen) { continue }
@@ -65,8 +81,8 @@ function Get-TabElements($root) {
         if ($parent -and $parent.Current.ControlType -eq [System.Windows.Automation.ControlType]::ToolTip) { continue }
         $r = $t.Current.BoundingRectangle
         if ($r.Width -lt 24 -or $r.Height -lt 8) { continue }
-        if ($r.Y -gt ($win.Y + 60)) { continue }
-        if ($r.X -lt $win.X -or ($r.X + $r.Width) -gt ($win.X + $win.Width)) { continue }
+        if (-not $scroller -and $r.Y -gt ($win.Y + 46)) { continue }
+        if ($r.X -lt $scopeRect.X -or ($r.X + $r.Width) -gt ($scopeRect.X + $scopeRect.Width)) { continue }
         $n = $t.Current.Name
         if (-not $n -or $n.Length -lt 2) { continue }
         if ($n -match '[\/]') { continue }

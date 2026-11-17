@@ -241,8 +241,15 @@ namespace TypoZen
             footer.Children.Add(right);
             var count = new TextBlock { Foreground = muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
             footer.Children.Add(count);
-            DockPanel.SetDock(footer, Dock.Bottom);
-            root.Children.Add(footer);
+            var footerWrap = new Border
+            {
+                Child = footer,
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Margin = new Thickness(0, 10, 0, 0)
+            };
+            footerWrap.SetResourceReference(Border.BorderBrushProperty, "TzBorder");
+            DockPanel.SetDock(footerWrap, Dock.Bottom);
+            root.Children.Add(footerWrap);
 
             var list = new ListBox { HorizontalContentAlignment = HorizontalAlignment.Stretch };
             ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Disabled);

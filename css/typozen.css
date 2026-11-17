@@ -85,29 +85,35 @@
 
         .sidebar-header {
             display: flex;
-            border-bottom: 1px solid var(--border, #3F3F46);
-            background: rgba(128, 128, 128, 0.15);
+            gap: 3px;
+            margin: 8px 8px 2px 8px;
+            padding: 3px;
+            border-radius: 7px;
+            border: 1px solid color-mix(in srgb, var(--border, #3F3F46) 75%, transparent);
+            background: color-mix(in srgb, var(--bg, #18181B) 55%, transparent);
         }
         .sidebar-tab {
             flex: 1;
-            padding: 8px 0;
+            padding: 5px 0;
             text-align: center;
             font-family: var(--ui-font);
-            font-size: var(--ui-fs);
-            font-weight: 600;
+            font-size: 12px;
+            font-weight: 500;
             color: var(--tx-muted, #A1A1AA);
             cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
+            border-radius: 5px;
+            border: 1px solid transparent;
+            transition: background-color 0.14s ease, color 0.14s ease, border-color 0.14s ease;
         }
         .sidebar-tab:hover {
             color: var(--tx, #F4F4F5);
             background: var(--tint-hover);
         }
         .sidebar-tab.active {
-            color: var(--accent, #3B82F6);
-            border-bottom-color: var(--accent, #3B82F6);
-            background: var(--accent-bg, rgba(59,130,246,0.15));
+            color: var(--tx, #F4F4F5);
+            font-weight: 600;
+            border-color: color-mix(in srgb, var(--accent, #3B82F6) 45%, transparent);
+            background: var(--accent-bg, rgba(59,130,246,0.18));
         }
 
         .sidebar-content {
@@ -144,7 +150,7 @@
         .outline-item, .search-item {
             padding: 6px 10px;
             margin: 1px 4px;
-            border-radius: 4px;
+            border-radius: 5px;
             font-size: var(--ui-fs);
             color: var(--tx-muted, #A1A1AA);
             cursor: pointer;
@@ -317,7 +323,7 @@
         .mark-item {
             display: grid; grid-template-columns: 12px 1fr auto auto; gap: 6px;
             align-items: baseline;
-            padding: 3px 4px; margin: 0 2px; border-radius: 4px;
+            padding: 3px 6px; margin: 1px 2px; border-radius: 5px;
             font-size: var(--ui-fs-dense); line-height: 1.45;
             color: var(--tx-muted, #A1A1AA); cursor: pointer;
             transition: background-color 0.12s ease, color 0.12s ease;
@@ -330,7 +336,7 @@
         .mark-item.active,
         .mark-item.active:hover {
             background: var(--accent-bg, rgba(59, 130, 246, 0.25));
-            box-shadow: inset 2px 0 0 0 var(--accent, #3B82F6);
+            box-shadow: inset 3px 0 0 0 var(--accent, #3B82F6);
         }
         .mark-item.active .mark-name { color: var(--tx, #F4F4F5); font-weight: 600; }
         .mark-item .mark-rib { align-self: start; margin-top: 4px; }
@@ -443,19 +449,19 @@
         .search-item.active,
         .search-item.active:hover {
             background: var(--accent-bg, rgba(59, 130, 246, 0.25));
-            box-shadow: inset 2px 0 0 0 var(--accent, #3B82F6);
+            box-shadow: inset 3px 0 0 0 var(--accent, #3B82F6);
             color: var(--tx, #F4F4F5);
             font-weight: 600;
         }
 
         /* Search pane — not the Ctrl+F find bar.
-           Two rows: (1) icon + field full width, (2) Aa/ab left + match count right.
+           Two rows: (1) pill search field with embedded icon, (2) Aa/ab left + match count right.
            Keeps the query usable when the sidebar is narrow. */
         .sidebar-search-block {
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            margin: 1px 4px 8px 4px;
+            gap: 6px;
+            margin: 2px 8px 8px 8px;
             flex-shrink: 0;
         }
         .sidebar-search-row {
@@ -464,12 +470,12 @@
             min-width: 0;
         }
         .sidebar-search-row-query {
-            gap: 6px;
+            gap: 0;
         }
         .sidebar-search-row-opts {
             justify-content: space-between;
             gap: 8px;
-            padding: 0 1px;
+            padding: 0 2px;
         }
         /* Aa | ab: tight pair — they are related toggles, not separate tool groups. */
         .sidebar-search-opts {
@@ -481,17 +487,17 @@
         /* Match case / whole word: two glyphs, pressed state via accent. */
         .search-opt {
             flex: 0 0 auto;
-            min-width: 20px;
-            height: 20px;
-            padding: 0 3px;
+            min-width: 22px;
+            height: 22px;
+            padding: 0 4px;
             border: 1px solid transparent;
-            border-radius: 4px;
+            border-radius: 5px;
             background: transparent;
             color: var(--tx-muted, #A1A1AA);
             font-family: var(--ui-font);
             font-size: 11px;
             font-weight: 600;
-            line-height: 18px;
+            line-height: 20px;
             cursor: pointer;
             transition: background-color 0.12s ease, color 0.12s ease;
         }
@@ -506,16 +512,20 @@
         /* Whole word reads as a word with its edges marked, which is what it means. */
         #sidebarWholeWord { text-decoration: underline; text-underline-offset: 2px; }
 
-        /* Segoe MDL2 Assets, the same icon font the toolbar and menus use, so the search
-           glyph is drawn by the shell's icon set rather than an emoji. */
+        /* Embedded search glyph inside the pill, matching ZenMusic's SearchBox */
         .sidebar-search-icon {
+            position: absolute;
+            left: 11px;
+            top: 50%;
+            transform: translateY(-50%);
             font-family: var(--ui-icon-font);
-            font-size: 12px;
+            font-size: 11px;
             color: var(--tx-muted, #A1A1AA);
-            flex: 0 0 auto;
+            pointer-events: none;
             line-height: 1;
+            z-index: 1;
         }
-        /* Combo shell: input + chevron, like ZenSeek's Search ComboBox. */
+        /* Combo shell: pill input + clear + history chevron */
         .sidebar-search-combo {
             position: relative;
             flex: 1;
@@ -527,50 +537,51 @@
             flex: 1;
             min-width: 0;
             width: 100%;
-            /* Right padding clears clear × + history chevron (18px each). */
-            padding: 5px 40px 5px 8px;
-            border-radius: 4px;
+            /* Left clears embedded search icon; right clears clear × + history chevron. */
+            padding: 5px 44px 5px 28px;
+            border-radius: 15px;
             border: 1px solid var(--border, #3F3F46);
-            background: var(--surface, rgba(255,255,255,0.05));
+            background: color-mix(in srgb, var(--bg, #18181B) 55%, transparent);
             color: var(--tx, #F4F4F5);
             font-family: var(--ui-font);
-            font-size: var(--ui-fs);
+            font-size: 12px;
             outline: none;
+            transition: border-color 0.14s ease, background-color 0.14s ease;
         }
         #sidebarSearchInput::placeholder {
             color: var(--tx-muted, #A1A1AA);
-            opacity: 0.7;
+            opacity: 0.72;
         }
         #sidebarSearchInput:focus {
             border-color: var(--accent, #3B82F6);
+            background: var(--bg, #18181B);
         }
         .sidebar-search-combo:focus-within #sidebarSearchInput {
             border-color: var(--accent, #3B82F6);
         }
-        /* Stop searching, without closing the pane.
-           Escape in the field has always cleared the query and dropped the highlights.
-           Nothing said so, so the only people who could stop a search were the ones who
-           already knew how -- the same complaint as Alt+S. This is that action, visible.
-           It does NOT close the pane: the pane and the search are separate, and closing
-           one has never stopped the other. */
         .sidebar-search-clear {
             position: absolute;
-            right: 19px;
-            top: 1px;
-            bottom: 1px;
-            width: 18px;
+            right: 24px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
             padding: 0;
             border: none;
+            border-radius: 50%;
             background: transparent;
             color: var(--tx-muted, #A1A1AA);
             font-family: var(--ui-icon-font);
-            font-size: 10px;
+            font-size: 9px;
             line-height: 1;
             cursor: pointer;
             opacity: 1;
-            transition: opacity 0.12s ease, color 0.12s ease;
+            transition: opacity 0.12s ease, color 0.12s ease, background-color 0.12s ease;
         }
-        .sidebar-search-clear:hover { color: var(--tx, #F4F4F5); }
+        .sidebar-search-clear:hover {
+            color: var(--tx, #F4F4F5);
+            background: var(--tint-hover);
+        }
         /* Absent while there is nothing to clear, and driven by the field itself rather
            than by a flag something has to remember to update. :placeholder-shown is true
            exactly when the input is empty, and the button is its next sibling, so this
@@ -582,19 +593,21 @@
 
         .sidebar-search-hist-btn {
             position: absolute;
-            right: 1px;
-            top: 1px;
-            bottom: 1px;
-            width: 18px;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
             padding: 0;
             border: none;
-            border-radius: 0 3px 3px 0;
+            border-radius: 50%;
             background: transparent;
             color: var(--tx-muted, #A1A1AA);
             font-family: var(--ui-icon-font);
-            font-size: 10px;
+            font-size: 9px;
             line-height: 1;
             cursor: pointer;
+            transition: color 0.12s ease, background-color 0.12s ease;
         }
         .sidebar-search-hist-btn:hover {
             color: var(--tx, #F4F4F5);
@@ -1150,7 +1163,6 @@
             position: absolute;
             left: 16px;
             right: 16px;
-            /* On the bottom edge, below the page numbers: track at 7px, thumb 1.5-12.5px. */
             bottom: 0;
             height: 14px;
             z-index: 6;
@@ -1211,15 +1223,16 @@
         #page-scrubber-range::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 9px;
-            height: 9px;
-            margin-top: -3px;
+            width: 10px;
+            height: 10px;
+            margin-top: -3.5px;
             border-radius: 50%;
             background: var(--accent, #A78BFA);
             border: none;
-            opacity: 0.75;
+            opacity: 0.78;
+            transition: transform 0.12s ease, opacity 0.12s ease;
         }
-        #page-scrubber-range:hover::-webkit-slider-thumb { opacity: 1.0; transform: scale(1.15); }
+        #page-scrubber-range:hover::-webkit-slider-thumb { opacity: 1.0; transform: scale(1.18); }
         #page-scrubber-range:focus { outline: none; }
         #page-scrubber-range:focus-visible::-webkit-slider-thumb {
             box-shadow: 0 0 0 3px var(--accent-soft, rgba(167, 139, 250, 0.35));
@@ -1229,16 +1242,18 @@
             position: absolute;
             bottom: 18px;
             transform: translateX(-50%);
-            padding: 2px 8px;
-            border-radius: 4px;
+            padding: 3px 9px;
+            border-radius: 6px;
             background: var(--accent, #A78BFA);
             color: var(--accent-tx, #18181B);
             font-family: var(--ui-font);
             font-size: 11px;
+            font-weight: 600;
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
             pointer-events: none;
             opacity: 0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
             transition: opacity 0.12s ease;
         }
         #page-scrubber-bubble.showing { opacity: 1; }
@@ -1342,12 +1357,13 @@
             padding: 12px 12px 10px;
             min-width: 360px;
             max-width: 440px;
-            background: var(--bg, #1E1E2E);
+            background: color-mix(in srgb, var(--bg, #1E1E2E) 88%, transparent);
+            backdrop-filter: blur(18px) saturate(1.2);
             color: var(--tx, #F4F4F5);
             border: 1px solid var(--border, #3F3F46);
             border-radius: 10px;
-            box-shadow: 0 12px 32px rgba(0,0,0,0.5);
-            font-family: 'Segoe UI', var(--font, sans-serif);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+            font-family: var(--ui-font);
             font-size: 13px;
         }
         #findBar.open { display: flex; }
@@ -1419,6 +1435,11 @@
             border-color: var(--accent, #3B82F6);
             color: var(--accent-tx, #fff);
             font-weight: 600;
+        }
+        #findBar button.find-close-btn {
+            font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+            font-size: 10px;
+            padding: 6px 8px;
         }
         #findBar button:disabled {
             opacity: 0.4;
@@ -1649,11 +1670,12 @@
                first, opaque, and the same wash is composited on top so it still reads as
                a raised surface rather than a hole. The search-history dropdown reached the
                same conclusion in the same place. */
-            background-color: var(--bg, #18181B);
+            background-color: color-mix(in srgb, var(--bg, #18181B) 88%, transparent);
             background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            backdrop-filter: blur(18px) saturate(1.2);
             border: 1px solid var(--border, #3F3F46);
-            border-radius: 6px;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.36);
             font-family: var(--ui-font);
             font-size: var(--ui-fs);
             color: var(--tx, #F4F4F5);
@@ -1673,11 +1695,12 @@
             position: fixed;
             z-index: 40;
             max-width: 460px;
-            background-color: var(--bg, #18181B);
+            background-color: color-mix(in srgb, var(--bg, #18181B) 88%, transparent);
             background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            backdrop-filter: blur(18px) saturate(1.2);
             border: 1px solid var(--border, #3F3F46);
-            border-radius: 6px;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.36);
             /* No padding here: .selpop-actions already carries it, and having both made
                the chip taller than the selection popover it is meant to match. */
         }
@@ -1729,6 +1752,30 @@
             display: none !important;
         }
         .tz-link-panel { width: min(460px, 100%); }
+        .tz-table-panel { width: min(360px, 100%); }
+        .tz-dialog-foot { justify-content: flex-end; gap: 10px; }
+        .tz-foot-btn {
+            appearance: none;
+            border: 1px solid var(--border, #3F3F46);
+            border-radius: 6px;
+            padding: 7px 14px;
+            font-family: inherit;
+            font-size: 12.5px;
+            font-weight: 500;
+            white-space: nowrap;
+            cursor: pointer;
+            background: var(--surface, rgba(255, 255, 255, 0.06));
+            color: var(--tx, #F4F4F5);
+            transition: background-color 0.12s ease, border-color 0.12s ease;
+        }
+        .tz-foot-btn:hover {
+            background: var(--tint-hover);
+            border-color: color-mix(in srgb, var(--tx, #F4F4F5) 28%, var(--border, #3F3F46));
+        }
+        .tz-foot-btn:focus-visible {
+            outline: 2px solid var(--accent, #3B82F6);
+            outline-offset: 2px;
+        }
         .tz-link-label {
             display: block;
             margin: 10px 0 4px;
@@ -1784,8 +1831,12 @@
             border: 0;
             background: transparent;
             color: var(--tx-muted, #A1A1AA);
-            font-size: 16px;
+            font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+            font-size: 11px;
             line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             width: 32px;
             height: 32px;
             border-radius: 6px;
@@ -1809,10 +1860,8 @@
         }
         .tz-help-sec h3 {
             margin: 0 0 8px;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
             color: var(--tx-muted, #A1A1AA);
         }
         .tz-help-table {
@@ -1949,6 +1998,39 @@
             width: min(480px, 100%);
             max-height: min(78vh, 640px);
         }
+        .tz-about-panel.tz-about-v2 {
+            width: min(680px, 100%);
+            max-height: min(86vh, 720px);
+        }
+        .tz-about-hero {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin: 16px 16px 0;
+            padding: 18px 44px 18px 20px;
+            border-radius: 10px;
+            border: 1px solid color-mix(in srgb, var(--border, #3F3F46) 75%, transparent);
+            background: linear-gradient(125deg,
+                color-mix(in srgb, var(--accent, #3B82F6) 18%, var(--surface, rgba(255,255,255,0.05))),
+                color-mix(in srgb, var(--surface, rgba(255,255,255,0.04)) 85%, var(--bg, #18181B)));
+            flex-shrink: 0;
+        }
+        .tz-about-icon {
+            flex: 0 0 auto;
+            border-radius: 14px;
+            filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+        }
+        .tz-about-hero-text {
+            min-width: 0;
+        }
+        .tz-about-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-family: var(--ui-icon-font);
+            font-size: 11px;
+        }
         .tz-about-head {
             display: block; /* Overrides the flex layout of tz-help-head */
             padding-bottom: 12px;
@@ -1964,11 +2046,11 @@
             /* Border moved to the bottom of the tz-about-head header */
         }
         .tz-about-name {
-            font-size: 22px;
+            font-size: 25px;
             font-weight: 700;
             letter-spacing: -0.02em;
-            color: var(--hi, var(--accent, #60A5FA));
-            line-height: 1.2;
+            color: var(--tx, #F4F4F5);
+            line-height: 1.15;
         }
         /* The rest of the product name: part of the title, a step down from the brand. */
         .tz-about-sub {
@@ -1978,7 +2060,7 @@
             color: var(--tx, #E4E4E7);
         }
         .tz-about-version {
-            margin: 3px 0 0;
+            margin: 5px 0 0;
             font-size: 12px;
             font-variant-numeric: tabular-nums;
             color: var(--tx-muted, #A1A1AA);
@@ -1987,10 +2069,88 @@
             display: none;
         }
         .tz-about-tag {
-            margin: 6px 0 0;
+            margin: 4px 0 0;
+            font-size: 13.5px;
+            line-height: 1.4;
+            color: var(--tx, #F4F4F5);
+            opacity: 0.9;
+        }
+        .tz-about-v2 .tz-about-body {
+            padding: 16px 18px 12px;
+        }
+        .tz-about-features {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 15px 22px;
+        }
+        @media (max-width: 560px) {
+            .tz-about-features {
+                grid-template-columns: 1fr;
+            }
+        }
+        .tz-about-feat {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .tz-about-feat-icon {
+            flex: 0 0 auto;
+            font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+            font-size: 17px;
+            line-height: 1;
+            margin-top: 2px;
+            color: var(--hi, var(--accent, #60A5FA));
+        }
+        .tz-about-feat-title {
             font-size: 13px;
+            font-weight: 600;
+            line-height: 1.35;
+            color: var(--tx, #F4F4F5);
+        }
+        .tz-about-feat-desc {
+            margin: 3px 0 0;
+            font-size: 12.5px;
             line-height: 1.45;
             color: var(--tx-muted, #A1A1AA);
+        }
+        .tz-about-feat-desc strong {
+            font-weight: 600;
+            color: var(--tx, #F4F4F5);
+        }
+        .tz-about-foot {
+            gap: 10px;
+            padding: 12px 16px 14px;
+            justify-content: flex-end;
+        }
+        .tz-about-btn {
+            flex: 1 1 0;
+            appearance: none;
+            border: 1px solid var(--border, #3F3F46);
+            border-radius: 6px;
+            padding: 7px 12px;
+            font-family: inherit;
+            font-size: 12.5px;
+            font-weight: 500;
+            white-space: nowrap;
+            cursor: pointer;
+            background: var(--surface, rgba(255, 255, 255, 0.06));
+            color: var(--tx, #F4F4F5);
+            transition: background-color 0.12s ease, border-color 0.12s ease;
+        }
+        .tz-about-btn:hover {
+            background: var(--tint-hover);
+            border-color: color-mix(in srgb, var(--tx, #F4F4F5) 28%, var(--border, #3F3F46));
+        }
+        .tz-about-btn:focus-visible {
+            outline: 2px solid var(--accent, #3B82F6);
+            outline-offset: 2px;
+        }
+        .tz-about-btn[hidden] {
+            display: none;
+        }
+        .tz-about-primary {
+            flex: 1 1 0;
+            white-space: nowrap;
         }
         .tz-about-list {
             margin: 0;
@@ -2212,6 +2372,10 @@
          */
         .block.focused {
             background-color: var(--fill-quiet, rgba(128,128,128,0.10));
+            border-radius: 6px;
+        }
+        #editor-wrapper.scratch-empty .block.focused {
+            background-color: transparent;
         }
         #editor.reader-mode .block.focused,
         #editor.book-mode .block.focused {
@@ -2861,11 +3025,12 @@
             transform: translateX(-50%);
             display: flex;
             align-items: center;
-            background-color: var(--surface);
+            background-color: color-mix(in srgb, var(--surface, #27272A) 88%, transparent);
+            backdrop-filter: blur(18px) saturate(1.25);
             border: 1px solid var(--border);
-            border-radius: 20px;
+            border-radius: 24px;
             padding: 4px 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.28);
             z-index: 1000;
             gap: 4px;
             font-family: var(--ui-font);

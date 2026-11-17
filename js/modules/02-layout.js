@@ -2291,6 +2291,7 @@
             m.__tzWired = true;
             const ok = document.getElementById('linkModalOk');
             const close = document.getElementById('linkModalClose');
+            const cancel = document.getElementById('linkModalCancel');
             const commit = function () {
                 const t = (document.getElementById('linkModalText') || {}).value || '';
                 const u = (document.getElementById('linkModalHref') || {}).value || '';
@@ -2304,6 +2305,7 @@
             };
             if (ok) ok.addEventListener('click', commit);
             if (close) close.addEventListener('click', closeLinkModal);
+            if (cancel) cancel.addEventListener('click', closeLinkModal);
             m.addEventListener('click', function (e) { if (e.target === m) closeLinkModal(); });
             m.addEventListener('keydown', function (e) {
                 if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeLinkModal(); }
