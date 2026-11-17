@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -8,9 +9,9 @@ using WinForms = System.Windows.Forms;
 namespace TypoZen
 {
     /// <summary>
-    /// A decision the reader has to answer, drawn in the app's colours with the committing
-    /// button at the bottom right. The labels stay Yes / No / Cancel / OK, because several
-    /// prompts tell the reader what each of those means. Error reports stay on MessageBox.
+    /// A decision or notice the reader answers, drawn in TypoZen's active theme colours
+    /// with the committing action on the bottom right. Startup/fatal errors before a WPF
+    /// window exists still fall back to WinForms MessageBox.
     /// </summary>
     internal static class ThemedPrompt
     {
@@ -34,13 +35,17 @@ namespace TypoZen
             WinForms.MessageBoxIcon icon,
             WinForms.MessageBoxDefaultButton defaultButton)
         {
-            Window owner = null;
-            try
-            {
-                if (Application.Current != null) owner = Application.Current.MainWindow;
-            }
-            catch { }
-            return ShowCore(owner, text, caption, buttons, defaultButton);
+            return Show(ActiveOwner(), text, caption, buttons, icon, defaultButton);
+        }
+
+        public static WinForms.DialogResult Show(
+            Window owner, string text, string caption,
+            WinForms.MessageBoxButtons buttons,
+            WinForms.MessageBoxIcon icon,
+            WinForms.MessageBoxDefaultButton defaultButton = WinForms.MessageBoxDefaultButton.Button1)
+        {
+            var choices = StandardChoices(buttons);
+            return ShowCore(owner ?? ActiveOwner(), text, caption, choices, defaultButton, false, null);
         }
 
         public static MessageBoxResult Show(
@@ -55,7 +60,7 @@ namespace TypoZen
                 case MessageBoxButton.YesNoCancel: wb = WinForms.MessageBoxButtons.YesNoCancel; break;
                 default: wb = WinForms.MessageBoxButtons.OK; break;
             }
-            switch (ShowCore(owner, text, caption, wb, WinForms.MessageBoxDefaultButton.Button1))
+            switch (Show(owner, text, caption, wb, WinForms.MessageBoxIcon.None, WinForms.MessageBoxDefaultButton.Button1))
             {
                 case WinForms.DialogResult.OK: return MessageBoxResult.OK;
                 case WinForms.DialogResult.Cancel: return MessageBoxResult.Cancel;
@@ -65,10 +70,37 @@ namespace TypoZen
             }
         }
 
-        private static WinForms.DialogResult ShowCore(
-            Window owner, string text, string caption,
-            WinForms.MessageBoxButtons buttons,
-            WinForms.MessageBoxDefaultButton defaultButton)
+        /// <summary>Prompt with explicit verb button labels mapped back to DialogResult.</summary>
+        public static WinForms.DialogResult ShowChoices(
+            string text, string caption,
+            string yesLabel, string noLabel, string cancelLabel,
+            WinForms.MessageBoxDefaultButton defaultButton = WinForms.MessageBoxDefaultButton.Button1,
+            bool destructive = false,
+            WinForms.DialogResult? escapeResult = null)
+        {
+            var choices = new List<Choice>();
+            if (!string.IsNullOrEmpty(yesLabel))
+                choices.Add(new Choice { Label = yesLabel, Result = WinForms.DialogResult.Yes });
+            if (!string.IsNullOrEmpty(noLabel))
+                choices.Add(new Choice { Label = noLabel, Result = WinForms.DialogResult.No });
+            if (!string.IsNullOrEmpty(cancelLabel))
+                choices.Add(new Choice { Label = cancelLabel, Result = WinForms.DialogResult.Cancel });
+            if (choices.Count == 0)
+                choices.Add(new Choice { Label = "OK", Result = WinForms.DialogResult.OK });
+            return ShowCore(ActiveOwner(), text, caption, choices, defaultButton, destructive, escapeResult);
+        }
+
+        private static Window ActiveOwner()
+        {
+            try
+            {
+                if (Application.Current != null) return Application.Current.MainWindow;
+            }
+            catch { }
+            return null;
+        }
+
+        private static List<Choice> StandardChoices(WinForms.MessageBoxButtons buttons)
         {
             var choices = new List<Choice>();
             switch (buttons)
@@ -90,7 +122,16 @@ namespace TypoZen
                     choices.Add(new Choice { Label = "OK", Result = WinForms.DialogResult.OK });
                     break;
             }
+            return choices;
+        }
 
+        private static WinForms.DialogResult ShowCore(
+            Window owner, string text, string caption,
+            List<Choice> choices,
+            WinForms.MessageBoxDefaultButton defaultButton,
+            bool forceDestructive,
+            WinForms.DialogResult? escapeResult)
+        {
             int defIndex = 0;
             if (defaultButton == WinForms.MessageBoxDefaultButton.Button2 && choices.Count > 1) defIndex = 1;
             else if (defaultButton == WinForms.MessageBoxDefaultButton.Button3 && choices.Count > 2) defIndex = 2;
@@ -98,15 +139,19 @@ namespace TypoZen
             choices.RemoveAt(defIndex);
             choices.Add(primary);
 
-            WinForms.DialogResult fallback = WinForms.DialogResult.OK;
-            foreach (var c in choices)
+            WinForms.DialogResult fallback = escapeResult ?? WinForms.DialogResult.OK;
+            if (!escapeResult.HasValue)
             {
-                if (c.Result == WinForms.DialogResult.Cancel) { fallback = WinForms.DialogResult.Cancel; break; }
-                if (c.Result == WinForms.DialogResult.No) fallback = WinForms.DialogResult.No;
+                foreach (var c in choices)
+                {
+                    if (c.Result == WinForms.DialogResult.Cancel) { fallback = WinForms.DialogResult.Cancel; break; }
+                    if (c.Result == WinForms.DialogResult.No) fallback = WinForms.DialogResult.No;
+                }
             }
 
-            string blob = ((caption ?? "") + " " + (text ?? "")).ToLowerInvariant();
-            bool destructive = blob.Contains("delete") || blob.Contains("remove ") || blob.Contains("clear all");
+            string blob = (caption ?? "") + " " + (text ?? "");
+            bool destructive = forceDestructive
+                || Regex.IsMatch(blob, @"\b(delete|remove|clear all)\b", RegexOptions.IgnoreCase);
 
             var win = new Window
             {
@@ -153,20 +198,12 @@ namespace TypoZen
             Grid.SetRow(scroller, 0);
             root.Children.Add(scroller);
 
-            var borderBrush = win.TryFindResource("TzBorder") as Brush;
-            var foot = new Border
-            {
-                BorderThickness = new Thickness(0, 1, 0, 0),
-                BorderBrush = borderBrush,
-                Padding = new Thickness(16, 12, 16, 14),
-                Margin = new Thickness(0, 8, 0, 0)
-            };
             var row = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right
             };
-            foot.Child = row;
+            var foot = DialogTheme.MakeFooter(win, row);
             Grid.SetRow(foot, 1);
             root.Children.Add(foot);
 
@@ -179,6 +216,7 @@ namespace TypoZen
                     Content = c.Label,
                     MinWidth = 88,
                     Height = 32,
+                    Padding = new Thickness(14, 4, 14, 4),
                     Margin = new Thickness(first ? 0 : 8, 0, 0, 0),
                     HorizontalContentAlignment = HorizontalAlignment.Center,
                     IsDefault = object.ReferenceEquals(c, primary),
@@ -191,24 +229,7 @@ namespace TypoZen
                 {
                     bool harm = destructive
                         && (c.Result == WinForms.DialogResult.Yes || c.Result == WinForms.DialogResult.OK);
-                    Brush fill;
-                    if (harm)
-                    {
-                        var red = new SolidColorBrush(Color.FromRgb(0xC4, 0x2B, 0x1C));
-                        red.Freeze();
-                        fill = red;
-                    }
-                    else
-                    {
-                        fill = win.TryFindResource("TzAccent") as Brush;
-                    }
-                    if (fill != null)
-                    {
-                        btn.Background = fill;
-                        btn.BorderBrush = fill;
-                    }
-                    btn.Foreground = Brushes.White;
-                    btn.FontWeight = FontWeights.SemiBold;
+                    DialogTheme.SetPrimary(win, btn, harm);
                 }
                 row.Children.Add(btn);
             }

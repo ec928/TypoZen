@@ -278,13 +278,13 @@
     <!-- Table Popover -->
     <div id="tablePop" class="tz-table-popover" style="display: none; position: absolute; z-index: 1000;">
         <div class="selpop-actions tz-iconbar">
-            <button type="button" id="tblPopRowAbove" class="selpop-btn selpop-icon-btn" title="Insert row above"><span class="tz-glyph" aria-hidden="true">&#xE70E;</span></button>
-            <button type="button" id="tblPopRowBelow" class="selpop-btn selpop-icon-btn" title="Insert row below"><span class="tz-glyph" aria-hidden="true">&#xE70D;</span></button>
-            <button type="button" id="tblPopRowDel" class="selpop-btn selpop-icon-btn" title="Delete row"><span class="tz-glyph" aria-hidden="true">&#xE74D;</span></button>
+            <button type="button" id="tblPopRowAbove" class="selpop-btn selpop-icon-btn" title="Insert row above"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 8.5V3M7.5 5.5L10 3l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="11" width="14" height="5.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="11" x2="10" y2="16.5" stroke="currentColor" stroke-width="1.5"/></svg></button>
+            <button type="button" id="tblPopRowBelow" class="selpop-btn selpop-icon-btn" title="Insert row below"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3.5" width="14" height="5.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="3.5" x2="10" y2="9" stroke="currentColor" stroke-width="1.5"/><path d="M10 11.5V17M7.5 14.5L10 17l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button type="button" id="tblPopRowDel" class="selpop-btn selpop-icon-btn" title="Delete row"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="6.5" width="14" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8.2 8.2l3.6 3.6M11.8 8.2l-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
             <hr class="selpop-divider tz-iconbar-rule">
-            <button type="button" id="tblPopColLeft" class="selpop-btn selpop-icon-btn" title="Insert column left"><span class="tz-glyph" aria-hidden="true">&#xE76B;</span></button>
-            <button type="button" id="tblPopColRight" class="selpop-btn selpop-icon-btn" title="Insert column right"><span class="tz-glyph" aria-hidden="true">&#xE76C;</span></button>
-            <button type="button" id="tblPopColDel" class="selpop-btn selpop-icon-btn" title="Delete column"><span class="tz-glyph" aria-hidden="true">&#xE74D;</span></button>
+            <button type="button" id="tblPopColLeft" class="selpop-btn selpop-icon-btn" title="Insert column left"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.5 10H3M5.5 7.5L3 10l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="11" y="3" width="5.5" height="14" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="10" x2="16.5" y2="10" stroke="currentColor" stroke-width="1.5"/></svg></button>
+            <button type="button" id="tblPopColRight" class="selpop-btn selpop-icon-btn" title="Insert column right"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="3" width="5.5" height="14" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="3.5" y1="10" x2="9" y2="10" stroke="currentColor" stroke-width="1.5"/><path d="M11.5 10H17M14.5 7.5L17 10l-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button type="button" id="tblPopColDel" class="selpop-btn selpop-icon-btn" title="Delete column"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6.5" y="3" width="7" height="14" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8.2 8.2l3.6 3.6M11.8 8.2l-3.6 3.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
             <hr class="selpop-divider tz-iconbar-rule">
             <button type="button" id="tblPopAlignLeft" class="selpop-btn selpop-icon-btn" title="Align left"><span class="tz-glyph" aria-hidden="true">&#xE8E4;</span></button>
             <button type="button" id="tblPopAlignCenter" class="selpop-btn selpop-icon-btn" title="Align center"><span class="tz-glyph" aria-hidden="true">&#xE8E3;</span></button>
@@ -332,9 +332,9 @@
             <label for="findInput">Find</label>
             <input id="findInput" type="text" placeholder="Find…" autocomplete="off" spellcheck="false" tabindex="0" />
             <span id="findCount">0/0</span>
-            <button type="button" id="findPrev" class="find-icon" title="Previous (Shift+Enter)" aria-label="Previous">&#xE892;</button>
-            <button type="button" id="findNext" class="find-icon" title="Next (Enter)" aria-label="Next">&#xE893;</button>
-            <button type="button" id="findClose" class="find-icon find-close-btn" title="Close (Esc)" aria-label="Close">&#xE711;</button>
+            <button type="button" id="findPrev" class="find-icon" title="Previous (Shift+Enter)" aria-label="Previous">&#xE70E;</button>
+            <button type="button" id="findNext" class="find-icon" title="Next (Enter)" aria-label="Next">&#xE70D;</button>
+            <button type="button" id="findClose" class="find-icon" title="Close (Esc)" aria-label="Close">&#xE711;</button>
         </div>
         <div class="find-row">
             <label for="replaceInput">Replace</label>

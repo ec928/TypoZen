@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.20.20";
+        internal const string AppVersion = "0.20.21";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1747,8 +1747,7 @@ namespace TypoZen
                     else if (_fontType == 2) seed = "'Segoe UI', sans-serif";
                 }
 
-                var dlg = new CustomFontWindow(seed, FontPresets, this.Background, this.Foreground);
-                dlg.Owner = this;
+                var dlg = new CustomFontWindow(seed, FontPresets, this.Background, this.Foreground, this);
                 if (dlg.ShowDialog() == true)
                 {
                     _customFontFamily = dlg.SelectedFontFamily;
@@ -2409,8 +2408,8 @@ namespace TypoZen
                 string src = Path.Combine(_appDir, "README.md");
                 if (!File.Exists(src))
                 {
-                    WinForms.MessageBox.Show("The user guide is not part of this installation.", "TypoZen",
-                        WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                    ThemedPrompt.Show(this, "The user guide is not part of this installation.", "TypoZen",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
                 string dir = Path.Combine(CacheDir(), "help");
@@ -3283,14 +3282,12 @@ namespace TypoZen
 
                 if (!synced && !ActiveTabLooksClean())
                 {
-                    var stuck = ThemedPrompt.Show(
+                    var stuck = ThemedPrompt.ShowChoices(
                         "Could not read the latest text from the editor.\n\n" +
-                        "Recent typing may be lost if you close now.\n\n" +
-                        "Yes = Close anyway\nNo = Stay open",
+                        "Recent typing may be lost if you close now.",
                         "Could not reach editor",
-                        WinForms.MessageBoxButtons.YesNo,
-                        WinForms.MessageBoxIcon.Warning,
-                        WinForms.MessageBoxDefaultButton.Button2);
+                        "Close anyway", "Stay open", null,
+                        WinForms.MessageBoxDefaultButton.Button2, destructive: true);
                     if (stuck != WinForms.DialogResult.Yes)
                     {
                         e.Cancel = true;
@@ -3303,14 +3300,14 @@ namespace TypoZen
                 for (int i = 0; i < pending.Count; i++)
                 {
                     var tab = pending[i];
-                    bool isActive = (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    bool isActive = (_activeTabIndex >= 0 && _tabs.Count > _activeTabIndex
                         && _tabs[_activeTabIndex] == tab);
 
-                    var res = ThemedPrompt.Show(
+                    var res = ThemedPrompt.ShowChoices(
                         "Save changes to " + TabDisplayName(tab) + "?",
                         "Unsaved Changes",
-                        WinForms.MessageBoxButtons.YesNoCancel,
-                        WinForms.MessageBoxIcon.Warning);
+                        "Save", "Don't save", "Cancel",
+                        WinForms.MessageBoxDefaultButton.Button1);
 
                     if (res == WinForms.DialogResult.Cancel)
                     {
@@ -3328,13 +3325,11 @@ namespace TypoZen
                     {
                         if (!SyncActiveTabFromEditor(allowStaleIfClean: false, timeoutMs: 8000))
                         {
-                            var sure = ThemedPrompt.Show(
+                            var sure = ThemedPrompt.ShowChoices(
                                 "Still could not read the editor.\n\n" +
-                                "Save the last known text in memory? It may be incomplete.\n\n" +
-                                "Yes = Save known text\nNo = Skip save\nCancel = Stay open",
+                                "Save the last known text in memory? It may be incomplete.",
                                 "Could not reach editor",
-                                WinForms.MessageBoxButtons.YesNoCancel,
-                                WinForms.MessageBoxIcon.Warning,
+                                "Save known text", "Skip save", "Stay open",
                                 WinForms.MessageBoxDefaultButton.Button3);
                             if (sure == WinForms.DialogResult.Cancel)
                             {
@@ -3663,11 +3658,12 @@ namespace TypoZen
             // Native files have no engine text — Save is refuse, not "export as md".
             if (isNative && !forceSaveAs)
             {
-                WinForms.MessageBox.Show(
+                ThemedPrompt.Show(
+                    this,
                     "This file is opened for reading only." +
                     Environment.NewLine + Environment.NewLine +
                     "TypoZen does not overwrite PDF, images, or media.",
-                    "Read only", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                    "Read only", MessageBoxButton.OK, MessageBoxImage.Information);
                 return false;
             }
             if (isBook) forceSaveAs = true;
@@ -3707,11 +3703,12 @@ namespace TypoZen
             // A PDF used to be caught by IsNativePath; it is named now it is not native.
             if (path.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) || IsPdfPath(path) || IsNativePath(path))
             {
-                WinForms.MessageBox.Show(
+                ThemedPrompt.Show(
+                    this,
                     "TypoZen will not write text over that file type." +
                     Environment.NewLine + Environment.NewLine +
                     "Choose a .md or .txt name instead.",
-                    "Save", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                    "Save", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
 
@@ -3722,12 +3719,13 @@ namespace TypoZen
                 var other = _tabs[otherIdx];
                 if (other.IsDirty)
                 {
-                    WinForms.MessageBox.Show(
+                    ThemedPrompt.Show(
+                        this,
                         "That file is already open in another tab with unsaved changes.\n\n" +
                         "Save or discard those edits first, or choose a different name.",
                         "File already open",
-                        WinForms.MessageBoxButtons.OK,
-                        WinForms.MessageBoxIcon.Warning);
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
                     return false;
                 }
                 // Clean duplicate tab: drop it so this tab becomes the sole owner.
@@ -4930,16 +4928,15 @@ namespace TypoZen
             if (!TryDiskPromptStub(out choice))
             {
                 if (_e2eMode) return;
-                choice = ThemedPrompt.Show(
-                    "This file has changed on disk.\n\n" +
+                choice = ThemedPrompt.ShowChoices(
+                    "This file has changed on disk:\n\n" +
                     Path.GetFileName(tab.FilePath) + "\n\n" +
-                    "Yes = Reload from disk (discard your unsaved edits)\n" +
-                    "No = Keep editing (Save will overwrite the disk copy)\n" +
-                    "Cancel = Save your copy as a new file",
+                    "Keeping edits lets your next Save overwrite the file on disk.",
                     "File changed on disk",
-                    WinForms.MessageBoxButtons.YesNoCancel,
-                    WinForms.MessageBoxIcon.Warning,
-                    WinForms.MessageBoxDefaultButton.Button2);
+                    "Reload from disk", "Keep editing", "Save as...",
+                    WinForms.MessageBoxDefaultButton.Button2,
+                    destructive: true,
+                    escapeResult: WinForms.DialogResult.No);
             }
             _diskCheckBusy = true;
             try
@@ -5944,8 +5941,13 @@ namespace TypoZen
                 Foreground = this.Foreground
             };
             try { win.Owner = this; } catch { }
+            DialogTheme.Apply(win, this);
 
-            var root = new StackPanel { Margin = new Thickness(18) };
+            var shell = new Grid();
+            shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var root = new StackPanel { Margin = new Thickness(18, 16, 18, 8) };
             root.Children.Add(new TextBlock
             {
                 Text = "Choose what to remove. Your documents and .epub files are never touched.",
@@ -6026,21 +6028,27 @@ namespace TypoZen
 
             // "Select none", not "Clear all": beside a Clear button that deletes, "Clear all"
             // reads as "delete everything".
-            var bottom = new DockPanel { Margin = new Thickness(0, 18, 0, 0), LastChildFill = false };
-            var all = new Button { Content = "Select all", Width = 90, Height = 26 };
-            var none = new Button { Content = "Select none", Width = 90, Height = 26, Margin = new Thickness(8, 0, 0, 0) };
+            var bottom = new DockPanel { LastChildFill = false };
+            var all = new Button { Content = "Select all", MinWidth = 86, Height = 30 };
+            var none = new Button { Content = "Select none", MinWidth = 92, Height = 30, Margin = new Thickness(8, 0, 0, 0) };
             all.Click += (s2, e2) => { foreach (var b in boxes) b.IsChecked = true; };
             none.Click += (s2, e2) => { foreach (var b in boxes) b.IsChecked = false; };
             DockPanel.SetDock(all, Dock.Left); DockPanel.SetDock(none, Dock.Left);
             bottom.Children.Add(all); bottom.Children.Add(none);
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             DockPanel.SetDock(row, Dock.Right);
-            var ok = new Button { Content = "Clear", Width = 90, Height = 26, IsDefault = true };
-            var cancel = new Button { Content = "Cancel", Width = 90, Height = 26, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
-            row.Children.Add(ok); row.Children.Add(cancel);
+            var cancel = new Button { Content = "Cancel", MinWidth = 88, Height = 30, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
+            var ok = new Button { Content = "Clear", MinWidth = 88, Height = 30, IsDefault = true };
+            DialogTheme.SetPrimary(win, ok);
+            row.Children.Add(cancel); row.Children.Add(ok);
             bottom.Children.Add(row);
-            root.Children.Add(bottom);
-            win.Content = root;
+
+            Grid.SetRow(root, 0);
+            shell.Children.Add(root);
+            var foot = DialogTheme.MakeFooter(win, bottom);
+            Grid.SetRow(foot, 1);
+            shell.Children.Add(foot);
+            win.Content = shell;
 
             bool accepted = false;
             ok.Click += (s2, e2) => { accepted = true; win.DialogResult = true; };
@@ -9726,12 +9734,11 @@ namespace TypoZen
                 };
 
             int restoreIdx = _currentThemeIndex;
-            var dlg = new ThemeCustomizeWindow(seed, FontPresets, this.Background, this.Foreground);
-            dlg.Owner = this;
+            var dlg = new ThemeCustomizeWindow(seed, FontPresets, this.Background, this.Foreground, this);
             dlg.PreviewRequested += (t) => PreviewTheme(t);
             dlg.SaveAsNewRequested += (t) =>
             {
-                if (SaveThemeAsNew(t))
+                if (SaveThemeAsNew(t, dlg))
                 {
                     dlg.DialogResult = true;
                     dlg.Close();
@@ -9739,7 +9746,7 @@ namespace TypoZen
             };
             dlg.DeleteRequested += () =>
             {
-                if (DeleteTheme(restoreIdx))
+                if (DeleteTheme(restoreIdx, dlg))
                 {
                     dlg.DialogResult = true;
                     dlg.Close();
@@ -9780,21 +9787,21 @@ namespace TypoZen
             SendMsg("preview_theme:" + payload);
         }
 
-        private bool SaveThemeAsNew(ThemeInfo t)
+        private bool SaveThemeAsNew(ThemeInfo t, Window promptOwner = null)
         {
             if (t == null) return false;
             string name = (t.Name ?? "").Trim();
             if (string.IsNullOrEmpty(name))
             {
-                WinForms.MessageBox.Show("Please enter a theme name.", "Customise Theme",
-                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                ThemedPrompt.Show(promptOwner ?? this, "Please enter a theme name.", "Customise Theme",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
                 return false;
             }
             if (!IsValidHexColor(t.Bg) || !IsValidHexColor(t.Tx) || !IsValidHexColor(t.Hi)
                 || (!string.IsNullOrWhiteSpace(t.Hi2) && !IsValidHexColor(t.Hi2)))
             {
-                WinForms.MessageBox.Show("Colors must be #RRGGBB hex values.", "Customise Theme",
-                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                ThemedPrompt.Show(promptOwner ?? this, "Colors must be #RRGGBB hex values.", "Customise Theme",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return false;
             }
             if (string.IsNullOrWhiteSpace(t.FN))
@@ -9837,8 +9844,8 @@ namespace TypoZen
             }
             catch (Exception ex)
             {
-                WinForms.MessageBox.Show("Could not save theme:\n" + ex.Message, "Customise Theme",
-                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+                ThemedPrompt.Show(promptOwner ?? this, "Could not save theme:\n" + ex.Message, "Customise Theme",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
         }
@@ -9883,26 +9890,28 @@ namespace TypoZen
         /// Delete a theme the user created. Built-in themes are refused — they are part of
         /// the shipped set, and removing one would be silently undone by any reinstall.
         /// </summary>
-        private bool DeleteTheme(int idx)
+        private bool DeleteTheme(int idx, Window promptOwner = null)
         {
             if (idx < 0 || idx >= _themesList.Count) return false;
             var victim = _themesList[idx];
 
             if (!victim.Custom)
             {
-                WinForms.MessageBox.Show(
+                ThemedPrompt.Show(
+                    promptOwner ?? this,
                     "\"" + victim.Name + "\" is a built-in theme and cannot be deleted.\n\n"
                     + "Only themes you created with Customise Theme can be removed.",
-                    "Delete Theme", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                    "Delete Theme", MessageBoxButton.OK, MessageBoxImage.Information);
                 return false;
             }
             if (_themesList.Count <= 1)
             {
-                WinForms.MessageBox.Show("This is the only theme left.", "Delete Theme",
-                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                ThemedPrompt.Show(promptOwner ?? this, "This is the only theme left.", "Delete Theme",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
                 return false;
             }
             if (ThemedPrompt.Show(
+                    promptOwner ?? this,
                     "Delete the theme \"" + victim.Name + "\"?\n\nThis cannot be undone.",
                     "Delete Theme", WinForms.MessageBoxButtons.YesNo,
                     WinForms.MessageBoxIcon.Warning) != WinForms.DialogResult.Yes) return false;
@@ -9928,8 +9937,8 @@ namespace TypoZen
             }
             catch (Exception ex)
             {
-                WinForms.MessageBox.Show("Could not delete theme:\n" + ex.Message, "Delete Theme",
-                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+                ThemedPrompt.Show(promptOwner ?? this, "Could not delete theme:\n" + ex.Message, "Delete Theme",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
         }
@@ -10207,6 +10216,7 @@ namespace TypoZen
                 this.Resources[SystemColors.MenuHighlightBrushKey] = hiBrush;
                 this.Resources[SystemColors.HighlightBrushKey] = hiBrush;
                 this.Resources[SystemColors.HighlightTextBrushKey] = hoverTxBrush;
+                this.Resources["TzThemeAccentBrush"] = hiBrush;
                 this.Resources[SystemColors.ControlBrushKey] = bgBrush;
                 this.Resources[SystemColors.ControlTextBrushKey] = txBrush;
                 this.Resources[SystemColors.WindowBrushKey] = bgBrush;
@@ -12046,13 +12056,12 @@ namespace TypoZen
             var listBgBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.04f : 0.05f));
             var borderBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.15f : 0.15f));
             var subtleTxBrush = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Tx, isLight ? 0.20f : -0.20f));
-            var btnTxBrush = (SolidColorBrush)conv.ConvertFromString(IsColorLight(t.Hi) ? "#000000" : "#FFFFFF");
 
             var win = new Window
             {
                 Title = "Voice Sampler",
                 Width = 720,
-                Height = 520,
+                Height = 500,
                 MinWidth = 600,
                 MinHeight = 400,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -12063,46 +12072,16 @@ namespace TypoZen
                 FontFamily = this.FontFamily,
                 UseLayoutRounding = true
             };
-            
+            DialogTheme.Apply(win, this);
+
             System.Windows.Media.TextOptions.SetTextFormattingMode(win, System.Windows.Media.TextFormattingMode.Display);
             System.Windows.Media.TextOptions.SetTextRenderingMode(win, System.Windows.Media.TextRenderingMode.ClearType);
 
-            System.Windows.Shell.WindowChrome.SetWindowChrome(win, new System.Windows.Shell.WindowChrome
-            {
-                CaptionHeight = 45,
-                ResizeBorderThickness = new Thickness(6),
-                CornerRadius = new CornerRadius(0),
-                GlassFrameThickness = new Thickness(0,0,0,1),
-                UseAeroCaptionButtons = false
-            });
-
-            var mainBorder = new Border {
-                Background = bgBrush,
-                Padding = new Thickness(0)
-            };
-
             var rootGrid = new Grid();
-            rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(45) });
             rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(65) }); // Footer
+            rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            // Custom Title Bar
-            var titleBar = new Grid { Background = System.Windows.Media.Brushes.Transparent };
-            var titleTxt = new TextBlock { Text = "Voice Sampler", FontWeight = FontWeights.SemiBold, FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 0, 0), Foreground = txBrush };
-            titleBar.Children.Add(titleTxt);
-            
-            var closeBtn = new Button { Content = "\uE8BB", FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), FontSize = 10, Background = System.Windows.Media.Brushes.Transparent, Foreground = subtleTxBrush, BorderThickness = new Thickness(0), Width = 45, HorizontalAlignment = HorizontalAlignment.Right };
-            System.Windows.Shell.WindowChrome.SetIsHitTestVisibleInChrome(closeBtn, true);
-            closeBtn.Click += (s, e) => win.Close();
-            closeBtn.MouseEnter += (s, e) => { closeBtn.Foreground = txBrush; };
-            closeBtn.MouseLeave += (s, e) => { closeBtn.Foreground = subtleTxBrush; };
-            titleBar.Children.Add(closeBtn);
-            
-            titleBar.MouseLeftButtonDown += (s, e) => { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) win.DragMove(); };
-            Grid.SetRow(titleBar, 0);
-            rootGrid.Children.Add(titleBar);
-
-            var contentGrid = new Grid { Margin = new Thickness(20, 0, 20, 15) };
+            var contentGrid = new Grid { Margin = new Thickness(20, 16, 20, 12) };
             contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
             contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
             contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -12236,28 +12215,16 @@ namespace TypoZen
 
             var sampleBox = new TextBox {
                 Text = "This is a quick sample of how the selected voice will sound when reading your text out loud.",
-                TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, Padding = new Thickness(12), FontSize = 14,
-                Background = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.02f : -0.15f)),
-                Foreground = txBrush,
-                BorderBrush = borderBrush,
-                BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 0, 0, 25),
+                TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, Height = 120, Padding = new Thickness(10), FontSize = 13.5,
+                Margin = new Thickness(0, 0, 0, 20),
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
-            
-            // Add focus border trigger to TextBox
-            var tbStyle = new Style(typeof(TextBox), (Style)Application.Current.TryFindResource(typeof(TextBox)));
-            var tbTrigger = new Trigger { Property = UIElement.IsFocusedProperty, Value = true };
-            tbTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, accentBrush));
-            tbStyle.Triggers.Add(tbTrigger);
-            sampleBox.Style = tbStyle;
-            
             rightPane.Children.Add(sampleBox);
 
             var speedRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
             speedRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             speedRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            
+
             // Samples play at the reading speed; it is set in one place, File > Read Aloud > Speed.
             var speedPanel = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             var lblSpeed = new TextBlock { Text = "Plays at the reading speed, " + SpeedLabel(_ttsSpeed) + ". Change it in File > Read Aloud > Speed.",
@@ -12266,46 +12233,49 @@ namespace TypoZen
             Grid.SetColumn(speedPanel, 0);
             speedRow.Children.Add(speedPanel);
 
-            var btnPlay = new Button { 
-                Content = "\uE768", FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets"), 
-                Width = 42, Height = 42, Background = accentBrush, Foreground = btnTxBrush, 
-                BorderThickness = new Thickness(0), FontSize = 16, Cursor = Cursors.Hand,
-                ToolTip = "Play Sample"
+            var playTpl = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(@"
+<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+                 xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Button'>
+  <Border x:Name='b' Background='{DynamicResource TzAccent}' CornerRadius='21'>
+    <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' Margin='2,0,0,0'/>
+  </Border>
+  <ControlTemplate.Triggers>
+    <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='b' Property='Background' Value='{DynamicResource TzAccentHover}'/></Trigger>
+    <Trigger Property='IsPressed' Value='True'><Setter TargetName='b' Property='Background' Value='{DynamicResource TzAccentPressed}'/></Trigger>
+  </ControlTemplate.Triggers>
+</ControlTemplate>");
+            var btnPlay = new Button {
+                Content = "\uE768", FontFamily = new System.Windows.Media.FontFamily(IconFont()),
+                Width = 42, Height = 42, FontSize = 15, Cursor = Cursors.Hand,
+                Template = playTpl, ToolTip = "Play sample", VerticalAlignment = VerticalAlignment.Bottom
             };
-            var btnPlayBorder = new Border { CornerRadius = new CornerRadius(21), Background = accentBrush, Child = btnPlay, ClipToBounds = true, VerticalAlignment = VerticalAlignment.Bottom };
-            btnPlay.Background = System.Windows.Media.Brushes.Transparent;
-            Grid.SetColumn(btnPlayBorder, 1);
-            speedRow.Children.Add(btnPlayBorder);
+            btnPlay.SetResourceReference(Button.ForegroundProperty, "TzAccentText");
+            Grid.SetColumn(btnPlay, 1);
+            speedRow.Children.Add(btnPlay);
 
             rightPane.Children.Add(speedRow);
 
             Grid.SetColumn(rightPane, 2);
             contentGrid.Children.Add(rightPane);
-            
-            Grid.SetRow(contentGrid, 1);
+
+            Grid.SetRow(contentGrid, 0);
             rootGrid.Children.Add(contentGrid);
 
             // Footer
-            var footerBorder = new Border {
-                Background = (SolidColorBrush)conv.ConvertFromString(AdjustHexBrightness(t.Bg, isLight ? -0.05f : -0.1f)),
-                BorderBrush = borderBrush,
-                BorderThickness = new Thickness(0, 1, 0, 0)
-            };
-            var footerPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(20, 0, 20, 0) };
-            
-            var btnCancel = new Button { Content = "Cancel", Width = 100, Height = 32, Margin = new Thickness(0, 0, 10, 0), Background = System.Windows.Media.Brushes.Transparent, Foreground = txBrush, BorderThickness = new Thickness(0), FontSize = 13, Cursor = Cursors.Hand };
+            var footerPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var btnCancel = new Button { Content = "Cancel", MinWidth = 88, Height = 32, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
             btnCancel.Click += (s, e) => win.Close();
-            
-            var btnOk = new Button { Content = "Save and Apply", Width = 140, Height = 32, Background = accentBrush, Foreground = btnTxBrush, BorderThickness = new Thickness(0), FontSize = 13, FontWeight = FontWeights.Medium, Cursor = Cursors.Hand };
-            
+
+            var btnOk = new Button { Content = "Save and Apply", MinWidth = 128, Height = 32 };
+            DialogTheme.SetPrimary(win, btnOk);
+
             footerPanel.Children.Add(btnCancel);
             footerPanel.Children.Add(btnOk);
-            footerBorder.Child = footerPanel;
-            Grid.SetRow(footerBorder, 2);
-            rootGrid.Children.Add(footerBorder);
+            var foot = DialogTheme.MakeFooter(win, footerPanel, new Thickness(20, 12, 20, 14), new Thickness(0));
+            Grid.SetRow(foot, 1);
+            rootGrid.Children.Add(foot);
 
-            mainBorder.Child = rootGrid;
-            win.Content = mainBorder;
+            win.Content = rootGrid;
 
             Action playSample = async () => {
                 var sel = listBox.SelectedItem as ListBoxItem;
@@ -16494,12 +16464,12 @@ namespace TypoZen
             // A PDF with unsaved annotations or form entries asks, like a document.
             if (IsPdfTab(tab) && tab.PdfEdited)
             {
-                var pres = ThemedPrompt.Show(
+                var pres = ThemedPrompt.ShowChoices(
                     "Save your changes to " + Path.GetFileName(tab.FilePath) + "?\n\n" +
                     "They are saved as a new PDF unless you choose the original.",
                     "Unsaved Changes",
-                    WinForms.MessageBoxButtons.YesNoCancel,
-                    WinForms.MessageBoxIcon.Warning);
+                    "Save", "Don't save", "Cancel",
+                    WinForms.MessageBoxDefaultButton.Button1);
                 if (pres == WinForms.DialogResult.Cancel) return;
                 if (pres == WinForms.DialogResult.Yes && !SavePdfTab(tab, false)) return;
                 if (pres == WinForms.DialogResult.No) DiscardPdfEdits(tab);
@@ -16512,11 +16482,11 @@ namespace TypoZen
             }
             else if (tab.IsDirty)
             {
-                var res = ThemedPrompt.Show(
+                var res = ThemedPrompt.ShowChoices(
                     "Save changes to " + TabDisplayName(tab) + "?",
                     "Unsaved Changes",
-                    WinForms.MessageBoxButtons.YesNoCancel,
-                    WinForms.MessageBoxIcon.Warning);
+                    "Save", "Don't save", "Cancel",
+                    WinForms.MessageBoxDefaultButton.Button1);
                 if (res == WinForms.DialogResult.Cancel) return;
                 if (res == WinForms.DialogResult.Yes)
                 {
@@ -16848,15 +16818,13 @@ namespace TypoZen
                         {
                             var choice = _e2eMode
                                 ? WinForms.DialogResult.No
-                                : ThemedPrompt.Show(
-                                    "This file is open with unsaved changes.\n\n" +
-                                    "Yes = Reload from disk (discard edits)\n" +
-                                    "No = Keep your edits\n" +
-                                    "Cancel = Stay put",
+                                : ThemedPrompt.ShowChoices(
+                                    "This file is already open with unsaved edits.\n\n" +
+                                    "Reloading from disk will discard those unsaved edits.",
                                     "Unsaved changes",
-                                    WinForms.MessageBoxButtons.YesNoCancel,
-                                    WinForms.MessageBoxIcon.Warning,
-                                    WinForms.MessageBoxDefaultButton.Button2);
+                                    "Reload from disk", "Keep edits", "Cancel",
+                                    WinForms.MessageBoxDefaultButton.Button2,
+                                    destructive: true);
                             if (choice == WinForms.DialogResult.Cancel) return;
                             if (choice == WinForms.DialogResult.No)
                             {
@@ -17559,8 +17527,8 @@ namespace TypoZen
                 int other = IndexOfTabPath(target);
                 if (other >= 0 && _tabs[other] != tab)
                 {
-                    WinForms.MessageBox.Show("That PDF is open in another tab. Close it first, or choose another name.",
-                        "Save", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                    ThemedPrompt.Show(this, "That PDF is open in another tab. Close it first, or choose another name.",
+                        "Save", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return false;
                 }
             }
@@ -17862,9 +17830,9 @@ namespace TypoZen
             double wPt = JsonNumber(info, "w"), hPt = JsonNumber(info, "h");
             if (n <= 0)
             {
-                WinForms.MessageBox.Show("The PDF has not finished opening yet. Try again in a moment.",
+                ThemedPrompt.Show(this, "The PDF has not finished opening yet. Try again in a moment.",
                     pages ? "Save Pages as Images" : "Save All Images in PDF",
-                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                    MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -17880,7 +17848,13 @@ namespace TypoZen
                 Foreground = this.Foreground
             };
             try { win.Owner = this; } catch { }
-            var root = new StackPanel { Margin = new Thickness(18) };
+            DialogTheme.Apply(win, this);
+
+            var shell = new Grid();
+            shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var root = new StackPanel { Margin = new Thickness(18, 16, 18, 8) };
             Func<string, TextBlock> heading = (text) =>
             {
                 var t = new TextBlock { Text = text, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, root.Children.Count == 0 ? 0 : 12, 0, 2) };
@@ -17894,8 +17868,8 @@ namespace TypoZen
             };
             Func<string, int, TextBox> box = (text, width) => new TextBox
             {
-                Text = text, Width = width, Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(3, 1, 3, 1),
-                Background = win.Background, Foreground = win.Foreground, CaretBrush = win.Foreground,
+                Text = text, Width = width, Height = 24, Margin = new Thickness(8, 0, 0, 0),
+                Padding = new Thickness(5, 2, 5, 2), VerticalContentAlignment = VerticalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             };
             Func<UIElement, UIElement, StackPanel> line = (a, b) =>
@@ -17989,12 +17963,17 @@ namespace TypoZen
                 updateSize();
             }
 
-            var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
-            var ok = new Button { Content = "Choose Folder...", MinWidth = 120, Height = 26, IsDefault = true, Padding = new Thickness(10, 0, 10, 0) };
-            var cancel = new Button { Content = "Cancel", Width = 90, Height = 26, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
-            row.Children.Add(ok); row.Children.Add(cancel);
-            root.Children.Add(row);
-            win.Content = root;
+            var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var cancel = new Button { Content = "Cancel", MinWidth = 88, Height = 30, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
+            var ok = new Button { Content = "Choose Folder...", MinWidth = 124, Height = 30, IsDefault = true, Padding = new Thickness(12, 4, 12, 4) };
+            DialogTheme.SetPrimary(win, ok);
+            row.Children.Add(cancel); row.Children.Add(ok);
+            Grid.SetRow(root, 0);
+            shell.Children.Add(root);
+            var foot = DialogTheme.MakeFooter(win, row);
+            Grid.SetRow(foot, 1);
+            shell.Children.Add(foot);
+            win.Content = shell;
 
             List<int> list = null;
             int dpi = 0, quality = 90;
@@ -18006,8 +17985,8 @@ namespace TypoZen
                 else list = ParsePageList(tbRange.Text, n);
                 if (list == null)
                 {
-                    WinForms.MessageBox.Show("Pages must be numbers from 1 to " + n + ", like 1-5, 8.", title,
-                        WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                    ThemedPrompt.Show(win, "Pages must be numbers from 1 to " + n + ", like 1-5, 8.", title,
+                        MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
                 if (pages)
@@ -18015,14 +17994,14 @@ namespace TypoZen
                     dpi = chosenDpi();
                     if (dpi < 36 || dpi > 1200)
                     {
-                        WinForms.MessageBox.Show("Choose a resolution from 36 to 1200 DPI.", title,
-                            WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                        ThemedPrompt.Show(win, "Choose a resolution from 36 to 1200 DPI.", title,
+                            MessageBoxButton.OK, MessageBoxImage.Information);
                         return;
                     }
                     if (rbJpg.IsChecked == true && (!int.TryParse(tbQuality.Text.Trim(), out quality) || quality < 1 || quality > 100))
                     {
-                        WinForms.MessageBox.Show("JPEG quality is a number from 1 to 100 (90 is a good choice).", title,
-                            WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                        ThemedPrompt.Show(win, "JPEG quality is a number from 1 to 100 (90 is a good choice).", title,
+                            MessageBoxButton.OK, MessageBoxImage.Information);
                         return;
                     }
                 }
@@ -18180,10 +18159,11 @@ namespace TypoZen
                 Foreground = this.Foreground
             };
             try { win.Owner = this; } catch { }
-            var root = new StackPanel { Margin = new Thickness(18) };
+            DialogTheme.Apply(win, this);
+            var root = new StackPanel { Margin = new Thickness(18, 16, 18, 16) };
             job.Label = new TextBlock { Text = "Starting...", TextWrapping = TextWrapping.Wrap };
-            job.Bar = new ProgressBar { Height = 8, Minimum = 0, Maximum = Math.Max(1, total), Margin = new Thickness(0, 10, 0, 0) };
-            job.Cancel = new Button { Content = "Cancel", Width = 90, Height = 26, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0), IsCancel = true };
+            job.Bar = new ProgressBar { Height = 8, Minimum = 0, Maximum = Math.Max(1, total), Margin = new Thickness(0, 12, 0, 0) };
+            job.Cancel = new Button { Content = "Cancel", MinWidth = 88, Height = 30, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0), IsCancel = true };
             root.Children.Add(job.Label); root.Children.Add(job.Bar); root.Children.Add(job.Cancel);
             win.Content = root;
             Action stop = () =>
@@ -18301,8 +18281,8 @@ namespace TypoZen
             }
             else
             {
-                WinForms.MessageBox.Show(sb.ToString(), pages ? "Save Pages as Images" : "Save All Images in PDF",
-                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                ThemedPrompt.Show(this, sb.ToString(), pages ? "Save Pages as Images" : "Save All Images in PDF",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -19576,8 +19556,8 @@ namespace TypoZen
                 {
                     try
                     {
-                        WinForms.MessageBox.Show(message, "Link",
-                            WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                        ThemedPrompt.Show(this, message, "Link",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
                     }
                     catch { }
                 }), DispatcherPriority.Background);
@@ -19617,8 +19597,8 @@ namespace TypoZen
             }
             catch (Exception ex)
             {
-                WinForms.MessageBox.Show("Could not open File Explorer:\n" + ex.Message, "TypoZen",
-                    WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                ThemedPrompt.Show(this, "Could not open File Explorer:\n" + ex.Message, "TypoZen",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 
@@ -19830,26 +19810,33 @@ namespace TypoZen
             return s.Length > 0 ? s : "Custom";
         }
 
-        public CustomFontWindow(string seedFamily, string[][] fontPresets, System.Windows.Media.Brush bg, System.Windows.Media.Brush fg)
+        public CustomFontWindow(string seedFamily, string[][] fontPresets, System.Windows.Media.Brush bg, System.Windows.Media.Brush fg, Window owner = null)
         {
             _fontPresets = fontPresets ?? new string[0][];
             SelectedFontFamily = seedFamily;
 
             Title = "Custom Font";
-            Width = 350;
-            MinHeight = 180;
+            Width = 360;
             SizeToContent = SizeToContent.Height;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ResizeMode = ResizeMode.NoResize;
+            ShowInTaskbar = false;
             Background = bg;
             Foreground = fg;
+            var hostOwner = owner ?? (Application.Current != null ? Application.Current.MainWindow : null);
+            if (hostOwner != null) { try { Owner = hostOwner; } catch { } }
+            DialogTheme.Apply(this, hostOwner ?? this);
 
-            var root = new StackPanel { Margin = new Thickness(20) };
-            
-            var lbl = new TextBlock { Text = "Select Font Family", Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold };
-            root.Children.Add(lbl);
+            var shell = new Grid();
+            shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            _cmbFont = new ComboBox { Height = 28, Margin = new Thickness(0, 0, 0, 20) };
+            var body = new StackPanel { Margin = new Thickness(20, 18, 20, 10) };
+
+            var lbl = new TextBlock { Text = "Select font family", Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold };
+            body.Children.Add(lbl);
+
+            _cmbFont = new ComboBox { Height = 30 };
             int selectedIndex = -1;
             string seedLeading = LeadingFamily(seedFamily);
             for (int i = 0; i < _fontPresets.Length; i++)
@@ -19872,15 +19859,18 @@ namespace TypoZen
             if (_cmbFont.Items.Count > 0 && selectedIndex >= 0)
                 _cmbFont.SelectedIndex = selectedIndex;
 
-            root.Children.Add(_cmbFont);
+            body.Children.Add(_cmbFont);
+            Grid.SetRow(body, 0);
+            shell.Children.Add(body);
 
             var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            
-            var btnCancel = new Button { Content = "Cancel", Width = 80, Height = 30, Margin = new Thickness(0, 0, 10, 0) };
+
+            var btnCancel = new Button { Content = "Cancel", MinWidth = 84, Height = 30, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
             btnCancel.Click += (s, e) => { DialogResult = false; Close(); };
             btnPanel.Children.Add(btnCancel);
 
-            var btnOk = new Button { Content = "Apply", Width = 80, Height = 30, IsDefault = true };
+            var btnOk = new Button { Content = "Apply", MinWidth = 84, Height = 30, IsDefault = true };
+            DialogTheme.SetPrimary(this, btnOk);
             btnOk.Click += (s, e) => {
                 if (_cmbFont.SelectedIndex >= 0 && _cmbFont.SelectedIndex < _fontPresets.Length)
                     SelectedFontFamily = _fontPresets[_cmbFont.SelectedIndex][1];
@@ -19891,8 +19881,10 @@ namespace TypoZen
             };
             btnPanel.Children.Add(btnOk);
 
-            root.Children.Add(btnPanel);
-            Content = root;
+            var foot = DialogTheme.MakeFooter(this, btnPanel);
+            Grid.SetRow(foot, 1);
+            shell.Children.Add(foot);
+            Content = shell;
         }
     }
 
@@ -19933,7 +19925,7 @@ namespace TypoZen
             return s.Length > 0 ? s : "Custom";
         }
 
-        public ThemeCustomizeWindow(ThemeInfo seed, string[][] fontPresets, System.Windows.Media.Brush appBg, System.Windows.Media.Brush appFg)
+        public ThemeCustomizeWindow(ThemeInfo seed, string[][] fontPresets, System.Windows.Media.Brush appBg, System.Windows.Media.Brush appFg, Window owner = null)
         {
             _fontPresets = fontPresets ?? new string[0][];
             string name = seed != null && seed.Name != null ? seed.Name : "My Theme";
@@ -19998,15 +19990,22 @@ namespace TypoZen
 
             Title = "Customise Theme";
             Width = 460;
-            MinHeight = 480;
             SizeToContent = SizeToContent.Height;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ResizeMode = ResizeMode.NoResize;
+            ShowInTaskbar = false;
             Background = appBg;
             Foreground = appFg;
+            var hostOwner = owner ?? (Application.Current != null ? Application.Current.MainWindow : null);
+            if (hostOwner != null) { try { Owner = hostOwner; } catch { } }
+            DialogTheme.Apply(this, hostOwner ?? this);
 
-            var root = new Grid { Margin = new Thickness(16, 16, 16, 20) };
-            for (int r = 0; r < 14; r++)
+            var shell = new Grid();
+            shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var root = new Grid { Margin = new Thickness(16, 16, 16, 8) };
+            for (int r = 0; r < 12; r++)
                 root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             int row = 0;
@@ -20059,19 +20058,17 @@ namespace TypoZen
             Grid.SetRow(fontSizesComboGrid, row++);
             root.Children.Add(fontSizesComboGrid);
 
-            // Spacer so buttons sit lower / clearer of the font row
-            var spacer = new Border { Height = 28 };
-            Grid.SetRow(spacer, row++);
-            root.Children.Add(spacer);
+            Grid.SetRow(root, 0);
+            shell.Children.Add(root);
 
-            var btnRow = new DockPanel { Margin = new Thickness(0, 8, 0, 4), LastChildFill = false };
+            var btnRow = new DockPanel { LastChildFill = false };
 
             var leftBtns = new StackPanel { Orientation = Orientation.Horizontal };
 
             var btnReset = new Button
             {
                 Content = "Reset",
-                Width = 90,
+                MinWidth = 82,
                 Height = 30,
                 Margin = new Thickness(0, 0, 8, 0),
                 ToolTip = "Undo all edits and restore the original theme colors"
@@ -20082,7 +20079,7 @@ namespace TypoZen
             var btnDelete = new Button
             {
                 Content = "Delete",
-                Width = 90,
+                MinWidth = 82,
                 Height = 30,
                 Margin = new Thickness(0, 0, 8, 0),
                 ToolTip = "Delete this custom theme"
@@ -20108,33 +20105,35 @@ namespace TypoZen
             // dialog load, on every colour edit (picker, Enter, focus loss), on font and
             // size change, and on Reset — so an explicit button did nothing the dialog
             // had not already done a moment earlier.
+            var btnCancel = new Button { Content = "Cancel", MinWidth = 84, Height = 30, Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
+            btnCancel.Click += (s, e) => { DialogResult = false; Close(); };
+
             var btnSave = new Button
             {
                 Content = "Save as New",
-                Width = 110,
+                MinWidth = 112,
                 Height = 30,
-                Margin = new Thickness(0, 0, 8, 0),
-                FontWeight = FontWeights.SemiBold,
+                IsDefault = true,
                 ToolTip = "Save your changes as a new custom theme. Built-in themes are protected."
             };
+            DialogTheme.SetPrimary(this, btnSave);
             btnSave.Click += (s, e) =>
             {
                 var t = BuildTheme();
                 if (t != null && SaveAsNewRequested != null) SaveAsNewRequested(t);
             };
-            var btnCancel = new Button { Content = "Cancel", Width = 90, Height = 30, IsCancel = true };
-            btnCancel.Click += (s, e) => { DialogResult = false; Close(); };
-            
-            rightBtns.Children.Add(btnSave);
+
             rightBtns.Children.Add(btnCancel);
+            rightBtns.Children.Add(btnSave);
             DockPanel.SetDock(rightBtns, Dock.Right);
 
             btnRow.Children.Add(leftBtns);
             btnRow.Children.Add(rightBtns);
-            Grid.SetRow(btnRow, row);
-            root.Children.Add(btnRow);
+            var foot = DialogTheme.MakeFooter(this, btnRow);
+            Grid.SetRow(foot, 1);
+            shell.Children.Add(foot);
 
-            Content = root;
+            Content = shell;
             Loaded += (s, e) => RequestPreview();
         }
 
@@ -20189,7 +20188,7 @@ namespace TypoZen
                 Width = 24,
                 Height = 20,
                 CornerRadius = new CornerRadius(2),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
+                BorderBrush = (TryFindResource("TzBorder") as Brush) ?? new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44)),
                 BorderThickness = new Thickness(1)
             };
             btnPick.Content = swatch;

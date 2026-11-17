@@ -4463,7 +4463,7 @@
                 else text += node.textContent || '';
                 node.parentNode.removeChild(node);
             }
-            function walk(parent) {
+            function walkStray(parent) {
                 const kids = Array.prototype.slice.call(parent.childNodes);
                 for (let i = 0; i < kids.length; i++) {
                     const n = kids[i];
@@ -4474,13 +4474,13 @@
                     if (tag === 'TABLE' || tag === 'THEAD' || tag === 'TBODY' || tag === 'TFOOT'
                         || tag === 'TR' || tag === 'COLGROUP' || tag === 'COL'
                         || (n.classList && n.classList.contains('table-wrapper'))) {
-                        walk(n);
+                        walkStray(n);
                         continue;
                     }
                     absorb(n);
                 }
             }
-            walk(block);
+            walkStray(block);
             return String(text).replace(/\u00a0/g, ' ').replace(/[\u200B\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
         }
 

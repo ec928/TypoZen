@@ -1431,7 +1431,7 @@
             line-height: 1;
             white-space: nowrap;
         }
-        #findBar button:hover {
+        #findBar button:hover:not(:disabled) {
             background: var(--tint-hover, rgba(255,255,255,0.08));
         }
         #findBar button.primary {
@@ -1439,6 +1439,13 @@
             border-color: var(--accent, #3B82F6);
             color: var(--accent-tx, #fff);
             font-weight: 600;
+        }
+        #findBar button.primary:hover:not(:disabled) {
+            background: var(--accent, #3B82F6);
+            filter: brightness(1.08);
+        }
+        #findBar button.primary:active:not(:disabled) {
+            filter: brightness(0.94);
         }
         #findBar button.find-icon {
             width: 28px;
@@ -1578,8 +1585,9 @@
             align-items: center;
             gap: 2px;
             padding: 4px 6px;
-            background-color: var(--bg, #18181B);
+            background-color: color-mix(in srgb, var(--bg, #18181B) 88%, transparent);
             background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            backdrop-filter: blur(18px) saturate(1.2);
             border: 1px solid var(--border, #3F3F46);
             border-radius: 999px;
             box-shadow: 0 6px 20px rgba(0,0,0,0.38);
@@ -1635,8 +1643,9 @@
             gap: 8px;
             max-width: 100%;
             padding: 5px 14px 7px;
-            background-color: var(--bg, #18181B);
+            background-color: color-mix(in srgb, var(--bg, #18181B) 88%, transparent);
             background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            backdrop-filter: blur(18px) saturate(1.2);
             border: 1px solid var(--border, #3F3F46);
             border-radius: 999px;
             box-shadow: 0 4px 14px rgba(0,0,0,0.3);
@@ -1718,6 +1727,7 @@
             border-radius: 10px;
             background-color: color-mix(in srgb, var(--bg, #18181B) 88%, transparent);
             background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            backdrop-filter: blur(18px) saturate(1.2);
             border: 1px solid var(--border, #3F3F46);
             box-shadow: 0 8px 24px rgba(0,0,0,0.36);
         }
@@ -1764,7 +1774,7 @@
             box-sizing: border-box;
         }
         .selpop-icon-btn svg {
-            width: 20px; height: 20px; margin: 0 !important;
+            width: 18px; height: 18px; margin: 0 !important;
         }
         /* --- Help / About overlays (F1, Help → About) ------------------------------
            Theme-coloured panels instead of alert / WinForms MessageBox. */
@@ -1843,8 +1853,9 @@
             flex-direction: column;
             width: min(560px, 100%);
             max-height: min(82vh, 720px);
-            background-color: var(--bg, #18181B);
+            background-color: color-mix(in srgb, var(--bg, #18181B) 88%, transparent);
             background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            backdrop-filter: blur(18px) saturate(1.2);
             border: 1px solid var(--border, #3F3F46);
             border-radius: 12px;
             box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
@@ -2896,13 +2907,15 @@
         }
         .tz-table-picker.open { display: block; }
         .tz-table-picker-inner {
-            background: var(--bg, #1E293B);
+            background-color: color-mix(in srgb, var(--bg, #1E293B) 88%, transparent);
+            background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            backdrop-filter: blur(18px) saturate(1.2);
             border: 1px solid var(--border, #3F3F46);
             border-radius: 10px;
             padding: 12px 14px 10px;
             box-shadow: 0 12px 32px rgba(0,0,0,0.45);
             color: var(--tx, #F8FAFC);
-            font-family: var(--font-sans, 'Segoe UI', sans-serif);
+            font-family: var(--ui-font, 'Segoe UI', sans-serif);
             min-width: 200px;
         }
         .tz-table-picker-title {

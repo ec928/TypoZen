@@ -8,8 +8,8 @@ namespace TypoZen
     /// <summary>
     /// The reader's theme for a code-built window: text boxes, dropdowns, buttons, lists and tabs in
     /// the theme's colours rather than Windows' own white controls, which glared out of a dark theme
-    /// in Narrator Manager (Ed, 2026-10-09). The window's background and text colour come from the
-    /// main window; everything else is derived from those two, so any theme works.
+    /// in Narrator Manager (Ed, 2026-10-09). The window's background, text colour and accent come
+    /// from the main window; everything else is derived from those, so any theme works.
     ///
     ///   DialogTheme.Apply(win, owner);
     /// </summary>
@@ -23,6 +23,12 @@ namespace TypoZen
             Color b = bg != null ? bg.Color : Colors.White;
             Color t = fg != null ? fg.Color : Colors.Black;
             bool dark = Luma(b) < 0.5;
+            Color accent = Accent(owner, b);
+            bool darkAccent = RelLuma(accent) <= 0.179;
+            Color accentHover = Mix(accent, darkAccent ? 0.14 : -0.10);
+            Color accentPressed = Mix(accent, darkAccent ? -0.15 : -0.22);
+            Color accentText = darkAccent ? Colors.White : Colors.Black;
+            Color danger = Color.FromRgb(0xC4, 0x2B, 0x1C);
             Func<double, SolidColorBrush> shade = amount => Freeze(new SolidColorBrush(Mix(b, amount)));
             Func<Color, double, SolidColorBrush> alpha = (c, a) => Freeze(new SolidColorBrush(Color.FromArgb((byte)(255 * a), c.R, c.G, c.B)));
 
@@ -36,13 +42,45 @@ namespace TypoZen
             d["TzHover"] = shade(dark ? 0.18 : -0.10);
             d["TzPressed"] = shade(dark ? 0.25 : -0.16);
             d["TzBorder"] = shade(dark ? 0.24 : -0.22);
-            d["TzSelected"] = alpha(Accent(b, t), 0.35);
-            d["TzAccent"] = Freeze(new SolidColorBrush(Accent(b, t)));
+            d["TzSelected"] = alpha(accent, 0.35);
+            d["TzThemeAccentBrush"] = Freeze(new SolidColorBrush(accent));
+            d["TzAccent"] = Freeze(new SolidColorBrush(accent));
+            d["TzAccentHover"] = Freeze(new SolidColorBrush(accentHover));
+            d["TzAccentPressed"] = Freeze(new SolidColorBrush(accentPressed));
+            d["TzAccentText"] = Freeze(new SolidColorBrush(accentText));
+            d["TzDanger"] = Freeze(new SolidColorBrush(danger));
+            d["TzDangerHover"] = Freeze(new SolidColorBrush(Mix(danger, 0.12)));
+            d["TzDangerPressed"] = Freeze(new SolidColorBrush(Mix(danger, -0.18)));
+            d["TzDangerText"] = Brushes.White;
+            d["TzPrimaryButton"] = BuildSolidButtonStyle("TzAccent");
+            d["TzDangerButton"] = BuildSolidButtonStyle("TzDanger");
             win.Resources.MergedDictionaries.Add(d);
             if (bg != null) win.Background = bg;
             if (fg != null) win.Foreground = fg;
             ApplyDwmWindowChrome(win, dark);
             win.SourceInitialized += (s, e) => ApplyDwmWindowChrome(win, dark);
+        }
+
+        /// <summary>1px top-bordered footer strip shared across TypoZen dialogs.</summary>
+        public static System.Windows.Controls.Border MakeFooter(
+            Window win, UIElement content, Thickness? padding = null, Thickness? margin = null)
+        {
+            return new System.Windows.Controls.Border
+            {
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                BorderBrush = win != null ? win.TryFindResource("TzBorder") as Brush : null,
+                Padding = padding ?? new Thickness(16, 12, 16, 14),
+                Margin = margin ?? new Thickness(0, 8, 0, 0),
+                Child = content
+            };
+        }
+
+        /// <summary>Style a button as the dialog's primary (or destructive) action with accessible hover states.</summary>
+        public static void SetPrimary(Window win, System.Windows.Controls.Button btn, bool destructive = false)
+        {
+            if (win == null || btn == null) return;
+            var st = win.TryFindResource(destructive ? "TzDangerButton" : "TzPrimaryButton") as Style;
+            if (st != null) btn.Style = st;
         }
 
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
@@ -63,13 +101,34 @@ namespace TypoZen
             catch { }
         }
 
-        /// <summary>The theme's highlight: the accent TypoZen's buttons use, readable on this background.</summary>
-        private static Color Accent(Color bg, Color text)
+        /// <summary>The theme's highlight: TypoZen's real accent when readable on bg, or a Fluent blue fallback.</summary>
+        private static Color Accent(Window owner, Color bg)
         {
+            SolidColorBrush b = null;
+            if (owner != null) b = owner.TryFindResource("TzThemeAccentBrush") as SolidColorBrush;
+            if (b == null && Application.Current != null && Application.Current.MainWindow != null)
+                b = Application.Current.MainWindow.TryFindResource("TzThemeAccentBrush") as SolidColorBrush;
+            if (b != null && ContrastRatio(b.Color, bg) >= 2.1) return b.Color;
             return Luma(bg) < 0.5 ? Color.FromRgb(0x5B, 0x9B, 0xF0) : Color.FromRgb(0x2F, 0x6B, 0xD6);
         }
 
         private static double Luma(Color c) { return (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0; }
+
+        private static double RelLuma(Color c)
+        {
+            Func<byte, double> lin = v =>
+            {
+                double s = v / 255.0;
+                return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+            };
+            return 0.2126 * lin(c.R) + 0.7152 * lin(c.G) + 0.0722 * lin(c.B);
+        }
+
+        private static double ContrastRatio(Color a, Color b)
+        {
+            double l1 = RelLuma(a), l2 = RelLuma(b);
+            return (Math.Max(l1, l2) + 0.05) / (Math.Min(l1, l2) + 0.05);
+        }
 
         /// <summary>Towards white (amount &gt; 0) or black (&lt; 0), by that fraction.</summary>
         private static Color Mix(Color c, double amount)
@@ -81,6 +140,39 @@ namespace TypoZen
         }
 
         private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
+
+        private static Style BuildSolidButtonStyle(string prefix)
+        {
+            string xaml = @"<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+       xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Button'>
+  <Setter Property='Foreground' Value='{DynamicResource {PREFIX}Text}'/>
+  <Setter Property='Background' Value='{DynamicResource {PREFIX}}'/>
+  <Setter Property='BorderBrush' Value='{DynamicResource {PREFIX}}'/>
+  <Setter Property='BorderThickness' Value='1'/>
+  <Setter Property='Padding' Value='12,4'/>
+  <Setter Property='FontWeight' Value='SemiBold'/>
+  <Setter Property='Cursor' Value='Hand'/>
+  <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
+  <Setter Property='HorizontalContentAlignment' Value='Center'/>
+  <Setter Property='Template'>
+    <Setter.Value>
+      <ControlTemplate TargetType='Button'>
+        <Border x:Name='b' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}'
+                BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='4' Padding='{TemplateBinding Padding}'>
+          <ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='Center' RecognizesAccessKey='True'/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='b' Property='Background' Value='{DynamicResource {PREFIX}Hover}'/><Setter TargetName='b' Property='BorderBrush' Value='{DynamicResource {PREFIX}Hover}'/></Trigger>
+          <Trigger Property='IsPressed' Value='True'><Setter TargetName='b' Property='Background' Value='{DynamicResource {PREFIX}Pressed}'/><Setter TargetName='b' Property='BorderBrush' Value='{DynamicResource {PREFIX}Pressed}'/></Trigger>
+          <Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='b' Property='BorderBrush' Value='{DynamicResource TzText}'/></Trigger>
+          <Trigger Property='IsEnabled' Value='False'><Setter TargetName='b' Property='Opacity' Value='0.45'/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate>
+    </Setter.Value>
+  </Setter>
+</Style>".Replace("{PREFIX}", prefix);
+            return (Style)XamlReader.Parse(xaml);
+        }
 
         private const string Styles = @"
 <ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
@@ -173,8 +265,13 @@ namespace TypoZen
                 </ControlTemplate>
               </ToggleButton.Template>
             </ToggleButton>
-            <ContentPresenter IsHitTestVisible='False' Margin='8,2,26,2' VerticalAlignment='Center'
+            <ContentPresenter x:Name='ContentSite' IsHitTestVisible='False' Margin='8,2,26,2' VerticalAlignment='Center'
                               Content='{TemplateBinding SelectionBoxItem}' ContentTemplate='{TemplateBinding SelectionBoxItemTemplate}'/>
+            <TextBox x:Name='PART_EditableTextBox' Style='{x:Null}' Visibility='Hidden' IsReadOnly='{TemplateBinding IsReadOnly}'
+                     Margin='2,1,24,1' Padding='6,0,2,0' VerticalContentAlignment='Center'
+                     Background='Transparent' BorderThickness='0' Focusable='True'
+                     Foreground='{DynamicResource TzText}' CaretBrush='{DynamicResource TzText}'
+                     SelectionBrush='{DynamicResource TzAccent}'/>
             <Popup x:Name='PART_Popup' Placement='Bottom' IsOpen='{TemplateBinding IsDropDownOpen}' AllowsTransparency='True'
                    Focusable='False' PopupAnimation='Fade'>
               <Border Background='{DynamicResource TzField}' BorderBrush='{DynamicResource TzBorder}' BorderThickness='1' CornerRadius='8' Padding='2'
@@ -184,6 +281,11 @@ namespace TypoZen
             </Popup>
           </Grid>
           <ControlTemplate.Triggers>
+            <Trigger Property='IsEditable' Value='True'>
+              <Setter Property='IsTabStop' Value='False'/>
+              <Setter TargetName='PART_EditableTextBox' Property='Visibility' Value='Visible'/>
+              <Setter TargetName='ContentSite' Property='Visibility' Value='Hidden'/>
+            </Trigger>
             <Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.5'/></Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -268,8 +370,14 @@ namespace TypoZen
     </Setter>
   </Style>
 
-  <Style TargetType='CheckBox'><Setter Property='Foreground' Value='{DynamicResource TzText}'/></Style>
-  <Style TargetType='RadioButton'><Setter Property='Foreground' Value='{DynamicResource TzText}'/></Style>
+  <Style TargetType='ProgressBar'>
+    <Setter Property='Foreground' Value='{DynamicResource TzAccent}'/>
+    <Setter Property='Background' Value='{DynamicResource TzField}'/>
+    <Setter Property='BorderBrush' Value='{DynamicResource TzBorder}'/>
+    <Setter Property='BorderThickness' Value='1'/>
+  </Style>
+  <Style TargetType='CheckBox'><Setter Property='Foreground' Value='{DynamicResource TzText}'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/></Style>
+  <Style TargetType='RadioButton'><Setter Property='Foreground' Value='{DynamicResource TzText}'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/></Style>
 </ResourceDictionary>";
     }
 }

@@ -645,34 +645,12 @@ namespace TypoZen
             Func<string, TextBlock> heading = t => new TextBlock { Text = t, FontWeight = FontWeights.SemiBold, FontSize = 13.5, Margin = new Thickness(0, 10, 0, 3) };
             Func<string, TextBlock> note = t => new TextBlock { Text = t, TextWrapping = TextWrapping.Wrap, Opacity = 0.72, Margin = new Thickness(0, 0, 0, 8) };
             Func<string, Button> button = t => new Button { Content = t, Padding = new Thickness(12, 2, 12, 2), Height = 28, Margin = new Thickness(0, 0, 8, 0) };
-            // The action a section exists for -- Save, Play -- in the accent colour, so the eye
-            // finds it first. A template of its own: the system one repaints the background pale
-            // on hover, which would leave white text unreadable.
-            var accent = new SolidColorBrush(Color.FromRgb(0x2F, 0x6B, 0xD6));
+            // The action a section exists for -- Save, Play -- in the theme's accent colour,
+            // so the eye finds it first and keeps contrast on hover.
             Func<string, Button> primary = t =>
             {
                 var b = button(t);
-                b.Foreground = Brushes.White;
-                b.FontWeight = FontWeights.SemiBold;
-                var tpl = new ControlTemplate(typeof(Button));
-                var bd = new FrameworkElementFactory(typeof(Border), "bd");
-                bd.SetValue(Border.BackgroundProperty, accent);
-                bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
-                bd.SetValue(Border.PaddingProperty, new Thickness(12, 4, 12, 4));
-                var cp = new FrameworkElementFactory(typeof(ContentPresenter));
-                cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-                cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-                bd.AppendChild(cp);
-                tpl.VisualTree = bd;
-                var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-                hover.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0x43, 0x7E, 0xE6)), "bd"));
-                var down = new Trigger { Property = System.Windows.Controls.Primitives.ButtonBase.IsPressedProperty, Value = true };
-                down.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0x24, 0x57, 0xB3)), "bd"));
-                var off = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
-                off.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45, "bd"));
-                tpl.Triggers.Add(hover); tpl.Triggers.Add(down); tpl.Triggers.Add(off);
-                b.Template = tpl;
-                b.Cursor = Cursors.Hand;
+                DialogTheme.SetPrimary(win, b);
                 return b;
             };
             Func<UIElement[], StackPanel> row = items =>
@@ -2067,7 +2045,7 @@ namespace TypoZen
                 {
                     if (string.IsNullOrWhiteSpace(editNameBox.Text))
                     {
-                        MessageBox.Show(w, "Give the voice a name.", "Edit voice", MessageBoxButton.OK, MessageBoxImage.Information);
+                        ThemedPrompt.Show(w, "Give the voice a name.", "Edit voice", MessageBoxButton.OK, MessageBoxImage.Information);
                         return;
                     }
                     w.DialogResult = true;

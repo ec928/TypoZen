@@ -297,7 +297,7 @@ namespace TypoZen
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Could not open File Explorer:\n" + ex.Message, "TypoZen", MessageBoxButton.OK, MessageBoxImage.Information);
+                ThemedPrompt.Show(null, "Could not open File Explorer:\n" + ex.Message, "TypoZen", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
 

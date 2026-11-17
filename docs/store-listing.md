@@ -204,7 +204,7 @@ The only capability declared. No data collection, no sign-in. Network use only w
 
 No account, sign-in or purchase is needed; all functionality is available immediately.
 
-To exercise the main paths: open any .md or .txt file to edit it, and any .epub to read it. For the paginated two-page spread, use the two buttons at the right of the toolbar -- click "Scroll" so it reads "Pages", then click "1-Col" so it reads "2-Col". Two columns require pagination, so that order matters. PDFs open in their own reader; images and web pages open read-only in their own tabs.
+To exercise the main paths: open any .md or .txt file to edit it, and any .epub to read it. For the paginated two-page spread, use the two segment groups at the right of the toolbar -- click "Pages", then click "2 Col". Two columns require pagination, so that order matters. PDFs open in their own reader; images and web pages open read-only in their own tabs.
 
 Privacy policy: https://github.com/ec928/TypoZen/blob/master/PRIVACY.md
 
