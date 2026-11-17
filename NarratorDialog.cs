@@ -2110,7 +2110,7 @@ namespace TypoZen
             {
                 var p = presetBox.SelectedItem as PresetItem;
                 if (p == null || !p.Mine) return;
-                if (MessageBox.Show(win, "Delete the preset \"" + p.Name + "\"? The instruction in the box stays as it is.", "Narrator",
+                if (ThemedPrompt.Show(win, "Delete the preset \"" + p.Name + "\"? The instruction in the box stays as it is.", "Narrator",
                                     MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
                 try
                 {
@@ -2484,7 +2484,7 @@ namespace TypoZen
                 if (!removable(v)) return;
                 // A voice in the Qwen narrator's folder is read by Breeze too: say it goes from both.
                 bool shared = v.Source == "qwen" && haveBreeze && haveQwen;
-                if (MessageBox.Show(win, "Delete the voice \"" + v.Name + "\"? "
+                if (ThemedPrompt.Show(win, "Delete the voice \"" + v.Name + "\"? "
                                     + (shared ? "It was made with the Qwen narrator and both narrators use it, so it goes from both. " : "")
                                     + "It goes to the Recycle Bin, so it can be restored from there; copies you exported are not touched. "
                                     + "Characters using it go back to the narrator's voice.",
@@ -3067,7 +3067,7 @@ namespace TypoZen
                         say("Cast is already empty.");
                         return;
                     }
-                    if (MessageBox.Show(win, "Clear all character voice assignments and dialogue quotes for this book?", "Clear cast",
+                    if (ThemedPrompt.Show(win, "Clear all character voice assignments and dialogue quotes for this book?", "Clear cast",
                                         MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK) return;
 
                     castPanel.Children.Clear();
@@ -3518,7 +3518,7 @@ namespace TypoZen
                     return;
                 }
                 if (win.DialogResult != null || !dirty()) return;
-                var answer = MessageBox.Show(win, "Save the changes to the narrator settings?", "Narrator",
+                var answer = ThemedPrompt.Show(win, "Save the changes to the narrator settings?", "Narrator",
                                              MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
                 if (answer == MessageBoxResult.Cancel) e.Cancel = true;
                 else if (answer == MessageBoxResult.Yes && !doSave()) e.Cancel = true;

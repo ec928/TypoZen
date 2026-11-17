@@ -69,6 +69,10 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### Slower and Faster did nothing while a SAPI voice was speaking — **fixed** (0.20.20)
+
+The speed label changed, and the paragraph already being spoken kept its pace. A SAPI prompt does not change speed after it has started. That paragraph is now spoken again from the start at the new speed, and the pace is the labelled multiplier from ×0.5 to ×2. A Windows.Media voice still takes the new speed from the next paragraph.
+
 ### A short table had no right edge — **fixed** (0.20.19)
 
 The last column and the last row draw no outer line, because the rounded frame is that edge. The frame stretched across the page, so a short table ended in the empty margin and looked open on the right. The frame now sits on the grid and stops at the page, so a wide table still wraps instead of scrolling. Same drawing for a table already in a file and one just inserted.

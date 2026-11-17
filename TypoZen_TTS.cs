@@ -68,6 +68,12 @@ namespace TypoZen
         private static System.Diagnostics.Stopwatch _sapiClock;
         private static int _sapiGen;
         private static bool _sapiHeard;
+        // The paragraph this SAPI voice is in the middle of, so a speed change can say it
+        // again. The rate is fixed when Speak starts; the engine will not change it live.
+        private static string _liveText;
+        private static string _liveVoice;
+        private static double _liveSpeed = 1;
+        private static bool _liveSapi;
 
         // HDMI (and some USB / Bluetooth) outputs sleep after a few seconds of silence and
         // drop the first second or so of the next sound while they re-lock. Measured on
@@ -297,6 +303,7 @@ namespace TypoZen
         public static async Task PlayAsync(string text, string voiceId, double speed)
         {
             Stop();
+            _liveSapi = false;
             int gen = ++_generation;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             Note("play #" + gen + ": " + (text ?? "").Length + " chars, voice " + (voiceId ?? "(default)"));
@@ -349,12 +356,6 @@ namespace TypoZen
                 else if (voiceId != null && voiceId.StartsWith("sapi:"))
                 {
                     string realName = voiceId.Substring("sapi:".Length);
-                    // Speed in SAPI5 is -10 to 10. Default is 0.
-                    // Map 0.5x -> -5, 1.0x -> 0, 2.0x -> 10. (Approximation)
-                    int rate = (int)((speed - 1.0) * 10.0);
-                    if (rate < -10) rate = -10;
-                    if (rate > 10) rate = 10;
-
                     // Straight to the audio device, on this (UI) thread's synthesizer:
                     // SpeakAsync returns at once and sound starts with the first audio the
                     // voice produces. Stop() has already cancelled whatever was speaking.
@@ -368,26 +369,47 @@ namespace TypoZen
                         var fallback = _sapiSynth.GetInstalledVoices().FirstOrDefault(v => v.Enabled);
                         if (fallback != null) _sapiSynth.SelectVoice(fallback.VoiceInfo.Name);
                     }
-                    _sapiSynth.Rate = rate;
-                    // The prompt's culture is the voice's own: a prompt in another culture
-                    // lets SAPI switch to a voice that matches it instead.
-                    var pb = new System.Speech.Synthesis.PromptBuilder(_sapiSynth.Voice.Culture);
-                    if (DateTime.UtcNow - _lastSound >= QuietAfter)
-                    {
-                        pb.AppendBreak(TimeSpan.FromMilliseconds(WakeSilenceMs));   // HDMI wake-up
-                    }
-                    pb.AppendText(text ?? "");
+                    // prosody rate is a multiplier of the voice's own pace, so x2 is twice
+                    // as fast. SpeechSynthesizer.Rate (-10..10) is not that scale, and a
+                    // prompt already speaking ignores a later change to it.
+                    if (speed < 0.5) speed = 0.5;
+                    if (speed > 2.0) speed = 2.0;
+                    _sapiSynth.Rate = 0;
+                    var culture = _sapiSynth.Voice != null ? _sapiSynth.Voice.Culture : null;
+                    string lang = (culture != null && !string.IsNullOrEmpty(culture.Name)) ? culture.Name : "en-US";
+                    bool wake = DateTime.UtcNow - _lastSound >= QuietAfter;
+                    string rate = speed.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                    string ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='"
+                        + XmlText(lang) + "'>"
+                        + (wake ? "<break time='" + WakeSilenceMs + "ms'/>" : "")
+                        + "<prosody rate='" + rate + "'>" + XmlText(text) + "</prosody></speak>";
+                    _liveText = text ?? "";
+                    _liveVoice = voiceId;
+                    _liveSpeed = speed;
+                    _liveSapi = true;
                     _sapiGen = gen;
                     _sapiHeard = false;
                     _sapiClock = System.Diagnostics.Stopwatch.StartNew();
                     _sounding = true;
-                    _sapiPrompt = _sapiSynth.SpeakAsync(pb);
+                    try
+                    {
+                        _sapiPrompt = _sapiSynth.SpeakSsmlAsync(ssml);
+                    }
+                    catch (Exception ex)
+                    {
+                        Note("play #" + gen + " ssml rate failed (" + ex.GetType().Name + "); using the engine rate");
+                        _sapiSynth.Rate = SapiRate(speed);
+                        var pb = new System.Speech.Synthesis.PromptBuilder(culture ?? System.Globalization.CultureInfo.CurrentCulture);
+                        if (wake) pb.AppendBreak(TimeSpan.FromMilliseconds(WakeSilenceMs));
+                        pb.AppendText(text ?? "");
+                        _sapiPrompt = _sapiSynth.SpeakAsync(pb);
+                    }
                     if (_held)
                     {
                         try { _sapiSynth.Pause(); } catch { }
                         Note("play #" + gen + " held before it started");
                     }
-                    else Note("play #" + gen + " speaking directly, voice ready after " + sw.ElapsedMilliseconds + " ms");
+                    else Note("play #" + gen + " speaking directly at x" + rate + ", voice ready after " + sw.ElapsedMilliseconds + " ms");
                     return;
                 }
                 else
@@ -470,6 +492,48 @@ namespace TypoZen
             _held = false;
             if (_sapiPrompt != null) { try { _sapiSynth.Resume(); } catch { } return; }
             try { _player.Play(); } catch { }
+        }
+
+        /// <summary>
+        /// Say the paragraph already in progress again, at <paramref name="speed"/>.
+        /// A SAPI voice locks its pace when the prompt starts, so the minus and plus
+        /// buttons otherwise do nothing until the next paragraph. No prompt means the
+        /// next paragraph will pick the rate up itself.
+        /// </summary>
+        public static void RetargetSpeed(double speed)
+        {
+            if (!_liveSapi || _sapiPrompt == null || _liveText == null) return;
+            if (Math.Abs(_liveSpeed - speed) < 0.001) return;
+            string text = _liveText;
+            string voice = _liveVoice;
+            bool held = _held;
+            _ = PlayAsync(text, voice, speed);
+            if (held) Pause();
+        }
+
+        /// <summary>SAPI's -10..10 dial. Used only if the voice rejects prosody.</summary>
+        private static int SapiRate(double speed)
+        {
+            int rate = (int)Math.Round((speed - 1.0) * 10.0);
+            if (rate < -10) rate = -10;
+            if (rate > 10) rate = 10;
+            return rate;
+        }
+
+        /// <summary>Text inside SSML. Quotes are legal there; controls are not.</summary>
+        private static string XmlText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            var sb = new System.Text.StringBuilder(text.Length);
+            foreach (char c in text)
+            {
+                if (c == '<') sb.Append("&lt;");
+                else if (c == '>') sb.Append("&gt;");
+                else if (c == '&') sb.Append("&amp;");
+                else if (char.IsControl(c) && c != '\t' && c != '\n' && c != '\r') continue;
+                else sb.Append(c);
+            }
+            return sb.ToString();
         }
 
         /// <summary>Drop the sound without reporting that the paragraph ended.</summary>

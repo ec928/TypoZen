@@ -1355,8 +1355,8 @@
             flex-direction: column;
             gap: 8px;
             padding: 12px 12px 10px;
-            min-width: 360px;
-            max-width: 440px;
+            min-width: 420px;
+            max-width: 480px;
             background: color-mix(in srgb, var(--bg, #1E1E2E) 88%, transparent);
             backdrop-filter: blur(18px) saturate(1.2);
             color: var(--tx, #F4F4F5);
@@ -1364,7 +1364,7 @@
             border-radius: 10px;
             box-shadow: 0 12px 32px rgba(0,0,0,0.45);
             font-family: var(--ui-font);
-            font-size: 13px;
+            font-size: var(--ui-fs, 13px);
         }
         #findBar.open { display: flex; }
         #findBar .find-row {
@@ -1373,31 +1373,33 @@
             gap: 6px;
         }
         #findBar .find-row label {
-            width: 58px;
+            width: 68px;
             flex-shrink: 0;
             opacity: 0.8;
-            font-size: 12px;
+            font-size: var(--ui-fs, 13px);
         }
         #findBar input[type="text"] {
             flex: 1;
             min-width: 0;
-            padding: 6px 10px;
-            border-radius: 6px;
+            height: 28px;
+            padding: 0 10px;
+            border-radius: 4px;
             border: 1px solid var(--border, #3F3F46);
             background: var(--surface, rgba(255,255,255,0.06));
             color: var(--tx, #F4F4F5);
             outline: none;
-            font-size: 13px;
+            font-family: var(--ui-font);
+            font-size: var(--ui-fs, 13px);
         }
         #findBar input[type="text"]:focus {
             border-color: var(--accent, #3B82F6);
         }
         #findCount {
-            min-width: 56px;
+            min-width: 52px;
             text-align: center;
             opacity: 0.9;
             font-variant-numeric: tabular-nums;
-            font-size: 12px;
+            font-size: var(--ui-fs, 13px);
             white-space: nowrap;
         }
         #findBar .find-opts {
@@ -1405,7 +1407,7 @@
             flex-wrap: wrap;
             align-items: center;
             gap: 10px 14px;
-            font-size: 12px;
+            font-size: var(--ui-fs, 13px);
             opacity: 0.95;
         }
         #findBar .find-opts label {
@@ -1417,18 +1419,20 @@
             user-select: none;
         }
         #findBar button {
-            padding: 5px 10px;
-            border-radius: 6px;
+            height: 28px;
+            padding: 0 12px;
+            border-radius: 4px;
             border: 1px solid var(--border, #3F3F46);
             background: transparent;
             color: var(--tx, #F4F4F5);
             cursor: pointer;
-            font-size: 12px;
-            line-height: 1.2;
+            font-family: var(--ui-font);
+            font-size: var(--ui-fs, 13px);
+            line-height: 1;
             white-space: nowrap;
         }
         #findBar button:hover {
-            background: var(--surface, rgba(255,255,255,0.08));
+            background: var(--tint-hover, rgba(255,255,255,0.08));
         }
         #findBar button.primary {
             background: var(--accent, #3B82F6);
@@ -1436,10 +1440,11 @@
             color: var(--accent-tx, #fff);
             font-weight: 600;
         }
-        #findBar button.find-close-btn {
-            font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
-            font-size: 10px;
-            padding: 6px 8px;
+        #findBar button.find-icon {
+            width: 28px;
+            padding: 0;
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            font-size: 12px;
         }
         #findBar button:disabled {
             opacity: 0.4;
@@ -1687,7 +1692,41 @@
             flex-direction: column-reverse;
         }
         #selPop[hidden] { display: none; }
-        .selpop-actions { display: flex; flex-direction: row; gap: 4px; padding: 4px; }
+        .selpop-actions { display: flex; flex-direction: row; gap: 2px; padding: 4px; }
+        .tz-glyph {
+            font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+            font-style: normal;
+            font-weight: normal;
+            font-size: 16px;
+            line-height: 1;
+            width: 16px;
+            height: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: none;
+        }
+        .tz-glyph-text {
+            font-family: var(--ui-font);
+            font-weight: 600;
+            font-size: 13px;
+            text-decoration: line-through;
+        }
+        .tz-glyph .mark-rib { margin: 0; }
+        #tablePop .tz-iconbar {
+            color: var(--tx, #F4F4F5);
+            border-radius: 10px;
+            background-color: color-mix(in srgb, var(--bg, #18181B) 88%, transparent);
+            background-image: linear-gradient(var(--surface, transparent), var(--surface, transparent));
+            border: 1px solid var(--border, #3F3F46);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.36);
+        }
+        #tablePop .tz-iconbar-rule {
+            height: auto;
+            width: 1px;
+            align-self: stretch;
+            margin: 4px;
+        }
         .selpop-group { display: flex; flex-direction: column; gap: 2px; }
         /* The link chip is the selection popover's twin: same surface, same buttons.
            One component, two things you can point at. */
@@ -1714,14 +1753,15 @@
         }
 
         .selpop-btn {
-            display: flex; align-items: center; gap: 5px;
+            display: flex; align-items: center; gap: 8px;
             background: none; border: 0; border-radius: 4px;
-            padding: 5px 9px; cursor: pointer;
+            height: 32px; padding: 0 10px; cursor: pointer;
             font-family: var(--ui-font); font-size: var(--ui-fs);
             color: var(--tx-muted, #A1A1AA); white-space: nowrap;
         }
         .selpop-icon-btn {
-            padding: 6px; justify-content: center; width: 38px; height: 36px; box-sizing: border-box;
+            width: 32px; height: 32px; padding: 0; justify-content: center; gap: 0;
+            box-sizing: border-box;
         }
         .selpop-icon-btn svg {
             width: 20px; height: 20px; margin: 0 !important;

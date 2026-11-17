@@ -108,6 +108,7 @@
     <Compile Include="BreezeNarrator.cs" />
     <Compile Include="NarrationMonitor.cs" />
     <Compile Include="DialogTheme.cs" />
+    <Compile Include="ThemedPrompt.cs" />
     <Compile Include="NarratorDialog.cs" />
     <Compile Include="VoicePicker.cs" />
     <Compile Include="GeminiDirector.cs" />

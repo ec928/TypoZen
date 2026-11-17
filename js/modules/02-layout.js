@@ -2273,7 +2273,7 @@
             const title = document.getElementById('linkModalTitle');
             const tIn = document.getElementById('linkModalText');
             const hIn = document.getElementById('linkModalHref');
-            if (title) title.textContent = anchor ? 'Edit Link' : 'Add Link';
+            if (title) title.textContent = anchor ? 'Edit link' : 'Add link';
             if (tIn) tIn.value = anchor ? (anchor.textContent || '') : (currentSelectionText() || '');
             if (hIn) hIn.value = anchor ? (anchor.getAttribute('href') || '') : '';
             hideLinkPop();

@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.20.19";
+        internal const string AppVersion = "0.20.20";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -830,7 +830,7 @@ namespace TypoZen
         private bool _zoomApplying; // suppress ZoomFactorChanged while we set ZoomFactor
         // Phase 3A view selectors
         private Border _grpMode;
-        private Button _btnColumnToggle, _btnScrollToggle;
+        private UIElement _btnColumnToggle, _btnScrollToggle;
         private readonly Dictionary<string, Button> _segments = new Dictionary<string, Button>();
         // Last state the page resolved. Cached only so a two-state button knows which
         // value to ask for next and so a column change can swap the window geometry.
@@ -1851,46 +1851,15 @@ namespace TypoZen
             BindSegment("btnModeSource", "mode", "source");
             BindSegment("btnModePreview", "mode", "preview");
             BindSegment("btnModeReader", "mode", "reader");
-            // Column and Scroll are single two-state buttons. They still hold no authority:
-            // the click just asks for the other value and the page's resolver decides.
-            _btnColumnToggle = FindElement("btnColumnToggle") as Button;
-            if (_btnColumnToggle != null)
-            {
-                _btnColumnToggle.Click += (s, e) =>
-                {
-                    // Intentional layout change for the active tab — the only place that
-                    // writes tab.Columns during a normal session (session restore is the other).
-                    int next = (_viewColumns == 2) ? 1 : 2;
-                    if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
-                        && !_viewColumnsLocked)
-                    {
-                        var tab = _tabs[_activeTabIndex];
-                        tab.Columns = next;
-                        if (IsBookTab(tab))
-                        {
-                            var prefs = LoadHostPrefs();
-                            prefs.PrefsEPub.Columns = next;
-                            WriteHostPrefs(prefs);
-                        }
-                    }
-                    SendMsg("cmd:view_set:columns:" + next);
-                    try { if (_webView != null) _webView.Focus(); } catch { }
-                };
-            }
-            _btnScrollToggle = FindElement("btnScrollToggle") as Button;
-            if (_btnScrollToggle != null)
-            {
-                _btnScrollToggle.Click += (s, e) =>
-                {
-                    string nextScroll = _viewScroll == "pagination" ? "scroll" : "pagination";
-                    // A PDF tab remembers its own (DocTab.Scroll), as every tab does its columns.
-                    if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
-                        && IsPdfTab(_tabs[_activeTabIndex]) && !_viewScrollLocked)
-                        _tabs[_activeTabIndex].Scroll = nextScroll;
-                    SendMsg("cmd:view_set:scroll:" + nextScroll);
-                    try { if (_webView != null) _webView.Focus(); } catch { }
-                };
-            }
+            // Column and Scroll are segments, same as Mode. A click asks for that value.
+            // The page's resolver still decides, and tab.Columns is still written only here
+            // (and by session restore).
+            _btnColumnToggle = FindElement("grpColumns") as UIElement;
+            BindColumnSegment("btnColumn1", 1);
+            BindColumnSegment("btnColumn2", 2);
+            _btnScrollToggle = FindElement("grpScroll") as UIElement;
+            BindScrollSegment("btnScrollScroll", "scroll");
+            BindScrollSegment("btnScrollPages", "pagination");
 
             _grpMode = FindElement("grpMode") as Border;
             RenderViewSelectors("preview", 1, "scroll", false, false);
@@ -3314,7 +3283,7 @@ namespace TypoZen
 
                 if (!synced && !ActiveTabLooksClean())
                 {
-                    var stuck = WinForms.MessageBox.Show(
+                    var stuck = ThemedPrompt.Show(
                         "Could not read the latest text from the editor.\n\n" +
                         "Recent typing may be lost if you close now.\n\n" +
                         "Yes = Close anyway\nNo = Stay open",
@@ -3337,7 +3306,7 @@ namespace TypoZen
                     bool isActive = (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
                         && _tabs[_activeTabIndex] == tab);
 
-                    var res = WinForms.MessageBox.Show(
+                    var res = ThemedPrompt.Show(
                         "Save changes to " + TabDisplayName(tab) + "?",
                         "Unsaved Changes",
                         WinForms.MessageBoxButtons.YesNoCancel,
@@ -3359,7 +3328,7 @@ namespace TypoZen
                     {
                         if (!SyncActiveTabFromEditor(allowStaleIfClean: false, timeoutMs: 8000))
                         {
-                            var sure = WinForms.MessageBox.Show(
+                            var sure = ThemedPrompt.Show(
                                 "Still could not read the editor.\n\n" +
                                 "Save the last known text in memory? It may be incomplete.\n\n" +
                                 "Yes = Save known text\nNo = Skip save\nCancel = Stay open",
@@ -3635,7 +3604,7 @@ namespace TypoZen
             _lossPromptCount++;
             if (_e2eMode) return true;              // never block a headless run on a dialog
 
-            var res = WinForms.MessageBox.Show(
+            var res = ThemedPrompt.Show(
                 summary + "\nSave anyway?",
                 "Large amount of content would be lost",
                 WinForms.MessageBoxButtons.YesNo,
@@ -3656,7 +3625,7 @@ namespace TypoZen
             foreach (char c in newText) if (c == '�') lost++;
             if (lost == 0) return true;
             if (_e2eMode) return true;             // never block a headless run on a dialog
-            var res = WinForms.MessageBox.Show(
+            var res = ThemedPrompt.Show(
                 (lost == 1 ? "1 character" : lost + " characters") + " in this file could not be read as text and show as �. " +
                 "Saving writes � in their place, and the original bytes are lost." +
                 Environment.NewLine + Environment.NewLine +
@@ -3795,7 +3764,7 @@ namespace TypoZen
                     }
                     else if (!_e2eMode)
                     {
-                        overwrite = WinForms.MessageBox.Show(
+                        overwrite = ThemedPrompt.Show(
                             "This file has changed on disk since it was opened or last saved.\n\n" +
                             "Save anyway and overwrite those changes?",
                             "File changed on disk",
@@ -4961,7 +4930,7 @@ namespace TypoZen
             if (!TryDiskPromptStub(out choice))
             {
                 if (_e2eMode) return;
-                choice = WinForms.MessageBox.Show(
+                choice = ThemedPrompt.Show(
                     "This file has changed on disk.\n\n" +
                     Path.GetFileName(tab.FilePath) + "\n\n" +
                     "Yes = Reload from disk (discard your unsaved edits)\n" +
@@ -6918,6 +6887,58 @@ namespace TypoZen
         /// pressed; the page's resolveViewState decides what the new state is and echoes
         /// it back on view_state:, so the rules live in exactly one place.
         /// </summary>
+        private void BindColumnSegment(string name, int columns)
+        {
+            var b = FindElement(name) as Button;
+            if (b == null) return;
+            _segments[name] = b;
+            b.Click += (s, e) =>
+            {
+                if (_viewColumns == columns)
+                {
+                    try { if (_webView != null) _webView.Focus(); } catch { }
+                    return;
+                }
+                // Intentional layout change for the active tab. Session restore is the
+                // other writer of tab.Columns.
+                if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    && !_viewColumnsLocked)
+                {
+                    var tab = _tabs[_activeTabIndex];
+                    tab.Columns = columns;
+                    if (IsBookTab(tab))
+                    {
+                        var prefs = LoadHostPrefs();
+                        prefs.PrefsEPub.Columns = columns;
+                        WriteHostPrefs(prefs);
+                    }
+                }
+                SendMsg("cmd:view_set:columns:" + columns);
+                try { if (_webView != null) _webView.Focus(); } catch { }
+            };
+        }
+
+        private void BindScrollSegment(string name, string scroll)
+        {
+            var b = FindElement(name) as Button;
+            if (b == null) return;
+            _segments[name] = b;
+            b.Click += (s, e) =>
+            {
+                if (string.Equals(_viewScroll, scroll, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { if (_webView != null) _webView.Focus(); } catch { }
+                    return;
+                }
+                // A PDF tab remembers its own scroll, as every tab does its columns.
+                if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+                    && IsPdfTab(_tabs[_activeTabIndex]) && !_viewScrollLocked)
+                    _tabs[_activeTabIndex].Scroll = scroll;
+                SendMsg("cmd:view_set:scroll:" + scroll);
+                try { if (_webView != null) _webView.Focus(); } catch { }
+            };
+        }
+
         private void BindSegment(string name, string selector, string value)
         {
             var b = FindElement(name) as Button;
@@ -7066,21 +7087,12 @@ namespace TypoZen
             bool lockSource = (readOnlyDoc && !isNativeHtml && !isEngineHtml) || isPdf;
             bool lockPreview = isNative || isBook || isEngineHtml || isNativeHtml || isPdf;
 
-            if (_btnColumnToggle != null)
-            {
-                // Shade a two-state button whenever it is NOT on its default, so the
-                // toolbar reads like the Mode pillbox: shading means "switched on".
-                // 1-Col and Scroll are the defaults, so 2-Col and Pages are the lit states.
-                _btnColumnToggle.Content = columns == 2 ? "2-Col" : "1-Col";
-                SetToolbarActive(_btnColumnToggle, columns == 2);
-                SetControlLocked(_btnColumnToggle, columnsLocked || isNative);
-            }
-            if (_btnScrollToggle != null)
-            {
-                _btnScrollToggle.Content = scroll == "pagination" ? "Pages" : "Scroll";
-                SetToolbarActive(_btnScrollToggle, scroll == "pagination");
-                SetControlLocked(_btnScrollToggle, scrollLocked || readOnlyDoc);
-            }
+            SelectSegment("btnColumn1", columns != 2);
+            SelectSegment("btnColumn2", columns == 2);
+            SetControlLocked(_btnColumnToggle, columnsLocked || isNative);
+            SelectSegment("btnScrollScroll", scroll != "pagination");
+            SelectSegment("btnScrollPages", scroll == "pagination");
+            SetControlLocked(_btnScrollToggle, scrollLocked || readOnlyDoc);
 
             // The two dead segments are locked individually rather than the whole group,
             // so Reader keeps its full-strength selected fill. "You are reading" is still
@@ -9890,7 +9902,7 @@ namespace TypoZen
                     WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                 return false;
             }
-            if (WinForms.MessageBox.Show(
+            if (ThemedPrompt.Show(
                     "Delete the theme \"" + victim.Name + "\"?\n\nThis cannot be undone.",
                     "Delete Theme", WinForms.MessageBoxButtons.YesNo,
                     WinForms.MessageBoxIcon.Warning) != WinForms.DialogResult.Yes) return false;
@@ -11832,8 +11844,9 @@ namespace TypoZen
 
         /// <summary>
         /// The one place the reading speed is set, from the Speed submenu or the reading bar.
-        /// The narrator changes the rate of what is playing now; a Windows voice takes it from the
-        /// next paragraph; Kokoro from the next piece it prepares (setReadBar).
+        /// The narrator changes the rate of what is playing now; Kokoro from the next piece it
+        /// prepares (setReadBar). A Windows voice locks the pace of the prompt it has already
+        /// started, so once the clicks settle that paragraph is spoken again at the new rate.
         /// </summary>
         private void SetReadingSpeed(double v)
         {
@@ -11843,6 +11856,32 @@ namespace TypoZen
             if (ChosenNarrator() != null) SendNarratorSettings();
             RebuildSpeedMenu();
             PushReadBar();
+            ArmWindowsSpeedRetarget();
+        }
+
+        private System.Windows.Threading.DispatcherTimer _speedRetargetTimer;
+
+        /// <summary>
+        /// Several presses of plus or minus are one change. The paragraph restarts once,
+        /// at the rate the label settled on.
+        /// </summary>
+        private void ArmWindowsSpeedRetarget()
+        {
+            if (_speedRetargetTimer == null)
+            {
+                _speedRetargetTimer = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(350)
+                };
+                _speedRetargetTimer.Tick += (s, e) =>
+                {
+                    _speedRetargetTimer.Stop();
+                    try { TypoZen_TTS.RetargetSpeed(_ttsSpeed); }
+                    catch (Exception ex) { LogFault("reading speed", ex); }
+                };
+            }
+            _speedRetargetTimer.Stop();
+            _speedRetargetTimer.Start();
         }
 
         /// <summary>File > Read Aloud > Speed: every step, the one in use ticked and named in the header.</summary>
@@ -12661,7 +12700,7 @@ namespace TypoZen
 
             string fallbackName = fallback != null ? fallback.Name : "Windows installed voice";
 
-            var res = WinForms.MessageBox.Show(
+            var res = ThemedPrompt.Show(
                 "Microsoft Online Voices could not be reached (connection failed or offline).\n\n" +
                 "Would you like to carry on reading with \"" + fallbackName + "\"?",
                 "Read Aloud - Online Speech Unavailable",
@@ -16455,7 +16494,7 @@ namespace TypoZen
             // A PDF with unsaved annotations or form entries asks, like a document.
             if (IsPdfTab(tab) && tab.PdfEdited)
             {
-                var pres = WinForms.MessageBox.Show(
+                var pres = ThemedPrompt.Show(
                     "Save your changes to " + Path.GetFileName(tab.FilePath) + "?\n\n" +
                     "They are saved as a new PDF unless you choose the original.",
                     "Unsaved Changes",
@@ -16473,7 +16512,7 @@ namespace TypoZen
             }
             else if (tab.IsDirty)
             {
-                var res = WinForms.MessageBox.Show(
+                var res = ThemedPrompt.Show(
                     "Save changes to " + TabDisplayName(tab) + "?",
                     "Unsaved Changes",
                     WinForms.MessageBoxButtons.YesNoCancel,
@@ -16765,7 +16804,7 @@ namespace TypoZen
                     int nulCount = CountNulChars(raw);
                     if (!_e2eMode)
                     {
-                        var nulChoice = WinForms.MessageBox.Show(
+                        var nulChoice = ThemedPrompt.Show(
                             "This file appears to be corrupted.\n\n" +
                             Path.GetFileName(path) + " contains " + nulCount.ToString("N0") +
                             " null character" + (nulCount == 1 ? "" : "s") +
@@ -16809,7 +16848,7 @@ namespace TypoZen
                         {
                             var choice = _e2eMode
                                 ? WinForms.DialogResult.No
-                                : WinForms.MessageBox.Show(
+                                : ThemedPrompt.Show(
                                     "This file is open with unsaved changes.\n\n" +
                                     "Yes = Reload from disk (discard edits)\n" +
                                     "No = Keep your edits\n" +
@@ -18253,7 +18292,7 @@ namespace TypoZen
             if (files > 0)
             {
                 sb.Append("\n\nOpen the folder?");
-                var ans = WinForms.MessageBox.Show(sb.ToString(), pages ? "Save Pages as Images" : "Save All Images in PDF",
+                var ans = ThemedPrompt.Show(sb.ToString(), pages ? "Save Pages as Images" : "Save All Images in PDF",
                     WinForms.MessageBoxButtons.YesNo, WinForms.MessageBoxIcon.Information);
                 if (ans == WinForms.DialogResult.Yes)
                 {
@@ -19212,7 +19251,7 @@ namespace TypoZen
                     try
                     {
                         File.WriteAllText(dlg.FileName, html, Encoding.UTF8);
-                        WinForms.MessageBox.Show("Exported successfully to " + dlg.FileName, "Export Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
+                        ThemedPrompt.Show("Exported successfully to " + dlg.FileName, "Export Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                     }
                     catch (Exception ex)
                     {

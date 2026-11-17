@@ -1083,7 +1083,7 @@ namespace TypoZen
                     string audioDir = narr.AudioDir(cacheDir);
                     long currentAudioSize = GetCachedSize(audioDir);
                     if (currentAudioSize == 0) currentAudioSize = SizeOf(audioDir);
-                    var ask = MessageBox.Show(win,
+                    var ask = ThemedPrompt.Show(win,
                         "Delete the narration audio? " + Human(currentAudioSize) + " will be deleted, and "
                         + "anything narrated again will render again.",
                         "Extensions", MessageBoxButton.OKCancel, MessageBoxImage.Question);
@@ -1110,7 +1110,7 @@ namespace TypoZen
                         // again. It used to delete the whole folder, voices included, without a word.
                         long goes = 0;
                         if (isNarr) foreach (string part in narr.RemovableParts) goes += SizeOf(Path.Combine(now.Dir, part));
-                        var ask = MessageBox.Show(win,
+                        var ask = ThemedPrompt.Show(win,
                             isNarr
                                 ? "Remove " + now.Title + "? The program and its models, " + Human(goes) + ", will be deleted. "
                                   + "Your voices, casts and narrator settings are kept, and are there again if it is set up again."
@@ -1152,7 +1152,7 @@ namespace TypoZen
                         // Asked on a fresh install, not when carrying on from a cancelled one.
                         if (!File.Exists(qi.InstallFlag(cacheDir)))
                         {
-                            var risk = MessageBox.Show(win,
+                            var risk = ThemedPrompt.Show(win,
                                 qi.Name + " is experimental.\n\n"
                                 + "Install downloads about " + Human(narr.DownloadBytes) + " from other parties' "
                                 + "servers (github.com, pypi.org, download.pytorch.org and huggingface.co) and runs a "

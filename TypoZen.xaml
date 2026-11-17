@@ -828,14 +828,31 @@
 
                     <Border Style="{StaticResource ToolbarDivider}"/>
 
-                    <!-- Two-state layout toggles -->
-                    <Button x:Name="btnColumnToggle" Style="{StaticResource ToolbarStateButton}"
-                            Content="1-Col" FontSize="12" MinWidth="52" Margin="0,0,6,0"
-                            ToolTip="Column layout — click to switch. 2 columns require Pagination"/>
-
-                    <Button x:Name="btnScrollToggle" Style="{StaticResource ToolbarStateButton}"
-                            Content="Scroll" FontSize="12" MinWidth="60"
-                            ToolTip="Continuous scrolling or discrete pages — click to switch"/>
+                    <!-- Same segment as Source / Preview / Reader. The tooltip names the choice. -->
+                    <Border x:Name="grpColumns" Style="{StaticResource SegmentGroup}" Margin="0,0,6,0"
+                            ToolTip="Column layout. Two columns use pages.">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="btnColumn1" Style="{StaticResource SegmentButton}"
+                                    Content="&#xE7C3;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                                    ToolTip="One column"/>
+                            <Border Style="{StaticResource SegmentDivider}"/>
+                            <Button x:Name="btnColumn2" Style="{StaticResource SegmentButton}"
+                                    Content="&#xE89A;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                                    ToolTip="Two columns"/>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="grpScroll" Style="{StaticResource SegmentGroup}" Margin="0"
+                            ToolTip="Scroll or pages">
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="btnScrollScroll" Style="{StaticResource SegmentButton}"
+                                    Content="&#xE8FD;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                                    ToolTip="Scroll"/>
+                            <Border Style="{StaticResource SegmentDivider}"/>
+                            <Button x:Name="btnScrollPages" Style="{StaticResource SegmentButton}"
+                                    Content="&#xE7C4;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
+                                    ToolTip="Pages"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Grid>
         </Border>
