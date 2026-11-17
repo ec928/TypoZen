@@ -3562,6 +3562,95 @@
                 handleEnterAtBlock(block, !!e.shiftKey);
             }, true);
 
+            // Arrow Down off the last row, and Arrow Up off the header, leave the table.
+            // The browser's own move stops inside the block, past the cells, and the
+            // letter typed there is drawn and then dropped on the next save.
+            editor.addEventListener('keydown', function onEditorLeaveTable(e) {
+                if (window.isComposing || e.isComposing || e.keyCode === 229) return;
+                if (state.mode === 'source' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+                const key = e.key || '';
+                const printable = key.length === 1;
+                const arrow = key === 'ArrowDown' || key === 'ArrowUp' || key === 'ArrowLeft' || key === 'ArrowRight';
+                if (!arrow && !printable) return;
+                const sel = window.getSelection();
+                if (!sel || !sel.isCollapsed || !sel.rangeCount || !sel.anchorNode || !editor.contains(sel.anchorNode)) return;
+                const block = getAncestorBlock(sel.anchorNode);
+                if (!block || !block.querySelector('table')) return;
+                const cell = cellFromSelection(sel);
+                if (!cell) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const downward = key !== 'ArrowUp' && key !== 'ArrowLeft';
+                    if (printable) {
+                        const before = getMarkdownContent(false);
+                        leaveTable(block, true, { skipHistory: true });
+                        try { document.execCommand('insertText', false, key); } catch (eI) {}
+                        try {
+                            if (typeof HistoryManager !== 'undefined')
+                                HistoryManager.recordEditPair(before, getMarkdownContent(false));
+                        } catch (eH) {}
+                    } else {
+                        leaveTable(block, downward);
+                    }
+                    return;
+                }
+                if (!arrow || key === 'ArrowLeft' || key === 'ArrowRight') return;
+                const rows = block.querySelectorAll('tr');
+                const idx = Array.prototype.indexOf.call(rows, cell.parentElement);
+                const downward = key === 'ArrowDown';
+                const atEdge = downward ? idx === rows.length - 1 : idx === 0;
+                if (!atEdge || !caretOnTableEdgeLine(cell, downward)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                leaveTable(block, downward);
+            }, true);
+
+            // A click on the table border, in the gap under it, or in the empty page
+            // below the editor used to leave the caret in the block but outside every
+            // cell. The editor is only as tall as the text (min-height aside); the dark
+            // area under a short table is the wrapper, so the listener has to be there.
+            // The browser places the caret on mouseup, after mousedown, so the exit runs
+            // once that placement has happened.
+            function tableClickShouldLeave(e) {
+                if (!e || e.button !== 0 || e.shiftKey || state.mode === 'source') return null;
+                if (!e.target || !e.target.closest) return null;
+                const surface = document.getElementById('editor-wrapper') || editor;
+                if (!surface.contains(e.target)) return null;
+                if (e.target.closest('#source-cm, #tablePop, #selPop, #linkPop, #findBar')) return null;
+                if (e.target.closest('td, th')) return null;
+                let block = e.target.closest('#editor .block');
+                if (block && block.querySelector('table')) return block;
+                if (block) return null;
+                const blocks = editor.querySelectorAll('.block');
+                block = blocks.length ? blocks[blocks.length - 1] : null;
+                if (!block || !block.querySelector('table')) return null;
+                const box = block.getBoundingClientRect();
+                if (e.clientY < box.bottom - 2) return null;
+                return block;
+            }
+            function tableClickLeavesDown(block, e) {
+                try {
+                    const box = block.getBoundingClientRect();
+                    return e.clientY >= box.top + box.height / 2;
+                } catch (err) { return true; }
+            }
+            const tableClickSurface = document.getElementById('editor-wrapper') || editor;
+            tableClickSurface.addEventListener('mousedown', function onEditorClickOutOfTable(e) {
+                if (tableClickShouldLeave(e)) e.preventDefault();
+            }, true);
+            tableClickSurface.addEventListener('mouseup', function onEditorClickOutOfTableUp(e) {
+                const block = tableClickShouldLeave(e);
+                if (!block) return;
+                const down = tableClickLeavesDown(block, e);
+                setTimeout(function () {
+                    try {
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount && !sel.isCollapsed) return;
+                        leaveTable(block, down);
+                    } catch (eL) {}
+                }, 0);
+            }, true);
+
             // Tab / Shift+Tab moves between table cells (and grows the table at the end).
             // Outside a table Tab keeps its existing meaning, so list indenting is intact.
             editor.addEventListener('keydown', function onEditorTableTab(e) {
@@ -3597,6 +3686,12 @@
                 try {
                     const sel = window.getSelection();
                     if (sel && sel.anchorNode) blk = getAncestorBlock(sel.anchorNode);
+                    // An IME commit outside the cells paints on the border and the
+                    // table serializer drops it. Lift it before the flush below.
+                    if (blk && sel && sel.isCollapsed && blk.querySelector('table') && !cellFromSelection(sel)) {
+                        leaveTable(blk, true);
+                        return;
+                    }
                 } catch (eB) {}
                 if (blk && typeof markBlockEdited === 'function') markBlockEdited(blk);
                 flushActiveBlockToRaw();
@@ -3615,6 +3710,13 @@
                     try {
                         const sel = window.getSelection();
                         if (sel && sel.anchorNode) blk = getAncestorBlock(sel.anchorNode);
+                        // Paste, drop, or a spell replacement can land outside the cells
+                        // without a key we already handled. The serializer never reads
+                        // that text, so move it into the paragraph under the table first.
+                        if (blk && sel && sel.isCollapsed && blk.querySelector('table') && !cellFromSelection(sel)) {
+                            leaveTable(blk, true);
+                            return;
+                        }
                     } catch (eB) {}
                     if (blk && typeof markBlockEdited === 'function') markBlockEdited(blk);
                     flushActiveBlockToRaw();
@@ -4336,6 +4438,130 @@
             return true;
         }
 
+        /**
+         * Text typed once the caret has fallen out of the cells. It paints on the
+         * table's edge and the cell serializer never saves it. Lift it out and
+         * drop the nodes so the next render cannot throw it away.
+         */
+        function cellFromSelection(sel) {
+            try {
+                if (!sel || !sel.anchorNode) return null;
+                const node = sel.anchorNode;
+                const el = node.nodeType === 1 ? node : node.parentElement;
+                return el && el.closest ? el.closest('td, th') : null;
+            } catch (e) { return null; }
+        }
+
+        function takeStrayAroundTable(block) {
+            // Anything in the block that is not a cell. The browser parks the caret
+            // there once Arrow Down has left the last row, and it will also insert
+            // the typed letters inside the table but outside td/th. Cell text stays.
+            let text = '';
+            function absorb(node) {
+                if (!node || !node.parentNode) return;
+                if (node.nodeType === 3) text += node.nodeValue || '';
+                else text += node.textContent || '';
+                node.parentNode.removeChild(node);
+            }
+            function walk(parent) {
+                const kids = Array.prototype.slice.call(parent.childNodes);
+                for (let i = 0; i < kids.length; i++) {
+                    const n = kids[i];
+                    if (n.nodeType === 3) { absorb(n); continue; }
+                    if (n.nodeType !== 1) continue;
+                    const tag = n.tagName;
+                    if (tag === 'TD' || tag === 'TH') continue;
+                    if (tag === 'TABLE' || tag === 'THEAD' || tag === 'TBODY' || tag === 'TFOOT'
+                        || tag === 'TR' || tag === 'COLGROUP' || tag === 'COL'
+                        || (n.classList && n.classList.contains('table-wrapper'))) {
+                        walk(n);
+                        continue;
+                    }
+                    absorb(n);
+                }
+            }
+            walk(block);
+            return String(text).replace(/\u00a0/g, ' ').replace(/[\u200B\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
+        }
+
+        function placeCaretEdge(block, atEnd) {
+            if (!block) return;
+            window.isProgrammaticFocus = true;
+            try { focusBlock(block); } catch (eF) {}
+            try {
+                const sel = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(block);
+                range.collapse(!atEnd);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            } catch (eC) {}
+            try { ensureCaretVisible(block); } catch (eV) {}
+        }
+
+        /**
+         * Leave a table for a real paragraph. Downward is the paragraph after it;
+         * upward is the one before. A table that is the last block grows one, because
+         * that is the only way out. Stray text already typed in the gap becomes that
+         * paragraph, since it was never part of the table.
+         */
+        function leaveTable(block, downward, opts) {
+            if (!block) return null;
+            const skipHistory = !!(opts && opts.skipHistory);
+            const before = skipHistory ? null : getMarkdownContent(false);
+            const stray = takeStrayAroundTable(block);
+            let target = null;
+            if (downward) {
+                const next = block.nextElementSibling;
+                const nextIsBlock = !!(next && next.classList && next.classList.contains('block'));
+                if (stray) target = createBlock(stray, block);
+                else if (nextIsBlock) target = next;
+                else target = createBlock('', block);
+                placeCaretEdge(target, !!stray);
+            } else {
+                const prev = block.previousElementSibling;
+                const prevIsBlock = !!(prev && prev.classList && prev.classList.contains('block'));
+                if (prevIsBlock) {
+                    if (stray) target = createBlock(stray, prev);
+                    else target = prev;
+                    placeCaretEdge(target, true);
+                } else if (!DocumentModel.virtEnabled
+                    && !(typeof pageWindowingActive === 'function' && pageWindowingActive())) {
+                    target = createBlock(stray, block);
+                    if (target && target.parentNode) editor.insertBefore(target, block);
+                    try { DocumentModel.rebuildFromFullDom(); } catch (eR) {}
+                    placeCaretEdge(target, !!stray);
+                } else {
+                    target = createBlock(stray, block);
+                    placeCaretEdge(target, !!stray);
+                }
+            }
+            try { refreshLastGoodDocRaws(); } catch (eG) {}
+            _contentCache = null;
+            if (!skipHistory && before != null && typeof HistoryManager !== 'undefined') {
+                try {
+                    const after = getMarkdownContent(false);
+                    if (after !== before) HistoryManager.recordEditPair(before, after);
+                } catch (eH) {}
+            }
+            try { if (typeof updateStats === 'function') updateStats(); } catch (eS) {}
+            return target;
+        }
+
+        /** Caret on the first or last visual line of a cell. One line always is. */
+        function caretOnTableEdgeLine(cell, downward) {
+            try {
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount) return true;
+                const rects = sel.getRangeAt(0).getClientRects();
+                const rect = rects && rects.length ? rects[0] : sel.getRangeAt(0).getBoundingClientRect();
+                const box = cell.getBoundingClientRect();
+                if (!rect || !rect.height || !box.height) return true;
+                const gap = downward ? (box.bottom - rect.bottom) : (rect.top - box.top);
+                return gap < rect.height * 0.75;
+            } catch (e) { return true; }
+        }
+
         /** Does the range start in one table cell and end in another? */
         function rangeCrossesTableCells(range) {
             try {
@@ -4358,7 +4584,20 @@
             if (selInBlock && block.querySelector('pre') && enterInCodeBlock(block, sel.getRangeAt(0), opts)) return;
             // A table is one block, and splitting it destroyed it. Tab moves between cells;
             // Enter with a selection deletes the selected range inside the cell without splitting.
+            // A collapsed caret that is not in a cell has already fallen out of the grid
+            // (Arrow Down off the last row does this) and Enter has to leave, or the
+            // caret stays on the border forever.
             if (selInBlock && block.querySelector('table')) {
+                let inCell = false;
+                try {
+                    const node = sel.anchorNode;
+                    const el = node && (node.nodeType === 1 ? node : node.parentElement);
+                    inCell = !!(el && el.closest && el.closest('td, th'));
+                } catch (eCell) {}
+                if (!inCell) {
+                    leaveTable(block, true);
+                    return;
+                }
                 if (wasCollapsed) return;
                 if (!skipHistory) HistoryManager.beginEdit();
                 try {

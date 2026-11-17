@@ -36,6 +36,7 @@ const CASES = [
     ['Delete stops at a code block', 'A\n\n```\nx\n```', 'A', true, ['Delete', 'Delete'], 'A\n```\nx\n```'],
     ['Delete stops at a table', TABLE, 'A', true, ['Delete', 'Delete'], 'A\n| h1 | h2 |\n|---|---|\n| c1 | c2 |\n\nZ'],
     ['a table edit changes that cell', TABLE, 'c1', true, ['x'], 'A\n\n| h1 | h2 |\n|---|---|\n| c1x | c2 |\n\nZ'],
+    ['ArrowDown off the last row types under the table', '| h1 | h2 |\n|---|---|\n| c1 | c2 |', 'c1', true, ['ArrowDown', 'Y'], '| h1 | h2 |\n|---|---|\n| c1 | c2 |\nY'],
     ['typing keeps a titled link', 'A\n\nalpha [t](https://e.com "T") omega', 'alpha', true, ['Q'], 'A\n\nalphaQ [t](https://e.com "T") omega'],
     ['typing keeps a titled image', 'A\n\nalpha ![p](a.png "T") omega', 'alpha', true, ['Q'], 'A\n\nalphaQ ![p](a.png "T") omega'],
     ['typing keeps a list marker', 'A\n\n   * item', 'item', true, ['x'], 'A\n\n   * itemx'],

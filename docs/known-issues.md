@@ -69,6 +69,10 @@ Books, PDFs and Reader are not checked.
 
 ## Fixed / mitigated (kept briefly so regressions are recognized)
 
+### The caret could not leave a table — **fixed** (0.20.18)
+
+Arrow Down on the last row, and a click on the table border or in the empty page under it, left the caret in the table block but outside every cell. Letters typed there were drawn on the border and dropped on the next save, because a table serializes only its cells. Arrow Down on the last line and Arrow Up on the header line now move to the paragraph after or before the table, creating one when it is missing. A click in that gap does the same. Enter inside a cell still does not split the table. Text that had already been typed in the gap is kept as that paragraph. Guarded by `tests/table-exit-browser.mjs` and one case in `tests/key-smoke-browser.mjs`.
+
 ### Bold across lines, Ctrl+B in a code block or table, Enter and paste across table cells — **fixed** (0.20.16)
 
 Found by `selection-attack.mjs` on seeds the gate had not run, and by reading its saved text
