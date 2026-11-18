@@ -224,6 +224,37 @@ try {
     w = await where();
     check(w.raw === 'Already here.' && w.blocks === 2 && w.md.indexOf('\n\n\n') < 0, 'ArrowDown moves into the paragraph that was already there', w);
 
+    console.log('\n=== Backspace from a list into a table leaves the caret in the cell ===');
+    await load('1. Keep this\n2. Drop this\n\n| A | B |\n|---|---|\n| C | D |\n');
+    const from = await page.evaluate(() => {
+        const tw = document.createTreeWalker(document.getElementById('editor'), NodeFilter.SHOW_TEXT);
+        let t; while ((t = tw.nextNode()) && t.nodeValue.indexOf('Drop') < 0) {}
+        const i = t.nodeValue.indexOf('Drop');
+        const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 1);
+        const b = r.getBoundingClientRect();
+        return { x: b.left + 1, y: b.top + b.height / 2 };
+    });
+    const to = await page.evaluate(() => {
+        const cell = document.querySelector('#editor tbody td');
+        const r = cell.getBoundingClientRect();
+        return { x: r.left + 8, y: r.top + r.height / 2 };
+    });
+    await page.mouse.click(from.x, from.y);
+    await sleep(40);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(to.x, to.y);
+    await page.keyboard.up('Shift');
+    await sleep(40);
+    await page.keyboard.press('Backspace');
+    await settled(page);
+    w = await where();
+    check(w.inCell && w.cell.indexOf('C') >= 0, 'the caret stays in the cell the selection ended in', w);
+    await page.keyboard.type('Q');
+    await settled(page);
+    w = await where();
+    check(w.inCell && w.cell.indexOf('Q') >= 0 && w.cell.indexOf('C') >= 0, 'the next letter is typed in that cell', w);
+    check(w.md.indexOf('\nQ\n') < 0 && w.md.indexOf('| Q') >= 0, 'the letter is not a paragraph after the table', w.md);
+
     console.log('\n=== ArrowUp from the header leaves upward ===');
     await load('Before.\n' + TABLE);
     await clickCell('#editor thead th:first-child');

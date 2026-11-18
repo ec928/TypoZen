@@ -120,7 +120,7 @@ WebView, while the editor WebView stays up, drops the renderer and stops the nex
 stacking on it. The project tree does that after five opens (`PdfRendererRefreshOpens`).
 Measured on that 12-page file: GPU private 192, 227, 255, 270, 269 MB, then 258 MB after
 the renderer exited, and the sixth open painted in 537 ms at 251 MB. A continuous scroll
-of one long PDF is not capped. Installed 2026-11-18. The version string stayed 0.20.23.
+of one long PDF is not capped. Installed 2026-11-18 as 0.20.23. Published in 0.20.24.
 Detail: `pdf-memory.md`. History: `known-issues.md`, "Memory still grew after the worker
 was shared".
 

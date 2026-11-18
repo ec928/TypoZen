@@ -218,7 +218,7 @@ The app now opens that PDF on its own WebView and disposes the renderer after
 five opens. On the same file, GPU private went 192, 227, 255, 270, 269 MB;
 leaving the fifth dropped the renderer count from 2 to 1 and GPU private
 eased to 258 MB; the sixth open painted in 537 ms at 251 MB. Installed
-2026-11-18. The version string stayed 0.20.23. One continuous scroll of a
+2026-11-18 as 0.20.23. Published in 0.20.24. One continuous scroll of a
 single PDF is not capped. Detail is in `pdf-memory.md`.
 
 ### Not a problem: pdf.js errors when switching PDFs mid-render

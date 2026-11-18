@@ -52,7 +52,16 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.20.16 package (2026-11-14). Written against the 0.20.0 package. If 0.20.0 was never submitted, the 0.20.0 text below still applies: merge the two and keep under the limit._
+_Limit 1,500 characters. For the 0.20.24 package. Written against the published 0.20.16 package. If 0.20.16 was never accepted, merge this with the 0.20.16 and 0.20.0 text below and stay under the limit._
+
+- Fluent window chrome, rounded corners, and an updated About window. Dialogs follow the theme, and single-line fields are centered. Toolbar layout controls are segments.
+- One reading speed, from ×0.5 to ×2. A SAPI voice speaks the current paragraph again from the start at the new speed.
+- Leave a table with Arrow Up, Arrow Down, or a click below it. A short table's frame sits on its last column.
+- Shift+Down at the end of a paragraph selects the next paragraph.
+- The PDF reader is released after five opens, so opening PDFs no longer keeps a renderer for each one. One PDF stays open for the whole reading.
+- Deleting a selection that runs into a table leaves the caret in that cell, so the next letter is typed there.
+
+_The 0.20.16 package text, written against 0.20.0. Merge it in if that package was never accepted:_
 
 - Shift+PageUp and Shift+PageDown select a page at a time.
 - Bold, italic and strikethrough across lines mark exactly what is selected.
@@ -89,9 +98,9 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | # | Where in Partner Center | What |
 | --- | --- | --- |
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
-| 2 | Packages | the newest MSIX (0.20.16.0); every other package removed from the submission |
+| 2 | Packages | the newest MSIX (0.20.24.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.20.16 text above (merged with the 0.20.0 text if 0.20.0 was never submitted). Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.20.24 text above (merged with the older text if 0.20.16 was never accepted). Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |

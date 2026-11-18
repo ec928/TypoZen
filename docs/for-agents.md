@@ -18,7 +18,7 @@ Product truth lives here and in the README; `docs/archive/` is history.
 | `README.md` | User-facing product behaviour (current) |
 | `docs/for-agents.md` | This file — constraints, keyboard matrix, non-goals |
 | `docs/known-issues.md` | Product limits + fixed/mitigated notes (not a dump of suite noise) |
-| `docs/pdf-memory.md` | PDF GPU-private growth, and the five-open renderer dispose that bounds it (installed 2026-11-18, version string 0.20.23) |
+| `docs/pdf-memory.md` | PDF GPU-private growth, and the five-open renderer dispose that bounds it (installed 2026-11-18 as 0.20.23; published in 0.20.24) |
 | `docs/testing-strategy.md` | 3-tier test structure (Fast Core, Attack/Gate, Scoped App/MSIX) |
 | `docs/developer-editor-analysis.md` | Parked code-editor attempt |
 | `docs/releasing.md` | Build, package, release, Store. Read section 5 before touching install identity |

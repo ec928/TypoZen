@@ -3,7 +3,7 @@
 Measured 2026-11-18 on this machine, against the project tree's `TypoZen.exe`
 (it loads `js/` from beside itself). That build was installed afterwards: the
 Start Menu exe matched it. The version string stayed 0.20.23. This work did
-not bump it. Commit `4659f0d`.
+not bump it. Commit `4659f0d`. Published in 0.20.24.
 
 The sections through "Not tried" are what one renderer does when it is kept.
 The last section is the bound.

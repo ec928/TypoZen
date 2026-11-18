@@ -1453,6 +1453,44 @@
                         s.addRange(r);
                     }
                 } catch (eCellCaret) {}
+                // Offset 0 can land on an empty text node in front of the grid. The caret
+                // is then in the table block and in no cell, and the next letter is placed
+                // after the table. The cut is the first cell that still has text.
+                try {
+                    if (b.querySelector('table')) {
+                        const s = window.getSelection();
+                        const inCell = s && typeof cellFromSelection === 'function' && cellFromSelection(s);
+                        if (s && !inCell) {
+                            const cells = b.querySelectorAll('td, th');
+                            let placed = false;
+                            const placeAt = function (node, off) {
+                                const r = document.createRange();
+                                r.setStart(node, off);
+                                r.collapse(true);
+                                s.removeAllRanges();
+                                s.addRange(r);
+                                placed = true;
+                            };
+                            for (let i = 0; i < cells.length && !placed; i++) {
+                                const tw = document.createTreeWalker(cells[i], NodeFilter.SHOW_TEXT);
+                                let t;
+                                while ((t = tw.nextNode())) {
+                                    if (String(t.nodeValue || '').replace(/[\u200B\uFEFF\u00a0\s]/g, '') !== '') {
+                                        placeAt(t, 0);
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!placed && cells.length) {
+                                const r = document.createRange();
+                                r.selectNodeContents(cells[0]);
+                                r.collapse(true);
+                                s.removeAllRanges();
+                                s.addRange(r);
+                            }
+                        }
+                    }
+                } catch (eTblCaret) {}
                 return b;
             } catch (err) { return null; }
         }
