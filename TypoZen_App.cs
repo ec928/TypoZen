@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.20.22";
+        internal const string AppVersion = "0.20.23";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -17868,8 +17868,8 @@ namespace TypoZen
             };
             Func<string, int, TextBox> box = (text, width) => new TextBox
             {
-                Text = text, Width = width, Height = 24, Margin = new Thickness(8, 0, 0, 0),
-                Padding = new Thickness(5, 2, 5, 2), VerticalContentAlignment = VerticalAlignment.Center,
+                Text = text, Width = width, Height = 26, Margin = new Thickness(8, 0, 0, 0),
+                Padding = new Thickness(6, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             };
             Func<UIElement, UIElement, StackPanel> line = (a, b) =>
@@ -20021,11 +20021,11 @@ namespace TypoZen
             fontSizeLabelGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             fontSizeLabelGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
 
-            var fontLabel = new TextBlock { Text = "Font", FontWeight = FontWeights.SemiBold };
+            var fontLabel = new TextBlock { Text = "Font", FontWeight = FontWeights.Normal, Opacity = 0.8 };
             Grid.SetColumn(fontLabel, 0);
             fontSizeLabelGrid.Children.Add(fontLabel);
 
-            var sizeLabel = new TextBlock { Text = "Size", FontWeight = FontWeights.SemiBold, Margin = new Thickness(8, 0, 0, 0) };
+            var sizeLabel = new TextBlock { Text = "Size", FontWeight = FontWeights.Normal, Opacity = 0.8, Margin = new Thickness(8, 0, 0, 0) };
             Grid.SetColumn(sizeLabel, 1);
             fontSizeLabelGrid.Children.Add(sizeLabel);
 
@@ -20036,7 +20036,7 @@ namespace TypoZen
             fontSizesComboGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             fontSizesComboGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
 
-            _cmbFont = new ComboBox { Height = 28 };
+            _cmbFont = new ComboBox { Height = 30 };
             for (int i = 0; i < _fontPresets.Length; i++)
                 _cmbFont.Items.Add(_fontPresets[i][0]);
             if (_cmbFont.Items.Count > 0) _cmbFont.SelectedIndex = selectedFont;
@@ -20045,7 +20045,7 @@ namespace TypoZen
             fontSizesComboGrid.Children.Add(_cmbFont);
 
             // Editable so any value in range can be typed, not just the presets.
-            _cmbSize = new ComboBox { Height = 28, Margin = new Thickness(8, 0, 0, 0), IsEditable = true };
+            _cmbSize = new ComboBox { Height = 30, Margin = new Thickness(8, 0, 0, 0), IsEditable = true };
             foreach (int sz in new[] { 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 26, 28 })
                 _cmbSize.Items.Add(sz.ToString());
             _cmbSize.Text = _resetFs.ToString();
@@ -20159,7 +20159,14 @@ namespace TypoZen
             var lbl = new TextBlock { Text = label, Margin = new Thickness(0, 4, 0, 4), FontWeight = FontWeights.Normal, Opacity = 0.8 };
             Grid.SetRow(lbl, row++);
             root.Children.Add(lbl);
-            var tb = new TextBox { Text = value, Height = 28, Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(6, 4, 6, 4) };
+            var tb = new TextBox
+            {
+                Text = value,
+                Height = 30,
+                Margin = new Thickness(0, 0, 0, 4),
+                Padding = new Thickness(8, 0, 8, 0),
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
             Grid.SetRow(tb, row++);
             root.Children.Add(tb);
             return tb;
@@ -20176,7 +20183,7 @@ namespace TypoZen
             var btnPick = new Button
             {
                 Width = 48,
-                Height = 28,
+                Height = 30,
                 Margin = new Thickness(0, 0, 8, 0),
                 ToolTip = "Pick color",
                 Padding = new Thickness(0)
@@ -20196,8 +20203,8 @@ namespace TypoZen
             var tb = new TextBox
             {
                 Text = hex,
-                Height = 28,
-                Padding = new Thickness(6, 4, 6, 4),
+                Height = 30,
+                Padding = new Thickness(8, 0, 8, 0),
                 VerticalContentAlignment = VerticalAlignment.Center,
                 FontFamily = new FontFamily("Consolas, Courier New, monospace")
             };

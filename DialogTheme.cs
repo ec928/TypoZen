@@ -209,7 +209,7 @@ namespace TypoZen
     <Setter Property='CaretBrush' Value='{DynamicResource TzText}'/>
     <Setter Property='SelectionBrush' Value='{DynamicResource TzAccent}'/>
     <Setter Property='BorderThickness' Value='1'/>
-    <Setter Property='Padding' Value='6,4'/>
+    <Setter Property='Padding' Value='8,2'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='TextBox'>
@@ -218,6 +218,8 @@ namespace TypoZen
             <ScrollViewer x:Name='PART_ContentHost' Margin='{TemplateBinding Padding}' Focusable='False'/>
           </Border>
           <ControlTemplate.Triggers>
+            <Trigger Property='VerticalContentAlignment' Value='Center'><Setter TargetName='PART_ContentHost' Property='VerticalAlignment' Value='Center'/></Trigger>
+            <Trigger Property='VerticalContentAlignment' Value='Bottom'><Setter TargetName='PART_ContentHost' Property='VerticalAlignment' Value='Bottom'/></Trigger>
             <Trigger Property='IsKeyboardFocusWithin' Value='True'><Setter TargetName='b' Property='BorderBrush' Value='{DynamicResource TzAccent}'/></Trigger>
             <Trigger Property='IsEnabled' Value='False'><Setter TargetName='b' Property='Opacity' Value='0.5'/></Trigger>
           </ControlTemplate.Triggers>
