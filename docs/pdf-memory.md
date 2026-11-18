@@ -1,9 +1,12 @@
 # PDF memory after the shared worker
 
-Open. Measured 2026-11-18 on this machine, against the project tree's
-`TypoZen.exe` (it loads `js/` from beside itself). The installed app,
-`%LOCALAPPDATA%\Programs\TypoZen`, is still 0.20.22 and does not contain these
-edits. Nothing here was committed or installed.
+Measured 2026-11-18 on this machine, against the project tree's `TypoZen.exe`
+(it loads `js/` from beside itself). That build was installed afterwards: the
+Start Menu exe matched it. The version string stayed 0.20.23. This work did
+not bump it. Commit `4659f0d`.
+
+The sections through "Not tried" are what one renderer does when it is kept.
+The last section is the bound.
 
 The 2026-11-14 encyclopedia numbers are in `known-issues.md` ("Memory still grew
 after the worker was shared") and `backlog.md`. That file was not on this
@@ -145,19 +148,19 @@ are reused and the bitmaps are closed.
 - `textLayerMode` and `annotationMode` turned off on the viewer probe.
 - A memory-infra dump that actually returned allocator sizes.
 
-The local probes (`tests/tz-pdfmem-*.mjs`) are not part of the suite.
+The local probes that produced the tables above were not part of the suite,
+and they are not in the tree.
 
 ## Bound: the PDF renderer is destroyed after five opens
 
-Decided 2026-11-18. A count of five, not a GPU-private cap. This is in the
-project tree only. It is not installed and not committed. The Start Menu app
-is still 0.20.22. `Program.AppVersion` was already `0.20.23` before this
-change; this work did not bump it.
+Decided 2026-11-18. A count of five, not a GPU-private cap. Installed the same
+day. `Program.AppVersion` was already `0.20.23` before this change.
 
-PDFs open on a second WebView (`_pdfWebView`) that loads the same template as
-the editor. The editor WebView stays up for the session. Both share one
-environment and one GPU process. Hiding the PDF view does not release its
-renderer. `RetirePdfSurface` removes the control and disposes it, which ends
+PDFs open on their own WebView (`_pdfWebView`) that loads the same template as
+the editor. The native WebView is a different control, used for images, media,
+HTML, and for printing the original PDF. The editor WebView stays up for the
+session. The PDF view and the editor share one environment and one GPU process.
+Hiding the PDF view does not release its renderer. `RetirePdfSurface` removes the control and disposes it, which ends
 that renderer. The GPU process stays because the editor view is still there.
 
 `PdfRendererRefreshOpens` is 5. Every host `OpenPdf` counts, including the
