@@ -56,8 +56,11 @@
      * end it: each PDF opened left a worker behind for the rest of the session, holding its
      * memory -- nine workers and over 1 GB after four round trips to a 536-page PDF, with a
      * forced garbage collection (2026-11-14). A document given a worker frees its data in
-     * that worker when its loading task is destroyed (dropTask), and the worker itself stays
-     * one: the task does not own a worker it was given, so destroying the task does not end it.
+     * that worker when its loading task is destroyed (dropTask). PDF.js 6.3 then destroys
+     * that worker too, including the one this session passed in. Every close was starting
+     * a new worker, and the decoded pages stayed in the renderer. The task's worker
+     * reference is cleared first, so destroy still drops the document and the session
+     * worker keeps running.
      * PDF.js 6 has no PDFDocumentProxy.destroy; calling it throws and frees nothing.
      */
     function sharedWorker() {
@@ -70,10 +73,15 @@
      * open waits its turn, and a second destroy of the same task (a cancelled open, then
      * teardown) is safe.
      */
+    function releaseDocument(task) {
+        const worker = task._worker;
+        if (worker && S.worker === worker) task._worker = null;
+        return task.destroy();
+    }
     function dropTask(task) {
         if (task && S.task === task) S.task = null;
         if (!task) return Promise.resolve(S.destroying);
-        const done = task.destroy().catch(() => { });
+        const done = releaseDocument(task).catch(() => { });
         S.destroying = Promise.resolve(S.destroying).then(() => done, () => done);
         return S.destroying;
     }
@@ -81,7 +89,7 @@
     async function ensureLib() {
         if (S.lib) return;
         const lib = await import(BASE + 'pdf.min.mjs');
-        lib.GlobalWorkerOptions.workerSrc = BASE + 'pdf.worker.min.mjs';
+        lib.GlobalWorkerOptions.workerSrc = BASE + 'typozen-pdf.worker.mjs';
         // pdf_viewer.mjs finds the library here, so it has to be set before the import.
         globalThis.pdfjsLib = lib;
         S.ui = await import(BASE + 'pdf_viewer.mjs');
@@ -136,6 +144,26 @@
         // for the rest of the session. The document goes by its loading task (dropTask).
         const task = S.task || (S.doc && S.doc.loadingTask) || null;
         S.task = null;
+        // setDocument(null) drops the page list without releasing each page. destroy()
+        // goes through PDF.js reset, which takes the canvas wrapper out of the page
+        // and only then sets the canvas size to zero. The loop below then finds no
+        // canvas still in #pdfView.
+        try {
+            const pages = S.viewer && S.viewer._pages;
+            if (pages) for (let i = 0; i < pages.length; i++) {
+                try { pages[i].destroy(); } catch (eD) { }
+            }
+        } catch (eP) { }
+        try {
+            const live = document.getElementById('pdfView');
+            if (live) {
+                const canvases = live.querySelectorAll('canvas');
+                for (let i = 0; i < canvases.length; i++) {
+                    canvases[i].width = 0;
+                    canvases[i].height = 0;
+                }
+            }
+        } catch (eC) { }
         try { if (S.viewer) S.viewer.setDocument(null); } catch (e) { }
         try { if (S.linkService) S.linkService.setDocument(null); } catch (e) { }
         try { if (S.viewerAbort) S.viewerAbort.abort(); } catch (e) { }
@@ -1467,7 +1495,7 @@
             ocrStatus(failed ? failed + (failed === 1 ? ' scanned page' : ' scanned pages') + ' could not be read' : '');
         } finally {
             if (S.ocrStats) S.ocrStats.finished = true;
-            try { if (task) await task.destroy(); } catch (e) { }
+            try { if (task) await dropTask(task); } catch (e) { }
         }
     }
 
@@ -1931,7 +1959,7 @@
         } catch (err) {
             result.error = String(err && err.message ? err.message : err);
         } finally {
-            try { if (task) await task.destroy(); } catch (e) { }
+            try { if (task) await dropTask(task); } catch (e) { }
             delete exportJobs[job.job];
             try { postMsg('pdf_export_done:' + JSON.stringify(result)); } catch (e) { }
         }

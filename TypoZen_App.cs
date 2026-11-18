@@ -640,8 +640,23 @@ namespace TypoZen
         }
 
         private WebView2 _webView;
-        /// <summary>Second surface for PDF / image / media (Chromium-native read-only).</summary>
+        /// <summary>Second surface for image / media / HTML (Chromium-native read-only).</summary>
         private WebView2 _nativeWebView;
+        /// <summary>
+        /// The PDF reader. Same template as the editor, its own renderer, so closing
+        /// it returns the GPU memory a document destroy inside one renderer does not.
+        /// Created on the first PDF open. Discarded on the way out of every 5th open.
+        /// </summary>
+        private WebView2 _pdfWebView;
+        private bool _pdfSurfaceVisible;
+        private bool _pdfPageReady;
+        private int _pdfOpens;
+        private int _pdfGen;
+        private TaskCompletionSource<bool> _pdfReadyTcs;
+        private CoreWebView2 _pdfCoreDying;
+        private string _editorPageUrl;
+        /// <summary>Opens on one renderer before it is destroyed. The next open pays the create.</summary>
+        private const int PdfRendererRefreshOpens = 5;
         private WinForms.Panel _webViewPanel;
         private string _mappedNativeFolder;
         /// <summary>
@@ -7253,14 +7268,19 @@ namespace TypoZen
             }
         }
 
+        private WebView2 ActiveSurfaceView()
+        {
+            if (_pdfSurfaceVisible && _pdfWebView != null) return _pdfWebView;
+            if (_nativeSurfaceVisible && _nativeWebView != null) return _nativeWebView;
+            return _webView;
+        }
+
         private void ApplyZoomToWebView()
         {
             try
             {
-                if (_nativeSurfaceVisible && _nativeWebView != null)
-                    _nativeWebView.ZoomFactor = _zoomFactor;
-                else if (_webView != null)
-                    _webView.ZoomFactor = _zoomFactor;
+                var active = ActiveSurfaceView();
+                if (active != null) active.ZoomFactor = _zoomFactor;
             }
             catch { }
             // ZoomFactor scales the whole page, chrome included, while the WPF menus never
@@ -7309,8 +7329,7 @@ namespace TypoZen
                 // Ignore an event from the surface that is not on screen: a hidden
                 // WebView's zoom is not what the reader is looking at.
                 var src = sender as WebView2;
-                var active = (_nativeSurfaceVisible && _nativeWebView != null)
-                    ? _nativeWebView : _webView;
+                var active = ActiveSurfaceView();
                 if (active == null) return;
                 if (src != null && !ReferenceEquals(src, active)) return;
                 double raw = active.ZoomFactor;
@@ -7721,8 +7740,9 @@ namespace TypoZen
                         "navigating (webview {0}x{1} visible={2}, window visible={3})",
                         _webView.Width, _webView.Height, _webView.Visible, this.IsVisible));
                     // perf=1 switches on the page-side marks; absent, they are inert.
-                    _webView.CoreWebView2.Navigate("https://localapp/" + navName + "?v=" + ticks
-                        + (Program.PerfEnabled ? "&perf=1" : ""));
+                    _editorPageUrl = "https://localapp/" + navName + "?v=" + ticks
+                        + (Program.PerfEnabled ? "&perf=1" : "");
+                    _webView.CoreWebView2.Navigate(_editorPageUrl);
                 }
                 else
                 {
@@ -7739,6 +7759,20 @@ namespace TypoZen
         {
             string msg = e.TryGetWebMessageAsString();
             if (string.IsNullOrEmpty(msg)) return;
+
+            // The PDF reader is a second copy of the template. Its own ready, prefs and
+            // typing belong to an empty editor, and acting on them restores the session
+            // twice or writes the empty page over the document that is open.
+            bool fromPdf = (_pdfWebView != null && _pdfWebView.CoreWebView2 != null
+                    && ReferenceEquals(sender, _pdfWebView.CoreWebView2))
+                || (_pdfCoreDying != null && ReferenceEquals(sender, _pdfCoreDying));
+            if (fromPdf && !PdfSurfaceMessageAllowed(msg))
+                return;
+            if (msg.StartsWith("ready_pdf", StringComparison.Ordinal))
+            {
+                NotePdfPageReady();
+                return;
+            }
 
             // Files dropped on the page, to open as tabs. The page cannot see a dropped
             // file's path; it passes the files themselves (postMessageWithAdditionalObjects)
@@ -13112,6 +13146,48 @@ namespace TypoZen
         }
 
         /// <summary>
+        /// What the PDF reader may tell the host. Everything else is the empty editor
+        /// behind that page (ready, save_prefs, typing) and must not land.
+        /// </summary>
+        private static bool PdfSurfaceMessageAllowed(string msg)
+        {
+            if (string.IsNullOrEmpty(msg)) return false;
+            if (msg.StartsWith("ready_pdf", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("perf:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("telemetry:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("pdf_", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("book_position:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("load_failed:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("chapter:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("view_state:reader", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("view_profile_applied:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("sidebar_state:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("zoom:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("tab:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("shortcut:", StringComparison.Ordinal)) return true;
+            if (msg == "save_shortcut" || msg == "save_as_shortcut") return true;
+            if (msg.StartsWith("menu_access:", StringComparison.Ordinal)) return true;
+            if (msg == "reveal_chrome" || msg == "focus_webview" || msg == "overlay_closed") return true;
+            if (msg.StartsWith("define:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("cmd:search_web:", StringComparison.Ordinal)) return true;
+            if (msg == "open_user_guide" || msg == "feedback" || msg == "support") return true;
+            if (msg.StartsWith("spell_", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("progress:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("marks_set:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("open_doc:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("open_external:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("open_file_path:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("reveal_doc:", StringComparison.Ordinal)) return true;
+            if (msg == "host_open_dropped") return true;
+            if (msg.StartsWith("host_tts_", StringComparison.Ordinal)) return true;
+            if (msg == "host_word_voice?") return true;
+            if (msg.StartsWith("debug_", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("stats:", StringComparison.Ordinal)
+                && msg.EndsWith(",pdf", StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        /// <summary>
         /// Help > Syntax &amp; Shortcuts and About, on any tab. Both are panels in the editor
         /// page, which a native tab (image, media, HTML page) hides -- so Help was greyed
         /// there whole. Over a native tab the page is shown on top for as long as the panel
@@ -13156,9 +13232,14 @@ namespace TypoZen
             // dirtied the other tab. None of that told you anything.
             if (_nativeSurfaceVisible && IsEditorDocumentMessage(msg))
                 return;
-            if (_webView != null && _webView.CoreWebView2 != null)
+            CoreWebView2 core = null;
+            if (_pdfSurfaceVisible && _pdfWebView != null && _pdfWebView.CoreWebView2 != null)
+                core = _pdfWebView.CoreWebView2;
+            else if (_webView != null)
+                core = _webView.CoreWebView2;
+            if (core != null)
             {
-                _webView.CoreWebView2.PostWebMessageAsString(msg);
+                try { core.PostWebMessageAsString(msg); } catch { }
             }
         }
 
@@ -13393,14 +13474,22 @@ namespace TypoZen
         /// Run a script that returns a JSON string value. Short timeout only.
         /// Re-entrant calls return null immediately (avoids nested PushFrame deadlock).
         /// </summary>
-        private string ExecuteScriptBlocking(string script, int timeoutMs)
+        private CoreWebView2 PdfScriptCore()
+        {
+            if (_pdfWebView != null && _pdfWebView.CoreWebView2 != null && _pdfPageReady)
+                return _pdfWebView.CoreWebView2;
+            return _webView != null ? _webView.CoreWebView2 : null;
+        }
+
+        private string ExecuteScriptBlocking(string script, int timeoutMs, CoreWebView2 core = null)
         {
             if (_scriptBlockDepth > 0) return null;
             if (timeoutMs > 15000) timeoutMs = 15000;
             if (timeoutMs < 200) timeoutMs = 200;
             try
             {
-                if (_webView == null || _webView.CoreWebView2 == null) return null;
+                if (core == null && _webView != null) core = _webView.CoreWebView2;
+                if (core == null) return null;
                 _scriptBlockDepth++;
                 string result = null;
                 bool done = false;
@@ -13415,7 +13504,7 @@ namespace TypoZen
                     if (!done) { result = null; frame.Continue = false; }
                 };
                 timer.Start();
-                var scriptTask = _webView.CoreWebView2.ExecuteScriptAsync(script);
+                var scriptTask = core.ExecuteScriptAsync(script);
                 scriptTask.ContinueWith(t =>
                 {
                     try
@@ -13579,7 +13668,7 @@ namespace TypoZen
             if (IsPdfTab(activeTab) && _scriptBlockDepth == 0)
             {
                 bool pending = (activeTab.PdfEdited && _pdfStashStale)
-                    || ExecuteScriptBlocking("(function(){ try { return window.tzPdfPending ? window.tzPdfPending() : '0'; } catch (e) { return '0'; } })()", 1500) == "1";
+                    || ExecuteScriptBlocking("(function(){ try { return window.tzPdfPending ? window.tzPdfPending() : '0'; } catch (e) { return '0'; } })()", 1500, PdfScriptCore()) == "1";
                 if (pending && !StashActivePdf(activeTab)) return false;
             }
             if (activeIsBook || activeIsNative)
@@ -15704,13 +15793,14 @@ namespace TypoZen
                 return;
             }
 
-            // A PDF is read in the editor page by PDF.js; like a book, it carries no text and
-            // is loaded again from its file.
+            // A PDF is read on its own page by PDF.js; like a book, it carries no text and
+            // is loaded again from its file. The surface comes up in OpenPdf. Showing the
+            // editor here would hide the PDF that is still on screen, and would destroy it
+            // when this switch is the one that leaves the fifth open.
             if (IsPdfPath(tab.FilePath))
             {
                 tab.Kind = DocKind.Pdf;
                 tab.NativeRole = NativeRole.None;
-                ShowEditorSurface();
                 _currentFilePath = tab.FilePath;
                 _isDirty = false;
                 InvalidateEnginePageLoad();
@@ -17347,13 +17437,13 @@ namespace TypoZen
             {
                 string started = ExecuteScriptBlocking(
                     "(function(){ if (typeof window.tzPdfSaveTo !== 'function') return 'no';" +
-                    " window.tzPdfSaveTo('" + PdfHost + "write/" + job + "'); return 'started'; })()", 3000);
+                    " window.tzPdfSaveTo('" + PdfHost + "write/" + job + "'); return 'started'; })()", 3000, PdfScriptCore());
                 if (started != "started") { error = "the PDF is not ready"; return false; }
                 var sw = Stopwatch.StartNew();
                 while (sw.ElapsedMilliseconds < timeoutMs)
                 {
                     PumpFor(80);
-                    string st = ExecuteScriptBlocking("String(window.__tzPdfSave || '')", 2000) ?? "";
+                    string st = ExecuteScriptBlocking("String(window.__tzPdfSave || '')", 2000, PdfScriptCore()) ?? "";
                     if (st == "ok") return true;
                     if (st == "ok-clean") { clean = true; return true; }
                     if (st.StartsWith("error:", StringComparison.Ordinal)) { error = st.Substring(6); return false; }
@@ -18370,14 +18460,20 @@ namespace TypoZen
         }
 
         /// <param name="target">As OpenBook: the tab a switch is showing, and only that tab.</param>
-        private void OpenPdf(string path, bool forceLoad = false, DocTab target = null)
+        private async void OpenPdf(string path, bool forceLoad = false, DocTab target = null)
         {
             path = Path.GetFullPath(path);
             if (DeferOrDropSwitchOpen(target, () => OpenPdf(path, forceLoad, target))) return;
             int existing = target != null ? _tabs.IndexOf(target) : IndexOfTabPath(path);
             if (!forceLoad && existing >= 0 && existing == _activeTabIndex && _editorReady
                 && string.Equals(_currentFilePath, path, StringComparison.OrdinalIgnoreCase))
-                return;                                   // already the document on screen
+            {
+                // Already the document on screen. Not another open. If its page was only
+                // hidden, put it back; do not count that.
+                if (_pdfWebView != null && _pdfPageReady && !_pdfSurfaceVisible)
+                    ShowPdfSurface();
+                return;
+            }
 
             // In progress before the pulls (see SwitchToTab).
             _tabOpInProgress = true;
@@ -18403,30 +18499,51 @@ namespace TypoZen
                 tab.Kind = DocKind.Pdf;
                 tab.NativeRole = NativeRole.None;
                 tab.SourceEncoding = "PDF";
-                ShowEditorSurface();
                 _currentFilePath = path;
                 _isDirty = false;
                 RefreshEditingAvailability();
                 RebuildTabStrip();
-                BumpDocGen();
 
-                int page = RememberedBookPosition(path);
-                // Coming back to a PDF with unsaved changes: open the copy that holds them.
-                string serve = (tab.PdfEdited && !string.IsNullOrEmpty(tab.PdfStashPath) && File.Exists(tab.PdfStashPath))
-                    ? tab.PdfStashPath : path;
-                _pdfStashStale = false;
-                // The PDF look (its theme) arrives with the PDF, as a book's does.
-                ApplyViewSettingsForType(DocType.Pdf, true);
-                // With the tab's own layout: ApplyTabView skips PDF tabs, so this is the only
-                // way a PDF tab's columns and Pages setting reach the viewer.
-                SendMsg("load_pdf:" + PdfUrlFor(serve) + (page > 1 ? "|page=" + page : "")
-                    + (tab.Columns > 0 ? "|cols=" + tab.Columns : "")
-                    + (!string.IsNullOrEmpty(tab.Scroll) ? "|scroll=" + tab.Scroll : ""));
-                SendMsg("pdf_edit_mode:none");
-                SetAnnotateChecks("none");
-                // Its bookmarks and highlights, made on its paragraphs (10-pdf.js); the page
-                // resolves them once the PDF's text is in.
-                SendBookmarksForCurrentDocument();
+                // Opens 1-5 share one renderer. Leaving the fifth destroys it (see
+                // LeavePdfSurface). Opening another while the fifth is still up destroys
+                // it here, before this open is counted, so the sixth open is the slow one
+                // and is open 1 of the next five. A theme redraw never reaches this method.
+                if (_pdfOpens >= PdfRendererRefreshOpens)
+                    RetirePdfSurface();
+                bool surfaceUp = await EnsurePdfSurfaceAsync();
+                if (!surfaceUp)
+                {
+                    if (!_e2eMode)
+                        WinForms.MessageBox.Show("Could not open the PDF reader.",
+                            "Open PDF", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Warning);
+                    ShowEditorSurface();
+                }
+                else
+                {
+                    _pdfOpens++;
+                    ShowPdfSurface();
+                    // After the PDF page is the one SendMsg reaches, so the generation
+                    // and the file both land on that page.
+                    BumpDocGen();
+
+                    int page = RememberedBookPosition(path);
+                    // Coming back to a PDF with unsaved changes: open the copy that holds them.
+                    string serve = (tab.PdfEdited && !string.IsNullOrEmpty(tab.PdfStashPath) && File.Exists(tab.PdfStashPath))
+                        ? tab.PdfStashPath : path;
+                    _pdfStashStale = false;
+                    // The PDF look (its theme) arrives with the PDF, as a book's does.
+                    ApplyViewSettingsForType(DocType.Pdf, true);
+                    // With the tab's own layout: ApplyTabView skips PDF tabs, so this is the only
+                    // way a PDF tab's columns and Pages setting reach the viewer.
+                    SendMsg("load_pdf:" + PdfUrlFor(serve) + (page > 1 ? "|page=" + page : "")
+                        + (tab.Columns > 0 ? "|cols=" + tab.Columns : "")
+                        + (!string.IsNullOrEmpty(tab.Scroll) ? "|scroll=" + tab.Scroll : ""));
+                    SendMsg("pdf_edit_mode:none");
+                    SetAnnotateChecks("none");
+                    // Its bookmarks and highlights, made on its paragraphs (10-pdf.js); the page
+                    // resolves them once the PDF's text is in.
+                    SendBookmarksForCurrentDocument();
+                }
 
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
@@ -18655,6 +18772,7 @@ namespace TypoZen
 
         private void ShowEditorSurface()
         {
+            LeavePdfSurface();
             _nativeSurfaceVisible = false;
             try
             {
@@ -18705,6 +18823,7 @@ namespace TypoZen
 
         private void ShowNativeSurface()
         {
+            LeavePdfSurface();
             _nativeSurfaceVisible = true;
             try
             {
@@ -18717,6 +18836,238 @@ namespace TypoZen
             }
             catch { }
             try { ApplyZoomToWebView(); } catch { }
+        }
+
+        /// <summary>
+        /// The reader left the PDF. Position and edits were already stashed by the
+        /// switch that called this. The renderer itself stays until the fifth open.
+        /// </summary>
+        private void LeavePdfSurface()
+        {
+            if (_pdfWebView == null && !_pdfSurfaceVisible) return;
+            if (_pdfOpens >= PdfRendererRefreshOpens && _pdfWebView != null)
+                RetirePdfSurface();
+            else
+                HidePdfSurface();
+        }
+
+        private void HidePdfSurface()
+        {
+            _pdfSurfaceVisible = false;
+            try
+            {
+                if (_pdfWebView != null && _pdfWebView.CoreWebView2 != null)
+                    _pdfWebView.CoreWebView2.ExecuteScriptAsync("window.__tzPdfShown=false;");
+            }
+            catch { }
+            try { if (_pdfWebView != null) _pdfWebView.Visible = false; } catch { }
+        }
+
+        private void ShowPdfSurface()
+        {
+            _pdfSurfaceVisible = true;
+            _nativeSurfaceVisible = false;
+            try
+            {
+                if (_webView != null) _webView.Visible = false;
+                if (_nativeWebView != null) _nativeWebView.Visible = false;
+                if (_pdfWebView != null)
+                {
+                    _pdfWebView.Visible = true;
+                    _pdfWebView.BringToFront();
+                    try { _pdfWebView.Focus(); } catch { }
+                    try
+                    {
+                        if (_pdfWebView.CoreWebView2 != null)
+                            _pdfWebView.CoreWebView2.ExecuteScriptAsync("window.__tzPdfShown=true;");
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            try { ApplyZoomToWebView(); } catch { }
+            try
+            {
+                SetDocumentMenusEnabled(true, NativeRole.None);
+                SetZoomMenusEnabled(true, NativeRole.None);
+            }
+            catch { }
+        }
+
+        /// <summary>Drop the PDF renderer. The editor's renderer, and the GPU process, stay.</summary>
+        private void RetirePdfSurface()
+        {
+            _pdfOpens = 0;
+            DiscardPdfView();
+            Program.PerfMark("pdf surface: retired");
+        }
+
+        private void DiscardPdfView()
+        {
+            _pdfSurfaceVisible = false;
+            _pdfPageReady = false;
+            _pdfGen++;
+            var tcs = _pdfReadyTcs;
+            _pdfReadyTcs = null;
+            if (tcs != null) tcs.TrySetResult(false);
+            WebView2 wv = _pdfWebView;
+            _pdfWebView = null;
+            if (wv == null) return;
+            try
+            {
+                if (wv.CoreWebView2 != null) _pdfCoreDying = wv.CoreWebView2;
+            }
+            catch { }
+            try { wv.Visible = false; } catch { }
+            try { if (_webViewPanel != null) _webViewPanel.Controls.Remove(wv); } catch { }
+            try { wv.Dispose(); } catch { }
+        }
+
+        private void NotePdfPageReady()
+        {
+            _pdfPageReady = true;
+            var tcs = _pdfReadyTcs;
+            if (tcs != null) tcs.TrySetResult(true);
+            try
+            {
+                if (_pdfWebView == null || _pdfWebView.CoreWebView2 == null) return;
+                var core = _pdfWebView.CoreWebView2;
+                string json = ReadThemesJson();
+                if (json != null) core.PostWebMessageAsString("init_themes:" + json);
+                var prefs = LoadHostPrefs();
+                if (prefs != null)
+                {
+                    var tp = GetCurrentTypePrefs(prefs);
+                    if (tp != null && tp.ThemeIndex >= 0)
+                        core.PostWebMessageAsString("set_theme:" + tp.ThemeIndex);
+                }
+            }
+            catch { }
+        }
+
+        private string EditorPageUrl()
+        {
+            if (!string.IsNullOrEmpty(_editorPageUrl)) return _editorPageUrl;
+            string stamped = Path.Combine(_appDir, "TypoZen_Template.runtime.html");
+            string name = File.Exists(stamped) ? "TypoZen_Template.runtime.html" : "TypoZen_Template.html";
+            return "https://localapp/" + name;
+        }
+
+        private void MapPdfSurfaceHosts(CoreWebView2 core)
+        {
+            if (core == null) return;
+            try
+            {
+                core.SetVirtualHostNameToFolderMapping(
+                    "localapp", _appDir, CoreWebView2HostResourceAccessKind.Allow);
+                string ext = ExtensionCatalog.ExtensionsDir(CacheDir());
+                Directory.CreateDirectory(ext);
+                core.SetVirtualHostNameToFolderMapping(
+                    ExtensionCatalog.HostName, ext, CoreWebView2HostResourceAccessKind.Allow);
+                string narration = QwenNarrator.CacheDir(CacheDir());
+                Directory.CreateDirectory(narration);
+                core.SetVirtualHostNameToFolderMapping(
+                    QwenNarrator.HostName, narration, CoreWebView2HostResourceAccessKind.Allow);
+                if (!string.IsNullOrEmpty(QwenNarrator.PrivateCacheDir))
+                    core.SetVirtualHostNameToFolderMapping(
+                        QwenNarrator.PrivateHostName, QwenNarrator.PrivateCacheDir,
+                        CoreWebView2HostResourceAccessKind.Allow);
+                string breezeAudio = BreezeNarrator.CacheDir(CacheDir());
+                Directory.CreateDirectory(breezeAudio);
+                core.SetVirtualHostNameToFolderMapping(
+                    BreezeNarrator.HostName, breezeAudio, CoreWebView2HostResourceAccessKind.Allow);
+                if (!string.IsNullOrEmpty(BreezeNarrator.PrivateCacheDir))
+                    core.SetVirtualHostNameToFolderMapping(
+                        BreezeNarrator.PrivateHostName, BreezeNarrator.PrivateCacheDir,
+                        CoreWebView2HostResourceAccessKind.Allow);
+                Directory.CreateDirectory(Path.Combine(CacheDir(), "typozen_books"));
+                core.SetVirtualHostNameToFolderMapping(
+                    "localbooks", Path.Combine(CacheDir(), "typozen_books"),
+                    CoreWebView2HostResourceAccessKind.Allow);
+                string privBooks = EpubReader.BeginPrivateSession();
+                if (!string.IsNullOrEmpty(privBooks))
+                    core.SetVirtualHostNameToFolderMapping(
+                        "localbooksp", privBooks, CoreWebView2HostResourceAccessKind.Allow);
+                Directory.CreateDirectory(Path.Combine(CacheDir(), "typozen_load"));
+                core.SetVirtualHostNameToFolderMapping(
+                    "localload", Path.Combine(CacheDir(), "typozen_load"),
+                    CoreWebView2HostResourceAccessKind.Allow);
+                Directory.CreateDirectory(PrivateLoadDir());
+                core.SetVirtualHostNameToFolderMapping(
+                    "localloadp", PrivateLoadDir(), CoreWebView2HostResourceAccessKind.Allow);
+            }
+            catch (Exception ex) { LogFault("pdf surface hosts", ex); }
+        }
+
+        /// <summary>
+        /// The PDF page, on the same environment as the editor. Waits until it has
+        /// reported ready_pdf, which does not restore the session.
+        /// </summary>
+        private async Task<bool> EnsurePdfSurfaceAsync()
+        {
+            if (_pdfWebView != null && _pdfWebView.CoreWebView2 != null && _pdfPageReady)
+                return true;
+            if (_webViewPanel == null || _webView == null || _webView.CoreWebView2 == null)
+                return false;
+            int gen = _pdfGen;
+            try
+            {
+                Program.PerfMark("pdf surface: create");
+                if (_pdfWebView == null)
+                {
+                    _pdfWebView = new WebView2();
+                    _pdfWebView.BackColor = _currentThemeBg;
+                    try { _pdfWebView.DefaultBackgroundColor = _currentThemeBg; } catch { }
+                    _pdfWebView.Dock = WinForms.DockStyle.Fill;
+                    _pdfWebView.Visible = false;
+                    _webViewPanel.Controls.Add(_pdfWebView);
+                }
+                var tcs = new TaskCompletionSource<bool>();
+                _pdfReadyTcs = tcs;
+                _pdfPageReady = false;
+
+                Task<CoreWebView2Environment> envTask = _envTask;
+                if (envTask == null)
+                    envTask = CoreWebView2Environment.CreateAsync(null, CacheDir(), BuildWebView2Options());
+                var env = await envTask;
+                if (gen != _pdfGen || _pdfWebView == null) return false;
+                await _pdfWebView.EnsureCoreWebView2Async(env);
+                if (gen != _pdfGen || _pdfWebView == null || _pdfWebView.CoreWebView2 == null) return false;
+
+                var core = _pdfWebView.CoreWebView2;
+                core.Settings.AreDevToolsEnabled = Program.DebugLogEnabled;
+                core.Settings.AreDefaultContextMenusEnabled = true;
+                try { core.Settings.AreBrowserAcceleratorKeysEnabled = false; } catch { }
+                await core.AddScriptToExecuteOnDocumentCreatedAsync("window.__tzPdfSurface=true;");
+                if (gen != _pdfGen || _pdfWebView == null) return false;
+                MapPdfSurfaceHosts(core);
+                try { AttachEditorNavigationGuards(core); } catch { }
+                core.WebMessageReceived += CoreWebView2_WebMessageReceived;
+                try
+                {
+                    core.AddWebResourceRequestedFilter(PdfHost + "*", CoreWebView2WebResourceContext.All);
+                    core.WebResourceRequested += (s, e) => ServePdfRequest(core, e);
+                }
+                catch (Exception ex) { LogFault("pdf surface host", ex); }
+                try { _pdfWebView.ZoomFactorChanged += WebView_ZoomFactorChanged; } catch { }
+
+                core.Navigate(EditorPageUrl());
+                var done = await Task.WhenAny(tcs.Task, Task.Delay(25000));
+                if (gen != _pdfGen) return false;
+                if (done != tcs.Task || !tcs.Task.Result || !_pdfPageReady)
+                {
+                    DiscardPdfView();
+                    return false;
+                }
+                Program.PerfMark("pdf surface: ready");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogFault("pdf surface", ex);
+                if (gen == _pdfGen) DiscardPdfView();
+                return false;
+            }
         }
 
         private void PaintNativeChrome(NativeRole role)

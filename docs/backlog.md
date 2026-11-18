@@ -110,14 +110,18 @@ Estimate: ~200–300 lines, nearly all host C#; one focused session.
 
 Still open. Everything else agreed on 2026-09-28/29 is in Done below.
 
-**PDF memory still grows per large PDF opened (recorded 2026-11-14, Ed: record for now).**
+**PDF memory, bounded after five opens (project tree, 2026-11-18; not installed).**
 On 0.20.13 each round trip to the 536-page scanned Dune Encyclopedia adds about 37 MB to the
-renderer (405 → 759 MB total over eight). Restarting the app gives it back; whether closing
-the PDF's tab does was not measured. The worker heap, event listeners and GPU memory stay flat, so it is not the worker or
-the viewer's listeners. Not known: whether it is a leak or memory the renderer keeps and would
-reuse (no run went far enough to see it level off), whether text PDFs grow the same way, and
-what holds it. History and earlier numbers: `known-issues.md`, "Memory still grew after the
-worker was shared".
+renderer (405 → 759 MB total over eight). That file was not on this machine for the later
+probes. A 12-page generated image PDF, kept in one renderer, adds about 60–80 MB of
+GPU-process private bytes per round trip with about ten pages drawn, and closing the
+document in script does not return them. The holder is the PDF renderer: disposing that
+WebView, while the editor WebView stays up, drops the renderer and stops the next open
+stacking on it. The project tree does that after five opens (`PdfRendererRefreshOpens`).
+Measured on that 12-page file: GPU private 192, 227, 255, 270, 269 MB, then 258 MB after
+the renderer exited, and the sixth open painted in 537 ms at 251 MB. A continuous scroll
+of one long PDF is not capped. The Start Menu app is still 0.20.22. Detail:
+`pdf-memory.md`. History: `known-issues.md`, "Memory still grew after the worker was shared".
 
 **Not yet tested after 0.20.10-0.20.13 (recorded 2026-11-14):**
 - Read Aloud with a local voice now that online voices are off (0.20.10). A saved online voice

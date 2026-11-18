@@ -5,10 +5,11 @@ Product truth lives here and in the README; `docs/archive/` is history.
 
 ## What TypoZen is
 
-- **Windows prose editor + reader**: WPF shell + WebView2; Markdown/text in Preview/Source; epubs in Reader; PDFs in the editor page via PDF.js (`js/modules/10-pdf.js`, DocKind.Pdf; text read-only, but annotations and form entries are saved into a PDF -- unsaved state is `DocTab.PdfEdited`, not `IsDirty`, which the read-only rules force false; see docs/archive/pdf-and-audit-plan.md Phase 4; the native WebView is used only to print the original); images/media as native read-only tabs.
+- **Windows prose editor + reader**: WPF shell + WebView2; Markdown/text in Preview/Source; epubs in Reader; PDFs on their own WebView via PDF.js (`js/modules/10-pdf.js`, the same template, DocKind.Pdf; that view is disposed after five opens — `docs/pdf-memory.md`; text read-only, but annotations and form entries are saved into a PDF -- unsaved state is `DocTab.PdfEdited`, not `IsDirty`, which the read-only rules force false; see docs/archive/pdf-and-audit-plan.md Phase 4; the native WebView is used only to print the original); images/media as native read-only tabs.
 - **Not a code editor.** A developer/code surface was attempted and **parked** (file corruption via contenteditable). See `docs/developer-editor-analysis.md`. Do not revive code-kind / fence-as-document editing unless the user explicitly reopens that work.
 - **Not ZenSeek.** CLI hooks (`--reader`, `--search`, …) exist for ZenSeek; do not merge the two apps.
 - **Native Reader:** HTML, images, media — second WebView. HTML Mode: **Source** = edit markup; **Reader** = read-only real page; **Preview locked** (Preview is Markdown editor mode, not HTML). CSS/XML/XAML → editor Source. See `docs/archive/native-reader-plan.md`.
+- **PDF reader:** a third WebView, created on the first PDF open, disposed after five opens. The editor WebView stays up. Hiding the PDF view does not release its renderer. See `docs/pdf-memory.md`.
 
 ## Where truth lives
 
@@ -17,6 +18,7 @@ Product truth lives here and in the README; `docs/archive/` is history.
 | `README.md` | User-facing product behaviour (current) |
 | `docs/for-agents.md` | This file — constraints, keyboard matrix, non-goals |
 | `docs/known-issues.md` | Product limits + fixed/mitigated notes (not a dump of suite noise) |
+| `docs/pdf-memory.md` | PDF GPU-private growth, and the five-open renderer dispose that bounds it (project tree, not installed) |
 | `docs/testing-strategy.md` | 3-tier test structure (Fast Core, Attack/Gate, Scoped App/MSIX) |
 | `docs/developer-editor-analysis.md` | Parked code-editor attempt |
 | `docs/releasing.md` | Build, package, release, Store. Read section 5 before touching install identity |

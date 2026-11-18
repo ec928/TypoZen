@@ -7662,6 +7662,9 @@
         }
 
         function savePreferences(fromScheduler) {
+            // This page shares the editor's origin, so a prefs write here would replace
+            // the real document's saved prefs. The host never asked this page to own them.
+            if (window.__tzPdfSurface) return;
             if (isRestoring) return;
             if (!fromScheduler) {
                 // Immediate callers still debounce unless forced via schedule path completion

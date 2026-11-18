@@ -812,10 +812,15 @@
 
             tzMark('(page) onload complete, signalling ready');
             tzFlush();
-            postMsg("ready:" + (state.themeIndex || 0));
+            // The PDF reader is a second copy of this page. Its ready must not restore
+            // the session: the editor page already did that.
+            if (window.__tzPdfSurface) postMsg("ready_pdf:" + (state.themeIndex || 0));
+            else postMsg("ready:" + (state.themeIndex || 0));
 
-            // Auto-focus the editor on startup so the user doesn't have to click
+            // Auto-focus the editor on startup so the user doesn't have to click.
+            // On the PDF reader that focus lands in the hidden editor and steals the page.
             setTimeout(() => {
+                if (window.__tzPdfSurface) return;
                 if (_resumeAtTimer) return;
                 try {
                     if (state.mode === 'wysiwyg' || state.mode === 'preview') {

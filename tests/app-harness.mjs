@@ -349,19 +349,47 @@ export async function launchApp(options) {
         protocolTimeout: 180000
     });
 
-    // The app's document is the only page; DevTools may also list workers.
+    // The editor page is the one that is not the PDF reader. The PDF reader is a second
+    // copy of the template and also has handleCommand; attaching to it at launch would
+    // settle the wrong document. While a PDF is on screen, eval follows that page.
     let page = null;
     const deadline = Date.now() + 20000;
     while (!page && Date.now() < deadline) {
         for (const t of await browser.pages()) {
             try {
-                const ok = await t.evaluate(() => typeof handleCommand === 'function');
-                if (ok) { page = t; break; }
+                const kind = await t.evaluate(() => (
+                    typeof handleCommand === 'function'
+                        ? (window.__tzPdfSurface ? 'pdf' : 'editor')
+                        : ''
+                ));
+                if (kind === 'editor') { page = t; break; }
             } catch (e) { }
         }
         if (!page) await sleep(300);
     }
     if (!page) throw new Error('Attached, but no page exposing handleCommand was found');
+
+    let current = page;
+    async function surfacePage() {
+        let editor = null;
+        let pdf = null;
+        let pages;
+        try { pages = await browser.pages(); } catch (e) { return current; }
+        for (const t of pages) {
+            try {
+                const kind = await t.evaluate(() => {
+                    if (typeof handleCommand !== 'function') return '';
+                    if (window.__tzPdfSurface && window.__tzPdfShown && window.tzPdfActive) return 'pdf';
+                    if (window.__tzPdfSurface) return '';
+                    return 'editor';
+                });
+                if (kind === 'pdf') pdf = t;
+                else if (kind === 'editor') editor = t;
+            } catch (e) { }
+        }
+        current = pdf || editor || current;
+        return current;
+    }
 
     // settleMs is a timeout cap, not a mandatory sleep. A 6s launch wait that was
     // guessed for a slow machine is how every app suite idled 6s on a fast one.
@@ -400,13 +428,19 @@ export async function launchApp(options) {
 
     return {
         pid: child.pid,
-        page: page,
+        get page() { return current; },
         browser: browser,
+        /** The editor page, or the PDF reader while a PDF is on screen. */
+        surface: () => surfacePage(),
         /** Run a function inside the real app. */
-        eval: (fn, ...a) => page.evaluate(fn, ...a),
-        press: async (key) => { await page.bringToFront().catch(() => { }); await page.keyboard.press(key); },
+        eval: async (fn, ...a) => (await surfacePage()).evaluate(fn, ...a),
+        press: async (key) => {
+            const p = await surfacePage();
+            await p.bringToFront().catch(() => { });
+            await p.keyboard.press(key);
+        },
         /** Size of the actual document viewport, which is not the window size. */
-        viewport: () => page.evaluate(() => ({
+        viewport: async () => (await surfacePage()).evaluate(() => ({
             editorW: document.getElementById('editor').clientWidth,
             editorH: document.getElementById('editor').clientHeight,
             mainH: document.getElementById('main-container').clientHeight,

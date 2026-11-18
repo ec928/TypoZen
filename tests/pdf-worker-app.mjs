@@ -27,26 +27,39 @@ try {
     const start = path.join(profileDir, 'start.md');
     fs.writeFileSync(start, 'Start.\n');
     app = await launchApp({ file: start });
-    const page = app.page;
     await sleep(1500);
     // The two fixtures have different page counts: a change of count is the next one open.
+    // The PDF lives on its own page, and that page is replaced after five opens, so the
+    // worker count is read from whichever page is showing the PDF now.
     let prevPages = 0;
     const openAndWait = async (file) => {
         const p = path.join(here, file);
-        await page.evaluate((x) => window.chrome.webview.postMessage('open_file_path:' + x), p);
-        await page.waitForFunction((prev) => {
-            try { const n = window.tzPdfActive ? window.tzPdfState().pages : 0; return n > 0 && n !== prev; } catch (e) { return false; }
-        }, { timeout: 15000 }, prevPages);
-        prevPages = await page.evaluate(() => window.tzPdfState().pages);
+        const host = await app.surface();
+        await host.evaluate((x) => window.chrome.webview.postMessage('open_file_path:' + x), p);
+        const end = Date.now() + 20000;
+        let n = 0;
+        while (Date.now() < end) {
+            const view = await app.surface();
+            n = await view.evaluate((prev) => {
+                try {
+                    const pages = window.tzPdfActive ? window.tzPdfState().pages : 0;
+                    return pages > 0 && pages !== prev ? pages : 0;
+                } catch (e) { return 0; }
+            }, prevPages);
+            if (n) break;
+            await sleep(200);
+        }
+        if (!n) throw new Error('PDF did not open: ' + file);
+        prevPages = n;
         await sleep(400);
     };
     await openAndWait('pdf-sample.pdf');
-    const first = page.workers().length;
+    const first = (await app.surface()).workers().length;
     assert(first === 1, 'a PDF opened, with one worker (' + first + ')');
     for (let i = 0; i < 3; i++) { await openAndWait('alices-adventures-in-wonderland.pdf'); await openAndWait('pdf-sample.pdf'); }
-    const after = page.workers().length;
+    const after = (await app.surface()).workers().length;
     assert(after === first, 'six more PDFs opened: still ' + first + ' worker, now ' + after);
-    const pages = await page.evaluate(() => window.tzPdfState().pages);
+    const pages = await (await app.surface()).evaluate(() => window.tzPdfState().pages);
     assert(pages > 0, 'the last PDF is open (' + pages + ' pages)');
 } catch (e) {
     assert(false, 'threw ' + e.message);

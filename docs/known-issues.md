@@ -192,7 +192,7 @@ and over 1 GB after four round trips to a 536-page scanned PDF, even with a forc
 collection. The viewer, export and OCR now share one worker (`sharedWorker` in
 `10-pdf.js`). Guarded by `pdf-worker-app.mjs` (1 worker after seven PDFs; 7 on 0.20.11).
 
-### Memory still grew after the worker was shared — **halved** (0.20.13), rest open in `backlog.md`
+### Memory still grew after the worker was shared — **halved** (0.20.13); image-PDF climb bounded after five opens in the project tree (`pdf-memory.md`)
 
 PDF.js 6 has no `PDFDocumentProxy.destroy`. The viewer's teardown called it, the throw was
 swallowed, and each document stayed in the shared worker for the session. That is the growth
@@ -205,8 +205,20 @@ that was given a worker does not own it. The viewer now does the same (`dropTask
 
 Measured on 0.20.13 (2026-11-14), eight round trips to the encyclopedia: total 405 → 759 MB
 (0.20.12: 417 → 1,266 MB), the renderer about 37 MB per round (was 75–85), the worker heap
-flat at 6–7 MB, event listeners flat at 299, GPU flat at about 160 MB. The remaining growth
-is the open item in `backlog.md`.
+flat at 6–7 MB, event listeners flat at 299, GPU flat at about 160 MB. The
+remaining growth is the open item in `backlog.md`.
+
+A 12-page generated image PDF, probed 2026-11-18 from the project tree (not the
+installed 0.20.22), still grows after close while one renderer is kept:
+GPU-process private bytes about 60–80 MB per round trip with about ten pages
+drawn, four trips, no level-off. The encyclopedia was not opened again.
+
+The project tree now opens that PDF on its own WebView and disposes the
+renderer after five opens. On the same file, GPU private went 192, 227, 255,
+270, 269 MB; leaving the fifth dropped the renderer count from 2 to 1 and
+GPU private eased to 258 MB; the sixth open painted in 537 ms at 251 MB.
+Not installed. One continuous scroll of a single PDF is not capped. Detail
+is in `pdf-memory.md`.
 
 ### Not a problem: pdf.js errors when switching PDFs mid-render
 
