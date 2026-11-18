@@ -19593,14 +19593,10 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Print / Export PDF (Ctrl+P). Use the surface the user is looking at:
-        /// native WebView for PDF/image/media tabs, editor WebView otherwise.
-        /// Printing the hidden editor while a PDF is up looks like a broken Print.
-        /// </summary>
-        /// <summary>
         /// Print a PDF as itself. PDF.js prints by drawing each page as an image; Edge's viewer
-        /// prints the PDF's own vector content, so the file is loaded into the second WebView,
-        /// out of sight, and printed from there with the Windows print dialog.
+        /// prints the PDF's own vector content, so the file is loaded into the native WebView,
+        /// out of sight, and printed from there with the Windows print dialog. The PDF the
+        /// reader is looking at is `_pdfWebView`, not this one.
         /// </summary>
         private async void PrintOriginalPdf(string path)
         {

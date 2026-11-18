@@ -8,6 +8,10 @@
 # fonts, image decoders, colour profiles). Source maps and the legacy build stay out.
 # PDF.js is Apache-2.0; its LICENSE ships beside it.
 #
+# typozen-pdf.worker.mjs is ours. It imports pdf.worker.min.mjs, and 10-pdf.js
+# points workerSrc at it. The folder wipe below would delete it, so the script
+# writes the same file back afterwards.
+#
 # ASCII only. Windows PowerShell 5.1 reads a BOM-less file as ANSI.
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +21,10 @@ $dst = Join-Path $root 'js\vendor\pdfjs'
 if (-not (Test-Path $src)) { throw "pdfjs-dist is not installed - run: npm install --save-dev --save-exact pdfjs-dist@<version>" }
 
 $version = (Get-Content (Join-Path $src 'package.json') -Raw | ConvertFrom-Json).version
+$wrapperName = 'typozen-pdf.worker.mjs'
+$wrapperPath = Join-Path $dst $wrapperName
+$wrapperSaved = $null
+if (Test-Path $wrapperPath) { $wrapperSaved = [IO.File]::ReadAllText($wrapperPath) }
 if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 
@@ -32,6 +40,10 @@ $viewer = Join-Path $dst 'pdf_viewer.mjs'
 $text = [IO.File]::ReadAllText($viewer)
 [IO.File]::WriteAllText($viewer, ($text -replace '//# sourceMappingURL=\S+\s*$', ''), (New-Object Text.UTF8Encoding($false)))
 Set-Content -Path (Join-Path $dst 'VERSION') -Value $version -Encoding ascii
+if ($wrapperSaved -ne $null) {
+    $utf8 = New-Object Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText((Join-Path $dst $wrapperName), $wrapperSaved, $utf8)
+}
 
 $size = (Get-ChildItem $dst -Recurse -File | Measure-Object Length -Sum).Sum
 Write-Host ("pdfjs-dist " + $version + " -> js\vendor\pdfjs  (" + [math]::Round($size / 1MB, 1) + " MB)")

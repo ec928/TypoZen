@@ -244,8 +244,9 @@ try {
         //
         // SendMsg gated "cmd:" and left "fmt:" through, so the host key filter posted
         // fmt:bold at the hidden editor. Menus looked dead; the chord was not. Keys go
-        // through the real window (shell-ui keys), not Puppeteer -- CDP talks to the
-        // editor page even when a PDF is showing, which would format it and miss the bug.
+        // through the real window (shell-ui keys), not Puppeteer. For an image or HTML
+        // tab the harness still evaluates the editor page, so a CDP key would format
+        // that hidden document and miss the host filter.
         const beforeFmt = await app.eval(() => {
             const b = editor && editor.querySelector('.block');
             return {
