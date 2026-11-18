@@ -2052,6 +2052,10 @@
             if (state.mode === 'source') return;
             // Shift+arrows extended a remembered (scrolled-away) selection: move its end.
             if (e.shiftKey || e.key === 'Shift') {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    try { extendShiftPastBlankLine(e.key); } catch (eEx) {}
+                }
+                _shiftFromEdge = null;
                 try { if (typeof refreshRememberedFreezeFromFocus === 'function') refreshRememberedFreezeFromFocus(); } catch (eRf) {}
                 return;
             }
@@ -2062,6 +2066,83 @@
                     clearMultiBlockSelFreeze();
             } catch (eKu) {}
         });
+        function blockIsVisuallyEmpty(block) {
+            if (!block) return false;
+            let raw = null;
+            try { raw = block.getAttribute('data-raw'); } catch (eR) { raw = null; }
+            if (raw == null) raw = block.textContent || '';
+            return String(raw).replace(/\u00a0/g, ' ').trim() === '';
+        }
+
+        function adjacentContentBlock(block, dir) {
+            let n = block;
+            while (n) {
+                n = dir > 0 ? n.nextElementSibling : n.previousElementSibling;
+                if (!n || !n.classList || !n.classList.contains('block')) continue;
+                if (!blockIsVisuallyEmpty(n)) return n;
+            }
+            return null;
+        }
+
+        function caretAtBlockEdge(block, atEnd) {
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount || !sel.isCollapsed || !block) return false;
+            const r = sel.getRangeAt(0);
+            if (!block.contains(r.startContainer) && r.startContainer !== block) return false;
+            try {
+                const side = document.createRange();
+                side.selectNodeContents(block);
+                if (atEnd) side.setStart(r.startContainer, r.startOffset);
+                else side.setEnd(r.startContainer, r.startOffset);
+                return side.toString().replace(/[\u200B\uFEFF]/g, '') === '';
+            } catch (e) { return false; }
+        }
+
+        // The blank line under a paragraph is its own block, and it draws as a gap of a
+        // few pixels. Shift+Down from the end of the paragraph used to select only that
+        // gap. The next paragraph was not in the selection, and the letter typed next
+        // was written onto the paragraph above while the gap was deleted.
+        let _shiftExtendX = null;
+        let _shiftFromEdge = null;
+        function extendShiftPastBlankLine(key) {
+            const dir = key === 'ArrowDown' ? 1 : (key === 'ArrowUp' ? -1 : 0);
+            if (!dir) return;
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount || sel.isCollapsed || !sel.focusNode || !editor.contains(sel.focusNode)) return;
+            const focusBlock = getAncestorBlock(sel.focusNode);
+            if (!blockIsVisuallyEmpty(focusBlock)) return;
+            const target = adjacentContentBlock(focusBlock, dir);
+            if (!target) return;
+            const fromEdge = (dir > 0 && _shiftFromEdge === 'end') || (dir < 0 && _shiftFromEdge === 'start');
+            let node = null, offset = 0;
+            if (!fromEdge) {
+                const box = target.getBoundingClientRect();
+                if (box && box.height >= 1 && box.width >= 1) {
+                    const y = dir > 0 ? Math.min(box.bottom - 2, box.top + 8) : Math.max(box.top + 2, box.bottom - 8);
+                    const x = _shiftExtendX == null ? (box.left + 8) : Math.min(Math.max(_shiftExtendX, box.left + 1), box.right - 1);
+                    try {
+                        const caret = document.caretRangeFromPoint(x, y);
+                        if (caret && getAncestorBlock(caret.startContainer) === target) {
+                            node = caret.startContainer;
+                            offset = caret.startOffset;
+                        }
+                    } catch (eC) {}
+                }
+            }
+            if (!node) {
+                const tw = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+                let first = null, last = null, n;
+                while ((n = tw.nextNode())) { if (!first) first = n; last = n; }
+                if (!first) return;
+                if (dir > 0) { node = last; offset = last.nodeValue.length; }
+                else { node = first; offset = 0; }
+            }
+            try { sel.extend(node, offset); } catch (eE) { return; }
+            if (sel.toString().replace(/[\s\u00a0]/g, '') === '') {
+                try { sel.modify('extend', dir > 0 ? 'forward' : 'backward', 'character'); } catch (eM) {}
+            }
+        }
+
         // Typing over a selection that spans lines is Delete, then the letter -- as in any
         // editor, and so it follows the same rules as Delete: a remembered (scrolled-away)
         // range is deleted whole, a table at either end stays a table, both ends keep their
@@ -2081,6 +2162,30 @@
                     }
                 }
                 if (!across) return;
+                const sOnly = window.getSelection();
+                // A selection of only the gap is the blank line. The letter belongs on
+                // that line. The cross-block delete wrote it onto the paragraph above.
+                if (sOnly && sOnly.rangeCount && !sOnly.isCollapsed
+                    && sOnly.toString().replace(/[\s\u00a0\u200B]/g, '') === '') {
+                    const r0 = sOnly.getRangeAt(0);
+                    const a0 = getAncestorBlock(r0.startContainer), b0 = getAncestorBlock(r0.endContainer);
+                    const empty = blockIsVisuallyEmpty(b0) ? b0 : (blockIsVisuallyEmpty(a0) ? a0 : null);
+                    if (empty) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const all = document.createRange();
+                        all.selectNodeContents(empty);
+                        sOnly.removeAllRanges();
+                        sOnly.addRange(all);
+                        const before = (typeof getMarkdownContent === 'function') ? getMarkdownContent(false) : null;
+                        try { document.execCommand('insertText', false, e.key); } catch (eI) {}
+                        try {
+                            if (before != null && typeof HistoryManager !== 'undefined')
+                                HistoryManager.recordEditPair(before, getMarkdownContent(false));
+                        } catch (eH0) {}
+                        return;
+                    }
+                }
                 if (!handleMultiBlockSelectionDelete(e)) return;
                 // One undo step for the whole replacement, as in any editor: the delete pushed
                 // its "after" state, and the letter would push another, so Ctrl+Z stopped
@@ -2102,6 +2207,16 @@
             try {
                 const sel = window.getSelection();
                 if (sel && sel.isCollapsed) refreshLastGoodDocRaws();
+                _shiftExtendX = null;
+                _shiftFromEdge = null;
+                if (sel && sel.rangeCount && sel.isCollapsed && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                    const rects = sel.getRangeAt(0).getClientRects();
+                    const rect = rects && rects.length ? rects[rects.length - 1] : sel.getRangeAt(0).getBoundingClientRect();
+                    if (rect) _shiftExtendX = rect.left || rect.right;
+                    const block = sel.anchorNode ? getAncestorBlock(sel.anchorNode) : null;
+                    if (e.key === 'ArrowDown' && caretAtBlockEdge(block, true)) _shiftFromEdge = 'end';
+                    if (e.key === 'ArrowUp' && caretAtBlockEdge(block, false)) _shiftFromEdge = 'start';
+                }
             } catch (err) {}
             try { if (typeof beginExtendingRemembered === 'function') beginExtendingRemembered(); } catch (eBe) {}
         }, true);

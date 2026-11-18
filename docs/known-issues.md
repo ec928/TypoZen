@@ -252,6 +252,19 @@ window's edge and kept whole (copy, cut and Delete use the whole), and Shift+Dow
 extending it. Shown by a probe on a 3000-line file of mixed blocks; no suite case
 reproduced it in 0.20.5, so none guards it.
 
+### Shift+Down at the end of a paragraph selected only the blank line — **fixed** (0.20.22)
+
+The blank line under a paragraph is its own block, and it draws as a gap of a few pixels.
+Shift+Down from the end of the paragraph selected only that gap. The next paragraph was
+not selected, and the next letter was written onto the paragraph above while the gap was
+deleted. The words of the next paragraph stayed. From the end of a paragraph, Shift+Down
+now selects the next paragraph. From the start of a paragraph, Shift+Up selects the
+previous one. Typing replaces the selected paragraph, and one undo restores both.
+Guarded by `keyboard-editing-cases.mjs` (preview). Shown in the project window on
+Alpha / Beta / Gamma: the selection was the blank line plus Beta, typing Q left
+`Alpha one two three.Q` and Gamma, and Ctrl+Z restored both paragraphs. Pages was
+shown headless, not in that window.
+
 ### A paste ending in a blank line lost it — **fixed** (0.20.6)
 
 Pasting text that ended in two line breaks kept one: whole lines cut with the blank line

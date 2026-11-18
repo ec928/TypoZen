@@ -299,6 +299,22 @@ try {
             await run(mode, 'Backspace over lines, wait, type: the letter goes at the cut', 'Alpha one\nBeta two\nGamma\n\nEnd', ['Alpha', 6],
                 async () => { await chord(['Shift'], 'ArrowDown'); await kb.press('Backspace'); await sleep(250); await kb.type('Q'); },
                 'Alpha Qwo\nGamma\n\nEnd');
+            // The blank line under a paragraph is a gap, not the next paragraph. Shift+Down
+            // from the end of the line used to select only that gap, and the next letter
+            // stuck to the line above while the gap was deleted (the words of the next
+            // paragraph stayed). It selects that paragraph; typing replaces it.
+            await run(mode, 'Shift+Down at the end of a paragraph selects the next one',
+                'Alpha one two three.\n\nBeta four five six.\n\nGamma seven eight nine.\n', ['three', 0],
+                async () => {
+                    await kb.press('End');
+                    await chord(['Shift'], 'ArrowDown');
+                    await sleep(80);
+                    const sel = await page.evaluate(() => getSelection().toString());
+                    if (sel.indexOf('Beta') < 0) throw new Error('selection ' + JSON.stringify(sel));
+                    await kb.type('Q');
+                    await sleep(150);
+                },
+                (g) => g.indexOf('Alpha one two three.Q') >= 0 && g.indexOf('Gamma seven eight nine.') >= 0 && g.indexOf('Beta') < 0);
             // A Delete across lines joined the two partial lines as plain text: the bold before
             // the cut and the link after it (address and all) were lost (0.20.6).
             await run(mode, 'Delete across lines keeps the bold before the cut and the link after it',
