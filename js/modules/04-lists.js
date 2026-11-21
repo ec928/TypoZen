@@ -2785,7 +2785,20 @@
                 }
                 postLines.push(raw == null ? '' : coerceBlockRaw(raw));
             }
-            return reloadAfterFormatEdit(preLines, postLines, focusIndices);
+            // For paragraph-level formats (!inlinePlan), pass caretOffset 0 so the deferred
+            // sticky restore keeps the live caret we place at the end of the last altered block,
+            // matching Callout, Heading and Quote.
+            const ok = reloadAfterFormatEdit(preLines, postLines, focusIndices, inlinePlan ? undefined : 0);
+            if (ok && !inlinePlan && currentActiveBlock) {
+                try {
+                    focusBlock(currentActiveBlock, (currentActiveBlock.textContent || '').length);
+                    if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                    _formatSelectionFrozen = false;
+                    _selectedFormatRaws = {};
+                    snapshotFormatSelectionFromEditor();
+                } catch (eEnd) {}
+            }
+            return ok;
         }
 
         /**
@@ -2812,8 +2825,8 @@
                 && _lastGoodDocRaws.some(function (x) { return String(x || '').trim(); })) {
                 preLines = _lastGoodDocRaws.map(function (x) { return coerceBlockRaw(x == null ? '' : x); });
             }
-            // Overlay any non-empty frozen selection raws
-            if (_selectedFormatRaws && typeof _selectedFormatRaws === 'object') {
+            // Overlay any non-empty frozen selection raws (only while frozen from a toolbar/menu click)
+            if (_formatSelectionFrozen && _selectedFormatRaws && typeof _selectedFormatRaws === 'object') {
                 Object.keys(_selectedFormatRaws).forEach(function (k) {
                     const i = parseInt(k, 10);
                     const v = _selectedFormatRaws[k];
@@ -2932,6 +2945,8 @@
                     } catch (eVis) {}
                 }
                 focusEditorNoScroll();
+                _formatSelectionFrozen = false;
+                _selectedFormatRaws = {};
             } catch (e5) {}
             updateStats();
             updateOutline();
@@ -3456,7 +3471,7 @@
                 }).join('\n');
 
                 HistoryManager.beginEdit();
-                sourceEditor.setRangeText(out, s, e, 'select');
+                sourceEditor.setRangeText(out, s, e, 'end');
                 resizeSourceEditor();
                 updateStats();
                 HistoryManager.commitEdit();
@@ -3589,6 +3604,9 @@
                         // Leave a collapsed caret at the end of the formatted block, not a selection.
                         focusBlock(focusEl, (focusEl.textContent || '').length);
                         if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                        _formatSelectionFrozen = false;
+                        _selectedFormatRaws = {};
+                        snapshotFormatSelectionFromEditor();
                     } catch (e) {
                         try { focusBlock(focusEl, null); } catch (e2) {}
                     }
@@ -3596,20 +3614,6 @@
                     updateOutline();
                     HistoryManager.commitEdit();
                     return;
-                }
-            }
-
-            let savedCaretOffset = null;
-            if (targets.length === 1 && !state.revealOnFocus) {
-                try {
-                    const off0 = resolveBlockPlainOffsets(targets[0]);
-                    if (off0 && off0.start === off0.end) savedCaretOffset = off0.start;
-                } catch (eOff) {}
-                if (savedCaretOffset == null && typeof _editorCaretMemory !== 'undefined' && _editorCaretMemory
-                    && _editorCaretMemory.kind === 'preview'
-                    && _editorCaretMemory.start === _editorCaretMemory.end) {
-                    const bi0 = formatBlockIndex(targets[0]);
-                    if (bi0 >= 0 && bi0 === _editorCaretMemory.index) savedCaretOffset = _editorCaretMemory.start;
                 }
             }
 
@@ -3651,14 +3655,13 @@
             currentActiveBlock = targets[targets.length - 1];
             try {
                 currentActiveBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                // Leave a collapsed caret rather than selecting the whole block, matching Callout
-                // and Lists: formatting a line is not an intent to overwrite it on the next key.
-                const len = (currentActiveBlock.textContent || '').length;
-                const pos = (targets.length === 1 && savedCaretOffset != null)
-                    ? Math.min(savedCaretOffset, len)
-                    : len;
-                focusBlock(currentActiveBlock, pos);
+                // Place a collapsed caret at the end of the altered block, matching Callout,
+                // Quote, and Lists so every paragraph format behaves the same way.
+                focusBlock(currentActiveBlock, (currentActiveBlock.textContent || '').length);
                 if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                _formatSelectionFrozen = false;
+                _selectedFormatRaws = {};
+                snapshotFormatSelectionFromEditor();
             } catch (e) {
                 try { focusBlock(currentActiveBlock, null); } catch (e2) {}
             }
@@ -3861,7 +3864,11 @@
                 if (el) {
                     focusBlock(el, (el.textContent || '').length);
                     currentActiveBlock = el;
+                    if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 }
+                _formatSelectionFrozen = false;
+                _selectedFormatRaws = {};
+                snapshotFormatSelectionFromEditor();
             } catch (eF) {}
             return true;
         }

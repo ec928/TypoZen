@@ -154,39 +154,75 @@ try {
     await settled(page);
     same('Ctrl+Alt+2 (AltGr) changes nothing', await saved(), 'Title line\nSecond');
 
-    console.log('\n=== heading, quote and normal text leave a caret, not a whole-line selection ===');
+    console.log('\n=== every paragraph format puts a collapsed caret at the end of the block ===');
+    const caretAtStart = () => page.evaluate(() => {
+        const el = document.querySelector('#editor .block[data-model-index="0"]');
+        focusBlock(el, 0);
+    });
+    const isCaretCollapsed = () => page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; });
+
     await load('Keep this heading\nSecond');
-    b = await lineBox(0);
-    await page.mouse.click(b.x + 20, b.y + b.height / 2);
+    await caretAtStart();
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
     await settled(page);
-    same('heading leaves a collapsed caret', await page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; }), true);
+    same('heading from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
     await page.keyboard.type('!');
     await settled(page);
-    const afterH2 = await saved();
-    same('typing after heading inserts rather than overwriting', /^## .*!/.test(afterH2.split('\n')[0]) && afterH2.split('\n')[0].replace('!', '') === '## Keep this heading', true);
+    same('typing after heading appends at the end', await saved(), '## Keep this heading!\nSecond');
 
     await load('Keep this quote\nSecond');
-    b = await lineBox(0);
-    await page.mouse.click(b.x + 20, b.y + b.height / 2);
+    await caretAtStart();
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('quote'); });
     await settled(page);
-    same('quote leaves a collapsed caret', await page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; }), true);
+    same('quote from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
     await page.keyboard.type('!');
     await settled(page);
-    const afterQ = await saved();
-    same('typing after quote inserts rather than overwriting', /^> .*!/.test(afterQ.split('\n')[0]) && afterQ.split('\n')[0].replace('!', '') === '> Keep this quote', true);
+    same('typing after quote appends at the end', await saved(), '> Keep this quote!\nSecond');
 
     await load('## Keep this normal\nSecond');
-    b = await lineBox(0);
-    await page.mouse.click(b.x + 20, b.y + b.height / 2);
+    await caretAtStart();
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('para'); });
     await settled(page);
-    same('normal text leaves a collapsed caret', await page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; }), true);
+    same('normal text from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
     await page.keyboard.type('!');
     await settled(page);
-    const afterP = await saved();
-    same('typing after normal text inserts rather than overwriting', afterP.split('\n')[0].includes('!') && afterP.split('\n')[0].replace('!', '') === 'Keep this normal', true);
+    same('typing after normal text appends at the end', await saved(), 'Keep this normal!\nSecond');
+
+    await load('Keep this callout\nSecond');
+    await caretAtStart();
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('callout:note'); });
+    await settled(page);
+    same('callout from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    same('typing after callout appends at the end', await saved(), '> [!NOTE]\n> Keep this callout!\n\nSecond');
+
+    await load('Keep this list\nSecond');
+    await caretAtStart();
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('list'); });
+    await settled(page);
+    await new Promise(r => setTimeout(r, 60));
+    same('list from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    same('typing after list appends at the end', await saved(), '- Keep this list!\nSecond');
+
+    await load('First line\nSecond line');
+    await page.evaluate(() => {
+        const b0 = document.querySelector('#editor .block[data-model-index="0"]');
+        const b1 = document.querySelector('#editor .block[data-model-index="1"]');
+        const t0 = document.createTreeWalker(b0, NodeFilter.SHOW_TEXT).nextNode();
+        const t1 = document.createTreeWalker(b1, NodeFilter.SHOW_TEXT).nextNode();
+        const r = document.createRange(); r.setStart(t0, 0); r.setEnd(t1, t1.nodeValue.length);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
+    await settled(page);
+    await new Promise(r => setTimeout(r, 60));
+    same('multi-block heading leaves a collapsed caret', await isCaretCollapsed(), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    same('typing after multi-block heading appends to the last altered block', await saved(), '## First line\n## Second line!');
 
     await load('Before part after');
     await page.evaluate(() => {
@@ -197,10 +233,27 @@ try {
     });
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
     await settled(page);
-    same('partial-selection heading split leaves a collapsed caret', await page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; }), true);
+    same('partial-selection heading split leaves a collapsed caret', await isCaretCollapsed(), true);
     await page.keyboard.type('!');
     await settled(page);
     same('typing after partial heading split appends to the heading', await saved(), 'Before \n## part!\n after');
+
+    await load('Source heading\nSecond', 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(0, 0); });
+    await page.evaluate(() => { applyFormatting('h2'); });
+    await settled(page);
+    same('Source heading leaves a collapsed caret', await page.evaluate(() => sourceEditor.selectionStart === sourceEditor.selectionEnd), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    same('typing after Source heading appends at the end', await saved(), '## Source heading!\nSecond');
+
+    await load('Chain test');
+    await caretAtStart();
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
+    await settled(page);
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('callout:note'); });
+    await settled(page);
+    same('chained menu format sees updated block rather than stale freeze', await saved(), '> [!NOTE]\n> ## Chain test');
 
     console.log('\n=== Alt underlines the menus\' access keys while held ===');
     await load('Some text');

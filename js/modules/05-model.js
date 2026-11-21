@@ -1460,6 +1460,14 @@
                 try {
                     _lastGoodDocRaws = DocumentModel.blocks.map(function (b) { return b.raw; });
                 } catch (eL) { _lastGoodDocRaws = []; }
+                try {
+                    _formatSelectionFrozen = false;
+                    _selectedFormatRaws = {};
+                    if (!restoringAtStart) {
+                        _selectedFormatIndices = [];
+                        _selectedFormatBlocks = [];
+                    }
+                } catch (eFmtClr) {}
             }
 
             // L/XL: virtualized Preview — owns heavy docs; progressive never runs for these.
