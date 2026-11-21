@@ -60,6 +60,8 @@ const names = [
     'blockHtmlToMarkdown', 'isListLine', 'getListIndentLevel',
     'plainRangeToRawOffsets', 'plainAndMarksFromMarkdown',
     'emitInlineMarkdownFromMarks', 'applyInlineFormatToRaw', 'applyMarksModelToBody', 'applyInlineFormatRest',
+    'splitInlineFormatPrefix', 'stripListMarkerKeepBody', 'stripBlockPrefix', 'wholeLineInlineFormat',
+    'transformRawForFormat', 'markRangeInLine', 'inlineMarksForSelectedLines', 'splitRawForBlockFormat',
     'boldAcrossLines', 'boldMarkersIn', 'withBoldAcross', 'splitLinkTitle', 'keptSourceAttr', 'blockDomToMarkdown', 'blockDomRebuild', 'applyEditToRaw', 'calloutTypeOfRaw',
     'parseTableMarkdown', 'splitTableRow', 'formatTableKeeping', 'formatTableMarkdown', 'tableAlignToSep'
 ];
@@ -67,13 +69,15 @@ const names = [
 // extracted functions run standalone.
 let src = 'const LIST_MAX_INDENT = 6; const LIST_INDENT_SPACES = 2;\n'
     + 'const _tzImageData = {};\n'
+    + 'let _pendingLink = null;\n'
+    + 'let _mbSelFreeze = null;\n'
     + 'function tzRequestPendingImages() {}\n'
     + 'function queueCalloutRestyle() {}\n'
     + 'const ALERT_ICONS = {};\n'
     + 'const BOLD_LOOK_LINES = 12;\n'
     + 'const CALLOUT_RE = /^>\\s*\\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\\]/i;\n';
 for (const n of names) src += extractFunction(n) + '\n';
-src += 'return {' + names.join(',') + '};';
+src += 'return {' + names.join(',') + ', setPendingLink: function (v) { _pendingLink = v; }, setMbFreeze: function (v) { _mbSelFreeze = v; }};';
 const api = new Function('window', 'document', 'Node', src)(window, window.document, window.Node);
 
 let passed = 0;
@@ -188,6 +192,11 @@ console.log('--- formatting a list line keeps the list line ---');
 
     // toggling off restores the original
     eqv(fmt.transformRawForFormat('  6. **g**', 'bold', {}), '  6. g', 'bold toggles back off');
+    // multi-span does not strip outer markers leaving broken middle markers
+    eqv(fmt.transformRawForFormat('`a` and `b`', 'code', {}), '`a and b`', 'code merges multi-code-span line');
+    eqv(fmt.transformRawForFormat('**a** and **b**', 'bold', {}), '****a** and **b****', 'bold does not unwrap multi-span');
+    eqv(fmt.transformRawForFormat('*a* and *b*', 'italic', {}), '**a* and *b**', 'italic does not unwrap multi-span');
+    eqv(fmt.transformRawForFormat('~~a~~ and ~~b~~', 'strike', {}), '~~~~a~~ and ~~b~~~~', 'strike does not unwrap multi-span');
 }
 
 console.log('--- render -> serialize round trip (the path that writes to disk) ---');
@@ -253,6 +262,71 @@ console.log('--- plainRangeToRawOffsets skips ~~ and *** ---');
     const off2 = api.plainRangeToRawOffsets('**bold**', 0, 4);
     assert(off2.r0 === 2 && off2.r1 === 6,
         'plain 0..4 on **bold** maps past ** (r0=' + off2.r0 + ' r1=' + off2.r1 + ')');
+    // literal underscores & spaced asterisks stay literal (not treated as markers)
+    const offSnake = api.plainRangeToRawOffsets('call some_var_name **here**', 19, 23);
+    assert(offSnake.r0 === 21 && offSnake.r1 === 25 && offSnake.plainLength === 23,
+        'snake_case keeps literal underscores (r0=' + offSnake.r0 + ' r1=' + offSnake.r1 + ')');
+    const offMath = api.plainRangeToRawOffsets('2 * 3 and **six**', 10, 13);
+    assert(offMath.r0 === 12 && offMath.r1 === 15,
+        'spaced * stays literal (r0=' + offMath.r0 + ' r1=' + offMath.r1 + ')');
+    // safe image renders 0 plain chars
+    const offImg = api.plainRangeToRawOffsets('a ![alt](pic.png) **b**', 3, 4);
+    assert(offImg.r0 === 20 && offImg.r1 === 21 && offImg.plainLength === 4,
+        'image counts as 0 plain chars (r0=' + offImg.r0 + ' r1=' + offImg.r1 + ')');
+}
+
+console.log('--- inline code wrapping, expansion, splitting, and toggling ---');
+{
+    const eqCode = (got, want, msg) => assert(got === want, msg + (got === want ? '' : ' -> got ' + JSON.stringify(got) + ' want ' + JSON.stringify(want)));
+
+    // Exact README.md line 8 repro: bold at start of block followed by plain text
+    const readmeLine = '**Privacy-first and completely free.** There are no accounts.';
+    const readmePlainLen = api.plainRangeToRawOffsets(readmeLine, 0, 0).plainLength;
+    const readmeCoded = api.applyInlineFormatToRaw(readmeLine, 0, readmePlainLen, 'code');
+    eqCode(readmeCoded, '`' + readmeLine + '`', 'README repro includes opening ** inside code span');
+    const codedPlainLen = api.plainRangeToRawOffsets(readmeCoded, 0, 0).plainLength;
+    eqCode(api.applyInlineFormatToRaw(readmeCoded, 0, codedPlainLen, 'code'), readmeLine, 'toggling code off restores bolded line');
+
+    // Mirror case at end of block
+    eqCode(api.applyInlineFormatToRaw('Hello **world**', 0, 11, 'code'), '`Hello **world**`', 'mirror end bold includes closing **');
+
+    // Selecting ONLY inside bold keeps bold outside
+    eqCode(api.applyInlineFormatToRaw('**world**', 0, 5, 'code'), '**`world`**', 'strictly inside bold keeps ** outside');
+    eqCode(api.applyInlineFormatToRaw('**`world`**', 0, 5, 'code'), '**world**', 'toggling code off inside bold keeps **');
+
+    // Nested link inside bold at start of selection
+    eqCode(api.applyInlineFormatToRaw('**[Install](https://x.com)** (Recommended)', 0, 21, 'code'),
+        '`**[Install](https://x.com)** (Recommended)`', 'nested bold+link swallows both markers');
+
+    // Partial overlap splits cleanly on both sides
+    eqCode(api.applyInlineFormatToRaw('**hello world** and more', 6, 20, 'code'),
+        '**hello** `**world** and more`', 'partial overlap at start splits bold cleanly');
+    eqCode(api.applyInlineFormatToRaw('more and *hello world*', 0, 14, 'code'),
+        '`more and *hello*` *world*', 'partial overlap at end splits italic cleanly');
+    eqCode(api.applyInlineFormatToRaw('**~~hello world~~** and more', 6, 20, 'code'),
+        '**~~hello~~** `**~~world~~** and more`', 'nested partial overlap keeps LIFO nesting');
+    eqCode(api.applyInlineFormatToRaw('see [hello world](https://x.com) tail', 10, 20, 'code'),
+        'see [hello](https://x.com) `[world](https://x.com) tail`', 'partial overlap across link keeps valid links');
+
+    // Existing code spans inside/crossing selection
+    eqCode(api.applyInlineFormatToRaw('opens `.md`, `.txt` and PDF', 0, 23, 'code'),
+        '`opens .md, .txt and PDF`', 'existing code spans merge cleanly');
+    eqCode(api.applyInlineFormatToRaw('`.md`, `.txt` and PDF', 0, 17, 'code'),
+        '`.md, .txt and PDF`', 'selection starting inside code span includes opening backtick');
+    eqCode(api.applyInlineFormatToRaw('`foo` and `bar`', 0, 11, 'code'),
+        '`foo and bar`', 'multi-code-span selection merges instead of inverting');
+    eqCode(api.applyInlineFormatToRaw('`hello world`', 6, 11, 'code'),
+        '`hello` world', 'tail sub-selection inside code span un-codes cleanly');
+    eqCode(api.applyInlineFormatToRaw('`hello world`', 0, 5, 'code'),
+        'hello `world`', 'head sub-selection inside code span un-codes cleanly');
+    eqCode(api.applyInlineFormatToRaw('`hello world`', 3, 3, 'code'),
+        null, 'collapsed caret inside code span is a no-op');
+
+    // Multi-line table/fence rejected; closed ATX heading preserves suffix
+    eqCode(api.applyInlineFormatToRaw('| a | b |\n|---|---|\n| c | d |', 0, 3, 'code'),
+        null, 'multi-line raw returns null');
+    eqCode(api.applyInlineFormatToRaw('## **Title** rest ##', 0, 10, 'code'),
+        '## `**Title** rest` ##', 'closed ATX heading preserves closing ##');
 }
 
 console.log('--- applyInlineFormatToRaw nested toggle (mark model) ---');
@@ -320,6 +394,61 @@ console.log('--- interior mid-span bold (selection inside wider *** / **) ---');
     assert(!pm2.marks[s2].bold && pm2.marks[s2].italic, 'BBB italic not bold');
     assert(pm2.marks[0].bold && pm2.marks[0].italic, 'pre stays bold+italic');
     assert(pm2.marks[s2 + 3].bold && pm2.marks[s2 + 3].italic, 'suf stays bold+italic');
+}
+
+console.log('--- link boundaries, raw emphasis fallback, block split, multi-line code ---');
+{
+    const eq = (got, want, msg) => assert(got === want, msg + (got === want ? '' : ' -> got ' + JSON.stringify(got) + ' want ' + JSON.stringify(want)));
+
+    // Link formatting over bold, existing links, code spans, and partial overlaps
+    api.setPendingLink({ text: 'word', url: 'https://x.com' });
+    eq(api.applyInlineFormatToRaw('**word**', 0, 4, 'link'), '**[word](https://x.com)**', 'link inside bold keeps ** outside');
+    api.setPendingLink({ text: 'word rest', url: 'https://x.com' });
+    eq(api.applyInlineFormatToRaw('**word** rest', 0, 9, 'link'), '[word rest](https://x.com)', 'link over bold+plain swallows opening **');
+    api.setPendingLink({ text: 'here', url: 'https://new.com' });
+    eq(api.applyInlineFormatToRaw('**[here](https://old.com)**', 0, 4, 'link'), '**[here](https://new.com)**', 'replacing link keeps bold and avoids [[text](new)](old)');
+    api.setPendingLink({ text: 'code', url: 'https://x.com' });
+    eq(api.applyInlineFormatToRaw('use `code` here', 4, 8, 'link'), 'use [code](https://x.com) here', 'link over code span replaces whole backticks cleanly');
+    api.setPendingLink({ text: 'world', url: 'https://new.com' });
+    eq(api.applyInlineFormatToRaw('**hello world** and more', 6, 20, 'link'), '**hello** [world](https://new.com)', 'link partial overlap closes bold on before');
+    api.setPendingLink(null);
+    eq(api.applyInlineFormatToRaw('see [hello world](https://old.com) tail', 10, 20, 'link'), 'see [hello](https://old.com) [world tail](https://)', 'link partial overlap across link stays balanced');
+
+    // Bold/italic/strike raw fallback over code/link/emphasis
+    eq(api.applyInlineFormatToRaw('`code` and rest', 0, 13, 'bold'), '**`code` and rest**', 'bold over code+plain wraps whole span');
+    eq(api.applyInlineFormatToRaw('[link](https://x.com) rest', 0, 9, 'bold'), '**[link](https://x.com) rest**', 'bold over link+plain swallows opening [');
+    eq(api.applyInlineFormatToRaw('[link](https://x.com) **word**', 5, 9, 'italic'), '[link](https://x.com) ***word***', 'italic on bold word next to link keeps bold');
+    eq(api.applyInlineFormatToRaw('[link](https://x.com) **word**', 5, 9, 'bold'), '[link](https://x.com) word', 'bold toggle off next to link unwraps **');
+    eq(api.applyInlineFormatToRaw('`hello world` [u](https://x.com)', 6, 11, 'bold'), null, 'partial bold inside code span refused cleanly');
+
+    // splitRawForBlockFormat (partial-block H2 / Quote)
+    const sp1 = api.splitRawForBlockFormat('**Privacy-first** and free.', 0, 17, 'h2', {});
+    assert(JSON.stringify(sp1.pieces) === JSON.stringify(['## **Privacy-first** and', ' free.']),
+        'partial H2 from bold start includes opening ** (got ' + JSON.stringify(sp1.pieces) + ')');
+    const sp2 = api.splitRawForBlockFormat('Hello **world**', 6, 11, 'h2', {});
+    assert(JSON.stringify(sp2.pieces) === JSON.stringify(['Hello ', '## **world**']),
+        'partial H2 on trailing bold keeps ** together (got ' + JSON.stringify(sp2.pieces) + ')');
+    const sp3 = api.splitRawForBlockFormat('**hello world** and more', 6, 20, 'h2', {});
+    assert(JSON.stringify(sp3.pieces) === JSON.stringify(['**hello** ', '## **world** and more']),
+        'partial H2 mid-bold closes before and re-opens mid (got ' + JSON.stringify(sp3.pieces) + ')');
+    const sp4 = api.splitRawForBlockFormat('**a b c**', 2, 3, 'h2', {});
+    assert(JSON.stringify(sp4.pieces) === JSON.stringify(['**a** ', '## **b**', ' **c**']),
+        'partial H2 inside wider bold balances all three pieces (got ' + JSON.stringify(sp4.pieces) + ')');
+
+    // inlineMarksForSelectedLines for partial & mixed multi-block code
+    api.setMbFreeze({ fromIdx: 0, toIdx: 1, prefix: 'Intro ', suffix: ' tail' });
+    const plan1 = api.inlineMarksForSelectedLines(['Intro **bold** rest', 'second line tail'], { 0: true, 1: true }, 'code');
+    eq(plan1[0], 'Intro `**bold** rest`', 'multi-block partial code accepts newly visible ** markers');
+    eq(plan1[1], '`second line` tail', 'multi-block partial code formats second line end');
+
+    api.setMbFreeze(null);
+    const planMixed = api.inlineMarksForSelectedLines(['`already`', 'plain line'], { 0: true, 1: true }, 'code');
+    eq(planMixed[0], undefined, 'mixed multi-block code leaves already-coded line alone');
+    eq(planMixed[1], '`plain line`', 'mixed multi-block code codes plain line');
+
+    const planAllCode = api.inlineMarksForSelectedLines(['`one`', '`two`'], { 0: true, 1: true }, 'code');
+    eq(planAllCode[0], 'one', 'all-code multi-block toggles line 0 off');
+    eq(planAllCode[1], 'two', 'all-code multi-block toggles line 1 off');
 }
 
 console.log('\npassed=' + passed + ' failed=' + failed);

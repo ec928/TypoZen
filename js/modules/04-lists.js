@@ -2590,6 +2590,25 @@
                     if (close > 0 && ends.indexOf(close + 1) < 0) ends.push(close + 1);
                 }
             });
+            // Also include enclosing/touching parsed span edges (handles nested **[link](url)**).
+            const oSpans = o.spans || [];
+            let spChanged = true;
+            while (spChanged) {
+                spChanged = false;
+                for (let si = 0; si < oSpans.length; si++) {
+                    const spn = oSpans[si];
+                    if ((starts.indexOf(spn.openEnd) >= 0 || (spn.openStart < o.r0 && o.r0 <= spn.openEnd))
+                        && starts.indexOf(spn.openStart) < 0) {
+                        starts.push(spn.openStart);
+                        spChanged = true;
+                    }
+                    if ((ends.indexOf(spn.closeStart) >= 0 || (spn.closeStart <= o.r1 && o.r1 < spn.closeEnd))
+                        && ends.indexOf(spn.closeEnd) < 0) {
+                        ends.push(spn.closeEnd);
+                        spChanged = true;
+                    }
+                }
+            }
             const cands = [];
             for (let i = 0; i < starts.length; i++) for (let j = 0; j < ends.length; j++) {
                 const s0 = starts[i], e0 = ends[j];
@@ -2628,14 +2647,19 @@
             const fz = (typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze
                 && _mbSelFreeze.fromIdx === first && _mbSelFreeze.toIdx === last) ? _mbSelFreeze : null;
             const norm = function (s) { return String(s == null ? '' : s).replace(/[​﻿]/g, '').replace(/ /g, ' '); };
-            const prefixRe = /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/;
+            const prefixRe = /^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/;
             const lines = [];
             for (let k = 0; k < keys.length; k++) {
                 const i = keys[k];
                 const raw = String(preLines[i] == null ? '' : preLines[i]);
                 if (!raw.trim() || isInlineUnmarkableRaw(raw)) continue;
                 const pre = (raw.match(prefixRe) || [''])[0];
-                const pm = plainAndMarksFromMarkdown(raw.slice(pre.length));
+                let lineBody = raw.slice(pre.length);
+                if (pre && /^#/.test(pre)) {
+                    const closeM = lineBody.match(/\s+#+\s*$/);
+                    if (closeM) lineBody = lineBody.slice(0, lineBody.length - closeM[0].length);
+                }
+                const pm = plainAndMarksFromMarkdown(lineBody);
                 const len = pm.plain.length;
                 let a = 0, b = len;
                 if (fz && i === first) {
@@ -2649,22 +2673,55 @@
                 const ix = [];
                 for (let c = a; c < b; c++) if (!/\s/.test(pm.plain.charAt(c))) ix.push(c);
                 if (!ix.length) continue;
-                const allOn = type !== 'code' && ix.every(function (c) { return pm.marks[c] && pm.marks[c][type]; });
-                lines.push({ i: i, raw: raw, pre: pre, pm: pm, a: a, b: b, whole: a === 0 && b === len, allOn: allOn });
+                const whole = a === 0 && b === len;
+                let allOn = false;
+                if (type === 'code') {
+                    if (whole) {
+                        allOn = /^`[^`]+`$/.test(lineBody.trim());
+                    } else if (typeof plainRangeToRawOffsets === 'function') {
+                        const oCode = plainRangeToRawOffsets(lineBody, a, b);
+                        const p2r = oCode.plainToRaw || [];
+                        let ta = a, tb = b;
+                        while (ta < tb && /\s/.test(pm.plain.charAt(ta))) ta++;
+                        while (tb > ta && /\s/.test(pm.plain.charAt(tb - 1))) tb--;
+                        if (ta < tb && p2r.length >= tb) {
+                            const tr0 = p2r[ta], tr1 = p2r[tb - 1] + 1;
+                            allOn = (oCode.spans || []).some(function (s) {
+                                return s.kind === 'code' && s.openEnd <= tr0 && tr1 <= s.closeStart;
+                            });
+                        }
+                    }
+                } else {
+                    allOn = ix.every(function (c) { return pm.marks[c] && pm.marks[c][type]; });
+                }
+                lines.push({ i: i, raw: raw, pre: pre, pm: pm, a: a, b: b, whole: whole, allOn: allOn });
             }
-            const turnOff = type !== 'code' && lines.length > 0 && lines.every(function (l) { return l.allOn; });
+            const turnOff = lines.length > 0 && lines.every(function (l) { return l.allOn; });
             const out = {};
             lines.forEach(function (l) {
-                if (type !== 'code' && !turnOff && l.allOn) return;
+                if (!turnOff && l.allOn) return;
                 let next = null;
                 if (type === 'code') {
                     if (l.whole) next = transformRawForFormat(l.raw, type, { wholeLines: true });
                     else {
                         next = applyInlineFormatToRaw(l.raw, l.a, l.b, type);
-                        // Only the marks may change, never the words.
+                        // Partial-line code can turn existing markers (e.g. **) into visible text
+                        // inside the code span; keep text before l.a and after l.b unchanged.
                         if (next != null) {
                             const pre2 = (String(next).match(prefixRe) || [''])[0];
-                            if (pre2 !== l.pre || plainAndMarksFromMarkdown(String(next).slice(pre2.length)).plain.replace(/\s+/g, ' ') !== l.pm.plain.replace(/\s+/g, ' ')) next = null;
+                            let body2 = String(next).slice(pre2.length);
+                            if (pre2 && /^#/.test(pre2)) {
+                                const cm2 = body2.match(/\s+#+\s*$/);
+                                if (cm2) body2 = body2.slice(0, body2.length - cm2[0].length);
+                            }
+                            const nextPlain = plainAndMarksFromMarkdown(body2).plain.replace(/\s+/g, ' ');
+                            const beforePlain = l.pm.plain.slice(0, l.a).replace(/\s+/g, ' ');
+                            const afterPlain = l.pm.plain.slice(l.b).replace(/\s+/g, ' ');
+                            if (pre2 !== l.pre
+                                || (beforePlain && !nextPlain.startsWith(beforePlain))
+                                || (afterPlain && !nextPlain.endsWith(afterPlain))) {
+                                next = null;
+                            }
                         }
                     }
                 } else {
@@ -3086,34 +3143,35 @@
                 const t = split.body.trim();
                 let out;
 
-                // Whole lines of a selection across lines (opts.wholeLines): a line with no words
-                // stays as it is ("- " became "- **bold text**"), and a line that already has
-                // marks is toggled as text with marks, not wrapped as a string
-                // ("**Focus:** rest" became "****Focus:** rest**").
-                if (opts.wholeLines) {
+                // Whole lines of a selection across lines (opts.wholeLines), or any line with
+                // existing marks when wholeLineInlineFormat is available.
+                if ((opts.wholeLines || (typeof wholeLineInlineFormat === 'function' && t && /[*_~]/.test(t))) && type !== 'code') {
                     if (!t) return raw;
-                    const whole = wholeLineInlineFormat(split.body, type);
-                    if (whole != null) return prefix + whole;
+                    if (typeof wholeLineInlineFormat === 'function') {
+                        const whole = wholeLineInlineFormat(split.body, type);
+                        if (whole != null) return prefix + whole;
+                    }
                 }
+                if (opts.wholeLines && !t) return raw;
 
                 if (type === 'bold') {
-                    out = /^\*\*[\s\S]*\*\*$/.test(t)
-                        ? t.replace(/^\*\*([\s\S]*)\*\*$/, '$1')
-                        : `**${t || 'bold text'}**`;
+                    const singleBold = /^\*\*[\s\S]*\*\*$/.test(t) && t.slice(2, -2).indexOf('**') < 0;
+                    out = singleBold ? t.slice(2, -2) : `**${t || 'bold text'}**`;
                 }
                 else if (type === 'italic') {
-                    if (/^\*\*[\s\S]*\*\*$/.test(t)) out = `*${t}*`;   // don't mangle bold
-                    else out = (/^\*[^*][\s\S]*\*$/.test(t) || (/^\*[\s\S]*\*$/.test(t) && !/^\*\*/.test(t)))
-                        ? t.replace(/^\*([\s\S]*)\*$/, '$1')
-                        : `*${t || 'italic text'}*`;
+                    if (/^\*\*[\s\S]*\*\*$/.test(t) && t.slice(2, -2).indexOf('**') < 0) out = `*${t}*`;   // don't mangle bold
+                    else {
+                        const singleItalic = /^\*[\s\S]*\*$/.test(t) && !/^\*\*/.test(t) && !/\*\*$/.test(t)
+                            && t.slice(1, -1).replace(/\*\*/g, '').indexOf('*') < 0;
+                        out = singleItalic ? t.slice(1, -1) : `*${t || 'italic text'}*`;
+                    }
                 }
                 else if (type === 'strike') {
-                    out = /^~~[\s\S]*~~$/.test(t)
-                        ? t.replace(/^~~([\s\S]*)~~$/, '$1')
-                        : `~~${t || 'struck text'}~~`;
+                    const singleStrike = /^~~[\s\S]*~~$/.test(t) && t.slice(2, -2).indexOf('~~') < 0;
+                    out = singleStrike ? t.slice(2, -2) : `~~${t || 'struck text'}~~`;
                 }
                 else {
-                    out = /^`[\s\S]*`$/.test(t) ? t.slice(1, -1) : `\`${t || 'code'}\``;
+                    out = /^`[^`]*`$/.test(t) ? t.slice(1, -1) : `\`${t ? t.replace(/`/g, '') : 'code'}\``;
                 }
                 return prefix + out;
             }
@@ -3261,7 +3319,7 @@
                         const sA = window.getSelection();
                         const bA = sA && sA.rangeCount && sA.anchorNode && editor.contains(sA.anchorNode)
                             ? getAncestorBlock(sA.anchorNode) : null;
-                        if (bA && bA === getAncestorBlock(sA.focusNode) && bA.querySelector('pre, table, hr')) return;
+                        if (bA && bA === getAncestorBlock(sA.focusNode) && bA.querySelector('pre, table, hr, .tz-alert')) return;
                     } catch (eStruct) {}
                 }
                 // Fall through to whole-block wrap only if no usable selection
@@ -3561,6 +3619,117 @@
         }
 
         /**
+         * Pure split helper for partial-block heading/quote formatting: maps plain offsets
+         * via plainRangeToRawOffsets and keeps inline emphasis/link/code spans balanced
+         * across before/mid/after pieces so no stray markers are left behind.
+         */
+        function splitRawForBlockFormat(raw, plainStart, plainEnd, type, opts) {
+            raw = String(raw == null ? '' : raw);
+            const offs = plainRangeToRawOffsets(raw, plainStart, plainEnd);
+            const spans = offs.spans || [];
+            const plainToRaw = offs.plainToRaw || [];
+            if (plainStart > plainEnd) { const t = plainStart; plainStart = plainEnd; plainEnd = t; }
+            const ps = Math.max(0, Math.min(plainToRaw.length, plainStart | 0));
+            const pe = Math.max(ps, Math.min(plainToRaw.length, plainEnd | 0));
+            let tps = ps, tpe = pe;
+            while (tps < tpe && /\s/.test(raw.charAt(plainToRaw[tps]))) tps++;
+            while (tpe > tps && /\s/.test(raw.charAt(plainToRaw[tpe - 1]))) tpe--;
+            if (tps >= tpe) return null;
+            let r0 = plainToRaw[tps];
+            let r1 = plainToRaw[tpe - 1] + 1;
+
+            let changed = true;
+            while (changed) {
+                changed = false;
+                for (let si = 0; si < spans.length; si++) {
+                    const s = spans[si];
+                    if (s.kind === 'code' || s.kind === 'image') {
+                        if (s.openStart < r1 && s.closeEnd > r0) {
+                            const n0 = Math.min(r0, s.openStart);
+                            const n1 = Math.max(r1, s.closeEnd);
+                            if (n0 !== r0 || n1 !== r1) { r0 = n0; r1 = n1; changed = true; }
+                        }
+                        continue;
+                    }
+                    if (s.openStart < r0 && r0 >= s.openEnd && !/\S/.test(raw.slice(s.openEnd, r0))) {
+                        r0 = s.openStart;
+                        changed = true;
+                    }
+                    if (s.closeEnd > r1 && r1 <= s.closeStart && !/\S/.test(raw.slice(r1, s.closeStart))) {
+                        r1 = s.closeEnd;
+                        changed = true;
+                    }
+                }
+            }
+
+            let before = raw.slice(0, r0);
+            let mid = raw.slice(r0, r1);
+            let after = raw.slice(r1);
+            if (!String(mid).trim()) return null;
+
+            const lead = mid.match(/^\s*/);
+            const trail = mid.match(/\s*$/);
+            if (lead && lead[0]) { before += lead[0]; mid = mid.slice(lead[0].length); }
+            if (trail && trail[0]) { after = trail[0] + after; mid = mid.slice(0, mid.length - trail[0].length); }
+            if (!mid) return null;
+
+            const crossStart = [];
+            const crossEnd = [];
+            const enclosing = [];
+            for (let si = 0; si < spans.length; si++) {
+                const s = spans[si];
+                if (s.kind === 'code' || s.kind === 'image') continue;
+                if (s.openStart < r0 && r1 < s.closeStart) {
+                    enclosing.push(s);
+                } else if (s.openStart < r0 && r0 < s.closeStart && s.closeStart < r1) {
+                    crossStart.push(s);
+                } else if (r0 <= s.openStart && s.openStart < r1 && r1 < s.closeStart) {
+                    crossEnd.push(s);
+                }
+            }
+            crossStart.sort(function (a, b) { return b.openStart - a.openStart; });
+            for (let si = 0; si < crossStart.length; si++) {
+                const s = crossStart[si];
+                const openStr = raw.slice(s.openStart, s.openEnd);
+                const closeStr = raw.slice(s.closeStart, s.closeEnd);
+                const mb = before.match(/^([\s\S]*?)(\s*)$/);
+                before = mb[1] + closeStr + mb[2];
+                const mm = mid.match(/^(\s*)([\s\S]*)$/);
+                mid = mm[1] + openStr + mm[2];
+            }
+            crossEnd.sort(function (a, b) { return a.closeStart - b.closeStart; });
+            for (let si = 0; si < crossEnd.length; si++) {
+                const s = crossEnd[si];
+                const openStr = raw.slice(s.openStart, s.openEnd);
+                const closeStr = raw.slice(s.closeStart, s.closeEnd);
+                const mm = mid.match(/^([\s\S]*?)(\s*)$/);
+                mid = mm[1] + closeStr + mm[2];
+                const ma = after.match(/^(\s*)([\s\S]*)$/);
+                after = ma[1] + openStr + ma[2];
+            }
+            enclosing.sort(function (a, b) { return b.openStart - a.openStart; });
+            for (let si = 0; si < enclosing.length; si++) {
+                const s = enclosing[si];
+                const openStr = raw.slice(s.openStart, s.openEnd);
+                const closeStr = raw.slice(s.closeStart, s.closeEnd);
+                const mb = before.match(/^([\s\S]*?)(\s*)$/);
+                before = mb[1] + closeStr + mb[2];
+                mid = openStr + mid + closeStr;
+                const ma = after.match(/^(\s*)([\s\S]*)$/);
+                after = ma[1] + openStr + ma[2];
+            }
+
+            if (!String(before).trim()) before = '';
+            if (!String(after).trim()) after = '';
+            const formatted = transformRawForFormat(mid, type, opts || {});
+            const pieces = [];
+            if (before.length) pieces.push(before);
+            pieces.push(formatted);
+            if (after.length) pieces.push(after);
+            return { pieces: pieces, fmtIdx: before.length ? 1 : 0 };
+        }
+
+        /**
          * If the user selected only part of a paragraph, split into before/mid/after
          * and apply block format (heading/quote) to mid only. Returns new block list
          * or null to fall back to whole-block format.
@@ -3594,35 +3763,12 @@
             })();
             if (off.start <= 0 && off.end >= plainLen) return null;
 
-            const { r0, r1 } = plainRangeToRawOffsets(raw, off.start, off.end);
-            let before = raw.slice(0, r0);
-            let mid = raw.slice(r0, r1);
-            let after = raw.slice(r1);
-            if (!String(mid).trim()) return null;
+            const split = splitRawForBlockFormat(raw, off.start, off.end, type, opts);
+            if (!split) return null;
 
-            // Keep adjacent spaces on the outer pieces so mid is clean for heading text
-            const lead = mid.match(/^\s*/);
-            const trail = mid.match(/\s*$/);
-            if (lead && lead[0]) {
-                before += lead[0];
-                mid = mid.slice(lead[0].length);
-            }
-            if (trail && trail[0]) {
-                after = trail[0] + after;
-                mid = mid.slice(0, mid.length - trail[0].length);
-            }
-            if (!mid) return null;
-
-            const formatted = transformRawForFormat(mid, type, opts || {});
-            const pieces = [];
-            if (before.length) pieces.push(before);
-            pieces.push(formatted);
-            if (after.length) pieces.push(after);
-
-            const blocks = replaceBlockWithPieces(block, pieces);
+            const blocks = replaceBlockWithPieces(block, split.pieces);
             // Point current at the formatted piece
-            const fmtIdx = before.length ? 1 : 0;
-            if (blocks[fmtIdx]) currentActiveBlock = blocks[fmtIdx];
+            if (blocks[split.fmtIdx]) currentActiveBlock = blocks[split.fmtIdx];
             return blocks;
         }
 

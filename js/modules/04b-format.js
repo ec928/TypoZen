@@ -61,10 +61,10 @@
             });
         }
 
-        /** Map visible plain-text offsets to indices in Markdown raw (skip emphasis/link markers). */
         /**
          * Map visible plain-text offsets [plainStart, plainEnd) → raw markdown slice.
-         * Skips emphasis/code/link markers so "hybrid" inside **hybrid** maps to the word only.
+         * Mirrors parseInline() delimiter rules so markers/links/images/code spans stay
+         * aligned with what Preview actually renders, and returns parsed span bounds.
          */
         function plainRangeToRawOffsets(raw, plainStart, plainEnd) {
             raw = String(raw || '');
@@ -74,88 +74,145 @@
             plainStart = Math.max(0, plainStart | 0);
             plainEnd = Math.max(0, plainEnd | 0);
 
-            let i = 0;
-            let plain = 0;
-            let rStart = null;
-            let rEnd = null;
+            const n = raw.length;
+            const hidden = new Array(n).fill(false);
+            const spans = [];
 
-            function skipMarkersOnly() {
-                if (i >= raw.length) return false;
-                // Strikethrough before single ~ (GFM ~~)
-                if (i + 1 < raw.length && raw[i] === '~' && raw[i + 1] === '~') {
-                    i += 2;
-                    return true;
+            function isSafeUrlForOffset(dest, allowDataImage) {
+                const esc = String(dest).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                if (typeof safeUrl === 'function' && typeof splitLinkTitle === 'function') {
+                    return !!safeUrl(splitLinkTitle(esc).url, allowDataImage);
                 }
-                if (i + 1 < raw.length && ((raw[i] === '*' && raw[i + 1] === '*') || (raw[i] === '_' && raw[i + 1] === '_'))) {
-                    i += 2;
-                    return true;
-                }
-                if (raw[i] === '*' || raw[i] === '_') {
-                    i += 1;
-                    return true;
-                }
-                // Opening ` or [ handled below as structured spans (inner text is plain)
-                return false;
+                const parts = esc.match(/^(\S+)(\s+(?:&quot;.*&quot;|&#39;.*&#39;))\s*$/);
+                const u = String(parts ? parts[1] : esc).trim();
+                if (!u || /&quot;|&#39;|&lt;|&gt;/.test(u)) return false;
+                const probe = u.replace(/[\x00-\x20]/g, '').toLowerCase();
+                if (allowDataImage && /^data:image\//.test(probe)) return true;
+                return !/^(javascript|vbscript|data|about):/.test(probe);
             }
 
-            function consumeCodeOrLink() {
-                if (i >= raw.length) return false;
-                if (raw[i] === '`') {
-                    i += 1;
-                    while (i < raw.length && raw[i] !== '`') {
-                        if (rStart === null && plain === plainStart) rStart = i;
-                        if (rEnd === null && plain === plainEnd) rEnd = i;
-                        if (rStart !== null && rEnd !== null) return true;
-                        i++;
-                        plain++;
-                        if (rEnd === null && plain === plainEnd) rEnd = i;
-                    }
-                    if (i < raw.length) i += 1;
-                    return true;
+            // 1. Code spans first — literal body, no inner emphasis/links/images.
+            let mask = raw.replace(/`([^`]*)`/g, function (m, body, offset) {
+                const openStart = offset;
+                const openEnd = offset + 1;
+                const closeStart = openEnd + body.length;
+                const closeEnd = offset + m.length;
+                hidden[openStart] = true;
+                hidden[closeStart] = true;
+                spans.push({
+                    kind: 'code',
+                    marker: '`',
+                    openStart: openStart,
+                    openEnd: openEnd,
+                    closeStart: closeStart,
+                    closeEnd: closeEnd
+                });
+                return '\uE000'.repeat(m.length);
+            });
+
+            // 2. Images before links. Safe images render 0 visible chars; unsafe render alt as link.
+            mask = mask.replace(/!\[(.*?)\]\((.*?)\)/g, function (m, alt, dest, offset) {
+                const rawDest = raw.slice(offset + 3 + alt.length, offset + m.length - 1);
+                if (isSafeUrlForOffset(rawDest, true)) {
+                    for (let k = offset; k < offset + m.length; k++) hidden[k] = true;
+                    spans.push({
+                        kind: 'image',
+                        marker: '![',
+                        openStart: offset,
+                        openEnd: offset,
+                        closeStart: offset + m.length,
+                        closeEnd: offset + m.length
+                    });
+                    return '\uE000'.repeat(m.length);
                 }
-                if (raw[i] === '[') {
-                    const closeB = raw.indexOf(']', i);
-                    const openP = closeB >= 0 ? raw.indexOf('(', closeB) : -1;
-                    const closeP = openP === closeB + 1 ? raw.indexOf(')', openP) : -1;
-                    if (closeB > i && openP === closeB + 1 && closeP > openP) {
-                        i += 1;
-                        while (i < closeB) {
-                            if (rStart === null && plain === plainStart) rStart = i;
-                            if (rEnd === null && plain === plainEnd) rEnd = i;
-                            if (rStart !== null && rEnd !== null) return true;
-                            i++;
-                            plain++;
-                            if (rEnd === null && plain === plainEnd) rEnd = i;
-                        }
-                        i = closeP + 1;
-                        return true;
-                    }
-                }
-                return false;
+                const openStart = offset;
+                const openEnd = offset + 2;
+                const closeStart = openEnd + alt.length;
+                const closeEnd = offset + m.length;
+                for (let k = openStart; k < openEnd; k++) hidden[k] = true;
+                for (let k = closeStart; k < closeEnd; k++) hidden[k] = true;
+                spans.push({
+                    kind: 'image-link',
+                    marker: '![',
+                    openStart: openStart,
+                    openEnd: openEnd,
+                    closeStart: closeStart,
+                    closeEnd: closeEnd
+                });
+                return '\uE000\uE000' + alt + '\uE000'.repeat(closeEnd - closeStart);
+            });
+
+            // 3. Links — hide [ and ](dest), keep label exposed for emphasis.
+            mask = mask.replace(/\[(.*?)\]\((.*?)\)/g, function (m, label, dest, offset) {
+                const openStart = offset;
+                const openEnd = offset + 1;
+                const closeStart = openEnd + label.length;
+                const closeEnd = offset + m.length;
+                hidden[openStart] = true;
+                for (let k = closeStart; k < closeEnd; k++) hidden[k] = true;
+                spans.push({
+                    kind: 'link',
+                    marker: '[',
+                    openStart: openStart,
+                    openEnd: openEnd,
+                    closeStart: closeStart,
+                    closeEnd: closeEnd
+                });
+                return '\uE000' + label + '\uE000'.repeat(closeEnd - closeStart);
+            });
+
+            // 4. Strike & emphasis in parseInline's exact order.
+            const rules = [
+                { kind: 'strike', marker: '~~', re: /~~(?=\S)(.*?\S)~~/g, hasLead: false },
+                { kind: 'bolditalic', marker: '***', re: /\*\*\*(?=\S)(.*?\S)\*\*\*/g, hasLead: false },
+                { kind: 'bolditalic', marker: '___', re: /(^|[^\w])___(?=\S)(.*?\S)___(?!\w)/g, hasLead: true },
+                { kind: 'bold', marker: '**', re: /\*\*(?=\S)(.*?\S)\*\*/g, hasLead: false },
+                { kind: 'bold', marker: '__', re: /(^|[^\w])__(?=\S)(.*?\S)__(?!\w)/g, hasLead: true },
+                { kind: 'italic', marker: '*', re: /\*(?=\S)(.*?\S)\*/g, hasLead: false },
+                { kind: 'italic', marker: '_', re: /(^|[^\w])_(?=\S)(.*?\S)_(?!\w)/g, hasLead: true }
+            ];
+            for (let ri = 0; ri < rules.length; ri++) {
+                const rule = rules[ri];
+                mask = mask.replace(rule.re, function () {
+                    const offset = arguments[arguments.length - 2];
+                    const lead = rule.hasLead ? arguments[1] : '';
+                    const inner = rule.hasLead ? arguments[2] : arguments[1];
+                    const mLen = rule.marker.length;
+                    const openStart = offset + lead.length;
+                    const openEnd = openStart + mLen;
+                    const closeStart = openEnd + inner.length;
+                    const closeEnd = closeStart + mLen;
+                    for (let k = openStart; k < openEnd; k++) hidden[k] = true;
+                    for (let k = closeStart; k < closeEnd; k++) hidden[k] = true;
+                    spans.push({
+                        kind: rule.kind,
+                        marker: rule.marker,
+                        openStart: openStart,
+                        openEnd: openEnd,
+                        closeStart: closeStart,
+                        closeEnd: closeEnd
+                    });
+                    return lead + '\uE000'.repeat(mLen) + inner + '\uE000'.repeat(mLen);
+                });
             }
 
-            while (i < raw.length && (rStart === null || rEnd === null)) {
-                // Skip pure markers first so rStart never lands on **
-                while (skipMarkersOnly()) {}
-                if (consumeCodeOrLink()) {
-                    if (rStart !== null && rEnd !== null) break;
-                    continue;
-                }
-                if (i >= raw.length) break;
-
-                // i is at a visible character
-                if (rStart === null && plain === plainStart) rStart = i;
-                if (rEnd === null && plain === plainEnd) rEnd = i;
-                if (rStart !== null && rEnd !== null) break;
-
-                i++;
-                plain++;
-                if (rEnd === null && plain === plainEnd) rEnd = i;
+            const plainToRaw = [];
+            for (let k = 0; k < n; k++) {
+                if (!hidden[k]) plainToRaw.push(k);
             }
-
-            if (rStart === null) rStart = plainStart <= 0 ? 0 : raw.length;
-            if (rEnd === null) rEnd = plainEnd >= plain ? raw.length : rStart;
-            return { r0: Math.min(rStart, rEnd), r1: Math.max(rStart, rEnd), plainLength: plain };
+            const plainLength = plainToRaw.length;
+            const ps = Math.min(plainLength, plainStart);
+            const pe = Math.min(plainLength, plainEnd);
+            let r0, r1;
+            if (ps === pe) {
+                r0 = ps < plainLength ? plainToRaw[ps] : n;
+                r1 = r0;
+            } else {
+                r0 = plainToRaw[ps];
+                r1 = plainToRaw[pe - 1] + 1;
+            }
+            return { r0: r0, r1: r1, plainLength: plainLength, spans: spans, plainToRaw: plainToRaw };
         }
 
         function getPlainOffsetsInBlock(block) {
@@ -181,13 +238,22 @@
         function cacheInlineSelection() {
             if (state.mode === 'source') return;
             const sel = window.getSelection();
-            if (!sel || !sel.rangeCount || sel.isCollapsed) return;
+            if (!sel || !sel.rangeCount) return;
             if (!sel.anchorNode || !editor.contains(sel.anchorNode)) return;
+            if (sel.isCollapsed) {
+                _inlineSelCache = null;
+                return;
+            }
             const block = getAncestorBlock(sel.anchorNode);
-            if (!block || !block.contains(sel.focusNode)) return;
+            if (!block || !block.contains(sel.focusNode)) {
+                _inlineSelCache = null;
+                return;
+            }
             const off = getPlainOffsetsInBlock(block);
             if (off && off.start !== off.end) {
                 _inlineSelCache = { block: block, start: off.start, end: off.end, text: off.text };
+            } else {
+                _inlineSelCache = null;
             }
         }
 
@@ -300,36 +366,106 @@
          */
         function applyInlineFormatToRaw(raw, plainStart, plainEnd, type, opts) {
             raw = String(raw || '');
+            if (raw.indexOf('\n') >= 0) return null;
             if (plainStart > plainEnd) {
                 const t = plainStart; plainStart = plainEnd; plainEnd = t;
             }
-            const pref = raw.match(/^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/);
+            const pref = raw.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/);
             const prefix = pref ? pref[0] : '';
-            const body = raw.slice(prefix.length);
+            let body = raw.slice(prefix.length);
+            let suffix = '';
+            if (prefix && /^#/.test(prefix)) {
+                const closeM = body.match(/\s+#+\s*$/);
+                if (closeM) {
+                    suffix = closeM[0];
+                    body = body.slice(0, body.length - suffix.length);
+                }
+            }
 
-            function withPrefix(newBody) { return prefix + newBody; }
+            function withPrefix(newBody) { return prefix + newBody + suffix; }
 
             if (type === 'bold' || type === 'italic' || type === 'strike') {
                 // The marks model below holds text and bold/italic/strike, nothing else. Written
                 // back, it deleted link addresses, images and code marks from the whole line. So
                 // its answer is used only if nothing but those marks changed; otherwise only the
-                // selection is touched. A multi-line block is a table or fence: never modelled.
-                const multiLine = raw.indexOf('\n') >= 0;
-                if (!multiLine) {
-                    // Underscores count as text: the model writes __b__ back as **b**.
-                    const marksOnly = function (s) { return String(s).replace(/[*~​]/g, ''); };
-                    const modelled = applyMarksModelToBody(body, plainStart, plainEnd, type);
-                    if (marksOnly(modelled) === marksOnly(body)) return withPrefix(modelled);
-                }
+                // selection is touched.
+                // Underscores count as text: the model writes __b__ back as **b**.
+                const marksOnly = function (s) { return String(s).replace(/[*~​]/g, ''); };
+                const modelled = applyMarksModelToBody(body, plainStart, plainEnd, type);
+                if (marksOnly(modelled) === marksOnly(body)) return withPrefix(modelled);
                 if (opts && opts.refuseIfLossy) return null;
-                if (multiLine) return null;
                 const m0 = type === 'bold' ? '**' : type === 'italic' ? '*' : '~~';
                 const o = plainRangeToRawOffsets(body, plainStart, plainEnd);
-                const sel = body.slice(o.r0, o.r1);
-                const around = body.slice(Math.max(0, o.r0 - m0.length), o.r0) === m0 && body.slice(o.r1, o.r1 + m0.length) === m0;
-                if (around) return withPrefix(body.slice(0, o.r0 - m0.length) + sel + body.slice(o.r1 + m0.length));
+                const spans = o.spans || [];
+                const plainToRaw = o.plainToRaw || [];
+                if (plainStart === plainEnd) {
+                    for (let si = 0; si < spans.length; si++) {
+                        const s = spans[si];
+                        if (s.kind === 'code' && s.openEnd <= o.r0 && o.r0 <= s.closeStart) return null;
+                    }
+                    return withPrefix(body.slice(0, o.r0) + m0 + m0 + body.slice(o.r0));
+                }
+                const ps = Math.max(0, Math.min(plainToRaw.length, plainStart | 0));
+                const pe = Math.max(ps, Math.min(plainToRaw.length, plainEnd | 0));
+                let tps = ps, tpe = pe;
+                while (tps < tpe && /\s/.test(body.charAt(plainToRaw[tps]))) tps++;
+                while (tpe > tps && /\s/.test(body.charAt(plainToRaw[tpe - 1]))) tpe--;
+                if (tps >= tpe) return null;
+                let r0 = plainToRaw[tps];
+                let r1 = plainToRaw[tpe - 1] + 1;
+                for (let si = 0; si < spans.length; si++) {
+                    const s = spans[si];
+                    if (s.kind === 'code' && s.openEnd <= r0 && r1 <= s.closeStart
+                        && (r0 > s.openEnd || r1 < s.closeStart)) {
+                        return null;
+                    }
+                }
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    for (let si = 0; si < spans.length; si++) {
+                        const s = spans[si];
+                        if (s.kind === 'code' || s.kind === 'image') {
+                            if (s.openStart < r1 && s.closeEnd > r0) {
+                                const n0 = Math.min(r0, s.openStart);
+                                const n1 = Math.max(r1, s.closeEnd);
+                                if (n0 !== r0 || n1 !== r1) { r0 = n0; r1 = n1; changed = true; }
+                            }
+                            continue;
+                        }
+                        if (s.openEnd <= r0 && r1 <= s.closeStart) continue;
+                        if (s.openStart < r0 && s.closeEnd > r0 && s.closeStart < r1) {
+                            const betweenOpen = body.slice(s.openEnd, r0);
+                            if (s.openEnd <= r0 && !/\S/.test(betweenOpen)) {
+                                r0 = s.openStart;
+                                changed = true;
+                                continue;
+                            }
+                        }
+                        if (s.openStart < r1 && s.closeEnd > r1 && r0 < s.openEnd) {
+                            const betweenClose = body.slice(r1, s.closeStart);
+                            if (r1 <= s.closeStart && !/\S/.test(betweenClose)) {
+                                r1 = s.closeEnd;
+                                changed = true;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                const sel = body.slice(r0, r1);
+                let around = body.slice(Math.max(0, r0 - m0.length), r0) === m0 && body.slice(r1, r1 + m0.length) === m0;
+                if (around && m0 === '*') {
+                    const singleStar = (r0 < 2 || body[r0 - 2] !== '*') && body[r1 + 1] !== '*';
+                    const tripleStar = r0 >= 3 && body.slice(r0 - 3, r0) === '***' && body.slice(r1, r1 + 3) === '***';
+                    around = singleStar || tripleStar;
+                } else if (around && m0 === '**') {
+                    const exactDouble = (r0 < 3 || body[r0 - 3] !== '*') && body[r1 + 2] !== '*';
+                    const tripleStar = r0 >= 3 && body.slice(r0 - 3, r0) === '***' && body.slice(r1, r1 + 3) === '***';
+                    around = exactDouble || tripleStar;
+                }
+                if (around) return withPrefix(body.slice(0, r0 - m0.length) + sel + body.slice(r1 + m0.length));
                 const sp = sel.match(/^(\s*)([\s\S]*?)(\s*)$/);
-                return withPrefix(body.slice(0, o.r0) + sp[1] + m0 + sp[2] + m0 + sp[3] + body.slice(o.r1));
+                return withPrefix(body.slice(0, r0) + sp[1] + m0 + sp[2] + m0 + sp[3] + body.slice(r1));
             }
             return applyInlineFormatRest(body, plainStart, plainEnd, type, withPrefix);
         }
@@ -382,33 +518,223 @@
         function applyInlineFormatRest(body, plainStart, plainEnd, type, withPrefix) {
             const offs = plainRangeToRawOffsets(body, plainStart, plainEnd);
             const r0 = offs.r0, r1 = offs.r1;
+            const spans = offs.spans || [];
+            const plainToRaw = offs.plainToRaw || [];
+
+            function expandSpanBounds(tr0, tr1) {
+                let c0 = tr0, c1 = tr1;
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    for (let si = 0; si < spans.length; si++) {
+                        const s = spans[si];
+                        if (s.kind === 'code' || s.kind === 'image') {
+                            if (s.openStart < c1 && s.closeEnd > c0) {
+                                const n0 = Math.min(c0, s.openStart);
+                                const n1 = Math.max(c1, s.closeEnd);
+                                if (n0 !== c0 || n1 !== c1) { c0 = n0; c1 = n1; changed = true; }
+                            }
+                            continue;
+                        }
+                        if (s.openEnd <= c0 && c1 <= s.closeStart) continue;
+                        if (s.openStart < c0 && s.closeEnd > c0 && s.closeStart < c1) {
+                            const betweenOpen = body.slice(s.openEnd, c0);
+                            if (s.openEnd <= c0 && !/\S/.test(betweenOpen)) {
+                                c0 = s.openStart;
+                                changed = true;
+                                continue;
+                            }
+                        }
+                        if (s.openStart < c1 && s.closeEnd > c1 && c0 < s.openEnd) {
+                            const betweenClose = body.slice(c1, s.closeStart);
+                            if (c1 <= s.closeStart && !/\S/.test(betweenClose)) {
+                                c1 = s.closeEnd;
+                                changed = true;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                return { c0: c0, c1: c1 };
+            }
+
+            function splitSpanCrossings(c0, c1, stripLinkMid) {
+                let before = body.slice(0, c0);
+                let mid = body.slice(c0, c1);
+                let after = body.slice(c1);
+                const crossStart = [];
+                const crossEnd = [];
+                for (let si = 0; si < spans.length; si++) {
+                    const s = spans[si];
+                    if (s.kind === 'code' || s.kind === 'image') continue;
+                    if (s.openStart < c0 && c0 < s.closeStart && s.closeStart < c1) {
+                        crossStart.push(s);
+                    } else if (c0 <= s.openStart && s.openStart < c1 && c1 < s.closeStart) {
+                        crossEnd.push(s);
+                    }
+                }
+                crossStart.sort(function (a, b) { return b.openStart - a.openStart; });
+                for (let si = 0; si < crossStart.length; si++) {
+                    const s = crossStart[si];
+                    const openStr = body.slice(s.openStart, s.openEnd);
+                    const closeStr = body.slice(s.closeStart, s.closeEnd);
+                    const mb = before.match(/^([\s\S]*?)(\s*)$/);
+                    before = mb[1] + closeStr + mb[2];
+                    if (stripLinkMid && (s.kind === 'link' || s.kind === 'image-link')) {
+                        const relClose = s.closeStart - c0;
+                        const relEnd = s.closeEnd - c0;
+                        if (relClose >= 0 && relEnd <= mid.length) {
+                            mid = mid.slice(0, relClose) + mid.slice(relEnd);
+                        }
+                    } else {
+                        const mm = mid.match(/^(\s*)([\s\S]*)$/);
+                        mid = mm[1] + openStr + mm[2];
+                    }
+                }
+                crossEnd.sort(function (a, b) { return a.closeStart - b.closeStart; });
+                for (let si = 0; si < crossEnd.length; si++) {
+                    const s = crossEnd[si];
+                    const openStr = body.slice(s.openStart, s.openEnd);
+                    const closeStr = body.slice(s.closeStart, s.closeEnd);
+                    if (stripLinkMid && (s.kind === 'link' || s.kind === 'image-link')) {
+                        const relOpen = s.openStart - c0;
+                        const relOpenEnd = s.openEnd - c0;
+                        if (relOpen >= 0 && relOpenEnd <= mid.length) {
+                            mid = mid.slice(0, relOpen) + mid.slice(relOpenEnd);
+                        }
+                    } else {
+                        const mm = mid.match(/^([\s\S]*?)(\s*)$/);
+                        mid = mm[1] + closeStr + mm[2];
+                    }
+                    const ma = after.match(/^(\s*)([\s\S]*)$/);
+                    after = ma[1] + openStr + ma[2];
+                }
+                return { before: before, mid: mid, after: after };
+            }
 
             if (type === 'link') {
-                let inner = body.slice(r0, r1) || 'Link Text';
-                const m = inner.match(/^\[([^\]]*)\]\([^)]*\)$/);
-                if (m) return withPrefix(body.slice(0, r0) + m[1] + body.slice(r1));
-                // _pendingLink carries what the dialog collected. Set through this path
-                // rather than a second insert routine so the prefix and offset handling
-                // that already works for every other inline format is the only copy.
-                const lt = (_pendingLink && _pendingLink.text) || inner;
+                if (plainStart === plainEnd) {
+                    for (let si = 0; si < spans.length; si++) {
+                        const s = spans[si];
+                        if (s.kind === 'code' && s.openEnd <= r0 && r0 <= s.closeStart) return null;
+                    }
+                    const lt0 = (_pendingLink && _pendingLink.text) || 'Link Text';
+                    const lu0 = (_pendingLink && _pendingLink.url) || 'https://';
+                    return withPrefix(body.slice(0, r0) + '[' + lt0 + '](' + lu0 + ')' + body.slice(r0));
+                }
+
+                const ps = Math.max(0, Math.min(plainToRaw.length, plainStart | 0));
+                const pe = Math.max(ps, Math.min(plainToRaw.length, plainEnd | 0));
+                let tps = ps, tpe = pe;
+                while (tps < tpe && /\s/.test(body.charAt(plainToRaw[tps]))) tps++;
+                while (tpe > tps && /\s/.test(body.charAt(plainToRaw[tpe - 1]))) tpe--;
+                if (tps >= tpe) return null;
+                const tr0 = plainToRaw[tps];
+                const tr1 = plainToRaw[tpe - 1] + 1;
+
+                // Existing link matching or enclosing selection.
+                for (let si = 0; si < spans.length; si++) {
+                    const s = spans[si];
+                    if (s.kind !== 'link' && s.kind !== 'image-link') continue;
+                    if ((r0 === s.openEnd && r1 === s.closeStart) || (tr0 === s.openEnd && tr1 === s.closeStart)) {
+                        if (!_pendingLink) {
+                            return withPrefix(body.slice(0, s.openStart) + body.slice(s.openEnd, s.closeStart) + body.slice(s.closeEnd));
+                        }
+                        const lt1 = _pendingLink.text || body.slice(s.openEnd, s.closeStart);
+                        const lu1 = _pendingLink.url || 'https://';
+                        return withPrefix(body.slice(0, s.openStart) + '[' + lt1 + '](' + lu1 + ')' + body.slice(s.closeEnd));
+                    }
+                    if (s.openEnd <= tr0 && tr1 <= s.closeStart) {
+                        const destPart = body.slice(s.closeStart, s.closeEnd);
+                        const left = body.slice(s.openEnd, tr0);
+                        const midText = body.slice(tr0, tr1);
+                        const right = body.slice(tr1, s.closeStart);
+                        const lm = left.match(/^([\s\S]*?)(\s*)$/);
+                        const rm = right.match(/^(\s*)([\s\S]*)$/);
+                        const leftOut = lm[1] ? '[' + lm[1] + destPart + lm[2] : left;
+                        const rightOut = rm[2] ? rm[1] + '[' + rm[2] + destPart : right;
+                        const lt2 = (_pendingLink && _pendingLink.text) || midText;
+                        const lu2 = (_pendingLink && _pendingLink.url) || 'https://';
+                        return withPrefix(body.slice(0, s.openStart) + leftOut + '[' + lt2 + '](' + lu2 + ')' + rightOut + body.slice(s.closeEnd));
+                    }
+                }
+
+                // Existing code span matching or enclosing selection.
+                for (let si = 0; si < spans.length; si++) {
+                    const s = spans[si];
+                    if (s.kind !== 'code') continue;
+                    if ((r0 === s.openEnd && r1 === s.closeStart) || (tr0 === s.openEnd && tr1 === s.closeStart)) {
+                        const codeRaw = body.slice(s.openStart, s.closeEnd);
+                        const lt3 = (_pendingLink && _pendingLink.text) || codeRaw;
+                        const lu3 = (_pendingLink && _pendingLink.url) || 'https://';
+                        return withPrefix(body.slice(0, s.openStart) + '[' + lt3 + '](' + lu3 + ')' + body.slice(s.closeEnd));
+                    }
+                    if (s.openEnd <= tr0 && tr1 <= s.closeStart) {
+                        const left = body.slice(s.openEnd, tr0);
+                        const midText = body.slice(tr0, tr1);
+                        const right = body.slice(tr1, s.closeStart);
+                        const lm = left.match(/^([\s\S]*?)(\s*)$/);
+                        const rm = right.match(/^(\s*)([\s\S]*)$/);
+                        const leftOut = lm[1] ? '`' + lm[1] + '`' + lm[2] : left;
+                        const rightOut = rm[2] ? rm[1] + '`' + rm[2] + '`' : right;
+                        const lt4 = (_pendingLink && _pendingLink.text) || midText;
+                        const lu4 = (_pendingLink && _pendingLink.url) || 'https://';
+                        return withPrefix(body.slice(0, s.openStart) + leftOut + '[' + lt4 + '](' + lu4 + ')' + rightOut + body.slice(s.closeEnd));
+                    }
+                }
+
+                const bndL = expandSpanBounds(tr0, tr1);
+                const splitL = splitSpanCrossings(bndL.c0, bndL.c1, true);
+                const matchL = splitL.mid.match(/^(\s*)([\s\S]*?)(\s*)$/);
+                const lt = (_pendingLink && _pendingLink.text) || (matchL && matchL[2]) || 'Link Text';
                 const lu = (_pendingLink && _pendingLink.url) || 'https://';
-                return withPrefix(body.slice(0, r0) + '[' + lt + '](' + lu + ')' + body.slice(r1));
+                return withPrefix(splitL.before + matchL[1] + '[' + lt + '](' + lu + ')' + matchL[3] + splitL.after);
             }
 
             if (type === 'code') {
                 if (plainStart === plainEnd) {
+                    for (let si = 0; si < spans.length; si++) {
+                        const s = spans[si];
+                        if (s.kind === 'code' && s.openEnd <= r0 && r0 <= s.closeStart) return null;
+                    }
                     return withPrefix(body.slice(0, r0) + '``' + body.slice(r0));
                 }
-                let inner = body.slice(r0, r1);
-                if (/^`([\s\S]*)`$/.test(inner)) {
-                    return withPrefix(body.slice(0, r0) + inner.replace(/^`([\s\S]*)`$/, '$1') + body.slice(r1));
+
+                // Trim outer whitespace in plain coordinates so trailing spaces stay outside backticks.
+                const ps = Math.max(0, Math.min(plainToRaw.length, plainStart | 0));
+                const pe = Math.max(ps, Math.min(plainToRaw.length, plainEnd | 0));
+                let tps = ps, tpe = pe;
+                while (tps < tpe && /\s/.test(body.charAt(plainToRaw[tps]))) tps++;
+                while (tpe > tps && /\s/.test(body.charAt(plainToRaw[tpe - 1]))) tpe--;
+                if (tps >= tpe) return null;
+                const tr0 = plainToRaw[tps];
+                const tr1 = plainToRaw[tpe - 1] + 1;
+
+                // Toggle OFF when selection matches an existing code span, or split inside one.
+                for (let si = 0; si < spans.length; si++) {
+                    const s = spans[si];
+                    if (s.kind !== 'code') continue;
+                    if ((r0 === s.openEnd && r1 === s.closeStart) || (tr0 === s.openEnd && tr1 === s.closeStart)) {
+                        return withPrefix(body.slice(0, s.openStart) + body.slice(s.openEnd, s.closeStart) + body.slice(s.closeEnd));
+                    }
+                    if (s.openEnd <= tr0 && tr1 <= s.closeStart) {
+                        const left = body.slice(s.openEnd, tr0);
+                        const mid = body.slice(tr0, tr1);
+                        const right = body.slice(tr1, s.closeStart);
+                        const lm = left.match(/^([\s\S]*?)(\s*)$/);
+                        const rm = right.match(/^(\s*)([\s\S]*)$/);
+                        const leftOut = lm[1] ? '`' + lm[1] + '`' + lm[2] : left;
+                        const rightOut = rm[2] ? rm[1] + '`' + rm[2] + '`' : right;
+                        return withPrefix(body.slice(0, s.openStart) + leftOut + mid + rightOut + body.slice(s.closeEnd));
+                    }
                 }
-                if (r0 >= 1 && body[r0 - 1] === '`' && body[r1] === '`') {
-                    return withPrefix(body.slice(0, r0 - 1) + inner + body.slice(r1 + 1));
-                }
-                // Don't wrap trailing spaces inside backticks
-                const match = inner.match(/^(\s*)([\s\S]*?)(\s*)$/);
-                return withPrefix(body.slice(0, r0) + match[1] + '`' + match[2] + '`' + match[3] + body.slice(r1));
+
+                const bnd = expandSpanBounds(tr0, tr1);
+                const split = splitSpanCrossings(bnd.c0, bnd.c1, false);
+                const cleanMid = split.mid.replace(/`/g, '');
+                const match = cleanMid.match(/^(\s*)([\s\S]*?)(\s*)$/);
+                if (!match || !match[2]) return null;
+                return withPrefix(split.before + match[1] + '`' + match[2] + '`' + match[3] + split.after);
             }
 
             return null;
@@ -491,26 +817,36 @@
                 }
                 let inner = full.slice(start, end);
                 let rep;
-                if (type === 'bold' && /^\*\*([\s\S]*)\*\*$/.test(inner))
-                    rep = inner.replace(/^\*\*([\s\S]*)\*\*$/, '$1');
-                else if (type === 'italic' && /^\*([\s\S]*)\*$/.test(inner) && !/^\*\*/.test(inner))
-                    rep = inner.replace(/^\*([\s\S]*)\*$/, '$1');
-                else if (type === 'code' && /^`([\s\S]*)`$/.test(inner))
-                    rep = inner.replace(/^`([\s\S]*)`$/, '$1');
-                else if (type === 'strike' && /^~~([\s\S]*)~~$/.test(inner))
-                    rep = inner.replace(/^~~([\s\S]*)~~$/, '$1');
-                else if (type === 'bold' && start >= 2 && full.slice(start - 2, start) === '**' && full.slice(end, end + 2) === '**') {
+                if (type === 'bold' && /^\*\*([\s\S]*)\*\*$/.test(inner) && inner.slice(2, -2).indexOf('**') < 0)
+                    rep = inner.slice(2, -2);
+                else if (type === 'italic' && /^\*([\s\S]*)\*$/.test(inner) && !/^\*\*/.test(inner) && !/\*\*$/.test(inner)
+                    && inner.slice(1, -1).replace(/\*\*/g, '').indexOf('*') < 0)
+                    rep = inner.slice(1, -1);
+                else if (type === 'code' && /^`([^`]*)`$/.test(inner))
+                    rep = inner.slice(1, -1);
+                else if (type === 'strike' && /^~~([\s\S]*)~~$/.test(inner) && inner.slice(2, -2).indexOf('~~') < 0)
+                    rep = inner.slice(2, -2);
+                else if (type === 'bold' && start >= 2 && full.slice(start - 2, start) === '**' && full.slice(end, end + 2) === '**'
+                    && inner.indexOf('**') < 0) {
                     HistoryManager.beginEdit();
                     sourceSetRangeTextPreserveScroll(inner, start - 2, end + 2, 'select');
                     resizeSourceEditor(); updateStats(); HistoryManager.commitEdit();
                     return true;
-                } else if (type === 'strike' && start >= 2 && full.slice(start - 2, start) === '~~' && full.slice(end, end + 2) === '~~') {
+                } else if (type === 'strike' && start >= 2 && full.slice(start - 2, start) === '~~' && full.slice(end, end + 2) === '~~'
+                    && inner.indexOf('~~') < 0) {
                     HistoryManager.beginEdit();
                     sourceSetRangeTextPreserveScroll(inner, start - 2, end + 2, 'select');
+                    resizeSourceEditor(); updateStats(); HistoryManager.commitEdit();
+                    return true;
+                } else if (type === 'code' && start >= 1 && full[start - 1] === '`' && full[end] === '`'
+                    && inner.indexOf('`') < 0) {
+                    HistoryManager.beginEdit();
+                    sourceSetRangeTextPreserveScroll(inner, start - 1, end + 1, 'select');
                     resizeSourceEditor(); updateStats(); HistoryManager.commitEdit();
                     return true;
                 } else if (type === 'italic' && start >= 1 && full[start - 1] === '*' && full[end] === '*'
-                    && (start < 2 || full[start - 2] !== '*') && full[end + 1] !== '*') {
+                    && (start < 2 || full[start - 2] !== '*') && full[end + 1] !== '*'
+                    && inner.replace(/\*\*/g, '').indexOf('*') < 0) {
                     HistoryManager.beginEdit();
                     sourceSetRangeTextPreserveScroll(inner, start - 1, end + 1, 'select');
                     resizeSourceEditor(); updateStats(); HistoryManager.commitEdit();
@@ -523,11 +859,21 @@
                     while (lineEnd < full.length && full.charAt(lineEnd) !== '\n') lineEnd++;
                     const line = full.slice(lineStart, lineEnd);
                     // These are positions in the raw line, and the model counts visible text:
-                    // take off the line's marker and any emphasis marks before each position.
-                    const prefixLen = (line.match(/^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/) || [''])[0].length;
+                    // map raw indices using plainRangeToRawOffsets so literal * / ~ / _ count accurately.
+                    const prefMatch = line.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/);
+                    const prefixLen = prefMatch ? prefMatch[0].length : 0;
+                    let lineBody = line.slice(prefixLen);
+                    if (prefMatch && /^#/.test(prefMatch[0])) {
+                        const closeM = lineBody.match(/\s+#+\s*$/);
+                        if (closeM) lineBody = lineBody.slice(0, lineBody.length - closeM[0].length);
+                    }
+                    const lineOffs = plainRangeToRawOffsets(lineBody, 0, 0);
+                    const linePlainToRaw = lineOffs.plainToRaw || [];
                     const plainAt = function (rawAt) {
-                        const before = line.slice(prefixLen, Math.max(prefixLen, rawAt));
-                        return before.replace(/[*~]/g, '').length;
+                        const rel = Math.max(0, rawAt - prefixLen);
+                        let p = 0;
+                        while (p < linePlainToRaw.length && linePlainToRaw[p] < rel) p++;
+                        return p;
                     };
                     const rawNext = applyInlineFormatToRaw(line, plainAt(start - lineStart), plainAt(end - lineStart), type, { refuseIfLossy: true });
                     if (rawNext != null) {
@@ -539,6 +885,8 @@
                         return true;
                     }
                     rep = open + inner + close;
+                } else if (type === 'code') {
+                    rep = open + inner.replace(/`/g, '') + close;
                 } else {
                     rep = open + inner + close;
                 }
@@ -561,18 +909,27 @@
             // Live Preview: single block + partial selection
             let block = null;
             let offsets = null;
-            if (_inlineSelCache && _inlineSelCache.block && editor.contains(_inlineSelCache.block)) {
-                block = _inlineSelCache.block;
-                offsets = { start: _inlineSelCache.start, end: _inlineSelCache.end, text: _inlineSelCache.text };
-            } else {
-                const targets = getSelectedBlocks();
-                if (targets.length === 1) {
-                    block = targets[0];
-                    offsets = getPlainOffsetsInBlock(block);
+            const liveSel = window.getSelection();
+            const liveTargets = getSelectedBlocks();
+            if (liveSel && liveSel.rangeCount && !liveSel.isCollapsed
+                && liveSel.anchorNode && editor.contains(liveSel.anchorNode)
+                && liveTargets.length === 1) {
+                const liveBlock = liveTargets[0];
+                const liveOff = getPlainOffsetsInBlock(liveBlock);
+                if (liveOff && liveOff.start !== liveOff.end) {
+                    block = liveBlock;
+                    offsets = liveOff;
                 }
             }
+            if (!block && _inlineSelCache && _inlineSelCache.block && editor.contains(_inlineSelCache.block)) {
+                block = _inlineSelCache.block;
+                offsets = { start: _inlineSelCache.start, end: _inlineSelCache.end, text: _inlineSelCache.text };
+            } else if (!block && liveTargets.length === 1) {
+                block = liveTargets[0];
+                offsets = getPlainOffsetsInBlock(block);
+            }
             if (!block || !offsets || (offsets.start === offsets.end && type !== 'link')) return false;
-            if (block.querySelector && (block.querySelector('pre') || block.querySelector('hr'))) return false;
+            if (block.querySelector && (block.querySelector('pre') || block.querySelector('hr') || block.querySelector('.tz-alert'))) return false;
             // Across table cells there is no one run of text to mark; leave the selection
             // alone (rebuilding it from offsets below dropped it, and the caret with it).
             try {
@@ -684,12 +1041,58 @@
                 return commitInlineFormatToBlock(block, applied, offsets);
             }
 
-            // code / link: still raw-marker path
+            // code / link: single-cell table path or normal block raw-marker path
+            if (block.querySelector && block.querySelector('table')) {
+                if (typeof tableCellMap !== 'function' || typeof parseTableMarkdown !== 'function' || typeof formatTableKeeping !== 'function') return false;
+                const rawTable = getBlockRaw(block);
+                const model = parseTableMarkdown(rawTable);
+                if (!model) return false;
+                const cells = tableCellMap(block);
+                const hit = cells.find(function (m) {
+                    return offsets.start >= m.start && offsets.end <= m.start + m.len;
+                });
+                if (!hit) return false;
+                const cellRaw = hit.row === 0
+                    ? (model.header[hit.col] != null ? model.header[hit.col] : '')
+                    : (model.rows[hit.row - 1] && model.rows[hit.row - 1][hit.col] != null ? model.rows[hit.row - 1][hit.col] : '');
+                const nextCell = applyInlineFormatToRaw(cellRaw, offsets.start - hit.start, offsets.end - hit.start, type);
+                if (nextCell == null || nextCell === cellRaw) return false;
+                if (hit.row === 0) model.header[hit.col] = nextCell;
+                else if (model.rows[hit.row - 1]) model.rows[hit.row - 1][hit.col] = nextCell;
+                const nextTable = formatTableKeeping(model, rawTable);
+                if (!nextTable || nextTable === rawTable) return false;
+                const oldCellPlainLen = plainRangeToRawOffsets(cellRaw, 0, 0).plainLength;
+                const newCellPlainLen = plainRangeToRawOffsets(nextCell, 0, 0).plainLength;
+                const adjTableOffsets = {
+                    start: offsets.start,
+                    end: Math.max(offsets.start, offsets.end + (newCellPlainLen - oldCellPlainLen)),
+                    text: offsets.text
+                };
+                return commitInlineFormatToBlock(block, nextTable, adjTableOffsets);
+            }
             const raw = getBlockRaw(block);
             const next = applyInlineFormatToRaw(raw, offsets.start, offsets.end, type);
             if (next == null || next === raw) return false;
 
-            return commitInlineFormatToBlock(block, next, offsets);
+            const stripInlineAffixes = function (r) {
+                const s = String(r || '');
+                const pm = s.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/);
+                const pre = pm ? pm[0] : '';
+                let b = s.slice(pre.length);
+                if (pre && /^#/.test(pre)) {
+                    const cm = b.match(/\s+#+\s*$/);
+                    if (cm) b = b.slice(0, b.length - cm[0].length);
+                }
+                return b;
+            };
+            const oldPlainLen = plainRangeToRawOffsets(stripInlineAffixes(raw), 0, 0).plainLength;
+            const newPlainLen = plainRangeToRawOffsets(stripInlineAffixes(next), 0, 0).plainLength;
+            const adjustedOffsets = {
+                start: offsets.start,
+                end: Math.max(offsets.start, offsets.end + (newPlainLen - oldPlainLen)),
+                text: offsets.text
+            };
+            return commitInlineFormatToBlock(block, next, adjustedOffsets);
         }
 
         /**
@@ -728,6 +1131,12 @@
             function blockRange(from, to) {
                 for (let i = from; i < to; i++) blocked[i] = true;
             }
+
+            // Code spans first — delimiters inside backticks stay literal.
+            body.replace(/`[^`]*`/g, function (m, offset) {
+                blockRange(offset, offset + m.length);
+                return m;
+            });
 
             /** True if body[pos..pos+len) is a standalone marker, not part of a longer *** run. */
             function isStandaloneMarker(pos, marker) {
@@ -815,9 +1224,18 @@
             if (plainStart === plainEnd) return null;
             if (type !== 'bold' && type !== 'italic' && type !== 'strike') return null;
 
-            const pref = raw.match(/^(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/);
+            const pref = raw.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/);
             const prefix = pref ? pref[0] : '';
-            const body = raw.slice(prefix.length);
+            let body = raw.slice(prefix.length);
+            let suffix = '';
+            if (prefix && /^#/.test(prefix)) {
+                const closeM = body.match(/\s+#+\s*$/);
+                if (closeM) {
+                    suffix = closeM[0];
+                    body = body.slice(0, body.length - suffix.length);
+                }
+            }
+            function withAffix(s) { return prefix + s + suffix; }
             const off = plainRangeToRawOffsets(body, plainStart, plainEnd);
             const r0 = off.r0, r1 = off.r1;
             if (r0 >= r1) return null;
@@ -873,33 +1291,33 @@
 
                 // Unbold inside ***: keep italic on the middle only
                 if (type === 'bold' && p.kind === 'bolditalic') {
-                    return prefix + joinSegments([
+                    return withAffix(joinSegments([
                         head,
                         pre ? '***' + pre + '***' : '',
                         '*' + mid + '*',
                         suf ? '***' + suf + '***' : '',
                         tail
-                    ]);
+                    ]));
                 }
                 // Unitalic inside ***: keep bold on the middle only
                 if (type === 'italic' && p.kind === 'bolditalic') {
-                    return prefix + joinSegments([
+                    return withAffix(joinSegments([
                         head,
                         pre ? '***' + pre + '***' : '',
                         '**' + mid + '**',
                         suf ? '***' + suf + '***' : '',
                         tail
-                    ]);
+                    ]));
                 }
                 // Unbold inside **, unitalic inside *, unstrike inside ~~
                 const m = p.marker;
-                return prefix + joinSegments([
+                return withAffix(joinSegments([
                     head,
                     pre ? m + pre + m : '',
                     mid,
                     suf ? m + suf + m : '',
                     tail
-                ]);
+                ]));
             }
 
             // --- Toggle ON: wrap selection (not already covered by this type) ---
@@ -908,7 +1326,7 @@
             else if (type === 'italic') { open = '*'; close = '*'; }
             else if (type === 'strike') { open = '~~'; close = '~~'; }
             else return null;
-            return prefix + body.slice(0, r0) + open + mid + close + body.slice(r1);
+            return withAffix(body.slice(0, r0) + open + mid + close + body.slice(r1));
         }
 
         function selectPlainRangeInBlock(block, plainStart, plainEnd) {
@@ -916,8 +1334,10 @@
             const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null);
             let count = 0;
             let startNode = null, startOff = 0, endNode = null, endOff = 0;
+            let lastNode = null;
             let n;
             while ((n = walker.nextNode())) {
+                lastNode = n;
                 const len = n.nodeValue.length;
                 if (!startNode && count + len >= plainStart) {
                     startNode = n;
@@ -929,6 +1349,14 @@
                     break;
                 }
                 count += len;
+            }
+            if (!startNode && lastNode) {
+                startNode = lastNode;
+                startOff = lastNode.nodeValue.length;
+            }
+            if (!endNode && lastNode) {
+                endNode = lastNode;
+                endOff = lastNode.nodeValue.length;
             }
             if (startNode && endNode) {
                 const range = document.createRange();
@@ -2038,6 +2466,7 @@
                 // A click leaves a caret. The drag's range is over; remember it and a
                 // later paste writes the old paragraphs back on top of themselves.
                 if (sel && sel.isCollapsed) {
+                    _inlineSelCache = null;
                     if (typeof clearMultiBlockSelFreeze === 'function') clearMultiBlockSelFreeze();
                     if (typeof _shiftClickAnchor !== 'undefined') _shiftClickAnchor = null;
                     return;
@@ -2061,9 +2490,10 @@
             }
             try {
                 const sel = window.getSelection();
-                if (sel && sel.isCollapsed && sel.anchorNode && editor.contains(sel.anchorNode)
-                    && typeof clearMultiBlockSelFreeze === 'function')
-                    clearMultiBlockSelFreeze();
+                if (sel && sel.isCollapsed && sel.anchorNode && editor.contains(sel.anchorNode)) {
+                    _inlineSelCache = null;
+                    if (typeof clearMultiBlockSelFreeze === 'function') clearMultiBlockSelFreeze();
+                }
             } catch (eKu) {}
         });
         function blockIsVisuallyEmpty(block) {
