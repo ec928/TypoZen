@@ -536,6 +536,9 @@ try {
     });
     await settleQuick();
     same('Preview multi-block partial inline bold doc matches', await saved(), 'First **line here**\n**Second line** tail');
+    const mbBoldF = await undoSnap();
+    same('Preview multi-block inline bold Format places caret at span end on block 1 (11)',
+        mbBoldF.collapsed && mbBoldF.blkIdx === '1' && mbBoldF.off[0] === 11 && mbBoldF.off[1] === 11, true);
     await page.evaluate(() => HistoryManager.undo());
     await settleQuick();
     const mbBoldU = await undoSnap();
@@ -546,6 +549,41 @@ try {
     const mbBoldR = await undoSnap();
     same('Preview multi-block inline bold Redo places caret at span end on block 1 (11)',
         mbBoldR.collapsed && mbBoldR.blkIdx === '1' && mbBoldR.off[0] === 11, true);
+
+    for (const mode of ['wysiwyg', 'source']) {
+        await loadQuick('First line\n\nSecond line', 'md', mode);
+        if (mode === 'wysiwyg') {
+            await focusAt(0, 3);
+            await page.evaluate(() => { freezeFormatSelection(); applyFormatting('bold'); });
+        } else {
+            await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(3, 3); applyFormatting('bold'); });
+        }
+        await settleQuick();
+        same(mode + ' collapsed bold toggles whole line', await saved(), '**First line**\n\nSecond line');
+        const cb1 = await undoSnap();
+        same(mode + ' collapsed bold leaves end-of-line caret',
+            mode === 'source' ? (cb1.start === 14 && cb1.end === 14) : (cb1.collapsed && cb1.blkIdx === '0' && cb1.off[0] === 10), true);
+        await page.evaluate(() => applyFormatting('bold'));
+        await settleQuick();
+        same(mode + ' collapsed bold toggles whole line off', await saved(), 'First line\n\nSecond line');
+        await page.evaluate(() => HistoryManager.undo());
+        await settleQuick();
+        same(mode + ' collapsed bold Undo restores bold line', await saved(), '**First line**\n\nSecond line');
+        await page.evaluate(() => HistoryManager.undo());
+        await settleQuick();
+        same(mode + ' collapsed bold Undo x2 restores plain', await saved(), 'First line\n\nSecond line');
+        const cb2 = await undoSnap();
+        same(mode + ' collapsed bold Undo x2 leaves end-of-line caret',
+            mode === 'source' ? (cb2.start === 10 && cb2.end === 10) : (cb2.collapsed && cb2.blkIdx === '0' && cb2.off[0] === 10), true);
+        if (mode === 'wysiwyg') {
+            await focusAt(1, 0);
+            await page.evaluate(() => { freezeFormatSelection(); applyFormatting('bold'); });
+        } else {
+            await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(11, 11); applyFormatting('bold'); });
+        }
+        await settleQuick();
+        same(mode + ' collapsed bold on empty line is a no-op', await saved(), 'First line\n\nSecond line');
+    }
 
     // 3. Shift+Enter block formatting keeps caret on the formatted line (not trailing line)
     await loadQuick('FirstSecond', 'md', 'wysiwyg');

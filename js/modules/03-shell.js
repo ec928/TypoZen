@@ -344,6 +344,7 @@
                     // the search -- but the mirror still holds the pre-edit text.
                     invalidateSourceHighlights();
                 }
+                rememberSourceFormatSelection();
             });
             sourceEditor.addEventListener('keyup', function () {
                 rememberStickyFromSourceIfFocused();
@@ -384,12 +385,36 @@
                 if (!anyList) return; // allow normal Tab if no list lines
                 e.preventDefault();
                 const delta = e.shiftKey ? -1 : 1;
-                HistoryManager.beginEdit();
                 const out = lines.map(l => (isListLine(l) ? indentListLine(l, delta) : l)).join('\n');
-                sourceEditor.setRangeText(out, s, en, 'select');
-                resizeSourceEditor();
-                updateStats();
-                HistoryManager.commitEdit();
+                if (out === chunk) return;
+                HistoryManager.beginEdit();
+                if (start === end && lines.length === 1) {
+                    const nextPos = Math.max(s, Math.min(s + out.length, start + (out.length - chunk.length)));
+                    sourceEditor.setRangeText(out, s, en, 'end');
+                    sourceEditor.setSelectionRange(nextPos, nextPos);
+                    resizeSourceEditor();
+                    updateStats();
+                    HistoryManager.commitEdit();
+                    if (typeof HistoryManager.setTopCarets === 'function') {
+                        HistoryManager.setTopCarets(
+                            { mode: 'source', start: nextPos, end: nextPos, exact: true },
+                            { mode: 'source', start: start, end: start, exact: true }
+                        );
+                    }
+                    if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                } else {
+                    sourceEditor.setRangeText(out, s, en, 'select');
+                    resizeSourceEditor();
+                    updateStats();
+                    HistoryManager.commitEdit();
+                    if (typeof HistoryManager.setTopCarets === 'function') {
+                        HistoryManager.setTopCarets(
+                            { mode: 'source', start: s + out.length, end: s + out.length, endOfBlock: true, exact: true },
+                            { mode: 'source', start: en, end: en, endOfBlock: true, exact: true }
+                        );
+                    }
+                    if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                }
             });
 
             /**

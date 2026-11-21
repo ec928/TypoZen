@@ -1922,6 +1922,7 @@
                 }
                 loadOpts = { stickyLine: focusLine };
                 if (va) loadOpts.stickyPad = va.top;
+                if (opts.singleCaretOffset != null) loadOpts.stickyCaret = 0;
             }
 
             const hm = typeof HistoryManager !== 'undefined' ? HistoryManager : null;
@@ -1961,21 +1962,44 @@
             if (newBlocks.length) {
                 _selectedFormatBlocks = newBlocks.slice();
                 currentActiveBlock = newBlocks[newBlocks.length - 1];
+                const lastBi = focusEnd >= 0 ? focusEnd : focusStart;
                 try {
                     if (currentActiveBlock) {
                         // Only when the edit was off screen: the reload already put an
                         // on-screen edit back where it was, and Pages goes by page.
                         if (!va && !isPaginatedLayout())
                             currentActiveBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                        const sel = window.getSelection();
-                        if (sel && _selectedFormatBlocks.length > 0) {
-                            const r = document.createRange();
-                            r.setStartBefore(_selectedFormatBlocks[0]);
-                            r.setEndAfter(_selectedFormatBlocks[_selectedFormatBlocks.length - 1]);
-                            sel.removeAllRanges();
-                            sel.addRange(r);
+                        if (opts.singleCaretOffset != null && newBlocks.length === 1) {
+                            const off = Math.min(
+                                Math.max(0, opts.singleCaretOffset | 0),
+                                (currentActiveBlock.textContent || '').length
+                            );
+                            focusBlock(currentActiveBlock, off);
+                            if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                            _formatSelectionFrozen = false;
+                            _selectedFormatRaws = {};
+                            _inlineSelCache = null;
+                            snapshotFormatSelectionFromEditor();
+                            if (hm && !opts.skipHistory && typeof hm.setTopCarets === 'function' && focusStart >= 0) {
+                                const c = { mode: 'wysiwyg', blockIndex: focusStart, offset: off, exact: true };
+                                hm.setTopCarets(c, c);
+                            }
+                        } else {
+                            const sel = window.getSelection();
+                            if (sel && _selectedFormatBlocks.length > 0) {
+                                const r = document.createRange();
+                                r.setStartBefore(_selectedFormatBlocks[0]);
+                                r.setEndAfter(_selectedFormatBlocks[_selectedFormatBlocks.length - 1]);
+                                sel.removeAllRanges();
+                                sel.addRange(r);
+                            }
+                            focusEditorNoScroll();
+                            if (hm && !opts.skipHistory && typeof hm.setTopCarets === 'function' && focusStart >= 0) {
+                                const c = { mode: 'wysiwyg', blockIndex: lastBi, endOfBlock: true, exact: true };
+                                if (focusStart !== lastBi) c.anchorIndex = focusStart;
+                                hm.setTopCarets(c, c);
+                            }
                         }
-                        focusEditorNoScroll();
                     }
                 } catch (e) {
                     try { focusBlock(currentActiveBlock, null); } catch (e2) {}
@@ -2058,13 +2082,31 @@
             }
             if (!any) return false;
 
+            const fk = Object.keys(focusIndices).map(Number);
+            let singleCaretOffset = null;
+            if (fk.length === 1) {
+                try {
+                    const sel = window.getSelection();
+                    if (!sel || !sel.rangeCount || sel.isCollapsed) {
+                        const onlyIdx = fk[0];
+                        const blk = (typeof mountedBlockAtFormatIndex === 'function' ? mountedBlockAtFormatIndex(onlyIdx) : null)
+                            || (editor ? editor.querySelector('.block[data-model-index="' + onlyIdx + '"]') : null);
+                        if (blk) {
+                            const off = typeof getPlainOffsetsInBlock === 'function' ? getPlainOffsetsInBlock(blk) : null;
+                            singleCaretOffset = (off && off.start != null)
+                                ? (off.start | 0) : (blk.textContent || '').length;
+                        }
+                    }
+                } catch (eSco) {}
+            }
+
             // History owned inside mutateDocumentMarkdown — do not beginEdit/commitEdit here
             return mutateDocumentMarkdown(function (raw, index) {
                 if (focusIndices[index] && isListLine(raw)) {
                     return indentListLine(coerceBlockRaw(raw), delta);
                 }
                 return raw;
-            }, { focusIndices: focusIndices, compactListGaps: false });
+            }, { focusIndices: focusIndices, compactListGaps: false, singleCaretOffset: singleCaretOffset });
         }
 
         // Format selection cache. WPF toolbar steals focus and DESTROYS the live selection
@@ -2792,37 +2834,24 @@
                 && firstIdx != null && lastIdx != null
                 && _mbSelFreeze.fromIdx === firstIdx && _mbSelFreeze.toIdx === lastIdx)
                 ? String(_mbSelFreeze.suffix || '') : '';
-            // For paragraph-level formats (!inlinePlan), pass caretOffset 0 so the deferred
-            // sticky restore keeps the live caret we place at the end of the last altered block,
-            // matching Callout, Heading and Quote.
-            const ok = reloadAfterFormatEdit(preLines, postLines, focusIndices, inlinePlan ? undefined : 0);
-            if (ok && !inlinePlan && currentActiveBlock) {
+            // Pass caretOffset 0 so the deferred sticky restore keeps the live caret we place
+            // at the end of the altered span/block for both paragraph and inline formats.
+            const ok = reloadAfterFormatEdit(preLines, postLines, focusIndices, 0);
+            if (ok && currentActiveBlock) {
                 try {
-                    focusBlock(currentActiveBlock, (currentActiveBlock.textContent || '').length);
+                    const postEndOff = (!inlinePlan || !fzInline)
+                        ? (currentActiveBlock.textContent || '').length
+                        : Math.max(0, (currentActiveBlock.textContent || '').length - fzInline.length);
+                    focusBlock(currentActiveBlock, postEndOff);
                     if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                     const postBi = formatBlockIndex(currentActiveBlock);
                     const bi = postBi >= 0 ? postBi : (lastIdx != null ? lastIdx : -1);
                     if (bi >= 0 && typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
-                        const c = { mode: 'wysiwyg', blockIndex: bi, endOfBlock: true, exact: true };
-                        if (firstIdx != null && firstIdx !== bi) c.anchorIndex = firstIdx;
-                        HistoryManager.setTopCarets(c, c);
-                    }
-                    _formatSelectionFrozen = false;
-                    _selectedFormatRaws = {};
-                    _inlineSelCache = null;
-                    snapshotFormatSelectionFromEditor();
-                } catch (eEnd) {}
-            } else if (ok && inlinePlan && currentActiveBlock) {
-                try {
-                    const postBi = formatBlockIndex(currentActiveBlock);
-                    const bi = postBi >= 0 ? postBi : (lastIdx != null ? lastIdx : -1);
-                    if (bi >= 0 && typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
-                        if (!fzInline) {
+                        if (!inlinePlan || !fzInline) {
                             const c = { mode: 'wysiwyg', blockIndex: bi, endOfBlock: true, exact: true };
                             if (firstIdx != null && firstIdx !== bi) c.anchorIndex = firstIdx;
                             HistoryManager.setTopCarets(c, c);
                         } else {
-                            const postEndOff = Math.max(0, (currentActiveBlock.textContent || '').length - fzInline.length);
                             let preBody = String(preLines[bi] == null ? '' : preLines[bi]);
                             if (typeof splitInlineFormatPrefix === 'function') {
                                 const sp = splitInlineFormatPrefix(preBody);
@@ -2845,7 +2874,11 @@
                             HistoryManager.setTopCarets(redoC, undoC);
                         }
                     }
-                } catch (eInEnd) {}
+                    _formatSelectionFrozen = false;
+                    _selectedFormatRaws = {};
+                    _inlineSelCache = null;
+                    snapshotFormatSelectionFromEditor();
+                } catch (eEnd) {}
             }
             return ok;
         }
@@ -3532,6 +3565,7 @@
                     if (isBlockSrc) { rc.endOfBlock = true; uc.endOfBlock = true; }
                     HistoryManager.setTopCarets(rc, uc);
                 }
+                if (typeof _sourceFormatSel !== 'undefined') _sourceFormatSel = null;
                 if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 return;
             }
@@ -3667,7 +3701,8 @@
                         break;
                     }
                 }
-                const next = transformRawForFormat(raw, type, { forceOff, forceOn, olNum });
+                const isInlineWhole = (type === 'bold' || type === 'italic' || type === 'strike' || type === 'code');
+                const next = transformRawForFormat(raw, type, { forceOff, forceOn, olNum, wholeLines: isInlineWhole });
                 // Never write empty over non-empty, or invent placeholder-only lines
                 if (!String(next || '').trim()) continue;
                 if (/^#{1,6}\s+Heading\s+[1-6]\s*$/.test(String(next))
@@ -3888,6 +3923,7 @@
                         { mode: 'source', start: preEnd, end: preEnd, endOfBlock: true, exact: true }
                     );
                 }
+                if (typeof _sourceFormatSel !== 'undefined') _sourceFormatSel = null;
                 if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 return true;
             }
@@ -4819,6 +4855,7 @@
                         _selectedFormatIndices = [];
                         _selectedFormatRaws = {};
                         _selectedFormatBlocks = [];
+                        if (typeof _sourceFormatSel !== 'undefined') _sourceFormatSel = null;
                     } catch (eClr) {}
                     // Undo rebuilds the DOM, destroying the text nodes the CSS
                     // Highlight API ranges pointed at. Re-scan so squiggles return.
@@ -4852,6 +4889,7 @@
                         _selectedFormatIndices = [];
                         _selectedFormatRaws = {};
                         _selectedFormatBlocks = [];
+                        if (typeof _sourceFormatSel !== 'undefined') _sourceFormatSel = null;
                     } catch (eClr2) {}
                     // Same as undo: redo rebuilds the DOM, destroying highlight ranges.
                     try { if (typeof scheduleSpellCheck === 'function') scheduleSpellCheck(); } catch (eSp2) {}

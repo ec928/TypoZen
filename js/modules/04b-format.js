@@ -9,9 +9,10 @@
         function rememberSourceFormatSelection() {
             if (!sourceEditor || state.mode !== 'source') return;
             try {
+                if (typeof isSourceFocused === 'function' && !isSourceFocused()) return;
                 const a = sourceEditor.selectionStart | 0;
                 const b = sourceEditor.selectionEnd | 0;
-                if (a !== b) _sourceFormatSel = { start: Math.min(a, b), end: Math.max(a, b) };
+                _sourceFormatSel = (a !== b) ? { start: Math.min(a, b), end: Math.max(a, b) } : null;
             } catch (e) {}
         }
 
@@ -21,8 +22,13 @@
                 start = sourceEditor.selectionStart | 0;
                 end = sourceEditor.selectionEnd | 0;
             } catch (e) {}
+            const srcFocused = (typeof isSourceFocused === 'function') && isSourceFocused();
+            if (start === end && srcFocused) {
+                _sourceFormatSel = null;
+            }
             // Toolbar focus-steal often collapses to a caret; prefer last non-empty range
-            if (start === end && _sourceFormatSel
+            // only when Source actually lost focus.
+            if (start === end && !srcFocused && _sourceFormatSel
                 && _sourceFormatSel.start !== _sourceFormatSel.end) {
                 start = _sourceFormatSel.start | 0;
                 end = _sourceFormatSel.end | 0;
@@ -762,21 +768,34 @@
                         if (isEndOfBlock) { rc.endOfBlock = true; uc.endOfBlock = true; }
                         HistoryManager.setTopCarets(rc, uc);
                     }
+                    if (sourceEditor && sourceEditor.selectionStart === sourceEditor.selectionEnd) {
+                        _sourceFormatSel = null;
+                    }
                     if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 };
 
                 if (start === end && type !== 'link') {
-                    const markers = type === 'bold' ? '****' : type === 'italic' ? '**' : type === 'strike' ? '~~~~' : '``';
-                    const mid = (type === 'bold' || type === 'strike') ? 2 : 1;
-                    HistoryManager.beginEdit();
-                    sourceSetRangeTextPreserveScroll(markers, start, end, 'end');
-                    withSourceScrollPreserved(function () {
-                        sourceEditor.setSelectionRange(start + mid, start + mid);
+                    let lineStart = start;
+                    while (lineStart > 0 && full.charAt(lineStart - 1) !== '\n') lineStart--;
+                    let lineEnd = start;
+                    while (lineEnd < full.length && full.charAt(lineEnd) !== '\n') lineEnd++;
+                    const line = full.slice(lineStart, lineEnd);
+                    let inFence = false;
+                    full.substring(0, lineStart).split('\n').forEach(function (l) {
+                        if (/^\s*(```|~~~)/.test(l)) inFence = !inFence;
                     });
+                    if (inFence || /^\s*(```|~~~)/.test(line) || !String(line).trim()
+                        || (typeof isInlineUnmarkableRaw === 'function' && isInlineUnmarkableRaw(line))) {
+                        return true;
+                    }
+                    const next = transformRawForFormat(line, type, { wholeLines: true });
+                    if (next == null || next === line) return true;
+                    HistoryManager.beginEdit();
+                    sourceSetRangeTextPreserveScroll(next, lineStart, lineEnd, 'end');
                     resizeSourceEditor();
                     updateStats();
                     HistoryManager.commitEdit();
-                    stampSrcInlineCaret(start + mid, start, false);
+                    stampSrcInlineCaret(lineStart + next.length, lineEnd, true);
                     return true;
                 }
 
@@ -2449,6 +2468,7 @@
             if (state.mode === 'source' && isSourceFocused()) {
                 rememberEditorCaret();
                 rememberStickyFromSourceIfFocused();
+                rememberSourceFormatSelection();
                 updateCaretLineStatus();
                 // Selection size can change without line change — refresh sel word count
                 updateStats(false);

@@ -177,6 +177,42 @@ try {
     assert(shown > 8, 'a tab already in the file shows as a gap (' + Math.round(shown) + ' px)');
     assert((await md()) === 'a' + TAB + 'b\n\n' + TAB + 'indented', 'and saves back unchanged, leading tab included');
 
+    console.log('\n=== Preview: Tab on a single list item keeps a collapsed caret ===');
+    await page.evaluate(() => loadMarkdownContent('- Alpha beta\n- Gamma'));
+    await sleep(500);
+    await page.evaluate(() => {
+        const el = editor.querySelector('.block[data-model-index="0"]');
+        focusBlock(el, 5);
+    });
+    const pvCaret = () => page.evaluate(() => {
+        const s = getSelection();
+        const blk = s && s.anchorNode ? getAncestorBlock(s.anchorNode) : null;
+        const off = blk ? getPlainOffsetsInBlock(blk) : null;
+        return { collapsed: !!(s && s.isCollapsed), bi: blk ? blk.getAttribute('data-model-index') : null, off: off ? [off.start, off.end] : null };
+    });
+    await page.keyboard.press('Tab');
+    await sleep(250);
+    assert((await md()) === '  - Alpha beta\n- Gamma', 'Preview Tab indents single list item');
+    let c1 = await pvCaret();
+    assert(c1.collapsed && c1.bi === '0' && c1.off[0] === 5 && c1.off[1] === 5,
+        'Preview Tab keeps collapsed caret at offset 5 (' + JSON.stringify(c1) + ')');
+    await page.keyboard.press('Tab');
+    await sleep(250);
+    assert((await md()) === '    - Alpha beta\n- Gamma', 'Preview second Tab indents again without selecting block');
+    await page.keyboard.type('X');
+    await sleep(250);
+    assert((await md()) === '    - AlphaX beta\n- Gamma', 'Preview typing after single-item Tab inserts at caret (not overwrite)');
+    await page.evaluate(() => loadMarkdownContent('- Alpha beta\n- Gamma'));
+    await sleep(400);
+    await page.evaluate(() => focusBlock(editor.querySelector('.block[data-model-index="0"]'), 5));
+    await page.keyboard.press('Tab');
+    await sleep(250);
+    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
+    await sleep(250);
+    c1 = await pvCaret();
+    assert((await md()) === '- Alpha beta\n- Gamma' && c1.collapsed && c1.bi === '0' && c1.off[0] === 5,
+        'Preview Undo after single-item Tab restores doc and offset 5 caret');
+
     console.log('\n=== Source ===');
     await page.evaluate(() => loadMarkdownContent('123456\n\nline two\nline three\n\n- a list item'));
     await sleep(500);
@@ -207,6 +243,27 @@ try {
     await page.keyboard.press('Tab');
     await sleep(300);
     assert((await val()).endsWith('\n  - a list item'), 'Tab on a list line still nests the list (no tab typed as well)');
+    await page.evaluate(() => loadMarkdownContent('- Alpha beta'));
+    await sleep(350);
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(7, 7); });
+    await page.keyboard.press('Tab');
+    await sleep(250);
+    let srcSel = await page.evaluate(() => ({ v: sourceEditor.value, s: sourceEditor.selectionStart, e: sourceEditor.selectionEnd }));
+    assert(srcSel.v === '  - Alpha beta' && srcSel.s === 9 && srcSel.e === 9,
+        'Source Tab on single list item keeps collapsed caret at relative offset 9 (' + JSON.stringify(srcSel) + ')');
+    await page.keyboard.type('X');
+    await sleep(200);
+    assert((await val()) === '  - AlphaX beta', 'Source typing after single-item Tab inserts at caret (not overwrite)');
+    await page.evaluate(() => loadMarkdownContent('- Alpha beta'));
+    await sleep(350);
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(7, 7); });
+    await page.keyboard.press('Tab');
+    await sleep(200);
+    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
+    await sleep(250);
+    srcSel = await page.evaluate(() => ({ v: sourceEditor.value, s: sourceEditor.selectionStart, e: sourceEditor.selectionEnd }));
+    assert(srcSel.v === '- Alpha beta' && srcSel.s === 7 && srcSel.e === 7,
+        'Source Undo after single-item Tab restores doc and caret 7 (' + JSON.stringify(srcSel) + ')');
 } finally {
     await browser.close();
 }
