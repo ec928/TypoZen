@@ -530,14 +530,14 @@
                                  about the reader's own files. Only ever saves a document
                                  that already has a path — an unattended save must never
                                  raise a Save As dialog. -->
-                            <MenuItem x:Name="mAutosave" Header="_Autosave" IsCheckable="True" IsChecked="False"
+                            <MenuItem x:Name="mAutosave" Header="A_utosave" IsCheckable="True" IsChecked="False"
                                       ToolTip="Save a moment after typing stops. Only for documents that already have a file."/>
                             <!-- Filled in code from what is on disk, and again each time File
                                  opens: the built-in dictionary, then every folder under the
                                  data folder's dictionaries\. Nothing here is hardcoded, and it
                                  is hidden while there is only one to choose from. -->
-                            <MenuItem x:Name="mDictionaryMenu" Header="_Dictionary" Visibility="Collapsed"/>
-                            <MenuItem x:Name="mReadAloudMenu" Header="_Read Aloud">
+                            <MenuItem x:Name="mDictionaryMenu" Header="Dictionar_y" Visibility="Collapsed"/>
+                            <MenuItem x:Name="mReadAloudMenu" Header="Read A_loud">
                                 <!-- Two groups: the voices to pick from, best first, then the
                                      windows that change settings. The two optional engines hide
                                      until installed (RefreshExtensionState); the Windows voices and
@@ -570,7 +570,7 @@
                                      (every voice reports to it). Speed's steps are built in code (RebuildSpeedMenu). -->
                                 <Separator/>
                                 <MenuItem x:Name="mSpeedMenu" Header="_Speed"/>
-                                <MenuItem x:Name="mStopAtChapter" Header="Stop at end of _chapter" IsCheckable="True"
+                                <MenuItem x:Name="mStopAtChapter" Header="Stop at _end of chapter" IsCheckable="True"
                                           ToolTip="Finish this chapter and stop. In a book, the chapter named in the status bar. In a text or Markdown file, the section under the current heading. Remembered."/>
                                 <MenuItem x:Name="mNarrMonitor" Header="Narration _Monitor" IsCheckable="True"
                                           ToolTip="A window that shows, as each piece plays, exactly what the voice was given: the text, the voice and the speed, and with a narrator who speaks, the instruction and the strength."/>
@@ -626,9 +626,9 @@
                             <MenuItem x:Name="mFind" Header="_Find &amp; Replace..." InputGestureText="Ctrl+F"/>
                             <MenuItem x:Name="mGoToPage" Header="_Go to Page..." InputGestureText="Ctrl+G"/>
                             <Separator/>
-                            <MenuItem x:Name="mMarkToggle" Header="Bookmark This _Page" InputGestureText="Ctrl+Shift+M"/>
+                            <MenuItem x:Name="mMarkToggle" Header="Bookmar_k This Page" InputGestureText="Ctrl+Shift+M"/>
                             <MenuItem x:Name="mMarksPane" Header="Show Book_marks" InputGestureText="Ctrl+Shift+P"/>
-                            <MenuItem x:Name="mReturnJump" Header="_Return from Jump" InputGestureText="Ctrl+Shift+J"/>
+                            <MenuItem x:Name="mReturnJump" Header="Return from _Jump" InputGestureText="Ctrl+Shift+J"/>
                         </MenuItem>
                         <!-- Every formatting command; filled from the same definition as the
                              right-click menu (AddFormatItems), so the two cannot drift. -->
@@ -643,7 +643,7 @@
 
                             <MenuItem x:Name="mScrubberToggle" Header="Scr_ubber" IsCheckable="True" IsChecked="True"/>
                             <MenuItem x:Name="mStatusBarToggle" Header="Status _Bar" IsCheckable="True" IsChecked="True"/>
-                            <MenuItem x:Name="mPdfThemeColours" Header="PDF Pages in _Theme Colours" IsCheckable="True"
+                            <MenuItem x:Name="mPdfThemeColours" Header="PDF Pages in Th_eme Colours" IsCheckable="True"
                                       ToolTip="Draw PDF pages in the theme's colours. Good for text; pictures are recoloured too."/>
                             <MenuItem x:Name="mPdfOcr" Header="Read Text in Scanned PDF Pa_ges" IsCheckable="True" IsChecked="True"
                                       ToolTip="Recognise the words on scanned pages with Windows' own text recognition, on this computer, so they can be searched, selected and read aloud. Handwriting and poor scans read badly."/>
@@ -653,8 +653,8 @@
 
                             <MenuItem x:Name="mToggleFocus" Header="_Focus Mode" InputGestureText="F8" IsCheckable="True"/>
                             <MenuItem x:Name="mToggleTypewriter" Header="_Typewriter Scrolling" InputGestureText="F9" IsCheckable="True"/>
-                            <MenuItem x:Name="mToggleReveal" Header="_Reveal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
-                            <MenuItem x:Name="menuFontAppearance" Header="_Font Appearance">
+                            <MenuItem x:Name="mToggleReveal" Header="Re_veal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
+                            <MenuItem x:Name="menuFontAppearance" Header="F_ont Appearance">
                                 <MenuItem Header="_Type">
                                     <MenuItem x:Name="mFontTheme" Header="_Theme" IsCheckable="True" IsChecked="True"/>
                                     <MenuItem x:Name="mFontSerif" Header="_Serif" IsCheckable="True"/>
@@ -665,7 +665,7 @@
                                     <MenuItem x:Name="mSizeSmall" Header="_Small" IsCheckable="True"/>
                                     <MenuItem x:Name="mSizeNormal" Header="_Normal" IsCheckable="True" IsChecked="True"/>
                                     <MenuItem x:Name="mSizeLarge" Header="_Large" IsCheckable="True"/>
-                                    <MenuItem x:Name="mSizeExtraLarge" Header="E_xtra Large" IsCheckable="True"/>
+                                    <MenuItem x:Name="mSizeExtraLarge" Header="Extra L_arge" IsCheckable="True"/>
                                 </MenuItem>
                                 <MenuItem x:Name="mFontCustom" Header="_Custom..." IsCheckable="True"/>
                             </MenuItem>
@@ -694,12 +694,12 @@
                             <MenuItem x:Name="mWordWrap" Header="_Word Wrap" IsCheckable="True" IsChecked="True"/>
                             <Separator/>
 
-                            <MenuItem x:Name="menuZoomGroup" Header="_Zoom">
+                            <MenuItem x:Name="menuZoomGroup" Header="Zoo_m">
                                 <MenuItem x:Name="mZoomIn" Header="Zoom _In" InputGestureText="Ctrl++"/>
                                 <MenuItem x:Name="mZoomOut" Header="Zoom _Out" InputGestureText="Ctrl+-"/>
                                 <MenuItem x:Name="mZoomReset" Header="_Reset Zoom" InputGestureText="Ctrl+0"/>
                             </MenuItem>
-                            <MenuItem x:Name="mFullscreen" Header="_Fullscreen" InputGestureText="F11"/>
+                            <MenuItem x:Name="mFullscreen" Header="Fu_llscreen" InputGestureText="F11"/>
                             <Separator/>
                             <MenuItem x:Name="mResetView" Header="_Reset View Settings"/>
                         </MenuItem>
