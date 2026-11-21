@@ -716,14 +716,19 @@ An ePub cannot be edited, so it has no instructions of yours:
 | Insert table | `Ctrl+T` |
 | Close tab | `Ctrl+W` |
 | Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Undo / Redo | `Ctrl+Z` / `Ctrl+Y` |
+| Paste as plain text | `Ctrl+Shift+V` |
 | Open File / Edit / Format / View / Themes / Help menu (hold `Alt` to see the letters) | `Alt+F` / `Alt+E` / `Alt+O` / `Alt+V` / `Alt+T` / `Alt+H` |
+| Run a menu item | its underlined letter, once the menu is open: `Alt+E`, `P` pastes |
 | Right-click menu at the text cursor | `Menu` key or `Shift+F10` |
 | Help (syntax & shortcuts) | `F1` |
 | Reveal Markdown | `F7` |
 | Focus mode | `F8` |
 | Typewriter scroll | `F9` |
 
-**Menus (no default shortcut):** Themes → Customise Theme… · View → Line/Paragraph Spacing, Editor Margins, Justified · View → Block Hover · View → ZenMode (autohide UI), Side Panel Auto-hide · File → Privacy
+Each underlined letter is used once in its menu (the right-click menu included), so one key runs the item. Lists of names — recent files, voices, themes — have no letters.
+
+**Menus (no default shortcut):** Themes → Customise Theme… · View → Spacing & Margins (Line Spacing, Paragraph Spacing, margins), Justified · View → ZenMode (autohide UI), Side Panel Auto-hide · File → Privacy
 
 Mode (Source / Preview / Reader) is the toolbar's Mode control and has no keyboard shortcut. `Ctrl+/` used to toggle Source and was removed: it duplicated one third of a three-state control, and a chord that cycles a state you cannot see is worse than the control that shows it.
 
