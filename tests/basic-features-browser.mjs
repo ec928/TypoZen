@@ -131,8 +131,8 @@ try {
     const st = await page.evaluate(() => (window.__sent.filter(m => m.startsWith('stats:')).pop() || '').slice(6).split(','));
     check(+st[0] === 7 && +st[1] === 'One two three four five.\n\nSix seven.'.length, 'seven words, every character', st.slice(0, 2));
 
-    console.log('\n=== focus, typewriter and reveal toggle on and off ===');
-    for (const [cmd, prop] of [['toggle_focus', 'focusMode'], ['toggle_typewriter', 'typewriterMode'], ['toggle_reveal', 'revealOnFocus']]) {
+    console.log('\n=== focus and typewriter toggle on and off ===');
+    for (const [cmd, prop] of [['toggle_focus', 'focusMode'], ['toggle_typewriter', 'typewriterMode']]) {
         const a = await page.evaluate((p) => !!state[p], prop);
         await page.evaluate((c) => window.__host('cmd:' + c), cmd);
         const b = await page.evaluate((p) => !!state[p], prop);
@@ -143,11 +143,12 @@ try {
     const focusClass = await page.evaluate(() => { window.__host('cmd:toggle_focus'); const on = editor.classList.contains('focus-mode'); window.__host('cmd:toggle_focus'); return on; });
     check(focusClass, 'focus mode dims the page (focus-mode class)');
 
-    console.log('\n=== reveal markdown restores preview when turned off ===');
+    // Reveal Markdown on Focus was removed in 0.21.30 (a second way of editing inside Preview,
+    // where every data bug of 2026-11-21 lay). F7 does nothing; the line keeps its preview.
+    console.log('\n=== F7 does nothing: a focused line stays preview ===');
     await page.evaluate(() => {
         handleCommand('view_set:mode:preview');
         loadMarkdownContent('*italics* here\n\nSecond line.');
-        if (state.revealOnFocus) handleCommand('toggle_reveal');
     });
     await settled(page);
     const blocks = await page.$$('#editor .block');
@@ -155,27 +156,11 @@ try {
     await page.keyboard.press('F7');
     await blocks[0].click();
     await settled(page);
-    const revealed = await page.evaluate(() => {
-        const b = document.querySelectorAll('#editor .block')[0];
-        return { text: b.innerText, em: !!b.querySelector('em'), on: !!state.revealOnFocus };
-    });
-    check(revealed.on && revealed.em === false && revealed.text.indexOf('*italics*') >= 0,
-        'F7 then focusing the line shows its markdown', revealed);
-    await page.keyboard.press('F7');
-    await settled(page);
-    const restored = await page.evaluate(() => {
-        const b = document.querySelectorAll('#editor .block')[0];
-        return { text: b.innerText, em: !!b.querySelector('em'), on: !!state.revealOnFocus };
-    });
-    check(restored.on === false && restored.em && restored.text.indexOf('*') < 0,
-        'F7 again puts the preview back', restored);
-    await blocks[1].click();
-    await settled(page);
-    const stayed = await page.evaluate(() => {
+    const shown = await page.evaluate(() => {
         const b = document.querySelectorAll('#editor .block')[0];
         return { em: !!b.querySelector('em'), star: b.innerText.indexOf('*') >= 0 };
     });
-    check(stayed.em && !stayed.star, 'leaving the line keeps the preview', stayed);
+    check(shown.em && !shown.star, 'F7 then focusing the line still shows its preview', shown);
 
     console.log('\n=== choosing a theme applies its colours ===');
     // The host sends the shipped themes at start-up (init_themes:), then a choice (set_theme:).

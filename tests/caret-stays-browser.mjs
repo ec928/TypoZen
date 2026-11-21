@@ -5,7 +5,7 @@
  * Callout keep the caret -- or a selection -- at the same point in the user's text,
  * whatever markers appear or disappear around it. A point inside a marker that goes lands
  * where the text resumes. Undo puts the caret or selection back exactly as it was before
- * the format; redo exactly as it was after. Preview (Reveal on and off) and Source.
+ * the format; redo exactly as it was after. Preview and Source.
  *
  * Until 0.21.16 every block format sent the caret to the end of the line, a retreat from
  * carets that landed at the start of the line or elsewhere (a reload's deferred restore
@@ -52,7 +52,7 @@ const DOC = [
 const LINES = DOC.split('\n').map((l, i) => l.trim() ? i : -1).filter(i => i >= 0);
 const TYPES = ['h1', 'h2', 'h3', 'quote', 'list', 'ol', 'checklist', 'para', 'callout:note', 'callout:tip'];
 
-// Markers at the start of a line, as Source (and Reveal) show them.
+// Markers at the start of a line, as Source shows them.
 const MARKER = /^(?:[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|\d+[.)][ \t]+|\[![A-Za-z]+\][ \t]*))*/;
 const body = (t) => String(t).slice(String(t).match(MARKER)[0].length);
 
@@ -179,8 +179,8 @@ try {
     // page: the layouts where carets have gone missing before.
     const LONG = DOC + '\n\n' + Array.from({ length: 3000 }, (_, i) => 'Filler line ' + i).join('\n');
     const combos = [
-        ['wysiwyg', false, 1, DOC], ['wysiwyg', true, 1, DOC], ['source', false, 1, DOC],
-        ['wysiwyg', false, 1, LONG], ['wysiwyg', false, 2, DOC], ['wysiwyg', true, 2, LONG], ['source', false, 1, LONG]
+        ['wysiwyg', false, 1, DOC], ['source', false, 1, DOC],
+        ['wysiwyg', false, 1, LONG], ['wysiwyg', false, 2, DOC], ['wysiwyg', false, 2, LONG], ['source', false, 1, LONG]
     ];
     let cases = 0;
     for (const [mode, reveal, cols, doc] of combos) {

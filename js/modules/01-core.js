@@ -76,7 +76,6 @@
         // --- CORE APPLICATION STATE ---
         let state = {
             mode: 'wysiwyg',
-            revealOnFocus: false,
             focusMode: false,
             typewriterMode: false,
             margin: 'narrow',

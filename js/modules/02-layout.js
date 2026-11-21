@@ -7592,7 +7592,9 @@
                 // only F7/F8/F9 were bound, so the key did nothing while typing.
                 if (!e.ctrlKey && !e.metaKey && !e.altKey) {
                     if (e.key === 'F1') { e.preventDefault(); handleCommand('help_syntax'); return; }
-                    if (e.key === 'F7') { e.preventDefault(); handleCommand('toggle_reveal'); return; }
+                    // F7 was Reveal Markdown on Focus (removed 0.21.30). Kept swallowed: in a
+                    // browser F7 turns on caret browsing.
+                    if (e.key === 'F7') { e.preventDefault(); return; }
                     if (e.key === 'F8') { e.preventDefault(); handleCommand('toggle_focus'); return; }
                     if (e.key === 'F9') { e.preventDefault(); handleCommand('toggle_typewriter'); return; }
                 }
@@ -7640,7 +7642,6 @@
                 themeName: themeName,
                 mode: state.mode || 'wysiwyg',
                 sidebarCollapsed: sidebar ? sidebar.classList.contains('collapsed') : false,
-                revealOnFocus: state.revealOnFocus || false,
                 focusMode: state.focusMode || false,
                 typewriterMode: state.typewriterMode || false,
                 margin: state.margin || 'narrow',
@@ -7747,7 +7748,6 @@
                 } else {
                     sidebar.classList.remove('collapsed');
                 }
-                state.revealOnFocus = !!savedPrefs.revealOnFocus;
                 state.focusMode = !!savedPrefs.focusMode;
                 if (editor) editor.classList.toggle('focus-mode', state.focusMode);
                 state.typewriterMode = !!savedPrefs.typewriterMode;

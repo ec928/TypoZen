@@ -2062,17 +2062,12 @@
                 .replace(/^ | $/g, ' ');
         }
 
-        function isRevealedBlock(el) {
-            return !!(state.revealOnFocus && el && typeof blockShowsRevealedMarkdown === 'function' && blockShowsRevealedMarkdown(el));
-        }
-
         /**
          * Remove what follows a collapsed caret in `block` and return it as Markdown, or ''.
          * The block's own wrapper (a paragraph, a heading) stays behind: only its inline
          * content moves, marks and all.
          */
         function cutTextAfterCaret(block) {
-            const wasRevealed = isRevealedBlock(block);
             const sel = window.getSelection();
             if (!sel || !sel.rangeCount || !sel.isCollapsed || !block.contains(sel.anchorNode)) return '';
             const r = document.createRange();
@@ -2112,7 +2107,7 @@
             nodes.forEach(n => p.appendChild(n));
             tmp.appendChild(p);
             let md = '';
-            try { md = wasRevealed ? (p.textContent || '').replace(/\u00a0/g, ' ') : blockHtmlToMarkdown(tmp); }
+            try { md = blockHtmlToMarkdown(tmp); }
             catch (e) { md = p.textContent || ''; }
             // The converter trims; the space before the moved words is part of them.
             if (lead && !/^\s/.test(md)) md = lead[0].replace(/ /g, ' ') + md;
@@ -2282,7 +2277,7 @@
                     if (active && !editor.contains(active)) active = null;
                     if (active && active.classList && active.classList.contains('block')) {
                         try {
-                            const updated = isRevealedBlock(active) ? revealedMarkdownOf(active) : blockHtmlToMarkdown(active);
+                            const updated = blockHtmlToMarkdown(active);
                             active.setAttribute('data-raw', updated);
                             const mid = DocumentModel.modelIndexOfEl(active);
                             if (mid >= 0) DocumentModel.setBlockRaw(mid, updated);
@@ -2426,7 +2421,7 @@
 
             // Several lines pasted inside a fenced code block are code. Splitting them into
             // blocks closed the fence at the caret and left "``` line ```" behind.
-            if (String(text).indexOf('\n') >= 0 && !isRevealedBlock(active)
+            if (String(text).indexOf('\n') >= 0
                 && pasteIntoCodeFence(active, String(text).replace(/\r\n?/g, '\n'))) {
                 updateStats();
                 HistoryManager.commitEdit();
@@ -2491,7 +2486,7 @@
                     const curRaw = active && active.classList && active.classList.contains('block')
                         ? (active.getAttribute('data-raw') || '') : null;
                     const canMapLine = sel && sel.rangeCount && (sel.isCollapsed || singleBlockReplace);
-                    if (curRaw != null && canMapLine && !isRevealedBlock(active) && /[*_`~\[]/.test(blockTexts[0])
+                    if (curRaw != null && canMapLine && /[*_`~\[]/.test(blockTexts[0])
                         && typeof insertMarkdownIntoLine === 'function') {
                         const next = insertMarkdownIntoLine(curRaw, startOff, blockTexts[0], endOff);
                         if (next) {
@@ -2524,42 +2519,31 @@
                     }
                 } catch (eB) {}
 
-                const wasRevealed = isRevealedBlock(active);
                 document.execCommand('insertText', false, withKeptEdgeSpaces(blockTexts[0]));
                 if (active && active.classList && active.classList.contains('block')) {
-                    const raw0 = wasRevealed ? revealedMarkdownOf(active) : blockHtmlToMarkdown(active);
+                    const raw0 = blockHtmlToMarkdown(active);
                     active.setAttribute('data-raw', raw0);
                     try {
                         const idx0 = DocumentModel.modelIndexOfEl(active);
                         if (idx0 >= 0) DocumentModel.setBlockRaw(idx0, raw0);
                     } catch (eSync0) {}
 
-                    if (wasRevealed) {
-                        active.innerText = raw0;
-                        try {
-                            if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
-                            if (typeof setCaretAtOffset === 'function') {
-                                setCaretAtOffset(active, startOff + blockTexts[0].length);
-                            }
-                        } catch (eCaret) {}
-                    } else {
-                        // Render the block immediately so WYSIWYG users don't see raw markdown
-                        renderBlockPreview(active, raw0);
+                    // Render the block immediately so WYSIWYG users don't see raw markdown
+                    renderBlockPreview(active, raw0);
 
-                        // Restore the caret by adding the length of the *rendered* pasted text.
-                        // renderBlockPreview just replaced the nodes the caret was in. Focusing
-                        // first: a selection set while the editor is blurred draws no caret, and
-                        // the next key goes nowhere (the "focus lost after pasting" report).
-                        try {
-                            const temp = document.createElement('div');
-                            renderBlockPreview(temp, blockTexts[0]);
-                            const addedLength = (temp.innerText || '').length;
-                            if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
-                            if (typeof setCaretAtOffset === 'function') {
-                                setCaretAtOffset(active, startOff + addedLength);
-                            }
-                        } catch (eCaret) {}
-                    }
+                    // Restore the caret by adding the length of the *rendered* pasted text.
+                    // renderBlockPreview just replaced the nodes the caret was in. Focusing
+                    // first: a selection set while the editor is blurred draws no caret, and
+                    // the next key goes nowhere (the "focus lost after pasting" report).
+                    try {
+                        const temp = document.createElement('div');
+                        renderBlockPreview(temp, blockTexts[0]);
+                        const addedLength = (temp.innerText || '').length;
+                        if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
+                        if (typeof setCaretAtOffset === 'function') {
+                            setCaretAtOffset(active, startOff + addedLength);
+                        }
+                    } catch (eCaret) {}
                 }
                 updateStats();
                 updateOutline();
@@ -2584,7 +2568,7 @@
                 // end of the document and the caret sat in the middle of the paste.
                 let headMd = '';
                 try {
-                    headMd = isRevealedBlock(active) ? revealedMarkdownOf(active) : blockHtmlToMarkdown(active);
+                    headMd = blockHtmlToMarkdown(active);
                 } catch (eH) {
                     try { headMd = active.innerText || ''; } catch (eI) { headMd = ''; }
                 }
@@ -4889,46 +4873,6 @@
             return p.split('>').slice(1).map(function () { return '>'; }).join(' ') + ' ';
         }
 
-        /**
-         * A point in a line Reveal draws as its Markdown, as an offset in that Markdown: text
-         * counts its characters and each <br> one line break (textContent counts none).
-         */
-        function revealedOffsetOfPoint(block, node, offset) {
-            const r = document.createRange();
-            r.selectNodeContents(block);
-            r.setEnd(node, offset);
-            let n = 0;
-            const walk = function (el) {
-                for (let c = el.firstChild; c; c = c.nextSibling) {
-                    if (c.nodeType === 3) n += c.nodeValue.length;
-                    else if (c.nodeName === 'BR') n += 1;
-                    else walk(c);
-                }
-            };
-            walk(r.cloneContents());
-            return n;
-        }
-
-        /** The caret at a Markdown offset in a line Reveal draws (the inverse of the above). */
-        function placeCaretAtRevealedOffset(block, target) {
-            let left = Math.max(0, target | 0);
-            const sel = window.getSelection();
-            const range = document.createRange();
-            for (let c = block.firstChild; c; c = c.nextSibling) {
-                if (c.nodeType === 3) {
-                    if (left <= c.nodeValue.length) { range.setStart(c, left); left = -1; break; }
-                    left -= c.nodeValue.length;
-                } else if (c.nodeName === 'BR') {
-                    if (left === 0) { range.setStartBefore(c); left = -1; break; }
-                    left -= 1;
-                }
-            }
-            if (left >= 0) { range.selectNodeContents(block); range.collapse(false); }
-            range.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(range);
-        }
-
         function handleEnterAtBlock(block, shiftKey, opts) {
             if (!block) return;
             const skipHistory = !!(opts && opts.skipHistory);
@@ -4937,32 +4881,6 @@
                 && block.contains(sel.getRangeAt(0).endContainer));
             const wasCollapsed = !!(sel && sel.isCollapsed);
             if (selInBlock && block.querySelector('pre') && enterInCodeBlock(block, sel.getRangeAt(0), opts)) return;
-            // Reveal draws a code block or a table as its Markdown, several lines in one block.
-            // Enter there is a line break in that Markdown, as in Source. Splitting the block
-            // (the path below) and tidying each half as one line moved the breaks: the closing
-            // fence ended up on the last code line and the block swallowed the rest of the
-            // document; a table row broke in the wrong place (2026-11-21).
-            if (selInBlock && isRevealedBlock(block)) {
-                const md0 = revealedMarkdownOf(block);
-                if (isMultilineBlockRaw(md0)) {
-                    const r0 = sel.getRangeAt(0);
-                    const a = revealedOffsetOfPoint(block, r0.startContainer, r0.startOffset);
-                    const b = wasCollapsed ? a : revealedOffsetOfPoint(block, r0.endContainer, r0.endOffset);
-                    // At the very end, Enter leaves the block for a new line below, as it does
-                    // with Reveal off (the path below keeps a fence or table whole): a break
-                    // at the end of a block is no place a caret can stay.
-                    const atEnd = wasCollapsed && a >= md0.replace(/\n+$/, '').length;
-                    if (!atEnd) {
-                        if (!skipHistory) HistoryManager.beginEdit();
-                        writeBlockRaw(block, md0.slice(0, a) + '\n' + md0.slice(b));
-                        placeCaretAtRevealedOffset(block, a + 1);
-                        try { refreshLastGoodDocRaws(); } catch (eRl) {}
-                        if (!skipHistory) HistoryManager.commitEdit();
-                        updateStats();
-                        return;
-                    }
-                }
-            }
             // A table is one block, and splitting it destroyed it. Tab moves between cells;
             // Enter with a selection deletes the selected range inside the cell without splitting.
             // A collapsed caret that is not in a cell has already fallen out of the grid
@@ -4996,7 +4914,7 @@
                     }
                 } catch (eT) {}
                 try {
-                    const tRaw = isRevealedBlock(block) ? revealedMarkdownOf(block) : blockHtmlToMarkdown(block);
+                    const tRaw = blockHtmlToMarkdown(block);
                     if (tRaw != null) {
                         block.setAttribute('data-raw', tRaw);
                         if (typeof DocumentModel !== 'undefined') {
@@ -5114,11 +5032,7 @@
                 // The line it pushes down is the next number.
                 if (wl && wl.kind === 'ol') wholeLine = wholeLine.replace(/^([ \t]*)\d+/, '$1' + (wl.num + 1));
             } else if (raw == null || raw === '') {
-                raw = isRevealedBlock(block) ? revealedMarkdownOf(block) : blockHtmlToMarkdown(block);
-            } else if (isRevealedBlock(block)) {
-                // Prefer remaining text after deleteContents
-                const left = String(block.innerText || '').replace(/\u00a0/g, ' ');
-                if (left.trim().length <= String(raw).trim().length) raw = left;
+                raw = blockHtmlToMarkdown(block);
             } else {
                 // Re-read DOM for left part
                 try {

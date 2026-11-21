@@ -460,9 +460,8 @@ async function main() {
             'export HTML contains every model block (' + exp.exportedBlocks +
             ' of ' + exp.modelBlocks + ')');
 
-        console.log('\n=== Reveal (F7) paste keeps Markdown ===');
+        console.log('\n=== paste inside a heading and a link keeps the Markdown ===');
         const revealPaste = await page.evaluate(() => {
-            state.revealOnFocus = true;
             try {
                 loadMarkdownContent('## Heading two here');
                 const b = document.querySelector('#editor .block');
@@ -504,16 +503,14 @@ async function main() {
                 pasteLikeCtrlV('', 'THE', false);
                 const afterLink = getMarkdownContent(false);
                 return { afterFirst, afterSecond, afterLink };
-            } finally {
-                state.revealOnFocus = false;
-            }
+            } finally {}
         });
         assert(revealPaste.afterFirst === '## Heading twoX here',
-            'Reveal paste once keeps ## heading (' + JSON.stringify(revealPaste.afterFirst) + ')');
+            'paste once keeps ## heading (' + JSON.stringify(revealPaste.afterFirst) + ')');
         assert(revealPaste.afterSecond === '## Heading twoXY here',
-            'Reveal paste twice keeps ## heading (' + JSON.stringify(revealPaste.afterSecond) + ')');
+            'paste twice keeps ## heading (' + JSON.stringify(revealPaste.afterSecond) + ')');
         assert(revealPaste.afterLink === 'See [THE link](https://x.test) now',
-            'Reveal paste inside link keeps link markdown (' + JSON.stringify(revealPaste.afterLink) + ')');
+            'paste inside link keeps link markdown (' + JSON.stringify(revealPaste.afterLink) + ')');
 
         console.log('\n=== Find-bar checkbox focus does not throw on Edit > Paste / Select All ===');
         const findChk = await page.evaluate(() => {

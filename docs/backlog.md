@@ -94,7 +94,7 @@ The following behaviors are hardcoded per media type for *newly opened* files an
   write it to the current type.
 - **Upgrade:** an existing install's current global values become **Documents**; Code, ePub
   and PDF start from the defaults above. A fresh install gets the defaults for all four.
-- Focus, Typewriter and Reveal stay global (not decided otherwise).
+- Focus and Typewriter stay global (not decided otherwise). (Reveal was removed in 0.21.30.)
 
 **Risks and tests:**
 - The tab-switch path — it produced two defects on 2026-09-27. New real-app suite (hidden

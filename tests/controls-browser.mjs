@@ -27,7 +27,7 @@ function check(ok, msg) {
 
 // The host's own messages (TypoZen_App.cs: toolbar buttons, menus, shortcuts).
 const FMT = ['bold', 'italic', 'strike', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'list', 'ol', 'checklist', 'quote', 'link', 'table'];
-const CMDS = ['cut', 'select_all', 'mark_toggle', 'show_marks', 'show_outline', 'show_search', 'toggle_focus', 'toggle_reveal',
+const CMDS = ['cut', 'select_all', 'mark_toggle', 'show_marks', 'show_outline', 'show_search', 'toggle_focus',
     'toggle_search_sidebar', 'toggle_sidebar', 'toggle_typewriter', 'find', 'find_replace', 'wordwrap_on', 'sidebar_edge:0',
     'sidebar_edge:1', 'view_set:mode:source', 'view_set:mode:reader', 'view_set:columns:2'];
 // Commands whose whole effect is outside the page (the clipboard, a message to the host),
@@ -115,11 +115,9 @@ try {
     }
     console.log('  ' + (FMT.length + CMDS.length + NO_PAGE_EFFECT.size) + ' messages delivered');
 
-    // The messages above include toggles (reveal on focus, focus, typewriter, columns) that
-    // fresh() does not undo. Reveal on focus in particular shows a clicked block as raw
-    // Markdown, so a table has no cell to land in and its toolbar rightly never appears --
-    // which read as a broken toolbar. Start the buttons from a clean page, and with the
-    // saved preferences cleared: they carry the toggles across a reload.
+    // The messages above include toggles (focus, typewriter, columns) that fresh() does not
+    // undo. Start the buttons from a clean page, and with the saved preferences cleared:
+    // they carry the toggles across a reload.
     await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
     await page.reload({ waitUntil: 'load' });
     await page.waitForFunction(() => typeof handleCommand === 'function' && window.__hostListeners.length > 0, { timeout: 15000 });
@@ -204,7 +202,7 @@ try {
                 const s = getSelection(); const a = s.anchorNode; const ae = document.activeElement;
                 return { inline: el && el.style.display, rect: r && [r.width | 0, r.height | 0],
                     anchor: a && (a.nodeType === 3 ? a.parentElement : a).tagName, active: ae && (ae.id || ae.tagName),
-                    reveal: state.revealOnFocus, mode: state.mode, tds: document.querySelectorAll('#editor td').length,
+                    mode: state.mode, tds: document.querySelectorAll('#editor td').length,
                     stored: (() => { try { return Object.keys(localStorage).join(','); } catch (e) { return 'n/a'; } })() };
             }, shows[state]);
             check(false, state + ': ' + shows[state] + ' is not on screen ' + JSON.stringify(why));

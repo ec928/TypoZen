@@ -6,9 +6,8 @@
  * line lost its box. Two lines pasted together were always right; one line went through the
  * in-line paths (rendered then unwrapped, or typed in then list-formatted).
  *
- * With Reveal on, the active line is drawn as its Markdown, and its spaces are part of it:
- * typing or pasting in "  - item" flattened it to "- item" (collapsed whitespace), and a
- * paste's no-break edge space was saved into the file. Both covered here.
+ * Also: typing in a nested item keeps it nested, and a pasted edge space is saved as a space
+ * (both went wrong under Reveal, removed in 0.21.30; kept here for Preview).
  *
  *   node tests/paste-empty-line-browser.mjs          (TZ_ROOT=<folder> to test another copy)
  */
@@ -39,8 +38,8 @@ try {
     await page.waitForFunction(() => typeof handleCommand === 'function' && window.__L.length > 0, { timeout: 15000 });
     const quiet = () => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 70)))));
     const md = () => page.evaluate(() => getMarkdownContent(false).replace(/\n+$/, ''));
-    const load = async (doc, reveal) => {
-        await page.evaluate((d, rv) => { state.revealOnFocus = rv; setSourceDocExt('md'); handleCommand('view_set:mode:wysiwyg'); loadMarkdownContent(d); }, doc, reveal);
+    const load = async (doc) => {
+        await page.evaluate((d) => { setSourceDocExt('md'); handleCommand('view_set:mode:wysiwyg'); loadMarkdownContent(d); }, doc);
         await quiet();
     };
     const pasteEvent = (t) => page.evaluate((x) => {
@@ -50,25 +49,22 @@ try {
     const lineAt = (i) => page.evaluate((l) => { const r = document.querySelector('#editor .block[data-model-index="' + l + '"]').getBoundingClientRect(); return { x: r.left + 30, y: r.top + r.height / 2 }; }, i);
 
     console.log('\n=== one line pasted onto an empty line ===');
-    for (const reveal of [false, true]) {
-        for (const line of ['- [ ] task open', '- [x] task done', '* star bullet', '> [!NOTE] Callout title', '  - nested two', '- bullet', 'Plain **bold** end']) {
-            for (const route of ['Ctrl+V', 'menu Paste']) {
-                await load('Top\n\nBottom', reveal);
-                await page.evaluate(() => { const el = document.querySelector('#editor .block[data-model-index="1"]'); focusBlock(el, 0); });
-                if (route === 'Ctrl+V') await pasteEvent(line); else await page.evaluate((t) => window.__host('paste_text:' + t), line);
-                await quiet();
-                await page.keyboard.type('Q');
-                await quiet();
-                same((reveal ? 'Reveal, ' : '') + route + ' ' + JSON.stringify(line) + ', then typing', await md(), 'Top\n' + line + 'Q\nBottom');
-            }
+    for (const line of ['- [ ] task open', '- [x] task done', '* star bullet', '> [!NOTE] Callout title', '  - nested two', '- bullet', 'Plain **bold** end']) {
+        for (const route of ['Ctrl+V', 'menu Paste']) {
+            await load('Top\n\nBottom');
+            await page.evaluate(() => { const el = document.querySelector('#editor .block[data-model-index="1"]'); focusBlock(el, 0); });
+            if (route === 'Ctrl+V') await pasteEvent(line); else await page.evaluate((t) => window.__host('paste_text:' + t), line);
+            await quiet();
+            await page.keyboard.type('Q');
+            await quiet();
+            same(route + ' ' + JSON.stringify(line) + ', then typing', await md(), 'Top\n' + line + 'Q\nBottom');
         }
     }
 
-    console.log('\n=== Reveal: the active line keeps its spaces ===');
-    await load('- top item\n  - nested two\nAfter', true);
+    console.log('\n=== spaces that are part of the Markdown ===');
+    await load('- top item\n  - nested two\nAfter');
     let p = await lineAt(1);
     await page.mouse.click(p.x, p.y);
-    await page.evaluate(() => { const el = document.querySelector('#editor .block[data-model-index="1"]'); if (el.querySelector(':not(br)')) { currentActiveBlock = null; updateActiveBlock(); } });
     await page.keyboard.press('End');
     await page.keyboard.type('Z');
     p = await lineAt(2);
@@ -76,12 +72,11 @@ try {
     await quiet();
     same('typing at the end of a nested item keeps it nested', await md(), '- top item\n  - nested twoZ\nAfter');
 
-    await load('## Heading two here\nNext', true);
+    await load('## Heading two here\nNext');
     p = await lineAt(0);
     await page.mouse.click(p.x, p.y);
-    await page.evaluate(() => { currentActiveBlock = null; updateActiveBlock(); });
     await page.keyboard.press('Home');
-    for (let i = 0; i < 11; i++) await page.keyboard.press('ArrowRight');
+    for (let i = 0; i < 8; i++) await page.keyboard.press('ArrowRight');
     await pasteEvent('X ');
     await page.keyboard.type('Q');
     p = await lineAt(1);

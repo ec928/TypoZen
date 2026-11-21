@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.21.29";
+        internal const string AppVersion = "0.21.30";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1723,7 +1723,6 @@ namespace TypoZen
             BindClick("mSidebarOutline", (s, e) => SendMsg("cmd:show_outline"));
             BindClick("mSidebarSearch", (s, e) => SendMsg("cmd:show_search"));
             BindClick("mSidebarMarks", (s, e) => SendMsg("cmd:show_marks"));
-            BindClick("mToggleReveal", (s, e) => SendMsg("cmd:toggle_reveal"));
             BindClick("mToggleFocus", (s, e) => SendMsg("cmd:toggle_focus"));
             BindClick("mToggleTypewriter", (s, e) => SendMsg("cmd:toggle_typewriter"));
             BindClick("mMarginNarrow", (s, e) => SetMarginChoice("narrow"));
@@ -3320,7 +3319,8 @@ namespace TypoZen
                 }
             }
             else if (e.Key == Key.F1) { ShowHelpPanel("cmd:help_syntax"); e.Handled = true; }
-            else if (e.Key == Key.F7) { SendMsg("cmd:toggle_reveal"); e.Handled = true; }
+            // F7 was Reveal Markdown on Focus (removed 0.21.30); swallowed so it does nothing.
+            else if (e.Key == Key.F7) { e.Handled = true; }
             else if (e.Key == Key.F8) { SendMsg("cmd:toggle_focus"); e.Handled = true; }
             else if (e.Key == Key.F9) { SendMsg("cmd:toggle_typewriter"); e.Handled = true; }
             else if (e.Key == Key.F11) { ToggleFullscreen(); e.Handled = true; }
@@ -8710,13 +8710,12 @@ namespace TypoZen
             }
             else if (msg.StartsWith("view_flags:", StringComparison.Ordinal))
             {
-                // view_flags:reveal=1,focus=0,typewriter=1
+                // view_flags:focus=0,typewriter=1
                 try
                 {
                     string body = msg.Substring(11);
                     bool focusOn = body.Contains("focus=1");
                     bool typeOn = body.Contains("typewriter=1");
-                    SetMenuChecked("mToggleReveal", body.Contains("reveal=1"));
                     SetMenuChecked("mToggleFocus", focusOn);
                     SetMenuChecked("mToggleTypewriter", typeOn);
                 }
@@ -9295,7 +9294,6 @@ namespace TypoZen
 
             public string Mode = "wysiwyg";
             public bool SidebarCollapsed;
-            public bool RevealOnFocus;
             public bool FocusMode;
             public bool TypewriterMode;
             public string LastFilePath = "";
@@ -9480,7 +9478,6 @@ namespace TypoZen
                 // lastContent deliberately not loaded into host prefs for rewrite (always blank out)
                 bool? b;
                 b = ExtractJsonBool(json, "sidebarCollapsed"); if (b.HasValue) p.SidebarCollapsed = b.Value;
-                b = ExtractJsonBool(json, "revealOnFocus"); if (b.HasValue) p.RevealOnFocus = b.Value;
                 b = ExtractJsonBool(json, "focusMode"); if (b.HasValue) p.FocusMode = b.Value;
                 b = ExtractJsonBool(json, "typewriterMode"); if (b.HasValue) p.TypewriterMode = b.Value;
                 var hist = ExtractJsonStringArray(json, "searchHistory");
@@ -9523,7 +9520,6 @@ namespace TypoZen
                 + formatTp(p.PrefsPdf, "_pdf")
                 + "\"mode\":\"" + JsonEscape(string.IsNullOrEmpty(p.Mode) ? "wysiwyg" : p.Mode) + "\","
                 + "\"sidebarCollapsed\":" + (p.SidebarCollapsed ? "true" : "false") + ","
-                + "\"revealOnFocus\":" + (p.RevealOnFocus ? "true" : "false") + ","
                 + "\"focusMode\":" + (p.FocusMode ? "true" : "false") + ","
                 + "\"typewriterMode\":" + (p.TypewriterMode ? "true" : "false") + ","
                 + "\"lastFilePath\":\"" + JsonEscape(p.LastFilePath ?? "") + "\","
@@ -9576,7 +9572,6 @@ namespace TypoZen
 
                 bool? b;
                 b = ExtractJsonBool(pageJson, "sidebarCollapsed"); if (b.HasValue) prefs.SidebarCollapsed = b.Value;
-                b = ExtractJsonBool(pageJson, "revealOnFocus"); if (b.HasValue) prefs.RevealOnFocus = b.Value;
                 b = ExtractJsonBool(pageJson, "focusMode"); if (b.HasValue) prefs.FocusMode = b.Value;
                 b = ExtractJsonBool(pageJson, "typewriterMode"); if (b.HasValue) prefs.TypewriterMode = b.Value;
                 var hist = ExtractJsonStringArray(pageJson, "searchHistory");
@@ -11307,9 +11302,6 @@ namespace TypoZen
             
             var mType = (MenuItem)FindElement("mToggleTypewriter");
             if (mType != null && mType.IsChecked) SendMsg("cmd:toggle_typewriter");
-            
-            var mReveal = (MenuItem)FindElement("mToggleReveal");
-            if (mReveal != null && mReveal.IsChecked) SendMsg("cmd:toggle_reveal");
             
             SaveWindowState();
         }
@@ -19035,7 +19027,7 @@ namespace TypoZen
             // The groups, not just their children: a parent that opens onto nothing but
             // greyed items is still telling you to go and look.
             "menuSidebarGroup", "mSidebarOutline", "mSidebarSearch", "mSidebarMarks",
-            "mToggleReveal", "mToggleFocus", "mToggleTypewriter",
+            "mToggleFocus", "mToggleTypewriter",
             "menuFontAppearance", "menuSpacing",
             "mMarginNarrow", "mMarginRegular", "mMarginWide",
             "mJustify"

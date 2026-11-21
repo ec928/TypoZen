@@ -2264,32 +2264,9 @@
          * Serialize one block's live DOM to markdown storage form (no write).
          * Shared by input sync, flush, and focused getBlockRaw.
          */
-        /**
-         * Reveal draws the active line as its Markdown: plain text, with <br> for its line
-         * breaks. A line marked active without being redrawn (a reload sets the active line
-         * directly) still shows Preview, and its text is NOT its Markdown: read as Markdown,
-         * a callout's line lost its "> " and left the box (2026-11-21).
-         */
-        function blockShowsRevealedMarkdown(block) {
-            try { return !block.querySelector(':not(br)'); } catch (e) { return true; }
-        }
-
-        /**
-         * The Markdown a revealed line holds. Its spaces are kept as written (white-space:
-         * pre-wrap, typozen.css), so a no-break space a paste put in to stop the browser
-         * dropping an edge space is read as one -- it is a space (as toggle_reveal reads it).
-         */
-        function revealedMarkdownOf(block) {
-            return String((block && block.innerText) || '').replace(/\u00a0/g, ' ');
-        }
-
         function serializeBlockDomToRaw(block) {
             if (!block) return '';
             try {
-                if (state.revealOnFocus && blockShowsRevealedMarkdown(block)) {
-                    const t = coerceBlockRaw(revealedMarkdownOf(block));
-                    return (typeof isScratchHintText === 'function' && isScratchHintText(t)) ? '' : t;
-                }
                 // Always tree-walk (blockHtmlToMarkdown). Joining child innerText used to
                 // strip nested ** / * / ~~ after toolbar or contenteditable splits.
                 const md = coerceBlockRaw(blockHtmlToMarkdown(block));
@@ -2337,9 +2314,6 @@
         function getBlockRaw(block) {
             if (!block) return '';
             const focusedHere = isBlockFocused(block);
-            if (state.revealOnFocus && focusedHere && blockShowsRevealedMarkdown(block)) {
-                return normalizeBlockRaw(revealedMarkdownOf(block) || block.getAttribute('data-raw') || '');
-            }
             const raw = block.getAttribute('data-raw');
             // Images never appear in innerText. Fewer <img>s than data-raw ⇒ deleted image.
             if (raw != null && raw !== '' && countMdImages(raw) > block.querySelectorAll('img').length) {
@@ -2422,8 +2396,7 @@
             block.setAttribute('data-raw', raw);
             try { block.removeAttribute('data-tz-dirty'); } catch (e0) {}
             setBlockListIndentAttr(block, raw);
-            if (state.revealOnFocus) block.innerText = raw;
-            else renderBlockPreview(block, raw);
+            renderBlockPreview(block, raw);
             // Stage A dual-write: model tracks the same raw as the attribute.
             try { if (typeof syncScratchEmpty === 'function') syncScratchEmpty(); } catch (eSc) {}
             try {
@@ -3539,7 +3512,7 @@
          * offset inside the text that changed lands where the shared end begins -- where the
          * user's own text resumes. "Title" -> "## Title": 0 -> 3. "#|# Title" -> "Title": 0.
          */
-        // The block markers at the start of a line as Source and Reveal show it: headings,
+        // The block markers at the start of a line as Source shows it: headings,
         // quotes, list and task markers, a callout's [!KIND].
         const FORMAT_MARKER_RE = /^(?:[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|\d+[.)][ \t]+|\[![A-Za-z]+\][ \t]*))*/;
 
@@ -3668,14 +3641,12 @@
 
         /**
          * Put the caret (a == f) or the selection on Preview points { index, offset, text },
-         * each offset counted in its `text` and mapped into what the line shows once it is
-         * active (Reveal shows the active line's Markdown). Returns the points placed, in
-         * the text the lines show now, or null.
+         * each offset counted in its `text` and mapped into what the line shows now.
+         * Returns the points placed, in the text the lines show now, or null.
          */
         function placePreviewFormatPoints(a, f) {
             if (!editor || !a || !f) return null;
-            // Mount the anchor's line (scroll, page) and make it the active line first: with
-            // Reveal on, that redraws it as Markdown, which the offsets are then mapped into.
+            // Mount the anchor's line (scroll, page) and make it the active line first.
             if (typeof placePreviewCaretMemory === 'function'
                 && !placePreviewCaretMemory({ kind: 'preview', index: a.index, start: 0, end: 0 })) return null;
             try { updateActiveBlock(); } catch (eAb) {}

@@ -3,8 +3,8 @@
  *
  * Drives the actual WPF right-click ContextMenu and top MenuBar (Edit / Format) via
  * Windows UI Automation and asserts directly against the Windows clipboard and live
- * document across Preview (single-line, multi-line, plain & rich paste-over-selection,
- * Reveal on), Source, Reader, and the Find bar.
+ * document across Preview (single-line, multi-line, plain & rich paste-over-selection),
+ * Source, Reader, and the Find bar.
  *
  *   RUN_APP_E2E=1 node tests/menu-clipboard-app.mjs
  */
@@ -100,13 +100,12 @@ function check(label, ok, detail) {
 
 const app = await launchApp({ file: tmpMd, settleMs: 4000, visible: true });
 try {
-    async function resetDoc(md, mode = 'wysiwyg', reveal = false) {
-        await app.eval((m, mo, rv) => {
-            state.revealOnFocus = rv;
+    async function resetDoc(md, mode = 'wysiwyg') {
+        await app.eval((m, mo) => {
             loadMarkdownContent(m);
             if (state.mode !== mo) handleCommand('view_set:mode:' + mo);
             HistoryManager.resetToCurrent();
-        }, md, mode, reveal);
+        }, md, mode);
         await sleep(300);
     }
     const getDoc = () => app.eval(() => (state.mode === 'source' ? sourceEditor.value : getMarkdownContent(false)));

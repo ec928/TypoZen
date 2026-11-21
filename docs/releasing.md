@@ -160,7 +160,7 @@ lives in a state the suite does not yet enter.
 "Did something" is not "did the right thing" -- Highlight selection made two marks and passed
 that sweep. `basic-features-browser` uses each common writing feature the ordinary way and
 checks the result: headings, lists, quote, bold/italic/strike, Insert link through its
-dialog, undo/redo, Preview/Source round trip, word count, the focus/typewriter/reveal
+dialog, undo/redo, Preview/Source round trip, word count, the focus/typewriter
 toggles, choosing a theme, Export as HTML. Not edge cases -- the basic use of what was built.
 
 **The app tier** — `tests/*-app.mjs`, run with `RUN_APP_E2E=1`. These launch the real

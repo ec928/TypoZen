@@ -653,7 +653,6 @@
 
                             <MenuItem x:Name="mToggleFocus" Header="_Focus Mode" InputGestureText="F8" IsCheckable="True"/>
                             <MenuItem x:Name="mToggleTypewriter" Header="_Typewriter Scrolling" InputGestureText="F9" IsCheckable="True"/>
-                            <MenuItem x:Name="mToggleReveal" Header="Re_veal Markdown on Focus" InputGestureText="F7" IsCheckable="True" IsChecked="False"/>
                             <MenuItem x:Name="menuFontAppearance" Header="F_ont Appearance">
                                 <MenuItem Header="_Type">
                                     <MenuItem x:Name="mFontTheme" Header="_Theme" IsCheckable="True" IsChecked="True"/>

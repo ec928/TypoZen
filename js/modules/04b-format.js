@@ -2329,9 +2329,6 @@
             updateStats(false);
         }
 
-        // The line Reveal last drew as its Markdown (updateActiveBlock).
-        let _revealedBlock = null;
-
         function updateActiveBlock() {
             if (state.mode === 'source') {
                 updateCaretLineStatus();
@@ -2350,34 +2347,12 @@
             if (currentActiveBlock !== newActive) {
                 if (currentActiveBlock && currentActiveBlock.classList && editor.contains(currentActiveBlock)) {
                     currentActiveBlock.classList.remove('focused');
-                    if (state.revealOnFocus) {
-                        const raw = currentActiveBlock.getAttribute('data-raw') || currentActiveBlock.innerText || '';
-                        currentActiveBlock.setAttribute('data-raw', raw);
-                        renderBlockPreview(currentActiveBlock, raw);
-                    }
                 }
-                // The line Reveal drew as Markdown, if some path made another line active
-                // without coming through here (a reload sets it directly): draw it as Preview
-                // too, or it kept showing "> " while the caret was elsewhere (2026-11-21).
-                if (_revealedBlock && _revealedBlock !== newActive && _revealedBlock !== currentActiveBlock
-                    && editor.contains(_revealedBlock) && state.revealOnFocus
-                    && typeof blockShowsRevealedMarkdown === 'function' && blockShowsRevealedMarkdown(_revealedBlock)) {
-                    const rb = _revealedBlock;
-                    const raw = rb.getAttribute('data-raw') || rb.innerText || '';
-                    rb.setAttribute('data-raw', raw);
-                    renderBlockPreview(rb, raw);
-                }
-                _revealedBlock = null;
                 currentActiveBlock = newActive;
                 if (currentActiveBlock && currentActiveBlock.classList && editor.contains(currentActiveBlock)) {
                     // setFocusedBlock rather than classList.add: this path knew to unlight
                     // the block it was leaving, but not any block some OTHER path had lit.
                     setFocusedBlock(currentActiveBlock);
-                    if (state.revealOnFocus) {
-                        const raw = currentActiveBlock.getAttribute('data-raw') || '';
-                        if (currentActiveBlock.innerText !== raw) currentActiveBlock.innerText = raw;
-                        _revealedBlock = currentActiveBlock;
-                    }
                     if (state.typewriterMode) applyTypewriterScroll(true);
                 }
                 updateStats();
@@ -2530,8 +2505,7 @@
                 } else {
                     return;
                 }
-                // With the text the offsets count in (Reveal draws the active line as Markdown,
-                // and a menu taking the keyboard draws it as Preview again).
+                // With the text the offsets count in, so a line redrawn since can map them.
                 _editorCaretMemory = { kind: 'preview', index: index, start: start, end: end,
                     text: block.textContent || '', at: Date.now() };
                 if (typeof window !== 'undefined') window.__tzLastUiInput = null;
@@ -2585,23 +2559,18 @@
             if (isEditable) focusEditorNoScroll();
             if (typeof setCaretAtOffset !== 'function') return true;
             if (isEditable) {
-                // Make the line the active one before placing the caret in it: with Reveal on,
-                // that redraws it as Markdown, which resets a caret placed first (it went to
-                // the start of the line after a menu). The offsets were taken in that text.
-                // A line marked active without being made so (a reload or an undo sets it
-                // directly): not lit, or with Reveal on still drawn as Preview. Make it active.
-                if (currentActiveBlock === block && (!block.classList.contains('focused')
-                    || (state.revealOnFocus && typeof blockShowsRevealedMarkdown === 'function'
-                        && !blockShowsRevealedMarkdown(block)
-                        && !(typeof blockWasEdited === 'function' && blockWasEdited(block))))) currentActiveBlock = null;
+                // Make the line the active one before placing the caret in it. A line marked
+                // active without being made so (a reload or an undo sets it directly) is not
+                // lit: make it active properly.
+                if (currentActiveBlock === block && !block.classList.contains('focused')) currentActiveBlock = null;
                 if (currentActiveBlock !== block) {
                     try { setCaretAtOffset(block, 0); updateActiveBlock(); } catch (eAct) {}
                 }
             }
             let start = mem.start | 0;
             let end = mem.end != null ? (mem.end | 0) : start;
-            // Offsets taken in other text than the line shows now (Reveal on, off): the same
-            // point in the text it shows (formatCaretMapOffset).
+            // Offsets taken in other text than the line shows now (it was redrawn since): the
+            // same point in the text it shows (formatCaretMapOffset).
             if (mem.text != null && typeof formatCaretMapOffset === 'function') {
                 const now = block.textContent || '';
                 if (now !== mem.text) {

@@ -67,7 +67,6 @@ Everything optional (more voices, the narrators, a 1.3-million-word dictionary, 
 - **Sticky mode switching** — the line at the top of the screen stays at the top when you toggle, for both the status readout _and_ the scroll position. Source and Preview lay a line out alike (same margins, width and spacing), so text does not shift between them
 - **Large code files** — a 2.2 MB HTML file with a 356 KB line opens in Source and reaches that line in a fraction of a second; code is not spell-checked
 - Source uses the **active theme font** (pick a **(Mono)** theme if you want monospaced source and preview)
-- **Reveal markdown on focus** (`F7`) can be enabled to automatically show markdown details while still in preview WYSIWYG mode
 
 ### Large documents
 TypoZen opens Markdown of any size in Live Preview.
@@ -116,7 +115,7 @@ The **Format** menu (`Alt+O`) lists every formatting command with its shortcut, 
 - The Edit items that change the document (Undo, Redo, Cut, Paste) grey themselves out whenever it cannot take an edit (Reader mode and every epub) rather than hiding, so the menu reads the same in every mode.
 
 #### View, focus & layout
-- **Focus & immersion:** Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`).
+- **Focus & immersion:** Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`).
 - **ZenMode** (**View → ZenMode (autohide UI)**) — hides everything but the page: the command row, the tabs, the window buttons and the status bar. Pointer to the **top** (or bare `Alt`) brings it all back, window buttons and dragging included; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back. The menu is always discoverable by reaching the top of the window.
 - **Left-edge sidebar hover** (**View → Side Panel Auto-hide**) — **off by default**, and separate from ZenMode. When switched on and with the sidebar unpinned, moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it. Opening with the toolbar, `Alt+\`, or `Alt+S` **pins** it until you close it again.
 - **Sidebar (`Alt+\`):** live outline (headings, or a book's own TOC), Marks, and the Search pane.
@@ -210,7 +209,7 @@ Open these **read-only** on a Chromium surface (same tab strip). No document scr
 **Menus that cannot apply are greyed, not left looking live.** A native tab is not a
 document, so **Edit** greys out whole — every item in it acts on the editor —
 and **View** loses only its document-shaped half: the Sidebar group, Focus Mode, Typewriter
-Scrolling, Reveal Markdown on Focus, Font Appearance, Spacing & Margins, Bookmark Gutter
+Scrolling, Font Appearance, Spacing & Margins, Bookmark Gutter
 Hover and Justified. Scrubber, Status Bar, Auto-hide, Fullscreen and Reset View Settings
 stay, because they are the window's and still mean something over a picture. They were all
 still live once, and pressing Toggle Sidebar on a native tab collapsed the sidebar of the document
@@ -434,7 +433,7 @@ preferred on load once it exists. An update replaces the shipped file and cannot
 | **Favourite files** | — | In **File → Open Recent**, the star on a highlighted row (or **F**) keeps a file in Favourites at the top, up to 10. A favourite stays until you remove it, even when its drive is unplugged, and **Clear recent list** leaves it alone. Privacy Mode adds none; **Clear Stored Data** removes them with the recent files |
 | **Clear Stored Data** | — | Wipes TypoZen cache/session data only — **not** your documents. One box per kind of data: unsaved session text, open tabs, recent files (with the last file and folder), recent Search queries (with match-case/whole-word), pasted images, text read from scanned PDFs, saved web storage and browsing history (on next launch), reading positions, extracted books, bookmarks, added words, custom themes, view settings, diagnostic logs, and, once a narrator is installed or a voice recording is stored, narration audio, logs, casts and voice-clone recordings. Voices are kept. Each box remembers how you left it the last time you cleared; **Select all** and **Select none** set them all. Search history can also be cleared from the foot of the Search box's history list |
 
-Also restored: window size and position, theme, margins, mode, line and paragraph spacing, justification, F7/F8/F9, zoom, scrubber/status-bar visibility, chrome auto-hide, side-panel auto-hide, open tab paths **and each tab's column layout** (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
+Also restored: window size and position, theme, margins, mode, line and paragraph spacing, justification, F8/F9, zoom, scrubber/status-bar visibility, chrome auto-hide, side-panel auto-hide, open tab paths **and each tab's column layout** (bodies only if the option above is on), last eight Search queries, last Search-box text, match case / whole word, and which sidebar tab (Outline/Search) was active.
 
 ### Network behaviour
 **TypoZen itself requests nothing over the network** unless you turn on a feature that needs it: installing an extension (**File → Extensions**) downloads it while you watch, and nothing is fetched before or after; and **Smart Cast**, given your own Google Gemini key, sends the book's dialogue to Google. Privacy Mode switches Smart Cast off. Fonts are bundled, the editor page is served from disk through a virtual host, and the page issues no outbound requests — an installed extension is served the same way, from the data folder through a virtual host, so the speech engine and its model are read from disk rather than a CDN. A document that references a remote image (`![](https://…)`) will still load it — that is the document's request, not the app's.
@@ -722,7 +721,6 @@ An ePub cannot be edited, so it has no instructions of yours:
 | Run a menu item | its underlined letter, once the menu is open: `Alt+E`, `P` pastes |
 | Right-click menu at the text cursor | `Menu` key or `Shift+F10` |
 | Help (syntax & shortcuts) | `F1` |
-| Reveal Markdown | `F7` |
 | Focus mode | `F8` |
 | Typewriter scroll | `F9` |
 
