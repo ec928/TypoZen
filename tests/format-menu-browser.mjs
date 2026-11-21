@@ -80,6 +80,23 @@ try {
     same('right-click on a selection does not raise the popup', await popShown(), false);
     same('and asks for the menu', (await menuMsgs()).length, 1);
 
+    console.log("\n=== a picture keeps the browser's own menu ===");
+    await load('Text above\n![sample](tests/native-sample.png)\nText below');
+    await page.waitForFunction(() => { const i = document.querySelector('#editor img'); return i && i.complete && i.naturalWidth > 0; }, { timeout: 5000 });
+    // native-sample.png is 1x1 and #editor .block img sets width/height: auto !important;
+    // override with !important so the picture renders at a real size and the click lands on it.
+    const img = await page.evaluate(() => { const i = document.querySelector('#editor img'); i.style.setProperty('width', '80px', 'important'); i.style.setProperty('height', '80px', 'important'); const r = i.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height }; });
+    same('premise: the picture is on the page with a size', img.w > 10 && img.h > 10, true);
+    await page.evaluate(() => { window.__sent = []; window.__ctxDefault = null; });
+    await page.mouse.click(img.x, img.y, { button: 'right' });
+    await settled(page);
+    same('right-click on the picture asks for no TypoZen menu', (await menuMsgs()).length, 0);
+    same("and the browser's menu is left to open", await page.evaluate(() => window.__ctxDefault), true);
+    b = await lineBox(0);
+    await page.mouse.click(b.x + 20, b.y + b.height / 2, { button: 'right' });
+    await settled(page);
+    same('control: right-click on the text beside it still gets the TypoZen menu', (await menuMsgs()).length, 1);
+
     console.log('\n=== the Menu key: the menu opens at the caret ===');
     await load('First line\nSecond line here');
     b = await lineBox(1);

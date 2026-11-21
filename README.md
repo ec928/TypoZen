@@ -94,7 +94,7 @@ The **Format** menu (`Alt+O`) lists every formatting command with its shortcut, 
   - A code block, table, rule, picture or another callout in the selection: nothing happens.
   - **Enter** in a callout or quote, in Preview and Source, starts the next line with `> ` so you keep writing in the box; Enter on an empty `> ` line leaves it, as with a list. `Shift+Enter` gives a line without the marker.
 - **Insert Table** (`Ctrl+T`).
-- Code and data files (`.cs`, `.js`, `.json`, `.html`, `.css`, `.log`, `.csv`, `.yaml` and similar) take no Markdown formatting: the Format menu is greyed, right-click offers Cut, Copy, Paste and Select All only, and the formatting shortcuts do nothing. A book, a PDF and Reader keep the ordinary right-click menu.
+- Code and data files (`.cs`, `.js`, `.json`, `.html`, `.css`, `.log`, `.csv`, `.yaml` and similar) take no Markdown formatting: the Format menu is greyed, right-click offers Cut, Copy, Paste and Select All only, and the formatting shortcuts do nothing. A book, a PDF, Reader, and any picture in a document keep the browser's own right-click menu.
 - **Selecting text** raises a small popup of reading tools — Look up, Find, Read, Read from here, Highlight, Search web — the same in a document as in a book. It changes nothing in the text; that is right-click's job.
 
 #### Links, tables & editing

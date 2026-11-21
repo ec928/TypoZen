@@ -3914,6 +3914,9 @@
             if (window.tzPdfActive || window.tzPdfEditing) return false;
             if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') return false;
             if (!target || !target.closest || !editor) return false;
+            // A picture keeps the browser's own menu -- Save image as, Copy image, Copy image
+            // link, More tools (Ed, 2026-11-21): none of the text commands apply to it.
+            if (target.closest('img, picture')) return false;
             if (state.mode === 'source') return typeof isSourceNode === 'function' && isSourceNode(target);
             return editor.isContentEditable && editor.contains(target);
         }
